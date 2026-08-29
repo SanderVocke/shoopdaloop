@@ -179,7 +179,6 @@ pub fn generate_audio_click_track(
             label: "click track".to_owned(),
             role: "generated".to_owned(),
             samples,
-            latency: Default::default(),
         }],
     })
 }
@@ -231,7 +230,6 @@ pub fn generate_midi_click_track(
         length_frames: u64::from(timing.output_frames),
         start_state: Vec::new(),
         events,
-        latency: Default::default(),
     })
 }
 

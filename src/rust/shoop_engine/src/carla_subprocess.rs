@@ -1,8 +1,7 @@
 use crate::carla_native::CarlaNativeHost;
 use crate::carla_processor::{
     CarlaGenerationLog, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
-    CarlaProcessorLifecycle, FakeCarlaProcessor, FakeProcessorBehavior, ProcessorLatencyDiagnostic,
-    ProcessorLatencyObservation,
+    CarlaProcessorLifecycle, FakeCarlaProcessor, FakeProcessorBehavior,
 };
 use crate::carla_shared_memory::SharedBlockTransport;
 use crate::realtime_lock_guard::Mutex;
@@ -12,9 +11,8 @@ use shoop_plugin_protocol::{
     read_frame, write_frame, BlockSequence, CarlaChainType, ChainId, ControlRequest,
     ControlRequestKind, ControlResponse, ControlResponseKind, LifecycleState, MidiEvent,
     ParentToWorker, ProcessGeneration, ProtocolError, ProtocolErrorCode, PrototypeBlockResult,
-    RequestId, WorkerExitKind, WorkerHello, WorkerLatencyCertainty, WorkerLatencyDiagnostic,
-    WorkerLatencyObservation, WorkerStatus, WorkerToParent, MAX_AUDIO_CHANNELS, MAX_BLOCK_FRAMES,
-    MAX_MIDI_EVENTS_PER_BLOCK,
+    RequestId, WorkerExitKind, WorkerHello, WorkerStatus, WorkerToParent, MAX_AUDIO_CHANNELS,
+    MAX_BLOCK_FRAMES, MAX_MIDI_EVENTS_PER_BLOCK,
 };
 use std::collections::VecDeque;
 use std::fmt;
@@ -34,79 +32,6 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
 const UI_CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
-
-fn worker_latency(host: &dyn CarlaProcessor) -> WorkerLatencyObservation {
-    let observation = host.latency();
-    WorkerLatencyObservation {
-        minimum_frames: observation.range.map(|range| range.min()),
-        maximum_frames: observation.range.map(|range| range.max()),
-        certainty: match observation.certainty {
-            shoop_latency::LatencyCertainty::Exact => WorkerLatencyCertainty::Exact,
-            shoop_latency::LatencyCertainty::Range => WorkerLatencyCertainty::Range,
-            shoop_latency::LatencyCertainty::Estimated => WorkerLatencyCertainty::Estimated,
-            shoop_latency::LatencyCertainty::ManualOnly => WorkerLatencyCertainty::ManualOnly,
-            shoop_latency::LatencyCertainty::Unknown => WorkerLatencyCertainty::Unknown,
-        },
-        sample_rate: observation.sample_rate,
-        revision: observation.revision,
-        diagnostic: match host.latency_diagnostic() {
-            ProcessorLatencyDiagnostic::CarlaRackAggregate => {
-                WorkerLatencyDiagnostic::CarlaRackAggregate
-            }
-            ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange => {
-                WorkerLatencyDiagnostic::CarlaPatchbayGraphRange
-            }
-            ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange => {
-                WorkerLatencyDiagnostic::BuiltInSynthPhaseRange
-            }
-            ProcessorLatencyDiagnostic::Manual => WorkerLatencyDiagnostic::Manual,
-            ProcessorLatencyDiagnostic::VersionMismatch => WorkerLatencyDiagnostic::VersionMismatch,
-            ProcessorLatencyDiagnostic::Unsupported => WorkerLatencyDiagnostic::Unsupported,
-        },
-    }
-}
-
-fn processor_latency(
-    observation: WorkerLatencyObservation,
-) -> (ProcessorLatencyObservation, ProcessorLatencyDiagnostic) {
-    let certainty = match observation.certainty {
-        WorkerLatencyCertainty::Exact => shoop_latency::LatencyCertainty::Exact,
-        WorkerLatencyCertainty::Range => shoop_latency::LatencyCertainty::Range,
-        WorkerLatencyCertainty::Estimated => shoop_latency::LatencyCertainty::Estimated,
-        WorkerLatencyCertainty::ManualOnly => shoop_latency::LatencyCertainty::ManualOnly,
-        WorkerLatencyCertainty::Unknown => shoop_latency::LatencyCertainty::Unknown,
-    };
-    let range = match (observation.minimum_frames, observation.maximum_frames) {
-        (Some(minimum), Some(maximum)) => {
-            shoop_latency::LatencyRangeFrames::new(minimum, maximum).ok()
-        }
-        _ => None,
-    };
-    let runtime = ProcessorLatencyObservation::new(
-        range,
-        certainty,
-        observation.sample_rate,
-        observation.revision,
-    )
-    .unwrap_or_else(|_| {
-        ProcessorLatencyObservation::unknown(observation.sample_rate, observation.revision)
-    });
-    let diagnostic = match observation.diagnostic {
-        WorkerLatencyDiagnostic::CarlaRackAggregate => {
-            ProcessorLatencyDiagnostic::CarlaRackAggregate
-        }
-        WorkerLatencyDiagnostic::CarlaPatchbayGraphRange => {
-            ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange
-        }
-        WorkerLatencyDiagnostic::BuiltInSynthPhaseRange => {
-            ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange
-        }
-        WorkerLatencyDiagnostic::Manual => ProcessorLatencyDiagnostic::Manual,
-        WorkerLatencyDiagnostic::VersionMismatch => ProcessorLatencyDiagnostic::VersionMismatch,
-        WorkerLatencyDiagnostic::Unsupported => ProcessorLatencyDiagnostic::Unsupported,
-    };
-    (runtime, diagnostic)
-}
 
 fn protocol_chain_type(chain_type: FXChainType) -> Result<CarlaChainType> {
     match chain_type {
@@ -396,12 +321,6 @@ fn instantiate_worker_host(
             _ => FakeProcessorBehavior::default(),
         };
         fake.set_behavior(behavior);
-        fake.set_latency(ProcessorLatencyObservation::exact(
-            0,
-            sample_rate.max(1),
-            1,
-        )?);
-        fake.set_latency_diagnostic(ProcessorLatencyDiagnostic::Manual);
         Ok(Box::new(fake))
     } else {
         CarlaNativeHost::instantiate(
@@ -561,7 +480,6 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                         nominal_buffer_size,
                     ) {
                         Ok(created) => {
-                            status.latency = worker_latency(&*created);
                             *host = Some(created);
                             status.lifecycle = LifecycleState::Running;
                             status.ready = true;
@@ -607,10 +525,8 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     },
                     ControlRequestKind::Status => {
                         if let Some(host) = host.as_mut() {
-                            host.idle();
                             status.active = host.is_active();
                             status.visible = host.is_visible();
-                            status.latency = worker_latency(&**host);
                         }
                         status.processed_blocks = processed_blocks.load(Ordering::Relaxed);
                         ControlResponseKind::Status(status.clone())
@@ -790,8 +706,6 @@ pub struct SubprocessCarlaProcessor {
     midi_output_counts: Vec<usize>,
     shared_midi_outputs: Vec<MidiEvent>,
     shared_midi_output_count: usize,
-    latency: ProcessorLatencyObservation,
-    latency_diagnostic: ProcessorLatencyDiagnostic,
     active: bool,
     visible: bool,
     ready: bool,
@@ -1011,8 +925,6 @@ impl SubprocessCarlaProcessor {
                 })
                 .collect(),
             shared_midi_output_count: 0,
-            latency: ProcessorLatencyObservation::unknown(sample_rate, 1),
-            latency_diagnostic: ProcessorLatencyDiagnostic::Unsupported,
             active: false,
             visible: false,
             ready: false,
@@ -1034,7 +946,6 @@ impl SubprocessCarlaProcessor {
             nominal_buffer_size,
         })?;
         processor.ready = true;
-        let _ = processor.status();
         Ok(processor)
     }
 
@@ -1094,9 +1005,6 @@ impl SubprocessCarlaProcessor {
                 status.midi_input_overflows = self.midi_input_overflows;
                 status.midi_output_overflows = self.midi_output_overflows;
                 status.stale_completions = self.stale_completions;
-                let (latency, diagnostic) = processor_latency(status.latency);
-                self.latency = latency;
-                self.latency_diagnostic = diagnostic;
                 Ok(status)
             }
             other => Err(anyhow!("worker returned {other:?} for status request")),
@@ -1258,18 +1166,6 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
         self.info
     }
 
-    fn latency(&self) -> ProcessorLatencyObservation {
-        self.latency
-    }
-
-    fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
-        self.latency_diagnostic
-    }
-
-    fn idle(&mut self) {
-        let _ = self.status();
-    }
-
     fn is_ready(&mut self) -> bool {
         self.ready && self.child.try_wait().ok().flatten().is_none()
     }
@@ -1354,7 +1250,6 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
 
     fn restore_state(&mut self, state: &str) -> Result<()> {
         self.control(ControlRequestKind::RestoreState(state.to_owned()))?;
-        let _ = self.status();
         self.checkpoint.clear();
         self.checkpoint.push_str(state);
         Ok(())
@@ -1723,26 +1618,6 @@ impl SupervisedCarlaProcessor {
 impl CarlaProcessor for SupervisedCarlaProcessor {
     fn info(&self) -> CarlaProcessorInfo {
         self.info
-    }
-
-    fn latency(&self) -> ProcessorLatencyObservation {
-        self.current.as_ref().map_or_else(
-            || ProcessorLatencyObservation::unknown(self.sample_rate, self.generation.0),
-            CarlaProcessor::latency,
-        )
-    }
-
-    fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
-        self.current.as_ref().map_or(
-            ProcessorLatencyDiagnostic::Unsupported,
-            CarlaProcessor::latency_diagnostic,
-        )
-    }
-
-    fn idle(&mut self) {
-        if let Some(current) = self.current.as_mut() {
-            current.idle();
-        }
     }
 
     fn is_ready(&mut self) -> bool {

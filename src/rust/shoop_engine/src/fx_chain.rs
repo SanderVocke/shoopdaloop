@@ -9,8 +9,6 @@
 //! processing only reads and writes. That is why the delay's buffer is sized from a maximum rather
 //! than from its current time -- changing the time must not allocate.
 
-use crate::carla_processor::ProcessorLatencyDiagnostic;
-use crate::latency_runtime::RuntimeLatencyObservation;
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
@@ -42,8 +40,6 @@ pub struct FXChainState {
     pub ready: u32,
     pub active: u32,
     pub visible: u32,
-    pub latency: RuntimeLatencyObservation,
-    pub latency_diagnostic: ProcessorLatencyDiagnostic,
 }
 
 /// What an effect does to a signal.

@@ -270,14 +270,6 @@ fn observed_lifecycle<I: ObjectIdentity, M>(
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct BackendLatencyPolicyRequest {
-    pub operation: shoop_latency::LatencyOperationKind,
-    pub recording_reference: shoop_latency::RecordingReference,
-    pub components: Vec<shoop_latency::LatencyComponentInput>,
-    pub revision: u64,
-}
-
 #[derive(Debug, Clone)]
 pub struct ExternalPortDescriptor {
     pub name: String,
@@ -314,475 +306,10 @@ enum JackRegisteredPort {
     },
 }
 
-const MAX_JACK_LATENCY_ROUTES: usize = 512;
-const MAX_JACK_LATENCY_CONNECTIONS: usize = 16;
-const JACK_LATENCY_AUDIO_IN: u8 = 1;
-const JACK_LATENCY_AUDIO_OUT: u8 = 2;
-const JACK_LATENCY_MIDI_IN: u8 = 3;
-const JACK_LATENCY_MIDI_OUT: u8 = 4;
-
-struct JackLatencySlot {
-    port: AtomicUsize,
-    mirror: AtomicUsize,
-    engine_index: AtomicUsize,
-    kind: AtomicU8,
-    internal_min: AtomicU32,
-    internal_max: AtomicU32,
-    peers: [AtomicUsize; MAX_JACK_LATENCY_CONNECTIONS],
-    peers_overflow: AtomicBool,
-    last_capture_min: AtomicU32,
-    last_capture_max: AtomicU32,
-    last_playback_min: AtomicU32,
-    last_playback_max: AtomicU32,
-    last_capture_unknown: AtomicBool,
-    last_playback_unknown: AtomicBool,
-    revision: AtomicU64,
-}
-
-impl Default for JackLatencySlot {
-    fn default() -> Self {
-        Self {
-            port: AtomicUsize::new(0),
-            mirror: AtomicUsize::new(0),
-            engine_index: AtomicUsize::new(0),
-            kind: AtomicU8::new(0),
-            internal_min: AtomicU32::new(0),
-            internal_max: AtomicU32::new(0),
-            peers: std::array::from_fn(|_| AtomicUsize::new(0)),
-            peers_overflow: AtomicBool::new(false),
-            last_capture_min: AtomicU32::new(u32::MAX),
-            last_capture_max: AtomicU32::new(u32::MAX),
-            last_playback_min: AtomicU32::new(u32::MAX),
-            last_playback_max: AtomicU32::new(u32::MAX),
-            last_capture_unknown: AtomicBool::new(false),
-            last_playback_unknown: AtomicBool::new(false),
-            revision: AtomicU64::new(1),
-        }
-    }
-}
-
-struct JackLatencyContext {
-    slots: [JackLatencySlot; MAX_JACK_LATENCY_ROUTES],
-    sample_rate: AtomicU32,
-    callbacks_active: AtomicU32,
-    backend_capture_min: AtomicU32,
-    backend_capture_max: AtomicU32,
-    backend_capture_revision: AtomicU64,
-    backend_capture_unknown: AtomicBool,
-    backend_playback_min: AtomicU32,
-    backend_playback_max: AtomicU32,
-    backend_playback_revision: AtomicU64,
-    backend_playback_unknown: AtomicBool,
-    dirty: AtomicBool,
-}
-
-impl JackLatencyContext {
-    fn new(sample_rate: u32) -> Self {
-        Self {
-            slots: std::array::from_fn(|_| JackLatencySlot::default()),
-            sample_rate: AtomicU32::new(sample_rate),
-            callbacks_active: AtomicU32::new(0),
-            backend_capture_min: AtomicU32::new(0),
-            backend_capture_max: AtomicU32::new(0),
-            backend_capture_revision: AtomicU64::new(1),
-            backend_capture_unknown: AtomicBool::new(false),
-            backend_playback_min: AtomicU32::new(0),
-            backend_playback_max: AtomicU32::new(0),
-            backend_playback_revision: AtomicU64::new(1),
-            backend_playback_unknown: AtomicBool::new(false),
-            dirty: AtomicBool::new(false),
-        }
-    }
-
-    fn register(
-        &self,
-        port: *mut jack_sys::jack_port_t,
-        mirror: usize,
-        engine_index: usize,
-        kind: u8,
-    ) -> Result<()> {
-        let slot = self
-            .slots
-            .iter()
-            .find(|slot| {
-                slot.port
-                    .compare_exchange(0, usize::MAX, Ordering::AcqRel, Ordering::Relaxed)
-                    .is_ok()
-            })
-            .ok_or_else(|| anyhow!("JACK latency route capacity exhausted"))?;
-        slot.mirror.store(mirror, Ordering::Relaxed);
-        slot.engine_index.store(engine_index, Ordering::Relaxed);
-        slot.kind.store(kind, Ordering::Relaxed);
-        slot.internal_min.store(0, Ordering::Relaxed);
-        slot.internal_max.store(0, Ordering::Relaxed);
-        for peer in &slot.peers {
-            peer.store(0, Ordering::Relaxed);
-        }
-        slot.peers_overflow.store(false, Ordering::Relaxed);
-        slot.port.store(port as usize, Ordering::Release);
-        Ok(())
-    }
-
-    fn unregister(&self, port: *mut jack_sys::jack_port_t) {
-        if let Some(slot) = self
-            .slots
-            .iter()
-            .find(|slot| slot.port.load(Ordering::Acquire) == port as usize)
-        {
-            slot.port.store(0, Ordering::Release);
-            while self.callbacks_active.load(Ordering::Acquire) != 0 {
-                std::thread::yield_now();
-            }
-            slot.mirror.store(0, Ordering::Relaxed);
-            slot.engine_index.store(0, Ordering::Relaxed);
-            slot.kind.store(0, Ordering::Relaxed);
-            for peer in &slot.peers {
-                peer.store(0, Ordering::Relaxed);
-            }
-            slot.peers_overflow.store(false, Ordering::Relaxed);
-        }
-    }
-
-    fn connection_changed(
-        &self,
-        client: &jack::Client,
-        first: jack::PortId,
-        second: jack::PortId,
-        connected: bool,
-    ) {
-        let first = unsafe { jack_sys::jack_port_by_id(client.raw(), first) } as usize;
-        let second = unsafe { jack_sys::jack_port_by_id(client.raw(), second) } as usize;
-        if first == 0 || second == 0 {
-            return;
-        }
-        for (own, peer) in [(first, second), (second, first)] {
-            let Some(slot) = self
-                .slots
-                .iter()
-                .find(|slot| slot.port.load(Ordering::Acquire) == own)
-            else {
-                continue;
-            };
-            if connected {
-                if slot
-                    .peers
-                    .iter()
-                    .any(|entry| entry.load(Ordering::Acquire) == peer)
-                {
-                    continue;
-                }
-                let stored = slot.peers.iter().any(|entry| {
-                    entry
-                        .compare_exchange(0, peer, Ordering::AcqRel, Ordering::Relaxed)
-                        .is_ok()
-                });
-                if !stored {
-                    slot.peers_overflow.store(true, Ordering::Release);
-                }
-            } else {
-                for entry in &slot.peers {
-                    let _ = entry.compare_exchange(peer, 0, Ordering::AcqRel, Ordering::Relaxed);
-                }
-            }
-        }
-    }
-
-    fn refresh_internal_ranges(&self, session: &engine::Session) {
-        for slot in &self.slots {
-            if matches!(slot.port.load(Ordering::Acquire), 0 | usize::MAX) {
-                continue;
-            }
-            let index_pointer = slot.engine_index.load(Ordering::Relaxed);
-            if index_pointer == 0 {
-                continue;
-            }
-            let index = unsafe { &*(index_pointer as *const AtomicUsize) }.load(Ordering::Acquire);
-            if index == INVALID_OBJECT_INDEX {
-                continue;
-            }
-            let observation = session.port_internal_latency_observation(index);
-            let (minimum, maximum) = observation
-                .range
-                .map(|range| (range.min(), range.max()))
-                .unwrap_or((0, 0));
-            let changed = slot.internal_min.swap(minimum, Ordering::Release) != minimum
-                || slot.internal_max.swap(maximum, Ordering::Release) != maximum;
-            if changed {
-                self.dirty.store(true, Ordering::Release);
-            }
-        }
-    }
-
-    fn backend_observation(&self, capture: bool) -> engine::RuntimeLatencyObservation {
-        let (minimum, maximum, revision, unknown) = if capture {
-            (
-                self.backend_capture_min.load(Ordering::Acquire),
-                self.backend_capture_max.load(Ordering::Acquire),
-                self.backend_capture_revision.load(Ordering::Acquire),
-                self.backend_capture_unknown.load(Ordering::Acquire),
-            )
-        } else {
-            (
-                self.backend_playback_min.load(Ordering::Acquire),
-                self.backend_playback_max.load(Ordering::Acquire),
-                self.backend_playback_revision.load(Ordering::Acquire),
-                self.backend_playback_unknown.load(Ordering::Acquire),
-            )
-        };
-        if unknown {
-            return engine::RuntimeLatencyObservation::unknown(
-                self.sample_rate.load(Ordering::Acquire),
-                revision,
-            );
-        }
-        runtime_latency_from_range(
-            minimum,
-            maximum,
-            self.sample_rate.load(Ordering::Acquire),
-            revision,
-        )
-    }
-}
-
-fn aggregate_parallel_latency(
-    aggregate: Option<(u32, u32)>,
-    range: (u32, u32),
-) -> Option<(u32, u32)> {
-    Some(match aggregate {
-        Some((minimum, maximum)) => (minimum.min(range.0), maximum.max(range.1)),
-        None => range,
-    })
-}
-
-fn add_serial_latency(range: (u32, u32), internal: (u32, u32)) -> (u32, u32) {
-    (
-        range.0.saturating_add(internal.0),
-        range.1.saturating_add(internal.1),
-    )
-}
-
-fn runtime_latency_from_range(
-    minimum: u32,
-    maximum: u32,
-    sample_rate: u32,
-    revision: u64,
-) -> engine::RuntimeLatencyObservation {
-    let certainty = if minimum == maximum {
-        shoop_latency::LatencyCertainty::Exact
-    } else {
-        shoop_latency::LatencyCertainty::Range
-    };
-    engine::RuntimeLatencyObservation::new(
-        shoop_latency::LatencyRangeFrames::new(minimum, maximum).ok(),
-        certainty,
-        sample_rate.max(1),
-        revision,
-    )
-    .unwrap_or_else(|_| engine::RuntimeLatencyObservation::unknown(sample_rate, revision))
-}
-
-unsafe fn publish_jack_latency_slot(
-    slot: &JackLatencySlot,
-    capture: bool,
-    range: (u32, u32),
-    kind: u8,
-    sample_rate: u32,
-    unknown: bool,
-) {
-    let (last_min, last_max, last_unknown) = if capture {
-        (
-            &slot.last_capture_min,
-            &slot.last_capture_max,
-            &slot.last_capture_unknown,
-        )
-    } else {
-        (
-            &slot.last_playback_min,
-            &slot.last_playback_max,
-            &slot.last_playback_unknown,
-        )
-    };
-    let changed = last_min.swap(range.0, Ordering::Relaxed) != range.0
-        || last_max.swap(range.1, Ordering::Relaxed) != range.1
-        || last_unknown.swap(unknown, Ordering::Relaxed) != unknown;
-    let revision = if changed {
-        slot.revision
-            .fetch_add(1, Ordering::Relaxed)
-            .saturating_add(1)
-    } else {
-        slot.revision.load(Ordering::Relaxed)
-    };
-    let observation = if unknown {
-        engine::RuntimeLatencyObservation::unknown(sample_rate, revision)
-    } else {
-        runtime_latency_from_range(range.0, range.1, sample_rate, revision)
-    };
-    let mirror = slot.mirror.load(Ordering::Relaxed);
-    if mirror == 0 {
-        return;
-    }
-    match kind {
-        JACK_LATENCY_AUDIO_IN | JACK_LATENCY_AUDIO_OUT => {
-            let mirror = &*(mirror as *const engine::AudioPortStateMirror);
-            if capture {
-                mirror.publish_capture_latency(observation);
-            } else {
-                mirror.publish_playback_latency(observation);
-            }
-        }
-        JACK_LATENCY_MIDI_IN | JACK_LATENCY_MIDI_OUT => {
-            let mirror = &*(mirror as *const engine::MidiPortStateMirror);
-            if capture {
-                mirror.publish_capture_latency(observation);
-            } else {
-                mirror.publish_playback_latency(observation);
-            }
-        }
-        _ => {}
-    }
-}
-
-unsafe fn jack_connected_latency_range(
-    slot: &JackLatencySlot,
-    port: *mut jack_sys::jack_port_t,
-    mode: jack_sys::jack_latency_callback_mode_t,
-) -> (u32, u32) {
-    let mut aggregate = None;
-    for peer in &slot.peers {
-        let peer = peer.load(Ordering::Acquire);
-        if peer == 0 {
-            continue;
-        }
-        let mut range = jack_sys::jack_latency_range_t { min: 0, max: 0 };
-        jack_sys::jack_port_get_latency_range(peer as *mut _, mode, &mut range);
-        aggregate = aggregate_parallel_latency(aggregate, (range.min, range.max));
-    }
-    aggregate.unwrap_or_else(|| {
-        let mut range = jack_sys::jack_latency_range_t { min: 0, max: 0 };
-        jack_sys::jack_port_get_latency_range(port, mode, &mut range);
-        (range.min, range.max)
-    })
-}
-
-unsafe extern "C" fn jack_latency_callback(
-    mode: jack_sys::jack_latency_callback_mode_t,
-    arg: *mut std::ffi::c_void,
-) {
-    let context = &*(arg as *const JackLatencyContext);
-    context.callbacks_active.fetch_add(1, Ordering::AcqRel);
-    let capture = mode == jack_sys::JackCaptureLatency;
-    let sample_rate = context.sample_rate.load(Ordering::Relaxed);
-    let mut aggregate = None;
-    let mut aggregate_unknown = false;
-    for slot in &context.slots {
-        let port = slot.port.load(Ordering::Acquire);
-        if port == 0 || port == usize::MAX {
-            continue;
-        }
-        let kind = slot.kind.load(Ordering::Relaxed);
-        let query = if capture {
-            matches!(kind, JACK_LATENCY_AUDIO_IN | JACK_LATENCY_MIDI_IN)
-        } else {
-            matches!(kind, JACK_LATENCY_AUDIO_OUT | JACK_LATENCY_MIDI_OUT)
-        };
-        if !query {
-            continue;
-        }
-        let range = jack_connected_latency_range(slot, port as *mut _, mode);
-        aggregate = aggregate_parallel_latency(aggregate, range);
-        let unknown = slot.peers_overflow.load(Ordering::Acquire);
-        aggregate_unknown |= unknown;
-        publish_jack_latency_slot(slot, capture, range, kind, sample_rate, unknown);
-    }
-    let aggregate = aggregate.unwrap_or((0, 0));
-    for slot in &context.slots {
-        let port = slot.port.load(Ordering::Acquire);
-        if port == 0 || port == usize::MAX {
-            continue;
-        }
-        let kind = slot.kind.load(Ordering::Relaxed);
-        let propagate = if capture {
-            matches!(kind, JACK_LATENCY_AUDIO_OUT | JACK_LATENCY_MIDI_OUT)
-        } else {
-            matches!(kind, JACK_LATENCY_AUDIO_IN | JACK_LATENCY_MIDI_IN)
-        };
-        if !propagate {
-            continue;
-        }
-        let range = add_serial_latency(
-            aggregate,
-            (
-                slot.internal_min.load(Ordering::Relaxed),
-                slot.internal_max.load(Ordering::Relaxed),
-            ),
-        );
-        let mut ffi_range = jack_sys::jack_latency_range_t {
-            min: range.0,
-            max: range.1,
-        };
-        jack_sys::jack_port_set_latency_range(port as *mut _, mode, &mut ffi_range);
-        publish_jack_latency_slot(slot, capture, range, kind, sample_rate, aggregate_unknown);
-    }
-    let (minimum, maximum, revision, unknown) = if capture {
-        (
-            &context.backend_capture_min,
-            &context.backend_capture_max,
-            &context.backend_capture_revision,
-            &context.backend_capture_unknown,
-        )
-    } else {
-        (
-            &context.backend_playback_min,
-            &context.backend_playback_max,
-            &context.backend_playback_revision,
-            &context.backend_playback_unknown,
-        )
-    };
-    let changed = minimum.swap(aggregate.0, Ordering::Release) != aggregate.0
-        || maximum.swap(aggregate.1, Ordering::Release) != aggregate.1
-        || unknown.swap(aggregate_unknown, Ordering::Release) != aggregate_unknown;
-    if changed {
-        revision.fetch_add(1, Ordering::Release);
-    }
-    context.callbacks_active.fetch_sub(1, Ordering::Release);
-}
-
 struct JackNotifications {
     xruns: Arc<AtomicU32>,
-    latency: Arc<JackLatencyContext>,
 }
 impl jack::NotificationHandler for JackNotifications {
-    fn sample_rate(&mut self, client: &jack::Client, sample_rate: jack::Frames) -> jack::Control {
-        self.latency
-            .sample_rate
-            .store(sample_rate, Ordering::Release);
-        unsafe {
-            jack_sys::jack_recompute_total_latencies(client.raw());
-        }
-        jack::Control::Continue
-    }
-
-    fn ports_connected(
-        &mut self,
-        client: &jack::Client,
-        first: jack::PortId,
-        second: jack::PortId,
-        connected: bool,
-    ) {
-        self.latency
-            .connection_changed(client, first, second, connected);
-        unsafe {
-            jack_sys::jack_recompute_total_latencies(client.raw());
-        }
-    }
-
-    fn graph_reorder(&mut self, client: &jack::Client) -> jack::Control {
-        unsafe {
-            jack_sys::jack_recompute_total_latencies(client.raw());
-        }
-        jack::Control::Continue
-    }
-
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
         self.xruns.fetch_add(1, Ordering::Relaxed);
         jack::Control::Continue
@@ -802,7 +329,6 @@ struct JackProcess {
     /// Published from the callback and read by `get_state`, because logging here would
     /// allocate on the realtime thread.
     stale_graph_cycles: Arc<AtomicU32>,
-    latency: Arc<JackLatencyContext>,
     sample_rate: u32,
     maybe_process_callback: Option<ProcessCallback>,
 }
@@ -830,7 +356,6 @@ impl JackProcess {
             ports,
             last_processed,
             stale_graph_cycles,
-            latency,
             sample_rate,
             ..
         } = self;
@@ -888,7 +413,6 @@ impl JackProcess {
         engine.run_cycle(n_frames);
         let session = engine.session();
         stale_graph_cycles.store(session.n_stale_cycles(), Ordering::Relaxed);
-        latency.refresh_internal_ranges(session);
 
         for p in ports.iter_mut() {
             match p {
@@ -956,7 +480,6 @@ struct JackBackend {
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
     stale_graph_cycles: Arc<AtomicU32>,
-    latency: Arc<JackLatencyContext>,
     maybe_process_callback: Option<ProcessCallback>,
 }
 
@@ -1020,31 +543,14 @@ impl JackBackend {
         let engine = shared
             .take_engine()
             .ok_or_else(|| anyhow!("the engine has already been taken by another driver"))?;
-        self.latency
-            .sample_rate
-            .store(client.sample_rate(), Ordering::Release);
-        let callback_result = unsafe {
-            jack_sys::jack_set_latency_callback(
-                client.raw(),
-                Some(jack_latency_callback),
-                Arc::as_ptr(&self.latency) as *mut std::ffi::c_void,
-            )
-        };
-        if callback_result != 0 {
-            shared.return_engine(engine);
-            self.client = Some(client);
-            return Err(anyhow!("Failed to register JACK latency callback"));
-        }
         let notifications = JackNotifications {
             xruns: self.xruns.clone(),
-            latency: Arc::clone(&self.latency),
         };
         let process = JackProcess {
             engine,
             ports: self.ports.clone(),
             last_processed: self.last_processed.clone(),
             stale_graph_cycles: self.stale_graph_cycles.clone(),
-            latency: Arc::clone(&self.latency),
             sample_rate: client.sample_rate(),
             maybe_process_callback: self.maybe_process_callback,
         };
@@ -3808,7 +3314,6 @@ impl AudioDriver {
             resolved.client_name = client.name().to_string();
             resolved.sample_rate = client.sample_rate();
             resolved.buffer_size = client.buffer_size();
-            let latency = Arc::new(JackLatencyContext::new(client.sample_rate()));
             i.jack = Some(Arc::new(Mutex::new(JackBackend {
                 client: Some(client),
                 active_client: None,
@@ -3816,7 +3321,6 @@ impl AudioDriver {
                 last_processed: Arc::new(AtomicU32::new(0)),
                 xruns: Arc::new(AtomicU32::new(0)),
                 stale_graph_cycles: Arc::new(AtomicU32::new(0)),
-                latency,
                 maybe_process_callback: i.maybe_process_callback,
             })));
         } else {
@@ -3948,12 +3452,6 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::AudioIn::default())
                         .map_err(|e| anyhow!("Failed to register JACK audio input {name}: {e}"))?;
-                    j.latency.register(
-                        p.raw(),
-                        Arc::as_ptr(&control.mirror) as usize,
-                        Arc::as_ptr(&control.engine_index) as usize,
-                        JACK_LATENCY_AUDIO_IN,
-                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::AudioIn {
                             control: Arc::clone(&control),
@@ -3966,12 +3464,6 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::AudioOut::default())
                         .map_err(|e| anyhow!("Failed to register JACK audio output {name}: {e}"))?;
-                    j.latency.register(
-                        p.raw(),
-                        Arc::as_ptr(&control.mirror) as usize,
-                        Arc::as_ptr(&control.engine_index) as usize,
-                        JACK_LATENCY_AUDIO_OUT,
-                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::AudioOut {
                             control: Arc::clone(&control),
@@ -4003,11 +3495,9 @@ impl AudioDriver {
         };
         match registered {
             Some(JackRegisteredPort::AudioIn { jack: port, .. }) => {
-                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             Some(JackRegisteredPort::AudioOut { jack: port, .. }) => {
-                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             _ => {}
@@ -4035,11 +3525,9 @@ impl AudioDriver {
         };
         match registered {
             Some(JackRegisteredPort::MidiIn { jack: port, .. }) => {
-                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             Some(JackRegisteredPort::MidiOut { jack: port, .. }) => {
-                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             _ => {}
@@ -4061,12 +3549,6 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiIn::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI input {name}: {e}"))?;
-                    j.latency.register(
-                        p.raw(),
-                        Arc::as_ptr(&control.mirror) as usize,
-                        Arc::as_ptr(&control.engine_index) as usize,
-                        JACK_LATENCY_MIDI_IN,
-                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::MidiIn {
                             control: Arc::clone(&control),
@@ -4079,12 +3561,6 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiOut::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI output {name}: {e}"))?;
-                    j.latency.register(
-                        p.raw(),
-                        Arc::as_ptr(&control.mirror) as usize,
-                        Arc::as_ptr(&control.engine_index) as usize,
-                        JACK_LATENCY_MIDI_OUT,
-                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::MidiOut {
                             control: Arc::clone(&control),
@@ -4122,7 +3598,6 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiIn::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI input {name}: {e}"))?;
-                    j.latency.register(p.raw(), 0, 0, JACK_LATENCY_MIDI_IN)?;
                     j.ports
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -4133,7 +3608,6 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiOut::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI output {name}: {e}"))?;
-                    j.latency.register(p.raw(), 0, 0, JACK_LATENCY_MIDI_OUT)?;
                     j.ports
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -4204,44 +3678,15 @@ impl AudioDriver {
             } else {
                 (i.last_processed, 0, 0, 0.0)
             };
-        let sample_rate = i.dummy.sample_rate();
-        let fallback_latency = if matches!(
-            i.driver_type,
-            AudioDriverType::Dummy | AudioDriverType::CpalTest | AudioDriverType::JackTest
-        ) && sample_rate > 0
-        {
-            engine::RuntimeLatencyObservation::exact(0, sample_rate, 1)
-                .unwrap_or_else(|_| engine::RuntimeLatencyObservation::unknown(sample_rate, 1))
-        } else {
-            engine::RuntimeLatencyObservation::unknown(sample_rate, 1)
-        };
-        let (capture_latency, playback_latency) = i
-            .jack
-            .as_ref()
-            .map(|jack| {
-                let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
-                if jack.latency.dirty.swap(false, Ordering::AcqRel) {
-                    unsafe {
-                        jack_sys::jack_recompute_total_latencies(jack.client().raw());
-                    }
-                }
-                (
-                    jack.latency.backend_observation(true),
-                    jack.latency.backend_observation(false),
-                )
-            })
-            .unwrap_or((fallback_latency, fallback_latency));
         AudioDriverState {
             dsp_load_percent,
             xruns_since_last,
             stale_graph_cycles,
             maybe_instance_name: i.dummy.client_name().to_string(),
-            sample_rate,
+            sample_rate: i.dummy.sample_rate(),
             buffer_size: i.dummy.buffer_size(),
             active: i.dummy.active() as u32,
             last_processed,
-            capture_latency,
-            playback_latency,
         }
     }
     pub fn dummy_enter_controlled_mode(&self) {
@@ -4820,87 +4265,6 @@ impl Loop {
         }
     }
 
-    /// Resolves a complete operation policy on the control thread, then transfers
-    /// only the fixed-capacity runtime recipe to the callback command queue.
-    pub fn set_latency_policy(
-        &self,
-        request: BackendLatencyPolicyRequest,
-    ) -> Result<CommandSequence> {
-        let resolved = shoop_latency::resolve_latency_recipe(
-            request.operation,
-            request.recording_reference,
-            &request.components,
-        )?;
-        if let Some(warning) = resolved.warnings.iter().find(|warning| {
-            warning.reason != shoop_latency::UnresolvedReason::AutomaticValueUnavailable
-        }) {
-            return Err(anyhow!(
-                "latency policy resolution failed: {:?}",
-                warning.reason
-            ));
-        }
-        let recipe = engine::RuntimeLatencyRecipe::from_resolved(&resolved, request.revision);
-        let control = Arc::clone(&self.control);
-        let sequence = self.shared.send_control(move |session| {
-            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
-                if let Some(loop_) = session.loop_mut(index) {
-                    loop_.set_pending_latency_recipe(Some(recipe));
-                }
-            }
-        })?;
-        self.control
-            .mirror
-            .publish_current_latency_recipe(Some(recipe));
-        Ok(sequence)
-    }
-
-    pub fn observe_latency(
-        &self,
-        kind: shoop_latency::LatencyComponentKind,
-        observation: engine::RuntimeLatencyObservation,
-    ) -> Result<CommandSequence> {
-        let control = Arc::clone(&self.control);
-        Ok(self.shared.send_control(move |session| {
-            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
-                if let Some(loop_) = session.loop_mut(index) {
-                    loop_.observe_latency(kind, observation);
-                }
-            }
-        })?)
-    }
-
-    pub fn clear_latency_policy(&self) -> Result<CommandSequence> {
-        let control = Arc::clone(&self.control);
-        let sequence = self.shared.send_control(move |session| {
-            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
-                if let Some(loop_) = session.loop_mut(index) {
-                    loop_.set_pending_latency_recipe(None);
-                }
-            }
-        })?;
-        self.control.mirror.publish_current_latency_recipe(None);
-        Ok(sequence)
-    }
-
-    pub fn set_cue_latency_policy(
-        &self,
-        operation: shoop_latency::LatencyOperationKind,
-        cue_followed: bool,
-        components: Vec<shoop_latency::LatencyComponentInput>,
-        revision: u64,
-    ) -> Result<CommandSequence> {
-        self.set_latency_policy(BackendLatencyPolicyRequest {
-            operation,
-            recording_reference: if cue_followed {
-                shoop_latency::RecordingReference::ShoopCue
-            } else {
-                shoop_latency::RecordingReference::ExternalWorld
-            },
-            components,
-            revision,
-        })
-    }
-
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
         let sequence = self.shared.send_control(move |s: &mut engine::Session| {
@@ -5274,137 +4638,6 @@ impl AudioChannel {
         result
     }
 
-    pub fn observe_latency(
-        &self,
-        kind: shoop_latency::LatencyComponentKind,
-        observation: engine::RuntimeLatencyObservation,
-    ) -> Result<CommandSequence> {
-        Ok(self.with_mut(move |channel| {
-            if let Some(mut latched) = channel.latched_latency_recipe() {
-                latched.observe(kind, observation);
-                channel.set_latched_latency_recipe(latched);
-            }
-        })?)
-    }
-
-    pub fn set_latency_recipe(
-        &self,
-        recipe: Option<engine::RuntimeLatencyRecipe>,
-    ) -> Result<CommandSequence> {
-        let sequence = self.with_mut(move |channel| channel.set_pending_latency_recipe(recipe))?;
-        self.control.mirror.publish_current_latency_recipe(recipe);
-        Ok(sequence)
-    }
-
-    pub fn set_take_latency_policy(
-        &self,
-        capture_alignment_frames: i32,
-    ) -> Result<CommandSequence> {
-        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
-            return Err(anyhow!(
-                "take latency alignment exceeds the supported bound"
-            ));
-        }
-        let sequence = self.with_mut(move |channel| {
-            let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
-        })?;
-        self.control
-            .mirror
-            .set_capture_alignment_frames(capture_alignment_frames);
-        Ok(sequence)
-    }
-
-    pub fn restore_take_latency_mapping(
-        &self,
-        media_layout_offset: i32,
-        capture_alignment_frames: i32,
-        selection: engine::RetainedLatencySelection,
-    ) -> Result<CommandSequence> {
-        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
-            return Err(anyhow!(
-                "take latency alignment exceeds the supported bound"
-            ));
-        }
-        let sequence = self.with_mut(move |channel| {
-            let _ = channel.apply_grab_latency_mapping(
-                media_layout_offset,
-                capture_alignment_frames,
-                selection,
-            );
-        })?;
-        self.control.mirror.set_start_offset(media_layout_offset);
-        self.control
-            .mirror
-            .set_capture_alignment_frames(capture_alignment_frames);
-        let (variable, revisions) = match selection {
-            engine::RetainedLatencySelection::Stable(_) => (false, 1),
-            engine::RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            engine::RetainedLatencySelection::Unavailable => (false, 0),
-        };
-        self.control
-            .mirror
-            .publish_latency_history(variable, revisions);
-        Ok(sequence)
-    }
-
-    pub fn restore_retained_margin_metadata(
-        &self,
-        retained_before_frames: u32,
-        retained_after_frames: u32,
-    ) -> Result<CommandSequence> {
-        for frames in [retained_before_frames, retained_after_frames] {
-            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
-                return Err(anyhow!(
-                    "retained latency margin exceeds the supported bound"
-                ));
-            }
-        }
-        let sequence = self.with_mut(move |channel| {
-            let _ = channel
-                .restore_retained_margin_metadata(retained_before_frames, retained_after_frames);
-        })?;
-        self.control
-            .mirror
-            .publish_retained_margins(retained_before_frames, retained_after_frames);
-        Ok(sequence)
-    }
-
-    fn prepare_latency_consolidation(&self) -> Result<Vec<f32>> {
-        let state = self.get_state()?;
-        let logical_length = self.parent.mirror.read().length as usize;
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let raw = loop {
-            if let Ok(snapshot) = self.try_get_current_data_snapshot() {
-                break snapshot.contiguous();
-            }
-            if Instant::now() >= deadline {
-                return Err(anyhow!(
-                    "audio content did not settle before latency consolidation"
-                ));
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        };
-        let mapping = shoop_latency::CaptureFrameMapping::new(state.capture_alignment_frames)?;
-        let mut consolidated = Vec::with_capacity(logical_length);
-        for logical in 0..logical_length {
-            let raw_position =
-                mapping.raw_media_frame(logical as i64, i64::from(state.start_offset))?;
-            consolidated.push(
-                usize::try_from(raw_position)
-                    .ok()
-                    .and_then(|position| raw.get(position).copied())
-                    .unwrap_or(0.0),
-            );
-        }
-        Ok(consolidated)
-    }
-
-    pub fn consolidate_latency(&self) -> Result<CommandSequence> {
-        let consolidated = self.prepare_latency_consolidation()?;
-        self.load_data(&consolidated)
-            .map_err(|error| anyhow!("could not queue latency consolidation: {error}"))
-    }
-
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
         let result = self.with_mut(move |channel| channel.set_pre_play_samples(n));
         if result.is_ok() {
@@ -5656,59 +4889,6 @@ impl MidiChannel {
         result
     }
 
-    fn prepare_latency_consolidation(&self) -> Result<(Vec<MidiEvent>, u32)> {
-        let state = self.get_state()?;
-        let logical_length = self.parent.mirror.read().length;
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let raw_events = loop {
-            if let Ok(snapshot) = self.try_get_current_data_snapshot() {
-                break snapshot.contiguous();
-            }
-            if Instant::now() >= deadline {
-                return Err(anyhow!(
-                    "MIDI content did not settle before latency consolidation"
-                ));
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        };
-        let mapping = shoop_latency::CaptureFrameMapping::new(state.capture_alignment_frames)?;
-        let mut start_state = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
-        let mut consolidated = Vec::new();
-        for event in raw_events {
-            if event.time < 0 {
-                start_state.process(&event.data);
-                continue;
-            }
-            let logical = mapping
-                .logical_media_frame(i64::from(event.time), i64::from(state.start_offset))
-                .ok()
-                .and_then(|value| i32::try_from(value).ok());
-            if logical.is_some_and(|logical| logical < 0) {
-                start_state.process(&event.data);
-            } else if let Some(logical) =
-                logical.filter(|logical| i64::from(*logical) < i64::from(logical_length))
-            {
-                consolidated.push(MidiEvent {
-                    time: logical,
-                    data: event.data,
-                });
-            }
-        }
-        let mut baked = start_state
-            .state_as_messages()
-            .into_iter()
-            .map(|data| MidiEvent { time: -1, data })
-            .collect::<Vec<_>>();
-        baked.extend(consolidated);
-        Ok((baked, logical_length))
-    }
-
-    pub fn consolidate_latency(&self) -> Result<CommandSequence> {
-        let (baked, logical_length) = self.prepare_latency_consolidation()?;
-        self.load_midi_data(&baked, logical_length)
-            .map_err(|error| anyhow!("could not queue MIDI latency consolidation: {error}"))
-    }
-
     pub fn adopt_ringbuffer_contents(
         &self,
         port: &MidiPort,
@@ -5863,101 +5043,6 @@ impl MidiChannel {
         result
     }
 
-    pub fn observe_latency(
-        &self,
-        kind: shoop_latency::LatencyComponentKind,
-        observation: engine::RuntimeLatencyObservation,
-    ) -> Result<CommandSequence> {
-        Ok(self.with_mut(move |channel| {
-            if let Some(mut latched) = channel.latched_latency_recipe() {
-                latched.observe(kind, observation);
-                channel.set_latched_latency_recipe(latched);
-            }
-        })?)
-    }
-
-    pub fn set_latency_recipe(
-        &self,
-        recipe: Option<engine::RuntimeLatencyRecipe>,
-    ) -> Result<CommandSequence> {
-        let sequence = self.with_mut(move |channel| channel.set_pending_latency_recipe(recipe))?;
-        self.control.mirror.publish_current_latency_recipe(recipe);
-        Ok(sequence)
-    }
-
-    pub fn set_take_latency_policy(
-        &self,
-        capture_alignment_frames: i32,
-    ) -> Result<CommandSequence> {
-        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
-            return Err(anyhow!(
-                "take latency alignment exceeds the supported bound"
-            ));
-        }
-        let sequence = self.with_mut(move |channel| {
-            let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
-        })?;
-        self.control
-            .mirror
-            .set_capture_alignment_frames(capture_alignment_frames);
-        Ok(sequence)
-    }
-
-    pub fn restore_take_latency_mapping(
-        &self,
-        media_layout_offset: i32,
-        capture_alignment_frames: i32,
-        selection: engine::RetainedLatencySelection,
-    ) -> Result<CommandSequence> {
-        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
-            return Err(anyhow!(
-                "take latency alignment exceeds the supported bound"
-            ));
-        }
-        let sequence = self.with_mut(move |channel| {
-            let _ = channel.restore_take_latency_mapping(
-                media_layout_offset,
-                capture_alignment_frames,
-                selection,
-            );
-        })?;
-        self.control.mirror.set_start_offset(media_layout_offset);
-        self.control
-            .mirror
-            .set_capture_alignment_frames(capture_alignment_frames);
-        let (variable, revisions) = match selection {
-            engine::RetainedLatencySelection::Stable(_) => (false, 1),
-            engine::RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            engine::RetainedLatencySelection::Unavailable => (false, 0),
-        };
-        self.control
-            .mirror
-            .publish_latency_history(variable, revisions);
-        Ok(sequence)
-    }
-
-    pub fn restore_retained_margin_metadata(
-        &self,
-        retained_before_frames: u32,
-        retained_after_frames: u32,
-    ) -> Result<CommandSequence> {
-        for frames in [retained_before_frames, retained_after_frames] {
-            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
-                return Err(anyhow!(
-                    "retained latency margin exceeds the supported bound"
-                ));
-            }
-        }
-        let sequence = self.with_mut(move |channel| {
-            let _ = channel
-                .restore_retained_margin_metadata(retained_before_frames, retained_after_frames);
-        })?;
-        self.control
-            .mirror
-            .publish_retained_margins(retained_before_frames, retained_after_frames);
-        Ok(sequence)
-    }
-
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
         let result = self.with_mut(move |channel| channel.set_pre_play_samples(n));
         if result.is_ok() {
@@ -5987,232 +5072,6 @@ impl MidiChannel {
 
     pub fn reset_state_tracking(&self) -> std::result::Result<CommandSequence, SendError> {
         self.with_mut(move |channel| channel.reset_state_tracking())
-    }
-}
-
-pub fn set_take_latency_policy_for_channels(
-    audio: &[AudioChannel],
-    midi: &[MidiChannel],
-    capture_alignment_frames: i32,
-) -> Result<CommandSequence> {
-    if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
-        return Err(anyhow!(
-            "take latency alignment exceeds the supported bound"
-        ));
-    }
-    let shared = audio
-        .first()
-        .map(|channel| Arc::clone(&channel.shared))
-        .or_else(|| midi.first().map(|channel| Arc::clone(&channel.shared)))
-        .ok_or_else(|| anyhow!("loop has no channels for take latency policy"))?;
-    if audio
-        .iter()
-        .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
-        || midi
-            .iter()
-            .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
-    {
-        return Err(anyhow!(
-            "take latency channels belong to different sessions"
-        ));
-    }
-    let audio_ids = audio
-        .iter()
-        .map(|channel| {
-            channel
-                .control
-                .ready_id()
-                .map(ObjectIdentity::index)
-                .ok_or_else(|| anyhow!("audio channel is not ready for take latency policy"))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let midi_ids = midi
-        .iter()
-        .map(|channel| {
-            channel
-                .control
-                .ready_id()
-                .map(ObjectIdentity::index)
-                .ok_or_else(|| anyhow!("MIDI channel is not ready for take latency policy"))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let mut ids = Some((audio_ids, midi_ids));
-    let sequence = shared.send_control(move |session| {
-        let Some((audio_ids, midi_ids)) = ids.take() else {
-            return;
-        };
-        for index in audio_ids {
-            if let Some(channel) = session.audio_channel_mut(index) {
-                let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
-            }
-        }
-        for index in midi_ids {
-            if let Some(channel) = session.midi_channel_mut(index) {
-                let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
-            }
-        }
-    })?;
-    for channel in audio {
-        channel
-            .control
-            .mirror
-            .set_capture_alignment_frames(capture_alignment_frames);
-    }
-    for channel in midi {
-        channel
-            .control
-            .mirror
-            .set_capture_alignment_frames(capture_alignment_frames);
-    }
-    Ok(sequence)
-}
-
-pub fn consolidate_loop_latency(
-    audio: &[AudioChannel],
-    midi: &[MidiChannel],
-) -> Result<CommandSequence> {
-    let shared = audio
-        .first()
-        .map(|channel| Arc::clone(&channel.shared))
-        .or_else(|| midi.first().map(|channel| Arc::clone(&channel.shared)))
-        .ok_or_else(|| anyhow!("loop has no channels to consolidate"))?;
-    if audio
-        .iter()
-        .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
-        || midi
-            .iter()
-            .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
-    {
-        return Err(anyhow!(
-            "latency consolidation channels belong to different sessions"
-        ));
-    }
-
-    let audio_baked = audio
-        .iter()
-        .map(AudioChannel::prepare_latency_consolidation)
-        .collect::<Result<Vec<_>>>()?;
-    let midi_baked = midi
-        .iter()
-        .map(MidiChannel::prepare_latency_consolidation)
-        .collect::<Result<Vec<_>>>()?;
-
-    let audio_indices = audio
-        .iter()
-        .map(|channel| {
-            channel
-                .control
-                .ready_id()
-                .map(ObjectIdentity::index)
-                .ok_or_else(|| anyhow!("audio channel is not ready for consolidation"))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let midi_indices = midi
-        .iter()
-        .map(|channel| {
-            channel
-                .control
-                .ready_id()
-                .map(ObjectIdentity::index)
-                .ok_or_else(|| anyhow!("MIDI channel is not ready for consolidation"))
-        })
-        .collect::<Result<Vec<_>>>()?;
-
-    let mut audio_installs = Vec::with_capacity(audio.len());
-    for ((channel, samples), index) in audio.iter().zip(&audio_baked).zip(audio_indices) {
-        let Some(snapshot) = channel
-            .snapshot_control
-            .prepare(samples, engine::content_snapshot::ContentMutation::Loading)
-        else {
-            for prepared in audio.iter().take(audio_installs.len()) {
-                prepared.snapshot_control.cancel();
-            }
-            return Err(anyhow!("audio channel is busy during consolidation"));
-        };
-        let mut prepared = engine::PreparedAudioChannelData::new(64, samples.len());
-        prepared.begin_load(samples.len());
-        prepared.write(0, samples);
-        audio_installs.push((index, prepared, snapshot));
-    }
-
-    let mut midi_installs = Vec::with_capacity(midi.len());
-    for ((channel, (messages, length)), index) in midi.iter().zip(&midi_baked).zip(midi_indices) {
-        let state = messages
-            .iter()
-            .filter(|message| message.time < 0)
-            .map(|message| message.data.clone())
-            .collect::<Vec<_>>();
-        let elements = messages
-            .iter()
-            .filter(|message| message.time >= 0)
-            .filter_map(|message| {
-                engine::midi_storage::MidiStorageElem::new(message.time as u32, &message.data)
-            })
-            .collect::<Vec<_>>();
-        let Some(snapshot) = channel.snapshot_control.prepare(
-            messages,
-            *length,
-            engine::content_snapshot::ContentMutation::Loading,
-        ) else {
-            for prepared in audio {
-                prepared.snapshot_control.cancel();
-            }
-            for prepared in midi.iter().take(midi_installs.len()) {
-                prepared.snapshot_control.cancel();
-            }
-            return Err(anyhow!("MIDI channel is busy during consolidation"));
-        };
-        let prepared = engine::PreparedMidiChannelData::new(
-            &elements,
-            *length,
-            (!state.is_empty()).then_some(state.as_slice()),
-        );
-        midi_installs.push((index, prepared, snapshot));
-    }
-
-    let audio_controls = audio
-        .iter()
-        .map(|channel| channel.snapshot_control.clone())
-        .collect::<Vec<_>>();
-    let midi_controls = midi
-        .iter()
-        .map(|channel| channel.snapshot_control.clone())
-        .collect::<Vec<_>>();
-    let mut installs = Some((audio_installs, midi_installs));
-    let sequence = shared.send_control(move |session| {
-        let Some((audio_installs, midi_installs)) = installs.take() else {
-            return;
-        };
-        for (index, mut prepared, snapshot) in audio_installs {
-            if let Some(channel) = session.audio_channel_mut(index) {
-                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
-            }
-        }
-        for (index, mut prepared, snapshot) in midi_installs {
-            if let Some(channel) = session.midi_channel_mut(index) {
-                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
-            }
-        }
-    });
-    match sequence {
-        Ok(sequence) => {
-            for (channel, samples) in audio.iter().zip(audio_baked) {
-                channel.desired_data.store(Arc::new(samples));
-            }
-            for (channel, (messages, _)) in midi.iter().zip(midi_baked) {
-                channel.desired_data.store(Arc::new(messages));
-            }
-            Ok(sequence)
-        }
-        Err(error) => {
-            for control in audio_controls {
-                control.cancel();
-            }
-            for control in midi_controls {
-                control.cancel();
-            }
-            Err(error.into())
-        }
     }
 }
 
@@ -7337,34 +6196,6 @@ impl FXChain {
     }
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
-        let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed);
-        s.latency_diagnostic = match &self.backend {
-            FXChainBackendKind::Test2x2x1 => {
-                engine::carla_processor::ProcessorLatencyDiagnostic::Manual
-            }
-            #[cfg(feature = "carla")]
-            FXChainBackendKind::Carla(host) => host.latency_diagnostic(),
-            FXChainBackendKind::OxiSynth(_) => {
-                engine::carla_processor::ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange
-            }
-            FXChainBackendKind::Unavailable { .. } => {
-                engine::carla_processor::ProcessorLatencyDiagnostic::Unsupported
-            }
-        };
-        s.latency = match &self.backend {
-            FXChainBackendKind::Test2x2x1 => {
-                engine::RuntimeLatencyObservation::exact(0, sample_rate.max(1), 1)
-                    .unwrap_or_else(|_| engine::RuntimeLatencyObservation::unknown(sample_rate, 1))
-            }
-            #[cfg(feature = "carla")]
-            FXChainBackendKind::Carla(host) => host.latency(),
-            FXChainBackendKind::OxiSynth(_) => {
-                engine::oxisynth::OxiSynthProcessor::latency_observation(sample_rate)
-            }
-            FXChainBackendKind::Unavailable { .. } => {
-                engine::RuntimeLatencyObservation::unknown(sample_rate, 1)
-            }
-        };
         s.ready = self.available() as u32;
         #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
@@ -7938,7 +6769,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn latency_control_commands_do_not_arm_graph_rebuilds() {
+    fn value_control_commands_do_not_arm_graph_rebuilds() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
         sess.shared.flush_graph_changes();
@@ -9497,268 +8328,6 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn jack_latency_range_aggregation_and_publication_are_bounded_and_allocation_free() {
-        assert_eq!(
-            aggregate_parallel_latency(Some((4, 8)), (2, 12)),
-            Some((2, 12))
-        );
-        assert_eq!(
-            add_serial_latency((u32::MAX - 1, u32::MAX - 1), (8, 9)),
-            (u32::MAX, u32::MAX)
-        );
-        let mirror = Arc::new(engine::AudioPortStateMirror::default());
-        let slot = JackLatencySlot::default();
-        slot.mirror
-            .store(Arc::as_ptr(&mirror) as usize, Ordering::Relaxed);
-        assert_no_alloc::assert_no_alloc(|| unsafe {
-            publish_jack_latency_slot(&slot, true, (3, 7), JACK_LATENCY_AUDIO_IN, 48_000, false);
-        });
-        let observation = mirror.capture_latency();
-        assert_eq!(observation.range.unwrap().min(), 3);
-        assert_eq!(observation.range.unwrap().max(), 7);
-
-        unsafe {
-            publish_jack_latency_slot(&slot, true, (3, 7), JACK_LATENCY_AUDIO_IN, 48_000, true);
-        }
-        assert!(mirror.capture_latency().range.is_none());
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn latency_policy_command_reports_pending_latched_changed_and_failed_states() {
-        let sess = BackendSession::new().expect("session");
-        let loop_ = sess.create_loop().expect("loop");
-        sess.wait_for_command(loop_.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let observation = shoop_latency::LatencyObservation::exact(
-            3,
-            48_000,
-            1,
-            shoop_latency::SourceIdentity::new("backend test input").unwrap(),
-            shoop_latency::LatencyIntervalIdentity::new("device -> app input").unwrap(),
-        )
-        .unwrap();
-        let component = shoop_latency::LatencyComponentInput {
-            kind: shoop_latency::LatencyComponentKind::ExternalCapture,
-            observation,
-            policy: shoop_latency::LatencyComponentPolicy::default(),
-        };
-        let sequence = loop_
-            .set_latency_policy(BackendLatencyPolicyRequest {
-                operation: shoop_latency::LatencyOperationKind::RecordDirect,
-                recording_reference: shoop_latency::RecordingReference::ExternalWorld,
-                components: vec![component],
-                revision: 11,
-            })
-            .unwrap();
-        let pending = loop_.get_state().unwrap().current_latency_recipe;
-        assert_eq!(pending.recipe.unwrap().total_frames, Some(3));
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-
-        let sequence = loop_.transition(LoopMode::Recording, -1, -1).unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let latched = loop_.get_state().unwrap().latched_latency_recipe;
-        assert_eq!(latched.recipe.unwrap().revision, 11);
-        assert!(!latched.changed);
-
-        let sequence = loop_
-            .observe_latency(
-                shoop_latency::LatencyComponentKind::ExternalCapture,
-                engine::RuntimeLatencyObservation::exact(7, 48_000, 2).unwrap(),
-            )
-            .unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let changed = loop_.get_state().unwrap().latched_latency_recipe;
-        assert!(changed.changed);
-        assert_eq!(changed.recipe.unwrap().total_frames, Some(3));
-
-        let invalid = shoop_latency::LatencyObservation::unknown(
-            48_000,
-            2,
-            shoop_latency::SourceIdentity::new("unsupported input").unwrap(),
-        )
-        .unwrap();
-        let sequence = loop_
-            .set_latency_policy(BackendLatencyPolicyRequest {
-                operation: shoop_latency::LatencyOperationKind::RecordDirect,
-                recording_reference: shoop_latency::RecordingReference::ExternalWorld,
-                components: vec![shoop_latency::LatencyComponentInput {
-                    kind: shoop_latency::LatencyComponentKind::ExternalCapture,
-                    observation: invalid.clone(),
-                    policy: shoop_latency::LatencyComponentPolicy::default(),
-                }],
-                revision: 12,
-            })
-            .unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        assert_eq!(
-            loop_
-                .get_state()
-                .unwrap()
-                .current_latency_recipe
-                .recipe
-                .unwrap()
-                .total_frames,
-            None
-        );
-
-        let failed = loop_.set_latency_policy(BackendLatencyPolicyRequest {
-            operation: shoop_latency::LatencyOperationKind::RecordDirect,
-            recording_reference: shoop_latency::RecordingReference::ExternalWorld,
-            components: vec![shoop_latency::LatencyComponentInput {
-                kind: shoop_latency::LatencyComponentKind::ExternalCapture,
-                observation: invalid,
-                policy: shoop_latency::LatencyComponentPolicy {
-                    enabled: true,
-                    value_mode: shoop_latency::LatencyValueMode::Manual(
-                        shoop_latency::MAX_COMPENSATION_FRAMES + 1,
-                    ),
-                    range_selection: shoop_latency::LatencyRangeSelection::Maximum,
-                },
-            }],
-            revision: 13,
-        });
-        assert!(failed.is_err());
-        assert_eq!(
-            loop_
-                .get_state()
-                .unwrap()
-                .current_latency_recipe
-                .recipe
-                .unwrap()
-                .revision,
-            12
-        );
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn take_policy_and_consolidation_reconcile_to_authoritative_channel_state() {
-        let sess = BackendSession::new().expect("session");
-        let loop_ = sess.create_loop().expect("loop");
-        sess.wait_for_command(loop_.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let channel = loop_.add_audio_channel(ChannelMode::Direct).unwrap();
-        sess.wait_for_command(channel.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let sequence = loop_.set_length(3).unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let sequence = channel.load_data(&[0.0, 0.0, 1.0, 0.0, 0.0]).unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let sequence = channel.set_take_latency_policy(2).unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        assert_eq!(channel.get_state().unwrap().capture_alignment_frames, 2);
-        assert!(channel
-            .set_take_latency_policy(shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1)
-            .is_err());
-        assert_eq!(channel.get_state().unwrap().capture_alignment_frames, 2);
-
-        let observation = shoop_latency::LatencyObservation::exact(
-            4,
-            48_000,
-            1,
-            shoop_latency::SourceIdentity::new("future input").unwrap(),
-            shoop_latency::LatencyIntervalIdentity::new("device -> app").unwrap(),
-        )
-        .unwrap();
-        let sequence = loop_
-            .set_latency_policy(BackendLatencyPolicyRequest {
-                operation: shoop_latency::LatencyOperationKind::RecordDirect,
-                recording_reference: shoop_latency::RecordingReference::ExternalWorld,
-                components: vec![shoop_latency::LatencyComponentInput {
-                    kind: shoop_latency::LatencyComponentKind::ExternalCapture,
-                    observation,
-                    policy: shoop_latency::LatencyComponentPolicy::default(),
-                }],
-                revision: 20,
-            })
-            .unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        assert_eq!(channel.get_state().unwrap().capture_alignment_frames, 2);
-
-        let sequence = channel.consolidate_latency().unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        assert_eq!(channel.get_data(), vec![1.0, 0.0, 0.0]);
-        let state = channel.get_state().unwrap();
-        assert_eq!(state.start_offset, 0);
-        assert_eq!(state.capture_alignment_frames, 0);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn mixed_latency_consolidation_commits_all_prepared_channels_together() {
-        let sess = BackendSession::new().expect("session");
-        let loop_ = sess.create_loop().expect("loop");
-        sess.wait_for_command(loop_.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let audio_a = loop_.add_audio_channel(ChannelMode::Direct).unwrap();
-        let audio_b = loop_.add_audio_channel(ChannelMode::Direct).unwrap();
-        let midi = loop_.add_midi_channel(ChannelMode::Direct).unwrap();
-        for sequence in [
-            audio_a.creation_sequence(),
-            audio_b.creation_sequence(),
-            midi.creation_sequence(),
-        ] {
-            sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-                .unwrap();
-        }
-        let sequence = loop_.set_length(2).unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        for (channel, samples) in [(&audio_a, [0.0, 1.0, 2.0]), (&audio_b, [0.0, 3.0, 4.0])] {
-            let sequence = channel.load_data(&samples).unwrap();
-            sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-                .unwrap();
-        }
-        let sequence = midi
-            .load_midi_data(
-                &[MidiEvent {
-                    time: 1,
-                    data: vec![0x90, 60, 100],
-                }],
-                3,
-            )
-            .unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        let sequence = set_take_latency_policy_for_channels(
-            &[audio_a.clone(), audio_b.clone()],
-            std::slice::from_ref(&midi),
-            1,
-        )
-        .unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-        assert_eq!(audio_a.get_state().unwrap().capture_alignment_frames, 1);
-        assert_eq!(audio_b.get_state().unwrap().capture_alignment_frames, 1);
-        assert_eq!(midi.get_state().unwrap().capture_alignment_frames, 1);
-
-        let sequence = consolidate_loop_latency(
-            &[audio_a.clone(), audio_b.clone()],
-            std::slice::from_ref(&midi),
-        )
-        .unwrap();
-        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-            .unwrap();
-
-        assert_eq!(audio_a.get_data(), vec![1.0, 2.0]);
-        assert_eq!(audio_b.get_data(), vec![3.0, 4.0]);
-        assert_eq!(audio_a.get_state().unwrap().capture_alignment_frames, 0);
-        assert_eq!(audio_b.get_state().unwrap().capture_alignment_frames, 0);
-        assert_eq!(midi.get_state().unwrap().capture_alignment_frames, 0);
-        assert!(midi
-            .get_all_midi_data()
-            .iter()
-            .any(|event| event.time == 0 && event.data == [0x90, 60, 100]));
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
     fn current_fx_chain_handle_controls_visibility_activity_and_ports() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
@@ -9766,15 +8335,25 @@ mod tests {
             .expect("fx chain");
 
         assert!(chain.available());
-        let state = chain.get_state().expect("state");
-        assert_eq!((state.ready, state.active, state.visible), (1, 0, 0));
-        assert_eq!(state.latency.range.unwrap().min(), 0);
+        assert_eq!(
+            chain.get_state().expect("state"),
+            FXChainState {
+                ready: 1,
+                active: 0,
+                visible: 0,
+            }
+        );
 
         chain.set_visible(true);
         chain.set_active(true);
-        let state = chain.get_state().expect("state");
-        assert_eq!((state.ready, state.active, state.visible), (1, 1, 1));
-        assert_eq!(state.latency.range.unwrap().max(), 0);
+        assert_eq!(
+            chain.get_state().expect("state"),
+            FXChainState {
+                ready: 1,
+                active: 1,
+                visible: 1,
+            }
+        );
         assert!(chain.get_state_str().expect("state string").is_empty());
         chain.restore_state("");
 
@@ -9806,9 +8385,14 @@ mod tests {
             );
             return;
         }
-        let state = chain.get_state().expect("state");
-        assert_eq!((state.ready, state.active, state.visible), (1, 0, 0));
-        assert!(state.latency.revision > 0);
+        assert_eq!(
+            chain.get_state().expect("state"),
+            FXChainState {
+                ready: 1,
+                active: 0,
+                visible: 0,
+            }
+        );
         chain.set_active(true);
         assert_eq!(chain.get_state().expect("state").active, 1);
         let state = chain.get_state_str().expect("state string");
@@ -9899,8 +8483,6 @@ mod tests {
         assert_eq!(state.sample_rate, 48_000);
         assert_eq!(state.buffer_size, 128);
         assert_eq!(state.maybe_instance_name, "api-test");
-        assert_eq!(state.capture_latency.range.unwrap().min(), 0);
-        assert_eq!(state.playback_latency.range.unwrap().max(), 0);
     }
 
     /// Controlled mode advances the session by exactly what was asked for, in

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::{Read, Write};
 
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 2;
 pub const MAX_AUDIO_CHANNELS: usize = 16;
 pub const MAX_BLOCK_FRAMES: usize = 8192;
 pub const MAX_MIDI_EVENTS_PER_BLOCK: usize = 1024;
@@ -209,63 +209,6 @@ impl ControlRequest {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum WorkerLatencyCertainty {
-    Exact,
-    Range,
-    Estimated,
-    ManualOnly,
-    #[default]
-    Unknown,
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum WorkerLatencyDiagnostic {
-    CarlaRackAggregate,
-    CarlaPatchbayGraphRange,
-    BuiltInSynthPhaseRange,
-    Manual,
-    VersionMismatch,
-    #[default]
-    Unsupported,
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct WorkerLatencyObservation {
-    pub minimum_frames: Option<u32>,
-    pub maximum_frames: Option<u32>,
-    pub certainty: WorkerLatencyCertainty,
-    pub sample_rate: u32,
-    pub revision: u64,
-    pub diagnostic: WorkerLatencyDiagnostic,
-}
-
-impl WorkerLatencyObservation {
-    pub fn validate(&self) -> Result<(), ValidationError> {
-        match (self.minimum_frames, self.maximum_frames, self.certainty) {
-            (Some(minimum), Some(maximum), WorkerLatencyCertainty::Exact)
-                if minimum == maximum && self.sample_rate > 0 =>
-            {
-                Ok(())
-            }
-            (Some(minimum), Some(maximum), WorkerLatencyCertainty::Range)
-                if minimum < maximum && self.sample_rate > 0 =>
-            {
-                Ok(())
-            }
-            (Some(minimum), Some(maximum), WorkerLatencyCertainty::Estimated)
-                if minimum <= maximum && self.sample_rate > 0 =>
-            {
-                Ok(())
-            }
-            (None, None, WorkerLatencyCertainty::ManualOnly | WorkerLatencyCertainty::Unknown) => {
-                Ok(())
-            }
-            _ => Err(ValidationError::InvalidLatencyObservation),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorkerStatus {
     pub lifecycle: LifecycleState,
@@ -279,7 +222,6 @@ pub struct WorkerStatus {
     pub midi_input_overflows: u64,
     pub midi_output_overflows: u64,
     pub stale_completions: u64,
-    pub latency: WorkerLatencyObservation,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -310,7 +252,6 @@ impl ControlResponse {
                 Err(ValidationError::StateTooLarge)
             }
             ControlResponseKind::Error(error) => error.validate(),
-            ControlResponseKind::Status(status) => status.latency.validate(),
             _ => Ok(()),
         }
     }
@@ -424,7 +365,6 @@ pub enum ValidationError {
     TooManyMidiBytes,
     StateTooLarge,
     ErrorMessageTooLarge,
-    InvalidLatencyObservation,
 }
 
 impl fmt::Display for ValidationError {
@@ -621,39 +561,6 @@ mod tests {
         request.request_id = RequestId(1);
         request.kind = ControlRequestKind::RestoreState("x".repeat(MAX_STATE_BYTES + 1));
         assert_eq!(request.validate(), Err(ValidationError::StateTooLarge));
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn worker_latency_status_round_trips_and_rejects_inconsistent_ranges() {
-        let latency = WorkerLatencyObservation {
-            minimum_frames: Some(7),
-            maximum_frames: Some(7),
-            certainty: WorkerLatencyCertainty::Exact,
-            sample_rate: 48_000,
-            revision: 4,
-            diagnostic: WorkerLatencyDiagnostic::CarlaRackAggregate,
-        };
-        assert_eq!(latency.validate(), Ok(()));
-        let response = ControlResponse {
-            request_id: RequestId(1),
-            chain_id: ChainId(2),
-            generation: ProcessGeneration(3),
-            kind: ControlResponseKind::Status(WorkerStatus {
-                latency,
-                ..Default::default()
-            }),
-        };
-        assert_eq!(response.validate(), Ok(()));
-        assert!(serde_json::to_vec(&response).unwrap().len() < MAX_CONTROL_PAYLOAD_BYTES);
-
-        let mut invalid = response;
-        if let ControlResponseKind::Status(status) = &mut invalid.kind {
-            status.latency.maximum_frames = Some(8);
-        }
-        assert_eq!(
-            invalid.validate(),
-            Err(ValidationError::InvalidLatencyObservation)
-        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

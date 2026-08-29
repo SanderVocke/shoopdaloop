@@ -1,7 +1,7 @@
 #![cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
 
-use shoop_engine::carla_native::{carla_runtime_availability, encode_carla_project_state};
-use shoop_engine::carla_processor::{CarlaProcessor, ProcessorLatencyDiagnostic};
+use shoop_engine::carla_native::carla_runtime_availability;
+use shoop_engine::carla_processor::CarlaProcessor;
 use shoop_engine::carla_subprocess::{
     CarlaWorkerTestMode, SubprocessCarlaProcessor, SupervisedCarlaProcessor,
 };
@@ -24,11 +24,6 @@ fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     )
     .expect("application executable should complete the worker handshake");
     assert!(worker.is_ready());
-    assert_eq!(worker.latency().range.unwrap().min(), 0);
-    assert_eq!(
-        worker.latency_diagnostic(),
-        ProcessorLatencyDiagnostic::Manual
-    );
     worker.set_active(true);
     worker.set_visible(true).unwrap();
     assert!(worker.is_visible());
@@ -51,7 +46,6 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     .unwrap();
     worker.restore_state("checkpoint").unwrap();
     worker.set_active(true);
-    let latency_before_restart = worker.latency();
     worker.terminate_worker_for_test().unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     while worker.is_ready() && std::time::Instant::now() < deadline {
@@ -66,11 +60,6 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     assert!(worker.is_ready());
     assert!(worker.is_active());
     assert!(worker.is_visible());
-    assert_eq!(worker.latency(), latency_before_restart);
-    assert_eq!(
-        worker.latency_diagnostic(),
-        ProcessorLatencyDiagnostic::Manual
-    );
     assert_eq!(worker.save_state().unwrap(), "checkpoint");
     assert!(!worker.generation_logs().is_empty());
     worker.clear_logs();
@@ -101,15 +90,6 @@ fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
         ProcessGeneration(1),
     )
     .expect("application executable should host Carla Native in its worker");
-    if worker.latency_diagnostic() == ProcessorLatencyDiagnostic::Unsupported {
-        assert!(worker.latency().range.is_none());
-    } else {
-        assert_eq!(
-            worker.latency_diagnostic(),
-            ProcessorLatencyDiagnostic::CarlaRackAggregate
-        );
-        assert_eq!(worker.latency().range.unwrap().min(), 0);
-    }
     worker.set_active(true);
     let mut processed = false;
     for _ in 0..8 {
@@ -148,42 +128,6 @@ fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     assert!(restored_processed, "legacy Carla state did not process");
-
-    if let Some(path) = std::env::var_os("SHOOP_CARLA_NONZERO_RACK_STATE_XML") {
-        let xml = std::fs::read(path).unwrap();
-        worker
-            .restore_state(&encode_carla_project_state(FXChainType::CarlaRack, &xml).unwrap())
-            .unwrap();
-        let mut expected = None;
-        for _ in 0..100 {
-            worker.audio_input_mut(0).unwrap()[..64].fill(0.0);
-            worker.audio_input_mut(1).unwrap()[..64].fill(0.0);
-            worker.process(64).unwrap();
-            if worker.latency().range.is_some_and(|range| range.max() > 0) {
-                expected = worker.latency().range.map(|range| range.max());
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        let expected = expected.expect("worker plugin did not report nonzero latency");
-        let mut peak = (0.0_f32, 0_u32);
-        for block in 0..(expected.div_ceil(64) + 8) {
-            worker.audio_input_mut(0).unwrap()[..64].fill(0.0);
-            worker.audio_input_mut(1).unwrap()[..64].fill(0.0);
-            if block == 0 {
-                worker.audio_input_mut(0).unwrap()[0] = 1.0;
-            }
-            worker.process(64).unwrap();
-            for (offset, sample) in worker.audio_output(0).unwrap()[..64].iter().enumerate() {
-                if sample.abs() > peak.0 {
-                    peak = (sample.abs(), block * 64 + offset as u32);
-                }
-            }
-        }
-        assert!(peak.0 > 1.0e-6);
-        assert_eq!(peak.1, expected);
-    }
-
     let state = worker.save_state().unwrap();
     assert!(state.starts_with("shoop-carla-native-state:2:rack:"));
     worker.restore_state(&state).unwrap();

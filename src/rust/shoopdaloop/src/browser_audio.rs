@@ -4,9 +4,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
-use shoop_audio_protocol::{
-    Event, EventEnvelope, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION,
-};
+use shoop_audio_protocol::{COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION};
 use shoop_backend::BackendDriverState;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
@@ -72,7 +70,6 @@ struct BrowserAudioPresentation {
     suspend_handler: Closure<dyn FnMut(WebEvent)>,
     resume_handler: Closure<dyn FnMut(WebEvent)>,
     fail_handler: Closure<dyn FnMut(WebEvent)>,
-    poll_handler: Closure<dyn FnMut(WebEvent)>,
     track_end_handler: Closure<dyn FnMut(WebEvent)>,
     shutdown_handler: Closure<dyn FnMut(WebEvent)>,
 }
@@ -143,12 +140,6 @@ impl BrowserAudioController {
             }
         }) as Box<dyn FnMut(_)>);
         let weak = Rc::downgrade(&inner);
-        let poll_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
-            if let Some(inner) = weak.upgrade() {
-                let _ = inner.borrow().transport.request_poll();
-            }
-        }) as Box<dyn FnMut(_)>);
-        let weak = Rc::downgrade(&inner);
         let track_end_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
             let stream = weak
                 .upgrade()
@@ -175,7 +166,6 @@ impl BrowserAudioController {
             ("suspend", &suspend_handler),
             ("resume", &resume_handler),
             ("fail", &fail_handler),
-            ("poll", &poll_handler),
             ("endTrack", &track_end_handler),
             ("shutdown", &shutdown_handler),
         ] {
@@ -197,7 +187,6 @@ impl BrowserAudioController {
                 suspend_handler,
                 resume_handler,
                 fail_handler,
-                poll_handler,
                 track_end_handler,
                 shutdown_handler,
             },
@@ -334,7 +323,6 @@ impl Drop for BrowserAudioController {
             &self.presentation.suspend_handler,
             &self.presentation.resume_handler,
             &self.presentation.fail_handler,
-            &self.presentation.poll_handler,
             &self.presentation.track_end_handler,
             &self.presentation.shutdown_handler,
         );
@@ -368,38 +356,6 @@ fn output_enable_button() -> Result<HtmlButtonElement> {
     audio_button("enable_output_audio")
 }
 
-fn publish_worklet_snapshot_diagnostics(envelope: &EventEnvelope) {
-    let Event::Snapshot(snapshot) = &envelope.event else {
-        return;
-    };
-    if let Some(element) = web_sys::window()
-        .and_then(|window| window.document())
-        .and_then(|document| document.get_element_by_id("runtime_status"))
-    {
-        let _ = element.set_attribute("data-driver-state", "Running");
-        let _ = element.set_attribute("data-callback-count", &snapshot.callback_count.to_string());
-        let _ = element.set_attribute(
-            "data-processed-frames",
-            &snapshot.processed_frames.to_string(),
-        );
-        let _ = element.set_attribute("data-render-quantum", &snapshot.quantum.to_string());
-        let _ = element.set_attribute(
-            "data-command-overflows",
-            &snapshot.command_overflows.to_string(),
-        );
-        let _ = element.set_attribute("data-owned-media-tracks", "0");
-    }
-}
-
-fn set_audio_startup_stage(stage: &str) {
-    if let Some(element) = web_sys::window()
-        .and_then(|window| window.document())
-        .and_then(|document| document.get_element_by_id("runtime_status"))
-    {
-        let _ = element.set_attribute("data-audio-startup-stage", stage);
-    }
-}
-
 fn set_permission_status(id: &str, status: &str) {
     if let Some(element) = web_sys::window()
         .and_then(|window| window.document())
@@ -423,14 +379,14 @@ fn begin_enable(inner: Rc<RefCell<PhysicalAudioDriverState>>, input_mode: AudioI
             AudioInputMode::Microphone
         )
     );
-    let enable_already_in_progress = matches!(
+    if matches!(
         state,
         BackendDriverState::RequestingPermission
+            | BackendDriverState::Starting
             | BackendDriverState::Running
             | BackendDriverState::Suspended
-    ) || (state == BackendDriverState::Starting
-        && current_mode.is_some());
-    if enable_already_in_progress && !microphone_upgrade {
+    ) && !microphone_upgrade
+    {
         return;
     }
     let Some(window) = web_sys::window() else {
@@ -441,7 +397,6 @@ fn begin_enable(inner: Rc<RefCell<PhysicalAudioDriverState>>, input_mode: AudioI
         return;
     };
     inner.borrow_mut().input_mode = Some(input_mode);
-    set_audio_startup_stage("context");
     let context = match AudioContext::new() {
         Ok(context) => context,
         Err(error) => {
@@ -502,15 +457,7 @@ fn begin_enable(inner: Rc<RefCell<PhysicalAudioDriverState>>, input_mode: AudioI
     };
 
     wasm_bindgen_futures::spawn_local(async move {
-        let result = start_audio_graph(
-            inner.clone(),
-            generation,
-            input_mode,
-            context,
-            resume,
-            media,
-        )
-        .await;
+        let result = start_audio_graph(inner.clone(), generation, context, resume, media).await;
         if let Err(error) = result {
             let state = if js_error_name(&error) == "NotAllowedError" {
                 BackendDriverState::Denied
@@ -533,7 +480,6 @@ fn begin_enable(inner: Rc<RefCell<PhysicalAudioDriverState>>, input_mode: AudioI
 async fn start_audio_graph(
     inner: Rc<RefCell<PhysicalAudioDriverState>>,
     generation: u64,
-    input_mode: AudioInputMode,
     context: AudioContext,
     resume: js_sys::Promise,
     media: Option<js_sys::Promise>,
@@ -560,9 +506,7 @@ async fn start_audio_graph(
             .set_driver_state(BackendDriverState::Starting);
     }
 
-    set_audio_startup_stage("worklet-module");
     let module = load_worklet_module(&context).await?;
-    set_audio_startup_stage("worklet-node");
 
     let processor_options = Object::new();
     Reflect::set(&processor_options, &"wasmModule".into(), module.as_ref())?;
@@ -604,10 +548,6 @@ async fn start_audio_graph(
         if let Some(inner) = weak.upgrade() {
             let inner = inner.borrow();
             if let Some(json) = event.data().as_string() {
-                set_audio_startup_stage("worklet-message");
-                if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(&json) {
-                    publish_worklet_snapshot_diagnostics(&envelope);
-                }
                 let _ = inner.transport.receive(generation, &json);
             } else {
                 inner.transport.fail("worklet emitted a non-string event");
@@ -625,7 +565,6 @@ async fn start_audio_graph(
         if let Some(inner) = weak.upgrade() {
             let inner = inner.borrow();
             if inner.generation == generation {
-                set_audio_startup_stage("processor-error");
                 inner.transport.fail("AudioWorklet processor terminated");
             }
         }
@@ -699,7 +638,6 @@ async fn start_audio_graph(
         inner.processor_error_handler = Some(processor_error_handler);
         inner.context_state_handler = Some(context_state_handler);
         inner.track_ended_handlers = track_ended_handlers;
-        set_audio_startup_stage("transport-attach");
         inner
             .transport
             .attach(
@@ -711,18 +649,6 @@ async fn start_audio_graph(
             .map_err(|error| {
                 JsValue::from_str(&format!("could not initialize worklet protocol: {error}"))
             })?;
-        let sample_rate = context.sample_rate() as u32;
-        inner
-            .transport
-            .configure_backend_latency(
-                context_latency_frames(&context, "baseLatency", sample_rate),
-                context_latency_frames(&context, "outputLatency", sample_rate),
-                sample_rate,
-                generation,
-            )
-            .map_err(|error| {
-                JsValue::from_str(&format!("could not publish browser latency: {error}"))
-            })?;
         let state = if context.state() == AudioContextState::Running {
             inner.startup_started = None;
             BackendDriverState::Running
@@ -730,21 +656,6 @@ async fn start_audio_graph(
             BackendDriverState::Suspended
         };
         inner.transport.set_driver_state(state);
-        if let Ok(button) = output_enable_button() {
-            button.set_hidden(true);
-        }
-        set_permission_status("audio_output_permission_status", "Enabled");
-        if input_mode == AudioInputMode::Microphone {
-            if let Ok(button) = microphone_enable_button() {
-                button.set_hidden(true);
-            }
-            set_permission_status("microphone_permission_status", "Granted");
-        }
-        set_audio_startup_stage(if state == BackendDriverState::Running {
-            "context-running"
-        } else {
-            "context-suspended"
-        });
     }
     let weak = Rc::downgrade(&inner);
     wasm_bindgen_futures::spawn_local(async move {
@@ -800,17 +711,6 @@ fn microphone_constraints() -> MediaStreamConstraints {
     let constraints = MediaStreamConstraints::new();
     constraints.set_audio(&raw.into());
     constraints
-}
-
-fn context_latency_frames(context: &AudioContext, property: &str, sample_rate: u32) -> Option<u32> {
-    let seconds = Reflect::get(context.as_ref(), &JsValue::from_str(property))
-        .ok()?
-        .as_f64()?;
-    if !seconds.is_finite() || seconds < 0.0 || sample_rate == 0 {
-        return None;
-    }
-    let frames = (seconds * f64::from(sample_rate)).round();
-    (frames <= f64::from(u32::MAX)).then_some(frames as u32)
 }
 
 fn js_error_name(error: &JsValue) -> String {

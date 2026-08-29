@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    latency_panel::LatencyPanelContext,
     track_widget::{move_before_changes_order, TrackDragPayload},
-    AppIntent, ConnectionViewState, GlobalControlState, StatusState, TrackId,
-    TrackProcessorDescriptor, TrackState, TrackWidget, TrackWidgetAction,
+    AppIntent, GlobalControlState, TrackId, TrackProcessorDescriptor, TrackState, TrackWidget,
+    TrackWidgetAction,
 };
 use egui_material_icons::icons::ICON_ADD;
 
@@ -46,38 +45,6 @@ impl TracksWidget {
         tracks: &[TrackState],
         processors: &[TrackProcessorDescriptor],
         global_controls: &GlobalControlState,
-    ) -> TracksWidgetResponse {
-        self.show_internal(ui, tracks, processors, global_controls, None)
-    }
-
-    pub fn show_with_latency_context(
-        &mut self,
-        ui: &mut egui::Ui,
-        tracks: &[TrackState],
-        processors: &[TrackProcessorDescriptor],
-        global_controls: &GlobalControlState,
-        status: &StatusState,
-        connections: &ConnectionViewState,
-    ) -> TracksWidgetResponse {
-        self.show_internal(
-            ui,
-            tracks,
-            processors,
-            global_controls,
-            Some(LatencyPanelContext {
-                status,
-                connections,
-            }),
-        )
-    }
-
-    fn show_internal(
-        &mut self,
-        ui: &mut egui::Ui,
-        tracks: &[TrackState],
-        processors: &[TrackProcessorDescriptor],
-        global_controls: &GlobalControlState,
-        latency_runtime: Option<LatencyPanelContext<'_>>,
     ) -> TracksWidgetResponse {
         let _span = tracing::trace_span!(
             "frontend.egui.tracks",
@@ -141,7 +108,6 @@ impl TracksWidget {
                                                 true,
                                                 loop_height,
                                                 global_controls,
-                                                latency_runtime,
                                             );
                                         collect_response(&mut result, track, response);
                                     });

@@ -1322,8 +1322,6 @@ mod tests {
                 (PortDataType::Midi, PortDirection::Output) => PortRole::MidiOutput,
             },
             connection_policy: policy,
-            capture_latency: Default::default(),
-            playback_latency: Default::default(),
         }
     }
 
@@ -1568,8 +1566,6 @@ mod tests {
             direction: PortDirection::Input,
             role: PortRole::MidiInput,
             connection_policy: ConnectionPolicy::OwnerManaged,
-            capture_latency: Default::default(),
-            playback_latency: Default::default(),
         });
         ports.push(ApplicationPortState {
             id: PortId::from_raw(100),
@@ -1579,8 +1575,6 @@ mod tests {
             direction: PortDirection::Input,
             role: PortRole::MidiInput,
             connection_policy: ConnectionPolicy::UserManaged,
-            capture_latency: Default::default(),
-            playback_latency: Default::default(),
         });
         connections.application_ports = ports.into();
         let mut confirmed_links = connections.confirmed_links.to_vec();
@@ -1635,8 +1629,6 @@ mod tests {
             direction: PortDirection::Input,
             role: PortRole::MidiInput,
             connection_policy: ConnectionPolicy::UserManaged,
-            capture_latency: Default::default(),
-            playback_latency: Default::default(),
         });
         ports.push(application_port(
             101,

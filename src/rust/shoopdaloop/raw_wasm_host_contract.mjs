@@ -7,7 +7,7 @@ const module = await WebAssembly.compile(bytes);
 if (WebAssembly.Module.imports(module).length !== 0) {
   throw new Error('raw host contract requires an import-free Wasm artifact');
 }
-const protocolVersion = 18;
+const protocolVersion = 14;
 const host = new ShoopRawWasmHost(module, 48000, 2048, 262144);
 const poll = JSON.stringify({ version: protocolVersion, sequence: 1, command: { kind: 'poll' } });
 const first = JSON.parse(host.command(poll));

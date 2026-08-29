@@ -7,8 +7,8 @@ use egui_material_icons::MaterialIcon;
 use crate::{
     colors, composite_loop_widget::LoopDragPayload, dial::paint_dial,
     meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue, AppIntent,
-    CompositeKind, GlobalControlState, LoopAudioExportFormat, LoopMidiExportFormat, LoopMode,
-    LoopState, LoopWidgetAction, SelectionModifiers,
+    CompositeKind, GlobalControlState, LoopAudioExportFormat, LoopMode, LoopState,
+    LoopWidgetAction, SelectionModifiers,
 };
 
 const TOUCH_MODE_ID: &str = "shoop_touch_mode";
@@ -39,7 +39,6 @@ pub struct LoopWidget {
     peak_right: PeakMeterAnimation,
     name_edit: String,
     source_name: String,
-    pending_raw_export: Option<AppIntent>,
     #[cfg(test)]
     test_name_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -371,26 +370,6 @@ impl LoopWidget {
                 });
                 ui.close();
             }
-            if ui
-                .button("Save raw exact audio (includes retained margins)…")
-                .clicked()
-            {
-                self.pending_raw_export = Some(AppIntent::RequestLoopAudioExport {
-                    loop_id: state.id,
-                    format: LoopAudioExportFormat::RawExact,
-                });
-                ui.close();
-            }
-            if ui
-                .button("Save raw float WAV (includes retained margins)…")
-                .clicked()
-            {
-                self.pending_raw_export = Some(AppIntent::RequestLoopAudioExport {
-                    loop_id: state.id,
-                    format: LoopAudioExportFormat::RawFloatWav,
-                });
-                ui.close();
-            }
             if ui.button("Load audio…").clicked() {
                 result
                     .io_intents
@@ -408,24 +387,14 @@ impl LoopWidget {
             if ui.button("Save exact MIDI…").clicked() {
                 result.io_intents.push(AppIntent::RequestLoopMidiExport {
                     loop_id: state.id,
-                    format: LoopMidiExportFormat::Exact,
+                    standard: false,
                 });
                 ui.close();
             }
             if ui.button("Save standard MIDI…").clicked() {
                 result.io_intents.push(AppIntent::RequestLoopMidiExport {
                     loop_id: state.id,
-                    format: LoopMidiExportFormat::Standard,
-                });
-                ui.close();
-            }
-            if ui
-                .button("Save raw standard MIDI (includes retained margins)…")
-                .clicked()
-            {
-                self.pending_raw_export = Some(AppIntent::RequestLoopMidiExport {
-                    loop_id: state.id,
-                    format: LoopMidiExportFormat::RawStandard,
+                    standard: true,
                 });
                 ui.close();
             }
@@ -1046,8 +1015,6 @@ impl LoopWidget {
             egui::Popup::close_id(ui.ctx(), popup_id);
         }
 
-        self.show_raw_export_confirmation(ui.ctx(), state, &mut result);
-
         let drag_preview_rect =
             paint_drag_preview(ui, &response, state, size, background, border_color);
         #[cfg(test)]
@@ -1069,49 +1036,6 @@ impl LoopWidget {
         }
 
         result
-    }
-
-    fn show_raw_export_confirmation(
-        &mut self,
-        context: &egui::Context,
-        state: &LoopState,
-        result: &mut LoopWidgetResponse,
-    ) {
-        let Some(intent) = self.pending_raw_export.clone() else {
-            return;
-        };
-        let belongs_to_loop = match &intent {
-            AppIntent::RequestLoopAudioExport { loop_id, .. }
-            | AppIntent::RequestLoopMidiExport { loop_id, .. } => *loop_id == state.id,
-            _ => false,
-        };
-        if !belongs_to_loop {
-            self.pending_raw_export = None;
-            return;
-        }
-        let mut open = true;
-        egui::Window::new("Export retained raw media?")
-            .id(egui::Id::new(("raw_export_confirmation", state.id)))
-            .collapsible(false)
-            .resizable(false)
-            .open(&mut open)
-            .show(context, |ui| {
-                ui.label(
-                    "Raw export includes retained pre/post material and may expose frames outside the logical loop. It does not mutate or consolidate the take.",
-                );
-                ui.horizontal(|ui| {
-                    if ui.button("Export raw media").clicked() {
-                        result.io_intents.push(intent.clone());
-                        self.pending_raw_export = None;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.pending_raw_export = None;
-                    }
-                });
-            });
-        if !open {
-            self.pending_raw_export = None;
-        }
     }
 
     #[cfg(test)]
@@ -1335,28 +1259,6 @@ mod tests {
             action_tooltip("Play", &controls, false, true),
             "Play and stop others in same track(s) (unsynced)"
         );
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn raw_export_is_gated_by_an_explicit_confirmation_window() {
-        let context = egui::Context::default();
-        crate::initialize(&context);
-        let state = LoopState {
-            id: LoopId::from_raw(77),
-            name: "Raw take".to_owned(),
-            has_audio: true,
-            ..Default::default()
-        };
-        let mut widget = LoopWidget {
-            pending_raw_export: Some(AppIntent::RequestLoopAudioExport {
-                loop_id: state.id,
-                format: LoopAudioExportFormat::RawExact,
-            }),
-            ..Default::default()
-        };
-        let response = frame(&context, &mut widget, &state, 0.0, Vec::new());
-        assert!(response.io_intents.is_empty());
-        assert!(widget.pending_raw_export.is_some());
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -141,7 +141,6 @@ impl WaveformWidget {
             rect,
             view,
             channel.start_offset,
-            channel.latency.capture_alignment_frames,
             channel.preplay_samples,
             channel.loop_length,
             sync_loop_length,

@@ -975,7 +975,6 @@ impl UnifiedApp {
                                 name: file_name(&path),
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
-                                manual_offset_frames: None,
                             });
                         }
                         Err(error) => {
@@ -1002,7 +1001,6 @@ impl UnifiedApp {
                                 name: file_name(&path),
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
-                                manual_offset_frames: None,
                             });
                         }
                         Err(error) => {
@@ -1067,7 +1065,6 @@ impl UnifiedApp {
                                 name,
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
-                                manual_offset_frames: None,
                             });
                     }
                 });
@@ -1089,7 +1086,6 @@ impl UnifiedApp {
                                 name,
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
-                                manual_offset_frames: None,
                             });
                     }
                 });
@@ -2790,7 +2786,6 @@ fn browser_unsupported_session_bytes(
             loops: Vec::new(),
             ports: Vec::new(),
             fx_chain,
-            latency_policy: Default::default(),
         }],
     });
     encode_session(&SessionBundle::new(document), "browser-capability-test")
@@ -4231,7 +4226,6 @@ impl BrowserSelfTest {
                         name: output.suggested_name,
                         bytes: output.bytes,
                         update_loop_length: true,
-                        manual_offset_frames: None,
                     })
                     .map(|()| Self::WaitForLoopAudioMapping)
             }
@@ -4274,7 +4268,7 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::RequestLoopMidiExport {
                         loop_id: loop_state.id,
-                        format: shoop_egui::LoopMidiExportFormat::Exact,
+                        standard: false,
                     })
                     .map(|()| Self::WaitForLoopMidiExport)
             }
@@ -4291,7 +4285,6 @@ impl BrowserSelfTest {
                         name: output.suggested_name,
                         bytes: output.bytes,
                         update_loop_length: true,
-                        manual_offset_frames: None,
                     })
                     .map(|()| Self::WaitForLoopMidiImport)
             }
@@ -4493,7 +4486,7 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::RequestLoopMidiExport {
                         loop_id: loop_state.id,
-                        format: shoop_egui::LoopMidiExportFormat::Exact,
+                        standard: false,
                     })
                     .map(|()| Self::WaitForClickMidiExport)
             }

@@ -18,7 +18,6 @@ anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_engine = { path = "../shoop_engine" }
-shoop_latency = { path = "../shoop_latency" }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol", optional = true }
 shoop_settings = { path = "../shoop_settings" }
 

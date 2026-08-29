@@ -433,27 +433,6 @@ impl RemoteBackendControl {
         self.inner.borrow_mut().receive(generation, message)
     }
 
-    pub fn request_poll(&self) -> Result<()> {
-        self.inner.borrow_mut().ephemeral(Command::Poll)
-    }
-
-    pub fn configure_backend_latency(
-        &self,
-        base_latency_frames: Option<u32>,
-        output_latency_frames: Option<u32>,
-        sample_rate: u32,
-        revision: u64,
-    ) -> Result<()> {
-        self.inner
-            .borrow_mut()
-            .journal(Command::ConfigureBackendLatency {
-                base_latency_frames,
-                output_latency_frames,
-                sample_rate,
-                revision,
-            })
-    }
-
     pub fn set_driver_state(&self, state: BackendDriverState) {
         self.inner.borrow_mut().readiness.driver_state = state;
     }

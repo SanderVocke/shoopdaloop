@@ -10,15 +10,9 @@ browser-feature = "wasm-test-browser"
 [features]
 default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
-latency-panel-preview = []
-
-[[example]]
-name = "latency_panel_smoke"
-required-features = ["latency-panel-preview"]
 
 [dependencies]
 shoop_app_api = { path = "../shoop_app_api" }
-shoop_latency = { path = "../shoop_latency" }
 shoop_settings = { path = "../shoop_settings" }
 shoop_script_resources = { path = "../shoop_script_resources" }
 egui = { workspace = true }
@@ -32,7 +26,6 @@ serde_json = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-eframe = { workspace = true }
 tempfile = { workspace = true }
 tracy-nextest-capture.workspace = true
 

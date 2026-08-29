@@ -21,14 +21,12 @@ pub(crate) fn paint_timeline_regions(
     painter: &egui::Painter,
     rect: egui::Rect,
     view: MediaView,
-    raw_loop_start: i64,
-    capture_alignment_frames: i32,
+    loop_start: i64,
     preplay_samples: u64,
     loop_length: u64,
     sync_loop_length: u64,
 ) {
     let frame_to_x = |frame: i64| view.frame_to_x(frame as f64, rect);
-    let loop_start = raw_loop_start.saturating_add(i64::from(capture_alignment_frames));
     let loop_end = loop_start.saturating_add_unsigned(loop_length);
     let paint_range = |start: i64, end: i64, color| {
         let left = frame_to_x(start).clamp(rect.left(), rect.right());
@@ -45,20 +43,11 @@ pub(crate) fn paint_timeline_regions(
         }
     };
     paint_range(
-        raw_loop_start.saturating_sub_unsigned(preplay_samples),
-        raw_loop_start,
+        loop_start.saturating_sub_unsigned(preplay_samples),
+        loop_start,
         colors::WAVEFORM_PREPLAY_REGION,
     );
     paint_range(loop_start, loop_end, colors::WAVEFORM_LOOP_REGION);
-    for (frame, color) in [
-        (raw_loop_start, colors::WAVEFORM_RAW_START_MARKER),
-        (loop_start, colors::WAVEFORM_LOGICAL_START_MARKER),
-    ] {
-        let x = frame_to_x(frame);
-        if rect.x_range().contains(x) {
-            painter.vline(x, rect.y_range(), egui::Stroke::new(2.0, color));
-        }
-    }
 
     if sync_loop_length == 0 {
         return;
@@ -145,34 +134,30 @@ fn media_bounds(details: &LoopDetailsState) -> (f64, f64) {
     let mut start = 0.0_f64;
     let mut end = 1.0_f64;
     for channel in &details.channels {
-        let logical_start = channel
-            .start_offset
-            .saturating_add(i64::from(channel.latency.capture_alignment_frames));
-        start = start
-            .min(channel.start_offset as f64)
-            .min(logical_start as f64)
-            .min(
-                channel
-                    .start_offset
-                    .saturating_sub_unsigned(channel.preplay_samples) as f64,
-            );
-        end = end
-            .max(channel.samples.len() as f64)
-            .max(logical_start.saturating_add_unsigned(channel.loop_length) as f64);
+        start = start.min(channel.start_offset as f64);
+        start = start.min(
+            channel
+                .start_offset
+                .saturating_sub_unsigned(channel.preplay_samples) as f64,
+        );
+        end = end.max(channel.samples.len() as f64).max(
+            channel
+                .start_offset
+                .saturating_add_unsigned(channel.loop_length) as f64,
+        );
     }
     for channel in &details.midi_channels {
-        let logical_start = channel
-            .start_offset
-            .saturating_add(i64::from(channel.latency.capture_alignment_frames));
-        start = start
-            .min(channel.start_offset as f64)
-            .min(logical_start as f64)
-            .min(
-                channel
-                    .start_offset
-                    .saturating_sub_unsigned(channel.preplay_samples) as f64,
-            );
-        end = end.max(logical_start.saturating_add_unsigned(channel.loop_length) as f64);
+        start = start.min(channel.start_offset as f64);
+        start = start.min(
+            channel
+                .start_offset
+                .saturating_sub_unsigned(channel.preplay_samples) as f64,
+        );
+        end = end.max(
+            channel
+                .start_offset
+                .saturating_add_unsigned(channel.loop_length) as f64,
+        );
         if let Some(event_end) = channel.events.iter().map(|event| event.frame).max() {
             end = end.max(f64::from(event_end));
         }
@@ -466,33 +451,6 @@ mod tests {
         ignored_output_2.textures_delta.clear();
         assert_eq!(pane.waveforms.len(), 1);
         assert_eq!(pane.midi_sequences.len(), 1);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn logical_and_raw_latency_markers_expand_the_shared_media_bounds() {
-        let details = LoopDetailsState {
-            channels: vec![WaveformChannelState {
-                samples: Arc::from([0.0, 0.0, 0.0]),
-                start_offset: 0,
-                loop_length: 10,
-                latency: crate::TakeLatencyProvenanceState {
-                    capture_alignment_frames: 5,
-                    ..Default::default()
-                },
-                ..Default::default()
-            }],
-            midi_channels: vec![MidiSequenceChannelState {
-                start_offset: 0,
-                loop_length: 4,
-                latency: crate::TakeLatencyProvenanceState {
-                    capture_alignment_frames: -3,
-                    ..Default::default()
-                },
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-        assert_eq!(media_bounds(&details), (-3.0, 15.0));
     }
 
     #[shoop_wasm_test_support::shoop_test]

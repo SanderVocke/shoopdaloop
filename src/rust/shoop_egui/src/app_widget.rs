@@ -4,10 +4,8 @@ use crate::{
     click_track_dialog::ClickTrackDialog, colors, ephemeral_script_display_name,
     is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
     AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
-    CueOutputSelection, DetailsPane, DummyAudioDriverConfig, GlobalControls, HostPortId,
-    JackAudioDriverConfig, LatencyComponentKind, LatencyComponentPolicyState,
-    LatencyRangeSelectionState, LatencyValueMode, PianoPane, SettingsAction, SettingsDialog,
-    TracingStatus, TracingStopped, TrackLatencyPolicyState, TrackProcessorDescriptor,
+    DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
+    SettingsAction, SettingsDialog, TracingStatus, TracingStopped, TrackProcessorDescriptor,
     TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
@@ -36,20 +34,6 @@ pub const BUILTIN_SCRIPTS: SettingKey<StringToggleList> =
     SettingKey::new("scripting.builtins.scripts");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
-pub const LATENCY_EXTERNAL_CAPTURE_ENABLED: SettingKey<bool> =
-    SettingKey::new("latency.defaults.external_capture_enabled");
-pub const LATENCY_PROCESSOR_ENABLED: SettingKey<bool> =
-    SettingKey::new("latency.defaults.processor_enabled");
-pub const LATENCY_CUE_OUTPUT_ENABLED: SettingKey<bool> =
-    SettingKey::new("latency.defaults.cue_output_enabled");
-pub const LATENCY_BACKEND_BUFFERING_ENABLED: SettingKey<bool> =
-    SettingKey::new("latency.defaults.backend_buffering_enabled");
-pub const LATENCY_RANGE_SELECTION: SettingKey<String> =
-    SettingKey::new("latency.defaults.range_selection");
-pub const LATENCY_MANUAL_TRIM_FRAMES: SettingKey<i32> =
-    SettingKey::new("latency.defaults.manual_trim_frames");
-pub const LATENCY_CUE_OUTPUT_IDENTITY: SettingKey<String> =
-    SettingKey::new("latency.defaults.cue_output_identity");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
@@ -138,165 +122,7 @@ pub fn register_settings_with_appearance_defaults(
         .category_order(2)
         .setting_order(20)
         .effect(SettingEffect::Immediate),
-    )?;
-    for (key, default, order, label, description) in [
-        (
-            LATENCY_EXTERNAL_CAPTURE_ENABLED,
-            true,
-            10,
-            "External capture compensation",
-            "Enable automatic input/capture-path compensation in new track policies.",
-        ),
-        (
-            LATENCY_PROCESSOR_ENABLED,
-            true,
-            20,
-            "Processor compensation",
-            "Enable automatic processor/FX compensation in new track policies.",
-        ),
-        (
-            LATENCY_CUE_OUTPUT_ENABLED,
-            false,
-            30,
-            "Cue/output compensation",
-            "Enable cue playback compensation for performances explicitly marked as following Shoop output.",
-        ),
-        (
-            LATENCY_BACKEND_BUFFERING_ENABLED,
-            false,
-            40,
-            "Backend buffering compensation",
-            "Enable a separately reported backend-buffer component when it does not overlap another measured path.",
-        ),
-    ] {
-        builder.register(
-            SettingDefinition::new(key, default, "Latency defaults", label, description)
-                .category_order(6)
-                .setting_order(order)
-                .effect(SettingEffect::NextUse),
-        )?;
-    }
-    builder.register(
-        SettingDefinition::new(
-            LATENCY_RANGE_SELECTION,
-            "maximum".to_owned(),
-            "Latency defaults",
-            "Range selection",
-            "Select minimum, midpoint, or conservative maximum from detected latency ranges.",
-        )
-        .category_order(6)
-        .setting_order(50)
-        .effect(SettingEffect::NextUse)
-        .editor(SettingEditor::StringChoice {
-            choices: &[
-                ("minimum", "Minimum"),
-                ("midpoint", "Midpoint"),
-                ("maximum", "Maximum"),
-            ],
-        }),
-    )?;
-    builder.register(
-        SettingDefinition::new(
-            LATENCY_MANUAL_TRIM_FRAMES,
-            0,
-            "Latency defaults",
-            "Signed automatic trim (frames)",
-            "Signed correction added to automatic observations for new track policies.",
-        )
-        .category_order(6)
-        .setting_order(60)
-        .effect(SettingEffect::NextUse)
-        .editor(SettingEditor::SignedInteger {
-            min: -(shoop_latency::MAX_COMPENSATION_FRAMES as i32),
-            max: shoop_latency::MAX_COMPENSATION_FRAMES as i32,
-        }),
-    )?;
-    builder.register(
-        SettingDefinition::new(
-            LATENCY_CUE_OUTPUT_IDENTITY,
-            String::new(),
-            "Latency defaults",
-            "Preferred cue output identity",
-            "Optional normalized host endpoint identity used when a matching output is available.",
-        )
-        .category_order(6)
-        .setting_order(70)
-        .effect(SettingEffect::NextUse),
     )
-}
-
-pub fn latency_policy_from_snapshot(
-    snapshot: &SettingsSnapshot,
-) -> Result<TrackLatencyPolicyState, String> {
-    let range_selection = match snapshot
-        .get(LATENCY_RANGE_SELECTION)
-        .map_err(|error| error.to_string())?
-        .as_str()
-    {
-        "minimum" => LatencyRangeSelectionState::Minimum,
-        "midpoint" => LatencyRangeSelectionState::Midpoint,
-        "maximum" => LatencyRangeSelectionState::Maximum,
-        other => return Err(format!("unsupported latency range selection {other:?}")),
-    };
-    let trim = snapshot
-        .get(LATENCY_MANUAL_TRIM_FRAMES)
-        .map_err(|error| error.to_string())?;
-    let component = |kind, enabled, value_mode| LatencyComponentPolicyState {
-        kind,
-        enabled,
-        value_mode,
-        range_selection,
-    };
-    let cue_identity = snapshot
-        .get(LATENCY_CUE_OUTPUT_IDENTITY)
-        .map_err(|error| error.to_string())?;
-    Ok(TrackLatencyPolicyState {
-        cue_followed: false,
-        cue_output: (!cue_identity.is_empty())
-            .then(|| CueOutputSelection::HostPort(HostPortId::new(cue_identity))),
-        components: Arc::from([
-            component(
-                LatencyComponentKind::ExternalCapture,
-                snapshot
-                    .get(LATENCY_EXTERNAL_CAPTURE_ENABLED)
-                    .map_err(|error| error.to_string())?,
-                if trim == 0 {
-                    LatencyValueMode::Automatic
-                } else {
-                    LatencyValueMode::AutomaticPlusTrim(trim)
-                },
-            ),
-            component(
-                LatencyComponentKind::Processor,
-                snapshot
-                    .get(LATENCY_PROCESSOR_ENABLED)
-                    .map_err(|error| error.to_string())?,
-                LatencyValueMode::Automatic,
-            ),
-            component(
-                LatencyComponentKind::CuePlayback,
-                snapshot
-                    .get(LATENCY_CUE_OUTPUT_ENABLED)
-                    .map_err(|error| error.to_string())?,
-                LatencyValueMode::Automatic,
-            ),
-            component(
-                LatencyComponentKind::BackendBuffering,
-                snapshot
-                    .get(LATENCY_BACKEND_BUFFERING_ENABLED)
-                    .map_err(|error| error.to_string())?,
-                LatencyValueMode::Automatic,
-            ),
-            component(
-                LatencyComponentKind::Manual,
-                false,
-                LatencyValueMode::Manual(0),
-            ),
-        ]),
-        revision: 1,
-        pending: false,
-        error: None,
-    })
 }
 
 pub fn register_audio_settings(
@@ -800,7 +626,6 @@ pub struct AppWidget {
     add_track_midi: bool,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
-    add_track_latency_policy: TrackLatencyPolicyState,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
@@ -866,7 +691,6 @@ impl AppWidget {
             add_track_midi: false,
             add_track_dry_midi: false,
             add_track_processor: None,
-            add_track_latency_policy: TrackLatencyPolicyState::default(),
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
@@ -1161,13 +985,11 @@ impl AppWidget {
                     .filter(|track| !track.is_sync)
                     .cloned()
                     .collect();
-                let response = self.tracks.show_with_latency_context(
+                let response = self.tracks.show_with_global_controls(
                     ui,
                     &main_tracks,
                     &state.track_processors,
                     &state.global_controls,
-                    &state.status,
-                    &state.connections,
                 );
                 if response.add_track_requested {
                     self.open_add_track_dialog(main_tracks.len(), settings_state);
@@ -1365,8 +1187,6 @@ impl AppWidget {
             .expect("registered MIDI setting must retain its type");
         self.add_track_dry_midi = self.add_track_midi;
         self.add_track_processor = None;
-        self.add_track_latency_policy =
-            latency_policy_from_snapshot(&settings_state.active).unwrap_or_default();
         self.add_track_open = true;
     }
 
@@ -1902,10 +1722,7 @@ impl AppWidget {
         let spec = self.add_track_spec()?;
         spec.validate(processors).ok()?;
         self.add_track_open = false;
-        Some(AppAction::AddTrackWithLatencyPolicy {
-            spec,
-            policy: self.add_track_latency_policy.clone(),
-        })
+        Some(AppAction::AddTrackWithTopology(spec))
     }
 
     fn cancel_add_track(&mut self) {
@@ -2647,8 +2464,6 @@ mod tests {
                     direction: crate::PortDirection::Input,
                     role: crate::PortRole::MidiInput,
                     connection_policy: crate::ConnectionPolicy::UserManaged,
-                    capture_latency: Default::default(),
-                    playback_latency: Default::default(),
                 }]),
                 ..Default::default()
             }),
@@ -2748,8 +2563,6 @@ mod tests {
                         direction: crate::PortDirection::Input,
                         role: crate::PortRole::MidiInput,
                         connection_policy: crate::ConnectionPolicy::UserManaged,
-                        capture_latency: Default::default(),
-                        playback_latency: Default::default(),
                     },
                     crate::ApplicationPortState {
                         id: output_port,
@@ -2762,8 +2575,6 @@ mod tests {
                         direction: crate::PortDirection::Output,
                         role: crate::PortRole::MidiOutput,
                         connection_policy: crate::ConnectionPolicy::UserManaged,
-                        capture_latency: Default::default(),
-                        playback_latency: Default::default(),
                     },
                 ]),
                 ..Default::default()
@@ -2853,16 +2664,13 @@ mod tests {
         assert!(widget.add_track_accept_rect.is_some());
         assert_eq!(
             widget.accept_add_track(&[]),
-            Some(AppAction::AddTrackWithLatencyPolicy {
-                spec: TrackSpec {
-                    name: "New Track".to_owned(),
-                    topology: TrackSpecTopology::Direct {
-                        audio_channels: 4,
-                        midi: true,
-                    },
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "New Track".to_owned(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 4,
+                    midi: true,
                 },
-                policy: TrackLatencyPolicyState::default(),
-            })
+            }))
         );
         assert!(!widget.add_track_open);
     }
@@ -2896,16 +2704,13 @@ mod tests {
 
         assert_eq!(
             widget.accept_add_track(&[]),
-            Some(AppAction::AddTrackWithLatencyPolicy {
-                spec: TrackSpec {
-                    name: "Trigger".to_owned(),
-                    topology: TrackSpecTopology::Direct {
-                        audio_channels: 0,
-                        midi: false,
-                    },
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "Trigger".to_owned(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 0,
+                    midi: false,
                 },
-                policy: TrackLatencyPolicyState::default(),
-            })
+            }))
         );
     }
 
@@ -2954,18 +2759,15 @@ mod tests {
         assert_eq!(widget.add_track_processor, Some(processor.id.clone()));
         assert_eq!(
             widget.accept_add_track(&[processor.clone()]),
-            Some(AppAction::AddTrackWithLatencyPolicy {
-                spec: TrackSpec {
-                    name: "Processed".to_owned(),
-                    topology: TrackSpecTopology::DryWet {
-                        dry_audio_channels: 2,
-                        wet_audio_channels: 2,
-                        dry_midi: true,
-                        processor_type: processor.id,
-                    },
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "Processed".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: processor.id,
                 },
-                policy: TrackLatencyPolicyState::default(),
-            })
+            }))
         );
     }
 
@@ -3236,10 +3038,6 @@ mod tests {
         let mut draft = SettingsDraft::from_snapshot(&initial);
         draft.set(DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
         draft.set(DEFAULT_NEW_TRACK_MIDI, true);
-        draft.set(LATENCY_EXTERNAL_CAPTURE_ENABLED, false);
-        draft.set(LATENCY_RANGE_SELECTION, "midpoint".to_owned());
-        draft.set(LATENCY_MANUAL_TRIM_FRAMES, -3);
-        draft.set(LATENCY_CUE_OUTPUT_IDENTITY, "system:playback_1".to_owned());
         let document = registry
             .document_from_draft(
                 &shoop_settings::SettingsDocument::empty("test"),
@@ -3259,21 +3057,6 @@ mod tests {
         assert_eq!(widget.add_track_name, "Track 3");
         assert_eq!(widget.add_track_audio_channels, 6);
         assert!(widget.add_track_midi);
-        assert_eq!(
-            widget.add_track_latency_policy.cue_output,
-            Some(CueOutputSelection::HostPort(HostPortId::new(
-                "system:playback_1"
-            )))
-        );
-        assert!(!widget.add_track_latency_policy.components[0].enabled);
-        assert_eq!(
-            widget.add_track_latency_policy.components[0].value_mode,
-            LatencyValueMode::AutomaticPlusTrim(-3)
-        );
-        assert_eq!(
-            widget.add_track_latency_policy.components[0].range_selection,
-            LatencyRangeSelectionState::Midpoint
-        );
 
         let replacement = registry.defaults(6);
         assert_eq!(
@@ -3282,17 +3065,5 @@ mod tests {
         );
         assert_eq!(widget.add_track_audio_channels, 6);
         assert!(widget.add_track_midi);
-        assert_eq!(
-            widget.add_track_latency_policy.components[0].range_selection,
-            LatencyRangeSelectionState::Midpoint,
-            "an already-open draft remains stable when machine defaults reset"
-        );
-        let migrated = latency_policy_from_snapshot(&replacement).unwrap();
-        assert!(migrated.components[0].enabled);
-        assert_eq!(
-            migrated.components[0].range_selection,
-            LatencyRangeSelectionState::Maximum
-        );
-        assert_eq!(migrated.cue_output, None);
     }
 }

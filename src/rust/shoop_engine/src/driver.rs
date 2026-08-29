@@ -8,7 +8,6 @@
 //! have to be bridged through a ring, the dummy driver is pulled by its own thread -- so
 //! each driver owns its own loop and this module owns only the vocabulary they report in.
 
-use crate::latency_runtime::RuntimeLatencyObservation;
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
@@ -37,9 +36,6 @@ pub struct AudioDriverState {
     pub buffer_size: u32,
     pub active: u32,
     pub last_processed: u32,
-    /// Driver/backend contribution only; unsupported providers remain unknown rather than zero.
-    pub capture_latency: RuntimeLatencyObservation,
-    pub playback_latency: RuntimeLatencyObservation,
 }
 
 #[derive(Debug, Clone)]

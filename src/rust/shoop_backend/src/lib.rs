@@ -23,9 +23,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    DummyAudioDriverConfig, FxLifecycle, LatencyCertaintyState, LatencyDiagnosticsState,
-    LatencyObservationState, LatencyProviderState, LoopMode as AppLoopMode,
-    ResolvedAudioDriverConfig, TakeLatencyProvenanceState, TrackFxState, TrackLatencyPolicyState,
+    DummyAudioDriverConfig, FxLifecycle, ResolvedAudioDriverConfig, TrackFxState,
     TrackProcessorDescriptor,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
@@ -286,8 +284,6 @@ pub enum BackendTrackFxControl {
 pub struct BackendTrackState {
     pub topology: BackendTrackTopology,
     #[serde(skip)]
-    pub latency_policy: TrackLatencyPolicyState,
-    #[serde(skip)]
     pub fx: Option<TrackFxState>,
     pub audio_channels: u32,
     pub midi: bool,
@@ -337,9 +333,6 @@ pub struct BackendStatus {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
-    pub backend_capture_latency: LatencyObservationState,
-    pub backend_playback_latency: LatencyObservationState,
-    pub latency_diagnostics: LatencyDiagnosticsState,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -429,7 +422,6 @@ pub fn dry_wet_routing_state(
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
     pub mode: BackendLoopMode,
-    pub latency: TakeLatencyProvenanceState,
     pub length: u32,
     pub position: u32,
     pub next_mode: Option<BackendLoopMode>,
@@ -505,35 +497,6 @@ pub enum BackendChannelMode {
     Wet,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum BackendLatencyCertainty {
-    Exact,
-    Range,
-    Estimated,
-    ManualOnly,
-    #[default]
-    Unknown,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct BackendTakeLatencySnapshot {
-    pub capture_alignment_frames: i32,
-    #[serde(default)]
-    pub retained_before_frames: u32,
-    #[serde(default)]
-    pub retained_after_frames: u32,
-    pub observation_min_frames: Option<u32>,
-    pub observation_max_frames: Option<u32>,
-    pub certainty: BackendLatencyCertainty,
-    pub observation_sample_rate: u32,
-    pub observation_revision: u64,
-    pub variable_history: bool,
-    pub history_revisions: u32,
-    pub changed_during_operation: bool,
-    pub incomplete: bool,
-    pub applied_during_render: bool,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioContent {
     pub mode: BackendChannelMode,
@@ -541,8 +504,6 @@ pub struct BackendAudioContent {
     pub gain: f32,
     pub start_offset: i32,
     pub preplay: u32,
-    #[serde(default)]
-    pub latency: BackendTakeLatencySnapshot,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -550,7 +511,6 @@ pub struct BackendAudioChannelData {
     pub samples: Arc<[f32]>,
     pub start_offset: i32,
     pub preplay: u32,
-    pub latency: BackendTakeLatencySnapshot,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -600,8 +560,6 @@ pub struct BackendMidiContent {
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: i32,
     pub preplay: u32,
-    #[serde(default)]
-    pub latency: BackendTakeLatencySnapshot,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -612,7 +570,6 @@ pub struct BackendMidiChannelData {
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: i32,
     pub preplay: u32,
-    pub latency: BackendTakeLatencySnapshot,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -636,8 +593,6 @@ pub struct BackendAudioChannelUpdate {
     pub samples: Vec<f32>,
     pub start_offset: Option<i32>,
     pub preplay: Option<u32>,
-    #[serde(default)]
-    pub latency: Option<BackendTakeLatencySnapshot>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -648,8 +603,6 @@ pub struct BackendMidiChannelUpdate {
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: Option<i32>,
     pub preplay: Option<u32>,
-    #[serde(default)]
-    pub latency: Option<BackendTakeLatencySnapshot>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -706,7 +659,6 @@ pub struct BackendAudioDataChunk {
     pub total_samples: usize,
     pub start_offset: i32,
     pub preplay: u32,
-    pub latency: BackendTakeLatencySnapshot,
     pub samples: Vec<f32>,
 }
 
@@ -768,12 +720,6 @@ pub struct BackendMutationFailure {
     pub message: String,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct BackendPortLatencyState {
-    pub capture: LatencyObservationState,
-    pub playback: LatencyObservationState,
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
     pub status: BackendStatus,
@@ -782,43 +728,10 @@ pub struct BackendSnapshot {
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
     pub composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
     pub connections: BackendConnectionSnapshot,
-    pub port_latency: BTreeMap<BackendPortId, BackendPortLatencyState>,
     pub mutation_failures: Vec<BackendMutationFailure>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum BackendLatencyCapability {
-    #[default]
-    Unsupported,
-    Manual,
-    Observed,
-}
-
 pub trait Backend {
-    fn latency_capability(&self) -> BackendLatencyCapability {
-        BackendLatencyCapability::Unsupported
-    }
-
-    fn set_track_latency_policy(
-        &mut self,
-        _track_id: BackendTrackId,
-        _policy: &TrackLatencyPolicyState,
-    ) -> Result<()> {
-        Err(anyhow!("track latency policy is unsupported"))
-    }
-
-    fn set_take_latency_policy(
-        &mut self,
-        _loop_id: BackendLoopId,
-        _capture_alignment_frames: i32,
-    ) -> Result<()> {
-        Err(anyhow!("take latency policy is unsupported"))
-    }
-
-    fn consolidate_take_latency(&mut self, _loop_id: BackendLoopId) -> Result<()> {
-        Err(anyhow!("take latency consolidation is unsupported"))
-    }
-
     fn supports_composite_loops(&self) -> bool {
         false
     }
@@ -962,7 +875,6 @@ pub trait Backend {
             .unwrap_or_else(|| Arc::from([]));
         let start_offset = channel_data.map_or(0, |channel| channel.start_offset);
         let preplay = channel_data.map_or(0, |channel| channel.preplay);
-        let latency = channel_data.map_or_else(Default::default, |channel| channel.latency.clone());
         let end = offset.saturating_add(max_samples).min(samples.len());
         Ok(BackendAudioDataChunk {
             content_revision: 0,
@@ -972,7 +884,6 @@ pub trait Backend {
             total_samples: samples.len(),
             start_offset,
             preplay,
-            latency,
             samples: if offset < end {
                 samples[offset..end].to_vec()
             } else {
@@ -1325,10 +1236,6 @@ pub struct EngineBackend {
     callback_count: u64,
     input_peak: f32,
     output_peak: f32,
-    backend_capture_latency: shoop_engine::RuntimeLatencyObservation,
-    backend_playback_latency: shoop_engine::RuntimeLatencyObservation,
-    latency_diagnostics: LatencyDiagnosticsState,
-    latency_diagnostic_active: BTreeSet<(BackendLoopId, u8)>,
     last_quantum: u32,
     route_scratch: Vec<f32>,
     web_midi_output: VecDeque<(BackendPortId, shoop_engine::MidiStorageElem)>,
@@ -1377,7 +1284,6 @@ struct EngineLoopChannels {
 struct EngineConnectionPort {
     descriptor: BackendPortDescriptor,
     registry_id: PortId,
-    session_port: usize,
 }
 
 struct EngineTrack {
@@ -1399,7 +1305,6 @@ struct EngineTrack {
     input_gain_db: f32,
     input_balance: f32,
     input_monitoring: bool,
-    latency_policy: TrackLatencyPolicyState,
     oxisynth: Option<EngineOxiFx>,
 }
 
@@ -1472,7 +1377,6 @@ impl EngineBackend {
                 EngineConnectionPort {
                     descriptor: global_descriptor,
                     registry_id: global_registry,
-                    session_port: global_fx_midi,
                 },
             )]),
             external_connections: representative_external_connections(),
@@ -1482,18 +1386,6 @@ impl EngineBackend {
             callback_count: 0,
             input_peak: 0.0,
             output_peak: 0.0,
-            backend_capture_latency: shoop_engine::RuntimeLatencyObservation::exact(
-                0,
-                sample_rate,
-                1,
-            )?,
-            backend_playback_latency: shoop_engine::RuntimeLatencyObservation::exact(
-                0,
-                sample_rate,
-                1,
-            )?,
-            latency_diagnostics: LatencyDiagnosticsState::default(),
-            latency_diagnostic_active: BTreeSet::new(),
             last_quantum: buffer_size,
             route_scratch: vec![0.0; buffer_size as usize],
             web_midi_output: VecDeque::with_capacity(WEB_MIDI_OUTPUT_QUEUE_CAPACITY),
@@ -1511,10 +1403,6 @@ impl EngineBackend {
         }
         let mut backend = Self::new_dummy_runtime(sample_rate, max_quantum)?;
         backend.port_model = EnginePortModel::Physical;
-        backend.backend_capture_latency =
-            shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, 1);
-        backend.backend_playback_latency =
-            shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, 1);
         backend.external_connections.remove_all_mock_ports();
         let global = ExternalMidiPort::new("global_fx_control_midi_in", PortDirection::Input);
         backend.session.remove_port(backend.global_fx_midi)?;
@@ -1528,36 +1416,6 @@ impl EngineBackend {
             .unwrap()
             .registry_id = PortId(backend.global_fx_midi as u64);
         Ok(backend)
-    }
-
-    pub fn configure_web_audio_latency(
-        &mut self,
-        base_latency_frames: Option<u32>,
-        output_latency_frames: Option<u32>,
-        sample_rate: u32,
-        revision: u64,
-    ) -> Result<()> {
-        if self.port_model != EnginePortModel::Physical || sample_rate == 0 {
-            return Err(anyhow!("Web Audio latency is unavailable for this backend"));
-        }
-        self.backend_capture_latency =
-            shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, revision);
-        self.backend_playback_latency = match (base_latency_frames, output_latency_frames) {
-            (None, None) => shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, revision),
-            (base, output) => {
-                let total = base
-                    .unwrap_or(0)
-                    .checked_add(output.unwrap_or(0))
-                    .ok_or_else(|| anyhow!("Web Audio latency total overflow"))?;
-                shoop_engine::RuntimeLatencyObservation::new(
-                    shoop_latency::LatencyRangeFrames::new(total, total).ok(),
-                    shoop_latency::LatencyCertainty::Estimated,
-                    sample_rate,
-                    revision,
-                )?
-            }
-        };
-        Ok(())
     }
 
     fn composite_target_identity(
@@ -2186,7 +2044,6 @@ impl EngineBackend {
     fn register_connection_port(
         &mut self,
         registry_id: PortId,
-        session_port: usize,
         name: String,
         data_type: BackendPortDataType,
         direction: BackendPortDirection,
@@ -2207,7 +2064,6 @@ impl EngineBackend {
             EngineConnectionPort {
                 descriptor: descriptor.clone(),
                 registry_id,
-                session_port,
             },
         );
         if self.port_model == EnginePortModel::Dummy {
@@ -2479,7 +2335,6 @@ impl EngineBackend {
             self.session.connect_ports_internal(input, send)?;
             ports.push(self.register_connection_port(
                 input_registry_id,
-                input,
                 input_name,
                 BackendPortDataType::Audio,
                 BackendPortDirection::Input,
@@ -2519,7 +2374,6 @@ impl EngineBackend {
             self.session.connect_ports_internal(receive, output)?;
             ports.push(self.register_connection_port(
                 output_registry_id,
-                output,
                 output_name,
                 BackendPortDataType::Audio,
                 BackendPortDirection::Output,
@@ -2567,7 +2421,6 @@ impl EngineBackend {
             .connect_ports_internal(midi_input, midi_target)?;
         let midi_descriptor = self.register_connection_port(
             midi_registry_id,
-            midi_input,
             midi_name,
             BackendPortDataType::Midi,
             BackendPortDirection::Input,
@@ -2611,7 +2464,6 @@ impl EngineBackend {
                 input_gain_db: 0.0,
                 input_balance: 0.0,
                 input_monitoring: false,
-                latency_policy: TrackLatencyPolicyState::default(),
                 oxisynth: Some(EngineOxiFx {
                     control,
                     active: false,
@@ -2713,15 +2565,11 @@ impl EngineBackend {
 
     fn capture_session_data(&mut self) -> Result<BackendSessionData> {
         let connections = self.connection_snapshot();
-        let sample_rate = self.sample_rate;
         let mut tracks = Vec::with_capacity(self.tracks.len());
         for (track_id, track) in &mut self.tracks {
             let state = BackendTrackState {
                 topology: track.topology.clone(),
-                fx: track
-                    .oxisynth
-                    .as_ref()
-                    .map(|fx| engine_oxisynth_fx_state(fx, sample_rate)),
+                fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
                 audio_channels: track.audio_outputs.len() as u32,
                 midi: track.midi_input.is_some(),
                 output_gain_db: track.output_gain_db,
@@ -2767,15 +2615,6 @@ impl EngineBackend {
                             gain: channel.gain(),
                             start_offset: channel.start_offset(),
                             preplay: channel.pre_play_samples(),
-                            latency: backend_take_latency_snapshot(
-                                channel.capture_alignment_frames(),
-                                channel.retained_before_frames(),
-                                channel.retained_after_frames(),
-                                channel.length().min(u32::MAX as usize) as u32,
-                                channel.grab_latency_selection(),
-                                channel.latched_latency_recipe(),
-                                channel.latency_retention_incomplete(),
-                            ),
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -2802,15 +2641,6 @@ impl EngineBackend {
                                 .collect(),
                             start_offset: channel.start_offset(),
                             preplay: channel.pre_play_samples(),
-                            latency: backend_take_latency_snapshot(
-                                channel.capture_alignment_frames(),
-                                channel.retained_before_frames(),
-                                channel.retained_after_frames(),
-                                channel.length(),
-                                channel.grab_latency_selection(),
-                                channel.latched_latency_recipe(),
-                                channel.latency_retention_incomplete(),
-                            ),
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -3004,8 +2834,6 @@ impl EngineBackend {
             ] {
                 staged.set_track_control(created.track_id, control)?;
             }
-            staged
-                .set_track_latency_policy(created.track_id, &source_track.state.latency_policy)?;
             if created.loops.len() != source_track.loops.len()
                 || created.ports.len() != source_track.ports.len()
             {
@@ -3031,15 +2859,7 @@ impl EngineBackend {
                         .ok_or_else(|| anyhow!("missing staged audio channel"))?;
                     channel.load_data(&content.samples);
                     channel.set_gain(content.gain);
-                    channel.apply_grab_latency_mapping(
-                        content.start_offset,
-                        content.latency.capture_alignment_frames,
-                        runtime_take_latency_selection(&content.latency, staged.sample_rate)?,
-                    )?;
-                    channel.restore_retained_margin_metadata(
-                        content.latency.retained_before_frames,
-                        content.latency.retained_after_frames,
-                    )?;
+                    channel.set_start_offset(content.start_offset);
                     channel.set_pre_play_samples(content.preplay);
                 }
                 for (index, content) in midi_indices.iter().zip(&source_loop.midi) {
@@ -3056,15 +2876,7 @@ impl EngineBackend {
                         .midi_channel_mut(*index)
                         .ok_or_else(|| anyhow!("missing staged MIDI channel"))?;
                     channel.set_contents(&events, content.length, Some(&content.start_state));
-                    channel.restore_take_latency_mapping(
-                        content.start_offset,
-                        content.latency.capture_alignment_frames,
-                        runtime_take_latency_selection(&content.latency, staged.sample_rate)?,
-                    )?;
-                    channel.restore_retained_margin_metadata(
-                        content.latency.retained_before_frames,
-                        content.latency.retained_after_frames,
-                    )?;
+                    channel.set_start_offset(content.start_offset);
                     channel.set_pre_play_samples(content.preplay);
                 }
                 staged
@@ -3116,606 +2928,6 @@ impl EngineBackend {
         }
         staged.apply_graph_changes()?;
         Ok((staged, replacement))
-    }
-
-    fn port_runtime_latency(
-        &self,
-        session_port: usize,
-        capture: bool,
-    ) -> shoop_engine::RuntimeLatencyObservation {
-        let Some(port) = self.session.port(session_port) else {
-            return Default::default();
-        };
-        if let Some(audio) = port.audio() {
-            if capture {
-                audio.capture_latency()
-            } else {
-                audio.playback_latency()
-            }
-        } else if let Some(midi) = port.midi() {
-            if capture {
-                midi.capture_latency()
-            } else {
-                midi.playback_latency()
-            }
-        } else {
-            Default::default()
-        }
-    }
-
-    fn cue_runtime_latency(
-        &self,
-        selection: Option<&shoop_app_api::CueOutputSelection>,
-    ) -> shoop_engine::RuntimeLatencyObservation {
-        let selected = match selection {
-            Some(shoop_app_api::CueOutputSelection::ApplicationPort(port_id)) => self
-                .connection_ports
-                .get(&BackendPortId::from_raw(port_id.raw()))
-                .map(|port| port.session_port),
-            Some(shoop_app_api::CueOutputSelection::HostPort(host_port_id)) => {
-                let mut candidates = self.connection_ports.iter().filter_map(|(id, port)| {
-                    (port.descriptor.direction == BackendPortDirection::Output
-                        && (self
-                            .external_connections
-                            .is_connected(port.registry_id, host_port_id.as_str())
-                            || self
-                                .desired_web_midi_connections
-                                .contains(&(*id, host_port_id.to_string()))))
-                    .then_some(port.session_port)
-                });
-                let first = candidates.next();
-                if candidates.next().is_some() {
-                    return Default::default();
-                }
-                first
-            }
-            None => None,
-        };
-        selected
-            .map(|port| self.port_runtime_latency(port, false))
-            .unwrap_or_default()
-    }
-
-    fn resolve_track_latency_recipe(
-        &self,
-        track_id: BackendTrackId,
-        policy: &TrackLatencyPolicyState,
-        operation: shoop_latency::LatencyOperationKind,
-        external_capture: shoop_engine::RuntimeLatencyObservation,
-    ) -> Result<shoop_engine::RuntimeLatencyRecipe> {
-        let track = self
-            .tracks
-            .get(&track_id)
-            .ok_or_else(|| anyhow!("missing latency-policy track"))?;
-        let processor = if track.oxisynth.is_some() {
-            shoop_engine::oxisynth::OxiSynthProcessor::latency_observation(self.sample_rate)
-        } else {
-            Default::default()
-        };
-        let cue = self.cue_runtime_latency(policy.cue_output.as_ref());
-        let backend = if matches!(
-            operation,
-            shoop_latency::LatencyOperationKind::DryThroughWet
-                | shoop_latency::LatencyOperationKind::RecordDryIntoWet
-        ) {
-            self.backend_playback_latency
-        } else {
-            self.backend_capture_latency
-        };
-        let mut inputs = Vec::with_capacity(policy.components.len());
-        for component in policy.components.iter().copied() {
-            let kind = app_latency_component_kind(component.kind);
-            let observation = match kind {
-                shoop_latency::LatencyComponentKind::ExternalCapture => external_capture,
-                shoop_latency::LatencyComponentKind::Processor => processor,
-                shoop_latency::LatencyComponentKind::CuePlayback => cue,
-                shoop_latency::LatencyComponentKind::BackendBuffering => backend,
-                shoop_latency::LatencyComponentKind::Manual => Default::default(),
-            };
-            let identity = format!("track:{}:{kind:?}", track_id.raw());
-            let interval = if kind == shoop_latency::LatencyComponentKind::BackendBuffering
-                && self.port_model == EnginePortModel::Physical
-                && external_capture.range.is_some()
-            {
-                format!("track:{}:ExternalCapture", track_id.raw())
-            } else {
-                identity.clone()
-            };
-            inputs.push(shoop_latency::LatencyComponentInput {
-                kind,
-                observation: domain_latency_observation(
-                    observation,
-                    identity,
-                    observation.range.map(|_| interval),
-                )?,
-                policy: domain_latency_policy(component),
-            });
-        }
-        let resolved = shoop_latency::resolve_latency_recipe(
-            operation,
-            if policy.cue_followed {
-                shoop_latency::RecordingReference::ShoopCue
-            } else {
-                shoop_latency::RecordingReference::ExternalWorld
-            },
-            &inputs,
-        )?;
-        Ok(shoop_engine::RuntimeLatencyRecipe::from_resolved(
-            &resolved,
-            policy.revision,
-        ))
-    }
-
-    fn prepare_loop_latency_policy(
-        &mut self,
-        loop_id: BackendLoopId,
-        mode: BackendLoopMode,
-    ) -> Result<()> {
-        let Some((track_id, policy, audio_inputs, midi_input)) = self
-            .tracks
-            .iter()
-            .find(|(_, track)| track.loops.contains(&loop_id))
-            .map(|(id, track)| {
-                (
-                    *id,
-                    track.latency_policy.clone(),
-                    track.audio_inputs.clone(),
-                    track.midi_input,
-                )
-            })
-        else {
-            return Ok(());
-        };
-        let channels = self
-            .loop_channels
-            .get(&loop_id)
-            .ok_or_else(|| anyhow!("missing loop channels for latency policy"))?;
-        let audio_indices = channels.audio.clone();
-        let audio_modes = channels.audio_modes.clone();
-        let midi_indices = channels.midi.clone();
-        let midi_modes = channels.midi_modes.clone();
-        let operation_for = |channel_mode: BackendChannelMode| match mode {
-            BackendLoopMode::Recording => Some(match channel_mode {
-                BackendChannelMode::Direct => shoop_latency::LatencyOperationKind::RecordDirect,
-                BackendChannelMode::Dry => shoop_latency::LatencyOperationKind::RecordDry,
-                BackendChannelMode::Wet => shoop_latency::LatencyOperationKind::RecordWet,
-            }),
-            BackendLoopMode::Replacing => Some(shoop_latency::LatencyOperationKind::Replacement(
-                match channel_mode {
-                    BackendChannelMode::Direct => shoop_latency::LatencyChannelRole::Direct,
-                    BackendChannelMode::Dry => shoop_latency::LatencyChannelRole::Dry,
-                    BackendChannelMode::Wet => shoop_latency::LatencyChannelRole::Wet,
-                },
-            )),
-            BackendLoopMode::PlayingDryThroughWet => (channel_mode != BackendChannelMode::Wet)
-                .then_some(shoop_latency::LatencyOperationKind::DryThroughWet),
-            BackendLoopMode::RecordingDryIntoWet => {
-                Some(shoop_latency::LatencyOperationKind::RecordDryIntoWet)
-            }
-            _ => None,
-        };
-
-        let mut audio_recipes = Vec::with_capacity(audio_indices.len());
-        let mut role_offsets = [0_usize; 3];
-        for channel_mode in &audio_modes {
-            let role_index = match channel_mode {
-                BackendChannelMode::Direct => 0,
-                BackendChannelMode::Dry => 1,
-                BackendChannelMode::Wet => 2,
-            };
-            let ordinal = &mut role_offsets[role_index];
-            let source = audio_inputs
-                .get((*ordinal).min(audio_inputs.len().saturating_sub(1)))
-                .and_then(|index| self.session.port(*index))
-                .and_then(|port| port.audio())
-                .map(|port| port.capture_latency())
-                .unwrap_or_default();
-            *ordinal = ordinal.saturating_add(1);
-            audio_recipes.push(
-                operation_for(*channel_mode)
-                    .map(|operation| {
-                        self.resolve_track_latency_recipe(track_id, &policy, operation, source)
-                    })
-                    .transpose()?,
-            );
-        }
-        let midi_source = midi_input
-            .and_then(|index| self.session.port(index))
-            .and_then(|port| port.midi())
-            .map(|port| port.capture_latency())
-            .unwrap_or_default();
-        let midi_recipes = midi_modes
-            .iter()
-            .map(|channel_mode| {
-                operation_for(*channel_mode)
-                    .map(|operation| {
-                        self.resolve_track_latency_recipe(track_id, &policy, operation, midi_source)
-                    })
-                    .transpose()
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        let capacity = self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize;
-        for ((index, recipe), channel_mode) in
-            audio_indices.iter().zip(&audio_recipes).zip(&audio_modes)
-        {
-            if matches!(
-                operation_for(*channel_mode),
-                Some(
-                    shoop_latency::LatencyOperationKind::RecordDirect
-                        | shoop_latency::LatencyOperationKind::RecordDry
-                        | shoop_latency::LatencyOperationKind::RecordWet
-                )
-            ) {
-                let retained_after = recipe.and_then(|recipe| recipe.total_frames).unwrap_or(0);
-                let logical_capacity = if self.port_model == EnginePortModel::Physical {
-                    capacity.saturating_sub(retained_after as usize)
-                } else {
-                    self.session
-                        .loop_(self.engine_loop_index(loop_id)?)
-                        .map(|loop_| loop_.length() as usize)
-                        .unwrap_or(0)
-                };
-                self.session
-                    .audio_channel_mut(*index)
-                    .ok_or_else(|| anyhow!("missing audio channel for latency retention"))?
-                    .prepare_latency_retention(logical_capacity, 0, retained_after)?;
-            }
-        }
-        for ((index, recipe), channel_mode) in
-            midi_indices.iter().zip(&midi_recipes).zip(&midi_modes)
-        {
-            if matches!(
-                operation_for(*channel_mode),
-                Some(
-                    shoop_latency::LatencyOperationKind::RecordDirect
-                        | shoop_latency::LatencyOperationKind::RecordDry
-                        | shoop_latency::LatencyOperationKind::RecordWet
-                )
-            ) {
-                let retained_after = recipe.and_then(|recipe| recipe.total_frames).unwrap_or(0);
-                self.session
-                    .midi_channel_mut(*index)
-                    .ok_or_else(|| anyhow!("missing MIDI channel for latency retention"))?
-                    .prepare_latency_retention(0, retained_after)?;
-            }
-        }
-
-        let engine_loop = self.engine_loop_index(loop_id)?;
-        let loop_ = self
-            .session
-            .loop_mut(engine_loop)
-            .ok_or_else(|| anyhow!("missing loop for latency recipe"))?;
-        let representative = audio_recipes
-            .iter()
-            .chain(&midi_recipes)
-            .flatten()
-            .next()
-            .copied();
-        loop_.set_pending_latency_recipe(representative);
-        for (channel, recipe) in audio_recipes.into_iter().enumerate() {
-            loop_.set_audio_channel_latency_recipe(channel, recipe);
-        }
-        for (channel, recipe) in midi_recipes.into_iter().enumerate() {
-            loop_.set_midi_channel_latency_recipe(channel, recipe);
-        }
-        Ok(())
-    }
-
-    fn refresh_latched_latency_observations(&mut self) {
-        let tracks = self
-            .tracks
-            .iter()
-            .map(|(id, track)| {
-                (
-                    *id,
-                    track.loops.clone(),
-                    track.audio_inputs.clone(),
-                    track.midi_input,
-                    track.latency_policy.cue_output.clone(),
-                    track.oxisynth.is_some(),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (_track_id, loops, audio_inputs, midi_input, cue_output, oxisynth) in tracks {
-            let processor = if oxisynth {
-                shoop_engine::oxisynth::OxiSynthProcessor::latency_observation(self.sample_rate)
-            } else {
-                Default::default()
-            };
-            let cue = self.cue_runtime_latency(cue_output.as_ref());
-            for loop_id in loops {
-                let Some(channels) = self.loop_channels.get(&loop_id) else {
-                    continue;
-                };
-                let audio_indices = channels.audio.clone();
-                let audio_modes = channels.audio_modes.clone();
-                let midi_indices = channels.midi.clone();
-                let mut role_offsets = [0_usize; 3];
-                let engine_loop = match self.engine_loop_index(loop_id) {
-                    Ok(loop_) => loop_,
-                    Err(_) => continue,
-                };
-                for (channel_number, (index, mode)) in
-                    audio_indices.iter().zip(&audio_modes).enumerate()
-                {
-                    let role = match mode {
-                        BackendChannelMode::Direct => 0,
-                        BackendChannelMode::Dry => 1,
-                        BackendChannelMode::Wet => 2,
-                    };
-                    let ordinal = &mut role_offsets[role];
-                    let external = audio_inputs
-                        .get((*ordinal).min(audio_inputs.len().saturating_sub(1)))
-                        .and_then(|port| self.session.port(*port))
-                        .and_then(|port| port.audio())
-                        .map(|port| port.capture_latency())
-                        .unwrap_or_default();
-                    *ordinal = ordinal.saturating_add(1);
-                    let Some(recipe) = self
-                        .session
-                        .audio_channel(*index)
-                        .and_then(|channel| channel.latched_latency_recipe())
-                        .map(|latched| latched.recipe)
-                    else {
-                        continue;
-                    };
-                    let backend = if matches!(
-                        recipe.operation,
-                        shoop_latency::LatencyOperationKind::DryThroughWet
-                            | shoop_latency::LatencyOperationKind::RecordDryIntoWet
-                    ) {
-                        self.backend_playback_latency
-                    } else {
-                        self.backend_capture_latency
-                    };
-                    let observations = recipe
-                        .components()
-                        .map(|component| {
-                            let current = match component.kind {
-                                shoop_latency::LatencyComponentKind::ExternalCapture => external,
-                                shoop_latency::LatencyComponentKind::Processor => processor,
-                                shoop_latency::LatencyComponentKind::CuePlayback => cue,
-                                shoop_latency::LatencyComponentKind::BackendBuffering => backend,
-                                shoop_latency::LatencyComponentKind::Manual => Default::default(),
-                            };
-                            (component.kind, current)
-                        })
-                        .collect::<Vec<_>>();
-                    if let Some(loop_) = self.session.loop_mut(engine_loop) {
-                        for (kind, current) in observations {
-                            loop_.observe_audio_channel_latency(channel_number, kind, current);
-                        }
-                    }
-                }
-                let midi_external = midi_input
-                    .and_then(|port| self.session.port(port))
-                    .and_then(|port| port.midi())
-                    .map(|port| port.capture_latency())
-                    .unwrap_or_default();
-                for (channel_number, index) in midi_indices.iter().enumerate() {
-                    let Some(recipe) = self
-                        .session
-                        .midi_channel(*index)
-                        .and_then(|channel| channel.latched_latency_recipe())
-                        .map(|latched| latched.recipe)
-                    else {
-                        continue;
-                    };
-                    let backend = if matches!(
-                        recipe.operation,
-                        shoop_latency::LatencyOperationKind::DryThroughWet
-                            | shoop_latency::LatencyOperationKind::RecordDryIntoWet
-                    ) {
-                        self.backend_playback_latency
-                    } else {
-                        self.backend_capture_latency
-                    };
-                    let observations = recipe
-                        .components()
-                        .map(|component| {
-                            let current = match component.kind {
-                                shoop_latency::LatencyComponentKind::ExternalCapture => {
-                                    midi_external
-                                }
-                                shoop_latency::LatencyComponentKind::Processor => processor,
-                                shoop_latency::LatencyComponentKind::CuePlayback => cue,
-                                shoop_latency::LatencyComponentKind::BackendBuffering => backend,
-                                shoop_latency::LatencyComponentKind::Manual => Default::default(),
-                            };
-                            (component.kind, current)
-                        })
-                        .collect::<Vec<_>>();
-                    if let Some(loop_) = self.session.loop_mut(engine_loop) {
-                        for (kind, current) in observations {
-                            loop_.observe_midi_channel_latency(channel_number, kind, current);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn prepare_loop_latency_replacement(
-        &mut self,
-        loop_id: BackendLoopId,
-        engine_loop: usize,
-    ) -> Result<()> {
-        let channels = self
-            .loop_channels
-            .get(&loop_id)
-            .ok_or_else(|| anyhow!("missing loop channels for latency replacement"))?;
-        let mut targets = Vec::with_capacity(channels.audio.len() + channels.midi.len());
-        for (channel_idx, session_index) in channels.audio.iter().copied().enumerate() {
-            let Some(frames) = self
-                .session
-                .audio_channel(session_index)
-                .and_then(|channel| channel.pending_latency_recipe())
-                .and_then(|recipe| recipe.total_frames)
-            else {
-                return Ok(());
-            };
-            targets.push(shoop_engine::session::LatencyReplacementChannel::Audio {
-                channel_idx,
-                capture_alignment_frames: i32::try_from(frames)
-                    .map_err(|_| anyhow!("replacement latency exceeds i32"))?,
-            });
-        }
-        for (channel_idx, session_index) in channels.midi.iter().copied().enumerate() {
-            let Some(frames) = self
-                .session
-                .midi_channel(session_index)
-                .and_then(|channel| channel.pending_latency_recipe())
-                .and_then(|recipe| recipe.total_frames)
-            else {
-                return Ok(());
-            };
-            targets.push(shoop_engine::session::LatencyReplacementChannel::Midi {
-                channel_idx,
-                capture_alignment_frames: i32::try_from(frames)
-                    .map_err(|_| anyhow!("replacement MIDI latency exceeds i32"))?,
-            });
-        }
-        self.session
-            .prepare_latency_replacement(engine_loop, &targets)?;
-        Ok(())
-    }
-
-    fn update_latency_diagnostics(
-        &mut self,
-        loop_states: &BTreeMap<BackendLoopId, BackendLoopState>,
-    ) {
-        let mut next_active = BTreeSet::new();
-        let mut applied_capture = 0_i32;
-        let mut render_advance = 0_u32;
-        let mut active_postroll = 0_u32;
-        for (loop_id, state) in loop_states {
-            let channels = self.loop_channels.get(loop_id);
-            let mut unresolved = false;
-            let mut provider_failure = false;
-            if let Some(channels) = channels {
-                let mut recipes = Vec::with_capacity(channels.audio.len() + channels.midi.len());
-                for channel in channels
-                    .audio
-                    .iter()
-                    .filter_map(|index| self.session.audio_channel(*index))
-                {
-                    active_postroll =
-                        active_postroll.max(channel.latency_postroll_remaining_frames());
-                    if channel.capture_alignment_frames().unsigned_abs()
-                        > applied_capture.unsigned_abs()
-                    {
-                        applied_capture = channel.capture_alignment_frames();
-                    }
-                    render_advance = render_advance.max(channel.render_advance_frames());
-                    if let Some(recipe) = channel
-                        .latched_latency_recipe()
-                        .map(|latched| latched.recipe)
-                        .or_else(|| channel.pending_latency_recipe())
-                    {
-                        recipes.push(recipe);
-                    }
-                }
-                for channel in channels
-                    .midi
-                    .iter()
-                    .filter_map(|index| self.session.midi_channel(*index))
-                {
-                    active_postroll =
-                        active_postroll.max(channel.latency_postroll_remaining_frames());
-                    if channel.capture_alignment_frames().unsigned_abs()
-                        > applied_capture.unsigned_abs()
-                    {
-                        applied_capture = channel.capture_alignment_frames();
-                    }
-                    render_advance = render_advance.max(channel.render_advance_frames());
-                    if let Some(recipe) = channel
-                        .latched_latency_recipe()
-                        .map(|latched| latched.recipe)
-                        .or_else(|| channel.pending_latency_recipe())
-                    {
-                        recipes.push(recipe);
-                    }
-                }
-                for recipe in recipes {
-                    if recipe.total_frames.is_none()
-                        && recipe.components().any(|component| {
-                            component.application == shoop_latency::ComponentApplication::Unresolved
-                        })
-                    {
-                        unresolved = true;
-                        provider_failure |= recipe.components().any(|component| {
-                            component.application == shoop_latency::ComponentApplication::Unresolved
-                                && component.observation.range.is_none()
-                        });
-                    }
-                }
-            }
-            let path_ambiguity = self
-                .tracks
-                .values()
-                .find(|track| track.loops.contains(loop_id))
-                .and_then(|track| track.latency_policy.cue_output.as_ref())
-                .is_some_and(|selection| match selection {
-                    shoop_app_api::CueOutputSelection::HostPort(host) => {
-                        self.connection_ports
-                            .iter()
-                            .filter(|(id, port)| {
-                                port.descriptor.direction == BackendPortDirection::Output
-                                    && (self
-                                        .external_connections
-                                        .is_connected(port.registry_id, host.as_str())
-                                        || self
-                                            .desired_web_midi_connections
-                                            .contains(&(**id, host.to_string())))
-                            })
-                            .take(2)
-                            .count()
-                            > 1
-                    }
-                    shoop_app_api::CueOutputSelection::ApplicationPort(_) => false,
-                });
-            let flags = [
-                unresolved,
-                state.latency.changed_during_operation,
-                state.latency.incomplete,
-                state.latency.deferred_mode.is_some(),
-                state.latency.finalizing && state.latency.incomplete,
-                path_ambiguity,
-                provider_failure,
-            ];
-            for (index, active) in flags.into_iter().enumerate() {
-                if active {
-                    let key = (*loop_id, index as u8);
-                    next_active.insert(key);
-                    if !self.latency_diagnostic_active.contains(&key) {
-                        let counter = match index {
-                            0 => &mut self.latency_diagnostics.unresolved_recipes,
-                            1 => &mut self.latency_diagnostics.observation_changes,
-                            2 => &mut self.latency_diagnostics.insufficient_margins,
-                            3 => &mut self.latency_diagnostics.deferred_transitions,
-                            4 => &mut self.latency_diagnostics.finalization_overruns,
-                            5 => &mut self.latency_diagnostics.path_ambiguities,
-                            _ => &mut self.latency_diagnostics.provider_failures,
-                        };
-                        *counter = counter.saturating_add(1);
-                    }
-                }
-            }
-        }
-        self.latency_diagnostic_active = next_active;
-        let index = self.latency_diagnostics.plot_cursor as usize
-            % shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES;
-        self.latency_diagnostics.applied_capture_plot[index] = applied_capture;
-        self.latency_diagnostics.render_advance_plot[index] = render_advance;
-        self.latency_diagnostics.active_postroll_plot[index] = active_postroll;
-        self.latency_diagnostics.plot_cursor =
-            ((index + 1) % shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES) as u8;
-        self.latency_diagnostics.plot_len = self
-            .latency_diagnostics
-            .plot_len
-            .saturating_add(1)
-            .min(shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES as u8);
     }
 
     fn prepare_recording_storage(&mut self, loop_id: BackendLoopId) -> Result<()> {
@@ -3896,293 +3108,6 @@ fn db_gain(db: f32) -> f32 {
     10.0_f32.powf(db / 20.0)
 }
 
-fn backend_latency_certainty(
-    certainty: shoop_latency::LatencyCertainty,
-) -> BackendLatencyCertainty {
-    match certainty {
-        shoop_latency::LatencyCertainty::Exact => BackendLatencyCertainty::Exact,
-        shoop_latency::LatencyCertainty::Range => BackendLatencyCertainty::Range,
-        shoop_latency::LatencyCertainty::Estimated => BackendLatencyCertainty::Estimated,
-        shoop_latency::LatencyCertainty::ManualOnly => BackendLatencyCertainty::ManualOnly,
-        shoop_latency::LatencyCertainty::Unknown => BackendLatencyCertainty::Unknown,
-    }
-}
-
-fn runtime_take_latency_selection(
-    snapshot: &BackendTakeLatencySnapshot,
-    sample_rate: u32,
-) -> Result<shoop_engine::RetainedLatencySelection> {
-    let certainty = match snapshot.certainty {
-        BackendLatencyCertainty::Exact => shoop_latency::LatencyCertainty::Exact,
-        BackendLatencyCertainty::Range => shoop_latency::LatencyCertainty::Range,
-        BackendLatencyCertainty::Estimated => shoop_latency::LatencyCertainty::Estimated,
-        BackendLatencyCertainty::ManualOnly => shoop_latency::LatencyCertainty::ManualOnly,
-        BackendLatencyCertainty::Unknown => shoop_latency::LatencyCertainty::Unknown,
-    };
-    let range = match (
-        snapshot.observation_min_frames,
-        snapshot.observation_max_frames,
-    ) {
-        (Some(minimum), Some(maximum)) => {
-            Some(shoop_latency::LatencyRangeFrames::new(minimum, maximum)?)
-        }
-        (None, None) => None,
-        _ => return Err(anyhow!("incomplete take latency range")),
-    };
-    if range.is_none() && snapshot.observation_revision == 0 {
-        return Ok(shoop_engine::RetainedLatencySelection::Unavailable);
-    }
-    let observation = shoop_engine::RuntimeLatencyObservation::new(
-        range,
-        certainty,
-        if snapshot.observation_sample_rate > 0 {
-            snapshot.observation_sample_rate
-        } else {
-            sample_rate
-        },
-        snapshot.observation_revision,
-    )?;
-    Ok(if snapshot.variable_history {
-        shoop_engine::RetainedLatencySelection::Variable {
-            newest: observation,
-            revisions: snapshot.history_revisions.max(2),
-        }
-    } else {
-        shoop_engine::RetainedLatencySelection::Stable(observation)
-    })
-}
-
-fn backend_take_latency_snapshot(
-    capture_alignment_frames: i32,
-    retained_before_frames: u32,
-    retained_after_frames: u32,
-    _raw_length: u32,
-    selection: shoop_engine::RetainedLatencySelection,
-    latched: Option<shoop_engine::LatchedLatencyRecipe>,
-    incomplete: bool,
-) -> BackendTakeLatencySnapshot {
-    let (observation, variable_history, history_revisions) = match selection {
-        shoop_engine::RetainedLatencySelection::Stable(observation) => {
-            (Some(observation), false, 1)
-        }
-        shoop_engine::RetainedLatencySelection::Variable { newest, revisions } => {
-            (Some(newest), true, revisions)
-        }
-        shoop_engine::RetainedLatencySelection::Unavailable => (
-            latched.and_then(|latched| {
-                latched.recipe.components().find_map(|component| {
-                    component.observation.range.map(|_| component.observation)
-                })
-            }),
-            false,
-            0,
-        ),
-    };
-    let range = observation.and_then(|observation| observation.range);
-    let revision = observation.map_or(0, |observation| observation.revision);
-    BackendTakeLatencySnapshot {
-        capture_alignment_frames,
-        retained_before_frames,
-        retained_after_frames,
-        observation_min_frames: range.map(|range| range.min()),
-        observation_max_frames: range.map(|range| range.max()),
-        certainty: observation
-            .map(|observation| backend_latency_certainty(observation.certainty))
-            .unwrap_or_default(),
-        observation_sample_rate: observation.map_or(0, |observation| observation.sample_rate),
-        observation_revision: revision,
-        variable_history,
-        history_revisions,
-        changed_during_operation: latched.is_some_and(|latched| latched.changed),
-        incomplete,
-        applied_during_render: latched.is_some_and(|latched| {
-            latched
-                .recipe
-                .components()
-                .any(|component| component.applied_during_render)
-        }),
-    }
-}
-
-fn app_loop_mode(mode: BackendLoopMode) -> AppLoopMode {
-    match mode {
-        BackendLoopMode::Unknown => AppLoopMode::Unknown,
-        BackendLoopMode::Stopped => AppLoopMode::Stopped,
-        BackendLoopMode::Playing => AppLoopMode::Playing,
-        BackendLoopMode::Recording => AppLoopMode::Recording,
-        BackendLoopMode::Replacing => AppLoopMode::Replacing,
-        BackendLoopMode::PlayingDryThroughWet => AppLoopMode::PlayingDryThroughWet,
-        BackendLoopMode::RecordingDryIntoWet => AppLoopMode::RecordingDryIntoWet,
-    }
-}
-
-#[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
-fn app_latency_provider(
-    diagnostic: shoop_engine::carla_processor::ProcessorLatencyDiagnostic,
-) -> LatencyProviderState {
-    match diagnostic {
-        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::CarlaRackAggregate => {
-            LatencyProviderState::CarlaRackAggregate
-        }
-        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange => {
-            LatencyProviderState::CarlaPatchbayGraphRange
-        }
-        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange => {
-            LatencyProviderState::BuiltInSynthPhaseRange
-        }
-        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::Manual => {
-            LatencyProviderState::Manual
-        }
-        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::VersionMismatch => {
-            LatencyProviderState::VersionMismatch
-        }
-        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::Unsupported => {
-            LatencyProviderState::Unsupported
-        }
-    }
-}
-
-#[cfg(feature = "native-drivers")]
-pub(crate) fn runtime_latency_observation(
-    observation: LatencyObservationState,
-) -> shoop_engine::RuntimeLatencyObservation {
-    let range = observation
-        .minimum_frames
-        .zip(observation.maximum_frames)
-        .and_then(|(minimum, maximum)| {
-            shoop_latency::LatencyRangeFrames::new(minimum, maximum).ok()
-        });
-    shoop_engine::RuntimeLatencyObservation::new(
-        range,
-        match observation.certainty {
-            LatencyCertaintyState::Exact => shoop_latency::LatencyCertainty::Exact,
-            LatencyCertaintyState::Range => shoop_latency::LatencyCertainty::Range,
-            LatencyCertaintyState::Estimated => shoop_latency::LatencyCertainty::Estimated,
-            LatencyCertaintyState::ManualOnly => shoop_latency::LatencyCertainty::ManualOnly,
-            LatencyCertaintyState::Unknown => shoop_latency::LatencyCertainty::Unknown,
-        },
-        observation.sample_rate,
-        observation.revision,
-    )
-    .unwrap_or_default()
-}
-
-fn app_latency_observation(
-    observation: shoop_engine::RuntimeLatencyObservation,
-) -> LatencyObservationState {
-    LatencyObservationState {
-        minimum_frames: observation.range.map(|range| range.min()),
-        maximum_frames: observation.range.map(|range| range.max()),
-        certainty: app_latency_certainty(observation.certainty),
-        sample_rate: observation.sample_rate,
-        revision: observation.revision,
-    }
-}
-
-fn app_take_latency_snapshot(snapshot: &BackendTakeLatencySnapshot) -> TakeLatencyProvenanceState {
-    TakeLatencyProvenanceState {
-        capture_alignment_frames: snapshot.capture_alignment_frames,
-        retained_before_frames: snapshot.retained_before_frames,
-        retained_after_frames: snapshot.retained_after_frames,
-        render_advance_frames: 0,
-        certainty: match snapshot.certainty {
-            BackendLatencyCertainty::Exact => LatencyCertaintyState::Exact,
-            BackendLatencyCertainty::Range => LatencyCertaintyState::Range,
-            BackendLatencyCertainty::Estimated => LatencyCertaintyState::Estimated,
-            BackendLatencyCertainty::ManualOnly => LatencyCertaintyState::ManualOnly,
-            BackendLatencyCertainty::Unknown => LatencyCertaintyState::Unknown,
-        },
-        observation_min_frames: snapshot.observation_min_frames,
-        observation_max_frames: snapshot.observation_max_frames,
-        observation_sample_rate: snapshot.observation_sample_rate,
-        observation_revision: snapshot.observation_revision,
-        variable_history: snapshot.variable_history,
-        history_revisions: snapshot.history_revisions,
-        changed_during_operation: snapshot.changed_during_operation,
-        incomplete: snapshot.incomplete,
-        deferred_mode: None,
-        finalizing: false,
-        error: None,
-    }
-}
-
-pub(crate) fn domain_latency_policy(
-    policy: shoop_app_api::LatencyComponentPolicyState,
-) -> shoop_latency::LatencyComponentPolicy {
-    shoop_latency::LatencyComponentPolicy {
-        enabled: policy.enabled,
-        value_mode: match policy.value_mode {
-            shoop_app_api::LatencyValueMode::Automatic => {
-                shoop_latency::LatencyValueMode::Automatic
-            }
-            shoop_app_api::LatencyValueMode::Manual(frames) => {
-                shoop_latency::LatencyValueMode::Manual(frames)
-            }
-            shoop_app_api::LatencyValueMode::AutomaticPlusTrim(frames) => {
-                shoop_latency::LatencyValueMode::AutomaticPlusTrim(frames)
-            }
-        },
-        range_selection: match policy.range_selection {
-            shoop_app_api::LatencyRangeSelectionState::Minimum => {
-                shoop_latency::LatencyRangeSelection::Minimum
-            }
-            shoop_app_api::LatencyRangeSelectionState::Midpoint => {
-                shoop_latency::LatencyRangeSelection::Midpoint
-            }
-            shoop_app_api::LatencyRangeSelectionState::Maximum => {
-                shoop_latency::LatencyRangeSelection::Maximum
-            }
-        },
-    }
-}
-
-pub(crate) fn domain_latency_observation(
-    observation: shoop_engine::RuntimeLatencyObservation,
-    source: String,
-    interval: Option<String>,
-) -> Result<shoop_latency::LatencyObservation> {
-    Ok(shoop_latency::LatencyObservation::new(
-        observation.range,
-        observation.certainty,
-        observation.sample_rate,
-        observation.revision,
-        shoop_latency::SourceIdentity::new(source)?,
-        interval
-            .map(shoop_latency::LatencyIntervalIdentity::new)
-            .transpose()?,
-    )?)
-}
-
-pub(crate) fn app_latency_component_kind(
-    kind: shoop_app_api::LatencyComponentKind,
-) -> shoop_latency::LatencyComponentKind {
-    match kind {
-        shoop_app_api::LatencyComponentKind::ExternalCapture => {
-            shoop_latency::LatencyComponentKind::ExternalCapture
-        }
-        shoop_app_api::LatencyComponentKind::Processor => {
-            shoop_latency::LatencyComponentKind::Processor
-        }
-        shoop_app_api::LatencyComponentKind::CuePlayback => {
-            shoop_latency::LatencyComponentKind::CuePlayback
-        }
-        shoop_app_api::LatencyComponentKind::BackendBuffering => {
-            shoop_latency::LatencyComponentKind::BackendBuffering
-        }
-        shoop_app_api::LatencyComponentKind::Manual => shoop_latency::LatencyComponentKind::Manual,
-    }
-}
-
-fn app_latency_certainty(certainty: shoop_latency::LatencyCertainty) -> LatencyCertaintyState {
-    match certainty {
-        shoop_latency::LatencyCertainty::Exact => LatencyCertaintyState::Exact,
-        shoop_latency::LatencyCertainty::Range => LatencyCertaintyState::Range,
-        shoop_latency::LatencyCertainty::Estimated => LatencyCertaintyState::Estimated,
-        shoop_latency::LatencyCertainty::ManualOnly => LatencyCertaintyState::ManualOnly,
-        shoop_latency::LatencyCertainty::Unknown => LatencyCertaintyState::Unknown,
-    }
-}
-
 fn amplitude_db(amplitude: f32) -> f32 {
     if amplitude > 0.0 {
         20.0 * amplitude.log10()
@@ -4191,7 +3116,7 @@ fn amplitude_db(amplitude: f32) -> f32 {
     }
 }
 
-fn engine_oxisynth_fx_state(fx: &EngineOxiFx, sample_rate: u32) -> TrackFxState {
+fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
     let editor = fx.control.editor_state();
     TrackFxState {
         processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
@@ -4201,10 +3126,6 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx, sample_rate: u32) -> TrackFxState 
         generation: 0,
         crash_summary: None,
         logs: Arc::from([]),
-        latency: app_latency_observation(
-            shoop_engine::oxisynth::OxiSynthProcessor::latency_observation(sample_rate),
-        ),
-        latency_provider: LatencyProviderState::BuiltInSynthPhaseRange,
         editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
             selected_preset_id: editor.selected_preset.stable_id(),
             reverb_send: editor.reverb_send,
@@ -4220,149 +3141,6 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx, sample_rate: u32) -> TrackFxState 
 }
 
 impl Backend for EngineBackend {
-    fn latency_capability(&self) -> BackendLatencyCapability {
-        if self.port_model == EnginePortModel::Physical
-            && self.backend_playback_latency.range.is_none()
-        {
-            BackendLatencyCapability::Manual
-        } else {
-            BackendLatencyCapability::Observed
-        }
-    }
-
-    fn set_track_latency_policy(
-        &mut self,
-        track_id: BackendTrackId,
-        policy: &TrackLatencyPolicyState,
-    ) -> Result<()> {
-        let track = self
-            .tracks
-            .get_mut(&track_id)
-            .ok_or_else(|| anyhow!("unknown track"))?;
-        track.latency_policy = policy.clone();
-        track.latency_policy.pending = false;
-        track.latency_policy.error = None;
-        Ok(())
-    }
-
-    fn set_take_latency_policy(
-        &mut self,
-        loop_id: BackendLoopId,
-        capture_alignment_frames: i32,
-    ) -> Result<()> {
-        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
-            return Err(anyhow!(
-                "take latency alignment exceeds the supported bound"
-            ));
-        }
-        let channels = self
-            .loop_channels
-            .get(&loop_id)
-            .ok_or_else(|| anyhow!("unknown loop"))?;
-        if channels
-            .audio
-            .iter()
-            .any(|channel| self.session.audio_channel(*channel).is_none())
-            || channels
-                .midi
-                .iter()
-                .any(|channel| self.session.midi_channel(*channel).is_none())
-        {
-            return Err(anyhow!("missing channel in take latency policy"));
-        }
-        for channel in &channels.audio {
-            self.session
-                .audio_channel_mut(*channel)
-                .expect("take latency preflight retained audio channel")
-                .set_capture_alignment_frames(capture_alignment_frames)?;
-        }
-        for channel in &channels.midi {
-            self.session
-                .midi_channel_mut(*channel)
-                .expect("take latency preflight retained MIDI channel")
-                .set_capture_alignment_frames(capture_alignment_frames)?;
-        }
-        Ok(())
-    }
-
-    fn consolidate_take_latency(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        let engine_loop = *self
-            .loops
-            .get(&loop_id)
-            .ok_or_else(|| anyhow!("unknown loop"))?;
-        let logical_length = self
-            .session
-            .loop_(engine_loop)
-            .ok_or_else(|| anyhow!("missing loop"))?
-            .length() as usize;
-        let channels = self
-            .loop_channels
-            .get(&loop_id)
-            .ok_or_else(|| anyhow!("missing loop channels"))?;
-
-        let mut prepared_audio = Vec::with_capacity(channels.audio.len());
-        for &channel_index in &channels.audio {
-            let channel = self
-                .session
-                .audio_channel(channel_index)
-                .ok_or_else(|| anyhow!("missing audio channel"))?;
-            let raw = channel.data();
-            let start = channel.start_offset();
-            let mapping =
-                shoop_latency::CaptureFrameMapping::new(channel.capture_alignment_frames())?;
-            let consolidated = (0..logical_length)
-                .map(|logical| {
-                    mapping
-                        .raw_media_frame(logical as i64, i64::from(start))
-                        .ok()
-                        .and_then(|position| usize::try_from(position).ok())
-                        .and_then(|position| raw.get(position).copied())
-                        .unwrap_or(0.0)
-                })
-                .collect::<Vec<_>>();
-            prepared_audio.push((channel_index, consolidated));
-        }
-
-        let mut prepared_midi = Vec::with_capacity(channels.midi.len());
-        for &channel_index in &channels.midi {
-            let channel = self
-                .session
-                .midi_channel(channel_index)
-                .ok_or_else(|| anyhow!("missing MIDI channel"))?;
-            let start = i64::from(channel.start_offset());
-            let mapping =
-                shoop_latency::CaptureFrameMapping::new(channel.capture_alignment_frames())?;
-            let mut state = shoop_engine::MidiStateTracker::new(shoop_engine::TrackWhat::ALL);
-            for message in channel.recording_start_state_messages() {
-                state.process(&message);
-            }
-            let mut events = Vec::new();
-            for event in channel.contents() {
-                let logical = mapping.logical_media_frame(i64::from(event.time), start)?;
-                if logical < 0 {
-                    state.process(event.data());
-                } else if logical < logical_length as i64 {
-                    events.push(event.at_time(logical as u32));
-                }
-            }
-            prepared_midi.push((channel_index, events, state.state_as_messages()));
-        }
-
-        for (channel_index, samples) in prepared_audio {
-            self.session
-                .audio_channel_mut(channel_index)
-                .expect("consolidation preflight retained audio channel")
-                .load_data(&samples);
-        }
-        for (channel_index, events, start_state) in prepared_midi {
-            self.session
-                .midi_channel_mut(channel_index)
-                .expect("consolidation preflight retained MIDI channel")
-                .set_contents(&events, logical_length as u32, Some(&start_state));
-        }
-        Ok(())
-    }
-
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
         self.session.set_loop_smoothing_ms(milliseconds);
         Ok(())
@@ -4644,7 +3422,6 @@ impl Backend for EngineBackend {
             };
             ports.push(self.register_connection_port(
                 input_registry_id,
-                input,
                 input_name,
                 BackendPortDataType::Audio,
                 BackendPortDirection::Input,
@@ -4652,7 +3429,6 @@ impl Backend for EngineBackend {
             ));
             ports.push(self.register_connection_port(
                 output_registry_id,
-                output,
                 output_name,
                 BackendPortDataType::Audio,
                 BackendPortDirection::Output,
@@ -4698,7 +3474,6 @@ impl Backend for EngineBackend {
             };
             let input_port = self.register_connection_port(
                 input_registry_id,
-                input,
                 input_name,
                 BackendPortDataType::Midi,
                 BackendPortDirection::Input,
@@ -4706,7 +3481,6 @@ impl Backend for EngineBackend {
             );
             let output_port = self.register_connection_port(
                 output_registry_id,
-                output,
                 output_name,
                 BackendPortDataType::Midi,
                 BackendPortDirection::Output,
@@ -4791,7 +3565,6 @@ impl Backend for EngineBackend {
                 input_gain_db: 0.0,
                 input_balance: 0.0,
                 input_monitoring: false,
-                latency_policy: TrackLatencyPolicyState::default(),
                 oxisynth: None,
             },
         );
@@ -5202,15 +3975,6 @@ impl Backend for EngineBackend {
                     samples: Arc::from(channel.data()),
                     start_offset: channel.start_offset(),
                     preplay: channel.pre_play_samples(),
-                    latency: backend_take_latency_snapshot(
-                        channel.capture_alignment_frames(),
-                        channel.retained_before_frames(),
-                        channel.retained_after_frames(),
-                        channel.length().min(u32::MAX as usize) as u32,
-                        channel.grab_latency_selection(),
-                        channel.latched_latency_recipe(),
-                        channel.latency_retention_incomplete(),
-                    ),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -5245,15 +4009,6 @@ impl Backend for EngineBackend {
                         .collect(),
                     start_offset: channel.start_offset(),
                     preplay: channel.pre_play_samples(),
-                    latency: backend_take_latency_snapshot(
-                        channel.capture_alignment_frames(),
-                        channel.retained_before_frames(),
-                        channel.retained_after_frames(),
-                        channel.length(),
-                        channel.grab_latency_selection(),
-                        channel.latched_latency_recipe(),
-                        channel.latency_retention_incomplete(),
-                    ),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -5298,15 +4053,6 @@ impl Backend for EngineBackend {
             total_samples,
             start_offset: channel_ref.start_offset(),
             preplay: channel_ref.pre_play_samples(),
-            latency: backend_take_latency_snapshot(
-                channel_ref.capture_alignment_frames(),
-                channel_ref.retained_before_frames(),
-                channel_ref.retained_after_frames(),
-                channel_ref.length().min(u32::MAX as usize) as u32,
-                channel_ref.grab_latency_selection(),
-                channel_ref.latched_latency_recipe(),
-                channel_ref.latency_retention_incomplete(),
-            ),
             samples,
         })
     }
@@ -5329,10 +4075,6 @@ impl Backend for EngineBackend {
         cycles_delay: Option<u32>,
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
-        self.prepare_loop_latency_policy(loop_id, mode)?;
-        if mode == BackendLoopMode::Replacing {
-            self.prepare_loop_latency_replacement(loop_id, engine_loop)?;
-        }
         if matches!(
             mode,
             BackendLoopMode::Recording
@@ -5361,10 +4103,6 @@ impl Backend for EngineBackend {
         align_to_sync_at: Option<u32>,
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
-        self.prepare_loop_latency_policy(loop_id, mode)?;
-        if mode == BackendLoopMode::Replacing {
-            self.prepare_loop_latency_replacement(loop_id, engine_loop)?;
-        }
         if matches!(
             mode,
             BackendLoopMode::Recording
@@ -5439,26 +4177,6 @@ impl Backend for EngineBackend {
         {
             return Err(anyhow!("loop content update contains a duplicate channel"));
         }
-        let audio_latency = update
-            .audio
-            .iter()
-            .map(|item| {
-                item.latency
-                    .as_ref()
-                    .map(|latency| runtime_take_latency_selection(latency, self.sample_rate))
-                    .transpose()
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let midi_latency = update
-            .midi
-            .iter()
-            .map(|item| {
-                item.latency
-                    .as_ref()
-                    .map(|latency| runtime_take_latency_selection(latency, self.sample_rate))
-                    .transpose()
-            })
-            .collect::<Result<Vec<_>>>()?;
         let midi_events = update
             .midi
             .iter()
@@ -5473,54 +4191,25 @@ impl Backend for EngineBackend {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        for ((item, latency), index) in update.audio.iter().zip(audio_latency).zip(audio_indices) {
+        for (item, index) in update.audio.iter().zip(audio_indices) {
             let channel = self
                 .session
                 .audio_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
             let retained_offset = channel.start_offset();
             channel.load_data(&item.samples);
-            let start_offset = item.start_offset.unwrap_or(retained_offset);
-            if let (Some(latency), Some(snapshot)) = (latency, item.latency.as_ref()) {
-                channel.apply_grab_latency_mapping(
-                    start_offset,
-                    snapshot.capture_alignment_frames,
-                    latency,
-                )?;
-                channel.restore_retained_margin_metadata(
-                    snapshot.retained_before_frames,
-                    snapshot.retained_after_frames,
-                )?;
-            } else {
-                channel.set_start_offset(start_offset);
-            }
+            channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
         }
-        for (((item, events), latency), index) in update
-            .midi
-            .iter()
-            .zip(midi_events)
-            .zip(midi_latency)
-            .zip(midi_indices)
-        {
+        for ((item, events), index) in update.midi.iter().zip(midi_events).zip(midi_indices) {
             let channel = self
                 .session
                 .midi_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
             channel.set_contents(&events, item.length, Some(&item.start_state));
-            if let (Some(latency), Some(snapshot)) = (latency, item.latency.as_ref()) {
-                channel.restore_take_latency_mapping(
-                    item.start_offset.unwrap_or(0),
-                    snapshot.capture_alignment_frames,
-                    latency,
-                )?;
-                channel.restore_retained_margin_metadata(
-                    snapshot.retained_before_frames,
-                    snapshot.retained_after_frames,
-                )?;
-            } else if let Some(offset) = item.start_offset {
+            if let Some(offset) = item.start_offset {
                 channel.set_start_offset(offset);
             }
             if let Some(preplay) = item.preplay {
@@ -5684,9 +4373,7 @@ impl Backend for EngineBackend {
         for track_id in track_ids {
             self.apply_engine_track_routing(track_id)?;
         }
-        self.refresh_latched_latency_observations();
         let mut tracks = BTreeMap::new();
-        let sample_rate = self.sample_rate;
         for (id, track) in &mut self.tracks {
             let input_peaks = track
                 .audio_inputs
@@ -5734,11 +4421,7 @@ impl Backend for EngineBackend {
                 *id,
                 BackendTrackState {
                     topology: track.topology.clone(),
-                    latency_policy: track.latency_policy.clone(),
-                    fx: track
-                        .oxisynth
-                        .as_ref()
-                        .map(|fx| engine_oxisynth_fx_state(fx, sample_rate)),
+                    fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
                     audio_channels: track.audio_outputs.len() as u32,
                     midi: track.midi_input.is_some(),
                     output_gain_db: track.output_gain_db,
@@ -5793,115 +4476,10 @@ impl Backend for EngineBackend {
                 .flat_map(|channels| &channels.midi)
                 .filter_map(|channel| self.session.midi_channel(*channel))
                 .any(|channel| channel.n_events_triggered() > 0 || channel.n_notes_active() > 0);
-            let latency = channels
-                .and_then(|channels| {
-                    channels
-                        .audio
-                        .first()
-                        .and_then(|channel| self.session.audio_channel(*channel))
-                        .map(|channel| {
-                            (
-                                channel.capture_alignment_frames(),
-                                channel.retained_before_frames(),
-                                channel.retained_after_frames(),
-                                channel.render_advance_frames(),
-                                channel.grab_latency_selection(),
-                                channel
-                                    .latched_latency_recipe()
-                                    .is_some_and(|recipe| recipe.changed),
-                                channel.latency_retention_incomplete(),
-                                channel.is_finalizing_latency_postroll(),
-                            )
-                        })
-                        .or_else(|| {
-                            channels
-                                .midi
-                                .first()
-                                .and_then(|channel| self.session.midi_channel(*channel))
-                                .map(|channel| {
-                                    (
-                                        channel.capture_alignment_frames(),
-                                        channel.retained_before_frames(),
-                                        channel.retained_after_frames(),
-                                        channel.render_advance_frames(),
-                                        channel.grab_latency_selection(),
-                                        channel
-                                            .latched_latency_recipe()
-                                            .is_some_and(|recipe| recipe.changed),
-                                        channel.latency_retention_incomplete(),
-                                        channel.is_finalizing_latency_postroll(),
-                                    )
-                                })
-                        })
-                })
-                .map(
-                    |(
-                        capture,
-                        retained_before,
-                        retained_after,
-                        render,
-                        selection,
-                        changed,
-                        incomplete,
-                        finalizing,
-                    )| {
-                        let (observation, certainty, revision, variable, revisions) =
-                            match selection {
-                                shoop_engine::RetainedLatencySelection::Stable(observation) => (
-                                    Some(observation),
-                                    app_latency_certainty(observation.certainty),
-                                    observation.revision,
-                                    false,
-                                    1,
-                                ),
-                                shoop_engine::RetainedLatencySelection::Variable {
-                                    newest,
-                                    revisions,
-                                } => (
-                                    Some(newest),
-                                    app_latency_certainty(newest.certainty),
-                                    newest.revision,
-                                    true,
-                                    revisions,
-                                ),
-                                shoop_engine::RetainedLatencySelection::Unavailable => {
-                                    (None, LatencyCertaintyState::Unknown, 0, false, 0)
-                                }
-                            };
-                        TakeLatencyProvenanceState {
-                            capture_alignment_frames: capture,
-                            retained_before_frames: retained_before,
-                            retained_after_frames: retained_after,
-                            render_advance_frames: render,
-                            certainty,
-                            observation_min_frames: observation
-                                .and_then(|observation| observation.range.map(|range| range.min())),
-                            observation_max_frames: observation
-                                .and_then(|observation| observation.range.map(|range| range.max())),
-                            observation_sample_rate: observation
-                                .map_or(0, |observation| observation.sample_rate),
-                            observation_revision: revision,
-                            variable_history: variable,
-                            history_revisions: revisions,
-                            changed_during_operation: changed,
-                            incomplete,
-                            deferred_mode: self.session.loop_(*engine_loop).and_then(|loop_| {
-                                loop_
-                                    .deferred_latency_mode()
-                                    .map(from_engine_mode)
-                                    .map(app_loop_mode)
-                            }),
-                            finalizing,
-                            error: None,
-                        }
-                    },
-                )
-                .unwrap_or_default();
             loops.insert(
                 *id,
                 BackendLoopState {
                     mode,
-                    latency,
                     length,
                     position,
                     next_mode,
@@ -5957,30 +4535,6 @@ impl Backend for EngineBackend {
                 })
             })
             .collect();
-        self.update_latency_diagnostics(&loops);
-        let backend_capture_latency = app_latency_observation(self.backend_capture_latency);
-        let backend_playback_latency = app_latency_observation(self.backend_playback_latency);
-        let port_latency = self
-            .connection_ports
-            .iter()
-            .filter_map(|(id, connection)| {
-                let port = self.session.port(connection.session_port)?;
-                let state = if let Some(audio) = port.audio() {
-                    BackendPortLatencyState {
-                        capture: app_latency_observation(audio.capture_latency()),
-                        playback: app_latency_observation(audio.playback_latency()),
-                    }
-                } else if let Some(midi) = port.midi() {
-                    BackendPortLatencyState {
-                        capture: app_latency_observation(midi.capture_latency()),
-                        playback: app_latency_observation(midi.playback_latency()),
-                    }
-                } else {
-                    return None;
-                };
-                Some((*id, state))
-            })
-            .collect();
         Ok(BackendSnapshot {
             status: BackendStatus {
                 dsp_load_percent: 0.0,
@@ -6024,16 +4578,12 @@ impl Backend for EngineBackend {
                     .filter_map(|channel| self.session.audio_channel(*channel))
                     .map(|channel| channel.storage_exhaustions())
                     .sum(),
-                backend_capture_latency,
-                backend_playback_latency,
-                latency_diagnostics: self.latency_diagnostics,
             },
             audio_drivers: self.audio_driver_runtime_state(),
             tracks,
             loops,
             composites,
             connections: self.connection_snapshot(),
-            port_latency,
             mutation_failures: Vec::new(),
         })
     }
@@ -6044,31 +4594,6 @@ impl Backend for EngineBackend {
 }
 
 impl Backend for LocalDummyBackend {
-    fn latency_capability(&self) -> BackendLatencyCapability {
-        self.runtime.latency_capability()
-    }
-
-    fn set_track_latency_policy(
-        &mut self,
-        track_id: BackendTrackId,
-        policy: &TrackLatencyPolicyState,
-    ) -> Result<()> {
-        self.runtime.set_track_latency_policy(track_id, policy)
-    }
-
-    fn set_take_latency_policy(
-        &mut self,
-        loop_id: BackendLoopId,
-        capture_alignment_frames: i32,
-    ) -> Result<()> {
-        self.runtime
-            .set_take_latency_policy(loop_id, capture_alignment_frames)
-    }
-
-    fn consolidate_take_latency(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        self.runtime.consolidate_take_latency(loop_id)
-    }
-
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
         self.runtime.set_loop_smoothing_ms(milliseconds)
     }
@@ -6509,7 +5034,6 @@ fn empty_audio_content(mode: BackendChannelMode) -> BackendAudioContent {
         gain: 1.0,
         start_offset: 0,
         preplay: 0,
-        latency: BackendTakeLatencySnapshot::default(),
     }
 }
 
@@ -6521,7 +5045,6 @@ fn empty_midi_content(mode: BackendChannelMode) -> BackendMidiContent {
         events: Vec::new(),
         start_offset: 0,
         preplay: 0,
-        latency: BackendTakeLatencySnapshot::default(),
     }
 }
 
@@ -7005,8 +5528,6 @@ impl FakeBackend {
                         generation: 1,
                         crash_summary: None,
                         logs: Arc::from([]),
-                        latency: LatencyObservationState::default(),
-                        latency_provider: LatencyProviderState::Unsupported,
                         editor: None,
                     }),
                     audio_channels: wet_audio_channels,
@@ -7039,68 +5560,6 @@ impl FakeBackend {
 }
 
 impl Backend for FakeBackend {
-    fn latency_capability(&self) -> BackendLatencyCapability {
-        BackendLatencyCapability::Manual
-    }
-
-    fn set_track_latency_policy(
-        &mut self,
-        track_id: BackendTrackId,
-        policy: &TrackLatencyPolicyState,
-    ) -> Result<()> {
-        let track = self
-            .tracks
-            .get_mut(&track_id)
-            .ok_or_else(|| anyhow!("unknown fake track"))?;
-        track.state.latency_policy = policy.clone();
-        track.state.latency_policy.pending = false;
-        track.state.latency_policy.error = None;
-        Ok(())
-    }
-
-    fn set_take_latency_policy(
-        &mut self,
-        loop_id: BackendLoopId,
-        capture_alignment_frames: i32,
-    ) -> Result<()> {
-        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
-            return Err(anyhow!(
-                "take latency alignment exceeds the supported bound"
-            ));
-        }
-        self.loops
-            .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("unknown fake loop"))?
-            .latency
-            .capture_alignment_frames = capture_alignment_frames;
-        let content = self
-            .loop_content
-            .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("missing fake loop content"))?;
-        for channel in &mut content.audio {
-            channel.latency.capture_alignment_frames = capture_alignment_frames;
-            channel.latency.certainty = BackendLatencyCertainty::ManualOnly;
-        }
-        for channel in &mut content.midi {
-            channel.latency.capture_alignment_frames = capture_alignment_frames;
-            channel.latency.certainty = BackendLatencyCertainty::ManualOnly;
-        }
-        Ok(())
-    }
-
-    fn consolidate_take_latency(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        let latency = &mut self
-            .loops
-            .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("unknown fake loop"))?
-            .latency;
-        latency.capture_alignment_frames = 0;
-        latency.variable_history = false;
-        latency.history_revisions = 0;
-        latency.error = None;
-        Ok(())
-    }
-
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
         self.operations
             .push(FakeOperation::SetLoopSmoothingMs(milliseconds));
@@ -7816,7 +6275,6 @@ impl Backend for FakeBackend {
                 samples: Arc::from(channel.samples.clone()),
                 start_offset: channel.start_offset,
                 preplay: channel.preplay,
-                latency: channel.latency.clone(),
             })
             .collect();
         Ok(Some(BackendAudioData { channels }))
@@ -7837,7 +6295,6 @@ impl Backend for FakeBackend {
                 events: channel.events.clone(),
                 start_offset: channel.start_offset,
                 preplay: channel.preplay,
-                latency: channel.latency.clone(),
             })
             .collect();
         Ok(Some(BackendMidiData { channels }))
@@ -7986,9 +6443,6 @@ impl Backend for FakeBackend {
             if let Some(preplay) = item.preplay {
                 channel.preplay = preplay;
             }
-            if let Some(latency) = &item.latency {
-                channel.latency.clone_from(latency);
-            }
         }
         for item in &update.midi {
             let channel = &mut content.midi[item.channel];
@@ -8001,22 +6455,11 @@ impl Backend for FakeBackend {
             if let Some(preplay) = item.preplay {
                 channel.preplay = preplay;
             }
-            if let Some(latency) = &item.latency {
-                channel.latency.clone_from(latency);
-            }
         }
         if let Some(length) = update.length {
             content.length = length;
         }
-        let displayed_latency = content
-            .audio
-            .first()
-            .map(|channel| &channel.latency)
-            .or_else(|| content.midi.first().map(|channel| &channel.latency))
-            .map(app_take_latency_snapshot)
-            .unwrap_or_default();
         let state = self.loops.get_mut(&loop_id).expect("loop was validated");
-        state.latency = displayed_latency;
         state.mode = BackendLoopMode::Stopped;
         state.next_mode = None;
         state.next_transition_delay = None;
@@ -8309,8 +6752,6 @@ impl Backend for FakeBackend {
             ] {
                 staged.set_track_control(created.track_id, control)?;
             }
-            staged
-                .set_track_latency_policy(created.track_id, &source_track.state.latency_policy)?;
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
                 let target_loop = staged
                     .loop_content
@@ -8349,13 +6790,6 @@ impl Backend for FakeBackend {
                     },
                 );
                 if let Some(state) = staged.loops.get_mut(loop_id) {
-                    state.latency = source_loop
-                        .audio
-                        .first()
-                        .map(|channel| &channel.latency)
-                        .or_else(|| source_loop.midi.first().map(|channel| &channel.latency))
-                        .map(app_take_latency_snapshot)
-                        .unwrap_or_default();
                     state.length = source_loop.length;
                     state.gain = source_loop.gain;
                     state.balance = source_loop.balance;
@@ -8454,7 +6888,6 @@ impl Backend for FakeBackend {
             loops: self.loops.clone(),
             composites: self.composites.clone(),
             connections: self.connection_snapshot(),
-            port_latency: BTreeMap::new(),
             mutation_failures: Vec::new(),
         })
     }
@@ -8506,762 +6939,6 @@ mod tests {
 
         backend.remove_composite_loop(composite).unwrap();
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
-    }
-
-    fn latency_policy_contract(backend: &mut dyn Backend) {
-        assert_ne!(
-            backend.latency_capability(),
-            BackendLatencyCapability::Unsupported
-        );
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "latency-contract".to_owned(),
-                audio_channels: 1,
-                midi: true,
-                initial_loops: 1,
-            })
-            .unwrap();
-        let loop_id = track.loops[0];
-        let policy = TrackLatencyPolicyState {
-            cue_followed: true,
-            cue_output: Some(shoop_app_api::CueOutputSelection::ApplicationPort(
-                shoop_app_api::PortId::from_raw(track.ports[1].id.raw()),
-            )),
-            components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
-                enabled: true,
-                value_mode: shoop_app_api::LatencyValueMode::Manual(4),
-                range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-            }]),
-            revision: 3,
-            pending: true,
-            error: None,
-        };
-        backend
-            .set_track_latency_policy(track.track_id, &policy)
-            .unwrap();
-        assert!(
-            !backend.poll().unwrap().tracks[&track.track_id]
-                .latency_policy
-                .pending
-        );
-        backend.set_take_latency_policy(loop_id, 7).unwrap();
-        assert_eq!(
-            backend.poll().unwrap().loops[&loop_id]
-                .latency
-                .capture_alignment_frames,
-            7
-        );
-        assert!(backend
-            .set_take_latency_policy(loop_id, shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1,)
-            .is_err());
-        assert_eq!(
-            backend.poll().unwrap().loops[&loop_id]
-                .latency
-                .capture_alignment_frames,
-            7
-        );
-        backend.consolidate_take_latency(loop_id).unwrap();
-        assert_eq!(
-            backend.poll().unwrap().loops[&loop_id]
-                .latency
-                .capture_alignment_frames,
-            0
-        );
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn engine_track_policy_resolves_latest_port_range_and_arms_retention() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "resolved-latency-policy".to_owned(),
-                audio_channels: 1,
-                midi: false,
-                initial_loops: 1,
-            })
-            .unwrap();
-        let input = track
-            .ports
-            .iter()
-            .find(|port| port.role == BackendPortRole::AudioInput)
-            .unwrap();
-        let registry = backend.connection_ports[&input.id].session_port;
-        assert_eq!(registry, backend.tracks[&track.track_id].audio_inputs[0]);
-        backend
-            .session
-            .port(registry)
-            .unwrap()
-            .audio()
-            .unwrap()
-            .publish_capture_latency(
-                shoop_engine::RuntimeLatencyObservation::new(
-                    Some(shoop_latency::LatencyRangeFrames::new(3, 5).unwrap()),
-                    shoop_latency::LatencyCertainty::Range,
-                    48_000,
-                    7,
-                )
-                .unwrap(),
-            );
-        backend
-            .set_track_latency_policy(
-                track.track_id,
-                &TrackLatencyPolicyState {
-                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                        kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
-                        enabled: true,
-                        value_mode: shoop_app_api::LatencyValueMode::Automatic,
-                        range_selection: shoop_app_api::LatencyRangeSelectionState::Midpoint,
-                    }]),
-                    revision: 3,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
-            .unwrap();
-        let channel_index = backend.loop_channels[&track.loops[0]].audio[0];
-        let pending = backend
-            .session
-            .audio_channel(channel_index)
-            .unwrap()
-            .pending_latency_recipe()
-            .unwrap();
-        assert_eq!(pending.total_frames, Some(4), "pending recipe: {pending:?}");
-        backend.advance(Duration::from_millis(2));
-        backend
-            .session
-            .port(registry)
-            .unwrap()
-            .audio()
-            .unwrap()
-            .publish_capture_latency(
-                shoop_engine::RuntimeLatencyObservation::new(
-                    Some(shoop_latency::LatencyRangeFrames::new(4, 6).unwrap()),
-                    shoop_latency::LatencyCertainty::Range,
-                    48_000,
-                    8,
-                )
-                .unwrap(),
-            );
-        let changed = backend.poll().unwrap();
-        assert_eq!(
-            changed.loops[&track.loops[0]]
-                .latency
-                .capture_alignment_frames,
-            4,
-            "the operation remains frozen after a provider revision"
-        );
-        assert_eq!(changed.status.latency_diagnostics.observation_changes, 1);
-        assert!(changed.status.latency_diagnostics.plot_len > 0);
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        let capture = backend.capture_session().unwrap();
-        let take = &capture.tracks[0].loops[0].audio[0].latency;
-        assert_eq!(take.capture_alignment_frames, 4);
-        assert_eq!(take.retained_after_frames, 4);
-        assert_eq!(take.observation_min_frames, Some(3));
-        assert_eq!(take.observation_max_frames, Some(5));
-        assert_eq!(take.observation_revision, 7);
-        assert!(take.changed_during_operation);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn compensated_replacement_is_rejected_before_mode_change_when_alignment_differs() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "replacement-preflight".to_owned(),
-                audio_channels: 1,
-                midi: true,
-                initial_loops: 1,
-            })
-            .unwrap();
-        backend
-            .set_track_latency_policy(
-                track.track_id,
-                &TrackLatencyPolicyState {
-                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                        kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
-                        enabled: true,
-                        value_mode: shoop_app_api::LatencyValueMode::Manual(4),
-                        range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-                    }]),
-                    revision: 2,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        let audio_channel = backend.loop_channels[&track.loops[0]].audio[0];
-        let midi_channel = backend.loop_channels[&track.loops[0]].midi[0];
-        backend
-            .session
-            .audio_channel_mut(audio_channel)
-            .unwrap()
-            .set_capture_alignment_frames(1)
-            .unwrap();
-        backend
-            .session
-            .midi_channel_mut(midi_channel)
-            .unwrap()
-            .set_capture_alignment_frames(1)
-            .unwrap();
-
-        let error = backend
-            .transition_loop(track.loops[0], BackendLoopMode::Replacing, None)
-            .unwrap_err();
-        assert!(error.to_string().contains("consolidation"));
-        assert_eq!(
-            backend.poll().unwrap().loops[&track.loops[0]].mode,
-            BackendLoopMode::Stopped
-        );
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn mixed_audio_midi_consolidation_bakes_both_channel_timelines() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "mixed-consolidation".to_owned(),
-                audio_channels: 1,
-                midi: true,
-                initial_loops: 1,
-            })
-            .unwrap();
-        let loop_id = track.loops[0];
-        let engine_loop = backend.loops[&loop_id];
-        backend.session.loop_mut(engine_loop).unwrap().set_length(4);
-        let audio = backend.loop_channels[&loop_id].audio[0];
-        let midi = backend.loop_channels[&loop_id].midi[0];
-        let audio_channel = backend.session.audio_channel_mut(audio).unwrap();
-        audio_channel.load_data(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
-        audio_channel.set_capture_alignment_frames(2).unwrap();
-        let midi_channel = backend.session.midi_channel_mut(midi).unwrap();
-        midi_channel.set_contents(
-            &[
-                shoop_engine::MidiStorageElem::new(1, &[0xB0, 7, 99]).unwrap(),
-                shoop_engine::MidiStorageElem::new(3, &[0x90, 60, 100]).unwrap(),
-            ],
-            6,
-            None,
-        );
-        midi_channel.set_capture_alignment_frames(2).unwrap();
-
-        backend.consolidate_take_latency(loop_id).unwrap();
-
-        let audio_channel = backend.session.audio_channel(audio).unwrap();
-        assert_eq!(audio_channel.data(), vec![2.0, 3.0, 4.0, 5.0]);
-        assert_eq!(audio_channel.capture_alignment_frames(), 0);
-        let midi_channel = backend.session.midi_channel(midi).unwrap();
-        assert_eq!(midi_channel.capture_alignment_frames(), 0);
-        assert_eq!(midi_channel.length(), 4);
-        assert_eq!(midi_channel.contents().len(), 1);
-        assert_eq!(midi_channel.contents()[0].time, 1);
-        assert_eq!(midi_channel.contents()[0].data(), [0x90, 60, 100]);
-        assert!(midi_channel
-            .recording_start_state_messages()
-            .iter()
-            .any(|message| message == &[0xB0, 7, 99]));
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn latency_diagnostics_are_bounded_edge_counters_with_fixed_plots() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "latency-diagnostics".to_owned(),
-                audio_channels: 1,
-                midi: false,
-                initial_loops: 1,
-            })
-            .unwrap();
-        backend
-            .set_track_latency_policy(
-                track.track_id,
-                &TrackLatencyPolicyState {
-                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                        kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
-                        enabled: true,
-                        value_mode: shoop_app_api::LatencyValueMode::Automatic,
-                        range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-                    }]),
-                    revision: 1,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        let first = backend.poll().unwrap().status.latency_diagnostics;
-        assert_eq!(first.unresolved_recipes, 1);
-        assert_eq!(first.provider_failures, 1);
-        assert!(first.plot_len > 0);
-        for _ in 0..100 {
-            let diagnostics = backend.poll().unwrap().status.latency_diagnostics;
-            assert_eq!(diagnostics.unresolved_recipes, 1);
-            assert_eq!(diagnostics.provider_failures, 1);
-            assert!(
-                usize::from(diagnostics.plot_len) <= shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES
-            );
-        }
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn insufficient_margin_and_active_finalization_are_counted_and_plotted() {
-        let mut backend = EngineBackend::new_dummy(48_000, 1).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "margin-diagnostics".to_owned(),
-                audio_channels: 1,
-                midi: false,
-                initial_loops: 1,
-            })
-            .unwrap();
-        backend
-            .set_track_latency_policy(
-                track.track_id,
-                &TrackLatencyPolicyState {
-                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                        kind: shoop_app_api::LatencyComponentKind::Manual,
-                        enabled: true,
-                        value_mode: shoop_app_api::LatencyValueMode::Manual(4),
-                        range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-                    }]),
-                    revision: 1,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
-            .unwrap();
-        backend.advance(Duration::from_micros(25));
-        let channel_index = backend.loop_channels[&track.loops[0]].audio[0];
-        let channel = backend.session.audio_channel_mut(channel_index).unwrap();
-        channel.restore_retained_margin_metadata(0, 2).unwrap();
-        let latched = channel.latched_latency_recipe().unwrap();
-        channel.set_latched_latency_recipe(latched);
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
-            .unwrap();
-        backend.advance(Duration::from_micros(25));
-        let snapshot = backend.poll().unwrap();
-        assert_eq!(snapshot.status.latency_diagnostics.insufficient_margins, 1);
-        assert_eq!(snapshot.status.latency_diagnostics.finalization_overruns, 1);
-        let diagnostics = snapshot.status.latency_diagnostics;
-        let latest = (usize::from(diagnostics.plot_cursor)
-            + shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES
-            - 1)
-            % shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES;
-        assert!(diagnostics.active_postroll_plot[latest] > 0);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn full_provider_capture_path_rejects_overlapping_backend_component() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "overlap-policy".to_owned(),
-                audio_channels: 1,
-                midi: false,
-                initial_loops: 1,
-            })
-            .unwrap();
-        let input = track
-            .ports
-            .iter()
-            .find(|port| port.role == BackendPortRole::AudioInput)
-            .unwrap();
-        backend
-            .session
-            .port(backend.connection_ports[&input.id].session_port)
-            .unwrap()
-            .audio()
-            .unwrap()
-            .publish_capture_latency(
-                shoop_engine::RuntimeLatencyObservation::exact(5, 48_000, 1).unwrap(),
-            );
-        backend.backend_capture_latency =
-            shoop_engine::RuntimeLatencyObservation::exact(2, 48_000, 1).unwrap();
-        backend.port_model = EnginePortModel::Physical;
-        let component = |kind| shoop_app_api::LatencyComponentPolicyState {
-            kind,
-            enabled: true,
-            value_mode: shoop_app_api::LatencyValueMode::Automatic,
-            range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-        };
-        backend
-            .set_track_latency_policy(
-                track.track_id,
-                &TrackLatencyPolicyState {
-                    components: Arc::from([
-                        component(shoop_app_api::LatencyComponentKind::ExternalCapture),
-                        component(shoop_app_api::LatencyComponentKind::BackendBuffering),
-                    ]),
-                    revision: 1,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Replacing, None)
-            .unwrap();
-        let channel = backend.loop_channels[&track.loops[0]].audio[0];
-        let recipe = backend
-            .session
-            .audio_channel(channel)
-            .unwrap()
-            .pending_latency_recipe()
-            .unwrap();
-        assert_eq!(recipe.total_frames, None);
-        assert_eq!(
-            recipe
-                .components()
-                .filter(|component| {
-                    component.application == shoop_latency::ComponentApplication::Unresolved
-                })
-                .count(),
-            2
-        );
-        let diagnostics = backend.poll().unwrap().status.latency_diagnostics;
-        assert_eq!(diagnostics.unresolved_recipes, 1);
-        assert_eq!(diagnostics.provider_failures, 0);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn ambiguous_cue_path_is_diagnosed_without_guessing_a_route() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "ambiguous-cue".to_owned(),
-                audio_channels: 2,
-                midi: false,
-                initial_loops: 1,
-            })
-            .unwrap();
-        for output in track
-            .ports
-            .iter()
-            .filter(|port| port.role == BackendPortRole::AudioOutput)
-        {
-            backend
-                .set_port_connected(output.id, "system:playback_1", true)
-                .unwrap();
-        }
-        backend
-            .set_track_latency_policy(
-                track.track_id,
-                &TrackLatencyPolicyState {
-                    cue_followed: true,
-                    cue_output: Some(shoop_app_api::CueOutputSelection::HostPort(
-                        shoop_app_api::HostPortId::new("system:playback_1"),
-                    )),
-                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                        kind: shoop_app_api::LatencyComponentKind::CuePlayback,
-                        enabled: true,
-                        value_mode: shoop_app_api::LatencyValueMode::Automatic,
-                        range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-                    }]),
-                    revision: 1,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        let diagnostics = backend.poll().unwrap().status.latency_diagnostics;
-        assert_eq!(diagnostics.path_ambiguities, 1);
-        assert_eq!(diagnostics.unresolved_recipes, 1);
-        assert_eq!(diagnostics.provider_failures, 1);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn rapid_policy_transition_and_session_capture_stress_remains_bounded() {
-        let mut backend = EngineBackend::new_dummy(48_000, 32).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "latency-stress".to_owned(),
-                audio_channels: 2,
-                midi: true,
-                initial_loops: 1,
-            })
-            .unwrap();
-        for revision in 1..=128_u64 {
-            let frames = if revision == 128 {
-                shoop_latency::MAX_COMPENSATION_FRAMES
-            } else {
-                (revision % 17) as u32
-            };
-            backend
-                .set_track_latency_policy(
-                    track.track_id,
-                    &TrackLatencyPolicyState {
-                        components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                            kind: shoop_app_api::LatencyComponentKind::Manual,
-                            enabled: true,
-                            value_mode: shoop_app_api::LatencyValueMode::Manual(frames),
-                            range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-                        }]),
-                        revision,
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
-            let mode = match revision % 4 {
-                0 => BackendLoopMode::Recording,
-                1 => BackendLoopMode::PlayingDryThroughWet,
-                2 => BackendLoopMode::RecordingDryIntoWet,
-                _ => BackendLoopMode::Stopped,
-            };
-            backend.transition_loop(track.loops[0], mode, None).unwrap();
-            backend.advance(Duration::from_micros(750));
-            let snapshot = backend.poll().unwrap();
-            assert!(
-                usize::from(snapshot.status.latency_diagnostics.plot_len)
-                    <= shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES
-            );
-            if revision % 16 == 0 {
-                let error = backend.capture_session().unwrap_err();
-                assert!(error.to_string().contains("loop content is changing"));
-            } else if revision % 16 == 15 {
-                let capture = backend.capture_session().unwrap();
-                assert_eq!(capture.tracks.len(), 1);
-                assert_eq!(capture.tracks[0].loops.len(), 1);
-            }
-        }
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn selected_cue_output_contributes_only_to_cue_followed_recording() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "selected-cue-policy".to_owned(),
-                audio_channels: 1,
-                midi: false,
-                initial_loops: 1,
-            })
-            .unwrap();
-        let input = track
-            .ports
-            .iter()
-            .find(|port| port.role == BackendPortRole::AudioInput)
-            .unwrap();
-        let output = track
-            .ports
-            .iter()
-            .find(|port| port.role == BackendPortRole::AudioOutput)
-            .unwrap();
-        backend
-            .session
-            .port(backend.connection_ports[&input.id].session_port)
-            .unwrap()
-            .audio()
-            .unwrap()
-            .publish_capture_latency(
-                shoop_engine::RuntimeLatencyObservation::exact(3, 48_000, 1).unwrap(),
-            );
-        backend
-            .session
-            .port(backend.connection_ports[&output.id].session_port)
-            .unwrap()
-            .audio()
-            .unwrap()
-            .publish_playback_latency(
-                shoop_engine::RuntimeLatencyObservation::exact(5, 48_000, 2).unwrap(),
-            );
-        let component = |kind| shoop_app_api::LatencyComponentPolicyState {
-            kind,
-            enabled: true,
-            value_mode: shoop_app_api::LatencyValueMode::Automatic,
-            range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-        };
-        let mut policy = TrackLatencyPolicyState {
-            cue_followed: true,
-            cue_output: Some(shoop_app_api::CueOutputSelection::ApplicationPort(
-                shoop_app_api::PortId::from_raw(output.id.raw()),
-            )),
-            components: Arc::from([
-                component(shoop_app_api::LatencyComponentKind::ExternalCapture),
-                component(shoop_app_api::LatencyComponentKind::CuePlayback),
-            ]),
-            revision: 1,
-            ..Default::default()
-        };
-        backend
-            .set_track_latency_policy(track.track_id, &policy)
-            .unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        assert_eq!(
-            backend.poll().unwrap().loops[&track.loops[0]]
-                .latency
-                .capture_alignment_frames,
-            8
-        );
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        policy.cue_followed = false;
-        policy.revision = 2;
-        backend
-            .set_track_latency_policy(track.track_id, &policy)
-            .unwrap();
-        backend.clear_loop(track.loops[0]).unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        assert_eq!(
-            backend.poll().unwrap().loops[&track.loops[0]]
-                .latency
-                .capture_alignment_frames,
-            3
-        );
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn oxisynth_dry_through_wet_and_wet_record_use_declared_phase_range_policy() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let track = backend
-            .create_track(TrackRequest {
-                port_name_base: "oxisynth-latency-policy".to_owned(),
-                topology: BackendTrackTopology::DryWetProcessor {
-                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
-                    dry_audio_channels: 2,
-                    wet_audio_channels: 2,
-                    dry_midi: true,
-                },
-                initial_loops: 1,
-            })
-            .unwrap();
-        backend
-            .set_track_latency_policy(
-                track.track_id,
-                &TrackLatencyPolicyState {
-                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
-                        kind: shoop_app_api::LatencyComponentKind::Processor,
-                        enabled: true,
-                        value_mode: shoop_app_api::LatencyValueMode::Automatic,
-                        range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
-                    }]),
-                    revision: 4,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::PlayingDryThroughWet, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        assert_eq!(
-            backend.poll().unwrap().loops[&track.loops[0]]
-                .latency
-                .render_advance_frames,
-            63
-        );
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::RecordingDryIntoWet, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        backend
-            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
-            .unwrap();
-        backend.advance(Duration::from_millis(2));
-        let capture = backend.capture_session().unwrap();
-        let loop_ = &capture.tracks[0].loops[0];
-        assert!(loop_.audio[..2]
-            .iter()
-            .all(|channel| channel.latency.applied_during_render));
-        assert!(loop_.audio[2..]
-            .iter()
-            .all(|channel| channel.latency.capture_alignment_frames == 0));
-        assert_eq!(loop_.midi[0].latency.observation_max_frames, Some(63));
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn engine_backend_snapshot_reports_port_processor_and_backend_latency() {
-        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
-        let direct = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "latency-snapshot".to_owned(),
-                audio_channels: 1,
-                midi: false,
-                initial_loops: 1,
-            })
-            .unwrap();
-        let input = direct
-            .ports
-            .iter()
-            .find(|port| port.role == BackendPortRole::AudioInput)
-            .unwrap();
-        let registry = backend.connection_ports[&input.id].session_port;
-        backend
-            .session
-            .port(registry)
-            .unwrap()
-            .audio()
-            .unwrap()
-            .publish_capture_latency(
-                shoop_engine::RuntimeLatencyObservation::exact(4, 48_000, 7).unwrap(),
-            );
-        let processor = backend
-            .create_track(TrackRequest {
-                port_name_base: "latency-processor".to_owned(),
-                topology: BackendTrackTopology::DryWetProcessor {
-                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
-                    dry_audio_channels: 2,
-                    wet_audio_channels: 2,
-                    dry_midi: true,
-                },
-                initial_loops: 1,
-            })
-            .unwrap();
-        let snapshot = backend.poll().unwrap();
-        assert_eq!(
-            snapshot.port_latency[&input.id].capture.minimum_frames,
-            Some(4)
-        );
-        assert_eq!(
-            snapshot.status.backend_capture_latency.minimum_frames,
-            Some(0)
-        );
-        assert_eq!(
-            snapshot.status.backend_playback_latency.maximum_frames,
-            Some(0)
-        );
-        assert_eq!(
-            snapshot.tracks[&processor.track_id]
-                .fx
-                .as_ref()
-                .unwrap()
-                .latency
-                .certainty,
-            LatencyCertaintyState::Range
-        );
-        let fx = snapshot.tracks[&processor.track_id].fx.as_ref().unwrap();
-        assert_eq!(fx.latency.minimum_frames, Some(0));
-        assert_eq!(fx.latency.maximum_frames, Some(63));
-        assert_eq!(
-            fx.latency_provider,
-            LatencyProviderState::BuiltInSynthPhaseRange
-        );
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn fake_and_engine_backends_satisfy_latency_policy_contract() {
-        latency_policy_contract(&mut FakeBackend::default());
-        latency_policy_contract(&mut EngineBackend::new_dummy(48_000, 64).unwrap());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -9762,14 +7439,12 @@ mod tests {
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: Some(-1),
                             preplay: Some(4),
-                            latency: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: Some(-2),
                             preplay: Some(5),
-                            latency: None,
                         },
                     ],
                     midi: vec![BackendMidiChannelUpdate {
@@ -9782,7 +7457,6 @@ mod tests {
                         }],
                         start_offset: Some(-3),
                         preplay: Some(6),
-                        latency: None,
                     }],
                     length: Some(3),
                 },
@@ -9822,14 +7496,12 @@ mod tests {
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: None,
                             preplay: None,
-                            latency: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: None,
                             preplay: None,
-                            latency: None,
                         },
                     ],
                     ..Default::default()
@@ -9886,7 +7558,6 @@ mod tests {
                         samples: vec![99.0],
                         start_offset: None,
                         preplay: None,
-                        latency: None,
                     }],
                     ..Default::default()
                 },
@@ -9929,14 +7600,12 @@ mod tests {
                             samples: vec![99.0],
                             start_offset: None,
                             preplay: None,
-                            latency: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 0,
                             samples: vec![100.0],
                             start_offset: None,
                             preplay: None,
-                            latency: None,
                         },
                     ],
                     ..Default::default()
@@ -9984,16 +7653,6 @@ mod tests {
         loop_.audio[0].gain = 0.5;
         loop_.audio[0].start_offset = -2;
         loop_.audio[0].preplay = 3;
-        loop_.audio[0].latency = BackendTakeLatencySnapshot {
-            capture_alignment_frames: 2,
-            retained_before_frames: 3,
-            retained_after_frames: 4,
-            observation_min_frames: Some(2),
-            observation_max_frames: Some(2),
-            certainty: BackendLatencyCertainty::Exact,
-            observation_revision: 5,
-            ..Default::default()
-        };
         loop_.midi[0] = BackendMidiContent {
             mode: BackendChannelMode::Direct,
             length: 4,
@@ -10004,16 +7663,6 @@ mod tests {
             }],
             start_offset: -1,
             preplay: 2,
-            latency: BackendTakeLatencySnapshot {
-                capture_alignment_frames: 1,
-                retained_before_frames: 1,
-                retained_after_frames: 2,
-                observation_min_frames: Some(1),
-                observation_max_frames: Some(1),
-                certainty: BackendLatencyCertainty::Exact,
-                observation_revision: 6,
-                ..Default::default()
-            },
         };
         track
             .ports
@@ -10056,14 +7705,6 @@ mod tests {
         assert_eq!(loop_.audio[0].samples, vec![0.25, -0.5, 0.75, -1.0]);
         assert_eq!(loop_.audio[0].start_offset, -2);
         assert_eq!(loop_.audio[0].preplay, 3);
-        assert_eq!(loop_.audio[0].latency.capture_alignment_frames, 2);
-        assert_eq!(loop_.audio[0].latency.retained_before_frames, 3);
-        assert_eq!(loop_.audio[0].latency.retained_after_frames, 4);
-        assert_eq!(loop_.audio[0].latency.observation_revision, 5);
-        assert_eq!(loop_.midi[0].latency.capture_alignment_frames, 1);
-        assert_eq!(loop_.midi[0].latency.retained_before_frames, 1);
-        assert_eq!(loop_.midi[0].latency.retained_after_frames, 2);
-        assert_eq!(loop_.midi[0].latency.observation_revision, 6);
         assert_eq!(loop_.midi[0].events[0].time, 2);
         assert!(loop_.midi[0]
             .start_state
@@ -10192,12 +7833,8 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn fake_backend_satisfies_transactional_session_io_contract() {
+    fn fake_and_engine_backends_satisfy_transactional_session_io_contract() {
         session_io_contract(&mut FakeBackend::default());
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn engine_backend_satisfies_transactional_session_io_contract() {
         session_io_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
@@ -11130,7 +8767,6 @@ mod tests {
                         events: preserved_midi.clone(),
                         start_offset: None,
                         preplay: None,
-                        latency: None,
                     }],
                     length: Some(128),
                     ..BackendLoopContentUpdate::default()
@@ -11613,7 +9249,6 @@ mod tests {
                         ],
                         start_offset: Some(-4),
                         preplay: Some(7),
-                        latency: None,
                     }],
                     length: Some(32),
                     ..Default::default()
