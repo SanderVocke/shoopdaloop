@@ -214,13 +214,13 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 46 | 4,288 | 144 | 4,432 |
-| Final integration tests/examples | 2 | 27 | 1 | 28 |
+| Final production/documentation | 46 | 4,473 | 153 | 4,626 |
+| Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 2,765 additions and 19,727 deletions across 77
+The simplification delta itself is 2,988 additions and 19,754 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
-simplification baseline, and 1,573 finally: 99 feature-branch tests were removed
-while 38 tests above the merge base remain. Inline unit tests are counted in their
+simplification baseline, and 1,575 finally: 97 feature-branch tests were removed
+while 40 tests above the merge base remain. Inline unit tests are counted in their
 production path, which is why the path table is supplemented by this test count.
 
 The retained large files are general application/backend and audio/MIDI channel
