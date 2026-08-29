@@ -2675,25 +2675,15 @@ impl EngineBackend {
                 ) {
                     return Err(anyhow!("loop content is changing"));
                 }
-                let channels = self
-                    .loop_channels
-                    .get(loop_id)
-                    .ok_or_else(|| anyhow!("missing loop channels"))?;
-                let finalizing_audio = channels.audio.iter().any(|channel| {
-                    self.session
-                        .audio_channel(*channel)
-                        .is_some_and(|channel| channel.is_finalizing_latency_postroll())
-                });
-                let finalizing_midi = channels.midi.iter().any(|channel| {
-                    self.session
-                        .midi_channel(*channel)
-                        .is_some_and(|channel| channel.is_finalizing_latency_postroll())
-                });
-                if finalizing_audio || finalizing_midi {
+                if loop_state.has_unsettled_latency_postroll() {
                     return Err(anyhow!(
                         "loop alignment postroll is still finalizing; retry after it settles"
                     ));
                 }
+                let channels = self
+                    .loop_channels
+                    .get(loop_id)
+                    .ok_or_else(|| anyhow!("missing loop channels"))?;
                 let audio = channels
                     .audio
                     .iter()
@@ -8836,6 +8826,11 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
+        assert!(backend
+            .capture_session()
+            .unwrap_err()
+            .to_string()
+            .contains("postroll is still finalizing"));
         let immediate_error = backend
             .transition_loop(loop_id, BackendLoopMode::Recording, None)
             .unwrap_err();

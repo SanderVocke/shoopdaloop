@@ -777,17 +777,7 @@ impl NativeRuntime {
                 ) {
                     return Err(anyhow!("loop content is changing"));
                 }
-                let finalizing_audio = loop_.audio.iter().any(|channel| {
-                    channel
-                        .poll_state()
-                        .is_some_and(|state| state.postroll_remaining_frames > 0)
-                });
-                let finalizing_midi = loop_.midi.iter().any(|channel| {
-                    channel
-                        .poll_state()
-                        .is_some_and(|state| state.postroll_remaining_frames > 0)
-                });
-                if finalizing_audio || finalizing_midi {
+                if loop_.handle.has_unsettled_latency_postroll()? {
                     return Err(anyhow!(
                         "loop alignment postroll is still finalizing; retry after it settles"
                     ));
@@ -3640,6 +3630,11 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
+        assert!(backend
+            .capture_session()
+            .unwrap_err()
+            .to_string()
+            .contains("postroll is still finalizing"));
         let immediate_error = backend
             .transition_loop(loop_id, BackendLoopMode::Recording, None)
             .unwrap_err();
