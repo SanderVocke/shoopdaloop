@@ -31,6 +31,7 @@ use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId}
 use shoop_engine::external_audio_port::ExternalAudioPort;
 use shoop_engine::external_midi_port::ExternalMidiPort;
 use shoop_engine::internal_audio_port::InternalAudioPort;
+use shoop_engine::midi_state::{MidiStateTracker, TrackWhat};
 use shoop_engine::session::{Port, Session};
 use shoop_engine::{
     ChannelMode, LoopMode, MidiStorage, PortDataType as EnginePortDataType, PortDirection,
@@ -3098,6 +3099,43 @@ impl EngineBackend {
     }
 }
 
+fn validate_take_alignment_window(
+    capture_alignment_frames: i32,
+    media_layout_offset: i32,
+    raw_length: u64,
+    logical_length: u32,
+    channel_kind: &str,
+    channel_index: usize,
+) -> Result<()> {
+    let mapping = shoop_latency::CaptureFrameMapping::new(capture_alignment_frames)?;
+    let raw_start = mapping.raw_media_frame(0, i64::from(media_layout_offset))?;
+    let raw_end =
+        mapping.raw_media_frame(i64::from(logical_length), i64::from(media_layout_offset))?;
+    let complete = raw_start >= 0
+        && raw_end >= raw_start
+        && u64::try_from(raw_end).is_ok_and(|raw_end| raw_end <= raw_length);
+    if !complete {
+        return Err(anyhow!(
+            "take alignment {capture_alignment_frames} requires {channel_kind} channel {channel_index} media outside its retained raw window"
+        ));
+    }
+    Ok(())
+}
+
+pub fn canonical_midi_start_state<'a>(
+    start_state: &[Vec<u8>],
+    preceding_events: impl IntoIterator<Item = &'a [u8]>,
+) -> Vec<Vec<u8>> {
+    let mut state = MidiStateTracker::new(TrackWhat::ALL);
+    for message in start_state {
+        state.process(message);
+    }
+    for message in preceding_events {
+        state.process(message);
+    }
+    state.state_as_messages()
+}
+
 fn prepared_backend_latency(
     state: &BackendTrackLatencyState,
 ) -> Result<shoop_engine::PreparedLatency> {
@@ -3949,6 +3987,57 @@ impl Backend for EngineBackend {
             .loop_channels
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown backend loop {loop_id:?}"))?;
+        let engine_loop = self
+            .session
+            .loop_(self.engine_loop_index(loop_id)?)
+            .ok_or_else(|| anyhow!("missing engine loop"))?;
+        if matches!(
+            engine_loop.mode(),
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+        ) {
+            return Err(anyhow!(
+                "cannot edit take alignment while loop content is changing"
+            ));
+        }
+        let logical_length = engine_loop.length();
+        for (index, channel) in channels.audio.iter().enumerate() {
+            let channel = self
+                .session
+                .audio_channel(*channel)
+                .ok_or_else(|| anyhow!("missing audio channel"))?;
+            if channel.is_finalizing_latency_postroll() {
+                return Err(anyhow!(
+                    "cannot edit take alignment while latency postroll is finalizing"
+                ));
+            }
+            validate_take_alignment_window(
+                capture_alignment_frames,
+                channel.start_offset(),
+                channel.length() as u64,
+                logical_length,
+                "audio",
+                index,
+            )?;
+        }
+        for (index, channel) in channels.midi.iter().enumerate() {
+            let channel = self
+                .session
+                .midi_channel(*channel)
+                .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            if channel.is_finalizing_latency_postroll() {
+                return Err(anyhow!(
+                    "cannot edit take alignment while latency postroll is finalizing"
+                ));
+            }
+            validate_take_alignment_window(
+                capture_alignment_frames,
+                channel.start_offset(),
+                u64::from(channel.length()),
+                logical_length,
+                "MIDI",
+                index,
+            )?;
+        }
         for channel in &channels.audio {
             self.session
                 .audio_channel_mut(*channel)
@@ -6425,10 +6514,46 @@ impl Backend for FakeBackend {
         capture_alignment_frames: i32,
     ) -> Result<()> {
         shoop_latency::RecordingOffset::new(capture_alignment_frames)?;
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            matches!(
+                state.mode,
+                BackendLoopMode::Recording
+                    | BackendLoopMode::Replacing
+                    | BackendLoopMode::RecordingDryIntoWet
+            )
+        }) {
+            return Err(anyhow!(
+                "cannot edit take alignment while loop content is changing"
+            ));
+        }
+        let content = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        for (index, channel) in content.audio.iter().enumerate() {
+            validate_take_alignment_window(
+                capture_alignment_frames,
+                channel.start_offset,
+                channel.samples.len() as u64,
+                content.length,
+                "audio",
+                index,
+            )?;
+        }
+        for (index, channel) in content.midi.iter().enumerate() {
+            validate_take_alignment_window(
+                capture_alignment_frames,
+                channel.start_offset,
+                u64::from(channel.length),
+                content.length,
+                "MIDI",
+                index,
+            )?;
+        }
         let content = self
             .loop_content
             .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+            .expect("fake loop was checked above");
         for channel in &mut content.audio {
             channel.capture_alignment_frames = capture_alignment_frames;
         }
@@ -8010,6 +8135,82 @@ mod tests {
         assert_eq!(backend.capture_session().unwrap(), before_invalid);
     }
 
+    fn take_alignment_window_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "alignment-window".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: vec![
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![0.0; 6],
+                            start_offset: Some(1),
+                            preplay: None,
+                        },
+                        BackendAudioChannelUpdate {
+                            channel: 1,
+                            samples: vec![0.0; 6],
+                            start_offset: Some(1),
+                            preplay: None,
+                        },
+                    ],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 6,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: Some(1),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend.set_take_alignment(loop_id, -1).unwrap();
+        let aligned = backend.capture_session().unwrap();
+        let content = aligned
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+        assert!(content
+            .midi
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+
+        let error = backend.set_take_alignment(loop_id, 2).unwrap_err();
+        assert!(error.to_string().contains("retained raw window"));
+        let rejected = backend.capture_session().unwrap();
+        let content = rejected
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+        assert!(content
+            .midi
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+    }
+
     fn session_io_contract(backend: &mut dyn Backend) {
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -8344,6 +8545,12 @@ mod tests {
     fn fake_and_engine_backends_update_loop_content_without_session_replacement() {
         loop_content_contract(&mut FakeBackend::default());
         loop_content_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_and_engine_backends_reject_take_alignment_outside_retained_media_atomically() {
+        take_alignment_window_contract(&mut FakeBackend::default());
+        take_alignment_window_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
     #[shoop_wasm_test_support::shoop_test]

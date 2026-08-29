@@ -1705,6 +1705,58 @@ impl NativeRuntime {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        let loop_state = loop_.handle.get_state()?;
+        if matches!(
+            loop_state.mode,
+            shoop_engine::LoopMode::Recording
+                | shoop_engine::LoopMode::Replacing
+                | shoop_engine::LoopMode::RecordingDryIntoWet
+        ) {
+            return Err(anyhow!(
+                "cannot edit take alignment while loop content is changing"
+            ));
+        }
+        let audio_states = loop_
+            .audio
+            .iter()
+            .map(AudioChannel::get_state)
+            .collect::<Result<Vec<_>>>()?;
+        let midi_states = loop_
+            .midi
+            .iter()
+            .map(MidiChannel::get_state)
+            .collect::<Result<Vec<_>>>()?;
+        if audio_states
+            .iter()
+            .any(|state| state.postroll_remaining_frames > 0)
+            || midi_states
+                .iter()
+                .any(|state| state.postroll_remaining_frames > 0)
+        {
+            return Err(anyhow!(
+                "cannot edit take alignment while latency postroll is finalizing"
+            ));
+        }
+        for (index, state) in audio_states.iter().enumerate() {
+            validate_take_alignment_window(
+                capture_alignment_frames,
+                state.start_offset,
+                u64::from(state.length),
+                loop_state.length,
+                "audio",
+                index,
+            )?;
+        }
+        for (index, state) in midi_states.iter().enumerate() {
+            validate_take_alignment_window(
+                capture_alignment_frames,
+                state.start_offset,
+                u64::from(state.length),
+                loop_state.length,
+                "MIDI",
+                index,
+            )?;
+        }
         for channel in &loop_.audio {
             channel.set_capture_alignment_frames(capture_alignment_frames)?;
         }
@@ -3339,6 +3391,67 @@ mod tests {
 
         backend.remove_composite_loop(composite).unwrap();
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_take_alignment_rejects_incomplete_raw_windows_before_mutation() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "native-alignment".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..2)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![0.0; 6],
+                            start_offset: Some(1),
+                            preplay: None,
+                        })
+                        .collect(),
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 6,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: Some(1),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend.set_take_alignment(loop_id, -1).unwrap();
+        let error = backend.set_take_alignment(loop_id, 2).unwrap_err();
+        assert!(error.to_string().contains("retained raw window"));
+
+        let captured = backend.capture_session().unwrap();
+        let content = captured
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+        assert!(content
+            .midi
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
     }
 
     #[shoop_wasm_test_support::shoop_test]

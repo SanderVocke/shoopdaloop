@@ -30,17 +30,18 @@ use shoop_app_api::{
     TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData,
-    BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest,
-    BackendLoopContent, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
-    BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData, BackendMidiEvent,
-    BackendMutationDetail, BackendOperationProgress, BackendOxiSynthMidiCcAssignment,
-    BackendOxiSynthParameter, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendRecordingOffsetAdjustment,
-    BackendSessionData, BackendSessionPort, BackendSessionReplacement, BackendSessionTrack,
-    BackendSnapshot, BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
+    BackendAudioContent, BackendAudioData, BackendChannelMode, BackendCompositeConfig,
+    BackendCompositeEntry, BackendCompositeId, BackendCompositeKind, BackendCompositeTarget,
+    BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
+    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
+    BackendMidiEvent, BackendMutationDetail, BackendOperationProgress,
+    BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendRecordingOffsetAdjustment, BackendSessionData, BackendSessionPort,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -8510,35 +8511,17 @@ impl ApplicationModel {
                 return Err(BackendIoStepError::Pending(progress));
             }
         };
-        let content = capture
+        let loop_content = capture
             .tracks
             .iter()
             .flat_map(|track| &track.loops)
             .find(|loop_| loop_.source_id == model.backend_id.raw())
-            .and_then(|loop_| loop_.midi.first())
+            .ok_or_else(|| "backend omitted loop content".to_owned())?;
+        let content = loop_content
+            .midi
+            .first()
             .ok_or_else(|| "loop has no MIDI channel".to_owned())?;
-        let mapping = shoop_latency::CaptureFrameMapping::new(content.capture_alignment_frames)
-            .map_err(|error| error.to_string())?;
-        let midi = ExactMidi {
-            sample_rate: capture.sample_rate,
-            length_frames: u64::from(content.length),
-            start_state: content.start_state.clone(),
-            events: content
-                .events
-                .iter()
-                .enumerate()
-                .filter_map(|(order, event)| {
-                    let frame = mapping
-                        .logical_media_frame(i64::from(event.time), i64::from(content.start_offset))
-                        .ok()?;
-                    (frame >= 0 && frame < i64::from(content.length)).then(|| ExactMidiEvent {
-                        frame: frame as u64,
-                        order: order as u32,
-                        data: event.data.clone(),
-                    })
-                })
-                .collect(),
-        };
+        let midi = logical_exact_midi(content, capture.sample_rate, loop_content.length)?;
         let (bytes, extension, mime) = if standard {
             let encoded = encode_standard_midi(&midi).map_err(|error| error.to_string())?;
             tracing::warn!(
@@ -8600,6 +8583,50 @@ impl ApplicationModel {
             tracing::info!(operation, "frontend.app.periodic_operation_recovered");
         }
     }
+}
+
+fn logical_exact_midi(
+    content: &BackendMidiContent,
+    sample_rate: u32,
+    logical_length: u32,
+) -> Result<ExactMidi, String> {
+    let mapping = shoop_latency::CaptureFrameMapping::new(content.capture_alignment_frames)
+        .map_err(|error| error.to_string())?;
+    let mapped = content
+        .events
+        .iter()
+        .enumerate()
+        .map(|(order, event)| {
+            let frame = mapping
+                .logical_media_frame(i64::from(event.time), i64::from(content.start_offset))
+                .map_err(|error| error.to_string())?;
+            let order = u32::try_from(order)
+                .map_err(|_| "MIDI export event count exceeds the supported range".to_owned())?;
+            Ok((frame, order, event))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let start_state = canonical_midi_start_state(
+        &content.start_state,
+        mapped
+            .iter()
+            .filter(|(frame, _, _)| *frame < 0)
+            .map(|(_, _, event)| event.data.as_slice()),
+    );
+    let events = mapped
+        .into_iter()
+        .filter(|(frame, _, _)| *frame >= 0 && *frame < i64::from(logical_length))
+        .map(|(frame, order, event)| ExactMidiEvent {
+            frame: frame as u64,
+            order,
+            data: event.data.clone(),
+        })
+        .collect();
+    Ok(ExactMidi {
+        sample_rate,
+        length_frames: u64::from(logical_length),
+        start_state,
+        events,
+    })
 }
 
 fn new_session_document(sample_rate: u32) -> SessionDocument {
@@ -16783,6 +16810,62 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn logical_midi_export_folds_preroll_events_into_start_state() {
+        let content = BackendMidiContent {
+            mode: BackendChannelMode::Direct,
+            length: 8,
+            start_state: vec![vec![0xb0, 7, 10]],
+            events: vec![
+                BackendMidiEvent {
+                    time: 0,
+                    data: vec![0xb0, 7, 99],
+                },
+                BackendMidiEvent {
+                    time: 1,
+                    data: vec![0xc0, 42],
+                },
+                BackendMidiEvent {
+                    time: 1,
+                    data: vec![0x90, 60, 100],
+                },
+                BackendMidiEvent {
+                    time: 3,
+                    data: vec![0x80, 60, 0],
+                },
+                BackendMidiEvent {
+                    time: 7,
+                    data: vec![0x90, 61, 100],
+                },
+            ],
+            start_offset: 0,
+            capture_alignment_frames: 2,
+            preplay: 0,
+        };
+        let exported = logical_exact_midi(&content, 48_000, 4).unwrap();
+        assert_eq!(exported.length_frames, 4);
+        assert!(exported
+            .start_state
+            .iter()
+            .any(|message| message == &[0xb0, 7, 99]));
+        assert!(exported
+            .start_state
+            .iter()
+            .any(|message| message == &[0xc0, 42]));
+        assert!(exported
+            .start_state
+            .iter()
+            .any(|message| message == &[0x90, 60, 100]));
+        assert_eq!(
+            exported.events,
+            vec![ExactMidiEvent {
+                frame: 1,
+                order: 3,
+                data: vec![0x80, 60, 0],
+            }]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_audio_and_midi_io_map_channels_and_warn_before_resampling() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -17046,6 +17129,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].capture_alignment_frames,
+            0
+        );
         runtime
             .dispatch(AppIntent::RequestLoopMidiExport {
                 loop_id,
@@ -17058,7 +17145,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let exported_midi = decode_exact_midi(&runtime.take_file_output().unwrap().bytes).unwrap();
         assert_eq!(exported_midi.sample_rate, 48_000);
         assert_eq!(exported_midi.length_frames, 150);
-        assert_eq!(exported_midi.events[0].frame, 70);
+        assert_eq!(exported_midi.events[0].frame, 75);
         assert_eq!(
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Playing
@@ -17078,7 +17165,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(standard_midi
             .events
             .iter()
-            .any(|event| { event.frame.abs_diff(70) <= 4 && event.data == [0x90, 60, 100] }));
+            .any(|event| { event.frame.abs_diff(75) <= 4 && event.data == [0x90, 60, 100] }));
         assert_eq!(
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Playing
@@ -17111,7 +17198,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(roundtrip
             .events
             .iter()
-            .any(|event| { event.frame.abs_diff(70) <= 4 && event.data == [0x90, 60, 100] }));
+            .any(|event| { event.frame.abs_diff(75) <= 4 && event.data == [0x90, 60, 100] }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -17188,13 +17275,6 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.tick(Duration::ZERO);
         }
         runtime
-            .dispatch(AppIntent::SetTakeAlignment {
-                loop_id,
-                capture_alignment_frames: 2,
-            })
-            .unwrap();
-        runtime.tick(Duration::ZERO);
-        runtime
             .dispatch(AppIntent::RequestLoopAudioExport {
                 loop_id,
                 format: LoopAudioExportFormat::Exact,
@@ -17228,8 +17308,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .collect::<Vec<_>>(),
             vec![("Wet 1", "wet"), ("Dry 1", "dry")]
         );
-        let mut aligned = input.channels[2].samples[2..].to_vec();
-        aligned.extend([0.0, 0.0]);
+        let aligned = input.channels[2].samples.clone();
         assert_eq!(exported.channels[0].samples, aligned);
         assert_eq!(exported.channels[1].samples, aligned);
 
