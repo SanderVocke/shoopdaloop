@@ -95,7 +95,12 @@ ChromeDriver 147.0.7727.137 included:
 Upstream PR 1 passed browser, collector, MSRV, native, quality,
 security/licenses, and Wasm checks before merge. The Shoop GitHub matrix remains
 the authoritative evidence for Windows, macOS, release packaging, Firefox,
-artifact upload, and clean CI; live branch and PR runs are linked from
+artifact upload, and clean CI. Final implementation run
+[33319623816](https://github.com/SanderVocke/shoopdaloop/actions/runs/33319623816)
+passed every PR check and retained ``perfetto-validation-linux-debug-33319623816``,
+``perfetto-validation-web-debug-33319623816``, and
+``wasm-test-reports-debug-33319623816`` alongside all platform packages. Live
+branch and PR runs are linked from
 [PR 818](https://github.com/SanderVocke/shoopdaloop/pull/818/checks).
 
 ## Native audio-domain comparison
