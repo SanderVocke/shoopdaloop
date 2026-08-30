@@ -1097,7 +1097,14 @@ impl NativeRuntime {
                 source_track.state.latency.processor_adjustment,
                 source_track.state.latency.processor_manual_frames,
             ) {
-                if source_track.state.latency.effective_offset_frames.is_some()
+                if self.mark_unresolved_automatic_recording_latency(
+                    created.track_id,
+                    source_track.state.latency.adjustment,
+                    &error,
+                ) {
+                    // Missing saved endpoints are recoverable. Keep Automatic
+                    // selected but unavailable until a route provides an exact value.
+                } else if source_track.state.latency.effective_offset_frames.is_some()
                     && source_track
                         .state
                         .latency
@@ -1105,13 +1112,14 @@ impl NativeRuntime {
                         .is_some()
                 {
                     return Err(error);
+                } else {
+                    self.tracks
+                        .get_mut(&created.track_id)
+                        .expect("created track exists")
+                        .state
+                        .latency
+                        .clone_from(&source_track.state.latency);
                 }
-                self.tracks
-                    .get_mut(&created.track_id)
-                    .expect("created track exists")
-                    .state
-                    .latency
-                    .clone_from(&source_track.state.latency);
             }
             replacement.tracks.insert(source_track.source_id, created);
         }
@@ -1688,6 +1696,34 @@ impl NativeRuntime {
         Ok(false)
     }
 
+    fn mark_unresolved_automatic_recording_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        error: &anyhow::Error,
+    ) -> bool {
+        let automatic = matches!(
+            adjustment,
+            BackendRecordingOffsetAdjustment::Automatic
+                | BackendRecordingOffsetAdjustment::AutomaticPlusTrim(_)
+        );
+        let latency = &mut self
+            .tracks
+            .get_mut(&track_id)
+            .expect("native track was checked")
+            .state
+            .latency;
+        if automatic && latency.automatic_offset_frames.is_none() {
+            latency.adjustment = adjustment;
+            latency.effective_offset_frames = None;
+            latency.pending = false;
+            latency.error = Some(error.to_string());
+            true
+        } else {
+            false
+        }
+    }
+
     fn resolve_track_latency(
         &mut self,
         track_id: BackendTrackId,
@@ -2233,11 +2269,12 @@ impl NativeRuntime {
                 processor_adjustment,
                 processor_manual_frames,
             ) {
-                if self.tracks[&track_id]
-                    .state
-                    .latency
-                    .effective_offset_frames
-                    .is_some()
+                if !self.mark_unresolved_automatic_recording_latency(track_id, adjustment, &error)
+                    && self.tracks[&track_id]
+                        .state
+                        .latency
+                        .effective_offset_frames
+                        .is_some()
                 {
                     return Err(error);
                 }
@@ -4226,6 +4263,47 @@ mod tests {
             .midi
             .iter()
             .all(|channel| channel.capture_alignment_frames == -3));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_restore_keeps_automatic_latency_unresolved_when_saved_input_is_missing() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config.clone()).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "missing-automatic-input".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let mut captured = backend.capture_session().unwrap();
+        let latency = &mut captured.tracks[0].state.latency;
+        latency.automatic_offset_frames = Some(37);
+        latency.adjustment = BackendRecordingOffsetAdjustment::Automatic;
+        latency.effective_offset_frames = Some(37);
+        let input = captured.tracks[0]
+            .ports
+            .iter_mut()
+            .find(|port| port.descriptor.role == BackendPortRole::AudioInput)
+            .unwrap();
+        input.external_connections = vec!["removed:missing_capture".to_owned()];
+
+        let replacement = backend
+            .switch_audio_driver(&config, 48_000, &captured)
+            .unwrap();
+        let restored_track = replacement.tracks[&created.track_id.raw()].track_id;
+        let restored = &backend.poll().unwrap().tracks[&restored_track].latency;
+        assert_eq!(
+            restored.adjustment,
+            BackendRecordingOffsetAdjustment::Automatic
+        );
+        assert_eq!(restored.automatic_offset_frames, None);
+        assert_eq!(restored.effective_offset_frames, None);
+        assert!(restored.error.is_some());
     }
 
     #[shoop_wasm_test_support::shoop_test]

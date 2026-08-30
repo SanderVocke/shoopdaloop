@@ -3343,13 +3343,25 @@ fn update_backend_latency(
             // checked Wet sum is invalid. Apply a valid side of a partially
             // rejected edit, but never retain an invalid or non-serializable value.
             if recording.is_ok() && processor.is_err() {
-                state.adjustment = candidate.adjustment;
-                state.effective_offset_frames = candidate.effective_offset_frames;
+                let mut partial = state.clone();
+                partial.adjustment = candidate.adjustment;
+                partial.effective_offset_frames = candidate.effective_offset_frames;
+                if prepared_backend_latency(&partial, has_wet_channels).is_ok() {
+                    state.adjustment = partial.adjustment;
+                    state.effective_offset_frames = partial.effective_offset_frames;
+                }
             } else if processor.is_ok() && recording.is_err() {
-                state.processor_adjustment = candidate.processor_adjustment;
-                state.processor_manual_frames = candidate.processor_manual_frames;
-                state.effective_processor_advance_frames =
+                let mut partial = state.clone();
+                partial.processor_adjustment = candidate.processor_adjustment;
+                partial.processor_manual_frames = candidate.processor_manual_frames;
+                partial.effective_processor_advance_frames =
                     candidate.effective_processor_advance_frames;
+                if prepared_backend_latency(&partial, has_wet_channels).is_ok() {
+                    state.processor_adjustment = partial.processor_adjustment;
+                    state.processor_manual_frames = partial.processor_manual_frames;
+                    state.effective_processor_advance_frames =
+                        partial.effective_processor_advance_frames;
+                }
             }
             state.pending = false;
             state.error = Some(error.to_string());
@@ -10073,6 +10085,53 @@ mod tests {
         assert_eq!(
             backend.poll().unwrap().loops[&processed.loops[0]].processor_alignment_frames,
             Some(17)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn rejected_partial_latency_edit_cannot_invalidate_retained_wet_sum() {
+        let mut backend = FakeBackend::default();
+        let processed = backend
+            .create_track(TrackRequest {
+                port_name_base: "partial-wet-sum".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                700_000,
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(100_000),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                -1,
+            )
+            .is_err());
+        let latency = &backend.poll().unwrap().tracks[&processed.track_id].latency;
+        assert_eq!(latency.effective_offset_frames, Some(0));
+        assert_eq!(latency.effective_processor_advance_frames, Some(700_000));
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].state.latency.effective_offset_frames,
+            Some(0)
+        );
+        assert_eq!(
+            captured.tracks[0]
+                .state
+                .latency
+                .effective_processor_advance_frames,
+            Some(700_000)
         );
     }
 
