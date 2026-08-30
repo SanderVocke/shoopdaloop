@@ -657,13 +657,24 @@ async fn start_audio_graph(
             if let Some(json) = event.data().as_string() {
                 let _ = inner.transport.receive(generation, &json);
             } else {
-                let handled = inner
-                    .trace
-                    .as_mut()
-                    .and_then(|trace| trace.handle_message(&event.data()).ok())
-                    .unwrap_or_else(|| {
-                        crate::browser_trace::RealmTraceState::is_trace_message(&event.data())
-                    });
+                let handled = if let Some(trace) = inner.trace.as_mut() {
+                    match trace.handle_message(&event.data()) {
+                        Ok(handled) => handled,
+                        Err(error) => {
+                            tracing::error!(
+                                error = %error,
+                                "frontend.browser_trace.audio_message_failed"
+                            );
+                            let _ = trace.abort();
+                            inner
+                                .transport
+                                .fail(format!("AudioWorklet trace message failed: {error}"));
+                            true
+                        }
+                    }
+                } else {
+                    crate::browser_trace::RealmTraceState::is_trace_message(&event.data())
+                };
                 if !handled {
                     inner
                         .transport

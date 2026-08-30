@@ -87,13 +87,26 @@ impl BrowserWorkerDriver {
             if let Some(json) = event.data().as_string() {
                 let _ = receive_control.receive(GENERATION, &json);
             } else {
-                let handled = receive_trace
-                    .borrow_mut()
-                    .as_mut()
-                    .and_then(|trace| trace.handle_message(&event.data()).ok())
-                    .unwrap_or_else(|| {
+                let handled = {
+                    let mut slot = receive_trace.borrow_mut();
+                    if let Some(trace) = slot.as_mut() {
+                        match trace.handle_message(&event.data()) {
+                            Ok(handled) => handled,
+                            Err(error) => {
+                                tracing::error!(
+                                    error = %error,
+                                    "frontend.browser_trace.worker_message_failed"
+                                );
+                                let _ = trace.abort();
+                                receive_control
+                                    .fail(format!("Worker trace message failed: {error}"));
+                                true
+                            }
+                        }
+                    } else {
                         crate::browser_trace::RealmTraceState::is_trace_message(&event.data())
-                    });
+                    }
+                };
                 if !handled {
                     receive_control.fail("worker engine emitted an unknown non-string event");
                 }
