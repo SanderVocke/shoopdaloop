@@ -26,6 +26,11 @@ pub fn assert_panics(function: impl FnOnce(), expected: Option<&str>) {
 
 #[cfg(target_arch = "wasm32")]
 pub use shoop_tracing::{wasm_test_trace_begin, wasm_test_trace_finish};
+
+#[cfg(target_arch = "wasm32")]
+pub fn wasm_test_trace_finish_result<T, E>(result: &Result<T, E>) {
+    shoop_tracing::wasm_test_trace_finish_result(result.is_err());
+}
 #[cfg(target_arch = "wasm32")]
 pub use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
@@ -65,6 +70,15 @@ mod tests {
     )]
     fn shared_failure_canary_is_ignored_by_default() {
         panic!("intentional shared test failure canary");
+    }
+
+    #[shoop_test]
+    #[cfg_attr(
+        not(feature = "wasm-test-failure-canary"),
+        ignore = "opt-in Result failure canary"
+    )]
+    fn shared_result_failure_canary_is_ignored_by_default() -> Result<(), &'static str> {
+        Err("intentional shared Result failure canary")
     }
 
     #[shoop_test(no_wasm = "exercises the native-only expansion")]

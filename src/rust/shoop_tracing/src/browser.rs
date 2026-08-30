@@ -358,14 +358,14 @@ fn health_to_perfetto(health: BrowserHealth) -> ProducerHealth {
     }
 }
 
-pub fn wasm_test_trace_begin(module: &str, test: &str, finalize_on_panic: bool) {
+pub fn wasm_test_trace_begin(module: &str, test: &str, panic_expected: bool) {
     if !wasm_test_tracing_enabled() {
         return;
     }
     let identity = format!("{module}::{test}");
     initialize_browser_tracing().expect("initialize Wasm test tracing");
     install_wasm_test_panic_hook();
-    if let Some((_identity, stale, _calibration, _finalize_on_panic)) =
+    if let Some((_identity, stale, _calibration, _panic_expected)) =
         TEST_CAPTURE.with(|slot| slot.borrow_mut().take())
     {
         stale
@@ -388,7 +388,7 @@ pub fn wasm_test_trace_begin(module: &str, test: &str, finalize_on_panic: bool) 
     TEST_CAPTURE.with(|slot| {
         let previous =
             slot.borrow_mut()
-                .replace((identity, capture, capture_start, finalize_on_panic));
+                .replace((identity, capture, capture_start, panic_expected));
         assert!(previous.is_none(), "Wasm testcase traces must not overlap");
     });
 }
@@ -400,17 +400,29 @@ pub fn wasm_test_trace_finish() {
     finalize_wasm_test_trace("success").expect("finish Wasm testcase trace");
 }
 
+pub fn wasm_test_trace_finish_result(failed: bool) {
+    if !wasm_test_tracing_enabled() {
+        return;
+    }
+    finalize_wasm_test_trace(if failed { "failure" } else { "success" })
+        .expect("finish Wasm Result testcase trace");
+}
+
 fn install_wasm_test_panic_hook() {
     WASM_TEST_PANIC_HOOK.call_once(|| {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |information| {
-            let finalize = TEST_CAPTURE.with(|slot| {
-                slot.borrow()
-                    .as_ref()
-                    .is_some_and(|(_, _, _, finalize_on_panic)| *finalize_on_panic)
+            let phase = TEST_CAPTURE.with(|slot| {
+                slot.borrow().as_ref().map(|(_, _, _, panic_expected)| {
+                    if *panic_expected {
+                        "expected-panic"
+                    } else {
+                        "failure"
+                    }
+                })
             });
-            if finalize {
-                if let Err(error) = finalize_wasm_test_trace("failure") {
+            if let Some(phase) = phase {
+                if let Err(error) = finalize_wasm_test_trace(phase) {
                     web_sys::console::error_1(
                         &format!("could not finalize panicking Wasm testcase trace: {error}")
                             .into(),
@@ -424,7 +436,7 @@ fn install_wasm_test_panic_hook() {
 
 fn finalize_wasm_test_trace(phase: &str) -> Result<(), String> {
     let capture = TEST_CAPTURE.with(|slot| slot.borrow_mut().take());
-    let Some((identity, capture, capture_start, _finalize_on_panic)) = capture else {
+    let Some((identity, capture, capture_start, _panic_expected)) = capture else {
         return Err("Wasm testcase trace is not active".to_owned());
     };
     emit_test_markers(&identity, phase);

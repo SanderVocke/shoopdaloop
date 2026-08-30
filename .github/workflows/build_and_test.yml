@@ -826,29 +826,35 @@ jobs:
           inputs.perfetto_failure_canary
         shell: bash
         run: |
+          printf '%s\n' \
+            "SELECT name FROM slice WHERE name = 'shoop.wasm_test_capture.span';" \
+            "SELECT string_value FROM args WHERE key = 'phase' AND string_value = 'failure';" \
+            "SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id WHERE t.name LIKE '%shoop.wasm_test_capture.plot';" \
+            > "$RUNNER_TEMP/perfetto-wasm-canary.sql"
           for runtime in node chrome; do
-            set +e
-            python3 scripts/run_wasm_tests.py --profile dev --runtime "$runtime" \
-              --package shoop_wasm_test_support \
-              --feature wasm-test-failure-canary \
-              --filter shared_failure_canary_is_ignored_by_default \
-              --trace failure
-            status=$?
-            set -e
-            test "$status" -ne 0
-            trace=$(find "target/wasm-tests/dev/reports/$runtime/traces" \
-              -name '*.pftrace' -type f -print -quit)
-            test -n "$trace"
-            printf '%s\n' \
-              "SELECT name FROM slice WHERE name = 'shoop.wasm_test_capture.span';" \
-              "SELECT string_value FROM args WHERE key = 'phase' AND string_value = 'failure';" \
-              "SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id WHERE t.name LIKE '%shoop.wasm_test_capture.plot';" \
-              > "$RUNNER_TEMP/perfetto-wasm-canary.sql"
-            scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
-              "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
-            grep 'shoop.wasm_test_capture.span' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
-            grep 'failure' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
-            grep 'shoop.wasm_test_capture.plot' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
+            for canary in \
+              shared_failure_canary_is_ignored_by_default \
+              shared_result_failure_canary_is_ignored_by_default; do
+              set +e
+              python3 scripts/run_wasm_tests.py --profile dev --runtime "$runtime" \
+                --package shoop_wasm_test_support \
+                --feature wasm-test-failure-canary \
+                --filter "$canary" \
+                --trace failure
+              status=$?
+              set -e
+              test "$status" -ne 0
+              trace=$(find "target/wasm-tests/dev/reports/$runtime/traces" \
+                -name '*.pftrace' -type f -print -quit)
+              test -n "$trace"
+              scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
+                "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
+              grep 'shoop.wasm_test_capture.span' \
+                "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
+              grep 'failure' "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
+              grep 'shoop.wasm_test_capture.plot' \
+                "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
+            done
           done
 
       - name: Run optimized nightly/manual Wasm suites

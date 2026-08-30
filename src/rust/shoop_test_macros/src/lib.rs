@@ -147,6 +147,11 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
             #native
         }
     };
+    let wasm_trace_finish = if native_returns_result {
+        quote!(::shoop_wasm_test_support::wasm_test_trace_finish_result(&output);)
+    } else {
+        quote!(::shoop_wasm_test_support::wasm_test_trace_finish();)
+    };
     let wasm_test = if options.no_wasm.is_some() {
         quote!()
     } else {
@@ -159,10 +164,10 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
                     ::shoop_wasm_test_support::wasm_test_trace_begin(
                         module_path!(),
                         stringify!(#test_name),
-                        !#expects_panic,
+                        #expects_panic,
                     );
                     let output = (async move #body).await;
-                    ::shoop_wasm_test_support::wasm_test_trace_finish();
+                    #wasm_trace_finish
                     output
                 }))
             } else {
@@ -170,10 +175,10 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
                     ::shoop_wasm_test_support::wasm_test_trace_begin(
                         module_path!(),
                         stringify!(#test_name),
-                        !#expects_panic,
+                        #expects_panic,
                     );
                     let output = (|| #body)();
-                    ::shoop_wasm_test_support::wasm_test_trace_finish();
+                    #wasm_trace_finish
                     output
                 }))
             };
