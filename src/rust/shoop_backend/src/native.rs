@@ -4154,7 +4154,9 @@ mod tests {
             .all(|port| first.ports.iter().all(|old| old.id != port.id)));
     }
 
-    #[shoop_wasm_test_support::shoop_test]
+    #[shoop_wasm_test_support::shoop_test(
+        no_trace = "asserts exact JACK callback MIDI frame timing"
+    )]
     fn native_jack_test_adapter_publishes_driver_ports() {
         let configured = AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
             client_name: "ShoopDaLoop-test".to_owned(),
