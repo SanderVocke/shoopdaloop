@@ -828,7 +828,7 @@ jobs:
         run: |
           printf '%s\n' \
             "SELECT name FROM slice WHERE name = 'shoop.wasm_test_capture.span';" \
-            "SELECT string_value FROM args WHERE key = 'phase' AND string_value = 'failure';" \
+            "SELECT string_value FROM args WHERE key = 'debug.phase' AND string_value = 'failure';" \
             "SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id WHERE t.name LIKE '%shoop.wasm_test_capture.plot';" \
             > "$RUNNER_TEMP/perfetto-wasm-canary.sql"
           for runtime in node chrome; do
