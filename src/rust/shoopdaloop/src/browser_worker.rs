@@ -91,7 +91,9 @@ impl BrowserWorkerDriver {
                     .borrow_mut()
                     .as_mut()
                     .and_then(|trace| trace.handle_message(&event.data()).ok())
-                    .unwrap_or(false);
+                    .unwrap_or_else(|| {
+                        crate::browser_trace::RealmTraceState::is_trace_message(&event.data())
+                    });
                 if !handled {
                     receive_control.fail("worker engine emitted an unknown non-string event");
                 }
@@ -236,6 +238,13 @@ impl BrowserWorkerDriver {
 
     pub fn has_active_trace(&self) -> bool {
         self.trace.borrow().is_some()
+    }
+
+    pub fn discard_tracing(&self) {
+        let _ = self.request_stop_tracing();
+        if let Some(mut trace) = self.trace.borrow_mut().take() {
+            let _ = trace.abort();
+        }
     }
 
     pub fn request_stop_tracing(&self) -> Result<()> {

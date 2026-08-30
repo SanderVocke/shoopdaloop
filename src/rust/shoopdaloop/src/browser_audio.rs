@@ -273,6 +273,15 @@ impl BrowserAudioController {
         self.driver.state.borrow().trace.is_some()
     }
 
+    pub fn discard_tracing(&self) {
+        let _ = self.request_stop_tracing();
+        let mut inner = self.driver.state.borrow_mut();
+        if let Some(mut trace) = inner.trace.take() {
+            let _ = trace.abort();
+        }
+        inner.completed_trace_segments.clear();
+    }
+
     pub fn request_stop_tracing(&self) -> Result<()> {
         let inner = self.driver.state.borrow();
         if inner.trace.is_none() {
@@ -652,7 +661,9 @@ async fn start_audio_graph(
                     .trace
                     .as_mut()
                     .and_then(|trace| trace.handle_message(&event.data()).ok())
-                    .unwrap_or(false);
+                    .unwrap_or_else(|| {
+                        crate::browser_trace::RealmTraceState::is_trace_message(&event.data())
+                    });
                 if !handled {
                     inner
                         .transport

@@ -2395,6 +2395,10 @@ impl Runtime {
 
     fn cancel_tracing_request(&mut self) {
         self.tracing_requested = false;
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.discard_tracing(),
+            BrowserRuntimeMode::Worker(driver) => driver.discard_tracing(),
+        }
         self.tracing_realm_active = false;
     }
 

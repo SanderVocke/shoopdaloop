@@ -141,6 +141,13 @@ impl RealmTraceState {
         Ok(message.into())
     }
 
+    pub fn is_trace_message(data: &JsValue) -> bool {
+        Reflect::get(data, &"kind".into())
+            .ok()
+            .and_then(|value| value.as_string())
+            .is_some_and(|kind| kind.starts_with("shoop-trace-"))
+    }
+
     pub fn handle_message(&mut self, data: &JsValue) -> Result<bool> {
         let kind = Reflect::get(data, &"kind".into())
             .ok()
