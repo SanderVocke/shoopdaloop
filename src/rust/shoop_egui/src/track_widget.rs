@@ -63,6 +63,8 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_latency_menu_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_latency_dialog_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_latency_offset_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_take_processor_rect: Option<egui::Rect>,
@@ -123,6 +125,8 @@ impl Default for TrackWidget {
             test_options_rect: None,
             #[cfg(test)]
             test_latency_menu_rect: None,
+            #[cfg(test)]
+            test_latency_dialog_rect: None,
             #[cfg(test)]
             test_latency_offset_rect: None,
             #[cfg(test)]
@@ -340,6 +344,7 @@ impl TrackWidget {
             self.test_clone_confirm_rect = None;
             self.test_clone_cancel_rect = None;
             self.test_latency_menu_rect = None;
+            self.test_latency_dialog_rect = None;
             self.test_latency_offset_rect = None;
             self.test_take_processor_rect = None;
         }
@@ -902,7 +907,7 @@ impl TrackWidget {
             return;
         }
         let mut open = self.latency_dialog_open;
-        egui::Window::new(format!("{} — Latency compensation", state.name))
+        let _window = egui::Window::new(format!("{} — Latency compensation", state.name))
             .id(egui::Id::new(("track_latency_compensation", state.id)))
             .open(&mut open)
             .resizable(true)
@@ -1100,6 +1105,10 @@ impl TrackWidget {
                     }
                 });
             });
+        #[cfg(test)]
+        {
+            self.test_latency_dialog_rect = _window.map(|window| window.response.rect);
+        }
         self.latency_dialog_open = open;
     }
 
@@ -1521,6 +1530,37 @@ mod tests {
                 has_processor_take
             );
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_dialog_with_many_completed_takes_stays_inside_the_screen() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackState {
+            id: TrackId::from_raw(6),
+            name: "Many processed takes".to_owned(),
+            loops: (0..32)
+                .map(|index| LoopState {
+                    id: LoopId::from_raw(index + 1),
+                    name: format!("Loop {}", index + 1),
+                    empty: false,
+                    processor_alignment_frames: Some(17),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let mut widget = TrackWidget {
+            latency_dialog_open: true,
+            ..Default::default()
+        };
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let rect = widget.test_latency_dialog_rect.unwrap();
+        assert!(rect.left() >= 0.0);
+        assert!(rect.top() >= 0.0);
+        assert!(rect.right() <= 500.0);
+        assert!(rect.bottom() <= 400.0);
+        assert!(widget.test_take_processor_rect.is_some());
     }
 
     #[shoop_wasm_test_support::shoop_test]

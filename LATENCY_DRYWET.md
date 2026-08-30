@@ -220,10 +220,10 @@ stacked PR [#819](https://github.com/SanderVocke/shoopdaloop/pull/819), targetin
 
 ### Stage and gate evidence
 
-- Domain/engine: `shoop_latency` and `shoop_engine` tests are included in the 1,591-test native nextest run; focused impulse, mixed retention, exact-once rendering, and callback-allocation tests pass.
+- Domain/engine: `shoop_latency` and `shoop_engine` tests are included in the 1,592-test native nextest run; focused impulse, mixed retention, exact-once rendering, and callback-allocation tests pass.
 - Backend/correction: complete Fake/Engine/Native coverage passes, including 74 native-driver backend tests and the named Carla-zero, ordinary-record, replacement, bounds, and take-correction cases.
 - Application/protocol/browser: protocol version 17 round trips and raw-host contract pass; Node and Chromium each passed all 17 opted-in packages (app 84, engine 823, audio Worklet 14, and Worklet client 21), followed by final focused backend reruns with 52 tests in each runtime.
 - Persistence: all 30 `shoop_session` tests pass, including document-version migration, malformed bounds, mixed channel mappings, and multi-rate conversion.
-- UI/docs: all egui native tests and 175 cross-runtime egui tests pass; the 1200x800 browser artifact shows the revised dialog. Usage, session-format, audit, Carla, and remaining-work documents describe the delivered behavior.
+- UI/docs: all egui native tests and 176 cross-runtime egui tests pass, including a bounded 32-take dialog layout; the 1200x800 browser artifact shows the revised dialog. Usage, session-format, audit, Carla, and remaining-work documents describe the delivered behavior.
 - Repository gates: `RUSTFLAGS='-D warnings' cargo build --workspace`, focused warning-denied backend Clippy with `--no-deps`, formatting, diff checks, Shoop test-attribute policy, closed tracing inventory, removed-terminology search, Wasm compiler builds, and the raw Wasm host contract all pass. Full dependency Clippy still reports unrelated pre-existing engine lints, so the focused touched-backend gate is the authoritative Clippy evidence.
-- Host-dependent note: plain `cargo test --workspace` reached the virtual-MIDI tests and failed only because the host lacks that facility; the mandated `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` completed with 1,591 passed and 2 host-dependent skips.
+- Host-dependent note: plain `cargo test --workspace` reached the virtual-MIDI tests and failed only because the host lacks that facility; the mandated `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` completed with 1,592 passed and 2 host-dependent skips.
