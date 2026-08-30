@@ -755,6 +755,7 @@ pub enum BackendMutationDetail {
     TrackFxControl(BackendTrackFxControl),
     LoopGain(f32),
     LoopBalance(f32),
+    LoopTiming,
 }
 
 #[derive(Clone, Debug, PartialEq)]

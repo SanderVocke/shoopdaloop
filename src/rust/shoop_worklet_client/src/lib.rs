@@ -1241,6 +1241,9 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
         Command::SetLoopBalance { balance, .. } => {
             Some(BackendMutationDetail::LoopBalance(*balance))
         }
+        Command::SetLoopLength { .. } | Command::SetLoopTiming { .. } => {
+            Some(BackendMutationDetail::LoopTiming)
+        }
         _ => None,
     }
 }
@@ -2233,6 +2236,15 @@ impl Backend for RemoteWorkletBackend {
                         }
                         _ => {}
                     }
+                    match &received.command {
+                        Command::SetLoopLength { loop_id, .. }
+                        | Command::SetLoopTiming { loop_id, .. } => {
+                            let loop_id = BackendLoopId::from_raw(*loop_id);
+                            self.waveforms.remove(&loop_id);
+                            self.midi_data.remove(&loop_id);
+                        }
+                        _ => {}
+                    }
                     if let Some((operation, operation_generation)) =
                         transfer_identity(&received.command)
                     {
@@ -2782,6 +2794,23 @@ mod tests {
         assert_eq!(audio.channels[0].preplay, 12);
         let midi = &backend.midi_data[&loop_id].channels[0];
         assert_eq!((midi.start_offset, midi.preplay, midi.length), (-8, 12, 32));
+        deliver(&control, 1, 5, Event::Ack);
+        deliver(&control, 1, 6, Event::Ack);
+        deliver(
+            &control,
+            1,
+            7,
+            Event::Error {
+                message: "timeline exceeds retained window".to_owned(),
+            },
+        );
+        let rejected = backend.poll().unwrap();
+        assert_eq!(
+            rejected.mutation_failures[0].detail,
+            Some(BackendMutationDetail::LoopTiming)
+        );
+        assert!(!backend.waveforms.contains_key(&loop_id));
+        assert!(!backend.midi_data.contains_key(&loop_id));
 
         backend.set_take_alignment(loop_id, 5).unwrap();
         assert!(!backend.waveforms.contains_key(&loop_id));
@@ -2818,8 +2847,15 @@ mod tests {
                 .iter()
                 .filter(|command| matches!(command, Command::SetLoopTiming { .. }))
                 .count(),
-            3
+            2
         );
+        assert!(!commands.iter().any(|command| matches!(
+            command,
+            Command::SetLoopTiming {
+                length: Some(32),
+                ..
+            }
+        )));
     }
 
     #[shoop_wasm_test_support::shoop_test]

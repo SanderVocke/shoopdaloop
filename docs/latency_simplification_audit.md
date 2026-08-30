@@ -217,10 +217,10 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 47 | 6,839 | 266 | 7,105 |
+| Final production/documentation | 47 | 6,906 | 267 | 7,173 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 5,307 additions and 19,820 deletions across 77
+The simplification delta itself is 5,357 additions and 19,804 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
 simplification baseline, and 1,592 finally: 80 feature-branch tests were removed
 while 57 tests above the merge base remain. Inline unit tests are counted in their
@@ -245,7 +245,7 @@ bounds and allocation behavior it controls.
 | 6 | logical audio export assertions, exact/standard MIDI assertions including preroll start-state folding, and removed-command searches |
 | 7 | audio/MIDI dry/wet exact-once behavior, unavailable-offset processor advance, restored/future-loop propagation, wrap, and domain separation |
 | 8 | real-JACK exact observation-and-record-boundary test, connected-input agreement test, unsupported automatic error test, manual browser Worklet test |
-| 9 | reduced structs, delta-based per-channel control, aligned detail/edit coordinates, track-menu UI test, screenshot, and removed-symbol searches |
+| 9 | reduced structs, delta-based control, aligned detail/edit coordinates, browser rejection cache recovery, UI test/screenshot, and removed-symbol searches |
 | 10 | prepared-latch, armed audio/MIDI postroll, publication, and complete engine no-allocation suites; topology-arm test |
 | 11 | 64/64, 127/1, and 31/17/80 audio partition test; MIDI callback/wrap tests; 44.1/32/96 kHz session conversion |
 | 12 | case-insensitive tracked terminology audit returns no output |

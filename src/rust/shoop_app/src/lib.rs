@@ -6476,6 +6476,19 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::LoopTiming) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendLoopId::from_raw(entity);
+                        if let Some(model) = self
+                            .loops
+                            .values_mut()
+                            .find(|model| model.backend_id == backend_id)
+                        {
+                            model.audio_data = None;
+                            model.midi_data = None;
+                        }
+                    }
+                }
                 Some(BackendMutationDetail::TrackFxControl(rejected)) => {
                     if let (Some(entity), Some(control_key)) =
                         (failure.entity, fx_control_key(rejected))
@@ -18170,6 +18183,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model
             .desired_fx_controls
             .insert((backend_track, FxControlKey::Visible), fx_rejected.clone());
+        model.loops.get_mut(&loop_id).unwrap().audio_data = Some(BackendAudioData {
+            channels: Vec::new(),
+        });
+        model.loops.get_mut(&loop_id).unwrap().midi_data = Some(Vec::new());
         let mut control_rejections = backend.poll().unwrap();
         control_rejections.mutation_failures.extend([
             shoop_backend::BackendMutationFailure {
@@ -18203,6 +18220,15 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 driver_generation: 1,
                 sequence: 14,
                 operation_key: None,
+                kind: shoop_backend::BackendMutationKind::LoopControl,
+                entity: Some(backend_loop.raw()),
+                detail: Some(BackendMutationDetail::LoopTiming),
+                message: "timeline rejected".to_owned(),
+            },
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 15,
+                operation_key: None,
                 kind: shoop_backend::BackendMutationKind::SessionTransfer,
                 entity: None,
                 detail: None,
@@ -18219,6 +18245,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!model
             .desired_fx_controls
             .contains_key(&(backend_track, FxControlKey::Visible)));
+        assert!(model.loops[&loop_id].audio_data.is_none());
+        assert!(model.loops[&loop_id].midi_data.is_none());
 
         model.desired_track_controls.insert(
             (backend_track, TrackControlKey::OutputGain),
