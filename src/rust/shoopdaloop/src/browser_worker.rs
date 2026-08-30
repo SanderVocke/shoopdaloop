@@ -17,6 +17,7 @@ const WORKER_SCRIPT_URL: &str = "./audio_worker.js";
 const WORKLET_WASM_URL: &str = "./generated/shoop_audio_worklet.wasm";
 const EMBEDDED_WORKLET_ASSETS: &str = "shoopEmbeddedAudioWorklet";
 const MAX_QUANTUM: u32 = 2048;
+const MAX_RETAINED_TRACE_RECORDS: usize = 262_144;
 const GENERATION: u64 = 1;
 
 struct BrowserWorkerEndpoint(MessagePort);
@@ -41,6 +42,18 @@ pub struct BrowserWorkerDriver {
     message_handler: Closure<dyn FnMut(MessageEvent)>,
     error_handler: Closure<dyn FnMut(WebEvent)>,
     repaint_context: Rc<RefCell<Option<eframe::egui::Context>>>,
+    trace: Rc<RefCell<Option<crate::browser_trace::RealmTraceState>>>,
+}
+
+fn abort_pending_trace(trace: &Rc<RefCell<Option<crate::browser_trace::RealmTraceState>>>) {
+    if let Some(trace) = trace.borrow_mut().as_mut() {
+        if let Err(error) = trace.abort() {
+            tracing::error!(
+                error = %error,
+                "frontend.browser_trace.worker_abort_failed"
+            );
+        }
+    }
 }
 
 impl BrowserWorkerDriver {
@@ -68,11 +81,35 @@ impl BrowserWorkerDriver {
         let receive_control = transport.clone();
         let repaint_context = Rc::new(RefCell::new(None::<eframe::egui::Context>));
         let receive_repaint_context = Rc::clone(&repaint_context);
+        let trace = Rc::new(RefCell::new(None::<crate::browser_trace::RealmTraceState>));
+        let receive_trace = Rc::clone(&trace);
         let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
             if let Some(json) = event.data().as_string() {
                 let _ = receive_control.receive(GENERATION, &json);
             } else {
-                receive_control.fail("worker engine emitted a non-string event");
+                let handled = {
+                    let mut slot = receive_trace.borrow_mut();
+                    if let Some(trace) = slot.as_mut() {
+                        match trace.handle_message(&event.data()) {
+                            Ok(handled) => handled,
+                            Err(error) => {
+                                tracing::error!(
+                                    error = %error,
+                                    "frontend.browser_trace.worker_message_failed"
+                                );
+                                let _ = trace.abort();
+                                receive_control
+                                    .fail(format!("Worker trace message failed: {error}"));
+                                true
+                            }
+                        }
+                    } else {
+                        crate::browser_trace::RealmTraceState::is_trace_message(&event.data())
+                    }
+                };
+                if !handled {
+                    receive_control.fail("worker engine emitted an unknown non-string event");
+                }
             }
             if let Some(context) = receive_repaint_context.borrow().as_ref() {
                 context.request_repaint();
@@ -82,7 +119,9 @@ impl BrowserWorkerDriver {
         application_port.start();
 
         let failure_control = transport.clone();
+        let failure_trace = Rc::clone(&trace);
         let error_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
+            abort_pending_trace(&failure_trace);
             failure_control.fail("browser engine Worker terminated unexpectedly");
         }) as Box<dyn FnMut(_)>);
         worker.set_onerror(Some(error_handler.as_ref().unchecked_ref()));
@@ -91,6 +130,7 @@ impl BrowserWorkerDriver {
         let initialize_worker = worker.clone();
         let initialize_port = application_port.clone();
         let initialize_control = transport.clone();
+        let initialize_trace = Rc::clone(&trace);
         wasm_bindgen_futures::spawn_local(async move {
             match load_engine_module().await {
                 Ok(module) => {
@@ -140,6 +180,7 @@ impl BrowserWorkerDriver {
                             initialize_worker.post_message_with_transfer(&options, &transfer)
                         });
                     if let Err(error) = result {
+                        abort_pending_trace(&initialize_trace);
                         initialize_control.fail(format!(
                             "could not initialize browser engine Worker: {error:?}"
                         ));
@@ -151,14 +192,18 @@ impl BrowserWorkerDriver {
                         0,
                         0,
                     ) {
+                        abort_pending_trace(&initialize_trace);
                         initialize_control
                             .fail(format!("could not attach browser engine Worker: {error}"));
                         return;
                     }
                     initialize_control.set_driver_state(BackendDriverState::Dummy);
                 }
-                Err(error) => initialize_control
-                    .fail(format!("could not load browser engine Worker: {error:?}")),
+                Err(error) => {
+                    abort_pending_trace(&initialize_trace);
+                    initialize_control
+                        .fail(format!("could not load browser engine Worker: {error:?}"));
+                }
             }
         });
 
@@ -169,11 +214,76 @@ impl BrowserWorkerDriver {
             message_handler,
             error_handler,
             repaint_context,
+            trace,
         })
     }
 
     pub fn set_repaint_context(&self, context: eframe::egui::Context) {
         *self.repaint_context.borrow_mut() = Some(context);
+    }
+
+    pub fn start_tracing(&self, engine_detail: bool) -> Result<bool> {
+        if self.trace.borrow().is_some() {
+            return Ok(true);
+        }
+        let trace = crate::browser_trace::RealmTraceState::new(
+            2,
+            102,
+            "Engine Worker",
+            48_000,
+            128,
+            8192,
+            MAX_RETAINED_TRACE_RECORDS,
+        )?;
+        self.application_port
+            .post_message(&trace.start_message(engine_detail)?)
+            .map_err(|error| anyhow!("could not start Worker tracing: {error:?}"))?;
+        *self.trace.borrow_mut() = Some(trace);
+        Ok(true)
+    }
+
+    pub fn poll_tracing(&self) -> Result<()> {
+        if let Some(trace) = self.trace.borrow_mut().as_mut() {
+            trace.poll()?;
+        }
+        Ok(())
+    }
+
+    pub fn has_active_trace(&self) -> bool {
+        self.trace.borrow().is_some()
+    }
+
+    pub fn discard_tracing(&self) {
+        let _ = self.request_stop_tracing();
+        if let Some(mut trace) = self.trace.borrow_mut().take() {
+            let _ = trace.abort();
+        }
+    }
+
+    pub fn request_stop_tracing(&self) -> Result<()> {
+        if self.trace.borrow().is_some() {
+            self.application_port
+                .post_message(&crate::browser_trace::RealmTraceState::stop_message()?)
+                .map_err(|error| anyhow!("could not stop Worker tracing: {error:?}"))?;
+        }
+        Ok(())
+    }
+
+    pub fn take_trace(&self) -> Result<Option<shoop_tracing::BrowserRealmData>> {
+        if !self
+            .trace
+            .borrow()
+            .as_ref()
+            .is_some_and(|trace| trace.stopped())
+        {
+            return Ok(None);
+        }
+        Ok(self
+            .trace
+            .borrow_mut()
+            .take()
+            .map(crate::browser_trace::RealmTraceState::finish)
+            .transpose()?)
     }
 
     pub fn state(&self) -> BackendDriverState {

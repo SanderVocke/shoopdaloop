@@ -45,6 +45,14 @@ pub struct WorkletHost {
     loop_content_id: Option<BackendLoopId>,
     loop_content_expected_bytes: usize,
     loop_content_bytes: Vec<u8>,
+    #[cfg(target_arch = "wasm32")]
+    trace: Option<shoop_tracing::RawTraceProducer>,
+    #[cfg(target_arch = "wasm32")]
+    trace_frame: u64,
+    #[cfg(target_arch = "wasm32")]
+    trace_transfer: Vec<u8>,
+    #[cfg(target_arch = "wasm32")]
+    trace_transfer_len: usize,
 }
 
 impl WorkletHost {
@@ -77,6 +85,14 @@ impl WorkletHost {
             loop_content_id: None,
             loop_content_expected_bytes: 0,
             loop_content_bytes: Vec::new(),
+            #[cfg(target_arch = "wasm32")]
+            trace: None,
+            #[cfg(target_arch = "wasm32")]
+            trace_frame: 0,
+            #[cfg(target_arch = "wasm32")]
+            trace_transfer: Vec::new(),
+            #[cfg(target_arch = "wasm32")]
+            trace_transfer_len: 0,
         })
     }
 
@@ -86,6 +102,68 @@ impl WorkletHost {
 
     pub fn output(&self) -> &[f32] {
         &self.output
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn start_tracing(
+        &mut self,
+        realm_id: u32,
+        clock_id: u32,
+        capacity_records: usize,
+        engine_detail: bool,
+    ) -> Result<(), String> {
+        if self.trace.is_some() {
+            return Err("worklet tracing is already active".to_owned());
+        }
+        if !(64..=65_536).contains(&capacity_records) {
+            return Err("trace record capacity must be in 64..=65536".to_owned());
+        }
+        let trace = shoop_tracing::RawTraceProducer::new(realm_id, clock_id, capacity_records)
+            .map_err(str::to_owned)?;
+        self.trace_transfer = vec![0; capacity_records * 48];
+        self.trace_transfer_len = 0;
+        trace.set_recording(true, engine_detail);
+        self.trace = Some(trace);
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn stop_tracing(&mut self) {
+        if let Some(trace) = &self.trace {
+            trace.set_recording(false, false);
+        }
+        self.trace = None;
+        self.trace_transfer.clear();
+        self.trace_transfer_len = 0;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_trace_frame(&mut self, frame: u64) {
+        self.trace_frame = frame;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn drain_trace(&mut self, maximum_bytes: usize) -> usize {
+        let limit = maximum_bytes.min(self.trace_transfer.len());
+        self.trace_transfer_len = self
+            .trace
+            .as_ref()
+            .map(|trace| trace.drain_into(&mut self.trace_transfer[..limit]))
+            .unwrap_or(0);
+        self.trace_transfer_len
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn trace_bytes(&self) -> &[u8] {
+        &self.trace_transfer[..self.trace_transfer_len]
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn trace_health(&self) -> shoop_tracing::RawProducerHealth {
+        self.trace
+            .as_ref()
+            .map(shoop_tracing::RawTraceProducer::health)
+            .unwrap_or_default()
     }
 
     pub fn process(
@@ -103,6 +181,14 @@ impl WorkletHost {
         {
             return false;
         }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(trace) = &self.trace {
+            trace.set_timestamp(self.trace_frame);
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _callback_span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
+        #[cfg(target_arch = "wasm32")]
+        let _cycle_span = shoop_tracing::realtime_span!("engine.rt.cycle", value = n_frames);
         for channel in 0..input_channels {
             self.packed_input[channel * n_frames..(channel + 1) * n_frames].copy_from_slice(
                 &self.input[channel * self.max_quantum..channel * self.max_quantum + n_frames],
@@ -122,6 +208,11 @@ impl WorkletHost {
         for channel in 0..output_channels {
             self.output[channel * self.max_quantum..channel * self.max_quantum + n_frames]
                 .copy_from_slice(&self.packed_output[channel * n_frames..(channel + 1) * n_frames]);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            shoop_tracing::realtime_frame_mark!("engine.callback");
+            self.trace_frame = self.trace_frame.saturating_add(n_frames as u64);
         }
         true
     }
@@ -1169,6 +1260,111 @@ pub unsafe extern "C" fn shoop_worklet_process(
 ) -> bool {
     host.as_mut()
         .is_some_and(|host| host.process(input_channels, output_channels, n_frames))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_start(
+    host: *mut WorkletHost,
+    realm_id: u32,
+    clock_id: u32,
+    capacity_records: usize,
+    engine_detail: bool,
+) -> bool {
+    host.as_mut().is_some_and(|host| {
+        host.start_tracing(realm_id, clock_id, capacity_records, engine_detail)
+            .is_ok()
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_stop(host: *mut WorkletHost) {
+    if let Some(host) = host.as_mut() {
+        host.stop_tracing();
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_set_frame(
+    host: *mut WorkletHost,
+    frame_low: u32,
+    frame_high: u32,
+) -> bool {
+    host.as_mut().is_some_and(|host| {
+        host.set_trace_frame(u64::from(frame_low) | (u64::from(frame_high) << 32));
+        true
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_drain(
+    host: *mut WorkletHost,
+    maximum_bytes: usize,
+) -> usize {
+    host.as_mut()
+        .map(|host| host.drain_trace(maximum_bytes))
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_ptr(host: *const WorkletHost) -> *const u8 {
+    host.as_ref()
+        .map(|host| host.trace_bytes().as_ptr())
+        .unwrap_or(std::ptr::null())
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_dropped(host: *const WorkletHost) -> u64 {
+    host.as_ref()
+        .map(|host| host.trace_health().dropped_records)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn shoop_worklet_trace_metadata_count() -> usize {
+    shoop_tracing::REALTIME_METADATA.len()
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn shoop_worklet_trace_metadata_id(index: usize) -> u32 {
+    shoop_tracing::REALTIME_METADATA
+        .get(index)
+        .map(|entry| entry.id)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn shoop_worklet_trace_metadata_namespace(index: usize) -> u32 {
+    shoop_tracing::REALTIME_METADATA
+        .get(index)
+        .map(|entry| u32::from(entry.namespace))
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn shoop_worklet_trace_metadata_label_ptr(index: usize) -> *const u8 {
+    shoop_tracing::REALTIME_METADATA
+        .get(index)
+        .map(|entry| entry.label.as_ptr())
+        .unwrap_or(std::ptr::null())
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn shoop_worklet_trace_metadata_label_len(index: usize) -> usize {
+    shoop_tracing::REALTIME_METADATA
+        .get(index)
+        .map(|entry| entry.label.len())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

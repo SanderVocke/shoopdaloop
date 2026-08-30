@@ -19,15 +19,12 @@ pub struct AppArgs {
     /// Fetch a startup session URL without asking for confirmation.
     #[arg(long, requires = "session")]
     pub force_url_session: bool,
-    #[cfg(not(target_arch = "wasm32"))]
-    /// Capture Tracy profiling data to ./traces.
+    /// Capture Perfetto profiling data.
     #[arg(long)]
     pub tracing: bool,
-    #[cfg(not(target_arch = "wasm32"))]
     /// Add detailed per-node engine zones. Requires tracing.
     #[arg(long, requires = "tracing")]
     pub tracing_engine_detail: bool,
-    #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
     #[cfg(not(target_arch = "wasm32"))]

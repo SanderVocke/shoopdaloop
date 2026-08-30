@@ -41,6 +41,7 @@ js-sys = "0.3"
 log = { workspace = true }
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
 shoop_session = { path = "../shoop_session" }
+shoop_tracing = { workspace = true, features = ["ordinary-web"] }
 shoop_worklet_client = { path = "../shoop_worklet_client" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
@@ -56,10 +57,12 @@ web-sys = { version = "0.3", features = [
     "AudioWorklet",
     "AudioWorkletNode",
     "AudioWorkletNodeOptions",
+    "Blob",
     "Document",
     "Element",
     "Event",
     "EventTarget",
+    "HtmlAnchorElement",
     "HtmlButtonElement",
     "HtmlCanvasElement",
     "Location",
@@ -84,12 +87,14 @@ web-sys = { version = "0.3", features = [
     "MessageEvent",
     "MessagePort",
     "Navigator",
+    "Performance",
     "ReadableStream",
     "ReadableStreamDefaultReader",
     "ReadableStreamReadResult",
     "Response",
     "Screen",
     "Storage",
+    "Url",
     "Worker",
     "WorkerOptions",
     "WorkerType",
@@ -105,7 +110,6 @@ tempfile = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
-tracy-nextest-capture.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

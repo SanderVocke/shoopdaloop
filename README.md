@@ -58,4 +58,4 @@ The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssem
 
 Copyright © Sander Vocke (2023–present) and other credited contributors. See [LICENSE](LICENSE).
 
-ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Carla, omniLua, Tracy, and many other open-source projects represented in `Cargo.lock`. Native archives include the pinned GPL-2.0-or-later Carla runtime and its corresponding-source information.
+ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Carla, omniLua, Perfetto, and many other open-source projects represented in `Cargo.lock`. Native archives include the pinned GPL-2.0-or-later Carla runtime and its corresponding-source information.

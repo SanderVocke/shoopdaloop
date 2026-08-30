@@ -25,6 +25,6 @@ artifacts/
 .build-env-debug.sh
 .build-env-release.sh
 rust-analyzer-target
-*.tracy
+*.pftrace
 traces/
 .vscode

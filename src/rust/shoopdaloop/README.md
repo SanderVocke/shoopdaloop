@@ -30,7 +30,7 @@ URL sessions opened later from the application still require confirmation.
 
 Native Cargo builds place a `SHOOP_SRC_TREE` marker beside the executable. The marker contains the relative path back to the repository root, so binaries run directly from `target/debug` or `target/release` load `resources/builtins` from the checkout. Runtime resolution checks only that exact sibling marker; it does not search parent directories. Packaged applications omit the marker and use their packaged `builtins` directory instead.
 
-`--tracing` captures Tracy 0.13.1-compatible profiling data in process and writes a numbered file below `./traces` after the application exits normally. It does not expose a live TCP profiler endpoint or require an external capture tool:
+`--tracing` captures standard Perfetto profiling data in process and writes a numbered `.pftrace` file below `./traces` after the application exits normally. It does not require a tracing daemon or external capture tool:
 
 ```sh
 cargo run -p shoopdaloop -- --tracing
@@ -80,6 +80,15 @@ Serve the application from localhost:
 ```sh
 cd src/rust/shoopdaloop
 trunk serve --open
+```
+
+Multirealm Perfetto tracing additionally requires cross-origin isolation. Build
+and serve the hosted output with the repository header-aware server:
+
+```sh
+trunk build
+cd ../../..
+python3 scripts/serve_web.py src/rust/shoopdaloop/dist --port 8080
 ```
 
 The same startup options are available as query parameters. For example, `?session=https%3A%2F%2Fexample.com%2Fdemo.shoop&force-url-session=1` fetches that trusted startup URL without confirmation. URL sessions opened later from the application still require confirmation.
@@ -190,7 +199,7 @@ python3 scripts/run_wasm_tests.py --runtime node --profile ci \
   --filter shared_failure_canary_is_ignored_by_default
 ```
 
-Every Rust testcase must use `#[shoop_test]` from `shoop_wasm_test_support`. It runs under native nextest with Tracy capture and under wasm-bindgen by default. Native-only tests use `no_wasm = "reason"`, tests that cannot tolerate an outer Tracy capture use `no_tracy = "reason"`, and Wasm-only tests use `wasm_only = "reason"`. Each modifier requires a non-empty reason. Keep unsupported imports behind narrow target gates.
+Every Rust testcase must use `#[shoop_test]` from `shoop_wasm_test_support`. It runs with per-test Perfetto capture under native nextest and the Node/Chromium Wasm harnesses. Native-only tests use `no_wasm = "reason"`, lifecycle/allocation tests that cannot tolerate an outer trace use `no_trace = "reason"`, and Wasm-only tests use `wasm_only = "reason"`. Each modifier requires a non-empty reason. `SHOOP_TEST_TRACE=off|failure|always` and `--trace` on the Wasm runner select retention. Keep unsupported imports behind narrow target gates.
 
 The orchestrator discovers package opt-in metadata, builds one profile-specific production worklet artifact, stages hashed assets outside the source tree, and runs each package with `--package-timeout` (600 seconds by default) inside a `--global-timeout` execution budget (3,600 seconds by default). Reports live under `target/wasm-tests/<profile>/reports/<runtime>`. A compile error, missing tool, malformed/truncated output, runner/browser/Worker failure, timeout, zero discovery, count mismatch, test failure, or teardown failure exits nonzero and retains JUnit where a runner log exists.
 

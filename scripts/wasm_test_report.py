@@ -114,6 +114,7 @@ def write_junit(
     elapsed_seconds: float,
     output: str,
     extra_properties: dict[str, str] | None = None,
+    testcase_properties: dict[str, dict[str, str]] | None = None,
 ) -> ParsedReport:
     parsed = parse_output(output)
     junit_output = xml_safe(output)
@@ -159,6 +160,11 @@ def write_junit(
             "testcase",
             {"name": f"{package}::{case.name}", "classname": package, "time": "0"},
         )
+        case_properties = (testcase_properties or {}).get(case.name, {})
+        if case_properties:
+            properties = ET.SubElement(node, "properties")
+            for name, value in case_properties.items():
+                ET.SubElement(properties, "property", {"name": name, "value": value})
         if case.status == "failed":
             failure = ET.SubElement(node, "failure", {"message": "Wasm testcase failed"})
             failure.text = junit_output

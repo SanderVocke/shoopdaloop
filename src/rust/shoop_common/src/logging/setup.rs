@@ -1,14 +1,11 @@
 use colored::Colorize;
 use lazy_static::lazy_static;
-use std::cell::RefCell;
 use std::collections::HashSet;
-use std::fmt::Write as _;
 use std::sync::Mutex;
-use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_log::NormalizeEvent;
 use tracing_subscriber::filter::filter_fn;
-use tracing_subscriber::fmt::format::{DefaultFields, Writer};
+use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
@@ -22,124 +19,6 @@ lazy_static! {
 pub fn register_log_module(name: &'static str) {
     if let Ok(mut modules) = LOG_MODULES.lock() {
         modules.insert(name);
-    }
-}
-
-#[derive(Default)]
-struct ShoopTracyConfig {
-    fields: DefaultFields,
-}
-
-impl tracing_tracy::Config for ShoopTracyConfig {
-    type Formatter = DefaultFields;
-
-    fn formatter(&self) -> &Self::Formatter {
-        &self.fields
-    }
-
-    fn format_fields_in_zone_name(&self) -> bool {
-        false
-    }
-}
-
-const TRACY_MESSAGE_MAX_BYTES: usize = u16::MAX as usize - 1;
-const TRACY_ERROR_COLOR: u32 = 0xFF000000;
-
-thread_local! {
-    static TRACY_EVENT_MESSAGES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-}
-
-struct ShoopTracyEventFieldVisitor<'a> {
-    dest: &'a mut String,
-    frame_mark: bool,
-    has_fields: bool,
-}
-
-impl Visit for ShoopTracyEventFieldVisitor<'_> {
-    fn record_bool(&mut self, field: &Field, value: bool) {
-        match (value, field.name()) {
-            (_, "tracy.frame_mark") => self.frame_mark = value,
-            (true, _) => self.record_str(field, "true"),
-            (false, _) => self.record_str(field, "false"),
-        }
-    }
-
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.dest.push_str(", ");
-        self.dest.push_str(field.name());
-        self.dest.push_str(" = ");
-        self.dest.push_str(value);
-        self.has_fields = true;
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        let _ = write!(self.dest, ", {} = {value:?}", field.name());
-        self.has_fields = true;
-    }
-}
-
-#[derive(Clone)]
-struct ShoopTracyEventLayer {
-    client: tracy_client::Client,
-}
-
-impl ShoopTracyEventLayer {
-    fn new() -> Self {
-        Self {
-            client: tracy_client::Client::start(),
-        }
-    }
-
-    fn emit_message(&self, message: &str) {
-        if message.len() < TRACY_MESSAGE_MAX_BYTES {
-            self.client.message(message, 0);
-            return;
-        }
-
-        let mut end = TRACY_MESSAGE_MAX_BYTES;
-        while !message.is_char_boundary(end) {
-            end -= 1;
-        }
-        self.client.color_message(
-            "event message is too long and was truncated",
-            TRACY_ERROR_COLOR,
-            0,
-        );
-        self.client.message(&message[..end], 0);
-    }
-}
-
-impl<S: Subscriber> Layer<S> for ShoopTracyEventLayer {
-    fn on_event(&self, event: &Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        let normalized_metadata = event.normalized_metadata();
-        let metadata = normalized_metadata
-            .as_ref()
-            .unwrap_or_else(|| event.metadata());
-
-        let mut message = TRACY_EVENT_MESSAGES
-            .with(|messages| messages.borrow_mut().pop())
-            .unwrap_or_else(|| String::with_capacity(64));
-        message.clear();
-        let _ = write!(message, "log.level = {}", metadata.level());
-
-        let mut visitor = ShoopTracyEventFieldVisitor {
-            dest: &mut message,
-            frame_mark: false,
-            has_fields: false,
-        };
-        event.record(&mut visitor);
-        let has_fields = visitor.has_fields;
-        let frame_mark = visitor.frame_mark;
-        drop(visitor);
-
-        if has_fields {
-            self.emit_message(&message);
-        }
-        if frame_mark {
-            self.client.frame_mark();
-        }
-
-        TRACY_EVENT_MESSAGES.with(|messages| messages.borrow_mut().push(message));
     }
 }
 
@@ -226,23 +105,13 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
         .event_format(ShoopFmt)
         .with_writer(std::io::stdout)
         .with_filter(env_filter);
-
-    let tracing_enabled = crate::tracing_helpers::is_tracing_enabled();
-    let tracy_span_layer = tracing_enabled.then(|| {
-        tracing_tracy::TracyLayer::new(ShoopTracyConfig::default()).with_filter(filter_fn(
-            |metadata| metadata.is_span() && crate::tracing_helpers::is_tracing_enabled(),
-        ))
-    });
-    let tracy_event_layer = tracing_enabled.then(|| {
-        ShoopTracyEventLayer::new().with_filter(filter_fn(|metadata| {
-            metadata.is_event() && crate::tracing_helpers::is_tracing_enabled()
-        }))
-    });
+    let perfetto_layer = shoop_tracing::subscriber_layer().with_filter(filter_fn(|metadata| {
+        (metadata.is_span() || metadata.is_event()) && shoop_tracing::is_tracing_enabled()
+    }));
 
     tracing_subscriber::registry()
         .with(fmt_layer)
-        .with(tracy_span_layer)
-        .with(tracy_event_layer)
+        .with(perfetto_layer)
         .init();
     let _ = tracing_log::LogTracer::init();
 

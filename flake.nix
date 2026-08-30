@@ -72,6 +72,7 @@
           patchelf
           pkg-config
           python
+          protobuf
           trunk
           wasm-pack
           xvfb-run

@@ -1,38 +1,24 @@
 #[shoop_wasm_test_support::shoop_test(
-    no_wasm = "requires the native embedded Tracy runtime and filesystem",
-    no_tracy = "manages the embedded capture lifecycle directly"
+    no_wasm = "requires the native Perfetto runtime and filesystem",
+    no_trace = "manages the capture lifecycle directly"
 )]
-fn embedded_capture_rejects_an_existing_output() {
+fn capture_path_selection_preserves_existing_output() {
     let temporary_dir = tempfile::tempdir().expect("create capture output directory");
-    let output = temporary_dir.path().join("existing.tracy");
-    std::fs::write(&output, b"occupied").expect("occupy capture output");
-    let output = output.to_str().expect("temporary path is UTF-8");
+    let occupied = temporary_dir.path().join("0001-existing.pftrace");
+    std::fs::write(&occupied, b"occupied").expect("occupy first capture output");
 
-    let status = unsafe {
-        tracy_client_sys::___tracy_embedded_capture_configure(
-            output.as_ptr().cast(),
-            output.len(),
-            256 * 1024,
-            256 * 1024 * 1024,
-        )
-    };
+    let mut capture =
+        shoop_common::tracing_capture::CaptureSession::configure(temporary_dir.path(), "existing")
+            .expect("start capture after occupied path");
     assert_eq!(
-        status,
-        tracy_client_sys::TRACY_EMBEDDED_CAPTURE_OUTPUT_EXISTS
+        capture.path(),
+        temporary_dir.path().join("0002-existing.pftrace")
     );
+    shoop_tracing::set_tracing_enabled(true);
+    shoop_tracing::realtime_frame_mark!("shoop.capture.existing.event");
+    shoop_tracing::set_tracing_enabled(false);
+    capture.finish().expect("finish capture");
 
-    let length =
-        unsafe { tracy_client_sys::___tracy_embedded_capture_get_error(std::ptr::null_mut(), 0) };
-    let mut bytes = vec![0_u8; length + 1];
-    unsafe {
-        tracy_client_sys::___tracy_embedded_capture_get_error(
-            bytes.as_mut_ptr().cast(),
-            bytes.len(),
-        );
-    }
-    assert_eq!(
-        String::from_utf8_lossy(&bytes[..length]),
-        "capture output already exists"
-    );
-    assert_eq!(std::fs::read(&output).unwrap(), b"occupied");
+    assert_eq!(std::fs::read(occupied).unwrap(), b"occupied");
+    assert!(capture.path().metadata().unwrap().len() > 0);
 }

@@ -2257,7 +2257,7 @@ impl Session {
     /// counted in [`Self::n_stale_cycles`].
     pub fn process(&mut self, n_frames: usize) {
         self.profiler
-            .set_enabled(shoop_tracing::is_tracing_requested());
+            .set_enabled(shoop_tracing::is_realtime_cpu_timing_enabled());
         let _session_span = shoop_tracing::realtime_span!("engine.rt.session", value = n_frames);
         // A stale graph runs the last-applied schedule rather than refusing the cycle.
         //
@@ -2492,19 +2492,19 @@ impl Session {
             route.global_capacity_deferrals = route.global_capacity_deferrals.saturating_add(1);
         }
         // Callback-owned cumulative counters: bounded diagnostics without per-message logging.
-        shoop_tracing::realtime_plot_detail!(
+        shoop_tracing::realtime_plot_i64_detail!(
             "engine.fx.global_midi.rejected",
             route.global_rejected
         );
-        shoop_tracing::realtime_plot_detail!(
+        shoop_tracing::realtime_plot_i64_detail!(
             "engine.fx.global_midi.pending_overwrites",
             route.global_pending_overwrites
         );
-        shoop_tracing::realtime_plot_detail!(
+        shoop_tracing::realtime_plot_i64_detail!(
             "engine.fx.global_midi.pending_drained",
             route.global_pending_drained
         );
-        shoop_tracing::realtime_plot_detail!(
+        shoop_tracing::realtime_plot_i64_detail!(
             "engine.fx.global_midi.capacity_deferrals",
             route.global_capacity_deferrals
         );

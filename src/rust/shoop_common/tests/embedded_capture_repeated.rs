@@ -5,11 +5,11 @@ use shoop_common::tracing_capture::{
 };
 
 #[shoop_wasm_test_support::shoop_test(
-    no_wasm = "requires the native embedded Tracy runtime and filesystem",
-    no_tracy = "manages the embedded capture lifecycle directly"
+    no_wasm = "requires the native Perfetto runtime and filesystem",
+    no_trace = "manages the capture lifecycle directly"
 )]
 fn embedded_capture_supports_save_then_discard() {
-    let temporary_dir = std::env::var_os("SHOOP_TRACY_TEST_OUTPUT_DIR")
+    let temporary_dir = std::env::var_os("SHOOP_PERFETTO_TEST_OUTPUT_DIR")
         .map(PathBuf::from)
         .map(TemporaryOutput::External)
         .unwrap_or_else(|| {
@@ -20,14 +20,15 @@ fn embedded_capture_supports_save_then_discard() {
 
     let mut first = ReusableCaptureSession::start(output_dir, "repeated-save")
         .expect("start first reusable capture");
-    let client = tracy_client::Client::start();
     first
         .wait_until_capturing()
         .expect("wait for first reusable capture");
     let first_status = CaptureStatus::current();
     assert!(first_status.active);
     assert!(first_status.event_storage_bytes > 0);
-    client.message("shoop.embedded_capture.repeated.first", 0);
+    shoop_tracing::set_tracing_enabled(true);
+    shoop_tracing::realtime_frame_mark!("shoop.capture.repeated.first");
+    shoop_tracing::set_tracing_enabled(false);
     first
         .stop(CaptureDisposition::Save)
         .expect("save first reusable capture");
@@ -44,7 +45,9 @@ fn embedded_capture_supports_save_then_discard() {
     let second_status = CaptureStatus::current();
     assert!(second_status.active);
     assert!(second_status.event_storage_bytes > 0);
-    client.message("shoop.embedded_capture.repeated.second", 0);
+    shoop_tracing::set_tracing_enabled(true);
+    shoop_tracing::realtime_frame_mark!("shoop.capture.repeated.second");
+    shoop_tracing::set_tracing_enabled(false);
     second
         .stop(CaptureDisposition::Discard)
         .expect("discard second reusable capture");

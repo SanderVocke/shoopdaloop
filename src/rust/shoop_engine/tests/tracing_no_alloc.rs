@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 //! Verifies that tracing-enabled realtime cycles keep allocation permission inside the
-//! direct Tracy helpers. Ordinary engine work is still enclosed by the global guard.
+//! direct tracing helpers. Ordinary engine work is still enclosed by the global guard.
 
 use assert_no_alloc::assert_no_alloc;
 #[cfg(debug_assertions)]
@@ -21,9 +21,9 @@ fn audio_port(id: u64, name: &str, direction: PortDirection) -> Port {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
-fn coarse_and_detailed_tracy_keep_the_engine_guarded() {
+fn coarse_and_detailed_tracing_keep_the_engine_guarded() {
     let mut session = Session::default();
     session.set_buffer_size(64);
     let input = session.add_port(audio_port(1, "input", PortDirection::Input));
@@ -43,7 +43,12 @@ fn coarse_and_detailed_tracy_keep_the_engine_guarded() {
     let (mut engine, mut handle) = shoop_engine::engine::split(session, 8);
     engine.run_cycle(64);
 
-    let _client = tracy_client::Client::start();
+    let temporary_dir = tempfile::tempdir().expect("create capture directory");
+    let mut capture = shoop_tracing::capture::ReusableCaptureSession::start(
+        temporary_dir.path(),
+        "engine-allocation-test",
+    )
+    .expect("start Perfetto capture");
     shoop_tracing::set_tracing_enabled(true);
     shoop_tracing::set_tracing_output_enabled(true);
 
@@ -66,4 +71,7 @@ fn coarse_and_detailed_tracy_keep_the_engine_guarded() {
 
     shoop_tracing::set_engine_detail_enabled(false);
     shoop_tracing::set_tracing_enabled(false);
+    capture
+        .stop(shoop_tracing::capture::CaptureDisposition::Discard)
+        .expect("discard Perfetto capture");
 }

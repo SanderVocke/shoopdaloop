@@ -1,0 +1,45 @@
+kind,gate,name,value_type,value_semantics
+event,coarse,engine.callback,,callback boundary marker
+plot,detail,engine.fx.bridge.deadline_misses,i64,cumulative deadline miss count
+plot,detail,engine.fx.bridge.fallback_reason,i64,categorical fallback reason code
+plot,detail,engine.fx.bridge.generation,i64,transport generation identifier
+plot,detail,engine.fx.bridge.midi_input_overflows,i64,cumulative overflow count
+plot,detail,engine.fx.bridge.slot_occupancy,i64,occupied transport slot count
+plot,detail,engine.fx.global_midi.capacity_deferrals,i64,cumulative capacity deferral count
+plot,detail,engine.fx.global_midi.pending_drained,i64,cumulative drained message count
+plot,detail,engine.fx.global_midi.pending_overwrites,i64,cumulative pending overwrite count
+plot,detail,engine.fx.global_midi.rejected,i64,cumulative rejected message count
+span,coarse,engine.rt.callback,u64,frame count
+span,detail,engine.rt.channels.prepare,u64,bounded node/index identifier
+span,detail,engine.rt.channels.process,u64,bounded node/index identifier
+span,coarse,engine.rt.commands,,
+span,detail,engine.rt.composites.begin,,
+span,detail,engine.rt.composites.timeline,,
+span,coarse,engine.rt.cycle,u64,frame count
+span,coarse,engine.rt.driver,u64,audio driver kind code
+span,coarse,engine.rt.driver.cpal_input,u64,frame count
+span,coarse,engine.rt.driver.cpal_output,u64,frame count
+span,coarse,engine.rt.driver.dummy,u64,integer callsite value
+span,coarse,engine.rt.driver.jack,u64,frame count
+span,coarse,engine.rt.driver.midi_input,u64,MIDI byte count
+span,detail,engine.rt.fx.bridge_fallback,u64,categorical fallback reason code
+span,detail,engine.rt.fx.bridge_notify,,
+span,detail,engine.rt.fx.bridge_process,u64,frame count
+span,detail,engine.rt.fx.bridge_submit,u64,bridge sequence identifier
+span,detail,engine.rt.fx.bridge_wait,u64,configured wait timeout in nanoseconds
+span,detail,engine.rt.fx.bridge_worker,u64,bridge sequence identifier
+span,detail,engine.rt.fx.oxisynth_process,u64,frame count
+span,detail,engine.rt.fx.plugin_process,u64,frame count
+span,coarse,engine.rt.fx.processor,u64,bounded node/index identifier
+span,detail,engine.rt.fx.subprocess_submit,u64,frame count
+span,detail,engine.rt.fx.subprocess_wait,u64,frame count
+span,coarse,engine.rt.graph_state,,
+span,coarse,engine.rt.loops,u64,loop group count
+span,detail,engine.rt.midi.playback,,
+span,detail,engine.rt.ports.prepare,u64,bounded node/index identifier
+span,detail,engine.rt.ports.process,u64,bounded node/index identifier
+span,detail,engine.rt.publish_trace,,
+span,coarse,engine.rt.pump,,
+span,detail,engine.rt.routing.external,u64,bounded node/index identifier
+span,coarse,engine.rt.session,u64,frame count
+span,coarse,engine.rt.state_publication,,

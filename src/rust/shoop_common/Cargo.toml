@@ -15,12 +15,7 @@ ctor = { workspace = true }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing-tracy = { workspace = true }
-tracy-client = { workspace = true }
-tracy-client-sys = { workspace = true }
-shoop_tracing = { workspace = true, features = ["tracy"] }
-thiserror = { workspace = true }
-libc = { workspace = true }
+shoop_tracing = { workspace = true, features = ["perfetto"] }
 
 [lints]
 workspace = true
@@ -28,7 +23,6 @@ workspace = true
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 tempfile = { workspace = true }
-tracy-nextest-capture = { workspace = true }
 
 [build-dependencies]
 toml = { workspace = true }

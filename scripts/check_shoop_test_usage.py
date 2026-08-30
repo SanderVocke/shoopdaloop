@@ -12,14 +12,13 @@ RUST_ROOT = ROOT / "src" / "rust"
 MACRO_IMPLEMENTATION = RUST_ROOT / "shoop_test_macros" / "src" / "lib.rs"
 FORBIDDEN = re.compile(
     r"#\[\s*(?:::)?(?:(?:[A-Za-z_][A-Za-z0-9_]*::)*)"
-    r"(?:test|wasm_bindgen_test|tracy_capture_test)\b[^]]*\]"
+    r"(?:test|wasm_bindgen_test)\b[^]]*\]"
     r"|#\[\s*cfg_attr\([^]]*,\s*(?:::)?"
     r"(?:(?:[A-Za-z_][A-Za-z0-9_]*::)*)"
-    r"(?:test|wasm_bindgen_test|tracy_capture_test)\b[^]]*\]"
+    r"(?:test|wasm_bindgen_test)\b[^]]*\]"
 )
 GENERATED_ATTRIBUTES = {
     "#[test]",
-    "#[::shoop_wasm_test_support::tracy_capture_test]",
     "#[::shoop_wasm_test_support::wasm_bindgen_test]",
 }
 
@@ -36,7 +35,7 @@ def main() -> int:
             attribute = match.group(0)
             if path == MACRO_IMPLEMENTATION and attribute in GENERATED_ATTRIBUTES:
                 following = text[match.end() :].lstrip()
-                if following.startswith(("#native", "#function")):
+                if following.startswith(("#native", "#wasm")):
                     continue
             relative = path.relative_to(ROOT)
             errors.append(
