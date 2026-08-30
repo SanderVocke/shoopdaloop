@@ -260,14 +260,22 @@ impl AudioMidiLoop {
         values: PreparedLatency,
         logical_capacity: usize,
     ) -> Result<(), LoopError> {
-        let retention = shoop_latency::RetentionWindow::for_offset(values.recording_offset());
-        let retained_before = retention.before_frames();
-        let retained_after = retention.after_frames();
         for channel in &mut self.audio_channels {
-            channel.prepare_latency_retention(logical_capacity, retained_before, retained_after)?;
+            let retention = shoop_latency::RetentionWindow::for_offset(
+                recording_offset_for_channel(values, channel.mode()),
+            );
+            channel.prepare_latency_retention(
+                logical_capacity,
+                retention.before_frames(),
+                retention.after_frames(),
+            )?;
         }
         for channel in &mut self.midi_channels {
-            channel.prepare_latency_retention(retained_before, retained_after)?;
+            let retention = shoop_latency::RetentionWindow::for_offset(
+                recording_offset_for_channel(values, channel.mode()),
+            );
+            channel
+                .prepare_latency_retention(retention.before_frames(), retention.after_frames())?;
         }
         self.set_pending_latency(values);
         Ok(())
@@ -546,6 +554,17 @@ impl AudioMidiLoop {
     }
 }
 
+fn recording_offset_for_channel(
+    values: PreparedLatency,
+    mode: ChannelMode,
+) -> shoop_latency::RecordingOffset {
+    if mode == ChannelMode::Wet {
+        values.wet_recording_offset()
+    } else {
+        values.recording_offset()
+    }
+}
+
 fn latch_channel_latency(
     mode: LoopMode,
     operation_frame: u64,
@@ -565,7 +584,14 @@ fn latch_channel_latency(
         } else if matches!(mode, LoopMode::Recording | LoopMode::Replacing)
             && (flags.contains(ProcessFlags::RECORD) || flags.contains(ProcessFlags::REPLACE))
         {
-            channel.latch_recording_latency(operation_frame, mode == LoopMode::Recording);
+            let values = channel
+                .pending_latency()
+                .expect("recording latency is pending before latching");
+            channel.latch_recording_latency(
+                operation_frame,
+                mode == LoopMode::Recording,
+                recording_offset_for_channel(values, channel.mode()),
+            );
         }
     }
     for channel in midi {
@@ -581,7 +607,14 @@ fn latch_channel_latency(
         } else if matches!(mode, LoopMode::Recording | LoopMode::Replacing)
             && (flags.contains(ProcessFlags::RECORD) || flags.contains(ProcessFlags::REPLACE))
         {
-            channel.latch_recording_latency(operation_frame, mode == LoopMode::Recording);
+            let values = channel
+                .pending_latency()
+                .expect("recording latency is pending before latching");
+            channel.latch_recording_latency(
+                operation_frame,
+                mode == LoopMode::Recording,
+                recording_offset_for_channel(values, channel.mode()),
+            );
         }
     }
 }
@@ -622,6 +655,7 @@ mod tests {
             shoop_latency::RecordingOffset::new(offset).unwrap(),
             shoop_latency::ProcessorRenderAdvance::new(advance).unwrap(),
         )
+        .unwrap()
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -639,6 +673,29 @@ mod tests {
         l.set_mode(L::Recording);
         check!(l.audio_channel(0).unwrap().capture_alignment_frames() == 7);
         check!(l.latched_latency().unwrap().values == prepared_latency(7, 0));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn ordinary_recording_prepares_and_latches_role_specific_alignment() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(16, C::Dry);
+        l.add_audio_channel(16, C::Wet);
+        l.add_midi_channel(32, C::Dry);
+        l.add_midi_channel(32, C::Wet);
+        l.prepare_latency(prepared_latency(-5, 7), 8).unwrap();
+
+        let dry = l.audio_channel(0).unwrap();
+        check!(dry.retained_before_frames() == 5);
+        check!(dry.retained_after_frames() == 0);
+        let wet = l.audio_channel(1).unwrap();
+        check!(wet.retained_before_frames() == 0);
+        check!(wet.retained_after_frames() == 2);
+
+        l.set_mode(L::Recording);
+        check!(l.audio_channel(0).unwrap().capture_alignment_frames() == -5);
+        check!(l.audio_channel(1).unwrap().capture_alignment_frames() == 2);
+        check!(l.midi_channel(0).unwrap().capture_alignment_frames() == -5);
+        check!(l.midi_channel(1).unwrap().capture_alignment_frames() == 2);
     }
 
     #[shoop_wasm_test_support::shoop_test]

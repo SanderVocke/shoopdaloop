@@ -67,6 +67,51 @@ impl ProcessorRenderAdvance {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ProcessorLatencyAdjustment {
+    Automatic,
+    #[default]
+    ManualOverride,
+    AutomaticPlusTrim,
+}
+
+pub fn resolve_processor_advance(
+    automatic: Option<ProcessorRenderAdvance>,
+    adjustment: ProcessorLatencyAdjustment,
+    manual_or_trim_frames: i32,
+) -> Result<ProcessorRenderAdvance, LatencyDomainError> {
+    match adjustment {
+        ProcessorLatencyAdjustment::Automatic => {
+            automatic.ok_or(LatencyDomainError::AutomaticProcessorLatencyUnavailable)
+        }
+        ProcessorLatencyAdjustment::ManualOverride => {
+            let frames = u32::try_from(manual_or_trim_frames)
+                .map_err(|_| LatencyDomainError::NegativeProcessorLatency(manual_or_trim_frames))?;
+            ProcessorRenderAdvance::new(frames)
+        }
+        ProcessorLatencyAdjustment::AutomaticPlusTrim => {
+            let automatic =
+                automatic.ok_or(LatencyDomainError::AutomaticProcessorLatencyUnavailable)?;
+            let frames = i64::from(automatic.frames()) + i64::from(manual_or_trim_frames);
+            let frames = u32::try_from(frames).map_err(|_| {
+                LatencyDomainError::NegativeProcessorLatency(
+                    i32::try_from(frames).unwrap_or(i32::MIN),
+                )
+            })?;
+            ProcessorRenderAdvance::new(frames)
+        }
+    }
+}
+
+pub fn wet_recording_offset(
+    recording_offset: RecordingOffset,
+    processor_advance: ProcessorRenderAdvance,
+) -> Result<RecordingOffset, LatencyDomainError> {
+    let advance = i32::try_from(processor_advance.frames())
+        .map_err(|_| LatencyDomainError::FrameArithmeticOverflow)?;
+    recording_offset.checked_add(advance)
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RetentionWindow {
     before_frames: u32,
     after_frames: u32,
@@ -168,6 +213,10 @@ pub enum LatencyDomainError {
     FrameArithmeticOverflow,
     #[error("automatic recording offset is unavailable; enter a manual value")]
     AutomaticOffsetUnavailable,
+    #[error("automatic processor latency is unavailable; enter a manual value")]
+    AutomaticProcessorLatencyUnavailable,
+    #[error("processor latency cannot be negative: {0}")]
+    NegativeProcessorLatency(i32),
 }
 
 #[cfg(test)]
@@ -223,6 +272,63 @@ mod tests {
             CaptureFrameMapping::processor_dispatch_frame(100, 17).unwrap(),
             83
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn processor_latency_resolution_and_wet_derivation_are_checked() {
+        let automatic = ProcessorRenderAdvance::new(17).unwrap();
+        assert_eq!(
+            resolve_processor_advance(Some(automatic), ProcessorLatencyAdjustment::Automatic, 99),
+            Ok(automatic)
+        );
+        assert_eq!(
+            resolve_processor_advance(
+                Some(automatic),
+                ProcessorLatencyAdjustment::ManualOverride,
+                23
+            ),
+            ProcessorRenderAdvance::new(23)
+        );
+        assert_eq!(
+            resolve_processor_advance(
+                Some(automatic),
+                ProcessorLatencyAdjustment::AutomaticPlusTrim,
+                -5
+            ),
+            ProcessorRenderAdvance::new(12)
+        );
+        assert_eq!(
+            resolve_processor_advance(
+                Some(automatic),
+                ProcessorLatencyAdjustment::ManualOverride,
+                -1
+            ),
+            Err(LatencyDomainError::NegativeProcessorLatency(-1))
+        );
+        assert_eq!(
+            resolve_processor_advance(
+                Some(ProcessorRenderAdvance::new(3).unwrap()),
+                ProcessorLatencyAdjustment::AutomaticPlusTrim,
+                -4
+            ),
+            Err(LatencyDomainError::NegativeProcessorLatency(-1))
+        );
+        assert_eq!(
+            resolve_processor_advance(None, ProcessorLatencyAdjustment::Automatic, 0),
+            Err(LatencyDomainError::AutomaticProcessorLatencyUnavailable)
+        );
+        assert_eq!(
+            wet_recording_offset(
+                RecordingOffset::new(-5).unwrap(),
+                ProcessorRenderAdvance::new(12).unwrap()
+            ),
+            RecordingOffset::new(7)
+        );
+        assert!(wet_recording_offset(
+            RecordingOffset::new(MAX_COMPENSATION_FRAMES as i32).unwrap(),
+            ProcessorRenderAdvance::new(1).unwrap()
+        )
+        .is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

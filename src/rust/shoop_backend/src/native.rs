@@ -2711,15 +2711,21 @@ impl Backend for NativeBackend {
         ) {
             runtime.prepare_loop_latency(loop_id)?;
             if mode == BackendLoopMode::Replacing {
-                let expected = runtime
+                let latency = runtime
                     .tracks
                     .values()
                     .find(|track| track.loops.contains(&loop_id))
-                    .and_then(|track| track.state.latency.effective_offset_frames)
-                    .ok_or_else(|| {
-                        anyhow!("recording offset is unavailable; enter a manual value")
-                    })?;
-                if expected != 0 {
+                    .map(|track| &track.state.latency)
+                    .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+                let expected = latency.effective_offset_frames.ok_or_else(|| {
+                    anyhow!("recording offset is unavailable; enter a manual value")
+                })?;
+                let wet_expected = shoop_latency::wet_recording_offset(
+                    shoop_latency::RecordingOffset::new(expected)?,
+                    shoop_latency::ProcessorRenderAdvance::new(latency.processor_advance_frames)?,
+                )?
+                .frames();
+                if expected != 0 || wet_expected != 0 {
                     return Err(anyhow!(
                         "replacement with a nonzero recording offset is unsupported; record a new take instead"
                     ));
@@ -2728,16 +2734,36 @@ impl Backend for NativeBackend {
                     .loops
                     .get(&loop_id)
                     .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
-                let audio_matches = loop_.audio.iter().all(|channel| {
-                    channel
-                        .get_state()
-                        .is_ok_and(|state| state.capture_alignment_frames == expected)
-                });
-                let midi_matches = loop_.midi.iter().all(|channel| {
-                    channel
-                        .get_state()
-                        .is_ok_and(|state| state.capture_alignment_frames == expected)
-                });
+                let audio_matches =
+                    loop_
+                        .audio
+                        .iter()
+                        .zip(&loop_.audio_modes)
+                        .all(|(channel, mode)| {
+                            let expected = if *mode == BackendChannelMode::Wet {
+                                wet_expected
+                            } else {
+                                expected
+                            };
+                            channel
+                                .get_state()
+                                .is_ok_and(|state| state.capture_alignment_frames == expected)
+                        });
+                let midi_matches =
+                    loop_
+                        .midi
+                        .iter()
+                        .zip(&loop_.midi_modes)
+                        .all(|(channel, mode)| {
+                            let expected = if *mode == BackendChannelMode::Wet {
+                                wet_expected
+                            } else {
+                                expected
+                            };
+                            channel
+                                .get_state()
+                                .is_ok_and(|state| state.capture_alignment_frames == expected)
+                        });
                 if !audio_matches || !midi_matches {
                     return Err(anyhow!(
                         "replacement offset differs from the take; match the take alignment first"

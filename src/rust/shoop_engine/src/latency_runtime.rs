@@ -27,22 +27,31 @@ pub(crate) fn cyclic_render_dispatch_position(
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PreparedLatency {
     recording_offset: RecordingOffset,
+    wet_recording_offset: RecordingOffset,
     processor_advance: ProcessorRenderAdvance,
 }
 
 impl PreparedLatency {
-    pub const fn new(
+    pub fn new(
         recording_offset: RecordingOffset,
         processor_advance: ProcessorRenderAdvance,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, shoop_latency::LatencyDomainError> {
+        Ok(Self {
             recording_offset,
+            wet_recording_offset: shoop_latency::wet_recording_offset(
+                recording_offset,
+                processor_advance,
+            )?,
             processor_advance,
-        }
+        })
     }
 
     pub const fn recording_offset(self) -> RecordingOffset {
         self.recording_offset
+    }
+
+    pub const fn wet_recording_offset(self) -> RecordingOffset {
+        self.wet_recording_offset
     }
 
     pub const fn processor_advance(self) -> ProcessorRenderAdvance {
@@ -151,7 +160,8 @@ impl AtomicEffectiveLatencyPublication {
                         .expect("published recording offset is validated"),
                     ProcessorRenderAdvance::new(processor_advance)
                         .expect("published processor advance is validated"),
-                );
+                )
+                .expect("published wet recording offset is validated");
                 return Some(PublishedEffectiveLatency {
                     values,
                     operation_frame: (operation_frame != NO_LATCHED_FRAME)
@@ -173,11 +183,13 @@ mod tests {
         let first = PreparedLatency::new(
             RecordingOffset::new(-7).unwrap(),
             ProcessorRenderAdvance::new(11).unwrap(),
-        );
+        )
+        .unwrap();
         let second = PreparedLatency::new(
             RecordingOffset::new(19).unwrap(),
             ProcessorRenderAdvance::new(23).unwrap(),
-        );
+        )
+        .unwrap();
         let mut latch = EffectiveLatencyLatch::default();
         latch.prepare(first);
         assert!(latch.latch(101));

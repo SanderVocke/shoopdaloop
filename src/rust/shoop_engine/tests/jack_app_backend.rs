@@ -288,7 +288,8 @@ fn exact_jack_capture_latency_is_available_as_one_recording_offset() {
             PreparedLatency::new(
                 shoop_latency::RecordingOffset::new(automatic).unwrap(),
                 shoop_latency::ProcessorRenderAdvance::new(0).unwrap(),
-            ),
+            )
+            .unwrap(),
             64,
         )
         .unwrap();

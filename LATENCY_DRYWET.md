@@ -59,31 +59,31 @@ Out of scope:
 
 Depends on: none.
 
-- [ ] Add a typed processor-latency adjustment model with Automatic, Manual override, and Automatic + signed trim resolution.
+- [x] Add a typed processor-latency adjustment model with Automatic, Manual override, and Automatic + signed trim resolution.
 - [ ] Represent automatic processor latency, user input, and effective processor latency separately; keep the effective callback value as `ProcessorRenderAdvance`.
-- [ ] Add checked derivation for the ordinary-record wet alignment `R + P`, including non-negative processor resolution and combined alignment bounds.
-- [ ] Define compact prepared values that make both direct/dry and wet recording offsets available without callback-time arithmetic.
-- [ ] Add table-driven domain tests for positive, negative, mixed-sign, zero, maximum, underflow, overflow, unavailable, and invalid-negative processor cases.
+- [x] Add checked derivation for the ordinary-record wet alignment `R + P`, including non-negative processor resolution and combined alignment bounds.
+- [x] Define compact prepared values that make both direct/dry and wet recording offsets available without callback-time arithmetic.
+- [x] Add table-driven domain tests for positive, negative, mixed-sign, zero, maximum, underflow, overflow, unavailable, and invalid-negative processor cases.
 
 Verification:
 
-- [ ] Run `cargo test -p shoop_latency`.
-- [ ] Run warning-denied build/Clippy for the touched latency crate.
+- [x] Run `cargo test -p shoop_latency`.
+- [x] Run warning-denied build/Clippy for the touched latency crate.
 
 ## Stage 2: Apply role-specific retention and latching in the engine
 
 Depends on: Stage 1.
 
-- [ ] Change `AudioMidiLoop::prepare_latency` to prepare each audio/MIDI channel from its role-derived ordinary-record alignment instead of one shared retention window.
-- [ ] Change ordinary `Recording` latching so Direct/Dry channels receive `R` and Wet channels receive `R + P`.
-- [ ] Keep `PlayingDryThroughWet` dry render advance and `RecordingDryIntoWet` canonical wet destination behavior separate from ordinary-record capture annotations.
-- [ ] Ensure per-channel postroll completion, exhaustion, abort, and publication remain atomic when dry and wet require different windows.
-- [ ] Update replacement preparation/latching guards so all derived channel alignments are considered and unsupported nonzero replacement still fails before mutation.
+- [x] Change `AudioMidiLoop::prepare_latency` to prepare each audio/MIDI channel from its role-derived ordinary-record alignment instead of one shared retention window.
+- [x] Change ordinary `Recording` latching so Direct/Dry channels receive `R` and Wet channels receive `R + P`.
+- [x] Keep `PlayingDryThroughWet` dry render advance and `RecordingDryIntoWet` canonical wet destination behavior separate from ordinary-record capture annotations.
+- [x] Ensure per-channel postroll completion, exhaustion, abort, and publication remain atomic when dry and wet require different windows.
+- [x] Update replacement preparation/latching guards so all derived channel alignments are considered and unsupported nonzero replacement still fails before mutation.
 - [ ] Add deterministic audio and MIDI tests proving role mapping, mixed preroll/postroll, wrap behavior, exact-once render advance, canonical dry-into-wet output, and no callback allocations.
 
 Verification:
 
-- [ ] Run focused `shoop_engine` latency/channel/loop tests.
+- [x] Run focused `shoop_engine` latency/channel/loop tests.
 - [ ] Run the complete `shoop_engine` test suite, including callback allocation and transition tests.
 
 ## Stage 3: Resolve processor settings and enforce backend parity

@@ -6985,7 +6985,8 @@ mod tests {
         let latency = engine::PreparedLatency::new(
             shoop_latency::RecordingOffset::new(7).unwrap(),
             shoop_latency::ProcessorRenderAdvance::new(11).unwrap(),
-        );
+        )
+        .unwrap();
         let sequence = loop_.set_pending_latency(latency).expect("queue latency");
         sess.shared
             .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)

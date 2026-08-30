@@ -421,11 +421,12 @@ impl AudioChannel {
         &mut self,
         operation_frame: u64,
         require_captured_prerecord: bool,
+        recording_offset: shoop_latency::RecordingOffset,
     ) -> bool {
         let Some(values) = self.pending_latency else {
             return false;
         };
-        let frames = values.recording_offset().frames();
+        let frames = recording_offset.frames();
         self.capture_alignment_frames = frames;
         self.latency_retention_incomplete = if frames >= 0 {
             frames as u32 > self.retained_after_frames

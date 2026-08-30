@@ -3076,7 +3076,8 @@ impl EngineBackend {
         let values = prepared_backend_latency(&latency)?;
         if require_existing_alignment {
             let expected = values.recording_offset().frames();
-            if expected != 0 {
+            let wet_expected = values.wet_recording_offset().frames();
+            if expected != 0 || wet_expected != 0 {
                 return Err(anyhow!(
                     "replacement with a nonzero recording offset is unsupported; record a new take instead"
                 ));
@@ -3086,17 +3087,27 @@ impl EngineBackend {
                 .into_iter()
                 .flat_map(|set| &set.audio)
                 .all(|channel| {
-                    self.session
-                        .audio_channel(*channel)
-                        .is_some_and(|channel| channel.capture_alignment_frames() == expected)
+                    self.session.audio_channel(*channel).is_some_and(|channel| {
+                        let expected = if channel.mode() == ChannelMode::Wet {
+                            wet_expected
+                        } else {
+                            expected
+                        };
+                        channel.capture_alignment_frames() == expected
+                    })
                 });
             let midi_matches = channel_set
                 .into_iter()
                 .flat_map(|set| &set.midi)
                 .all(|channel| {
-                    self.session
-                        .midi_channel(*channel)
-                        .is_some_and(|channel| channel.capture_alignment_frames() == expected)
+                    self.session.midi_channel(*channel).is_some_and(|channel| {
+                        let expected = if channel.mode() == ChannelMode::Wet {
+                            wet_expected
+                        } else {
+                            expected
+                        };
+                        channel.capture_alignment_frames() == expected
+                    })
                 });
             if !audio_matches || !midi_matches {
                 return Err(anyhow!(
@@ -3181,7 +3192,7 @@ fn prepared_backend_latency(
     Ok(shoop_engine::PreparedLatency::new(
         shoop_latency::resolve_recording_offset(automatic, adjustment)?,
         shoop_latency::ProcessorRenderAdvance::new(state.processor_advance_frames)?,
-    ))
+    )?)
 }
 
 fn callback_backend_latency(
@@ -3192,7 +3203,7 @@ fn callback_backend_latency(
         Err(_) => Ok(shoop_engine::PreparedLatency::new(
             shoop_latency::RecordingOffset::default(),
             shoop_latency::ProcessorRenderAdvance::new(state.processor_advance_frames)?,
-        )),
+        )?),
     }
 }
 
@@ -7084,24 +7095,53 @@ impl Backend for FakeBackend {
                 | BackendLoopMode::Replacing
                 | BackendLoopMode::RecordingDryIntoWet
         ) {
-            let alignment = self
+            let latency = self
                 .tracks
                 .values()
                 .find(|track| track.loops.contains(&loop_id))
-                .map(|track| track.state.latency.effective_offset_frames)
-                .unwrap_or(Some(0))
+                .map(|track| &track.state.latency)
+                .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+            let alignment = latency
+                .effective_offset_frames
                 .ok_or_else(|| anyhow!("recording offset is unavailable; enter a manual value"))?;
-            if mode == BackendLoopMode::Replacing && alignment != 0 {
+            let wet_alignment = shoop_latency::wet_recording_offset(
+                shoop_latency::RecordingOffset::new(alignment)?,
+                shoop_latency::ProcessorRenderAdvance::new(latency.processor_advance_frames)?,
+            )?
+            .frames();
+            if mode == BackendLoopMode::Replacing && (alignment != 0 || wet_alignment != 0) {
                 return Err(anyhow!(
                     "replacement with a nonzero recording offset is unsupported; record a new take instead"
                 ));
             }
             if let Some(content) = self.loop_content.get_mut(&loop_id) {
                 for channel in &mut content.audio {
-                    channel.capture_alignment_frames = alignment;
+                    if mode == BackendLoopMode::RecordingDryIntoWet {
+                        if channel.mode != BackendChannelMode::Dry {
+                            channel.capture_alignment_frames = 0;
+                        }
+                    } else {
+                        channel.capture_alignment_frames =
+                            if channel.mode == BackendChannelMode::Wet {
+                                wet_alignment
+                            } else {
+                                alignment
+                            };
+                    }
                 }
                 for channel in &mut content.midi {
-                    channel.capture_alignment_frames = alignment;
+                    if mode == BackendLoopMode::RecordingDryIntoWet {
+                        if channel.mode != BackendChannelMode::Dry {
+                            channel.capture_alignment_frames = 0;
+                        }
+                    } else {
+                        channel.capture_alignment_frames =
+                            if channel.mode == BackendChannelMode::Wet {
+                                wet_alignment
+                            } else {
+                                alignment
+                            };
+                    }
                 }
             }
         }
