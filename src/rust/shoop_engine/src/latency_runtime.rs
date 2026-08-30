@@ -36,12 +36,21 @@ impl PreparedLatency {
         recording_offset: RecordingOffset,
         processor_advance: ProcessorRenderAdvance,
     ) -> Result<Self, shoop_latency::LatencyDomainError> {
+        Self::new_for_track(recording_offset, processor_advance, true)
+    }
+
+    pub fn new_for_track(
+        recording_offset: RecordingOffset,
+        processor_advance: ProcessorRenderAdvance,
+        has_wet_channels: bool,
+    ) -> Result<Self, shoop_latency::LatencyDomainError> {
         Ok(Self {
             recording_offset,
-            wet_recording_offset: shoop_latency::wet_recording_offset(
-                recording_offset,
-                processor_advance,
-            )?,
+            wet_recording_offset: if has_wet_channels {
+                shoop_latency::wet_recording_offset(recording_offset, processor_advance)?
+            } else {
+                recording_offset
+            },
             processor_advance,
         })
     }

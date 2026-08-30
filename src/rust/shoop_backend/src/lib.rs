@@ -216,6 +216,18 @@ impl BackendTrackTopology {
         }
     }
 
+    pub const fn has_wet_channels(&self) -> bool {
+        match self {
+            Self::Direct { .. } => false,
+            Self::DryWetExternal {
+                wet_audio_channels, ..
+            }
+            | Self::DryWetProcessor {
+                wet_audio_channels, ..
+            } => *wet_audio_channels > 0,
+        }
+    }
+
     pub const fn has_midi(&self) -> bool {
         match self {
             Self::Direct { midi, .. } => *midi,
@@ -2268,7 +2280,7 @@ impl EngineBackend {
     }
 
     fn create_track_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
-        let (audio_routes, midi_route, latency) = {
+        let (audio_routes, midi_route, latency, has_wet_channels) = {
             let track = self
                 .tracks
                 .get(&track_id)
@@ -2314,7 +2326,12 @@ impl EngineBackend {
                     ));
                 }
             };
-            (audio_routes, midi_route, track.latency.clone())
+            (
+                audio_routes,
+                midi_route,
+                track.latency.clone(),
+                track.topology.has_wet_channels(),
+            )
         };
         let loop_id = self.create_loop()?;
         let engine_loop = self.engine_loop_index(loop_id)?;
@@ -2375,7 +2392,7 @@ impl EngineBackend {
             .expect("track was validated before loop construction")
             .loops
             .push(loop_id);
-        if let Ok(values) = callback_backend_latency(&latency) {
+        if let Ok(values) = callback_backend_latency(&latency, has_wet_channels) {
             self.session
                 .loop_mut(engine_loop)
                 .expect("engine loop was created above")
@@ -3100,13 +3117,13 @@ impl EngineBackend {
                     .prepare_bounded_capacity();
             }
         }
-        let latency = self
+        let (latency, has_wet_channels) = self
             .tracks
             .values()
             .find(|track| track.loops.contains(&loop_id))
-            .map(|track| track.latency.clone())
+            .map(|track| (track.latency.clone(), track.topology.has_wet_channels()))
             .unwrap_or_default();
-        let values = prepared_backend_latency(&latency)?;
+        let values = prepared_backend_latency(&latency, has_wet_channels)?;
         if require_existing_alignment {
             let expected = values.recording_offset().frames();
             let wet_expected = values.wet_recording_offset().frames();
@@ -3275,21 +3292,25 @@ fn resolved_recording_offset(
 
 fn prepared_backend_latency(
     state: &BackendTrackLatencyState,
+    has_wet_channels: bool,
 ) -> Result<shoop_engine::PreparedLatency> {
-    Ok(shoop_engine::PreparedLatency::new(
+    Ok(shoop_engine::PreparedLatency::new_for_track(
         resolved_recording_offset(state)?,
         resolved_processor_advance(state)?,
+        has_wet_channels,
     )?)
 }
 
 fn callback_backend_latency(
     state: &BackendTrackLatencyState,
+    has_wet_channels: bool,
 ) -> Result<shoop_engine::PreparedLatency> {
-    match prepared_backend_latency(state) {
+    match prepared_backend_latency(state, has_wet_channels) {
         Ok(values) => Ok(values),
-        Err(_) => Ok(shoop_engine::PreparedLatency::new(
+        Err(_) => Ok(shoop_engine::PreparedLatency::new_for_track(
             shoop_latency::RecordingOffset::default(),
             resolved_processor_advance(state).unwrap_or_default(),
+            has_wet_channels,
         )?),
     }
 }
@@ -3299,6 +3320,7 @@ fn update_backend_latency(
     adjustment: BackendRecordingOffsetAdjustment,
     processor_adjustment: BackendProcessorLatencyAdjustment,
     processor_manual_frames: i32,
+    has_wet_channels: bool,
 ) -> Result<()> {
     let mut candidate = state.clone();
     candidate.adjustment = adjustment;
@@ -3310,7 +3332,7 @@ fn update_backend_latency(
     candidate.effective_processor_advance_frames = resolved_processor_advance(&candidate)
         .ok()
         .map(shoop_latency::ProcessorRenderAdvance::frames);
-    match prepared_backend_latency(&candidate) {
+    match prepared_backend_latency(&candidate, has_wet_channels) {
         Ok(_) => {
             candidate.pending = false;
             candidate.error = None;
@@ -4122,13 +4144,15 @@ impl Backend for EngineBackend {
             .tracks
             .get_mut(&track_id)
             .expect("backend track was checked above");
+        let has_wet_channels = track.topology.has_wet_channels();
         let resolution = update_backend_latency(
             &mut track.latency,
             adjustment,
             processor_adjustment,
             processor_manual_frames,
+            has_wet_channels,
         );
-        let values = callback_backend_latency(&track.latency)?;
+        let values = callback_backend_latency(&track.latency, has_wet_channels)?;
         for loop_id in loops {
             let engine_loop = self.engine_loop_index(loop_id)?;
             self.session
@@ -4530,7 +4554,8 @@ impl Backend for EngineBackend {
                 .values()
                 .find(|track| track.loops.contains(&request.loop_id))
                 .ok_or_else(|| anyhow!("loop has no owning track"))?;
-            let values = prepared_backend_latency(&track.latency)?;
+            let values =
+                prepared_backend_latency(&track.latency, track.topology.has_wet_channels())?;
             let has_wet = !matches!(track.topology, BackendTrackTopology::Direct { .. });
             if values.recording_offset().frames() != 0
                 || (has_wet && values.wet_recording_offset().frames() != 0)
@@ -7011,11 +7036,13 @@ impl Backend for FakeBackend {
             .tracks
             .get_mut(&track_id)
             .expect("fake track was checked above");
+        let has_wet_channels = track.state.topology.has_wet_channels();
         update_backend_latency(
             &mut track.state.latency,
             adjustment,
             processor_adjustment,
             processor_manual_frames,
+            has_wet_channels,
         )
     }
 
@@ -7379,7 +7406,10 @@ impl Backend for FakeBackend {
                 .values()
                 .find(|track| track.loops.contains(&request.loop_id))
                 .ok_or_else(|| anyhow!("loop has no owning track"))?;
-            let values = prepared_backend_latency(&track.state.latency)?;
+            let values = prepared_backend_latency(
+                &track.state.latency,
+                track.state.topology.has_wet_channels(),
+            )?;
             let has_wet = !matches!(track.state.topology, BackendTrackTopology::Direct { .. });
             if values.recording_offset().frames() != 0
                 || (has_wet && values.wet_recording_offset().frames() != 0)
@@ -7499,15 +7529,6 @@ impl Backend for FakeBackend {
                 })
                 .transpose()?
                 .unwrap_or(0);
-            let wet_alignment = shoop_latency::wet_recording_offset(
-                shoop_latency::RecordingOffset::new(alignment)?,
-                shoop_latency::ProcessorRenderAdvance::new(
-                    latency
-                        .and_then(|latency| latency.effective_processor_advance_frames)
-                        .unwrap_or(0),
-                )?,
-            )?
-            .frames();
             let has_wet = self.loop_content.get(&loop_id).is_some_and(|content| {
                 content
                     .audio
@@ -7518,6 +7539,19 @@ impl Backend for FakeBackend {
                         .iter()
                         .any(|channel| channel.mode == BackendChannelMode::Wet)
             });
+            let wet_alignment = if has_wet {
+                shoop_latency::wet_recording_offset(
+                    shoop_latency::RecordingOffset::new(alignment)?,
+                    shoop_latency::ProcessorRenderAdvance::new(
+                        latency
+                            .and_then(|latency| latency.effective_processor_advance_frames)
+                            .unwrap_or(0),
+                    )?,
+                )?
+                .frames()
+            } else {
+                alignment
+            };
             if mode == BackendLoopMode::Replacing
                 && (alignment != 0 || (has_wet && wet_alignment != 0))
             {
@@ -9730,6 +9764,54 @@ mod tests {
                 dry_midi: true,
             },
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn direct_tracks_do_not_validate_an_unused_wet_sum() {
+        let mut backend = FakeBackend::default();
+        let direct = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "direct-large-independent-latencies".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                direct.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(700_000),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                100_000,
+            )
+            .unwrap();
+        backend
+            .transition_loop(direct.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        assert_eq!(
+            backend.poll().unwrap().loops[&direct.loops[0]].capture_alignment_frames,
+            700_000
+        );
+
+        let processed = backend
+            .create_track(TrackRequest {
+                port_name_base: "processed-large-combined-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(700_000),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                100_000,
+            )
+            .is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

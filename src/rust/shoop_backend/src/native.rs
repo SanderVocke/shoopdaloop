@@ -662,7 +662,7 @@ impl NativeRuntime {
             .expect("track was checked before loop creation")
             .loops
             .push(id);
-        if let Ok(values) = callback_backend_latency(&latency) {
+        if let Ok(values) = callback_backend_latency(&latency, topology.has_wet_channels()) {
             self.loops
                 .get(&id)
                 .expect("native loop was created above")
@@ -1582,19 +1582,20 @@ impl NativeRuntime {
     }
 
     fn prepare_loop_latency(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        let (track_id, adjustment, processor_adjustment, processor_manual_frames) = self
-            .tracks
-            .iter()
-            .find(|(_, track)| track.loops.contains(&loop_id))
-            .map(|(track_id, track)| {
-                (
-                    *track_id,
-                    track.state.latency.adjustment,
-                    track.state.latency.processor_adjustment,
-                    track.state.latency.processor_manual_frames,
-                )
-            })
-            .ok_or_else(|| anyhow!("loop has no owning track"))?;
+        let (track_id, adjustment, processor_adjustment, processor_manual_frames, has_wet_channels) =
+            self.tracks
+                .iter()
+                .find(|(_, track)| track.loops.contains(&loop_id))
+                .map(|(track_id, track)| {
+                    (
+                        *track_id,
+                        track.state.latency.adjustment,
+                        track.state.latency.processor_adjustment,
+                        track.state.latency.processor_manual_frames,
+                        track.state.topology.has_wet_channels(),
+                    )
+                })
+                .ok_or_else(|| anyhow!("loop has no owning track"))?;
         let loop_ = self
             .loops
             .get(&loop_id)
@@ -1612,7 +1613,7 @@ impl NativeRuntime {
             processor_manual_frames,
         )?;
         let latency = self.tracks[&track_id].state.latency.clone();
-        let values = prepared_backend_latency(&latency)?;
+        let values = prepared_backend_latency(&latency, has_wet_channels)?;
         self.loops
             .get(&loop_id)
             .expect("native loop was checked above")
@@ -1716,6 +1717,7 @@ impl NativeRuntime {
             .tracks
             .get_mut(&track_id)
             .expect("track was checked above");
+        let has_wet_channels = track.state.topology.has_wet_channels();
         track.state.latency.automatic_offset_frames = automatic;
         // Processor hosts in this scope expose no exact latency observation.
         // Zero is the explicit automatic baseline; Manual or trim supplies P.
@@ -1725,8 +1727,9 @@ impl NativeRuntime {
             adjustment,
             processor_adjustment,
             processor_manual_frames,
+            has_wet_channels,
         );
-        let values = callback_backend_latency(&track.state.latency)?;
+        let values = callback_backend_latency(&track.state.latency, has_wet_channels)?;
         let loops = track.loops.clone();
         for loop_id in loops {
             let loop_ = self
@@ -2705,7 +2708,10 @@ impl Backend for NativeBackend {
                 .values()
                 .find(|track| track.loops.contains(&request.loop_id))
                 .ok_or_else(|| anyhow!("loop has no owning track"))?;
-            let values = prepared_backend_latency(&track.state.latency)?;
+            let values = prepared_backend_latency(
+                &track.state.latency,
+                track.state.topology.has_wet_channels(),
+            )?;
             let has_wet = !matches!(track.state.topology, BackendTrackTopology::Direct { .. });
             if values.recording_offset().frames() != 0
                 || (has_wet && values.wet_recording_offset().frames() != 0)
@@ -2886,13 +2892,6 @@ impl Backend for NativeBackend {
                 let expected = latency.effective_offset_frames.ok_or_else(|| {
                     anyhow!("recording offset is unavailable; enter a manual value")
                 })?;
-                let wet_expected = shoop_latency::wet_recording_offset(
-                    shoop_latency::RecordingOffset::new(expected)?,
-                    shoop_latency::ProcessorRenderAdvance::new(
-                        latency.effective_processor_advance_frames.unwrap_or(0),
-                    )?,
-                )?
-                .frames();
                 let loop_ = runtime
                     .loops
                     .get(&loop_id)
@@ -2902,6 +2901,17 @@ impl Backend for NativeBackend {
                     .iter()
                     .chain(&loop_.midi_modes)
                     .any(|mode| *mode == BackendChannelMode::Wet);
+                let wet_expected = if has_wet {
+                    shoop_latency::wet_recording_offset(
+                        shoop_latency::RecordingOffset::new(expected)?,
+                        shoop_latency::ProcessorRenderAdvance::new(
+                            latency.effective_processor_advance_frames.unwrap_or(0),
+                        )?,
+                    )?
+                    .frames()
+                } else {
+                    expected
+                };
                 if expected != 0 || (has_wet && wet_expected != 0) {
                     return Err(anyhow!(
                         "replacement with a nonzero recording offset is unsupported; record a new take instead"
