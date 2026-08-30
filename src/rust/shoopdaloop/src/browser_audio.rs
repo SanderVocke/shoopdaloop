@@ -57,6 +57,8 @@ struct PhysicalAudioDriverState {
     input_mode: Option<AudioInputMode>,
     repaint_context: Option<eframe::egui::Context>,
     trace: Option<crate::browser_trace::RealmTraceState>,
+    completed_trace_segments: Vec<shoop_tracing::BrowserRealmData>,
+    next_trace_realm_id: u32,
 }
 
 /// Owns browser audio resources and the restricted remote transport control.
@@ -99,6 +101,8 @@ impl BrowserAudioController {
             input_mode: None,
             repaint_context: None,
             trace: None,
+            completed_trace_segments: Vec::new(),
+            next_trace_realm_id: 4,
         }));
         let weak = Rc::downgrade(&inner);
         let microphone_enable_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
@@ -215,15 +219,24 @@ impl BrowserAudioController {
         if inner.node.is_none() {
             return Ok(false);
         }
-        let context = inner
+        let sample_rate = inner
             .context
             .as_ref()
-            .ok_or_else(|| anyhow!("browser audio context is unavailable"))?;
+            .ok_or_else(|| anyhow!("browser audio context is unavailable"))?
+            .sample_rate()
+            .round() as u64;
+        let realm_id = inner.next_trace_realm_id;
+        inner.next_trace_realm_id = inner.next_trace_realm_id.saturating_add(1);
+        let label = if realm_id == 4 {
+            "AudioWorklet".to_owned()
+        } else {
+            format!("AudioWorklet segment {}", realm_id - 3)
+        };
         let trace = crate::browser_trace::RealmTraceState::new(
-            4,
-            104,
-            "AudioWorklet",
-            context.sample_rate().round() as u64,
+            realm_id,
+            100 + realm_id,
+            label,
+            sample_rate,
             128,
             8192,
         )?;
@@ -238,6 +251,17 @@ impl BrowserAudioController {
             .map_err(|error| anyhow!("could not start AudioWorklet tracing: {error:?}"))?;
         inner.trace = Some(trace);
         Ok(true)
+    }
+
+    pub fn poll_tracing(&self) -> Result<()> {
+        if let Some(trace) = self.driver.state.borrow_mut().trace.as_mut() {
+            trace.poll()?;
+        }
+        Ok(())
+    }
+
+    pub fn has_active_trace(&self) -> bool {
+        self.driver.state.borrow().trace.is_some()
     }
 
     pub fn request_stop_tracing(&self) -> Result<()> {
@@ -256,16 +280,18 @@ impl BrowserAudioController {
         Ok(())
     }
 
-    pub fn take_trace(&self) -> Result<Option<shoop_tracing::BrowserRealmData>> {
+    pub fn take_traces(&self) -> Result<Option<Vec<shoop_tracing::BrowserRealmData>>> {
         let mut inner = self.driver.state.borrow_mut();
-        if !inner.trace.as_ref().is_some_and(|trace| trace.stopped()) {
+        if inner.trace.as_ref().is_some_and(|trace| !trace.stopped()) {
             return Ok(None);
         }
-        Ok(inner
-            .trace
-            .take()
-            .map(crate::browser_trace::RealmTraceState::finish)
-            .transpose()?)
+        if let Some(trace) = inner.trace.take() {
+            inner.completed_trace_segments.push(trace.finish()?);
+        }
+        if inner.completed_trace_segments.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(std::mem::take(&mut inner.completed_trace_segments)))
     }
 
     pub fn update_presentation(&self) {
@@ -846,7 +872,22 @@ fn stop_stream(stream: &MediaStream) {
     }
 }
 
+fn finalize_active_trace_segment(inner: &mut PhysicalAudioDriverState) {
+    let Some(mut trace) = inner.trace.take() else {
+        return;
+    };
+    let result = trace.abort().and_then(|()| trace.finish());
+    match result {
+        Ok(segment) => inner.completed_trace_segments.push(segment),
+        Err(error) => tracing::error!(
+            error = %error,
+            "frontend.browser_trace.audio_segment_finalize_failed"
+        ),
+    }
+}
+
 fn shutdown_graph(inner: &mut PhysicalAudioDriverState) {
+    finalize_active_trace_segment(inner);
     inner.startup_started = None;
     if let Some(stream) = inner.stream.take() {
         for value in stream.get_tracks().iter() {

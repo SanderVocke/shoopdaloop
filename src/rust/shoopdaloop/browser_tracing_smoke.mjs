@@ -115,6 +115,19 @@ try {
       } catch {}
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+    if (process.env.TRACE_REBUILD === '1') {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const upgrade = await command('Runtime.evaluate', {
+        expression: `(() => {
+          const button = document.getElementById('enable_audio');
+          if (!button || button.disabled || button.hidden || typeof button.onclick !== 'function') return false;
+          button.click();
+          return true;
+        })()`,
+        returnByValue: true,
+      });
+      if (!upgrade.result.value) throw new Error('could not request traced AudioWorklet rebuild');
+    }
   }
   let saved = null;
   for (let attempt = 0; attempt < 900; attempt += 1) {

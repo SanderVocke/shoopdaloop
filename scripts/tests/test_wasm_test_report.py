@@ -22,7 +22,7 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 filtered out; finished in 
 
 
 class ReportTests(unittest.TestCase):
-    def junit(self, output: str, status: int = 0):
+    def junit(self, output: str, status: int = 0, testcase_properties=None):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "report.xml"
             parsed = write_junit(
@@ -39,6 +39,7 @@ class ReportTests(unittest.TestCase):
                     "filters": "[]",
                     "raw_log": "target/wasm-tests/pilot.log",
                 },
+                testcase_properties=testcase_properties,
             )
             return parsed, ET.parse(destination).getroot()
 
@@ -65,6 +66,19 @@ class ReportTests(unittest.TestCase):
             [case.attrib["name"] for case in xml.findall("testcase")],
             ["pilot::crate::sync", "pilot::crate::panic", "pilot::crate::later"],
         )
+
+    def test_testcase_artifact_is_referenced_from_junit(self):
+        _, xml = self.junit(
+            FAILURE,
+            1,
+            {"crate::failure": {"perfetto_trace": "target/traces/failure.pftrace"}},
+        )
+        case = xml.find("testcase")
+        properties = {
+            item.attrib["name"]: item.attrib["value"]
+            for item in case.find("properties")
+        }
+        self.assertEqual(properties["perfetto_trace"], "target/traces/failure.pftrace")
 
     def test_ansi_and_xml_control_bytes_are_sanitized_from_junit(self):
         parsed, xml = self.junit("\x1b[32m" + SUCCESS + "\x1b[0m\x00")

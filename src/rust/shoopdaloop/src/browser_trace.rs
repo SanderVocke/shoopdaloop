@@ -50,6 +50,7 @@ pub struct RealmTraceState {
     header: Int32Array,
     metadata: Vec<shoop_tracing::BrowserMetadata>,
     calibrations: Vec<shoop_tracing::BrowserCalibration>,
+    records: Vec<u8>,
     stopped: bool,
 }
 
@@ -87,6 +88,7 @@ impl RealmTraceState {
             header,
             metadata: Vec::new(),
             calibrations: Vec::new(),
+            records: Vec::new(),
             stopped: false,
         })
     }
@@ -161,6 +163,7 @@ impl RealmTraceState {
                 Ok(true)
             }
             Some("shoop-trace-stopped") => {
+                self.poll()?;
                 self.stopped = true;
                 self.add_message_calibration(data)?;
                 tracing::info!(realm = self.realm_id, "frontend.browser_trace.stopped");
@@ -170,35 +173,53 @@ impl RealmTraceState {
         }
     }
 
+    pub fn poll(&mut self) -> Result<()> {
+        let write = Atomics::load(&self.header, 2)? as u32;
+        let read = Atomics::load(&self.header, 3)? as u32;
+        let available = write.wrapping_sub(read).min(self.capacity);
+        if available == 0 {
+            return Ok(());
+        }
+        let data = Uint8Array::new_with_byte_offset(&self.sab, HEADER_BYTES);
+        self.records
+            .reserve(available as usize * RECORD_BYTES as usize);
+        for offset in 0..available {
+            let slot = read.wrapping_add(offset) % self.capacity;
+            let source = slot * RECORD_BYTES;
+            let destination = self.records.len();
+            self.records.resize(destination + RECORD_BYTES as usize, 0);
+            data.slice(source, source + RECORD_BYTES)
+                .copy_to(&mut self.records[destination..]);
+        }
+        Atomics::store(&self.header, 3, write as i32)?;
+        Ok(())
+    }
+
+    pub fn abort(&mut self) -> Result<()> {
+        self.poll()?;
+        self.stopped = true;
+        Ok(())
+    }
+
     pub fn stopped(&self) -> bool {
         self.stopped
     }
 
-    pub fn finish(self) -> Result<shoop_tracing::BrowserRealmData> {
+    pub fn finish(mut self) -> Result<shoop_tracing::BrowserRealmData> {
         if !self.stopped {
             return Err(anyhow!("{} trace producer has not stopped", self.label).into());
         }
-        let write = Atomics::load(&self.header, 2)? as u32;
-        let read = Atomics::load(&self.header, 3)? as u32;
-        let available = write.wrapping_sub(read).min(self.capacity);
-        let data = Uint8Array::new_with_byte_offset(&self.sab, HEADER_BYTES);
-        let mut records = vec![0_u8; available as usize * RECORD_BYTES as usize];
-        for offset in 0..available {
-            let slot = read.wrapping_add(offset) % self.capacity;
-            let source = slot * RECORD_BYTES;
-            let destination = offset as usize * RECORD_BYTES as usize;
-            data.slice(source, source + RECORD_BYTES)
-                .copy_to(&mut records[destination..destination + RECORD_BYTES as usize]);
-        }
+        self.poll()?;
+        let emitted_records = self.records.len() / RECORD_BYTES as usize;
         Ok(shoop_tracing::BrowserRealmData {
             id: self.realm_id,
             label: self.label,
             ticks_per_second: self.ticks_per_second,
-            records,
+            records: self.records,
             metadata: self.metadata,
             calibrations: self.calibrations,
             health: shoop_tracing::BrowserHealth {
-                emitted_records: u64::from(available),
+                emitted_records: emitted_records as u64,
                 dropped_records: u64::from(Atomics::load(&self.header, 4)? as u32),
                 completed_batches: u64::from(Atomics::load(&self.header, 5)? as u32),
                 high_water_records: Atomics::load(&self.header, 8)? as u32 as usize,
@@ -212,10 +233,30 @@ impl RealmTraceState {
             .ok()
             .and_then(|value| value.as_f64())
             .map(|value| value.max(0.0).round() as u64);
-        let reference_time_ns = Reflect::get(data, &"referenceMs".into())
+        let fallback_clock = Reflect::get(data, &"fallbackClock".into())
             .ok()
-            .and_then(|value| value.as_f64())
-            .map(|value| (value * 1_000_000.0).round() as u64);
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let mut uncertainty_ns = 100_000;
+        let reference_time_ns = if fallback_clock {
+            let sent = Reflect::get(data, &"requestReferenceMs".into())
+                .ok()
+                .and_then(|value| value.as_f64());
+            let received = reference_time_ms().ok();
+            match (sent, received) {
+                (Some(sent), Some(received)) => {
+                    uncertainty_ns =
+                        (((received - sent).max(0.0) * 500_000.0).ceil() as u64).max(100_000);
+                    Some(((sent + received) * 500_000.0).round() as u64)
+                }
+                _ => None,
+            }
+        } else {
+            Reflect::get(data, &"referenceMs".into())
+                .ok()
+                .and_then(|value| value.as_f64())
+                .map(|value| (value * 1_000_000.0).round() as u64)
+        };
         if let (Some(source_ticks), Some(reference_time_ns)) = (source_ticks, reference_time_ns) {
             if self
                 .calibrations
@@ -229,7 +270,7 @@ impl RealmTraceState {
                 clock_id: self.clock_id,
                 source_ticks,
                 reference_time_ns,
-                uncertainty_ns: 100_000,
+                uncertainty_ns,
             });
             return Ok(());
         }

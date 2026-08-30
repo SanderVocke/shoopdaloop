@@ -89,13 +89,17 @@ mod tests {
     )]
     fn native_capture_runtime_preserves_panics() {
         let output = tempfile::tempdir().unwrap();
+        let under_nextest = std::env::var_os("NEXTEST_ATTEMPT_ID").is_some();
         std::env::set_var("SHOOP_TEST_TRACE", "failure");
         std::env::set_var("SHOOP_TEST_TRACE_DIR", output.path());
         let outcome = std::panic::catch_unwind(|| {
             crate::run_test(|| panic!("intentional nested capture panic"));
         });
         assert!(outcome.is_err());
-        assert_eq!(output.path().read_dir().unwrap().count(), 1);
+        assert_eq!(
+            output.path().read_dir().unwrap().count(),
+            usize::from(under_nextest)
+        );
     }
 
     #[shoop_test(
@@ -104,11 +108,41 @@ mod tests {
     )]
     fn native_capture_runtime_preserves_result_errors() {
         let output = tempfile::tempdir().unwrap();
+        let under_nextest = std::env::var_os("NEXTEST_ATTEMPT_ID").is_some();
         std::env::set_var("SHOOP_TEST_TRACE", "failure");
         std::env::set_var("SHOOP_TEST_TRACE_DIR", output.path());
         let result = crate::run_test_result(|| Err::<(), _>("intentional nested Result error"));
         assert_eq!(result, Err("intentional nested Result error"));
-        assert_eq!(output.path().read_dir().unwrap().count(), 1);
+        assert_eq!(
+            output.path().read_dir().unwrap().count(),
+            usize::from(under_nextest)
+        );
+    }
+
+    #[shoop_test(
+        no_wasm = "exercises native process-wide trace dispatch",
+        no_trace = "starts its own per-test capture"
+    )]
+    fn native_capture_reaches_worker_threads() {
+        let output = tempfile::tempdir().unwrap();
+        let under_nextest = std::env::var_os("NEXTEST_ATTEMPT_ID").is_some();
+        std::env::set_var("SHOOP_TEST_TRACE", "always");
+        std::env::set_var("SHOOP_TEST_TRACE_DIR", output.path());
+        crate::run_test(|| {
+            std::thread::spawn(|| {
+                tracing::info!("shoop.test_capture.worker_thread_marker");
+            })
+            .join()
+            .unwrap();
+        });
+        let traces = output.path().read_dir().unwrap().collect::<Vec<_>>();
+        assert_eq!(traces.len(), usize::from(under_nextest));
+        if let Some(trace) = traces.first() {
+            let bytes = std::fs::read(trace.as_ref().unwrap().path()).unwrap();
+            assert!(bytes
+                .windows(b"shoop.test_capture.worker_thread_marker".len())
+                .any(|window| window == b"shoop.test_capture.worker_thread_marker"));
+        }
     }
 
     #[shoop_test(wasm_only = "exercises the Wasm-only expansion")]

@@ -19,7 +19,7 @@ import threading
 import time
 import tomllib
 
-from wasm_test_report import write_junit
+from wasm_test_report import parse_output, write_junit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WASM_PACK_VERSION = "0.15.0"
@@ -425,7 +425,15 @@ def invoke_package(
     log = reports / f"{stem}.log"
     junit = reports / f"{stem}.xml"
     log.write_text(output)
-    parsed = write_junit(
+    parsed = parse_output(output)
+    traces, trace_errors = write_test_traces(
+        output,
+        parsed=parsed,
+        reports=reports,
+        incoming=reports / ".trace-incoming",
+        policy=trace_policy,
+    )
+    write_junit(
         junit,
         package=package["name"],
         runtime=runtime,
@@ -441,13 +449,9 @@ def invoke_package(
             "trace_policy": trace_policy,
             **{f"tool.{name}": value for name, value in tool_versions.items()},
         },
-    )
-    traces, trace_errors = write_test_traces(
-        output,
-        parsed=parsed,
-        reports=reports,
-        incoming=reports / ".trace-incoming",
-        policy=trace_policy,
+        testcase_properties={
+            name: {"perfetto_trace": path} for name, path in traces.items()
+        },
     )
     valid = (
         parsed.listed > 0

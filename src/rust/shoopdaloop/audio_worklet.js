@@ -50,13 +50,19 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       header,
       data: new Uint8Array(options.sab, 64),
       capacity,
+      startReferenceMs: options.referenceMs,
     };
     const timer = globalThis.performance;
+    const hasReferenceClock = timer
+      && Number.isFinite(timer.timeOrigin)
+      && typeof timer.now === 'function';
     this.port.postMessage({
       kind: 'shoop-trace-metadata',
       metadata,
       sourceTicks: currentFrame,
-      referenceMs: timer ? timer.timeOrigin + timer.now() : options.referenceMs,
+      referenceMs: hasReferenceClock ? timer.timeOrigin + timer.now() : options.referenceMs,
+      requestReferenceMs: options.referenceMs,
+      fallbackClock: !hasReferenceClock,
     });
   }
 
@@ -85,18 +91,48 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     if (!this.trace) return;
     this.drainTracing();
     Atomics.store(this.trace.header, 6, 1);
+    const timer = globalThis.performance;
+    const hasReferenceClock = timer
+      && Number.isFinite(timer.timeOrigin)
+      && typeof timer.now === 'function';
     const status = {
       kind: 'shoop-trace-stopped',
       dropped: this.host.traceDropped(),
       highWater: Atomics.load(this.trace.header, 8) >>> 0,
       sourceTicks: currentFrame,
-      referenceMs: globalThis.performance
-        ? performance.timeOrigin + performance.now()
-        : options.referenceMs,
+      referenceMs: hasReferenceClock ? timer.timeOrigin + timer.now() : options.referenceMs,
+      requestReferenceMs: options.referenceMs,
+      fallbackClock: !hasReferenceClock,
     };
     this.host.traceStop();
     this.trace = null;
     this.port.postMessage(status);
+  }
+
+  abortTracing() {
+    if (!this.trace) return;
+    const active = this.trace;
+    try { this.drainTracing(); } catch (_) { /* preserve records already in the shared ring */ }
+    Atomics.store(active.header, 6, 1);
+    const timer = globalThis.performance;
+    const hasReferenceClock = timer
+      && Number.isFinite(timer.timeOrigin)
+      && typeof timer.now === 'function';
+    const status = {
+      kind: 'shoop-trace-stopped',
+      dropped: this.host?.traceDropped?.() || 0,
+      highWater: Atomics.load(active.header, 8) >>> 0,
+      sourceTicks: currentFrame,
+      referenceMs: hasReferenceClock
+        ? timer.timeOrigin + timer.now()
+        : active.startReferenceMs,
+      requestReferenceMs: active.startReferenceMs,
+      fallbackClock: !hasReferenceClock,
+      aborted: true,
+    };
+    try { this.host?.traceStop(); } catch (_) { /* host is already failing */ }
+    this.trace = null;
+    try { this.port.postMessage(status); } catch (_) { /* processor is terminating */ }
   }
 
   handleCommand(message) {
@@ -114,6 +150,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       this.port.postMessage(response);
       if (event.event?.kind === 'stopped') {
         this.stopped = true;
+        this.abortTracing();
         this.host.destroy();
       }
     } catch (error) {
@@ -129,6 +166,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
         sequence: 0,
         event: { kind: 'error', message },
       }));
+      this.abortTracing();
       this.host?.destroy();
     }
     return false;

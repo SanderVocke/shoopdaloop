@@ -10,6 +10,7 @@ let trace = null;
 
 function releaseAndClose(notifyStopped) {
   scheduler?.stop();
+  abortTracing();
   host?.destroy();
   if (notifyStopped) fixturePort?.postMessage({ kind: 'stopped' });
   applicationPort?.close();
@@ -91,6 +92,24 @@ function stopTracing() {
   host.traceStop();
   trace = null;
   applicationPort.postMessage(status);
+}
+
+function abortTracing() {
+  if (!trace) return;
+  const active = trace;
+  try { drainTracing(); } catch (_) { /* preserve records already in the shared ring */ }
+  Atomics.store(active.header, 6, 1);
+  const status = {
+    kind: 'shoop-trace-stopped',
+    dropped: host?.traceDropped?.() || 0,
+    highWater: Atomics.load(active.header, 8) >>> 0,
+    sourceTicks: (scheduler?.processedQuanta || 0) * (scheduler?.quantum || 0),
+    referenceMs: performance.timeOrigin + performance.now(),
+    aborted: true,
+  };
+  try { host?.traceStop(); } catch (_) { /* host is already failing */ }
+  trace = null;
+  try { applicationPort?.postMessage(status); } catch (_) { /* realm is terminating */ }
 }
 
 function handleApplicationCommand(message) {

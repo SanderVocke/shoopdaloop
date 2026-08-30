@@ -101,6 +101,7 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
         Ok(panic) => panic,
         Err(error) => return error.to_compile_error().into(),
     };
+    let expects_panic = panic.is_some();
     let mut native = function.clone();
     let native_returns_result = returns_result(&native);
     native
@@ -158,6 +159,7 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
                     ::shoop_wasm_test_support::wasm_test_trace_begin(
                         module_path!(),
                         stringify!(#test_name),
+                        !#expects_panic,
                     );
                     let output = (async move #body).await;
                     ::shoop_wasm_test_support::wasm_test_trace_finish();
@@ -168,6 +170,7 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
                     ::shoop_wasm_test_support::wasm_test_trace_begin(
                         module_path!(),
                         stringify!(#test_name),
+                        !#expects_panic,
                     );
                     let output = (|| #body)();
                     ::shoop_wasm_test_support::wasm_test_trace_finish();

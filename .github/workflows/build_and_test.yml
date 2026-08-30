@@ -841,11 +841,13 @@ jobs:
             test -n "$trace"
             printf '%s\n' \
               "SELECT name FROM slice WHERE name = 'shoop.wasm_test_capture.span';" \
+              "SELECT string_value FROM args WHERE key = 'phase' AND string_value = 'failure';" \
               "SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id WHERE t.name LIKE '%shoop.wasm_test_capture.plot';" \
               > "$RUNNER_TEMP/perfetto-wasm-canary.sql"
             scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
               "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
             grep 'shoop.wasm_test_capture.span' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
+            grep 'failure' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
             grep 'shoop.wasm_test_capture.plot' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
           done
 
@@ -881,20 +883,26 @@ jobs:
         run: |
           TRACE_REALM=worker WEB_PORT=19890 DEBUG_PORT=19891 \
             node --experimental-websocket browser_tracing_smoke.mjs
-          TRACE_REALM=audio WEB_PORT=19892 DEBUG_PORT=19893 \
+          TRACE_REALM=audio TRACE_REBUILD=1 WEB_PORT=19892 DEBUG_PORT=19893 \
             node --experimental-websocket browser_tracing_smoke.mjs
           cat > "$RUNNER_TEMP/browser-perfetto.sql" <<'SQL'
           SELECT
             (SELECT COUNT(*) FROM track WHERE name = 'Window') AS window_tracks,
             (SELECT COUNT(*) FROM track WHERE name IN ('Engine Worker', 'AudioWorklet')) AS engine_tracks,
             (SELECT COUNT(*) FROM slice WHERE name = 'engine.rt.callback') AS callbacks,
+            (SELECT MAX(a.int_value) > 8192 FROM args a JOIN slice s USING(arg_set_id)
+              JOIN track t ON s.track_id = t.id
+              WHERE a.key = 'debug.emitted_records' AND t.name != 'Window') AS sustained_capture,
+            (SELECT COALESCE(SUM(a.int_value), 0) = 0 FROM args a JOIN slice s USING(arg_set_id)
+              JOIN track t ON s.track_id = t.id
+              WHERE a.key = 'debug.dropped_records' AND t.name != 'Window') AS no_drops,
             (SELECT COALESCE(SUM(value), 0) FROM stats WHERE severity = 'error') AS import_errors;
           SQL
           for trace in ../../../target/perfetto-validation/browser-{worker,audio}.pftrace; do
             ../../../scripts/trace_processor --query-file "$RUNNER_TEMP/browser-perfetto.sql" \
               "$trace" | tee "$trace.query.txt"
             grep '1,1,' "$trace.query.txt"
-            grep ',0$' "$trace.query.txt"
+            grep ',1,1,0$' "$trace.query.txt"
           done
 
       - name: Run retained self-contained Chrome AudioWorklet smoke

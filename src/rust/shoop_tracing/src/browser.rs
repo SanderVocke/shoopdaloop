@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Once;
 
 use base64::Engine as _;
 use perfetto_everywhere_collector::{Collector, CollectorConfig, RealmDescriptor};
@@ -22,6 +23,7 @@ const WINDOW_TICKS_PER_SECOND: u64 = 1_000_000_000;
 const WINDOW_BATCH_RECORDS: usize = 16_384;
 
 static BROWSER_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
+static WASM_TEST_PANIC_HOOK: Once = Once::new();
 
 struct BrowserState {
     backend: SharedBackend<OrdinaryBackend<PerformanceClock>>,
@@ -57,7 +59,7 @@ impl<S: Subscriber> Layer<S> for ConsoleLayer {
 
 thread_local! {
     static STATE: RefCell<Option<BrowserState>> = const { RefCell::new(None) };
-    static TEST_CAPTURE: RefCell<Option<(String, BrowserCapture, BrowserCalibration)>> =
+    static TEST_CAPTURE: RefCell<Option<(String, BrowserCapture, BrowserCalibration, bool)>> =
         const { RefCell::new(None) };
 }
 
@@ -287,7 +289,9 @@ fn drain(state: &mut BrowserState) -> Result<(), String> {
 }
 
 fn collect(realms: Vec<BrowserRealmData>) -> Result<Vec<u8>, String> {
-    let mut collector = Collector::new(CollectorConfig::default());
+    let mut config = CollectorConfig::default();
+    config.max_clock_uncertainty_ns = 1_000_000_000;
+    let mut collector = Collector::new(config);
     for realm in realms {
         collector
             .register_realm(RealmDescriptor {
@@ -354,13 +358,14 @@ fn health_to_perfetto(health: BrowserHealth) -> ProducerHealth {
     }
 }
 
-pub fn wasm_test_trace_begin(module: &str, test: &str) {
+pub fn wasm_test_trace_begin(module: &str, test: &str, finalize_on_panic: bool) {
     if !wasm_test_tracing_enabled() {
         return;
     }
     let identity = format!("{module}::{test}");
     initialize_browser_tracing().expect("initialize Wasm test tracing");
-    if let Some((_identity, stale, _calibration)) =
+    install_wasm_test_panic_hook();
+    if let Some((_identity, stale, _calibration, _finalize_on_panic)) =
         TEST_CAPTURE.with(|slot| slot.borrow_mut().take())
     {
         stale
@@ -381,9 +386,9 @@ pub fn wasm_test_trace_begin(module: &str, test: &str) {
     let capture_start = ordinary_calibration();
     emit_test_markers(&identity, "begin");
     TEST_CAPTURE.with(|slot| {
-        let previous = slot
-            .borrow_mut()
-            .replace((identity, capture, capture_start));
+        let previous =
+            slot.borrow_mut()
+                .replace((identity, capture, capture_start, finalize_on_panic));
         assert!(previous.is_none(), "Wasm testcase traces must not overlap");
     });
 }
@@ -392,16 +397,41 @@ pub fn wasm_test_trace_finish() {
     if !wasm_test_tracing_enabled() {
         return;
     }
+    finalize_wasm_test_trace("success").expect("finish Wasm testcase trace");
+}
+
+fn install_wasm_test_panic_hook() {
+    WASM_TEST_PANIC_HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |information| {
+            let finalize = TEST_CAPTURE.with(|slot| {
+                slot.borrow()
+                    .as_ref()
+                    .is_some_and(|(_, _, _, finalize_on_panic)| *finalize_on_panic)
+            });
+            if finalize {
+                if let Err(error) = finalize_wasm_test_trace("failure") {
+                    web_sys::console::error_1(
+                        &format!("could not finalize panicking Wasm testcase trace: {error}")
+                            .into(),
+                    );
+                }
+            }
+            previous(information);
+        }));
+    });
+}
+
+fn finalize_wasm_test_trace(phase: &str) -> Result<(), String> {
     let capture = TEST_CAPTURE.with(|slot| slot.borrow_mut().take());
-    let Some((identity, capture, capture_start)) = capture else {
-        panic!("Wasm testcase trace is not active");
+    let Some((identity, capture, capture_start, _finalize_on_panic)) = capture else {
+        return Err("Wasm testcase trace is not active".to_owned());
     };
-    emit_test_markers(&identity, "success");
-    capture.poll().expect("poll Wasm testcase trace");
-    let bytes = capture
-        .finish(vec![capture_start, ordinary_calibration()], Vec::new())
-        .expect("finish Wasm testcase trace");
+    emit_test_markers(&identity, phase);
+    capture.poll()?;
+    let bytes = capture.finish(vec![capture_start, try_ordinary_calibration()?], Vec::new())?;
     emit_test_trace(&identity, "full", &bytes);
+    Ok(())
 }
 
 fn wasm_test_tracing_enabled() -> bool {
@@ -431,37 +461,41 @@ fn emit_test_markers(identity: &str, phase: &str) {
 }
 
 fn ordinary_calibration() -> BrowserCalibration {
+    try_ordinary_calibration().expect("performance clock for Wasm test tracing")
+}
+
+fn try_ordinary_calibration() -> Result<BrowserCalibration, String> {
     use wasm_bindgen::JsCast as _;
 
     let global = js_sys::global();
     let performance = js_sys::Reflect::get(&global, &"performance".into())
-        .expect("performance object for Wasm test tracing");
+        .map_err(|error| format!("performance object is unavailable: {error:?}"))?;
     let now = js_sys::Reflect::get(&performance, &"now".into())
-        .expect("performance.now for Wasm test tracing")
+        .map_err(|error| format!("performance.now is unavailable: {error:?}"))?
         .dyn_into::<js_sys::Function>()
-        .expect("performance.now function for Wasm test tracing");
+        .map_err(|_| "performance.now is not a function".to_owned())?;
     let time_origin = js_sys::Reflect::get(&performance, &"timeOrigin".into())
-        .expect("performance.timeOrigin for Wasm test tracing")
+        .map_err(|error| format!("performance.timeOrigin is unavailable: {error:?}"))?
         .as_f64()
-        .expect("numeric performance.timeOrigin for Wasm test tracing");
+        .ok_or_else(|| "performance.timeOrigin is not numeric".to_owned())?;
     let before = now
         .call0(&performance)
-        .expect("first performance.now sample")
+        .map_err(|error| format!("first performance.now sample failed: {error:?}"))?
         .as_f64()
-        .unwrap();
+        .ok_or_else(|| "first performance.now sample is not numeric".to_owned())?;
     let after = now
         .call0(&performance)
-        .expect("second performance.now sample")
+        .map_err(|error| format!("second performance.now sample failed: {error:?}"))?
         .as_f64()
-        .unwrap();
+        .ok_or_else(|| "second performance.now sample is not numeric".to_owned())?;
     let source_ms = (before + after) * 0.5;
-    BrowserCalibration {
+    Ok(BrowserCalibration {
         realm_id: WINDOW_REALM_ID,
         clock_id: WINDOW_CLOCK_ID,
         source_ticks: (source_ms * 1_000_000.0).round() as u64,
         reference_time_ns: ((time_origin + source_ms) * 1_000_000.0).round() as u64,
         uncertainty_ns: (((after - before) * 500_000.0).round() as u64).max(1),
-    }
+    })
 }
 
 #[wasm_bindgen::prelude::wasm_bindgen(inline_js = r#"

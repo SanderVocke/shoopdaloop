@@ -25,6 +25,8 @@ and preservation of equal-timestamp producer ordering.
   AudioWorklet writes fixed 48-byte records into preallocated raw-Wasm storage,
   drains allocation-free into a SharedArrayBuffer ring, and publishes exact
   sample-frame timestamps, calibrations, metadata, loss, and high-water health.
+  The Window continuously consumes each ring during capture, so captures are not
+  limited to one ring capacity.
 - Browser final protobuf collection currently runs during explicit finalization
   on the Window thread rather than in a separate collector Worker. This avoids a
   second generated Wasm artifact while preserving bounded realtime producers and
@@ -80,10 +82,12 @@ ChromeDriver 147.0.7727.137 included:
 - Hosted Chromium startup/save smokes produced
   `target/perfetto-validation/browser-worker.pftrace` and
   `browser-audio.pftrace`. Each contained Window plus the active engine realm,
-  hundreds of `engine.rt.callback`, `engine.rt.cycle`, and `engine.rt.session`
-  slices, producer health, two-point clock calibration, and zero Trace Processor
-  import/clock errors. The Worker and AudioWorklet captures were produced from
-  the packaged application through actual SharedArrayBuffer/raw-Wasm bridges.
+  over 1,000 `engine.rt.callback` slices, producer health, two-point clock
+  calibration, and zero Trace Processor import/clock errors. Each producer
+  emitted more than the 8,192-record ring capacity with zero drops. The audio
+  smoke also rebuilt the AudioWorklet graph during capture and retained both
+  synchronized realm segments. The captures were produced from the packaged
+  application through actual SharedArrayBuffer/raw-Wasm bridges.
 - The retained hosted output-only AudioWorklet workflow passed after the tracing
   changes. Trunk debug packaging and the raw worklet artifact contract passed.
 
@@ -120,8 +124,8 @@ completion blocker; coarse mode remains the recommended first diagnostic mode.
 - Browser collector finalization is Window-owned and may cause a short UI pause.
 - Browser logical engine slices do not claim CPU duration.
 - A fatal process kill, timeout, OOM, or native panic-abort can prevent final
-  publication. Wasm traps retain the pre-published bootstrap rather than the
-  unfinalized tail.
+  publication. Ordinary Wasm panics finalize the active testcase trace from the
+  panic hook; traps that bypass the hook retain the pre-published bootstrap.
 - Firefox/Safari tracing is not claimed by the pinned upstream; existing Firefox
   application behavior remains independently smoke-tested.
 - Trace files may contain paths, messages, and application state and must be

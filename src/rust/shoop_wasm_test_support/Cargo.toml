@@ -27,6 +27,7 @@ wasm-bindgen-test = "=0.3.77"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

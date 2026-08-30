@@ -200,6 +200,17 @@ impl BrowserWorkerDriver {
         Ok(true)
     }
 
+    pub fn poll_tracing(&self) -> Result<()> {
+        if let Some(trace) = self.trace.borrow_mut().as_mut() {
+            trace.poll()?;
+        }
+        Ok(())
+    }
+
+    pub fn has_active_trace(&self) -> bool {
+        self.trace.borrow().is_some()
+    }
+
     pub fn request_stop_tracing(&self) -> Result<()> {
         if self.trace.borrow().is_some() {
             self.application_port

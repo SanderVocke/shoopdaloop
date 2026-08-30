@@ -107,15 +107,10 @@ impl TestCapture {
 /// Run one synchronous unit-returning native test with optional per-attempt capture.
 pub fn run_test(body: impl FnOnce()) {
     let capture = TestCapture::start().unwrap_or_else(|error| configuration_failure(error));
-    let outcome = if capture.is_some() {
-        let _ = tracing_log::LogTracer::init();
-        let subscriber = tracing_subscriber::registry().with(crate::subscriber_layer());
-        tracing::subscriber::with_default(subscriber, || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
-        })
-    } else {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
-    };
+    if capture.is_some() {
+        install_process_test_subscriber();
+    }
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
     match outcome {
         Ok(()) => {
             if let Some(capture) = capture {
@@ -139,15 +134,10 @@ pub fn run_test(body: impl FnOnce()) {
 /// Run one synchronous Result-returning native test with optional per-attempt capture.
 pub fn run_test_result<E: Debug>(body: impl FnOnce() -> Result<(), E>) -> Result<(), E> {
     let capture = TestCapture::start().unwrap_or_else(|error| configuration_failure(error));
-    let outcome = if capture.is_some() {
-        let _ = tracing_log::LogTracer::init();
-        let subscriber = tracing_subscriber::registry().with(crate::subscriber_layer());
-        tracing::subscriber::with_default(subscriber, || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
-        })
-    } else {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
-    };
+    if capture.is_some() {
+        install_process_test_subscriber();
+    }
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
     match outcome {
         Ok(Ok(())) => {
             if let Some(capture) = capture {
@@ -178,6 +168,16 @@ pub fn run_test_result<E: Debug>(body: impl FnOnce() -> Result<(), E>) -> Result
             std::panic::resume_unwind(payload);
         }
     }
+}
+
+fn install_process_test_subscriber() {
+    let _ = tracing_log::LogTracer::init();
+    let subscriber = tracing_subscriber::registry().with(crate::subscriber_layer());
+    tracing::subscriber::set_global_default(subscriber).unwrap_or_else(|error| {
+        configuration_failure(format!(
+            "could not install process-wide Perfetto test subscriber: {error}"
+        ))
+    });
 }
 
 fn parse_policy(value: Option<OsString>) -> Result<Policy, String> {

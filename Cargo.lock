@@ -4403,6 +4403,7 @@ dependencies = [
  "shoop_test_macros",
  "shoop_tracing",
  "tempfile",
+ "tracing",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]

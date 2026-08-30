@@ -239,6 +239,14 @@ impl BrowserTracing {
         Ok(())
     }
 
+    fn discard_active(&mut self) -> anyhow::Result<()> {
+        if let Some(capture) = self.capture.take() {
+            capture.discard().map_err(anyhow::Error::msg)?;
+        }
+        self.window_calibrations.clear();
+        Ok(())
+    }
+
     fn stop_capture(
         &mut self,
         save: bool,
@@ -312,6 +320,14 @@ fn download_browser_trace(bytes: &[u8], filename: &str) -> anyhow::Result<()> {
     anchor.set_href(&url);
     anchor.set_download(filename);
     anchor.click();
+    let revoke_url = url.clone();
+    let revoke = wasm_bindgen::closure::Closure::once_into_js(move || {
+        let _ = web_sys::Url::revoke_object_url(&revoke_url);
+    });
+    web_sys::window()
+        .ok_or_else(|| anyhow::anyhow!("browser window disappeared before trace URL cleanup"))?
+        .set_timeout_with_callback_and_timeout_and_arguments_0(revoke.unchecked_ref(), 0)
+        .map_err(|error| anyhow::anyhow!("could not schedule trace URL cleanup: {error:?}"))?;
     if let Some(body) = document.body() {
         body.set_attribute("data-perfetto-trace-saved", filename)
             .map_err(|error| anyhow::anyhow!("could not publish trace status: {error:?}"))?;
@@ -635,11 +651,20 @@ impl UnifiedApp {
     fn process_tracing(&mut self) {
         if let Some(action) = self.pending_tracing_action.take() {
             let result: anyhow::Result<Option<TracingStopped>> = (|| match action {
-                PendingTracingAction::Start { engine_detail } => self
-                    .tracing
-                    .start_capture(engine_detail)
-                    .and_then(|()| self.runtime.start_tracing(engine_detail))
-                    .map(|()| None),
+                PendingTracingAction::Start { engine_detail } => {
+                    self.tracing.start_capture(engine_detail)?;
+                    if let Err(error) = self.runtime.start_tracing(engine_detail) {
+                        self.runtime.cancel_tracing_request();
+                        if let Err(discard_error) = self.tracing.discard_active() {
+                            tracing::error!(
+                                error = %discard_error,
+                                "frontend.egui.tracing_start_rollback_failed"
+                            );
+                        }
+                        return Err(error);
+                    }
+                    Ok(None)
+                }
                 PendingTracingAction::Stop { save } => {
                     self.runtime.request_stop_tracing()?;
                     self.pending_tracing_action = Some(PendingTracingAction::FinishStop { save });
@@ -668,11 +693,23 @@ impl UnifiedApp {
         if let Err(error) = self.tracing.poll() {
             self.settings.report_action_error(error.to_string());
         }
-        let status = self.tracing.status();
+        if let Err(error) = self.runtime.poll_tracing() {
+            tracing::error!(error = %error, "frontend.egui.tracing_realm_poll_failed");
+            self.settings.report_action_error(error.to_string());
+        }
+        let mut status = self.tracing.status();
         if status.active {
             if let Err(error) = self.runtime.ensure_tracing_realm() {
+                self.runtime.cancel_tracing_request();
+                if let Err(discard_error) = self.tracing.discard_active() {
+                    tracing::error!(
+                        error = %discard_error,
+                        "frontend.egui.tracing_start_rollback_failed"
+                    );
+                }
                 tracing::error!(error = %error, "frontend.egui.tracing_realm_attach_failed");
                 self.settings.report_action_error(error.to_string());
+                status = self.tracing.status();
             }
         }
         if self.args.tracing_smoke_test && status.active && self.runtime.tracing_realm_ready() {
@@ -680,7 +717,7 @@ impl UnifiedApp {
                 tracing::info!("frontend.egui.tracing_smoke_realm_ready");
                 Instant::now()
             });
-            if started.elapsed() >= Duration::from_secs(1) && self.pending_tracing_action.is_none()
+            if started.elapsed() >= Duration::from_secs(3) && self.pending_tracing_action.is_none()
             {
                 tracing::info!("frontend.egui.tracing_smoke_stop_requested");
                 self.pending_tracing_action = Some(PendingTracingAction::Stop { save: true });
@@ -2328,6 +2365,12 @@ impl Runtime {
     }
 
     fn ensure_tracing_realm(&mut self) -> anyhow::Result<()> {
+        if self.tracing_realm_active {
+            self.tracing_realm_active = match &self.mode {
+                BrowserRuntimeMode::WebAudio(controller) => controller.has_active_trace(),
+                BrowserRuntimeMode::Worker(driver) => driver.has_active_trace(),
+            };
+        }
         if !self.tracing_requested || self.tracing_realm_active {
             return Ok(());
         }
@@ -2340,6 +2383,18 @@ impl Runtime {
             }
         };
         Ok(())
+    }
+
+    fn poll_tracing(&self) -> anyhow::Result<()> {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.poll_tracing(),
+            BrowserRuntimeMode::Worker(driver) => driver.poll_tracing(),
+        }
+    }
+
+    fn cancel_tracing_request(&mut self) {
+        self.tracing_requested = false;
+        self.tracing_realm_active = false;
     }
 
     fn tracing_realm_ready(&self) -> bool {
@@ -2365,17 +2420,22 @@ impl Runtime {
         &mut self,
     ) -> anyhow::Result<Option<Vec<shoop_tracing::BrowserRealmData>>> {
         if !self.tracing_realm_active {
+            if let BrowserRuntimeMode::WebAudio(controller) = &self.mode {
+                if let Some(realms) = controller.take_traces()? {
+                    return Ok(Some(realms));
+                }
+            }
             return Ok(Some(Vec::new()));
         }
-        let realm = match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => controller.take_trace()?,
-            BrowserRuntimeMode::Worker(driver) => driver.take_trace()?,
+        let realms = match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.take_traces()?,
+            BrowserRuntimeMode::Worker(driver) => driver.take_trace()?.map(|realm| vec![realm]),
         };
-        let Some(realm) = realm else {
+        let Some(realms) = realms else {
             return Ok(None);
         };
         self.tracing_realm_active = false;
-        Ok(Some(vec![realm]))
+        Ok(Some(realms))
     }
 
     fn tick(&mut self, elapsed: Duration) {
