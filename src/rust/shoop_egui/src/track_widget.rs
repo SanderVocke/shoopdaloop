@@ -42,6 +42,7 @@ pub struct TrackWidget {
     pending_loop_drop: Option<(LoopId, LoopId)>,
     pending_clone_confirmation: Option<(LoopId, LoopId)>,
     controls: TrackControls,
+    latency_dialog_open: bool,
     fx_logs_open: bool,
     oxisynth_editor: OxiSynthEditor,
     width: f32,
@@ -58,6 +59,8 @@ pub struct TrackWidget {
     test_controls_clip_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_options_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_latency_menu_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_latency_offset_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -98,6 +101,7 @@ impl Default for TrackWidget {
             pending_loop_drop: None,
             pending_clone_confirmation: None,
             controls: TrackControls::default(),
+            latency_dialog_open: false,
             fx_logs_open: false,
             oxisynth_editor: OxiSynthEditor::default(),
             width: DEFAULT_TRACK_WIDTH,
@@ -114,6 +118,8 @@ impl Default for TrackWidget {
             test_controls_clip_rect: None,
             #[cfg(test)]
             test_options_rect: None,
+            #[cfg(test)]
+            test_latency_menu_rect: None,
             #[cfg(test)]
             test_latency_offset_rect: None,
             #[cfg(test)]
@@ -328,6 +334,8 @@ impl TrackWidget {
             self.test_highlighted_loop_insert = None;
             self.test_clone_confirm_rect = None;
             self.test_clone_cancel_rect = None;
+            self.test_latency_menu_rect = None;
+            self.test_latency_offset_rect = None;
         }
         let loop_ids = state
             .loops
@@ -417,6 +425,7 @@ impl TrackWidget {
             self.show_width_resize_handle(ui, frame.response.rect, "content_width_resize");
         }
         self.show_clone_confirmation(ui.ctx(), state, &mut result);
+        self.show_latency_dialog(ui.ctx(), state, &mut result);
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
         result
             .actions
@@ -744,103 +753,14 @@ impl TrackWidget {
                         result.connections_requested = true;
                         ui.close();
                     }
-                    ui.separator();
-                    ui.label("Recording alignment");
-                    let mut adjustment = state.latency.adjustment;
-                    let adjustment_changed =
-                        egui::ComboBox::from_id_salt(("recording_offset_adjustment", state.id))
-                            .selected_text(match adjustment {
-                                RecordingOffsetAdjustmentState::Automatic => "Automatic",
-                                RecordingOffsetAdjustmentState::ManualOverride => "Manual",
-                                RecordingOffsetAdjustmentState::AutomaticPlusTrim => {
-                                    "Automatic + trim"
-                                }
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut adjustment,
-                                    RecordingOffsetAdjustmentState::Automatic,
-                                    "Automatic",
-                                );
-                                ui.selectable_value(
-                                    &mut adjustment,
-                                    RecordingOffsetAdjustmentState::ManualOverride,
-                                    "Manual",
-                                );
-                                ui.selectable_value(
-                                    &mut adjustment,
-                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim,
-                                    "Automatic + trim",
-                                );
-                            })
-                            .response
-                            .changed();
-                    let mut manual_frames = state.latency.manual_frames;
-                    let manual_response = ui
-                        .horizontal(|ui| {
-                            ui.label(
-                                if adjustment == RecordingOffsetAdjustmentState::AutomaticPlusTrim {
-                                    "Trim"
-                                } else {
-                                    "Offset"
-                                },
-                            );
-                            ui.add_enabled(
-                                adjustment != RecordingOffsetAdjustmentState::Automatic,
-                                egui::DragValue::new(&mut manual_frames).suffix(" frames"),
-                            )
-                        })
-                        .inner;
+                    let latency = ui.button("Latency compensation");
                     #[cfg(test)]
                     {
-                        self.test_latency_offset_rect = Some(manual_response.rect);
+                        self.test_latency_menu_rect = Some(latency.rect);
                     }
-                    let manual_changed = manual_response.changed();
-                    let mut processor_advance_frames = state.latency.processor_advance_frames;
-                    let processor_changed = ui
-                        .horizontal(|ui| {
-                            ui.label("Processor");
-                            ui.add(
-                                egui::DragValue::new(&mut processor_advance_frames)
-                                    .suffix(" frames"),
-                            )
-                        })
-                        .inner
-                        .changed();
-                    if adjustment_changed || manual_changed || processor_changed {
-                        result.io_intents.push(AppIntent::SetTrackLatency {
-                            track_id: state.id,
-                            adjustment,
-                            manual_frames,
-                            processor_advance_frames,
-                        });
-                    }
-                    if let Some(effective) = state.latency.effective_offset_frames {
-                        ui.label(format!("Effective: {effective} frames"));
-                    } else {
-                        ui.label("Effective value unavailable; enter a manual offset.");
-                    }
-                    if state.latency.pending {
-                        ui.label("Latency update pending");
-                    }
-                    if let Some(error) = &state.latency.error {
-                        ui.colored_label(ui.visuals().error_fg_color, error);
-                    }
-                    for loop_ in state.loops.iter().filter(|loop_| !loop_.empty) {
-                        let mut alignment = loop_.capture_alignment_frames;
-                        if ui
-                            .horizontal(|ui| {
-                                ui.label(format!("{} alignment", loop_.name));
-                                ui.add(egui::DragValue::new(&mut alignment).suffix(" frames"))
-                            })
-                            .inner
-                            .changed()
-                        {
-                            result.io_intents.push(AppIntent::SetTakeAlignment {
-                                loop_id: loop_.id,
-                                capture_alignment_frames: alignment,
-                            });
-                        }
+                    if latency.clicked() {
+                        self.latency_dialog_open = true;
+                        ui.close();
                     }
                     ui.separator();
                     if !state.is_sync {
@@ -964,6 +884,126 @@ impl TrackWidget {
                 }
             },
         );
+    }
+
+    fn show_latency_dialog(
+        &mut self,
+        context: &egui::Context,
+        state: &TrackState,
+        result: &mut TrackWidgetResponse,
+    ) {
+        if !self.latency_dialog_open {
+            return;
+        }
+        let mut open = self.latency_dialog_open;
+        egui::Window::new(format!("{} — Latency compensation", state.name))
+            .id(egui::Id::new(("track_latency_compensation", state.id)))
+            .open(&mut open)
+            .resizable(true)
+            .default_width(360.0)
+            .min_width(320.0)
+            .show(context, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.heading("Recording alignment");
+                    let mut adjustment = state.latency.adjustment;
+                    let adjustment_changed =
+                        egui::ComboBox::from_id_salt(("recording_offset_adjustment", state.id))
+                            .selected_text(match adjustment {
+                                RecordingOffsetAdjustmentState::Automatic => "Automatic",
+                                RecordingOffsetAdjustmentState::ManualOverride => "Manual",
+                                RecordingOffsetAdjustmentState::AutomaticPlusTrim => {
+                                    "Automatic + trim"
+                                }
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut adjustment,
+                                    RecordingOffsetAdjustmentState::Automatic,
+                                    "Automatic",
+                                );
+                                ui.selectable_value(
+                                    &mut adjustment,
+                                    RecordingOffsetAdjustmentState::ManualOverride,
+                                    "Manual",
+                                );
+                                ui.selectable_value(
+                                    &mut adjustment,
+                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim,
+                                    "Automatic + trim",
+                                );
+                            })
+                            .response
+                            .changed();
+                    let mut manual_frames = state.latency.manual_frames;
+                    let manual_response = ui
+                        .horizontal(|ui| {
+                            ui.label(
+                                if adjustment == RecordingOffsetAdjustmentState::AutomaticPlusTrim {
+                                    "Trim"
+                                } else {
+                                    "Offset"
+                                },
+                            );
+                            ui.add_enabled(
+                                adjustment != RecordingOffsetAdjustmentState::Automatic,
+                                egui::DragValue::new(&mut manual_frames).suffix(" frames"),
+                            )
+                        })
+                        .inner;
+                    #[cfg(test)]
+                    {
+                        self.test_latency_offset_rect = Some(manual_response.rect);
+                    }
+                    let manual_changed = manual_response.changed();
+                    let mut processor_advance_frames = state.latency.processor_advance_frames;
+                    let processor_changed = ui
+                        .horizontal(|ui| {
+                            ui.label("Processor");
+                            ui.add(
+                                egui::DragValue::new(&mut processor_advance_frames)
+                                    .suffix(" frames"),
+                            )
+                        })
+                        .inner
+                        .changed();
+                    if adjustment_changed || manual_changed || processor_changed {
+                        result.io_intents.push(AppIntent::SetTrackLatency {
+                            track_id: state.id,
+                            adjustment,
+                            manual_frames,
+                            processor_advance_frames,
+                        });
+                    }
+                    if let Some(effective) = state.latency.effective_offset_frames {
+                        ui.label(format!("Effective: {effective} frames"));
+                    } else {
+                        ui.label("Effective value unavailable; enter a manual offset.");
+                    }
+                    if state.latency.pending {
+                        ui.label("Latency update pending");
+                    }
+                    if let Some(error) = &state.latency.error {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
+                    for loop_ in state.loops.iter().filter(|loop_| !loop_.empty) {
+                        let mut alignment = loop_.capture_alignment_frames;
+                        if ui
+                            .horizontal(|ui| {
+                                ui.label(format!("{} alignment", loop_.name));
+                                ui.add(egui::DragValue::new(&mut alignment).suffix(" frames"))
+                            })
+                            .inner
+                            .changed()
+                        {
+                            result.io_intents.push(AppIntent::SetTakeAlignment {
+                                loop_id: loop_.id,
+                                capture_alignment_frames: alignment,
+                            });
+                        }
+                    }
+                });
+            });
+        self.latency_dialog_open = open;
     }
 
     fn show_fx_logs(
@@ -1289,7 +1329,8 @@ mod tests {
             .actions
             .is_empty());
         let _ = frame(&context, &mut widget, &state, Vec::new());
-        assert!(widget.test_latency_offset_rect.is_some());
+        assert!(widget.test_latency_menu_rect.is_some());
+        assert!(widget.test_latency_offset_rect.is_none());
         let delete = widget.test_delete_rect.unwrap().center();
         assert_eq!(
             click(&context, &mut widget, &state, delete).actions,
@@ -1311,7 +1352,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn compact_latency_controls_render_manual_pending_error_and_processor_states() {
+    fn latency_dialog_renders_manual_pending_error_and_processor_states() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let states = [
@@ -1348,6 +1389,11 @@ mod tests {
             let options = widget.test_options_rect.unwrap().center();
             let _ = click(&context, &mut widget, &state, options);
             let _ = frame(&context, &mut widget, &state, Vec::new());
+            assert!(widget.test_latency_offset_rect.is_none());
+            let latency = widget.test_latency_menu_rect.unwrap().center();
+            let _ = click(&context, &mut widget, &state, latency);
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            assert!(widget.latency_dialog_open);
             assert!(widget.test_latency_offset_rect.is_some());
         }
     }

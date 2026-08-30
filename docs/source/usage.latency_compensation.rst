@@ -5,8 +5,8 @@ ShoopDaLoop keeps live monitoring immediate. Compensation changes which part of
 a completed recording is used for playback; it does not delay the live input
 path.
 
-Open a track's **⋮** menu to edit **Recording alignment**. A track has one signed
-effective recording offset:
+Open a track's **⋮** menu and choose **Latency compensation**. The dialog's
+**Recording alignment** section controls one signed effective recording offset:
 
 * **Automatic** uses an exact backend value when one is available.
 * **Manual** uses the entered signed frame value.
@@ -25,7 +25,7 @@ the track setting later affects the next operation and never moves an existing
 take. Once a recording transition is armed, cancel it before changing the track
 offset or input routes. Replacement and retrospective grab are retained only at
 zero offset; record a new take when compensation is needed. Stop the loop before correcting a completed take's signed alignment with
-its alignment control in the same menu. The control applies one delta to every
+its alignment control in the same dialog. The control applies one delta to every
 channel so canonical dry/wet differences remain intact. Alignment, start-offset,
 and length edits must fit the raw media retained with every channel in the take;
 otherwise they are rejected without changing any channel. This also applies when
@@ -51,7 +51,8 @@ or bake/recovery operation.
 Dry/wet operations
 ~~~~~~~~~~~~~~~~~~
 
-**Processor** in the track menu is a separate non-negative render-advance value.
+**Processor** in the latency compensation dialog is a separate non-negative
+render-advance value.
 It is used only while playing dry through wet or recording dry into wet. Dry
 media is dispatched early so delayed processor output reaches its intended
 frame. Recording dry into wet writes canonical wet timing, so ordinary wet

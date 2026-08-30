@@ -201,12 +201,12 @@ replacement and retrospective grab fail before mutation. Playback
 and normal audio/MIDI export map the logical window; no special raw export or
 bake command remains.
 
-The compact controls live directly in the track options menu and include manual
-completed-take alignment. Browser layout evidence is
-`artifacts/latency-controls.png` in the validation workspace (the repository's
-artifact directory is intentionally ignored). It shows the Manual selector,
-Offset, Processor, and Effective rows at 1200 by 800; minimum/common-size UI tests
-also pass.
+A **Latency compensation** entry in the track options menu opens a compact dialog
+containing the effective-value controls and manual completed-take alignment.
+Browser layout evidence is `artifacts/latency-controls.png` in the validation
+workspace (the repository's artifact directory is intentionally ignored). It
+shows the Manual selector, Offset, Processor, and Effective rows at 1200 by 800;
+minimum/common-size UI tests also pass.
 
 ### Size result
 
