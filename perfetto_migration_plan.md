@@ -2,7 +2,7 @@
 
 ## Status
 
-Planning only. No implementation stages have started.
+Implementation in progress. Stage 0 is complete; Stage 1 is next.
 
 ## Goals
 
@@ -74,11 +74,11 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 
 ### Stage 0 — Freeze contracts and collect the Tracy baseline
 
-- [ ] Record current Tracy and `perfetto-everywhere` revisions, toolchain versions, capture policies, callsite inventory, and representative Trace Processor SQL expectations.
-- [ ] Add a deterministic release-mode native dummy-engine workload with fixed sample rate, quantum, graph, warm-up, and iteration count. Measure untraced, Tracy coarse, and Tracy detailed modes using external wall/CPU data, callback-budget misses, and the engine's existing profiling counters.
-- [ ] Run repeated baseline trials on one documented machine with idle/load notes; retain compact JSON/Markdown results and commands, not `.tracy` files.
-- [ ] Define the static metadata catalog and integer-versus-float plot mapping for every current direct realtime callsite.
-- [ ] Verify the baseline benchmark is repeatable enough to distinguish an obvious deadline-miss or order-of-magnitude regression; do not turn the result into a hard threshold.
+- [x] Record current Tracy and `perfetto-everywhere` revisions, toolchain versions, capture policies, callsite inventory, and representative Trace Processor SQL expectations.
+- [x] Add a deterministic release-mode native dummy-engine workload with fixed sample rate, quantum, graph, warm-up, and iteration count. Measure untraced, Tracy coarse, and Tracy detailed modes using external wall/CPU data, callback-budget misses, and the engine's existing profiling counters.
+- [x] Run repeated baseline trials on one documented machine with idle/load notes; retain compact JSON/Markdown results and commands, not `.tracy` files.
+- [x] Define the static metadata catalog and integer-versus-float plot mapping for every current direct realtime callsite.
+- [x] Verify the baseline benchmark is repeatable enough to distinguish an obvious deadline-miss or order-of-magnitude regression; do not turn the result into a hard threshold.
 
 **Verification:** baseline workload tests pass, its Tracy trace is queryable, and the checked-in baseline report contains enough environment/command detail to rerun it after migration.
 
