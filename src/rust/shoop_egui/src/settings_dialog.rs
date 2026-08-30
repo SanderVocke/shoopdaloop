@@ -25,6 +25,7 @@ use crate::{
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TracingStatus {
     pub available: bool,
+    pub unavailable_reason: Option<&'static str>,
     pub active: bool,
     pub buffer_capacity_bytes: u64,
 }
@@ -489,7 +490,9 @@ impl SettingsDialog {
         } else if !self.tracing_status.available {
             ui.colored_label(
                 colors::MUTED_FOREGROUND,
-                "Tracing is unavailable in this build.",
+                self.tracing_status
+                    .unavailable_reason
+                    .unwrap_or("Tracing is unavailable in this build."),
             );
         }
     }
@@ -1673,6 +1676,7 @@ mod tests {
         let mut dialog = SettingsDialog::new(registry);
         dialog.set_tracing_status(TracingStatus {
             available: true,
+            unavailable_reason: None,
             active: false,
             buffer_capacity_bytes: 0,
         });

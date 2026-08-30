@@ -166,6 +166,7 @@ impl NativeTracing {
         let status = shoop_common::tracing_capture::CaptureStatus::current();
         TracingStatus {
             available: true,
+            unavailable_reason: None,
             active: status.active,
             buffer_capacity_bytes: status.event_storage_bytes,
         }
@@ -195,7 +196,7 @@ enum PendingTracingAction {
 struct BrowserTracing {
     capture: Option<shoop_tracing::BrowserCapture>,
     window_calibrations: Vec<shoop_tracing::BrowserCalibration>,
-    unavailable_reason: Option<String>,
+    unavailable_reason: Option<&'static str>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -209,7 +210,7 @@ impl BrowserTracing {
         let has_shared_buffer = js_sys::Reflect::get(&global, &"SharedArrayBuffer".into())
             .is_ok_and(|value| value.is_function());
         let unavailable_reason = (!isolated || !has_shared_buffer)
-            .then(|| "Multirealm tracing requires COOP/COEP cross-origin isolation".to_owned());
+            .then_some("Multirealm tracing requires COOP/COEP cross-origin isolation");
         Self {
             capture: None,
             window_calibrations: Vec::new(),
@@ -218,8 +219,8 @@ impl BrowserTracing {
     }
 
     fn start_capture(&mut self, engine_detail: bool) -> anyhow::Result<()> {
-        if let Some(reason) = &self.unavailable_reason {
-            anyhow::bail!(reason.clone());
+        if let Some(reason) = self.unavailable_reason {
+            anyhow::bail!(reason);
         }
         if self.capture.is_none() {
             self.capture = Some(
@@ -273,6 +274,7 @@ impl BrowserTracing {
     fn status(&self) -> TracingStatus {
         TracingStatus {
             available: self.unavailable_reason.is_none(),
+            unavailable_reason: self.unavailable_reason,
             active: self.capture.is_some(),
             buffer_capacity_bytes: 0,
         }

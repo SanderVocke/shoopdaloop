@@ -318,16 +318,22 @@ def write_test_traces(
             errors.append(f"malformed trace sentinel: {error}")
 
     written: dict[str, str] = {}
+    associated_identities: set[str] = set()
     trace_dir = reports / "traces"
     for case in parsed.cases:
-        if case.status == "ignored" or (policy == "failure" and case.status != "failed"):
-            continue
         matches = [
             (identity, phases)
             for identity, phases in captured.items()
             if identity.endswith(case.name) or case.name.endswith(identity.split("::", 1)[-1])
         ]
+        associated_identities.update(identity for identity, _phases in matches)
+        eligible = case.status != "ignored" and not (
+            policy == "failure" and case.status != "failed"
+        )
+        if not eligible:
+            continue
         if not matches:
+            errors.append(f"eligible testcase {case.name} emitted no trace")
             continue
         if len(matches) != 1:
             errors.append(f"expected one trace identity for {case.name}, found {len(matches)}")
@@ -343,6 +349,8 @@ def write_test_traces(
         trace_dir.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(trace)
         written[case.name] = str(destination.relative_to(ROOT))
+    for identity in sorted(set(captured) - associated_identities):
+        errors.append(f"captured trace identity did not match a testcase: {identity}")
     return written, errors
 
 

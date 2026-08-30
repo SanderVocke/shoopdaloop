@@ -2099,6 +2099,7 @@ mod tests {
         let mut widget = AppWidget::default();
         widget.set_tracing_status(TracingStatus {
             available: true,
+            unavailable_reason: None,
             active: true,
             buffer_capacity_bytes: 3 * 1024 * 1024,
         });

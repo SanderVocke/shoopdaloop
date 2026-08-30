@@ -1,3 +1,4 @@
+import base64
 import sys
 import tempfile
 import unittest
@@ -5,6 +6,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from run_wasm_tests import write_test_traces  # noqa: E402
 from wasm_test_report import parse_output, write_junit  # noqa: E402
 
 
@@ -114,6 +116,37 @@ class ReportTests(unittest.TestCase):
             "running 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.00s\n"
         )
         self.assertGreaterEqual(int(xml.attrib["failures"]), 1)
+
+    def test_trace_policy_rejects_missing_eligible_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, errors = write_test_traces(
+                "",
+                parsed=parse_output(SUCCESS),
+                reports=root,
+                incoming=root / "incoming",
+                policy="always",
+            )
+        self.assertIn("eligible testcase crate::sync emitted no trace", errors)
+        self.assertIn("eligible testcase crate::panic emitted no trace", errors)
+
+    def test_trace_policy_rejects_unassociated_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            incoming = root / "incoming"
+            incoming.mkdir()
+            identity = base64.urlsafe_b64encode(b"crate::unknown").decode().rstrip("=")
+            (incoming / f"{identity}.bootstrap.pftrace").write_bytes(b"trace")
+            _, errors = write_test_traces(
+                "",
+                parsed=parse_output(SUCCESS),
+                reports=root,
+                incoming=incoming,
+                policy="failure",
+            )
+        self.assertIn(
+            "captured trace identity did not match a testcase: crate::unknown", errors
+        )
 
     def test_timeout_without_summary_fails_closed(self):
         _, xml = self.junit("runner timed out\n", 124)
