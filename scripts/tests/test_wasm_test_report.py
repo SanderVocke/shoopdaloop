@@ -22,6 +22,12 @@ test crate::failure ... FAIL
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 filtered out; finished in 0.01s
 """
 
+OVERLAPPING_NAMES = """running 2 tests
+test tests::save ... ok
+test nested::tests::save ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.01s
+"""
+
 
 class ReportTests(unittest.TestCase):
     def junit(self, output: str, status: int = 0, testcase_properties=None):
@@ -129,6 +135,25 @@ class ReportTests(unittest.TestCase):
             )
         self.assertIn("eligible testcase crate::sync emitted no trace", errors)
         self.assertIn("eligible testcase crate::panic emitted no trace", errors)
+
+    def test_trace_identity_matching_uses_complete_components(self):
+        (Path.cwd() / "target").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=Path.cwd() / "target") as directory:
+            root = Path(directory)
+            incoming = root / "incoming"
+            incoming.mkdir()
+            for identity in ("pilot::tests::save", "pilot::nested::tests::save"):
+                encoded = base64.urlsafe_b64encode(identity.encode()).decode().rstrip("=")
+                (incoming / f"{encoded}.full.pftrace").write_bytes(b"trace")
+            traces, errors = write_test_traces(
+                "",
+                parsed=parse_output(OVERLAPPING_NAMES),
+                reports=root,
+                incoming=incoming,
+                policy="always",
+            )
+        self.assertEqual(errors, [])
+        self.assertEqual(set(traces), {"tests::save", "nested::tests::save"})
 
     def test_trace_policy_rejects_unassociated_capture(self):
         with tempfile.TemporaryDirectory() as directory:

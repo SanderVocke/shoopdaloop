@@ -324,7 +324,11 @@ def write_test_traces(
         matches = [
             (identity, phases)
             for identity, phases in captured.items()
-            if identity.endswith(case.name) or case.name.endswith(identity.split("::", 1)[-1])
+            if case.name
+            in {
+                identity,
+                identity.split("::", 1)[1] if "::" in identity else identity,
+            }
         ]
         associated_identities.update(identity for identity, _phases in matches)
         eligible = case.status != "ignored" and not (
