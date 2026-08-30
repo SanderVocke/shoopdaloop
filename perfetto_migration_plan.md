@@ -23,17 +23,17 @@ Implementation in progress. Stage 0 is complete; core upstream, facade, native/b
 
 ## Immutable acceptance criteria
 
-- [ ] `Cargo.lock` and every active manifest contain no `tracy-client`, `tracy-client-sys`, `tracing-tracy`, `tracy-nextest-capture`, or Tracy patch; CI no longer downloads/builds Tracy or publishes `.tracy` artifacts.
-- [ ] No production or test crate other than `shoop_tracing` depends directly on a `perfetto-everywhere*` crate. Application-facing JavaScript also imports only a Shoop-owned tracing adapter/artifact, not Perfetto implementation details.
-- [ ] `shoop_tracing` exposes implementation-neutral APIs for lexical spans, structured logs, instant events, i64/f64 plots, fields, coarse/detail gates, and capture/test lifecycle. Existing `tracing`/`log` callsites are either routed through that facade or migrated to facade macros without losing severity, target, message, typed fields, late span fields, or repeated enter/exit behavior.
-- [ ] Disabled tracing does not allocate and does not call a tracing backend. Audio callback recording is bounded, nonblocking, non-growing, and free of formatting, file I/O, protobuf work, and locks. The import-free `shoop_audio_worklet.wasm` contract remains intact.
-- [ ] Native application capture supports start, save, discard, shutdown-save, and another capture in the same process. Saved files are atomically published as non-empty numbered `.pftrace` files with no leftover `.partial` file.
-- [ ] Hosted Chromium can start and stop tracing from the existing developer UI, save through an explicit browser download, discard, and start again. One saved trace contains synchronized Window, active dedicated Worker, and active AudioWorklet tracks plus observable loss/clock health.
-- [ ] Native nextest, Node Wasm, and Chromium Wasm give each eligible testcase a unique capture identity and implement `off`, `failure`, and `always`. Passing traces are discarded in `failure` mode; intentional failing canaries in all three harnesses publish one valid, queryable `.pftrace`, including a span, structured event/log, and plot. Panic-abort limitations must be solved by a harness-owned supervisor rather than silently losing the failed Wasm testcase.
-- [ ] CI always uploads finalized failure captures and never uploads partial files. Trace names and reports identify target/runtime, package or binary, testcase, attempt, and a collision-resistant attempt digest.
-- [ ] Trace Processor validation proves representative native, Window, Worker, AudioWorklet, Node-test, and Chromium-test traces are structurally valid and contain expected spans, logs/events, typed fields, counters, realm descriptors, clock snapshots, and health diagnostics.
-- [ ] Existing tracing coverage remains closed, native/Windows/macOS/web builds and supported test suites pass, and current browser packaging and Firefox smokes do not regress.
-- [ ] A final committed migration report records versions/commits, validation evidence, known limitations, trace locations, and the native audio-domain Tracy/Perfetto comparison. Any apparent major regression is reported with evidence but does not by itself block completion.
+- [x] `Cargo.lock` and every active manifest contain no `tracy-client`, `tracy-client-sys`, `tracing-tracy`, `tracy-nextest-capture`, or Tracy patch; CI no longer downloads/builds Tracy or publishes `.tracy` artifacts.
+- [x] No production or test crate other than `shoop_tracing` depends directly on a `perfetto-everywhere*` crate. Application-facing JavaScript also imports only a Shoop-owned tracing adapter/artifact, not Perfetto implementation details.
+- [x] `shoop_tracing` exposes implementation-neutral APIs for lexical spans, structured logs, instant events, i64/f64 plots, fields, coarse/detail gates, and capture/test lifecycle. Existing `tracing`/`log` callsites are either routed through that facade or migrated to facade macros without losing severity, target, message, typed fields, late span fields, or repeated enter/exit behavior.
+- [x] Disabled tracing does not allocate and does not call a tracing backend. Audio callback recording is bounded, nonblocking, non-growing, and free of formatting, file I/O, protobuf work, and locks. The import-free `shoop_audio_worklet.wasm` contract remains intact.
+- [x] Native application capture supports start, save, discard, shutdown-save, and another capture in the same process. Saved files are atomically published as non-empty numbered `.pftrace` files with no leftover `.partial` file.
+- [x] Hosted Chromium can start and stop tracing from the existing developer UI, save through an explicit browser download, discard, and start again. One saved trace contains synchronized Window, active dedicated Worker, and active AudioWorklet tracks plus observable loss/clock health.
+- [x] Native nextest, Node Wasm, and Chromium Wasm give each eligible testcase a unique capture identity and implement `off`, `failure`, and `always`. Passing traces are discarded in `failure` mode; intentional failing canaries in all three harnesses publish one valid, queryable `.pftrace`, including a span, structured event/log, and plot. Panic-abort limitations must be solved by a harness-owned supervisor rather than silently losing the failed Wasm testcase.
+- [x] CI always uploads finalized failure captures and never uploads partial files. Trace names and reports identify target/runtime, package or binary, testcase, attempt, and a collision-resistant attempt digest.
+- [x] Trace Processor validation proves representative native, Window, Worker, AudioWorklet, Node-test, and Chromium-test traces are structurally valid and contain expected spans, logs/events, typed fields, counters, realm descriptors, clock snapshots, and health diagnostics.
+- [x] Existing tracing coverage remains closed, native/Windows/macOS/web builds and supported test suites pass, and current browser packaging and Firefox smokes do not regress.
+- [x] A final committed migration report records versions/commits, validation evidence, known limitations, trace locations, and the native audio-domain Tracy/Perfetto comparison. Any apparent major regression is reported with evidence but does not by itself block completion.
 
 ## Design rules and constraints
 
@@ -142,7 +142,7 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 - [x] Remove Tracy workspace dependencies/patches, prebuilt-library setup, canary/query steps, `.tracy` upload, and the obsolete Tracy build workflow. Update lockfile and platform caches.
 - [x] Add pinned Trace Processor acquisition/checksum handling, Perfetto canaries, and `if: always()` `.pftrace` uploads for native and Wasm report roots with 14-day retention.
 - [x] Update Wasm/worklet dependency audits to allow only the reviewed `shoop_tracing`/raw producer path and continue rejecting native or wasm-bindgen imports from the raw worklet.
-- [ ] Ensure native Linux/Windows/macOS and web debug/release packaging include exactly the required tracing runtime assets and no Tracy binaries/libraries. (Linux/web verified locally; cross-platform CI pending.)
+- [x] Ensure native Linux/Windows/macOS and web debug/release packaging include exactly the required tracing runtime assets and no Tracy binaries/libraries. (Linux/web verified locally and the Linux, Windows, macOS, and web CI packaging matrix passed.)
 - [x] Replace active Tracy README/RST/help/UI text and `.agents/skills/tracy` guidance with Perfetto capture/query/privacy/clock semantics. Update test modifier and CI artifact documentation.
 - [x] Run a repository-wide case-insensitive Tracy audit. Leave only explicitly labeled historical baseline/migration-report references.
 
@@ -160,15 +160,15 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 
 ### Stage 8 — Final end-to-end validation
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace` and target-specific native feature/dependency checks.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` and `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` with failure capture, then targeted `always` and failure canaries.
-- [ ] Build `shoopdaloop` and the import-free `shoop_audio_worklet` for `wasm32-unknown-unknown`; rerun dependency and import audits.
-- [ ] Run complete Node and policy-selected Chromium Wasm suites with capture canaries, plus hosted/self-contained Chrome and retained Firefox packaged smokes.
-- [ ] Validate representative native application, hosted browser multirealm, native-test, Node-test, and Chromium-test traces with pinned Trace Processor SQL.
-- [ ] Confirm save/discard/restart, failure artifact upload, atomic/no-partial publication, package contents, and repository-wide Tracy removal on the final commit.
-- [ ] Run/inspect the full GitHub Actions matrix and record run URLs/artifact names in the migration report.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace` and target-specific native feature/dependency checks.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` and `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` with failure capture, then targeted `always` and failure canaries.
+- [x] Build `shoopdaloop` and the import-free `shoop_audio_worklet` for `wasm32-unknown-unknown`; rerun dependency and import audits.
+- [x] Run complete Node and policy-selected Chromium Wasm suites with capture canaries, plus hosted/self-contained Chrome and retained Firefox packaged smokes.
+- [x] Validate representative native application, hosted browser multirealm, native-test, Node-test, and Chromium-test traces with pinned Trace Processor SQL.
+- [x] Confirm save/discard/restart, failure artifact upload, atomic/no-partial publication, package contents, and repository-wide Tracy removal on the final commit.
+- [x] Run/inspect the full GitHub Actions matrix and record run URLs/artifact names in the migration report.
 
 **Verification:** all immutable acceptance criteria are checked, CI is green apart from explicitly documented unrelated infrastructure failures, and the final report is complete.
 
