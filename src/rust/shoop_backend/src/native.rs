@@ -2700,13 +2700,16 @@ impl Backend for NativeBackend {
             if !runtime.loops.contains_key(&request.loop_id) {
                 return Err(anyhow!("unknown native loop {:?}", request.loop_id));
             }
-            let offset = runtime
+            let track = runtime
                 .tracks
                 .values()
                 .find(|track| track.loops.contains(&request.loop_id))
-                .and_then(|track| track.state.latency.effective_offset_frames)
-                .ok_or_else(|| anyhow!("recording offset is unavailable; enter a manual value"))?;
-            if offset != 0 {
+                .ok_or_else(|| anyhow!("loop has no owning track"))?;
+            let values = prepared_backend_latency(&track.state.latency)?;
+            let has_wet = !matches!(track.state.topology, BackendTrackTopology::Direct { .. });
+            if values.recording_offset().frames() != 0
+                || (has_wet && values.wet_recording_offset().frames() != 0)
+            {
                 return Err(anyhow!(
                     "grab with a nonzero recording offset is unsupported; record the loop instead"
                 ));
@@ -2890,15 +2893,20 @@ impl Backend for NativeBackend {
                     )?,
                 )?
                 .frames();
-                if expected != 0 || wet_expected != 0 {
-                    return Err(anyhow!(
-                        "replacement with a nonzero recording offset is unsupported; record a new take instead"
-                    ));
-                }
                 let loop_ = runtime
                     .loops
                     .get(&loop_id)
                     .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+                let has_wet = loop_
+                    .audio_modes
+                    .iter()
+                    .chain(&loop_.midi_modes)
+                    .any(|mode| *mode == BackendChannelMode::Wet);
+                if expected != 0 || (has_wet && wet_expected != 0) {
+                    return Err(anyhow!(
+                        "replacement with a nonzero recording offset is unsupported; record a new take instead"
+                    ));
+                }
                 let audio_matches =
                     loop_
                         .audio

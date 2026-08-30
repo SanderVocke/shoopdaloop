@@ -3110,12 +3110,18 @@ impl EngineBackend {
         if require_existing_alignment {
             let expected = values.recording_offset().frames();
             let wet_expected = values.wet_recording_offset().frames();
-            if expected != 0 || wet_expected != 0 {
+            let channel_set = self.loop_channels.get(&loop_id);
+            let has_wet = channel_set.is_some_and(|set| {
+                set.audio_modes
+                    .iter()
+                    .chain(&set.midi_modes)
+                    .any(|mode| *mode == BackendChannelMode::Wet)
+            });
+            if expected != 0 || (has_wet && wet_expected != 0) {
                 return Err(anyhow!(
                     "replacement with a nonzero recording offset is unsupported; record a new take instead"
                 ));
             }
-            let channel_set = self.loop_channels.get(&loop_id);
             let audio_matches = channel_set
                 .into_iter()
                 .flat_map(|set| &set.audio)
@@ -4519,13 +4525,16 @@ impl Backend for EngineBackend {
 
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
         for request in requests {
-            let offset = self
+            let track = self
                 .tracks
                 .values()
                 .find(|track| track.loops.contains(&request.loop_id))
-                .and_then(|track| track.latency.effective_offset_frames)
-                .ok_or_else(|| anyhow!("recording offset is unavailable; enter a manual value"))?;
-            if offset != 0 {
+                .ok_or_else(|| anyhow!("loop has no owning track"))?;
+            let values = prepared_backend_latency(&track.latency)?;
+            let has_wet = !matches!(track.topology, BackendTrackTopology::Direct { .. });
+            if values.recording_offset().frames() != 0
+                || (has_wet && values.wet_recording_offset().frames() != 0)
+            {
                 return Err(anyhow!(
                     "grab with a nonzero recording offset is unsupported; record the loop instead"
                 ));
@@ -7365,13 +7374,16 @@ impl Backend for FakeBackend {
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
         for request in requests {
             self.require_loop(request.loop_id)?;
-            let offset = self
+            let track = self
                 .tracks
                 .values()
                 .find(|track| track.loops.contains(&request.loop_id))
-                .and_then(|track| track.state.latency.effective_offset_frames)
-                .ok_or_else(|| anyhow!("recording offset is unavailable; enter a manual value"))?;
-            if offset != 0 {
+                .ok_or_else(|| anyhow!("loop has no owning track"))?;
+            let values = prepared_backend_latency(&track.state.latency)?;
+            let has_wet = !matches!(track.state.topology, BackendTrackTopology::Direct { .. });
+            if values.recording_offset().frames() != 0
+                || (has_wet && values.wet_recording_offset().frames() != 0)
+            {
                 return Err(anyhow!(
                     "grab with a nonzero recording offset is unsupported; record the loop instead"
                 ));
@@ -7496,7 +7508,19 @@ impl Backend for FakeBackend {
                 )?,
             )?
             .frames();
-            if mode == BackendLoopMode::Replacing && (alignment != 0 || wet_alignment != 0) {
+            let has_wet = self.loop_content.get(&loop_id).is_some_and(|content| {
+                content
+                    .audio
+                    .iter()
+                    .any(|channel| channel.mode == BackendChannelMode::Wet)
+                    || content
+                        .midi
+                        .iter()
+                        .any(|channel| channel.mode == BackendChannelMode::Wet)
+            });
+            if mode == BackendLoopMode::Replacing
+                && (alignment != 0 || (has_wet && wet_alignment != 0))
+            {
                 return Err(anyhow!(
                     "replacement with a nonzero recording offset is unsupported; record a new take instead"
                 ));
@@ -9667,6 +9691,18 @@ mod tests {
         let latency = &backend.poll().unwrap().tracks[&created.track_id].latency;
         assert_eq!(latency.automatic_processor_advance_frames, Some(0));
         assert_eq!(latency.effective_processor_advance_frames, Some(5));
+        let before_grab = backend.capture_session().unwrap();
+        let grab = backend
+            .grab_loops(&[BackendGrabRequest {
+                loop_id,
+                reverse_start_cycle: None,
+                cycles_length: None,
+                go_to_cycle: None,
+                go_to_mode: BackendLoopMode::Stopped,
+            }])
+            .unwrap_err();
+        assert!(grab.to_string().contains("record the loop instead"));
+        assert_eq!(backend.capture_session().unwrap(), before_grab);
         let replacement = backend
             .transition_loop(loop_id, BackendLoopMode::Replacing, None)
             .unwrap_err();
