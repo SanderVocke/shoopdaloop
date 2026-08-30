@@ -7540,13 +7540,19 @@ impl Backend for FakeBackend {
                         .any(|channel| channel.mode == BackendChannelMode::Wet)
             });
             let wet_alignment = if has_wet {
+                let processor_advance = latency
+                    .map(|latency| {
+                        latency.effective_processor_advance_frames.ok_or_else(|| {
+                            anyhow!(
+                                "processor latency is unavailable; enter a non-negative manual value"
+                            )
+                        })
+                    })
+                    .transpose()?
+                    .unwrap_or(0);
                 shoop_latency::wet_recording_offset(
                     shoop_latency::RecordingOffset::new(alignment)?,
-                    shoop_latency::ProcessorRenderAdvance::new(
-                        latency
-                            .and_then(|latency| latency.effective_processor_advance_frames)
-                            .unwrap_or(0),
-                    )?,
+                    shoop_latency::ProcessorRenderAdvance::new(processor_advance)?,
                 )?
                 .frames()
             } else {
@@ -9764,6 +9770,38 @@ mod tests {
                 dry_midi: true,
             },
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_processed_recording_rejects_unresolved_processor_latency() {
+        let mut backend = FakeBackend::default();
+        let processed = backend
+            .create_track(TrackRequest {
+                port_name_base: "invalid-processor-recording".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                -1,
+            )
+            .is_err());
+        let before = backend.loop_content[&processed.loops[0]].clone();
+        let error = backend
+            .transition_loop(processed.loops[0], BackendLoopMode::Recording, None)
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("processor latency is unavailable"));
+        assert_eq!(backend.loop_content[&processed.loops[0]], before);
     }
 
     #[shoop_wasm_test_support::shoop_test]
