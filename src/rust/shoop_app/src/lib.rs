@@ -952,14 +952,19 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
                         data: Arc::from(event.data),
                     })
                     .collect(),
-                start_offset: i64::from(channel.start_offset),
+                start_offset: i64::from(channel.start_offset)
+                    .saturating_add(i64::from(channel.capture_alignment_frames)),
                 preplay_samples: u64::from(channel.preplay),
                 loop_length: u64::from(model.length),
                 played_sample: matches!(
                     model.state.mode,
                     LoopMode::Playing | LoopMode::PlayingDryThroughWet
                 )
-                .then_some(i64::from(model.position)),
+                .then_some(
+                    i64::from(channel.start_offset)
+                        .saturating_add(i64::from(channel.capture_alignment_frames))
+                        .saturating_add(i64::from(model.position)),
+                ),
             }
         })
         .collect()
@@ -1548,12 +1553,25 @@ impl ApplicationModel {
         preplay_samples: Option<u64>,
         loop_length: Option<u64>,
     ) -> Result<(), String> {
-        let backend_id = self
+        let model = self
             .loops
             .get(&loop_id)
-            .ok_or_else(|| format!("stale loop {loop_id}"))?
-            .backend_id;
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let backend_id = model.backend_id;
+        let reference_alignment = model
+            .audio_data
+            .as_ref()
+            .and_then(|data| data.channels.first())
+            .map(|channel| channel.capture_alignment_frames)
+            .unwrap_or(model.state.capture_alignment_frames);
+        let displayed_start_offset = start_offset;
         let start_offset = start_offset
+            .map(|offset| {
+                offset
+                    .checked_sub(i64::from(reference_alignment))
+                    .ok_or_else(|| "loop start adjustment overflowed".to_owned())
+            })
+            .transpose()?
             .map(i32::try_from)
             .transpose()
             .map_err(|_| "loop start is outside the supported frame range".to_owned())?;
@@ -1585,8 +1603,8 @@ impl ApplicationModel {
         }
         if let Some(channels) = model.midi_data.as_mut() {
             for channel in channels {
-                if let Some(offset) = start_offset {
-                    channel.start_offset = i64::from(offset);
+                if let Some(offset) = displayed_start_offset {
+                    channel.start_offset = offset;
                 }
                 if let Some(samples) = preplay {
                     channel.preplay_samples = u64::from(samples);
@@ -7954,11 +7972,19 @@ impl ApplicationModel {
                             .cloned()
                             .unwrap_or_else(|| format!("Audio {}", index + 1)),
                         samples: Arc::clone(&channel.samples),
-                        start_offset: i64::from(channel.start_offset),
+                        start_offset: i64::from(channel.start_offset)
+                            .saturating_add(i64::from(channel.capture_alignment_frames)),
                         preplay_samples: u64::from(channel.preplay),
                         loop_length: model.length as u64,
-                        played_sample: matches!(model.state.mode, LoopMode::Playing)
-                            .then_some(model.position as i64),
+                        played_sample: matches!(
+                            model.state.mode,
+                            LoopMode::Playing | LoopMode::PlayingDryThroughWet
+                        )
+                        .then_some(
+                            i64::from(channel.start_offset)
+                                .saturating_add(i64::from(channel.capture_alignment_frames))
+                                .saturating_add(model.position as i64),
+                        ),
                     })
                     .collect()
             })
@@ -7976,7 +8002,11 @@ impl ApplicationModel {
                             model.state.mode,
                             LoopMode::Playing | LoopMode::PlayingDryThroughWet
                         )
-                        .then_some(i64::from(model.position));
+                        .then_some(
+                            channel
+                                .start_offset
+                                .saturating_add(i64::from(model.position)),
+                        );
                         channel
                     })
                     .collect()
@@ -14846,7 +14876,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn midi_only_selection_publishes_immutable_midi_details() {
+    fn selection_publishes_alignment_adjusted_immutable_media_details() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -14855,8 +14885,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .add_track(
                 &mut backend,
                 DirectTrackSpec {
-                    name: "MIDI only".to_owned(),
-                    audio_channels: 0,
+                    name: "Media details".to_owned(),
+                    audio_channels: 1,
                     midi: true,
                 },
             )
@@ -14869,6 +14899,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .replace_loop_content(
                 backend_loop,
                 &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![0.25; 24],
+                        start_offset: Some(-3),
+                        capture_alignment_frames: Some(3),
+                        preplay: Some(4),
+                    }],
                     midi: vec![BackendMidiChannelUpdate {
                         channel: 0,
                         length: 24,
@@ -14884,7 +14921,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                             },
                         ],
                         start_offset: Some(-3),
-                        capture_alignment_frames: None,
+                        capture_alignment_frames: Some(3),
                         preplay: Some(4),
                     }],
                     length: Some(24),
@@ -14903,12 +14940,14 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
 
         let details = model.details_snapshot().unwrap();
-        assert!(details.channels.is_empty());
+        assert_eq!(details.channels.len(), 1);
+        assert_eq!(details.channels[0].start_offset, 0);
+        assert_eq!(details.channels[0].preplay_samples, 4);
         assert!(!details.loading);
         assert!(!details.midi_loading);
         assert_eq!(details.midi_channels.len(), 1);
         let channel = &details.midi_channels[0];
-        assert_eq!(channel.start_offset, -3);
+        assert_eq!(channel.start_offset, 0);
         assert_eq!(channel.preplay_samples, 4);
         assert_eq!(channel.loop_length, 24);
         assert_eq!(channel.events.len(), 2);
@@ -14924,15 +14963,25 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             &mut backend,
             AppIntent::SetLoopTimeline {
                 loop_id,
-                start_offset: Some(-8),
+                start_offset: Some(2),
                 preplay_samples: Some(6),
-                loop_length: Some(30),
+                loop_length: Some(22),
             },
         );
         let edited = model.details_snapshot().unwrap();
-        assert_eq!(edited.midi_channels[0].start_offset, -8);
+        assert_eq!(edited.channels[0].start_offset, 2);
+        assert_eq!(edited.channels[0].preplay_samples, 6);
+        assert_eq!(edited.channels[0].loop_length, 22);
+        assert_eq!(edited.midi_channels[0].start_offset, 2);
         assert_eq!(edited.midi_channels[0].preplay_samples, 6);
-        assert_eq!(edited.midi_channels[0].loop_length, 30);
+        assert_eq!(edited.midi_channels[0].loop_length, 22);
+        let edited_backend = backend.capture_session().unwrap();
+        let edited_loop = &edited_backend.tracks[1].loops[0];
+        assert_eq!(edited_loop.audio[0].start_offset, -1);
+        assert_eq!(edited_loop.audio[0].capture_alignment_frames, 3);
+        let edited_channel = &edited_loop.midi[0];
+        assert_eq!(edited_channel.start_offset, -1);
+        assert_eq!(edited_channel.capture_alignment_frames, 3);
         model
             .apply_script_operation(
                 &mut backend,

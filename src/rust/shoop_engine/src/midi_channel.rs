@@ -578,7 +578,8 @@ impl MidiChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.prev_process_flags = ProcessFlags::NONE;
+        self.prev_process_flags =
+            ProcessFlags(self.prev_process_flags.0 & ProcessFlags::PLAYBACK.0);
         self.retained_before_frames = 0;
         self.retained_after_frames = 0;
         self.postroll_remaining_frames = 0;
@@ -2353,10 +2354,18 @@ mod tests {
             0,
             &[ev(0, &midi::note_on(0, 60, 1))],
         );
+        let played = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(played
+            .iter()
+            .any(|event| event.data() == midi::note_on(0, 60, 1).as_slice()));
         ch.clear();
         check!(ch.n_events() == 0);
         check!(ch.length() == 0);
         check!(ch.recording_start_state_messages().is_empty());
+        let stopped = cycle(&mut ch, L::Stopped, 1, 0, 0, &[]);
+        check!(stopped
+            .iter()
+            .any(|event| event.data() == midi::note_off(0, 60, 0).as_slice()));
     }
 
     #[shoop_wasm_test_support::shoop_test]
