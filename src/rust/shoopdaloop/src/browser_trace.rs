@@ -214,6 +214,7 @@ impl RealmTraceState {
 
     pub fn abort(&mut self) -> Result<()> {
         self.poll()?;
+        self.add_calibration()?;
         self.stopped = true;
         Ok(())
     }
@@ -322,7 +323,7 @@ impl RealmTraceState {
             clock_id: self.clock_id,
             source_ticks,
             reference_time_ns: (reference_ms * 1_000_000.0).round() as u64,
-            uncertainty_ns: (((after - before) * 500_000.0).round() as u64).max(1),
+            uncertainty_ns: (((after - before) * 500_000.0).round() as u64).max(5_000_000),
         });
         Ok(())
     }
