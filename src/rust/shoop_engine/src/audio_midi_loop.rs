@@ -722,6 +722,23 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn clearing_during_postroll_cancels_finalization_and_keeps_content_empty() {
+        let mut l = loop_with_channel();
+        l.prepare_latency(prepared_latency(3, 0), 4).unwrap();
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[1.0, 2.0, 3.0, 4.0]);
+        l.set_mode(L::Stopped);
+        cycle(&mut l, 1, &[5.0]);
+        check!(l.audio_channel(0).unwrap().is_finalizing_latency_postroll());
+
+        l.clear(0);
+        check!(!l.audio_channel(0).unwrap().has_unsettled_latency_postroll());
+        cycle(&mut l, 1, &[9.0]);
+        check!(l.audio_channel(0).unwrap().length() == 0);
+        check!(!l.audio_channel(0).unwrap().has_unsettled_latency_postroll());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn prepared_latency_latching_allocates_nothing() {
         let mut l = loop_with_channel();
         l.prepare_latency(prepared_latency(3, 0), 4).unwrap();

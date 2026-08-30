@@ -4060,56 +4060,76 @@ impl Backend for EngineBackend {
             ));
         }
         let logical_length = engine_loop.length();
-        for (index, channel) in channels.audio.iter().enumerate() {
+        let reference = channels
+            .audio
+            .first()
+            .and_then(|channel| self.session.audio_channel(*channel))
+            .map(shoop_engine::AudioChannel::capture_alignment_frames)
+            .or_else(|| {
+                channels
+                    .midi
+                    .first()
+                    .and_then(|channel| self.session.midi_channel(*channel))
+                    .map(shoop_engine::MidiChannel::capture_alignment_frames)
+            })
+            .unwrap_or(0);
+        let delta = capture_alignment_frames
+            .checked_sub(reference)
+            .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+        let mut audio_candidates = Vec::with_capacity(channels.audio.len());
+        for (index, channel_index) in channels.audio.iter().enumerate() {
             let channel = self
                 .session
-                .audio_channel(*channel)
+                .audio_channel(*channel_index)
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
-            if channel.is_finalizing_latency_postroll() {
-                return Err(anyhow!(
-                    "cannot edit take alignment while latency postroll is finalizing"
-                ));
-            }
+            let candidate = channel
+                .capture_alignment_frames()
+                .checked_add(delta)
+                .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+            shoop_latency::RecordingOffset::new(candidate)?;
             validate_take_alignment_window(
-                capture_alignment_frames,
+                candidate,
                 channel.start_offset(),
                 channel.length() as u64,
                 logical_length,
                 "audio",
                 index,
             )?;
+            audio_candidates.push((*channel_index, candidate));
         }
-        for (index, channel) in channels.midi.iter().enumerate() {
+        let mut midi_candidates = Vec::with_capacity(channels.midi.len());
+        for (index, channel_index) in channels.midi.iter().enumerate() {
             let channel = self
                 .session
-                .midi_channel(*channel)
+                .midi_channel(*channel_index)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
-            if channel.is_finalizing_latency_postroll() {
-                return Err(anyhow!(
-                    "cannot edit take alignment while latency postroll is finalizing"
-                ));
-            }
+            let candidate = channel
+                .capture_alignment_frames()
+                .checked_add(delta)
+                .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+            shoop_latency::RecordingOffset::new(candidate)?;
             validate_take_alignment_window(
-                capture_alignment_frames,
+                candidate,
                 channel.start_offset(),
                 u64::from(channel.length()),
                 logical_length,
                 "MIDI",
                 index,
             )?;
+            midi_candidates.push((*channel_index, candidate));
         }
-        for channel in &channels.audio {
+        for (channel, candidate) in audio_candidates {
             self.session
-                .audio_channel_mut(*channel)
+                .audio_channel_mut(channel)
                 .ok_or_else(|| anyhow!("missing audio channel"))?
-                .set_capture_alignment_frames(capture_alignment_frames)
+                .set_capture_alignment_frames(candidate)
                 .expect("take alignment was validated");
         }
-        for channel in &channels.midi {
+        for (channel, candidate) in midi_candidates {
             self.session
-                .midi_channel_mut(*channel)
+                .midi_channel_mut(channel)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?
-                .set_capture_alignment_frames(capture_alignment_frames)
+                .set_capture_alignment_frames(candidate)
                 .expect("take alignment was validated");
         }
         Ok(())
@@ -4690,6 +4710,44 @@ impl Backend for EngineBackend {
             .loop_channels
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        let logical_length = length.unwrap_or(
+            self.session
+                .loop_(self.engine_loop_index(loop_id)?)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .length(),
+        );
+        for (channel_index, index) in channels.audio.iter().enumerate() {
+            let channel = self
+                .session
+                .audio_channel(*index)
+                .ok_or_else(|| anyhow!("missing audio loop channel"))?;
+            if channel.capture_alignment_frames() != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames(),
+                    start_offset.unwrap_or(channel.start_offset()),
+                    channel.length() as u64,
+                    logical_length,
+                    "audio",
+                    channel_index,
+                )?;
+            }
+        }
+        for (channel_index, index) in channels.midi.iter().enumerate() {
+            let channel = self
+                .session
+                .midi_channel(*index)
+                .ok_or_else(|| anyhow!("missing MIDI loop channel"))?;
+            if channel.capture_alignment_frames() != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames(),
+                    start_offset.unwrap_or(channel.start_offset()),
+                    u64::from(channel.length()),
+                    logical_length,
+                    "MIDI",
+                    channel_index,
+                )?;
+            }
+        }
         for index in &channels.audio {
             let channel = self
                 .session
@@ -6654,35 +6712,71 @@ impl Backend for FakeBackend {
             .loop_content
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
-        for (index, channel) in content.audio.iter().enumerate() {
-            validate_take_alignment_window(
-                capture_alignment_frames,
-                channel.start_offset,
-                channel.samples.len() as u64,
-                content.length,
-                "audio",
-                index,
-            )?;
-        }
-        for (index, channel) in content.midi.iter().enumerate() {
-            validate_take_alignment_window(
-                capture_alignment_frames,
-                channel.start_offset,
-                u64::from(channel.length),
-                content.length,
-                "MIDI",
-                index,
-            )?;
-        }
+        let reference = content
+            .audio
+            .first()
+            .map(|channel| channel.capture_alignment_frames)
+            .or_else(|| {
+                content
+                    .midi
+                    .first()
+                    .map(|channel| channel.capture_alignment_frames)
+            })
+            .unwrap_or(0);
+        let delta = capture_alignment_frames
+            .checked_sub(reference)
+            .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+        let audio_candidates = content
+            .audio
+            .iter()
+            .enumerate()
+            .map(|(index, channel)| {
+                let candidate = channel
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    channel.start_offset,
+                    channel.samples.len() as u64,
+                    content.length,
+                    "audio",
+                    index,
+                )?;
+                Ok(candidate)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_candidates = content
+            .midi
+            .iter()
+            .enumerate()
+            .map(|(index, channel)| {
+                let candidate = channel
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    channel.start_offset,
+                    u64::from(channel.length),
+                    content.length,
+                    "MIDI",
+                    index,
+                )?;
+                Ok(candidate)
+            })
+            .collect::<Result<Vec<_>>>()?;
         let content = self
             .loop_content
             .get_mut(&loop_id)
             .expect("fake loop was checked above");
-        for channel in &mut content.audio {
-            channel.capture_alignment_frames = capture_alignment_frames;
+        for (channel, candidate) in content.audio.iter_mut().zip(audio_candidates) {
+            channel.capture_alignment_frames = candidate;
         }
-        for channel in &mut content.midi {
-            channel.capture_alignment_frames = capture_alignment_frames;
+        for (channel, candidate) in content.midi.iter_mut().zip(midi_candidates) {
+            channel.capture_alignment_frames = candidate;
         }
         if let Some(state) = self.loops.get_mut(&loop_id) {
             state.capture_alignment_frames = capture_alignment_frames;
@@ -7204,8 +7298,37 @@ impl Backend for FakeBackend {
         self.require_loop(loop_id)?;
         let content = self
             .loop_content
-            .get_mut(&loop_id)
+            .get(&loop_id)
             .ok_or_else(|| anyhow!("missing fake loop content"))?;
+        let logical_length = length.unwrap_or(content.length);
+        for (index, channel) in content.audio.iter().enumerate() {
+            if channel.capture_alignment_frames != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames,
+                    start_offset.unwrap_or(channel.start_offset),
+                    channel.samples.len() as u64,
+                    logical_length,
+                    "audio",
+                    index,
+                )?;
+            }
+        }
+        for (index, channel) in content.midi.iter().enumerate() {
+            if channel.capture_alignment_frames != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames,
+                    start_offset.unwrap_or(channel.start_offset),
+                    u64::from(channel.length),
+                    logical_length,
+                    "MIDI",
+                    index,
+                )?;
+            }
+        }
+        let content = self
+            .loop_content
+            .get_mut(&loop_id)
+            .expect("fake loop content was checked above");
         for channel in &mut content.audio {
             if let Some(offset) = start_offset {
                 channel.start_offset = offset;
@@ -8408,6 +8531,15 @@ mod tests {
             .midi
             .iter()
             .all(|channel| channel.capture_alignment_frames == -1));
+
+        let offset_error = backend
+            .set_loop_timing(loop_id, Some(0), None, None)
+            .unwrap_err();
+        assert!(offset_error.to_string().contains("retained raw window"));
+        let length_error = backend
+            .set_loop_timing(loop_id, None, None, Some(7))
+            .unwrap_err();
+        assert!(length_error.to_string().contains("retained raw window"));
 
         backend
             .set_track_latency(

@@ -1774,31 +1774,63 @@ impl NativeRuntime {
             .iter()
             .map(MidiChannel::get_state)
             .collect::<Result<Vec<_>>>()?;
-        for (index, state) in audio_states.iter().enumerate() {
-            validate_take_alignment_window(
-                capture_alignment_frames,
-                state.start_offset,
-                u64::from(state.length),
-                loop_state.length,
-                "audio",
-                index,
-            )?;
+        let reference = audio_states
+            .first()
+            .map(|state| state.capture_alignment_frames)
+            .or_else(|| {
+                midi_states
+                    .first()
+                    .map(|state| state.capture_alignment_frames)
+            })
+            .unwrap_or(0);
+        let delta = capture_alignment_frames
+            .checked_sub(reference)
+            .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+        let audio_candidates = audio_states
+            .iter()
+            .enumerate()
+            .map(|(index, state)| {
+                let candidate = state
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    state.start_offset,
+                    u64::from(state.length),
+                    loop_state.length,
+                    "audio",
+                    index,
+                )?;
+                Ok(candidate)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_candidates = midi_states
+            .iter()
+            .enumerate()
+            .map(|(index, state)| {
+                let candidate = state
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    state.start_offset,
+                    u64::from(state.length),
+                    loop_state.length,
+                    "MIDI",
+                    index,
+                )?;
+                Ok(candidate)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for (channel, candidate) in loop_.audio.iter().zip(audio_candidates) {
+            channel.set_capture_alignment_frames(candidate)?;
         }
-        for (index, state) in midi_states.iter().enumerate() {
-            validate_take_alignment_window(
-                capture_alignment_frames,
-                state.start_offset,
-                u64::from(state.length),
-                loop_state.length,
-                "MIDI",
-                index,
-            )?;
-        }
-        for channel in &loop_.audio {
-            channel.set_capture_alignment_frames(capture_alignment_frames)?;
-        }
-        for channel in &loop_.midi {
-            channel.set_capture_alignment_frames(capture_alignment_frames)?;
+        for (channel, candidate) in loop_.midi.iter().zip(midi_candidates) {
+            channel.set_capture_alignment_frames(candidate)?;
         }
         self.wait();
         Ok(())
@@ -2876,6 +2908,33 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        let logical_length = length.unwrap_or(target.handle.get_state()?.length);
+        for (index, channel) in target.audio.iter().enumerate() {
+            let state = channel.get_state()?;
+            if state.capture_alignment_frames != 0 {
+                validate_take_alignment_window(
+                    state.capture_alignment_frames,
+                    start_offset.unwrap_or(state.start_offset),
+                    u64::from(state.length),
+                    logical_length,
+                    "audio",
+                    index,
+                )?;
+            }
+        }
+        for (index, channel) in target.midi.iter().enumerate() {
+            let state = channel.get_state()?;
+            if state.capture_alignment_frames != 0 {
+                validate_take_alignment_window(
+                    state.capture_alignment_frames,
+                    start_offset.unwrap_or(state.start_offset),
+                    u64::from(state.length),
+                    logical_length,
+                    "MIDI",
+                    index,
+                )?;
+            }
+        }
         let mut sequences = Vec::new();
         for channel in &target.audio {
             if let Some(offset) = start_offset {
@@ -3717,18 +3776,18 @@ mod tests {
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![0.0; if channel == 0 { 7 } else { 6 }],
-                            start_offset: Some(1),
+                            samples: vec![0.0; 7],
+                            start_offset: Some(if channel == 0 { 1 } else { 3 }),
                             capture_alignment_frames: Some(if channel == 0 { 2 } else { 0 }),
                             preplay: None,
                         })
                         .collect(),
                     midi: vec![BackendMidiChannelUpdate {
                         channel: 0,
-                        length: 6,
+                        length: 7,
                         start_state: Vec::new(),
                         events: Vec::new(),
-                        start_offset: Some(1),
+                        start_offset: Some(3),
                         capture_alignment_frames: Some(0),
                         preplay: None,
                     }],
@@ -3761,6 +3820,14 @@ mod tests {
             .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
         backend.set_take_alignment(loop_id, -1).unwrap();
+        let offset_error = backend
+            .set_loop_timing(loop_id, Some(0), None, None)
+            .unwrap_err();
+        assert!(offset_error.to_string().contains("retained raw window"));
+        let length_error = backend
+            .set_loop_timing(loop_id, None, None, Some(8))
+            .unwrap_err();
+        assert!(length_error.to_string().contains("retained raw window"));
         backend
             .set_track_latency(
                 created.track_id,
@@ -3774,7 +3841,7 @@ mod tests {
         assert!(replacement_error
             .to_string()
             .contains("replacement with a nonzero recording offset"));
-        let error = backend.set_take_alignment(loop_id, 2).unwrap_err();
+        let error = backend.set_take_alignment(loop_id, 3).unwrap_err();
         assert!(error.to_string().contains("retained raw window"));
 
         let captured = backend.capture_session().unwrap();
@@ -3784,14 +3851,18 @@ mod tests {
             .flat_map(|track| &track.loops)
             .find(|loop_| loop_.source_id == loop_id.raw())
             .unwrap();
-        assert!(content
-            .audio
-            .iter()
-            .all(|channel| channel.capture_alignment_frames == -1));
+        assert_eq!(
+            content
+                .audio
+                .iter()
+                .map(|channel| channel.capture_alignment_frames)
+                .collect::<Vec<_>>(),
+            [-1, -3]
+        );
         assert!(content
             .midi
             .iter()
-            .all(|channel| channel.capture_alignment_frames == -1));
+            .all(|channel| channel.capture_alignment_frames == -3));
     }
 
     #[shoop_wasm_test_support::shoop_test]

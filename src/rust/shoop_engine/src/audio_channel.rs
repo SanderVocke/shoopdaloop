@@ -750,10 +750,21 @@ impl AudioChannel {
     pub fn clear(&mut self, length: usize) {
         self.buffers.ensure_available(length);
         self.data_length = length;
+        self.prerecord_buffers.reset();
+        self.prerecord_data_length = 0;
+        self.queue.clear();
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
+        self.prev_process_flags = ProcessFlags::NONE;
+        self.retained_before_frames = 0;
+        self.retained_after_frames = 0;
+        self.postroll_remaining_frames = 0;
+        self.finish_recording_after_finalize = false;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.clear_prerecord();
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
             snapshots.publish_range(0, &[], length, true);

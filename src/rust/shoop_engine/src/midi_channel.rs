@@ -578,6 +578,12 @@ impl MidiChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
+        self.prev_process_flags = ProcessFlags::NONE;
+        self.retained_before_frames = 0;
+        self.retained_after_frames = 0;
+        self.postroll_remaining_frames = 0;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);

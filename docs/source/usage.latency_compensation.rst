@@ -25,9 +25,10 @@ the track setting later affects the next operation and never moves an existing
 take. Once a recording transition is armed, cancel it before changing the track
 offset or input routes. Replacement and retrospective grab are retained only at
 zero offset; record a new take when compensation is needed. Stop the loop before correcting a completed take's signed alignment with
-its alignment control in the same menu. The correction must fit the raw media
-retained with every channel in the take; otherwise it is rejected without
-changing any channel.
+its alignment control in the same menu. The control applies one delta to every
+channel so canonical dry/wet differences remain intact. Alignment, start-offset,
+and length edits must fit the raw media retained with every channel in the take;
+otherwise they are rejected without changing any channel.
 
 Positive offsets retain and select post-record media. Negative offsets retain
 pre-record media. Recording starts only after the required bounded storage has
