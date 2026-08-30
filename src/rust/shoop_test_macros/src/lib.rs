@@ -182,6 +182,26 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
                     output
                 }))
             };
+        } else {
+            let test_name = wasm.sig.ident.clone();
+            let body = wasm.block;
+            wasm.block = if wasm.sig.asyncness.is_some() {
+                Box::new(syn::parse_quote!({
+                    ::shoop_wasm_test_support::wasm_test_trace_opt_out(
+                        module_path!(),
+                        stringify!(#test_name),
+                    );
+                    (async move #body).await
+                }))
+            } else {
+                Box::new(syn::parse_quote!({
+                    ::shoop_wasm_test_support::wasm_test_trace_opt_out(
+                        module_path!(),
+                        stringify!(#test_name),
+                    );
+                    (|| #body)()
+                }))
+            };
         }
         quote! {
             #[cfg(target_arch = "wasm32")]

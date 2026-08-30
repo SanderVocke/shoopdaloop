@@ -22,6 +22,11 @@ test crate::failure ... FAIL
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 filtered out; finished in 0.01s
 """
 
+NO_TRACE = """running 1 test
+test tests::no_trace ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.01s
+"""
+
 OVERLAPPING_NAMES = """running 2 tests
 test tests::save ... ok
 test nested::tests::save ... ok
@@ -135,6 +140,23 @@ class ReportTests(unittest.TestCase):
             )
         self.assertIn("eligible testcase crate::sync emitted no trace", errors)
         self.assertIn("eligible testcase crate::panic emitted no trace", errors)
+
+    def test_trace_policy_accepts_explicit_no_trace_testcase(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            incoming = root / "incoming"
+            incoming.mkdir()
+            identity = base64.urlsafe_b64encode(b"pilot::tests::no_trace").decode().rstrip("=")
+            (incoming / f"{identity}.optout").write_bytes(b"1")
+            traces, errors = write_test_traces(
+                "",
+                parsed=parse_output(NO_TRACE),
+                reports=root,
+                incoming=incoming,
+                policy="always",
+            )
+        self.assertEqual(errors, [])
+        self.assertEqual(traces, {})
 
     def test_trace_identity_matching_uses_complete_components(self):
         (Path.cwd() / "target").mkdir(exist_ok=True)

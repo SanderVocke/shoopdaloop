@@ -31,6 +31,7 @@ TRACE_SENTINEL = re.compile(
     r"SHOOP_PFTRACE\\t(?P<identity>[A-Za-z0-9_-]+)\\t"
     r"(?P<phase>bootstrap|full)\\t(?P<trace>[A-Za-z0-9+/=]+)"
 )
+TRACE_OPT_OUT_SENTINEL = re.compile(r"SHOOP_NO_PFTRACE\\t(?P<identity>[A-Za-z0-9_-]+)")
 
 
 class AssetHandler(http.server.SimpleHTTPRequestHandler):
@@ -45,7 +46,7 @@ class AssetHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         match = re.fullmatch(
-            r"/__shoop_trace/(?P<identity>[A-Za-z0-9_-]+)/(?P<phase>bootstrap|full)",
+            r"/__shoop_trace/(?P<identity>[A-Za-z0-9_-]+)/(?P<phase>bootstrap|full|optout)",
             self.path,
         )
         if not match or self.trace_directory is None:
@@ -56,14 +57,21 @@ class AssetHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(413)
             return
         try:
-            trace = base64.b64decode(self.rfile.read(length), validate=True)
-            if not trace:
-                raise ValueError("empty trace")
+            payload = self.rfile.read(length)
             self.trace_directory.mkdir(parents=True, exist_ok=True)
-            destination = self.trace_directory / (
-                f"{match.group('identity')}.{match.group('phase')}.pftrace"
-            )
-            destination.write_bytes(trace)
+            if match.group("phase") == "optout":
+                if payload != b"1":
+                    raise ValueError("invalid trace opt-out marker")
+                destination = self.trace_directory / f"{match.group('identity')}.optout"
+                destination.write_bytes(payload)
+            else:
+                trace = base64.b64decode(payload, validate=True)
+                if not trace:
+                    raise ValueError("empty trace")
+                destination = self.trace_directory / (
+                    f"{match.group('identity')}.{match.group('phase')}.pftrace"
+                )
+                destination.write_bytes(trace)
         except (OSError, ValueError) as error:
             self.send_error(400, str(error))
             return
@@ -284,7 +292,19 @@ def write_test_traces(
     if policy == "off":
         return {}, []
     captured: dict[str, dict[str, bytes]] = {}
+    opted_out: set[str] = set()
     errors: list[str] = []
+    for path in sorted(incoming.glob("*.optout")):
+        try:
+            encoded_identity = path.stem
+            padded = encoded_identity + "=" * (-len(encoded_identity) % 4)
+            opted_out.add(base64.urlsafe_b64decode(padded).decode())
+            if path.read_bytes() != b"1":
+                raise ValueError("invalid trace opt-out marker")
+        except (UnicodeDecodeError, ValueError) as error:
+            errors.append(f"malformed incoming trace opt-out {path.name}: {error}")
+        finally:
+            path.unlink(missing_ok=True)
     for path in sorted(incoming.glob("*.pftrace")):
         try:
             encoded_identity, phase, _extension = path.name.rsplit(".", 2)
@@ -317,21 +337,39 @@ def write_test_traces(
         except (UnicodeDecodeError, ValueError) as error:
             errors.append(f"malformed trace sentinel: {error}")
 
+    for match in TRACE_OPT_OUT_SENTINEL.finditer(output):
+        try:
+            encoded_identity = match.group("identity")
+            encoded_identity += "=" * (-len(encoded_identity) % 4)
+            opted_out.add(base64.urlsafe_b64decode(encoded_identity).decode())
+        except (UnicodeDecodeError, ValueError) as error:
+            errors.append(f"malformed trace opt-out sentinel: {error}")
+
+    def matches_case(identity: str, case_name: str) -> bool:
+        normalized = identity.split("::", 1)[1] if "::" in identity else identity
+        return case_name in {identity, normalized}
+
     written: dict[str, str] = {}
     associated_identities: set[str] = set()
+    associated_opt_outs: set[str] = set()
     trace_dir = reports / "traces"
     for case in parsed.cases:
         matches = [
             (identity, phases)
             for identity, phases in captured.items()
-            if case.name
-            in {
-                identity,
-                identity.split("::", 1)[1] if "::" in identity else identity,
-            }
+            if matches_case(identity, case.name)
         ]
+        case_opt_outs = {
+            identity for identity in opted_out if matches_case(identity, case.name)
+        }
         associated_identities.update(identity for identity, _phases in matches)
-        eligible = case.status != "ignored" and not (
+        associated_opt_outs.update(case_opt_outs)
+        if len(case_opt_outs) > 1:
+            errors.append(
+                f"expected at most one trace opt-out identity for {case.name}, "
+                f"found {len(case_opt_outs)}"
+            )
+        eligible = not case_opt_outs and case.status != "ignored" and not (
             policy == "failure" and case.status != "failed"
         )
         if not eligible:
@@ -355,6 +393,8 @@ def write_test_traces(
         written[case.name] = str(destination.relative_to(ROOT))
     for identity in sorted(set(captured) - associated_identities):
         errors.append(f"captured trace identity did not match a testcase: {identity}")
+    for identity in sorted(opted_out - associated_opt_outs):
+        errors.append(f"trace opt-out identity did not match a testcase: {identity}")
     return written, errors
 
 

@@ -571,10 +571,41 @@ export function shoopWriteTestTrace(identity, phase, trace, sink) {
     throw new Error(`trace sink rejected ${identity}/${phase}: ${request.status}`);
   }
 }
+
+export function shoopWriteTraceOptOut(identity, sink) {
+  if (globalThis.process?.versions?.node) {
+    const directory = process.env.SHOOP_WASM_TEST_TRACE_DIR;
+    if (!directory) throw new Error("SHOOP_WASM_TEST_TRACE_DIR is missing");
+    const fs = process.getBuiltinModule("fs");
+    fs.mkdirSync(directory, {recursive: true});
+    fs.writeFileSync(`${directory}/${identity}.optout`, "1");
+    return;
+  }
+  if (!sink) throw new Error("SHOOP_WASM_TEST_ASSET_BASE is missing");
+  const request = new XMLHttpRequest();
+  request.open("POST", `${sink}/__shoop_trace/${identity}/optout`, false);
+  request.setRequestHeader("Content-Type", "text/plain");
+  request.send("1");
+  if (request.status !== 204) {
+    throw new Error(`trace sink rejected ${identity}/optout: ${request.status}`);
+  }
+}
 "#)]
 extern "C" {
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = shoopWriteTestTrace)]
     fn write_test_trace(identity: &str, phase: &str, trace: &str, sink: &str);
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = shoopWriteTraceOptOut)]
+    fn write_trace_opt_out(identity: &str, sink: &str);
+}
+
+pub fn wasm_test_trace_opt_out(module: &str, test: &str) {
+    let identity = format!("{module}::{test}");
+    let identity = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(identity);
+    write_trace_opt_out(
+        &identity,
+        option_env!("SHOOP_WASM_TEST_ASSET_BASE").unwrap_or(""),
+    );
 }
 
 fn emit_test_trace(identity: &str, phase: &str, bytes: &[u8]) {
