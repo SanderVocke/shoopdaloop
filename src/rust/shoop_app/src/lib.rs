@@ -8116,8 +8116,8 @@ impl ApplicationModel {
                 .map(|(channel, source)| BackendAudioChannelUpdate {
                     channel,
                     samples: source.samples.clone(),
-                    start_offset: None,
-                    capture_alignment_frames: None,
+                    start_offset: Some(0),
+                    capture_alignment_frames: Some(0),
                     preplay: None,
                 })
                 .collect(),
@@ -8158,8 +8158,8 @@ impl ApplicationModel {
                         })
                     })
                     .collect::<Result<Vec<_>, String>>()?,
-                start_offset: None,
-                capture_alignment_frames: None,
+                start_offset: Some(0),
+                capture_alignment_frames: Some(0),
                 preplay: None,
             }],
             length: update_loop_length.then_some(length),
@@ -8198,7 +8198,7 @@ impl ApplicationModel {
                     channel,
                     samples: samples.clone(),
                     start_offset: Some(0),
-                    capture_alignment_frames: None,
+                    capture_alignment_frames: Some(0),
                     preplay: Some(0),
                 })
                 .collect(),
@@ -8240,7 +8240,7 @@ impl ApplicationModel {
                 start_state: midi.start_state.clone(),
                 events,
                 start_offset: Some(0),
-                capture_alignment_frames: None,
+                capture_alignment_frames: Some(0),
                 preplay: Some(0),
             }],
             length: Some(length),

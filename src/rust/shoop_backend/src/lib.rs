@@ -4619,11 +4619,12 @@ impl Backend for EngineBackend {
                 .audio_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
             let retained_offset = channel.start_offset();
+            let retained_alignment = channel.capture_alignment_frames();
             channel.load_data(&item.samples);
             channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
-            if let Some(alignment) = item.capture_alignment_frames {
-                channel.set_capture_alignment_frames(alignment)?;
-            }
+            channel.set_capture_alignment_frames(
+                item.capture_alignment_frames.unwrap_or(retained_alignment),
+            )?;
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
@@ -4633,13 +4634,13 @@ impl Backend for EngineBackend {
                 .session
                 .midi_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            let retained_offset = channel.start_offset();
+            let retained_alignment = channel.capture_alignment_frames();
             channel.set_contents(&events, item.length, Some(&item.start_state));
-            if let Some(offset) = item.start_offset {
-                channel.set_start_offset(offset);
-            }
-            if let Some(alignment) = item.capture_alignment_frames {
-                channel.set_capture_alignment_frames(alignment)?;
-            }
+            channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
+            channel.set_capture_alignment_frames(
+                item.capture_alignment_frames.unwrap_or(retained_alignment),
+            )?;
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
@@ -7082,7 +7083,9 @@ impl Backend for FakeBackend {
         for item in &update.audio {
             let channel = &mut content.audio[item.channel];
             channel.samples.clone_from(&item.samples);
-            channel.capture_alignment_frames = item.capture_alignment_frames.unwrap_or(0);
+            if let Some(alignment) = item.capture_alignment_frames {
+                channel.capture_alignment_frames = alignment;
+            }
             if let Some(offset) = item.start_offset {
                 channel.start_offset = offset;
             }
@@ -7095,7 +7098,9 @@ impl Backend for FakeBackend {
             channel.length = item.length;
             channel.start_state.clone_from(&item.start_state);
             channel.events.clone_from(&item.events);
-            channel.capture_alignment_frames = item.capture_alignment_frames.unwrap_or(0);
+            if let Some(alignment) = item.capture_alignment_frames {
+                channel.capture_alignment_frames = alignment;
+            }
             if let Some(offset) = item.start_offset {
                 channel.start_offset = offset;
             }

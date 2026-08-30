@@ -5401,13 +5401,12 @@ pub fn replace_loop_content(
                     .audio_channel_mut(*channel_id)
                     .expect("loop content channels were preflighted");
                 let retained_offset = channel.start_offset();
+                let retained_alignment = channel.capture_alignment_frames();
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
                 channel.set_start_offset(offset.unwrap_or(retained_offset));
-                if let Some(alignment) = alignment {
-                    channel
-                        .set_capture_alignment_frames(*alignment)
-                        .expect("capture alignment was preflighted");
-                }
+                channel
+                    .set_capture_alignment_frames(alignment.unwrap_or(retained_alignment))
+                    .expect("capture alignment was preflighted");
                 if let Some(preplay) = preplay {
                     channel.set_pre_play_samples(*preplay);
                 }
@@ -5416,15 +5415,13 @@ pub fn replace_loop_content(
                 let channel = session
                     .midi_channel_mut(*channel_id)
                     .expect("loop content channels were preflighted");
+                let retained_offset = channel.start_offset();
+                let retained_alignment = channel.capture_alignment_frames();
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
-                if let Some(offset) = offset {
-                    channel.set_start_offset(*offset);
-                }
-                if let Some(alignment) = alignment {
-                    channel
-                        .set_capture_alignment_frames(*alignment)
-                        .expect("capture alignment was preflighted");
-                }
+                channel.set_start_offset(offset.unwrap_or(retained_offset));
+                channel
+                    .set_capture_alignment_frames(alignment.unwrap_or(retained_alignment))
+                    .expect("capture alignment was preflighted");
                 if let Some(preplay) = preplay {
                     channel.set_pre_play_samples(*preplay);
                 }
