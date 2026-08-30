@@ -217,10 +217,10 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 47 | 6,606 | 233 | 6,839 |
+| Final production/documentation | 47 | 6,839 | 266 | 7,105 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 5,096 additions and 19,809 deletions across 77
+The simplification delta itself is 5,307 additions and 19,820 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
 simplification baseline, and 1,592 finally: 80 feature-branch tests were removed
 while 57 tests above the merge base remain. Inline unit tests are counted in their
@@ -241,7 +241,7 @@ bounds and allocation behavior it controls.
 | 2 | operation-boundary latching, multi-loop arming, future-operation tests, and whole-queue offset/route edit rejection |
 | 3 | version-7 round trip, version-6 migration, per-channel aligned duplication, retained-window validation, multi-rate assertions, and rounding-gap padding |
 | 4 | positive/long postroll, actual preroll, deferred playback/media reads, final-event snapshot, and immediate/post-callback re-entry rejection |
-| 5 | insufficient retention/preroll, atomic exhaustion/clear, replacement/grab preflight, and per-channel alignment/timeline-edit bounds |
+| 5 | insufficient retention/preroll, atomic exhaustion/clear, replacement/grab preflight, and per-channel alignment/timeline/length-path bounds |
 | 6 | logical audio export assertions, exact/standard MIDI assertions including preroll start-state folding, and removed-command searches |
 | 7 | audio/MIDI dry/wet exact-once behavior, unavailable-offset processor advance, restored/future-loop propagation, wrap, and domain separation |
 | 8 | real-JACK exact observation-and-record-boundary test, connected-input agreement test, unsupported automatic error test, manual browser Worklet test |

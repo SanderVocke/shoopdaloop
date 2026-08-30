@@ -28,7 +28,8 @@ zero offset; record a new take when compensation is needed. Stop the loop before
 its alignment control in the same menu. The control applies one delta to every
 channel so canonical dry/wet differences remain intact. Alignment, start-offset,
 and length edits must fit the raw media retained with every channel in the take;
-otherwise they are rejected without changing any channel. Waveform and MIDI
+otherwise they are rejected without changing any channel. This also applies when
+an import updates a loop's length while retaining other channels. Waveform and MIDI
 details show these aligned raw-media coordinates, while timeline edits are
 translated back to the stored media layout.
 

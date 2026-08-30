@@ -4645,6 +4645,57 @@ impl Backend for EngineBackend {
                     .collect::<Result<Vec<_>>>()
             })
             .collect::<Result<Vec<_>>>()?;
+        let logical_length = update.length.unwrap_or(state.length());
+        for (channel_index, index) in channels.audio.iter().enumerate() {
+            let channel = self
+                .session
+                .audio_channel(*index)
+                .ok_or_else(|| anyhow!("missing audio loop channel"))?;
+            let replacement = update
+                .audio
+                .iter()
+                .find(|item| item.channel == channel_index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames());
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset()),
+                    replacement.map_or(channel.length() as u64, |item| item.samples.len() as u64),
+                    logical_length,
+                    "audio",
+                    channel_index,
+                )?;
+            }
+        }
+        for (channel_index, index) in channels.midi.iter().enumerate() {
+            let channel = self
+                .session
+                .midi_channel(*index)
+                .ok_or_else(|| anyhow!("missing MIDI loop channel"))?;
+            let replacement = update
+                .midi
+                .iter()
+                .find(|item| item.channel == channel_index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames());
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset()),
+                    replacement.map_or(u64::from(channel.length()), |item| u64::from(item.length)),
+                    logical_length,
+                    "MIDI",
+                    channel_index,
+                )?;
+            }
+        }
 
         for (item, index) in update.audio.iter().zip(audio_indices) {
             let channel = self
@@ -4691,12 +4742,16 @@ impl Backend for EngineBackend {
     }
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
-        let engine_loop = self.engine_loop_index(loop_id)?;
-        self.session
-            .loop_mut(engine_loop)
-            .ok_or_else(|| anyhow!("missing engine loop"))?
-            .set_length(length);
-        Ok(())
+        if self.loop_channels.contains_key(&loop_id) {
+            self.set_loop_timing(loop_id, None, None, Some(length))
+        } else {
+            let engine_loop = self.engine_loop_index(loop_id)?;
+            self.session
+                .loop_mut(engine_loop)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .set_length(length);
+            Ok(())
+        }
     }
 
     fn set_loop_timing(
@@ -4773,7 +4828,11 @@ impl Backend for EngineBackend {
             }
         }
         if let Some(length) = length {
-            self.set_loop_length(loop_id, length)?;
+            let engine_loop = self.engine_loop_index(loop_id)?;
+            self.session
+                .loop_mut(engine_loop)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .set_length(length);
         }
         Ok(())
     }
@@ -7182,6 +7241,45 @@ impl Backend for FakeBackend {
         {
             return Err(anyhow!("invalid MIDI event"));
         }
+        let logical_length = update.length.unwrap_or(content.length);
+        for (index, channel) in content.audio.iter().enumerate() {
+            let replacement = update.audio.iter().find(|item| item.channel == index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames);
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset),
+                    replacement.map_or(channel.samples.len() as u64, |item| {
+                        item.samples.len() as u64
+                    }),
+                    logical_length,
+                    "audio",
+                    index,
+                )?;
+            }
+        }
+        for (index, channel) in content.midi.iter().enumerate() {
+            let replacement = update.midi.iter().find(|item| item.channel == index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames);
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset),
+                    replacement.map_or(u64::from(channel.length), |item| u64::from(item.length)),
+                    logical_length,
+                    "MIDI",
+                    index,
+                )?;
+            }
+        }
 
         let content = self
             .loop_content
@@ -7267,25 +7365,7 @@ impl Backend for FakeBackend {
     }
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
-        let state = self
-            .loops
-            .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
-        state.length = length;
-        if state.position >= length {
-            state.position = if length == 0 {
-                0
-            } else {
-                state.position % length
-            };
-        }
-        self.loop_content
-            .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("missing fake loop content"))?
-            .length = length;
-        self.operations
-            .push(FakeOperation::SetLoopLength(loop_id, length));
-        Ok(())
+        self.set_loop_timing(loop_id, None, None, Some(length))
     }
 
     fn set_loop_timing(
@@ -7346,7 +7426,21 @@ impl Backend for FakeBackend {
             }
         }
         if let Some(length) = length {
-            self.set_loop_length(loop_id, length)?;
+            content.length = length;
+            let state = self
+                .loops
+                .get_mut(&loop_id)
+                .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+            state.length = length;
+            if state.position >= length {
+                state.position = if length == 0 {
+                    0
+                } else {
+                    state.position % length
+                };
+            }
+            self.operations
+                .push(FakeOperation::SetLoopLength(loop_id, length));
         }
         Ok(())
     }
@@ -8540,6 +8634,44 @@ mod tests {
             .set_loop_timing(loop_id, None, None, Some(7))
             .unwrap_err();
         assert!(length_error.to_string().contains("retained raw window"));
+        let direct_length_error = backend.set_loop_length(loop_id, 7).unwrap_err();
+        assert!(direct_length_error
+            .to_string()
+            .contains("retained raw window"));
+        let replacement_error = backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..2)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![0.0; 8],
+                            start_offset: None,
+                            capture_alignment_frames: None,
+                            preplay: None,
+                        })
+                        .collect(),
+                    length: Some(7),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(replacement_error
+            .to_string()
+            .contains("retained raw window"));
+        let after_rejected_lengths = backend.capture_session().unwrap();
+        let content = after_rejected_lengths
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert_eq!(content.length, 4);
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.samples.len() == 6));
+        assert_eq!(content.midi[0].length, 6);
 
         backend
             .set_track_latency(

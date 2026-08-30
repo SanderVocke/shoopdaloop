@@ -2862,6 +2862,45 @@ impl Backend for NativeBackend {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        let logical_length = update.length.unwrap_or(target.handle.get_state()?.length);
+        for (index, channel) in target.audio.iter().enumerate() {
+            let state = channel.get_state()?;
+            let replacement = update.audio.iter().find(|item| item.channel == index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(state.capture_alignment_frames);
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(state.start_offset),
+                    replacement.map_or(u64::from(state.length), |item| item.samples.len() as u64),
+                    logical_length,
+                    "audio",
+                    index,
+                )?;
+            }
+        }
+        for (index, channel) in target.midi.iter().enumerate() {
+            let state = channel.get_state()?;
+            let replacement = update.midi.iter().find(|item| item.channel == index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(state.capture_alignment_frames);
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(state.start_offset),
+                    replacement.map_or(u64::from(state.length), |item| u64::from(item.length)),
+                    logical_length,
+                    "MIDI",
+                    index,
+                )?;
+            }
+        }
         let sequence = shoop_engine::app_backend::replace_loop_content(
             &target.handle,
             &audio,
@@ -2883,17 +2922,7 @@ impl Backend for NativeBackend {
     }
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
-        let runtime = self.runtime_mut()?;
-        let sequence = runtime
-            .loops
-            .get(&loop_id)
-            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?
-            .handle
-            .set_length(length)?;
-        runtime
-            .session
-            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
-        Ok(())
+        self.set_loop_timing(loop_id, None, None, Some(length))
     }
 
     fn set_loop_timing(
@@ -3828,6 +3857,44 @@ mod tests {
             .set_loop_timing(loop_id, None, None, Some(8))
             .unwrap_err();
         assert!(length_error.to_string().contains("retained raw window"));
+        let direct_length_error = backend.set_loop_length(loop_id, 8).unwrap_err();
+        assert!(direct_length_error
+            .to_string()
+            .contains("retained raw window"));
+        let replacement_error = backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..2)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![0.0; 9],
+                            start_offset: None,
+                            capture_alignment_frames: None,
+                            preplay: None,
+                        })
+                        .collect(),
+                    length: Some(8),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(replacement_error
+            .to_string()
+            .contains("retained raw window"));
+        let after_rejected_lengths = backend.capture_session().unwrap();
+        let content = after_rejected_lengths
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert_eq!(content.length, 4);
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.samples.len() == 7));
+        assert_eq!(content.midi[0].length, 7);
         backend
             .set_track_latency(
                 created.track_id,
