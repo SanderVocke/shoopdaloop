@@ -1349,15 +1349,20 @@ impl ApplicationModel {
             AppIntent::SetTakeAlignment {
                 loop_id,
                 capture_alignment_frames,
-            } => self
-                .loops
-                .get(&loop_id)
-                .ok_or_else(|| format!("stale or unknown loop {loop_id}"))
-                .and_then(|loop_| {
-                    backend
-                        .set_take_alignment(loop_.backend_id, capture_alignment_frames)
-                        .map_err(|error| error.to_string())
-                }),
+            } => (|| -> Result<(), String> {
+                let backend_id = self
+                    .loops
+                    .get(&loop_id)
+                    .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?
+                    .backend_id;
+                backend
+                    .set_take_alignment(backend_id, capture_alignment_frames)
+                    .map_err(|error| error.to_string())?;
+                let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+                model.audio_data = None;
+                model.midi_data = None;
+                Ok(())
+            })(),
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
@@ -14995,6 +15000,19 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let edited_channel = &edited_loop.midi[0];
         assert_eq!(edited_channel.start_offset, -1);
         assert_eq!(edited_channel.capture_alignment_frames, 3);
+        model.handle_intent(
+            &mut backend,
+            AppIntent::SetTakeAlignment {
+                loop_id,
+                capture_alignment_frames: 2,
+            },
+        );
+        assert!(model.loops[&loop_id].audio_data.is_none());
+        assert!(model.loops[&loop_id].midi_data.is_none());
+        model.refresh_selected_media(&mut backend).unwrap();
+        let realigned = model.details_snapshot().unwrap();
+        assert_eq!(realigned.channels[0].start_offset, 1);
+        assert_eq!(realigned.midi_channels[0].start_offset, 1);
         model
             .apply_script_operation(
                 &mut backend,

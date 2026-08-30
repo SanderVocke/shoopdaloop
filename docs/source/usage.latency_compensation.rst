@@ -31,8 +31,9 @@ and length edits must fit the raw media retained with every channel in the take;
 otherwise they are rejected without changing any channel. This also applies when
 an import updates a loop's length while retaining other channels. Waveform and MIDI
 details show these aligned raw-media coordinates, while timeline edits are
-translated back to the stored media layout. A browser-backend rejection reloads
-the authoritative timeline instead of leaving the attempted edit displayed.
+translated back to the stored media layout. Successful alignment edits reload
+these coordinates, and a browser-backend rejection reloads the authoritative
+timeline instead of leaving the attempted edit displayed.
 
 Positive offsets retain and select post-record media. Negative offsets retain
 pre-record media. Recording starts only after the required bounded storage has
