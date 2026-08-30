@@ -68,6 +68,9 @@ impl TestCapture {
             .map_err(|error| format!("{diagnostic_identity}: {error}"))?;
         crate::set_tracing_output_enabled(true);
         crate::set_tracing_enabled(true);
+        crate::set_engine_detail_enabled(
+            std::env::var_os("SHOOP_CI_TRACING_ENGINE_DETAIL").is_some(),
+        );
         crate::emit_realtime_event("shoop.test_capture.attempt.begin");
         Ok(Some(Self {
             policy,
@@ -85,6 +88,7 @@ impl TestCapture {
             crate::emit_realtime_event("shoop.test_capture.attempt.success");
         }
         crate::set_tracing_output_enabled(false);
+        crate::set_engine_detail_enabled(false);
         crate::set_tracing_enabled(false);
         let disposition = if failed || self.policy == Policy::Always {
             CaptureDisposition::Save

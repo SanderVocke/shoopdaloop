@@ -89,6 +89,8 @@ mod tests {
     #[shoop_test(no_trace = "exercises the uninstrumented native expansion")]
     fn no_trace_modifier_runs() {
         assert_eq!(6 * 7, 42);
+        assert!(!shoop_tracing::is_tracing_enabled());
+        assert!(!shoop_tracing::is_engine_detail_enabled());
     }
 
     #[shoop_test(no_wasm = "exercises native Result error preservation")]
