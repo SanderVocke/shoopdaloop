@@ -60,7 +60,7 @@ Out of scope:
 Depends on: none.
 
 - [x] Add a typed processor-latency adjustment model with Automatic, Manual override, and Automatic + signed trim resolution.
-- [ ] Represent automatic processor latency, user input, and effective processor latency separately; keep the effective callback value as `ProcessorRenderAdvance`.
+- [x] Represent automatic processor latency, user input, and effective processor latency separately; keep the effective callback value as `ProcessorRenderAdvance`.
 - [x] Add checked derivation for the ordinary-record wet alignment `R + P`, including non-negative processor resolution and combined alignment bounds.
 - [x] Define compact prepared values that make both direct/dry and wet recording offsets available without callback-time arithmetic.
 - [x] Add table-driven domain tests for positive, negative, mixed-sign, zero, maximum, underflow, overflow, unavailable, and invalid-negative processor cases.
@@ -79,7 +79,7 @@ Depends on: Stage 1.
 - [x] Keep `PlayingDryThroughWet` dry render advance and `RecordingDryIntoWet` canonical wet destination behavior separate from ordinary-record capture annotations.
 - [x] Ensure per-channel postroll completion, exhaustion, abort, and publication remain atomic when dry and wet require different windows.
 - [x] Update replacement preparation/latching guards so all derived channel alignments are considered and unsupported nonzero replacement still fails before mutation.
-- [ ] Add deterministic audio and MIDI tests proving role mapping, mixed preroll/postroll, wrap behavior, exact-once render advance, canonical dry-into-wet output, and no callback allocations.
+- [x] Add deterministic audio and MIDI tests proving role mapping, mixed preroll/postroll, wrap behavior, exact-once render advance, canonical dry-into-wet output, and no callback allocations.
 
 Verification:
 
@@ -90,47 +90,47 @@ Verification:
 
 Depends on: Stages 1-2.
 
-- [ ] Extend `BackendTrackLatencyState` with processor automatic value, adjustment mode, manual/trim input, effective value, pending state, and actionable errors.
-- [ ] Update the shared backend resolver to validate `R`, `P`, and the derived wet mapping atomically before publishing prepared values.
-- [ ] Apply identical semantics in Fake, Engine, delegated, and Native backends; avoid copy-specific arithmetic.
-- [ ] Set Carla processor automatic latency to zero without adding any Carla host query or inference path. Define zero automatic baselines for other unsupported processor detectors where needed for backend parity.
-- [ ] Preserve arming guards so processor-setting edits cannot replace a prepared operation's values.
-- [ ] Update ordinary replacement/grab preflight, future-loop inheritance, track duplication, route restoration, and processor restoration to use the resolved processor configuration.
-- [ ] Add backend tests for `R`/`R + P` channel annotations, mixed retained windows, zero-based Carla Automatic + trim, future-operation semantics, and atomic failures across all backend implementations.
+- [x] Extend `BackendTrackLatencyState` with processor automatic value, adjustment mode, manual/trim input, effective value, pending state, and actionable errors.
+- [x] Update the shared backend resolver to validate `R`, `P`, and the derived wet mapping atomically before publishing prepared values.
+- [x] Apply identical semantics in Fake, Engine, delegated, and Native backends; avoid copy-specific arithmetic.
+- [x] Set Carla processor automatic latency to zero without adding any Carla host query or inference path. Define zero automatic baselines for other unsupported processor detectors where needed for backend parity.
+- [x] Preserve arming guards so processor-setting edits cannot replace a prepared operation's values.
+- [x] Update ordinary replacement/grab preflight, future-loop inheritance, track duplication, route restoration, and processor restoration to use the resolved processor configuration.
+- [x] Add backend tests for `R`/`R + P` channel annotations, mixed retained windows, zero-based Carla Automatic + trim, future-operation semantics, and atomic failures across all backend implementations.
 
 Verification:
 
 - [ ] Run complete `shoop_backend` tests.
 - [ ] Run focused warning-denied backend Clippy.
-- [ ] Confirm case-insensitive removed-architecture terminology searches remain clean.
+- [x] Confirm case-insensitive removed-architecture terminology searches remain clean.
 
 ## Stage 4: Add explicit completed-take processor correction
 
 Depends on: Stage 3.
 
-- [ ] Keep `SetTakeAlignment` as a common-delta edit across every retained channel.
-- [ ] Add a typed take-processor-alignment intent/backend operation that derives the current dry-to-wet differential and applies one requested delta only to Wet channels.
-- [ ] Define a stable reference when multiple dry/wet channels exist, preserve intra-group differences, and reject takes without a usable dry/wet pairing.
-- [ ] Preflight the candidate alignment and retained logical window for every affected Wet channel before mutating any channel.
-- [ ] Fence the edit while playback, recording, replacement, dry-into-wet rendering, postroll, or another relevant mutation is active.
-- [ ] Invalidate/reload application and browser media/timeline caches after success or asynchronous rejection, matching existing alignment-edit recovery behavior.
+- [x] Keep `SetTakeAlignment` as a common-delta edit across every retained channel.
+- [x] Add a typed take-processor-alignment intent/backend operation that derives the current dry-to-wet differential and applies one requested delta only to Wet channels.
+- [x] Define a stable reference when multiple dry/wet channels exist, preserve intra-group differences, and reject takes without a usable dry/wet pairing.
+- [x] Preflight the candidate alignment and retained logical window for every affected Wet channel before mutating any channel.
+- [x] Fence the edit while playback, recording, replacement, dry-into-wet rendering, postroll, or another relevant mutation is active.
+- [x] Invalidate/reload application and browser media/timeline caches after success or asynchronous rejection, matching existing alignment-edit recovery behavior.
 - [ ] Add Fake, Engine, Native, browser, and application tests for success, preserved group differences, unavailable topology, bounds failure, atomicity, and stale-cache recovery.
 
 Verification:
 
 - [ ] Run focused backend, application, and Worklet mutation/recovery tests.
-- [ ] Confirm existing common take-alignment tests still pass unchanged in intent.
+- [x] Confirm existing common take-alignment tests still pass unchanged in intent.
 
 ## Stage 5: Update application API, browser protocol, and Worklet
 
 Depends on: Stages 3-4.
 
-- [ ] Extend application state and intents with processor adjustment, automatic/manual/trim values, effective processor latency, and processed-take differential correction.
-- [ ] Update application-to-backend mapping and optimistic/pending/error handling without conflating recording and processor adjustment modes.
-- [ ] Extend the audio protocol commands and snapshots, increment the protocol version, and update serialization/golden round trips.
-- [ ] Update Worklet command handling, state publication, mutation detail typing, rejection recovery, and client cache invalidation.
-- [ ] Preserve browser's zero automatic processor baseline and manual/trim behavior without introducing timing estimation.
-- [ ] Add protocol compatibility, app dispatch, browser retry/rejection, and state round-trip tests.
+- [x] Extend application state and intents with processor adjustment, automatic/manual/trim values, effective processor latency, and processed-take differential correction.
+- [x] Update application-to-backend mapping and optimistic/pending/error handling without conflating recording and processor adjustment modes.
+- [x] Extend the audio protocol commands and snapshots, increment the protocol version, and update serialization/golden round trips.
+- [x] Update Worklet command handling, state publication, mutation detail typing, rejection recovery, and client cache invalidation.
+- [x] Preserve browser's zero automatic processor baseline and manual/trim behavior without introducing timing estimation.
+- [x] Add protocol compatibility, app dispatch, browser retry/rejection, and state round-trip tests.
 
 Verification:
 
@@ -141,12 +141,12 @@ Verification:
 
 Depends on: Stages 3 and 5.
 
-- [ ] Introduce the next explicit session document version for processor adjustment mode and signed manual/trim input.
-- [ ] Migrate version-7 `processor_advance_frames` to Manual override with the identical effective value.
-- [ ] Do not serialize automatic processor observations or inferred provider metadata.
-- [ ] Preserve already stored per-channel capture alignments, including differing dry/wet values, through save/load, archive validation, duplication, partial import, and replacement of loop content.
-- [ ] Scale processor manual/trim values and every channel annotation with checked deterministic rounding during sample-rate conversion; revalidate retained windows after conversion.
-- [ ] Add current-version round trips, version-7 migration, malformed/out-of-range input, mixed dry/wet alignment, and multi-rate resampling tests.
+- [x] Introduce the next explicit session document version for processor adjustment mode and signed manual/trim input.
+- [x] Migrate version-7 `processor_advance_frames` to Manual override with the identical effective value.
+- [x] Do not serialize automatic processor observations or inferred provider metadata.
+- [x] Preserve already stored per-channel capture alignments, including differing dry/wet values, through save/load, archive validation, duplication, partial import, and replacement of loop content.
+- [x] Scale processor manual/trim values and every channel annotation with checked deterministic rounding during sample-rate conversion; revalidate retained windows after conversion.
+- [x] Add current-version round trips, version-7 migration, malformed/out-of-range input, mixed dry/wet alignment, and multi-rate resampling tests.
 
 Verification:
 
@@ -157,13 +157,13 @@ Verification:
 
 Depends on: Stages 4-6.
 
-- [ ] Split the existing dialog into clear Recording alignment and Processor latency sections, each with its own Automatic/Manual/Automatic + trim selector, value editor, effective value, pending state, and actionable error text.
-- [ ] For Carla, show an automatic processor value of zero and permit Manual or Automatic + trim without implying that Carla was inspected.
-- [ ] For each completed processed take, expose common take alignment and wet-relative processor alignment corrections; hide or disable the latter for non-dry/wet takes.
-- [ ] Keep all controls in the track-level Latency compensation dialog and out of the compact `⋮` menu itself.
-- [ ] Update user documentation, session-format documentation, `LATENCY_REMAINING_WORK.md`, the simplification audit, and tracing coverage where behavior or instrumentation changes.
+- [x] Split the existing dialog into clear Recording alignment and Processor latency sections, each with its own Automatic/Manual/Automatic + trim selector, value editor, effective value, pending state, and actionable error text.
+- [x] For Carla, show an automatic processor value of zero and permit Manual or Automatic + trim without implying that Carla was inspected.
+- [x] For each completed processed take, expose common take alignment and wet-relative processor alignment corrections; hide or disable the latter for non-dry/wet takes.
+- [x] Keep all controls in the track-level Latency compensation dialog and out of the compact `⋮` menu itself.
+- [x] Update user documentation, session-format documentation, `LATENCY_REMAINING_WORK.md`, the simplification audit, and tracing coverage where behavior or instrumentation changes.
 - [ ] Replace the ignored visual-validation artifact with a screenshot of the revised dialog at a supported common window size.
-- [ ] Add UI interaction/layout tests covering direct, Carla, manual, trim, unavailable/invalid, pending/error, and completed processed-take states.
+- [x] Add UI interaction/layout tests covering direct, Carla, manual, trim, unavailable/invalid, pending/error, and completed processed-take states.
 
 Verification:
 

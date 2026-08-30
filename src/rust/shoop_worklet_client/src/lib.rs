@@ -27,10 +27,10 @@ use shoop_audio_protocol::{
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
     WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment,
     WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole,
-    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
-    WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
-    WAVEFORM_CHUNK_SAMPLES,
+    WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl,
+    WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
@@ -863,7 +863,24 @@ impl RemoteWorkletBackend {
                                 }
                             },
                             effective_offset_frames: track.latency.effective_offset_frames,
-                            processor_advance_frames: track.latency.processor_advance_frames,
+                            automatic_processor_advance_frames: track
+                                .latency
+                                .automatic_processor_advance_frames,
+                            processor_adjustment: match track.latency.processor_adjustment {
+                                WireProcessorLatencyAdjustment::Automatic => {
+                                    shoop_backend::BackendProcessorLatencyAdjustment::Automatic
+                                }
+                                WireProcessorLatencyAdjustment::ManualOverride => {
+                                    shoop_backend::BackendProcessorLatencyAdjustment::ManualOverride
+                                }
+                                WireProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                                    shoop_backend::BackendProcessorLatencyAdjustment::AutomaticPlusTrim
+                                }
+                            },
+                            processor_manual_frames: track.latency.processor_manual_frames,
+                            effective_processor_advance_frames: track
+                                .latency
+                                .effective_processor_advance_frames,
                             pending: track.latency.pending,
                             error: track.latency.error,
                         },
@@ -898,6 +915,7 @@ impl RemoteWorkletBackend {
                         audio_peaks: loop_.audio_peaks,
                         midi_activity: loop_.midi_activity,
                         capture_alignment_frames: loop_.capture_alignment_frames,
+                        processor_alignment_frames: loop_.processor_alignment_frames,
                     },
                 )
             })
@@ -1144,7 +1162,8 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::ClearLoop { loop_id }
         | Command::SetLoopLength { loop_id, .. }
         | Command::SetLoopTiming { loop_id, .. }
-        | Command::SetTakeAlignment { loop_id, .. } => {
+        | Command::SetTakeAlignment { loop_id, .. }
+        | Command::SetTakeProcessorAlignment { loop_id, .. } => {
             (BackendMutationKind::LoopControl, Some(*loop_id))
         }
         Command::GrabLoops { requests } => (
@@ -1243,6 +1262,10 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
         }
         Command::SetLoopLength { .. } | Command::SetLoopTiming { .. } => {
             Some(BackendMutationDetail::LoopTiming)
+        }
+        Command::SetTakeAlignment { .. } => Some(BackendMutationDetail::TakeAlignment),
+        Command::SetTakeProcessorAlignment { .. } => {
+            Some(BackendMutationDetail::TakeProcessorAlignment)
         }
         _ => None,
     }
@@ -1521,7 +1544,8 @@ impl Backend for RemoteWorkletBackend {
         &mut self,
         track_id: BackendTrackId,
         adjustment: shoop_backend::BackendRecordingOffsetAdjustment,
-        processor_advance_frames: u32,
+        processor_adjustment: shoop_backend::BackendProcessorLatencyAdjustment,
+        processor_manual_frames: i32,
     ) -> Result<()> {
         if !self.track_resources.contains_key(&track_id) {
             return Err(anyhow!("unknown remote backend track {track_id:?}"));
@@ -1537,11 +1561,23 @@ impl Backend for RemoteWorkletBackend {
                 (WireRecordingOffsetAdjustment::AutomaticPlusTrim, frames)
             }
         };
+        let processor_adjustment = match processor_adjustment {
+            shoop_backend::BackendProcessorLatencyAdjustment::Automatic => {
+                WireProcessorLatencyAdjustment::Automatic
+            }
+            shoop_backend::BackendProcessorLatencyAdjustment::ManualOverride => {
+                WireProcessorLatencyAdjustment::ManualOverride
+            }
+            shoop_backend::BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                WireProcessorLatencyAdjustment::AutomaticPlusTrim
+            }
+        };
         self.submit(Command::SetTrackLatency {
             track_id: track_id.raw(),
             adjustment,
             manual_frames,
-            processor_advance_frames,
+            processor_adjustment,
+            processor_manual_frames,
         })
     }
 
@@ -1556,6 +1592,23 @@ impl Backend for RemoteWorkletBackend {
         self.submit(Command::SetTakeAlignment {
             loop_id: loop_id.raw(),
             capture_alignment_frames,
+        })?;
+        self.waveforms.remove(&loop_id);
+        self.midi_data.remove(&loop_id);
+        Ok(())
+    }
+
+    fn set_take_processor_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        processor_alignment_frames: u32,
+    ) -> Result<()> {
+        if !self.has_loop(loop_id) {
+            return Err(anyhow!("unknown remote backend loop {loop_id:?}"));
+        }
+        self.submit(Command::SetTakeProcessorAlignment {
+            loop_id: loop_id.raw(),
+            processor_alignment_frames,
         })?;
         self.waveforms.remove(&loop_id);
         self.midi_data.remove(&loop_id);
@@ -2826,6 +2879,32 @@ mod tests {
                 } if raw == loop_id.raw()
             )
         }));
+        backend.set_take_processor_alignment(loop_id, 7).unwrap();
+        assert!(sent.borrow().iter().any(|message| {
+            matches!(
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command,
+                Command::SetTakeProcessorAlignment {
+                    loop_id: raw,
+                    processor_alignment_frames: 7,
+                } if raw == loop_id.raw()
+            )
+        }));
+        deliver(&control, 1, 8, Event::Ack);
+        deliver(
+            &control,
+            1,
+            9,
+            Event::Error {
+                message: "processor alignment exceeds retained window".to_owned(),
+            },
+        );
+        let rejected = backend.poll().unwrap();
+        assert_eq!(
+            rejected.mutation_failures.last().unwrap().detail,
+            Some(BackendMutationDetail::TakeProcessorAlignment)
+        );
 
         let commands_before_restart = sent.borrow().len();
         control.detach(false);
@@ -2977,6 +3056,7 @@ mod tests {
                         audio_peaks: vec![0.2, 0.3],
                         midi_activity: true,
                         capture_alignment_frames: 0,
+                        processor_alignment_frames: None,
                     })
                     .collect(),
                 composites: vec![WireCompositeState {

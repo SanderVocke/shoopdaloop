@@ -106,6 +106,7 @@ impl EffectiveLatencyLatch {
 pub struct AtomicEffectiveLatencyPublication {
     generation: AtomicU64,
     recording_offset: AtomicI32,
+    wet_recording_offset: AtomicI32,
     processor_advance: AtomicU32,
     operation_frame: AtomicU64,
 }
@@ -115,6 +116,7 @@ impl Default for AtomicEffectiveLatencyPublication {
         Self {
             generation: AtomicU64::new(0),
             recording_offset: AtomicI32::new(0),
+            wet_recording_offset: AtomicI32::new(0),
             processor_advance: AtomicU32::new(0),
             operation_frame: AtomicU64::new(NO_LATCHED_FRAME),
         }
@@ -134,6 +136,8 @@ impl AtomicEffectiveLatencyPublication {
         self.generation.fetch_add(1, Ordering::AcqRel);
         self.recording_offset
             .store(values.recording_offset().frames(), Ordering::Relaxed);
+        self.wet_recording_offset
+            .store(values.wet_recording_offset().frames(), Ordering::Relaxed);
         self.processor_advance
             .store(values.processor_advance().frames(), Ordering::Relaxed);
         self.operation_frame.store(
@@ -151,17 +155,19 @@ impl AtomicEffectiveLatencyPublication {
                 continue;
             }
             let recording_offset = self.recording_offset.load(Ordering::Relaxed);
+            let wet_recording_offset = self.wet_recording_offset.load(Ordering::Relaxed);
             let processor_advance = self.processor_advance.load(Ordering::Relaxed);
             let operation_frame = self.operation_frame.load(Ordering::Relaxed);
             let after = self.generation.load(Ordering::Acquire);
             if before == after {
-                let values = PreparedLatency::new(
-                    RecordingOffset::new(recording_offset)
+                let values = PreparedLatency {
+                    recording_offset: RecordingOffset::new(recording_offset)
                         .expect("published recording offset is validated"),
-                    ProcessorRenderAdvance::new(processor_advance)
+                    wet_recording_offset: RecordingOffset::new(wet_recording_offset)
+                        .expect("published wet recording offset is validated"),
+                    processor_advance: ProcessorRenderAdvance::new(processor_advance)
                         .expect("published processor advance is validated"),
-                )
-                .expect("published wet recording offset is validated");
+                };
                 return Some(PublishedEffectiveLatency {
                     values,
                     operation_frame: (operation_frame != NO_LATCHED_FRAME)

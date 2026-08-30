@@ -20,6 +20,8 @@ the license and corresponding-source information.
 
 ## Latency support
 
-The pinned Carla Native API does not expose one dependable effective recording
-offset. Carla tracks therefore use the application's manual latency controls.
-Carla processing remains available when automatic latency is unsupported.
+ShoopDaLoop does not query, parse, measure, or infer latency from Carla plugins
+or graphs. Carla processor latency therefore has an automatic baseline of zero;
+users enter the known delay with Manual or Automatic + trim. Recording-input
+alignment remains independently configurable. Carla processing remains
+available without latency introspection.

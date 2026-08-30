@@ -179,20 +179,25 @@ any unavailable host/browser facility explicitly.
 
 The final implementation has one checked signed `RecordingOffset`, one separate
 `ProcessorRenderAdvance`, `CaptureFrameMapping`, and a compact prepared/latched
-callback snapshot. Track state contains only automatic/manual/trim selection, the
-resolved value, processor advance, and pending/error state. Channel/take state
-contains one signed capture alignment. Session data stores track adjustment,
-manual and processor values, and one channel alignment; it stores no provider
-identity or observation history. Session document version 7 owns this required
-field, while version 6 migrates explicitly to zero alignment.
+callback snapshot. Track state contains independent automatic/manual/trim
+selection for recording alignment and processor latency, their resolved values,
+and pending/error state. Channel/take state contains one signed capture alignment;
+ordinary dry/wet recording derives Dry as `R` and Wet as `R + P`. Session data
+stores both adjustment modes and manual/trim values plus each channel alignment;
+it stores no provider identity or observation history. Session document version 8
+owns processor adjustment, version 7 migrates its processor advance to Manual,
+and version 6 additionally migrates channel alignment to zero.
 
 JACK recomputes connected capture latency on the control path and accepts it only
 when the relevant connected range is exact. Native tracks require all applicable
 connected inputs to agree, ignore disconnected inputs, refresh automatic state
 after unarmed route changes, reject route changes while recording is armed, and
 resolve restored automatic state only after saved routes are reconnected. Dummy, CPAL, Carla, built-in synth, and
-browser paths remain manual when they cannot make that claim. The browser protocol is version 16 and
-carries only the reduced controls and channel alignment.
+browser paths remain manual when they cannot make that recording-input claim.
+Processor detector paths without an exact observation, including Carla, use an
+explicit zero automatic baseline and Manual/trim compensation without inference.
+The browser protocol is version 17 and carries both reduced controls plus
+per-channel and processed-take alignment.
 
 Recording preparation reserves the sign-derived pre/post window before the
 operation. Postroll remains an unsettled content mutation. Audio or MIDI storage
@@ -202,11 +207,11 @@ and normal audio/MIDI export map the logical window; no special raw export or
 bake command remains.
 
 A **Latency compensation** entry in the track options menu opens a compact dialog
-containing the effective-value controls and manual completed-take alignment.
-Browser layout evidence is `artifacts/latency-controls.png` in the validation
-workspace (the repository's artifact directory is intentionally ignored). It
-shows the Manual selector, Offset, Processor, and Effective rows at 1200 by 800;
-minimum/common-size UI tests also pass.
+containing separate Recording alignment and Processor latency controls plus
+common and wet-relative completed-take correction. Browser layout evidence is
+`artifacts/latency-controls.png` in the validation workspace (the repository's
+artifact directory is intentionally ignored). Minimum/common-size UI tests also
+cover the dialog.
 
 ### Size result
 
@@ -259,5 +264,5 @@ bounds and allocation behavior it controls.
 - Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; after the latest review fixes, the changed engine, backend, app, Worklet client, and session packages passed all 821, 48, 84, 21, and 30 shared tests respectively.
 - Real JACK integration ran against the available server; the exact connected 37-frame value was latched onto a recording channel.
 - `RUSTFLAGS="-D warnings" cargo build --workspace`, formatting, focused warning-denied latency/backend/session/protocol/client Clippy, test-attribute policy, tracing inventory, dependency tree, smoke-budget check, and report parser tests pass.
-- `trunk build` builds both application and AudioWorklet Wasm. The raw Wasm host artifact contract passes with protocol version 16. Firefox 146 loaded the built hosted UI and produced the layout screenshot. The standalone Chromium smoke launcher is incompatible with this host's crash-handler wrapper, but the complete Chromedriver-based Chromium suite passed.
+- `trunk build` builds both application and AudioWorklet Wasm. The raw Wasm host artifact contract passes with protocol version 17. Firefox 146 loaded the built hosted UI and produced the layout screenshot. The standalone Chromium smoke launcher is incompatible with this host's crash-handler wrapper, but the complete Chromedriver-based Chromium suite passed.
 - Removed architecture/API and case-insensitive terminology searches return no tracked production matches. Remaining search matches in this audit are deletion history only.

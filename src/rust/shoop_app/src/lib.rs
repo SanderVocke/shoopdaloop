@@ -23,11 +23,12 @@ use shoop_app_api::{
     DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
     IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
     LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, PendingConnectionState,
-    PianoAction, PortDataType, PortDirection, PortId, PortRole, RecordingOffsetAdjustmentState,
-    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
-    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
-    TrackControlState, TrackId, TrackLatencyState, TrackPortOwnerKind, TrackProcessorDescriptor,
-    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
+    PianoAction, PortDataType, PortDirection, PortId, PortRole, ProcessorLatencyAdjustmentState,
+    RecordingOffsetAdjustmentState, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
+    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
+    TaskId, TrackAction, TrackControlState, TrackId, TrackLatencyState, TrackPortOwnerKind,
+    TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState, TrackTopology,
+    WaveformChannelState,
 };
 use shoop_backend::{
     canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
@@ -38,10 +39,10 @@ use shoop_backend::{
     BackendMidiEvent, BackendMutationDetail, BackendOperationProgress,
     BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
     BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendRecordingOffsetAdjustment, BackendSessionData, BackendSessionPort,
-    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
-    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
-    DirectTrackRequest, TrackRequest,
+    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionData,
+    BackendSessionPort, BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
+    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackState,
+    BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -60,9 +61,10 @@ use shoop_session::{
     GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
     MidiClickTrackSpec, MidiControlDocument, OxiSynthMidiCcAssignmentDocument,
     OxiSynthParameterDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    RecordingActionDocument, RecordingOffsetAdjustmentDocument, ScriptDocument, SessionBundle,
-    SessionDocument, TrackControlsDocument, TrackDocument, TrackGroupDocument,
-    TrackLatencyDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS, MAX_CLICK_TRACK_FRAMES,
+    ProcessorLatencyAdjustmentDocument, RecordingActionDocument, RecordingOffsetAdjustmentDocument,
+    ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument,
+    TrackGroupDocument, TrackLatencyDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS,
+    MAX_CLICK_TRACK_FRAMES,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -668,14 +670,60 @@ fn app_track_latency(state: &shoop_backend::BackendTrackLatencyState) -> TrackLa
             (RecordingOffsetAdjustmentState::AutomaticPlusTrim, frames)
         }
     };
+    let processor_adjustment = match state.processor_adjustment {
+        BackendProcessorLatencyAdjustment::Automatic => ProcessorLatencyAdjustmentState::Automatic,
+        BackendProcessorLatencyAdjustment::ManualOverride => {
+            ProcessorLatencyAdjustmentState::ManualOverride
+        }
+        BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+            ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+        }
+    };
     TrackLatencyState {
         automatic_offset_frames: state.automatic_offset_frames,
         adjustment,
         manual_frames,
         effective_offset_frames: state.effective_offset_frames,
-        processor_advance_frames: state.processor_advance_frames,
+        automatic_processor_advance_frames: state.automatic_processor_advance_frames,
+        processor_adjustment,
+        processor_manual_frames: state.processor_manual_frames,
+        effective_processor_advance_frames: state.effective_processor_advance_frames,
         pending: state.pending,
         error: state.error.clone(),
+    }
+}
+
+fn document_track_latency(state: &shoop_backend::BackendTrackLatencyState) -> TrackLatencyDocument {
+    let (adjustment, manual_frames) = match state.adjustment {
+        BackendRecordingOffsetAdjustment::Automatic => {
+            (RecordingOffsetAdjustmentDocument::Automatic, 0)
+        }
+        BackendRecordingOffsetAdjustment::ManualOverride(frames) => (
+            RecordingOffsetAdjustmentDocument::ManualOverride,
+            i64::from(frames),
+        ),
+        BackendRecordingOffsetAdjustment::AutomaticPlusTrim(frames) => (
+            RecordingOffsetAdjustmentDocument::AutomaticPlusTrim,
+            i64::from(frames),
+        ),
+    };
+    let processor_adjustment = match state.processor_adjustment {
+        BackendProcessorLatencyAdjustment::Automatic => {
+            ProcessorLatencyAdjustmentDocument::Automatic
+        }
+        BackendProcessorLatencyAdjustment::ManualOverride => {
+            ProcessorLatencyAdjustmentDocument::ManualOverride
+        }
+        BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+            ProcessorLatencyAdjustmentDocument::AutomaticPlusTrim
+        }
+    };
+    TrackLatencyDocument {
+        adjustment,
+        manual_frames,
+        processor_adjustment,
+        processor_manual_frames: i64::from(state.processor_manual_frames),
+        legacy_processor_advance_frames: None,
     }
 }
 
@@ -1317,7 +1365,8 @@ impl ApplicationModel {
                 track_id,
                 adjustment,
                 manual_frames,
-                processor_advance_frames,
+                processor_adjustment,
+                processor_manual_frames,
             } => {
                 let track = self
                     .tracks
@@ -1336,12 +1385,24 @@ impl ApplicationModel {
                             BackendRecordingOffsetAdjustment::AutomaticPlusTrim(manual_frames)
                         }
                     };
+                    let backend_processor_adjustment = match processor_adjustment {
+                        ProcessorLatencyAdjustmentState::Automatic => {
+                            BackendProcessorLatencyAdjustment::Automatic
+                        }
+                        ProcessorLatencyAdjustmentState::ManualOverride => {
+                            BackendProcessorLatencyAdjustment::ManualOverride
+                        }
+                        ProcessorLatencyAdjustmentState::AutomaticPlusTrim => {
+                            BackendProcessorLatencyAdjustment::AutomaticPlusTrim
+                        }
+                    };
                     track.latency.pending = true;
                     backend
                         .set_track_latency(
                             track.backend_id,
                             backend_adjustment,
-                            processor_advance_frames,
+                            backend_processor_adjustment,
+                            processor_manual_frames,
                         )
                         .map_err(|error| error.to_string())
                 })
@@ -1357,6 +1418,23 @@ impl ApplicationModel {
                     .backend_id;
                 backend
                     .set_take_alignment(backend_id, capture_alignment_frames)
+                    .map_err(|error| error.to_string())?;
+                let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+                model.audio_data = None;
+                model.midi_data = None;
+                Ok(())
+            })(),
+            AppIntent::SetTakeProcessorAlignment {
+                loop_id,
+                processor_alignment_frames,
+            } => (|| -> Result<(), String> {
+                let backend_id = self
+                    .loops
+                    .get(&loop_id)
+                    .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?
+                    .backend_id;
+                backend
+                    .set_take_processor_alignment(backend_id, processor_alignment_frames)
                     .map_err(|error| error.to_string())?;
                 let model = self.loops.get_mut(&loop_id).expect("loop was checked");
                 model.audio_data = None;
@@ -6481,7 +6559,11 @@ impl ApplicationModel {
                         }
                     }
                 }
-                Some(BackendMutationDetail::LoopTiming) => {
+                Some(
+                    BackendMutationDetail::LoopTiming
+                    | BackendMutationDetail::TakeAlignment
+                    | BackendMutationDetail::TakeProcessorAlignment,
+                ) => {
                     if let Some(entity) = failure.entity {
                         let backend_id = BackendLoopId::from_raw(entity);
                         if let Some(model) = self
@@ -6760,6 +6842,7 @@ impl ApplicationModel {
                 display_peaks(&backend_state.audio_peaks, model.state.stereo);
             model.state.midi_activity = backend_state.midi_activity;
             model.state.capture_alignment_frames = backend_state.capture_alignment_frames;
+            model.state.processor_alignment_frames = backend_state.processor_alignment_frames;
         }
         for track in &mut self.tracks {
             track.controls.output_midi_activity = combined_output_midi_activity(
@@ -7474,33 +7557,7 @@ impl ApplicationModel {
                     input_balance: captured.state.input_balance,
                     input_monitoring: captured.state.input_monitoring,
                 },
-                latency: match captured.state.latency.adjustment {
-                    BackendRecordingOffsetAdjustment::Automatic => TrackLatencyDocument {
-                        adjustment: RecordingOffsetAdjustmentDocument::Automatic,
-                        manual_frames: 0,
-                        processor_advance_frames: u64::from(
-                            captured.state.latency.processor_advance_frames,
-                        ),
-                    },
-                    BackendRecordingOffsetAdjustment::ManualOverride(frames) => {
-                        TrackLatencyDocument {
-                            adjustment: RecordingOffsetAdjustmentDocument::ManualOverride,
-                            manual_frames: i64::from(frames),
-                            processor_advance_frames: u64::from(
-                                captured.state.latency.processor_advance_frames,
-                            ),
-                        }
-                    }
-                    BackendRecordingOffsetAdjustment::AutomaticPlusTrim(frames) => {
-                        TrackLatencyDocument {
-                            adjustment: RecordingOffsetAdjustmentDocument::AutomaticPlusTrim,
-                            manual_frames: i64::from(frames),
-                            processor_advance_frames: u64::from(
-                                captured.state.latency.processor_advance_frames,
-                            ),
-                        }
-                    }
-                },
+                latency: document_track_latency(&captured.state.latency),
                 loops,
                 ports,
                 fx_chain,
@@ -9038,8 +9095,8 @@ fn backend_document_latency(
 ) -> Result<shoop_backend::BackendTrackLatencyState, String> {
     let manual_frames = i32::try_from(latency.manual_frames)
         .map_err(|_| "recording offset exceeds engine range".to_owned())?;
-    let processor_advance_frames = u32::try_from(latency.processor_advance_frames)
-        .map_err(|_| "processor advance exceeds engine range".to_owned())?;
+    let processor_manual_frames = i32::try_from(latency.processor_manual_frames)
+        .map_err(|_| "processor latency exceeds engine range".to_owned())?;
     let adjustment = match latency.adjustment {
         RecordingOffsetAdjustmentDocument::Automatic => BackendRecordingOffsetAdjustment::Automatic,
         RecordingOffsetAdjustmentDocument::ManualOverride => {
@@ -9049,6 +9106,35 @@ fn backend_document_latency(
             BackendRecordingOffsetAdjustment::AutomaticPlusTrim(manual_frames)
         }
     };
+    let processor_adjustment = match latency.processor_adjustment {
+        ProcessorLatencyAdjustmentDocument::Automatic => {
+            BackendProcessorLatencyAdjustment::Automatic
+        }
+        ProcessorLatencyAdjustmentDocument::ManualOverride => {
+            BackendProcessorLatencyAdjustment::ManualOverride
+        }
+        ProcessorLatencyAdjustmentDocument::AutomaticPlusTrim => {
+            BackendProcessorLatencyAdjustment::AutomaticPlusTrim
+        }
+    };
+    let domain_processor_adjustment = match processor_adjustment {
+        BackendProcessorLatencyAdjustment::Automatic => {
+            shoop_latency::ProcessorLatencyAdjustment::Automatic
+        }
+        BackendProcessorLatencyAdjustment::ManualOverride => {
+            shoop_latency::ProcessorLatencyAdjustment::ManualOverride
+        }
+        BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+            shoop_latency::ProcessorLatencyAdjustment::AutomaticPlusTrim
+        }
+    };
+    let effective_processor_advance_frames = shoop_latency::resolve_processor_advance(
+        Some(shoop_latency::ProcessorRenderAdvance::default()),
+        domain_processor_adjustment,
+        processor_manual_frames,
+    )
+    .map_err(|error| error.to_string())?
+    .frames();
     Ok(shoop_backend::BackendTrackLatencyState {
         automatic_offset_frames: None,
         adjustment,
@@ -9057,7 +9143,10 @@ fn backend_document_latency(
             BackendRecordingOffsetAdjustment::ManualOverride(_)
         )
         .then_some(manual_frames),
-        processor_advance_frames,
+        automatic_processor_advance_frames: Some(0),
+        processor_adjustment,
+        processor_manual_frames,
+        effective_processor_advance_frames: Some(effective_processor_advance_frames),
         pending: false,
         error: None,
     })
@@ -10198,7 +10287,8 @@ mod tests {
                 track_id: track.id,
                 adjustment: RecordingOffsetAdjustmentState::ManualOverride,
                 manual_frames: -5,
-                processor_advance_frames: 11,
+                processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
+                processor_manual_frames: 11,
             })
             .unwrap();
         let _ = wait_for(&runtime.handle(), |snapshot| {
@@ -10222,7 +10312,9 @@ mod tests {
             TrackLatencyDocument {
                 adjustment: RecordingOffsetAdjustmentDocument::ManualOverride,
                 manual_frames: -5,
-                processor_advance_frames: 11,
+                processor_adjustment: ProcessorLatencyAdjustmentDocument::ManualOverride,
+                processor_manual_frames: 11,
+                legacy_processor_advance_frames: None,
             }
         );
         assert_eq!(
@@ -14291,7 +14383,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 track_id,
                 adjustment: RecordingOffsetAdjustmentState::ManualOverride,
                 manual_frames: 5,
-                processor_advance_frames: 0,
+                processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
+                processor_manual_frames: 0,
             })
             .unwrap();
         let configured = wait_for(&handle, |snapshot| {
@@ -14312,7 +14405,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 track_id,
                 adjustment: RecordingOffsetAdjustmentState::ManualOverride,
                 manual_frames: 7,
-                processor_advance_frames: 0,
+                processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
+                processor_manual_frames: 0,
             })
             .unwrap();
         let changed = wait_for(&handle, |snapshot| {
@@ -17428,6 +17522,27 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             assert_eq!(exported.channels[0].label, expected_label);
             assert_eq!(exported.channels[0].role, expected_role);
         }
+
+        runtime
+            .dispatch(AppIntent::SetLoopTimeline {
+                loop_id,
+                start_offset: None,
+                preplay_samples: None,
+                loop_length: Some(20),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::SetTakeProcessorAlignment {
+                loop_id,
+                processor_alignment_frames: 5,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].processor_alignment_frames,
+            Some(5)
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

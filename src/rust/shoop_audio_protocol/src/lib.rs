@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 16;
+pub const PROTOCOL_VERSION: u16 = 17;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -95,11 +95,16 @@ pub enum Command {
         track_id: u64,
         adjustment: WireRecordingOffsetAdjustment,
         manual_frames: i32,
-        processor_advance_frames: u32,
+        processor_adjustment: WireProcessorLatencyAdjustment,
+        processor_manual_frames: i32,
     },
     SetTakeAlignment {
         loop_id: u64,
         capture_alignment_frames: i32,
+    },
+    SetTakeProcessorAlignment {
+        loop_id: u64,
+        processor_alignment_frames: u32,
     },
     SetTrackFxControl {
         track_id: u64,
@@ -615,13 +620,25 @@ pub enum WireRecordingOffsetAdjustment {
     AutomaticPlusTrim,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireProcessorLatencyAdjustment {
+    Automatic,
+    #[default]
+    ManualOverride,
+    AutomaticPlusTrim,
+}
+
 #[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireTrackLatencyState {
     pub automatic_offset_frames: Option<i32>,
     pub adjustment: WireRecordingOffsetAdjustment,
     pub manual_frames: i32,
     pub effective_offset_frames: Option<i32>,
-    pub processor_advance_frames: u32,
+    pub automatic_processor_advance_frames: Option<u32>,
+    pub processor_adjustment: WireProcessorLatencyAdjustment,
+    pub processor_manual_frames: i32,
+    pub effective_processor_advance_frames: Option<u32>,
     pub pending: bool,
     pub error: Option<String>,
 }
@@ -678,6 +695,7 @@ pub struct WireLoopState {
     pub audio_peaks: Vec<f32>,
     pub midi_activity: bool,
     pub capture_alignment_frames: i32,
+    pub processor_alignment_frames: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -935,11 +953,16 @@ mod tests {
                 track_id: 7,
                 adjustment: WireRecordingOffsetAdjustment::AutomaticPlusTrim,
                 manual_frames: -11,
-                processor_advance_frames: 23,
+                processor_adjustment: WireProcessorLatencyAdjustment::ManualOverride,
+                processor_manual_frames: 23,
             },
             Command::SetTakeAlignment {
                 loop_id: 9,
                 capture_alignment_frames: -17,
+            },
+            Command::SetTakeProcessorAlignment {
+                loop_id: 9,
+                processor_alignment_frames: 23,
             },
         ] {
             let envelope = CommandEnvelope::new(41, command);
@@ -1019,7 +1042,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":16,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":17,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1030,7 +1053,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":16,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":17,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

@@ -488,7 +488,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 8] {
+        for unsupported in [5, 9] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -978,7 +978,9 @@ mod tests {
         track.latency = TrackLatencyDocument {
             adjustment: RecordingOffsetAdjustmentDocument::ManualOverride,
             manual_frames: -13,
-            processor_advance_frames: 17,
+            processor_adjustment: ProcessorLatencyAdjustmentDocument::AutomaticPlusTrim,
+            processor_manual_frames: 17,
+            legacy_processor_advance_frames: None,
         };
         track.loops[0].length_frames = 3;
         track.loops[0].channels[0].start_offset_frames = 13;
@@ -986,6 +988,31 @@ mod tests {
         let encoded = encode_session(&bundle, "latency-roundtrip").unwrap();
         let decoded = decode_session(&encoded).unwrap();
         assert_eq!(decoded, bundle);
+
+        let version_seven = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(7);
+            let latency = &mut manifest["document"]["track_groups"][0]["tracks"][0]["latency"];
+            latency
+                .as_object_mut()
+                .unwrap()
+                .remove("processor_adjustment");
+            latency
+                .as_object_mut()
+                .unwrap()
+                .remove("processor_manual_frames");
+            latency["processor_advance_frames"] = serde_json::json!(17);
+        });
+        let migrated = decode_session(&version_seven).unwrap();
+        assert_eq!(
+            migrated.document.track_groups[0].tracks[0].latency,
+            TrackLatencyDocument {
+                adjustment: RecordingOffsetAdjustmentDocument::ManualOverride,
+                manual_frames: -13,
+                processor_adjustment: ProcessorLatencyAdjustmentDocument::ManualOverride,
+                processor_manual_frames: 17,
+                legacy_processor_advance_frames: None,
+            }
+        );
 
         let invalid_archive = rewrite_manifest(encoded.clone(), |manifest| {
             let channel = &mut manifest["document"]["track_groups"][0]["tracks"][0]["loops"][0]
@@ -1029,6 +1056,19 @@ mod tests {
             encode_session(&bundle, "invalid-latency"),
             Err(SessionError::Validation(message)) if message.contains("capture alignment")
         ));
+
+        let mut processed = oxisynth_bundle();
+        processed.document.track_groups[0].tracks[0].latency = TrackLatencyDocument {
+            adjustment: RecordingOffsetAdjustmentDocument::ManualOverride,
+            manual_frames: i64::from(shoop_latency::MAX_COMPENSATION_FRAMES),
+            processor_adjustment: ProcessorLatencyAdjustmentDocument::ManualOverride,
+            processor_manual_frames: 1,
+            legacy_processor_advance_frames: None,
+        };
+        assert!(matches!(
+            encode_session(&processed, "invalid-derived-wet-alignment"),
+            Err(SessionError::Validation(message)) if message.contains("latency")
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1042,7 +1082,9 @@ mod tests {
         source_track.latency = TrackLatencyDocument {
             adjustment: RecordingOffsetAdjustmentDocument::AutomaticPlusTrim,
             manual_frames: -9,
-            processor_advance_frames: 12,
+            processor_adjustment: ProcessorLatencyAdjustmentDocument::ManualOverride,
+            processor_manual_frames: 12,
+            legacy_processor_advance_frames: None,
         };
         source_track.loops[0].channels[0].data_length_frames = 309;
         source_track.loops[0].channels[0].capture_alignment_frames = 9;
@@ -1061,7 +1103,7 @@ mod tests {
         let track = &converted.document.track_groups[0].tracks[0];
         assert_eq!(track.ports[0].ringbuffer_frames, 64_000);
         assert_eq!(track.latency.manual_frames, -6);
-        assert_eq!(track.latency.processor_advance_frames, 8);
+        assert_eq!(track.latency.processor_manual_frames, 8);
         let loop_ = &track.loops[0];
         assert_eq!(loop_.length_frames, 201);
         assert_eq!(loop_.channels[0].data_length_frames, 206);

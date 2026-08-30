@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 7;
+pub const SESSION_DOCUMENT_VERSION: u16 = 8;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -159,11 +159,25 @@ pub enum RecordingOffsetAdjustmentDocument {
     AutomaticPlusTrim,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessorLatencyAdjustmentDocument {
+    Automatic,
+    #[default]
+    ManualOverride,
+    AutomaticPlusTrim,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct TrackLatencyDocument {
     pub adjustment: RecordingOffsetAdjustmentDocument,
     pub manual_frames: i64,
-    pub processor_advance_frames: u64,
+    #[serde(default)]
+    pub processor_adjustment: ProcessorLatencyAdjustmentDocument,
+    #[serde(default)]
+    pub processor_manual_frames: i64,
+    #[serde(default, rename = "processor_advance_frames", skip_serializing)]
+    pub legacy_processor_advance_frames: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]

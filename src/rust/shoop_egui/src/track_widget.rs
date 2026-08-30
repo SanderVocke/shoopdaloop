@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::{
     colors, composite_loop_widget::LoopDragPayload, AppIntent, FxLifecycle, GlobalControlState,
-    LoopId, LoopWidget, LoopWidgetAction, RecordingOffsetAdjustmentState, TrackControls,
-    TrackProcessorDescriptor, TrackState, TrackWidgetAction,
+    LoopId, LoopWidget, LoopWidgetAction, ProcessorLatencyAdjustmentState,
+    RecordingOffsetAdjustmentState, TrackControls, TrackProcessorDescriptor, TrackState,
+    TrackWidgetAction,
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
@@ -64,6 +65,8 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_latency_offset_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_take_processor_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_connections_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_delete_rect: Option<egui::Rect>,
@@ -122,6 +125,8 @@ impl Default for TrackWidget {
             test_latency_menu_rect: None,
             #[cfg(test)]
             test_latency_offset_rect: None,
+            #[cfg(test)]
+            test_take_processor_rect: None,
             #[cfg(test)]
             test_connections_rect: None,
             #[cfg(test)]
@@ -336,6 +341,7 @@ impl TrackWidget {
             self.test_clone_cancel_rect = None;
             self.test_latency_menu_rect = None;
             self.test_latency_offset_rect = None;
+            self.test_take_processor_rect = None;
         }
         let loop_ids = state
             .loops
@@ -955,35 +961,103 @@ impl TrackWidget {
                         self.test_latency_offset_rect = Some(manual_response.rect);
                     }
                     let manual_changed = manual_response.changed();
-                    let mut processor_advance_frames = state.latency.processor_advance_frames;
+                    if let Some(effective) = state.latency.effective_offset_frames {
+                        ui.label(format!("Effective recording alignment: {effective} frames"));
+                    } else {
+                        ui.label("Effective value unavailable; enter a manual offset.");
+                        if let Some(error) = &state.latency.error {
+                            ui.colored_label(ui.visuals().error_fg_color, error);
+                        }
+                    }
+                    if state.latency.pending {
+                        ui.label("Recording alignment update pending");
+                    }
+
+                    ui.separator();
+                    ui.heading("Processor latency");
+                    let mut processor_adjustment = state.latency.processor_adjustment;
+                    let processor_adjustment_changed =
+                        egui::ComboBox::from_id_salt(("processor_latency_adjustment", state.id))
+                            .selected_text(match processor_adjustment {
+                                ProcessorLatencyAdjustmentState::Automatic => "Automatic",
+                                ProcessorLatencyAdjustmentState::ManualOverride => "Manual",
+                                ProcessorLatencyAdjustmentState::AutomaticPlusTrim => {
+                                    "Automatic + trim"
+                                }
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::Automatic,
+                                    "Automatic",
+                                );
+                                ui.selectable_value(
+                                    &mut processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::ManualOverride,
+                                    "Manual",
+                                );
+                                ui.selectable_value(
+                                    &mut processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
+                                    "Automatic + trim",
+                                );
+                            })
+                            .response
+                            .changed();
+                    let mut processor_manual_frames = state.latency.processor_manual_frames;
                     let processor_changed = ui
                         .horizontal(|ui| {
-                            ui.label("Processor");
-                            ui.add(
-                                egui::DragValue::new(&mut processor_advance_frames)
+                            ui.label(
+                                if processor_adjustment
+                                    == ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+                                {
+                                    "Trim"
+                                } else {
+                                    "Latency"
+                                },
+                            );
+                            ui.add_enabled(
+                                processor_adjustment != ProcessorLatencyAdjustmentState::Automatic,
+                                egui::DragValue::new(&mut processor_manual_frames)
                                     .suffix(" frames"),
                             )
                         })
                         .inner
                         .changed();
-                    if adjustment_changed || manual_changed || processor_changed {
+                    if let Some(effective) = state.latency.effective_processor_advance_frames {
+                        ui.label(format!("Effective processor latency: {effective} frames"));
+                    } else {
+                        ui.label("Effective processor latency unavailable; enter a manual value.");
+                        if let Some(error) = &state.latency.error {
+                            ui.colored_label(ui.visuals().error_fg_color, error);
+                        }
+                    }
+                    if state.latency.pending {
+                        ui.label("Processor latency update pending");
+                    }
+                    if adjustment_changed
+                        || manual_changed
+                        || processor_adjustment_changed
+                        || processor_changed
+                    {
                         result.io_intents.push(AppIntent::SetTrackLatency {
                             track_id: state.id,
                             adjustment,
                             manual_frames,
-                            processor_advance_frames,
+                            processor_adjustment,
+                            processor_manual_frames,
                         });
                     }
-                    if let Some(effective) = state.latency.effective_offset_frames {
-                        ui.label(format!("Effective: {effective} frames"));
-                    } else {
-                        ui.label("Effective value unavailable; enter a manual offset.");
+                    if state.latency.effective_offset_frames.is_some()
+                        && state.latency.effective_processor_advance_frames.is_some()
+                    {
+                        if let Some(error) = &state.latency.error {
+                            ui.colored_label(ui.visuals().error_fg_color, error);
+                        }
                     }
-                    if state.latency.pending {
-                        ui.label("Latency update pending");
-                    }
-                    if let Some(error) = &state.latency.error {
-                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    if state.loops.iter().any(|loop_| !loop_.empty) {
+                        ui.separator();
+                        ui.heading("Completed takes");
                     }
                     for loop_ in state.loops.iter().filter(|loop_| !loop_.empty) {
                         let mut alignment = loop_.capture_alignment_frames;
@@ -999,6 +1073,29 @@ impl TrackWidget {
                                 loop_id: loop_.id,
                                 capture_alignment_frames: alignment,
                             });
+                        }
+                        if let Some(mut processor_alignment) = loop_.processor_alignment_frames {
+                            let response = ui
+                                .horizontal(|ui| {
+                                    ui.label(format!("{} processor", loop_.name));
+                                    ui.add(
+                                        egui::DragValue::new(&mut processor_alignment)
+                                            .suffix(" frames"),
+                                    )
+                                })
+                                .inner;
+                            #[cfg(test)]
+                            {
+                                self.test_take_processor_rect = Some(response.rect);
+                            }
+                            if response.changed() {
+                                result
+                                    .io_intents
+                                    .push(AppIntent::SetTakeProcessorAlignment {
+                                        loop_id: loop_.id,
+                                        processor_alignment_frames: processor_alignment,
+                                    });
+                            }
                         }
                     }
                 });
@@ -1377,13 +1474,37 @@ mod tests {
                 id: TrackId::from_raw(4),
                 name: "Processor".to_owned(),
                 latency: crate::TrackLatencyState {
-                    processor_advance_frames: 17,
+                    processor_manual_frames: 17,
+                    effective_processor_advance_frames: Some(17),
                     ..Default::default()
                 },
                 ..Default::default()
             },
+            TrackState {
+                id: TrackId::from_raw(5),
+                name: "Carla processed take".to_owned(),
+                latency: crate::TrackLatencyState {
+                    automatic_processor_advance_frames: Some(0),
+                    processor_adjustment: ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
+                    processor_manual_frames: 17,
+                    effective_processor_advance_frames: Some(17),
+                    ..Default::default()
+                },
+                loops: vec![LoopState {
+                    id: LoopId::from_raw(5),
+                    name: "Loop 1".to_owned(),
+                    empty: false,
+                    processor_alignment_frames: Some(17),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
         ];
         for state in states {
+            let has_processor_take = state
+                .loops
+                .iter()
+                .any(|loop_| loop_.processor_alignment_frames.is_some());
             let mut widget = TrackWidget::default();
             let _ = frame(&context, &mut widget, &state, Vec::new());
             let options = widget.test_options_rect.unwrap().center();
@@ -1395,6 +1516,10 @@ mod tests {
             let _ = frame(&context, &mut widget, &state, Vec::new());
             assert!(widget.latency_dialog_open);
             assert!(widget.test_latency_offset_rect.is_some());
+            assert_eq!(
+                widget.test_take_processor_rect.is_some(),
+                has_processor_take
+            );
         }
     }
 

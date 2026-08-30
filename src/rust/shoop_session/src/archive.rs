@@ -1,6 +1,7 @@
 use crate::document::{
     AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
-    FxChainTypeDocument, MediaPayload, SessionBundle, SessionDocument, TrackDocument,
+    FxChainTypeDocument, MediaPayload, ProcessorLatencyAdjustmentDocument,
+    RecordingOffsetAdjustmentDocument, SessionBundle, SessionDocument, TrackDocument,
     TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
     SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
@@ -18,6 +19,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
+const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -216,7 +218,9 @@ pub fn decode_session_with_limits(
         || header.format_version.minor > FORMAT_MINOR
         || !matches!(
             header.document_version,
-            PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION | SESSION_DOCUMENT_VERSION
+            PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
+                | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
+                | SESSION_DOCUMENT_VERSION
         )
     {
         return Err(SessionError::UnsupportedVersion {
@@ -229,6 +233,9 @@ pub fn decode_session_with_limits(
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if manifest.document_version == PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION {
         migrate_pre_alignment_document(&mut manifest.document);
+    }
+    if manifest.document_version <= PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION {
+        migrate_pre_processor_adjustment_document(&mut manifest.document)?;
     }
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -312,6 +319,27 @@ fn migrate_pre_alignment_document(document: &mut SessionDocument) {
             }
         }
     }
+}
+
+fn migrate_pre_processor_adjustment_document(
+    document: &mut SessionDocument,
+) -> Result<(), SessionError> {
+    for group in &mut document.track_groups {
+        for track in &mut group.tracks {
+            let frames = track
+                .latency
+                .legacy_processor_advance_frames
+                .take()
+                .unwrap_or(0);
+            track.latency.processor_adjustment = ProcessorLatencyAdjustmentDocument::ManualOverride;
+            track.latency.processor_manual_frames = i64::try_from(frames).map_err(|_| {
+                SessionError::Validation(
+                    "legacy processor latency exceeds the signed document range".to_owned(),
+                )
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn decode_script_bundles(
@@ -689,12 +717,51 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             validate_finite(track.controls.input_balance, "track input balance")?;
             if track.latency.manual_frames.unsigned_abs()
                 > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
-                || track.latency.processor_advance_frames
+                || track.latency.processor_manual_frames.unsigned_abs()
                     > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
             {
                 return Err(SessionError::Validation(
                     "track latency value exceeds the supported bound".to_owned(),
                 ));
+            }
+            let processor_input =
+                i32::try_from(track.latency.processor_manual_frames).map_err(|_| {
+                    SessionError::Validation(
+                        "processor latency exceeds the signed runtime range".to_owned(),
+                    )
+                })?;
+            let processor_adjustment = match track.latency.processor_adjustment {
+                ProcessorLatencyAdjustmentDocument::Automatic => {
+                    shoop_latency::ProcessorLatencyAdjustment::Automatic
+                }
+                ProcessorLatencyAdjustmentDocument::ManualOverride => {
+                    shoop_latency::ProcessorLatencyAdjustment::ManualOverride
+                }
+                ProcessorLatencyAdjustmentDocument::AutomaticPlusTrim => {
+                    shoop_latency::ProcessorLatencyAdjustment::AutomaticPlusTrim
+                }
+            };
+            let processor_advance = shoop_latency::resolve_processor_advance(
+                Some(shoop_latency::ProcessorRenderAdvance::default()),
+                processor_adjustment,
+                processor_input,
+            )
+            .map_err(|error| SessionError::Validation(error.to_string()))?;
+            if !matches!(track.topology, TrackTopologyDocument::Direct { .. })
+                && track.latency.adjustment == RecordingOffsetAdjustmentDocument::ManualOverride
+            {
+                let recording_offset =
+                    i32::try_from(track.latency.manual_frames).map_err(|_| {
+                        SessionError::Validation(
+                            "recording offset exceeds the signed runtime range".to_owned(),
+                        )
+                    })?;
+                shoop_latency::wet_recording_offset(
+                    shoop_latency::RecordingOffset::new(recording_offset)
+                        .map_err(|error| SessionError::Validation(error.to_string()))?,
+                    processor_advance,
+                )
+                .map_err(|error| SessionError::Validation(error.to_string()))?;
             }
             if let Some(chain) = &track.fx_chain {
                 require_id(chain.id, "FX chain")?;

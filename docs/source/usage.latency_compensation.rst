@@ -24,9 +24,12 @@ The value is latched when recording, replacement, or rendering starts. Changing
 the track setting later affects the next operation and never moves an existing
 take. Once a recording transition is armed, cancel it before changing the track
 offset or input routes. Replacement and retrospective grab are retained only at
-zero offset; record a new take when compensation is needed. Stop the loop before correcting a completed take's signed alignment with
-its alignment control in the same dialog. The control applies one delta to every
-channel so canonical dry/wet differences remain intact. Alignment, start-offset,
+zero offset on every affected channel; record a new take when compensation is
+needed. Stop the loop before correcting a completed take's signed alignment with
+its alignment control in the same dialog. The common control applies one delta
+to every channel so dry/wet differences remain intact. Processed takes also show
+a processor-alignment correction; it applies one atomic delta to Wet channels
+only and preserves differences within each channel group. Alignment, start-offset,
 and length edits must fit the raw media retained with every channel in the take;
 otherwise they are rejected without changing any channel. This also applies when
 an import updates a loop's length while retaining other channels. Waveform and MIDI
@@ -51,14 +54,28 @@ or bake/recovery operation.
 Dry/wet operations
 ~~~~~~~~~~~~~~~~~~
 
-**Processor** in the latency compensation dialog is a separate non-negative
-render-advance value.
-It is used only while playing dry through wet or recording dry into wet. Dry
-media is dispatched early so delayed processor output reaches its intended
-frame. Recording dry into wet writes canonical wet timing, so ordinary wet
-playback does not apply the processor value again. Live monitoring remains on
-the immediate path.
+**Processor latency** is independent from Recording alignment and has its own
+**Automatic**, **Manual**, and **Automatic + trim** selector. Its effective value
+is non-negative. Unsupported detector paths, including Carla, use an automatic
+baseline of zero; ShoopDaLoop does not inspect Carla plugins or graphs. Enter the
+known processor delay with Manual, or add it as a positive trim to the zero
+baseline.
 
-Pending and error text in the menu is actionable. For an unavailable automatic
-value, select **Manual**. For a retention failure, reduce the offset or recording
-length and retry. Wait for postroll to finish before saving or exporting.
+For an ordinary simultaneous dry/wet recording, Direct and Dry channels use the
+signed recording offset ``R`` while Wet channels use ``R + P``, where ``P`` is
+the effective processor latency. Storage is prepared separately for those
+channel windows, so a take may require dry preroll and wet postroll at the same
+time. Live input remains immediate; recording compensation changes retained
+media and per-channel annotations rather than delaying monitoring.
+
+While playing dry through wet or recording dry into wet, dry media is dispatched
+``P`` frames early so delayed processor output reaches its intended frame.
+Recording dry into wet writes canonical wet timing. Normal wet playback and
+logical export use each Wet channel's stored capture alignment and never apply
+``P`` a second time.
+
+Pending and error text in the dialog is actionable. For an unavailable recording
+automatic value, select Manual. For an invalid processor result, enter a
+non-negative Manual value or reduce the trim. For a retention failure, reduce the
+offset, processor latency, or recording length and retry. Wait for postroll to
+finish before saving or exporting.

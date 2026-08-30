@@ -37,8 +37,8 @@ pub fn resample_session(
         for track in &mut group.tracks {
             track.latency.manual_frames =
                 scale_signed_nearest(track.latency.manual_frames, source, target_sample_rate)?;
-            track.latency.processor_advance_frames = scale_nearest(
-                track.latency.processor_advance_frames,
+            track.latency.processor_manual_frames = scale_signed_nearest(
+                track.latency.processor_manual_frames,
                 source,
                 target_sample_rate,
             )?;

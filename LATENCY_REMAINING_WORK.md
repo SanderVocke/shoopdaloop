@@ -1,36 +1,24 @@
-Yes, with one important qualification.
+# Dry/wet latency follow-up
 
-### Normal simultaneous recording
+The ordinary-recording limitation previously documented here is addressed by
+`LATENCY_DRYWET.md` and its implementation.
 
-For a fresh ordinary recording, all recording channels on the track—including dry and wet channels—latch the same track-level recording alignment.
+A regular simultaneous dry/wet recording now derives per-channel annotations
+from two independent effective values:
 
-The system does **not** calculate:
+- Direct and Dry capture alignment: `R`
+- Wet capture alignment: `R + P`
 
-- dry capture alignment = X
-- wet capture alignment = X + processor latency
+`R` is the signed recording alignment and `P` is the non-negative processor
+latency. Retention is prepared per channel, so the dry and wet windows can require
+different preroll or postroll. Normal Wet playback and logical export use the
+stored Wet annotation, while play-dry-through-wet advances Dry media by `P`; the
+processor value is therefore applied exactly once.
 
-Therefore, if the wet signal passes through a delayed processor during ordinary simultaneous recording, that relative delay remains embedded in the wet media. Automatic recording alignment does not correct it separately.
+Recording alignment and processor latency each have Automatic, Manual, and
+Automatic + trim modes. Carla is not inspected or inferred: its processor
+automatic baseline is zero, and users provide compensation through Manual or
+Automatic + trim.
 
-The take-alignment control also applies a common delta to all channels, deliberately preserving existing dry/wet differences rather than changing their relative timing.
-
-### Dry-into-wet rendering
-
-Processor compensation is applied in the special **Record dry into wet** workflow:
-
-- Dry playback is advanced by the configured **Processor** amount.
-- The delayed wet result is recorded at canonical timing.
-- The resulting wet channel does not apply that processor advance again during normal playback.
-
-### Practical limitation
-
-So if the expected behavior is:
-
-> “Record dry and processed wet simultaneously and have them automatically phase/time aligned despite processor latency”
-
-then the current model does **not** provide that. The supported compensated workflow is:
-
-1. Record the dry take with recording alignment.
-2. Configure the manual **Processor** advance.
-3. Render/record dry into wet.
-
-There is no independent wet-channel alignment control or automatic processor-latency detection. That is a real limitation of the simplified design, not merely a UI omission.
+Completed processed takes expose both a common alignment correction and a
+wet-relative processor correction. Both are retained-window checked and atomic.

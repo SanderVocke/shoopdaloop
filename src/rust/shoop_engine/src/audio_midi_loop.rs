@@ -650,6 +650,30 @@ mod tests {
         out
     }
 
+    fn cycle_channels(l: &mut AudioMidiLoop, inputs: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        let frames = inputs.first().map(Vec::len).unwrap_or(0);
+        assert!(inputs.iter().all(|input| input.len() == frames));
+        for index in 0..l.n_audio_channels() {
+            let channel = l.audio_channel_mut(index).unwrap();
+            channel.set_recording_buffer_size(frames);
+            channel.set_playback_buffer_size(frames);
+        }
+        l.resync_poi();
+        let mut outputs = vec![vec![0.0; frames]; inputs.len()];
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(
+            frames as u32,
+            &[],
+            &mut []
+        ));
+        let mut pairs = inputs
+            .iter()
+            .zip(outputs.iter_mut())
+            .map(|(input, output)| (input.as_slice(), output.as_mut_slice()))
+            .collect::<Vec<_>>();
+        l.finalize_process(&mut pairs);
+        outputs
+    }
+
     fn prepared_latency(offset: i32, advance: u32) -> PreparedLatency {
         PreparedLatency::new(
             shoop_latency::RecordingOffset::new(offset).unwrap(),
@@ -696,6 +720,30 @@ mod tests {
         check!(l.audio_channel(1).unwrap().capture_alignment_frames() == 2);
         check!(l.midi_channel(0).unwrap().capture_alignment_frames() == -5);
         check!(l.midi_channel(1).unwrap().capture_alignment_frames() == 2);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn ordinary_dry_wet_impulses_share_logical_zero_through_distinct_annotations() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(16, C::Dry);
+        l.add_audio_channel(16, C::Wet);
+        l.prepare_latency(prepared_latency(2, 3), 4).unwrap();
+        l.set_mode(L::Recording);
+        cycle_channels(&mut l, &[vec![0.0, 0.0, 1.0, 0.0], vec![0.0; 4]]);
+        l.set_mode(L::Stopped);
+        cycle_channels(&mut l, &[vec![0.0; 5], vec![0.0, 1.0, 0.0, 0.0, 0.0]]);
+
+        let dry = l.audio_channel(0).unwrap();
+        let wet = l.audio_channel(1).unwrap();
+        check!(dry.capture_alignment_frames() == 2);
+        check!(wet.capture_alignment_frames() == 5);
+        check!(dry.data()[2] == 1.0);
+        check!(wet.data()[5] == 1.0);
+
+        l.set_mode(L::Playing);
+        let output = cycle_channels(&mut l, &[vec![0.0; 4], vec![0.0; 4]]);
+        check!(output[0] == vec![0.0; 4]);
+        check!(output[1] == vec![1.0, 0.0, 0.0, 0.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

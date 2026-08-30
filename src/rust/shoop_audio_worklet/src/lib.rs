@@ -7,11 +7,12 @@ use shoop_audio_protocol::{
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
     WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
-    WirePortDataType, WirePortDirection, WirePortRole, WireRecordingOffsetAdjustment, WireSnapshot,
-    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyState, WireTrackState,
-    WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
+    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
+    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
@@ -369,7 +370,8 @@ impl WorkletHost {
                 track_id,
                 adjustment,
                 manual_frames,
-                processor_advance_frames,
+                processor_adjustment,
+                processor_manual_frames,
             } => {
                 let adjustment = match adjustment {
                     WireRecordingOffsetAdjustment::Automatic => {
@@ -386,11 +388,23 @@ impl WorkletHost {
                         )
                     }
                 };
+                let processor_adjustment = match processor_adjustment {
+                    WireProcessorLatencyAdjustment::Automatic => {
+                        shoop_backend::BackendProcessorLatencyAdjustment::Automatic
+                    }
+                    WireProcessorLatencyAdjustment::ManualOverride => {
+                        shoop_backend::BackendProcessorLatencyAdjustment::ManualOverride
+                    }
+                    WireProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                        shoop_backend::BackendProcessorLatencyAdjustment::AutomaticPlusTrim
+                    }
+                };
                 self.backend
                     .set_track_latency(
                         BackendTrackId::from_raw(track_id),
                         adjustment,
-                        processor_advance_frames,
+                        processor_adjustment,
+                        processor_manual_frames,
                     )
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
@@ -401,6 +415,18 @@ impl WorkletHost {
             } => {
                 self.backend
                     .set_take_alignment(BackendLoopId::from_raw(loop_id), capture_alignment_frames)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetTakeProcessorAlignment {
+                loop_id,
+                processor_alignment_frames,
+            } => {
+                self.backend
+                    .set_take_processor_alignment(
+                        BackendLoopId::from_raw(loop_id),
+                        processor_alignment_frames,
+                    )
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
@@ -1098,7 +1124,24 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                         ) => frames,
                     },
                     effective_offset_frames: track.latency.effective_offset_frames,
-                    processor_advance_frames: track.latency.processor_advance_frames,
+                    automatic_processor_advance_frames: track
+                        .latency
+                        .automatic_processor_advance_frames,
+                    processor_adjustment: match track.latency.processor_adjustment {
+                        shoop_backend::BackendProcessorLatencyAdjustment::Automatic => {
+                            WireProcessorLatencyAdjustment::Automatic
+                        }
+                        shoop_backend::BackendProcessorLatencyAdjustment::ManualOverride => {
+                            WireProcessorLatencyAdjustment::ManualOverride
+                        }
+                        shoop_backend::BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                            WireProcessorLatencyAdjustment::AutomaticPlusTrim
+                        }
+                    },
+                    processor_manual_frames: track.latency.processor_manual_frames,
+                    effective_processor_advance_frames: track
+                        .latency
+                        .effective_processor_advance_frames,
                     pending: track.latency.pending,
                     error: track.latency.error,
                 },
@@ -1128,6 +1171,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 audio_peaks: loop_.audio_peaks,
                 midi_activity: loop_.midi_activity,
                 capture_alignment_frames: loop_.capture_alignment_frames,
+                processor_alignment_frames: loop_.processor_alignment_frames,
             })
             .collect(),
         composites: snapshot
@@ -1556,7 +1600,8 @@ mod tests {
                     track_id: 1,
                     adjustment: WireRecordingOffsetAdjustment::ManualOverride,
                     manual_frames: 3,
-                    processor_advance_frames: 0,
+                    processor_adjustment: WireProcessorLatencyAdjustment::ManualOverride,
+                    processor_manual_frames: 0,
                 },
             )
             .event,
