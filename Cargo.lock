@@ -179,7 +179,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
  "x11rb",
 ]
 
@@ -785,7 +785,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1071,7 +1071,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1458,7 +1458,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2694,7 +2694,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3266,7 +3266,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perfetto-everywhere-collector"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=1e11fbcfddc1c707d6916135a66a64f04d74a41b#1e11fbcfddc1c707d6916135a66a64f04d74a41b"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
 dependencies = [
  "perfetto-everywhere-core",
  "perfetto-everywhere-web",
@@ -3278,12 +3278,12 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-core"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=1e11fbcfddc1c707d6916135a66a64f04d74a41b#1e11fbcfddc1c707d6916135a66a64f04d74a41b"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
 
 [[package]]
 name = "perfetto-everywhere-native"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=1e11fbcfddc1c707d6916135a66a64f04d74a41b#1e11fbcfddc1c707d6916135a66a64f04d74a41b"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
 dependencies = [
  "perfetto-everywhere-core",
  "perfetto-sdk",
@@ -3292,7 +3292,7 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-raw"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=1e11fbcfddc1c707d6916135a66a64f04d74a41b#1e11fbcfddc1c707d6916135a66a64f04d74a41b"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
 dependencies = [
  "perfetto-everywhere-core",
 ]
@@ -3300,7 +3300,7 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-tracing"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=1e11fbcfddc1c707d6916135a66a64f04d74a41b#1e11fbcfddc1c707d6916135a66a64f04d74a41b"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
 dependencies = [
  "perfetto-everywhere-core",
  "tracing",
@@ -3310,7 +3310,7 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-web"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=1e11fbcfddc1c707d6916135a66a64f04d74a41b#1e11fbcfddc1c707d6916135a66a64f04d74a41b"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
 dependencies = [
  "js-sys",
  "perfetto-everywhere-core",
@@ -3967,7 +3967,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4820,10 +4820,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4833,7 +4833,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5670,7 +5670,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

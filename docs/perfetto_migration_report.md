@@ -7,8 +7,8 @@ ShoopDaLoop tracing is implemented through `shoop_tracing` with standard
 nextest, Node Wasm tests, and Chromium Wasm tests. Tracy dependencies, patches,
 prebuilt setup, workflows, active documentation, and artifacts were removed.
 
-The reviewed upstream is `SanderVocke/perfetto-everywhere` PR 1 at commit
-`1e11fbcfddc1c707d6916135a66a64f04d74a41b`. Shoop pins that exact revision.
+The reviewed upstream is `SanderVocke/perfetto-everywhere` merged PR 1 at commit
+`f621af951b80f702c6b710e420c8a1abf5e333c7`. Shoop pins that exact revision.
 The upstream additions are an import-free bounded raw-Wasm producer, configurable
 browser Worker assets, wasm-bindgen 0.2.127 alignment, native static-name caching,
 and preservation of equal-timestamp producer ordering.
@@ -65,11 +65,10 @@ Local verification on Linux 7.0.3, Rust 1.97.1, Node 22.22.2, and Chromium /
 ChromeDriver 147.0.7727.137 included:
 
 - `RUSTFLAGS="-D warnings" cargo build --workspace` — passed.
-- Complete native nextest suite with failure tracing — 1,519 tests passed in the
-  pre-report run; no failure traces remained.
-- Complete Node Wasm suite — all 16 packages passed after the benchmark example
-  was made target-neutral; 1,260 tests in the pre-report run.
-- Complete Chromium Wasm suite — all 16 packages and 1,261 tests passed.
+- Complete native nextest suite with failure tracing — 1,520 tests passed and
+  three were skipped; no failure traces remained.
+- Complete Node Wasm suite — all 16 packages and 1,261 tests passed.
+- Complete Chromium Wasm suite — all 16 packages and 1,262 tests passed.
 - `python3 scripts/check_shoop_test_usage.py` and
   `python3 scripts/check_tracing_coverage.py --require-closed` — passed; the
   inventory covers 139 production modules.
@@ -88,9 +87,10 @@ ChromeDriver 147.0.7727.137 included:
 - The retained hosted output-only AudioWorklet workflow passed after the tracing
   changes. Trunk debug packaging and the raw worklet artifact contract passed.
 
-The full GitHub matrix and upstream PR checks remain the authoritative evidence
-for Windows, macOS, release packaging, Firefox, artifact upload, and clean CI.
-Run URLs and final conclusions are appended after those checks complete.
+Upstream PR 1 passed browser, collector, MSRV, native, quality,
+security/licenses, and Wasm checks before merge. The Shoop GitHub matrix remains
+the authoritative evidence for Windows, macOS, release packaging, Firefox,
+artifact upload, and clean CI; its run URL is appended after the branch is pushed.
 
 ## Native audio-domain comparison
 

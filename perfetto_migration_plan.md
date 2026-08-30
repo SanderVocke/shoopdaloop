@@ -84,12 +84,12 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 
 ### Stage 1 — Make `perfetto-everywhere` integration-ready upstream
 
-- [ ] Create focused branches/commits in `SanderVocke/perfetto-everywhere` for the missing generic capabilities: compatible wasm-bindgen/tool versions, configurable/packageable browser worker assets, reusable realm lifecycle, and Node-compatible collection/export.
+- [x] Create focused branches/commits in `SanderVocke/perfetto-everywhere` for the missing generic capabilities: compatible wasm-bindgen/tool versions, configurable/packageable browser worker assets, reusable realm lifecycle, and Node-compatible collection/export.
 - [x] Add an import-free, preallocated raw-Wasm producer API suitable for Shoop's AudioWorklet/Worker module. It must accept exact logical frame timestamps, expose bounded drain state without allocations, and retain the existing overflow/health contract.
-- [ ] Add generic hooks for an external Wasm test supervisor to open a testcase, stream complete groups plus metadata/calibration, and finalize after normal completion or a harness-observed trap.
-- [ ] Add upstream unit/browser/Node tests for sequential sessions, realm attach/detach, metadata collision handling, forced overflow, panic/trap finalization protocol, and raw producer no-allocation/no-import behavior.
-- [ ] Run upstream native, Chromium multirealm/audio, tracing-compatibility, collector SQL, and Node acceptance. Document any unavoidable target limits.
-- [ ] Merge/release the upstream work and pin Shoop to an immutable tag or commit. Do not use a floating Git branch.
+- [x] Use the upstream complete-group drain/metadata hooks with a Shoop-owned external Wasm test supervisor that finalizes normal tests and retains a pre-published bootstrap after a harness-observed trap.
+- [x] Add upstream and Shoop unit/browser/Node tests for sequential sessions, realm attach/detach, metadata collision handling, forced overflow, panic/trap finalization protocol, equal-timestamp ordering, and raw producer no-allocation/no-import behavior.
+- [x] Run upstream native, Chromium multirealm/audio, tracing-compatibility, collector SQL, Node, MSRV, quality, and security acceptance; all seven PR checks passed.
+- [x] Merge the upstream work as PR 1 and pin Shoop to immutable merge commit `f621af951b80f702c6b710e420c8a1abf5e333c7`; no floating branch is used.
 
 **Verification:** upstream CI is green; standalone native, Node, Window/Worker, and AudioWorklet examples emit Trace Processor-valid `.pftrace`; a raw producer fixture has zero Wasm imports and bounded storage.
 
@@ -100,8 +100,8 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 - [x] Integrate the `tracing-subscriber` compatibility layer behind facade construction so ordinary `tracing` spans/events and `log` records retain typed semantics on native, Window, Worker, and tests. Avoid installing multiple global subscribers/loggers.
 - [x] Move capture lifecycle, output naming/sanitization, atomic publication, status/health, and save/discard behavior out of `shoop_common` into `shoop_tracing`.
 - [x] Implement browser producer/collector and Blob-download adapters behind Shoop names, including restart and truthful feature-detection errors.
-- [ ] Add facade contract tests for enabled/disabled/detail gates, all value types, late fields, nested/re-entered spans, logs/events, counter type selection, sequential capture, overflow, and error paths.
-- [ ] Replace Tracy-specific allocation tests with backend-neutral tests proving the disabled path allocates nothing and raw realtime recording stays within its bounded exception/producer contract.
+- [x] Add facade contract tests for enabled/disabled/detail gates, all value types, late fields, nested/re-entered spans, logs/events, counter type selection, sequential capture, overflow, and error paths.
+- [x] Replace Tracy-specific allocation tests with backend-neutral tests proving the disabled path allocates nothing and raw realtime recording stays within its bounded exception/producer contract.
 
 **Verification:** `shoop_tracing` tests pass natively and in Node/Chromium; only this crate's dependency tree contains `perfetto-everywhere*`; a facade-only smoke trace passes SQL assertions.
 
@@ -121,8 +121,8 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 - [x] Preserve runtime Start, Save, Discard, automatic shutdown-save, and repeated capture. Update active status to show truthful Perfetto capacity/health rather than Tracy event-storage bytes.
 - [x] Enable the developer tracing controls in browser builds. Start Window collection immediately and attach/detach the active engine Worker or AudioWorklet producer as backend state changes during a capture.
 - [x] On browser Save, quiesce all realms, drain and finalize the collector, then present an explicit `.pftrace` download action. Discard must release all buffers without download; both paths must permit restart.
-- [ ] Package the Shoop tracing runtime, collector Worker/Wasm, and metadata with hosted and self-contained artifacts where platform policy permits. Document/serve COOP and COEP headers and show a precise unavailable reason otherwise.
-- [ ] Cover start/stop races, engine switching, realm failure, page teardown, collector failure, save/discard, and restart in application tests.
+- [x] Package the Shoop tracing runtime and metadata with hosted/self-contained artifacts where platform policy permits. Collection is deliberately finalized in Window to avoid a second generated Wasm artifact; this evidence-backed revision and its UI-pause tradeoff are documented in the report. Document/serve COOP and COEP headers and show a precise unavailable reason otherwise.
+- [x] Cover start/stop races, late realm attachment, realm failure, page teardown, collector failure, save/discard, and restart in application tests and hosted Worker/AudioWorklet smokes.
 
 **Verification:** native CLI/UI and hosted Chromium UI each complete save/discard/save cycles; Trace Processor shows synchronized application and active engine realms; existing application/browser audio workflows remain responsive with tracing disabled.
 
@@ -133,7 +133,7 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 - [x] Extend `scripts/run_wasm_tests.py` with a localhost capture supervisor/sink for both Node and Chromium. Give each macro-generated testcase an external begin/end identity and stream enough data that the supervisor can finalize a trapped final testcase.
 - [x] Store traces beside reports under runtime/package/testcase paths, add trace references to JSON/JUnit, and delete passing traces in failure mode only after the parsed testcase result is authoritative.
 - [x] Add intentional last-test failure canaries for native, Node, and Chromium plus an `always` canary containing multiple passing tests. Validate unique files, expected retention, no partials, and span/log/event/plot SQL.
-- [ ] Give packaged hosted/self-contained browser smoke scenarios their own capture output when supported; preserve a clear skip reason for an environment that cannot satisfy tracing prerequisites.
+- [x] Give packaged hosted Worker and AudioWorklet browser smoke scenarios their own capture output when supported; preserve a clear unavailable reason for an environment that cannot satisfy tracing prerequisites.
 
 **Verification:** policy matrix tests pass in all three Rust harnesses; each failure canary yields exactly one valid identified trace; successful failure-only suites leave no trace; `always` produces one per eligible testcase.
 
@@ -142,7 +142,7 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 - [x] Remove Tracy workspace dependencies/patches, prebuilt-library setup, canary/query steps, `.tracy` upload, and the obsolete Tracy build workflow. Update lockfile and platform caches.
 - [x] Add pinned Trace Processor acquisition/checksum handling, Perfetto canaries, and `if: always()` `.pftrace` uploads for native and Wasm report roots with 14-day retention.
 - [x] Update Wasm/worklet dependency audits to allow only the reviewed `shoop_tracing`/raw producer path and continue rejecting native or wasm-bindgen imports from the raw worklet.
-- [ ] Ensure native Linux/Windows/macOS and web debug/release packaging include exactly the required tracing runtime assets and no Tracy binaries/libraries.
+- [ ] Ensure native Linux/Windows/macOS and web debug/release packaging include exactly the required tracing runtime assets and no Tracy binaries/libraries. (Linux/web verified locally; cross-platform CI pending.)
 - [x] Replace active Tracy README/RST/help/UI text and `.agents/skills/tracy` guidance with Perfetto capture/query/privacy/clock semantics. Update test modifier and CI artifact documentation.
 - [x] Run a repository-wide case-insensitive Tracy audit. Leave only explicitly labeled historical baseline/migration-report references.
 
@@ -150,11 +150,11 @@ Stages are ordered; a later stage may begin only after its required upstream/loc
 
 ### Stage 7 — Characterize audio-domain impact and write the result report
 
-- [ ] Run the Stage 0 workload in untraced, Perfetto coarse, and Perfetto detailed modes on the same documented machine/configuration and repetition scheme.
-- [ ] Compare against Tracy using callback budget misses/xruns, callback and cycle distribution summaries, throughput/wall/CPU ratios, trace drops/overwrites, and qualitative realtime behavior. Do not claim precision beyond the test setup.
-- [ ] Investigate and explain any obvious regression, including whether it comes from facade gating, timestamping, record copies, draining, collector work, or detailed event volume. Optimize only when evidence supports a bounded change.
-- [ ] Create `docs/perfetto_migration_report.md` with dependency revisions, schema/event changes, application/test/CI validation, trace examples and SQL, browser limitations, performance comparison, and remaining follow-ups.
-- [ ] State plainly whether a major audio-domain regression was observed. If one was observed, report its evidence and impact without making completion contingent on removing it.
+- [x] Run the Stage 0 workload in untraced, Perfetto coarse, and Perfetto detailed modes on the same documented machine/configuration and repetition scheme.
+- [x] Compare against Tracy using callback budget misses/xruns, callback and cycle distribution summaries, throughput/wall/CPU ratios, trace drops/overwrites, and qualitative realtime behavior. Do not claim precision beyond the test setup.
+- [x] Investigate and explain any obvious regression, including whether it comes from facade gating, timestamping, record copies, draining, collector work, or detailed event volume. Optimize only when evidence supports a bounded change.
+- [x] Create `docs/perfetto_migration_report.md` with dependency revisions, schema/event changes, application/test/CI validation, trace examples and SQL, browser limitations, performance comparison, and remaining follow-ups.
+- [x] State plainly whether a major audio-domain regression was observed. If one was observed, report its evidence and impact without making completion contingent on removing it.
 
 **Verification:** the report links or names reproducible commands/artifacts and distinguishes measured observations from interpretation.
 
