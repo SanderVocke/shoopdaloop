@@ -84,7 +84,7 @@ Depends on: Stage 1.
 Verification:
 
 - [x] Run focused `shoop_engine` latency/channel/loop tests.
-- [ ] Run the complete `shoop_engine` test suite, including callback allocation and transition tests.
+- [x] Run the complete `shoop_engine` test suite, including callback allocation and transition tests.
 
 ## Stage 3: Resolve processor settings and enforce backend parity
 
@@ -100,8 +100,8 @@ Depends on: Stages 1-2.
 
 Verification:
 
-- [ ] Run complete `shoop_backend` tests.
-- [ ] Run focused warning-denied backend Clippy.
+- [x] Run complete `shoop_backend` tests.
+- [x] Run focused warning-denied backend Clippy.
 - [x] Confirm case-insensitive removed-architecture terminology searches remain clean.
 
 ## Stage 4: Add explicit completed-take processor correction
@@ -114,11 +114,11 @@ Depends on: Stage 3.
 - [x] Preflight the candidate alignment and retained logical window for every affected Wet channel before mutating any channel.
 - [x] Fence the edit while playback, recording, replacement, dry-into-wet rendering, postroll, or another relevant mutation is active.
 - [x] Invalidate/reload application and browser media/timeline caches after success or asynchronous rejection, matching existing alignment-edit recovery behavior.
-- [ ] Add Fake, Engine, Native, browser, and application tests for success, preserved group differences, unavailable topology, bounds failure, atomicity, and stale-cache recovery.
+- [x] Add Fake, Engine, Native, browser, and application tests for success, preserved group differences, unavailable topology, bounds failure, atomicity, and stale-cache recovery.
 
 Verification:
 
-- [ ] Run focused backend, application, and Worklet mutation/recovery tests.
+- [x] Run focused backend, application, and Worklet mutation/recovery tests.
 - [x] Confirm existing common take-alignment tests still pass unchanged in intent.
 
 ## Stage 5: Update application API, browser protocol, and Worklet
@@ -134,8 +134,8 @@ Depends on: Stages 3-4.
 
 Verification:
 
-- [ ] Run `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, and `shoop_app` tests.
-- [ ] Run the Chromium-backed engine/backend/application/Worklet suites required by project guidance.
+- [x] Run `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, and `shoop_app` tests.
+- [x] Run the Chromium-backed engine/backend/application/Worklet suites required by project guidance.
 
 ## Stage 6: Persist and resample the new configuration
 
@@ -150,8 +150,8 @@ Depends on: Stages 3 and 5.
 
 Verification:
 
-- [ ] Run complete `shoop_session` archive/document/resampling tests.
-- [ ] Run application save/load/export tests over migrated and current sessions.
+- [x] Run complete `shoop_session` archive/document/resampling tests.
+- [x] Run application save/load/export tests over migrated and current sessions.
 
 ## Stage 7: Update the latency compensation dialog and documentation
 
@@ -162,27 +162,27 @@ Depends on: Stages 4-6.
 - [x] For each completed processed take, expose common take alignment and wet-relative processor alignment corrections; hide or disable the latter for non-dry/wet takes.
 - [x] Keep all controls in the track-level Latency compensation dialog and out of the compact `⋮` menu itself.
 - [x] Update user documentation, session-format documentation, `LATENCY_REMAINING_WORK.md`, the simplification audit, and tracing coverage where behavior or instrumentation changes.
-- [ ] Replace the ignored visual-validation artifact with a screenshot of the revised dialog at a supported common window size.
+- [x] Replace the ignored visual-validation artifact with a screenshot of the revised dialog at a supported common window size.
 - [x] Add UI interaction/layout tests covering direct, Carla, manual, trim, unavailable/invalid, pending/error, and completed processed-take states.
 
 Verification:
 
-- [ ] Run complete `shoop_egui` tests at minimum and common sizes.
-- [ ] Inspect native and browser layouts and confirm the dialog remains usable with many completed takes.
-- [ ] Run documentation and repository policy checks.
+- [x] Run complete `shoop_egui` tests at minimum and common sizes.
+- [x] Inspect native and browser layouts and confirm the dialog remains usable with many completed takes.
+- [x] Run documentation and repository policy checks.
 
 ## Stage 8: End-to-end validation
 
 Depends on: all previous stages.
 
-- [ ] Record a deterministic dry/wet fixture with known `R` and `P`; prove raw dry and wet impulses retain their physical separation while both map to the same logical frame through annotations `R` and `R + P`.
-- [ ] Prove normal wet playback and WAV/Shoop audio plus standard/exact MIDI export apply the stored mapping without applying processor latency twice.
-- [ ] Prove play-dry-through-wet and record-dry-into-wet apply `P` exactly once across loop boundaries, non-divisible callback sizes, and planned transitions.
-- [ ] Exercise positive, negative, zero, mixed-sign, maximum, insufficient-retention, storage-exhaustion, cancellation, and postroll re-entry cases.
-- [ ] Verify common take correction and wet-relative correction across save/load, duplication/import, resampling, details/waveform reads, browser optimistic rejection, and cache reload.
-- [ ] Verify Carla Automatic resolves to zero and Carla Manual/Automatic + trim drive both dry-through-wet advance and ordinary-record wet annotation without any Carla inference code.
-- [ ] Run native workspace tests, Node/Chromium suites, warning-denied workspace build, focused warning-denied Clippy, formatting, diff checks, test-attribute policy, tracing coverage, and removed-symbol/terminology searches.
-- [ ] Record final evidence and map every acceptance criterion to concrete tests, documentation, or artifacts before declaring completion.
+- [x] Record a deterministic dry/wet fixture with known `R` and `P`; prove raw dry and wet impulses retain their physical separation while both map to the same logical frame through annotations `R` and `R + P`.
+- [x] Prove normal wet playback and WAV/Shoop audio plus standard/exact MIDI export apply the stored mapping without applying processor latency twice.
+- [x] Prove play-dry-through-wet and record-dry-into-wet apply `P` exactly once across loop boundaries, non-divisible callback sizes, and planned transitions.
+- [x] Exercise positive, negative, zero, mixed-sign, maximum, insufficient-retention, storage-exhaustion, cancellation, and postroll re-entry cases.
+- [x] Verify common take correction and wet-relative correction across save/load, duplication/import, resampling, details/waveform reads, browser optimistic rejection, and cache reload.
+- [x] Verify Carla Automatic resolves to zero and Carla Manual/Automatic + trim drive both dry-through-wet advance and ordinary-record wet annotation without any Carla inference code.
+- [x] Run native workspace tests, Node/Chromium suites, warning-denied workspace build, focused warning-denied Clippy, formatting, diff checks, test-attribute policy, tracing coverage, and removed-symbol/terminology searches.
+- [x] Record final evidence and map every acceptance criterion to concrete tests, documentation, or artifacts before declaring completion.
 
 ## Execution contract
 
@@ -191,3 +191,35 @@ Depends on: all previous stages.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Completion audit
+
+### Acceptance-criterion evidence
+
+| Criterion | Concrete evidence |
+| ---: | --- |
+| 1 | `recording_offset_for_channel`, `ordinary_recording_prepares_and_latches_role_specific_alignment`, `ordinary_dry_wet_impulses_share_logical_zero_through_distinct_annotations`, and Fake/Engine/Native dry-wet backend tests prove Direct/Dry `R` and Wet `R + P`. |
+| 2 | Role-specific `RetentionWindow` preparation plus the mixed-sign retention test and impulse/postroll test prove independent dry/wet pre/post windows and settlement. |
+| 3 | Checked domain derivation, backend/session combined-bound rejection, retained-window preflight, storage-exhaustion/abort tests, and atomic take-correction rejection cover all-or-nothing failure. |
+| 4 | Ordinary recording only latches capture mappings; render advance remains confined to advanced dry/wet modes. Existing monitoring-equivalence and callback tests pass. |
+| 5 | The impulse test proves Wet logical playback from its stored mapping; logical audio/MIDI export tests and dry/wet ordered export tests pass without a second processor application. |
+| 6 | Existing dry-through-wet, dry-into-wet, loop-wrap, canonical destination, and processor-latching tests pass in the complete native and Wasm suites. |
+| 7 | `ProcessorLatencyAdjustment`, backend/app/wire adjustment enums, independent state fields, dialog selectors, and positive/negative/boundary resolver tests cover Automatic/Manual/trim. |
+| 8 | `carla_uses_zero_processor_automatic_baseline_and_trim`, Native zero-baseline assignment, and `third_party/carla/README.md` prove zero automatic Carla behavior without inspection or inference. |
+| 9 | Armed-operation guards, pending/latched compact values, future-loop inheritance tests, and immutable-take application tests prove future-operation semantics. |
+| 10 | `SetTakeAlignment` remains common-delta; `SetTakeProcessorAlignment` and backend tests prove Wet-only delta, stable first Dry/Wet reference, and preserved within-group differences. |
+| 11 | Fake/Engine/Native correction implementations fence active modes/postroll and preflight every Wet channel; direct-topology, playback, bounds, and atomic rejection tests pass. |
+| 12 | Session document version 8, explicit version-7 migration, version-6 chained migration, deterministic round trips, and resampling tests preserve old behavior and new settings without observations. |
+| 13 | Backend snapshots, app state, protocol 17, Worklet commands, browser rejection recovery, per-channel session/media paths, and native/Node/Chromium suites cover all named implementations. |
+| 14 | Derived Wet mappings are prepared before callback use; atomic publication stores both offsets; complete no-allocation, no-standard-mutex, and warning-denied build gates pass. |
+| 15 | `track_widget.rs` keeps one menu entry and a separated dialog with status/error text and processed-take controls; egui tests and `artifacts/latency-controls.png` validate layout. |
+
+### Stage and gate evidence
+
+- Domain/engine: `shoop_latency` and `shoop_engine` tests are included in the 1,589-test native nextest run; focused impulse, mixed retention, exact-once rendering, and callback-allocation tests pass.
+- Backend/correction: complete Fake/Engine/Native coverage passes, including 74 native-driver backend tests and the named Carla-zero, ordinary-record, replacement, bounds, and take-correction cases.
+- Application/protocol/browser: protocol version 17 round trips and raw-host contract pass; Node and Chromium each pass all 17 opted-in packages (including app 84, backend 50, engine 823, audio Worklet 14, and Worklet client 21 tests).
+- Persistence: all 30 `shoop_session` tests pass, including document-version migration, malformed bounds, mixed channel mappings, and multi-rate conversion.
+- UI/docs: all egui native tests and 175 cross-runtime egui tests pass; the 1200x800 browser artifact shows the revised dialog. Usage, session-format, audit, Carla, and remaining-work documents describe the delivered behavior.
+- Repository gates: `RUSTFLAGS='-D warnings' cargo build --workspace`, focused warning-denied backend Clippy with `--no-deps`, formatting, diff checks, Shoop test-attribute policy, closed tracing inventory, removed-terminology search, Wasm compiler builds, and the raw Wasm host contract all pass. Full dependency Clippy still reports unrelated pre-existing engine lints, so the focused touched-backend gate is the authoritative Clippy evidence.
+- Host-dependent note: plain `cargo test --workspace` reached the virtual-MIDI tests and failed only because the host lacks that facility; the mandated `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` completed with 1,589 passed and 2 host-dependent skips.
