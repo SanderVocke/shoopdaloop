@@ -268,7 +268,7 @@ jobs:
       - name: Configure Perfetto SDK compilation on MSVC
         if: matrix.target == 'windows'
         shell: pwsh
-        run: '"CXXFLAGS=-DNOMINMAX -D_CRT_SECURE_NO_WARNINGS" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append'
+        run: '"CXXFLAGS=-DNOMINMAX -DWIN32_LEAN_AND_MEAN -D_CRT_SECURE_NO_WARNINGS" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append'
 
       - name: Install Linux build dependencies
         if: matrix.target == 'linux' && env.ACT != 'true'
