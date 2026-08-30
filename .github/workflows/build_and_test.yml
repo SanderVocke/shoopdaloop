@@ -271,7 +271,7 @@ jobs:
         run: |
           $compiler = (Get-Command clang-cl.exe -ErrorAction Stop).Source
           "CXX=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "CXXFLAGS=/DNOMINMAX /D_WINSOCKAPI_ /D_CRT_SECURE_NO_WARNINGS /D_CRT_DECLARE_NONSTDC_NAMES=1" |
+          "CXXFLAGS=-DNOMINMAX -D_WINSOCKAPI_ -D_CRT_SECURE_NO_WARNINGS -D_CRT_DECLARE_NONSTDC_NAMES=1" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install Linux build dependencies
