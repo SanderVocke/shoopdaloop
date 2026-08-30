@@ -5028,16 +5028,26 @@ impl Backend for EngineBackend {
         preplay: Option<u32>,
         length: Option<u32>,
     ) -> Result<()> {
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        let loop_ = self
+            .session
+            .loop_(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?;
+        if length.is_some()
+            && (matches!(
+                loop_.mode(),
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            ) || loop_.has_planned_recording_transition())
+        {
+            return Err(anyhow!(
+                "cannot change loop length while a recording operation is armed"
+            ));
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
-        let logical_length = length.unwrap_or(
-            self.session
-                .loop_(self.engine_loop_index(loop_id)?)
-                .ok_or_else(|| anyhow!("missing engine loop"))?
-                .length(),
-        );
+        let logical_length = length.unwrap_or(loop_.length());
         for (channel_index, index) in channels.audio.iter().enumerate() {
             let channel = self
                 .session
@@ -5095,7 +5105,6 @@ impl Backend for EngineBackend {
             }
         }
         if let Some(length) = length {
-            let engine_loop = self.engine_loop_index(loop_id)?;
             self.session
                 .loop_mut(engine_loop)
                 .ok_or_else(|| anyhow!("missing engine loop"))?
@@ -7894,6 +7903,29 @@ impl Backend for FakeBackend {
         length: Option<u32>,
     ) -> Result<()> {
         self.require_loop(loop_id)?;
+        let state = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        if length.is_some()
+            && (matches!(
+                state.mode,
+                BackendLoopMode::Recording
+                    | BackendLoopMode::Replacing
+                    | BackendLoopMode::RecordingDryIntoWet
+            ) || state.next_mode.is_some_and(|mode| {
+                matches!(
+                    mode,
+                    BackendLoopMode::Recording
+                        | BackendLoopMode::Replacing
+                        | BackendLoopMode::RecordingDryIntoWet
+                )
+            }))
+        {
+            return Err(anyhow!(
+                "cannot change loop length while a recording operation is armed"
+            ));
+        }
         let content = self
             .loop_content
             .get(&loop_id)
@@ -9078,6 +9110,40 @@ mod tests {
         );
     }
 
+    fn armed_recording_length_edit_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "armed-length".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, Some(2))
+            .unwrap();
+
+        let timing_error = backend
+            .set_loop_timing(loop_id, None, None, Some(8))
+            .unwrap_err();
+        assert!(timing_error
+            .to_string()
+            .contains("recording operation is armed"));
+        let length_error = backend.set_loop_length(loop_id, 8).unwrap_err();
+        assert!(length_error
+            .to_string()
+            .contains("recording operation is armed"));
+        assert_eq!(backend.poll().unwrap().loops[&loop_id].length, 4);
+    }
+
     fn take_alignment_window_contract(backend: &mut dyn Backend) {
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -9917,6 +9983,12 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn engine_backend_rejects_armed_recording_offset_updates() {
         armed_recording_offset_update_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_and_engine_backends_reject_length_edits_while_recording_is_armed() {
+        armed_recording_length_edit_contract(&mut FakeBackend::default());
+        armed_recording_length_edit_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
     #[shoop_wasm_test_support::shoop_test]

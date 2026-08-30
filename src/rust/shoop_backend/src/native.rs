@@ -3146,7 +3146,20 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
-        let logical_length = length.unwrap_or(target.handle.get_state()?.length);
+        let loop_state = target.handle.get_state()?;
+        if length.is_some()
+            && (matches!(
+                loop_state.mode,
+                shoop_engine::LoopMode::Recording
+                    | shoop_engine::LoopMode::Replacing
+                    | shoop_engine::LoopMode::RecordingDryIntoWet
+            ) || target.handle.has_planned_recording_transition()?)
+        {
+            return Err(anyhow!(
+                "cannot change loop length while a recording operation is armed"
+            ));
+        }
+        let logical_length = length.unwrap_or(loop_state.length);
         for (index, channel) in target.audio.iter().enumerate() {
             let state = channel.get_state()?;
             if state.capture_alignment_frames != 0 {
@@ -3818,6 +3831,46 @@ mod tests {
 
         backend.remove_composite_loop(composite).unwrap();
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_rejects_length_edits_while_recording_is_armed() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "native-armed-length".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, Some(2))
+            .unwrap();
+
+        let timing_error = backend
+            .set_loop_timing(loop_id, None, None, Some(8))
+            .unwrap_err();
+        assert!(timing_error
+            .to_string()
+            .contains("recording operation is armed"));
+        let length_error = backend.set_loop_length(loop_id, 8).unwrap_err();
+        assert!(length_error
+            .to_string()
+            .contains("recording operation is armed"));
+        assert_eq!(backend.poll().unwrap().loops[&loop_id].length, 4);
     }
 
     #[shoop_wasm_test_support::shoop_test]
