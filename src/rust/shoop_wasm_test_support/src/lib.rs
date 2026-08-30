@@ -83,6 +83,34 @@ mod tests {
         Err("intentional native Result failure")
     }
 
+    #[shoop_test(
+        no_wasm = "exercises native unwind capture internals",
+        no_trace = "starts its own per-test capture"
+    )]
+    fn native_capture_runtime_preserves_panics() {
+        let output = tempfile::tempdir().unwrap();
+        std::env::set_var("SHOOP_TEST_TRACE", "failure");
+        std::env::set_var("SHOOP_TEST_TRACE_DIR", output.path());
+        let outcome = std::panic::catch_unwind(|| {
+            crate::run_test(|| panic!("intentional nested capture panic"));
+        });
+        assert!(outcome.is_err());
+        assert_eq!(output.path().read_dir().unwrap().count(), 1);
+    }
+
+    #[shoop_test(
+        no_wasm = "exercises native Result capture internals",
+        no_trace = "starts its own per-test capture"
+    )]
+    fn native_capture_runtime_preserves_result_errors() {
+        let output = tempfile::tempdir().unwrap();
+        std::env::set_var("SHOOP_TEST_TRACE", "failure");
+        std::env::set_var("SHOOP_TEST_TRACE_DIR", output.path());
+        let result = crate::run_test_result(|| Err::<(), _>("intentional nested Result error"));
+        assert_eq!(result, Err("intentional nested Result error"));
+        assert_eq!(output.path().read_dir().unwrap().count(), 1);
+    }
+
     #[shoop_test(wasm_only = "exercises the Wasm-only expansion")]
     fn wasm_only_modifier_runs() {
         assert!(cfg!(target_arch = "wasm32"));
