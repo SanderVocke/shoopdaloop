@@ -872,9 +872,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: wasm-test-reports-${{ matrix.profile }}-${{ github.run_id }}
-          path: |
-            target/wasm-tests/*/reports
-            target/perfetto-validation/*.pftrace
+          path: target/wasm-tests/*/reports
           if-no-files-found: ignore
           retention-days: 14
 
@@ -944,6 +942,18 @@ jobs:
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         run: xvfb-run -a python3 browser_firefox_smoke.py
+
+      - name: Upload Perfetto validation traces
+        if: >-
+          always() && env.ACT != 'true' &&
+          ((matrix.target == 'linux' && matrix.profile == 'debug') ||
+          (matrix.target == 'web' && matrix.profile == 'debug'))
+        uses: actions/upload-artifact@v7
+        with:
+          name: perfetto-validation-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: target/perfetto-validation/*.pftrace
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload Perfetto failure captures
         if: always() && env.ACT != 'true'
