@@ -194,6 +194,10 @@ Depends on: all previous stages.
 
 ## Completion audit
 
+Implementation is published from branch `plan/dry-wet-latency-alignment` as
+stacked PR [#819](https://github.com/SanderVocke/shoopdaloop/pull/819), targeting
+`plan/streamline-latency-compensation` independently from PR #817.
+
 ### Acceptance-criterion evidence
 
 | Criterion | Concrete evidence |
