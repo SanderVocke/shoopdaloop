@@ -3309,7 +3309,7 @@ fn callback_backend_latency(
         Ok(values) => Ok(values),
         Err(_) => Ok(shoop_engine::PreparedLatency::new_for_track(
             shoop_latency::RecordingOffset::default(),
-            resolved_processor_advance(state).unwrap_or_default(),
+            resolved_processor_advance(state)?,
             has_wet_channels,
         )?),
     }
@@ -3326,12 +3326,11 @@ fn update_backend_latency(
     candidate.adjustment = adjustment;
     candidate.processor_adjustment = processor_adjustment;
     candidate.processor_manual_frames = processor_manual_frames;
-    candidate.effective_offset_frames = resolved_recording_offset(&candidate)
-        .ok()
-        .map(shoop_latency::RecordingOffset::frames);
-    candidate.effective_processor_advance_frames = resolved_processor_advance(&candidate)
-        .ok()
-        .map(shoop_latency::ProcessorRenderAdvance::frames);
+    let recording = resolved_recording_offset(&candidate);
+    let processor = resolved_processor_advance(&candidate);
+    candidate.effective_offset_frames = recording.as_ref().ok().map(|value| value.frames());
+    candidate.effective_processor_advance_frames =
+        processor.as_ref().ok().map(|value| value.frames());
     match prepared_backend_latency(&candidate, has_wet_channels) {
         Ok(_) => {
             candidate.pending = false;
@@ -3340,9 +3339,20 @@ fn update_backend_latency(
             Ok(())
         }
         Err(error) => {
-            candidate.pending = false;
-            candidate.error = Some(error.to_string());
-            *state = candidate;
+            // The two settings are independent unless both resolve and only their
+            // checked Wet sum is invalid. Apply a valid side of a partially
+            // rejected edit, but never retain an invalid or non-serializable value.
+            if recording.is_ok() && processor.is_err() {
+                state.adjustment = candidate.adjustment;
+                state.effective_offset_frames = candidate.effective_offset_frames;
+            } else if processor.is_ok() && recording.is_err() {
+                state.processor_adjustment = candidate.processor_adjustment;
+                state.processor_manual_frames = candidate.processor_manual_frames;
+                state.effective_processor_advance_frames =
+                    candidate.effective_processor_advance_frames;
+            }
+            state.pending = false;
+            state.error = Some(error.to_string());
             Err(error)
         }
     }
@@ -9630,6 +9640,59 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn engine_rejected_processor_edit_preserves_dry_through_wet_advance() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_track(TrackRequest {
+                port_name_base: "retained-processor-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                17,
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                -1,
+            )
+            .is_err());
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::PlayingDryThroughWet, None)
+            .unwrap();
+        let channels = &backend.loop_channels[&track.loops[0]];
+        for (channel, mode) in channels.audio.iter().zip(&channels.audio_modes) {
+            assert_eq!(
+                backend
+                    .session
+                    .audio_channel(*channel)
+                    .unwrap()
+                    .render_advance_frames(),
+                if *mode == BackendChannelMode::Wet {
+                    0
+                } else {
+                    17
+                }
+            );
+        }
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].state.latency.processor_manual_frames, 17);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn compensated_grab_is_rejected_before_target_mutation() {
         let mut backend = FakeBackend::default();
         let track = backend
@@ -9839,7 +9902,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn fake_processed_recording_rejects_unresolved_processor_latency() {
+    fn fake_processed_track_retains_valid_processor_after_rejected_edit() {
         let mut backend = FakeBackend::default();
         let processed = backend
             .create_track(TrackRequest {
@@ -9852,6 +9915,14 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
+        backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                17,
+            )
+            .unwrap();
         assert!(backend
             .set_track_latency(
                 processed.track_id,
@@ -9860,14 +9931,20 @@ mod tests {
                 -1,
             )
             .is_err());
-        let before = backend.loop_content[&processed.loops[0]].clone();
-        let error = backend
+        let latency = &backend.poll().unwrap().tracks[&processed.track_id].latency;
+        assert_eq!(latency.processor_manual_frames, 17);
+        assert_eq!(latency.effective_processor_advance_frames, Some(17));
+        assert!(latency.error.is_some());
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].state.latency.processor_manual_frames, 17);
+
+        backend
             .transition_loop(processed.loops[0], BackendLoopMode::Recording, None)
-            .unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("processor latency is unavailable"));
-        assert_eq!(backend.loop_content[&processed.loops[0]], before);
+            .unwrap();
+        assert_eq!(
+            backend.poll().unwrap().loops[&processed.loops[0]].processor_alignment_frames,
+            Some(17)
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

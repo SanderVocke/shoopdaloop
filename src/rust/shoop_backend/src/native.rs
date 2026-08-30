@@ -3897,6 +3897,17 @@ mod tests {
             )
             .unwrap_err();
         assert!(unavailable.to_string().contains("manual"));
+        let invalid_processor = backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                -1,
+            )
+            .unwrap_err();
+        assert!(invalid_processor.to_string().contains("cannot be negative"));
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].state.latency.processor_manual_frames, 19);
         let added_loop = backend.add_loop_to_track(created.track_id).unwrap();
         for loop_id in [created.loops[0], added_loop] {
             backend
