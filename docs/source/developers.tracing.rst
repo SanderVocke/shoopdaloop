@@ -1,34 +1,39 @@
-Tracy profiling and capture
----------------------------
+Perfetto profiling and capture
+------------------------------
 
-The native application exposes Rust tracing data to Tracy 0.13.1.
+ShoopDaLoop emits standard Perfetto ``.pftrace`` data through the private
+``shoop_tracing`` facade on native, Window, Engine Worker, and AudioWorklet
+realms.
 
 Modes
 ~~~~~
 
 Disabled
-  Omit tracing options. Gated helpers avoid Tracy calls.
+  Omit tracing options. Gated realtime helpers do not call a backend.
 
 Coarse
-  Use ``--tracing`` to capture in process. This includes GUI/application spans,
-  engine control/graph work, and bounded callback/session categories. There is
-  no live TCP profiler mode or external capture executable.
+  Use ``--tracing`` or **Settings > Developer**. This includes GUI/application
+  spans, engine control/graph work, and bounded callback/session categories.
 
 Engine detail
-  Add ``--tracing-engine-detail`` for per-stage realtime zones. This increases
+  Add ``--tracing-engine-detail`` for per-stage realtime records. This increases
   callback overhead and capture size.
 
-Capture a file::
+Capture natively::
 
   cargo run -p shoopdaloop -- \
     --tracing \
     --tracing-engine-detail
 
-Quit normally so application and engine workers quiesce and capture shutdown
-atomically publishes the numbered ``.tracy`` file below ``traces/``. Require a
-non-empty capture, no corresponding ``.partial`` file, and a successful Tracy
-parser check before analysis. Abort, fatal signals, forced termination, OOM,
-and power loss cannot finalize an in-process trace.
+A normal Save or application shutdown atomically publishes a numbered
+``.pftrace`` below ``traces/``. Discard writes no file, and sequential captures
+are supported. Use the pinned ``scripts/trace_processor`` wrapper for queries.
+
+Hosted Chromium exposes the same controls and downloads application-owned trace
+bytes. One capture combines Window with the active Engine Worker or
+AudioWorklet. Multirealm audio tracing requires cross-origin isolation and
+``SharedArrayBuffer``; serve COOP ``same-origin`` and COEP ``require-corp``.
+Unsupported deployments remain functional and report why tracing is unavailable.
 
 Trace structure
 ~~~~~~~~~~~~~~~
@@ -51,10 +56,17 @@ Trace structure
 ``worker.*`` and ``engine.plugin.*``
   Background application/graph/plugin work and native processor operations.
 
-Tracing is diagnostic instrumentation, not a transparent realtime measurement.
-Tracy may allocate or lock internally and can change callback timing or cause
-xruns. Start with coarse mode, enable detail only when needed, and compare like
-capture modes.
+Counter tracks retain integer counts, identifiers, occupancy, and reason codes;
+fractional loads/ratios use floating counters. Structured logs preserve level,
+target, message, and typed fields as Perfetto arguments.
 
-The repository Tracy skill at ``.agents/skills/tracy/SKILL.md`` documents the
-ShoopDaLoop-specific query and interpretation workflow.
+AudioWorklet timestamps are exact logical sample frames, not callback CPU
+entry/exit measurements. Always inspect clock calibration, producer drops,
+discontinuities, and health data when interpreting a browser trace.
+
+Tracing is diagnostic instrumentation, not a transparent realtime measurement.
+Start with coarse mode, compare equivalent workloads/modes, and use native CPU
+tracks for callback-duration analysis.
+
+The repository Perfetto skill at ``.agents/skills/perfetto/SKILL.md`` documents
+capture, CI artifact, query, clock, and interpretation workflows.

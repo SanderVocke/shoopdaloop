@@ -26,7 +26,7 @@ use crate::{
 pub struct TracingStatus {
     pub available: bool,
     pub active: bool,
-    pub memory_usage_bytes: u64,
+    pub buffer_capacity_bytes: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1674,7 +1674,7 @@ mod tests {
         dialog.set_tracing_status(TracingStatus {
             available: true,
             active: false,
-            memory_usage_bytes: 0,
+            buffer_capacity_bytes: 0,
         });
         dialog.tracing_engine_detail = true;
         let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {

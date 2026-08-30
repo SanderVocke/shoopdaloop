@@ -1,24 +1,72 @@
-//! Shared tracing gates and direct Tracy helpers.
+//! Shoop-owned tracing facade.
 //!
-//! The application keeps Tracy disabled by default. Direct calls made from a
-//! realtime callback are debugging-only and are enclosed in the narrowest
-//! practical allocation-permitted scope. Tracy's C++ client may still allocate
-//! or lock internally; tracing mode is therefore not realtime-safe.
+//! Backend-specific Perfetto types stay private. Allocation-permitted code uses
+//! the re-exported `tracing` macros and subscriber layer; realtime code uses the
+//! statically named, explicitly gated direct helpers.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-#[cfg(feature = "tracy")]
-#[doc(hidden)]
-pub use tracy_client;
+#[cfg(not(target_arch = "wasm32"))]
+use perfetto_everywhere_core::Tracer;
+use perfetto_everywhere_core::{Category, Field, FieldName, FieldValue, StaticName, TrackId};
+#[cfg(target_arch = "wasm32")]
+use perfetto_everywhere_core::{FlowAttachment, TraceBackend};
+#[cfg(target_arch = "wasm32")]
+use std::{cell::RefCell, rc::Rc};
 
-#[cfg(all(feature = "tracy", target_env = "msvc"))]
-#[link(name = "msvcprt")]
-unsafe extern "C" {}
+#[cfg(all(target_arch = "wasm32", feature = "ordinary-web"))]
+mod browser;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod capture;
+#[cfg(all(target_arch = "wasm32", feature = "ordinary-web"))]
+pub use browser::{
+    initialize_browser_tracing, wasm_test_trace_begin, wasm_test_trace_finish, BrowserCalibration,
+    BrowserCapture, BrowserHealth, BrowserMetadata, BrowserRealmData,
+};
+#[cfg(target_arch = "wasm32")]
+mod raw;
+#[cfg(target_arch = "wasm32")]
+pub use raw::{RawProducerHealth, RawTraceProducer, TraceMetadata, REALTIME_METADATA};
+#[cfg(not(target_arch = "wasm32"))]
+mod test_capture;
+#[cfg(not(target_arch = "wasm32"))]
+pub use test_capture::{run_test, run_test_result};
+
+pub use tracing::{
+    debug, debug_span, error, error_span, event, field, info, info_span, instrument, span, trace,
+    trace_span, warn, warn_span, Level,
+};
 
 static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
 static TRACING_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
 static ENGINE_DETAIL_ENABLED: AtomicBool = AtomicBool::new(false);
 
+const REALTIME_CATEGORY: Category = Category::new("shoop.realtime");
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static RAW_BACKEND: RefCell<Option<Rc<perfetto_everywhere_raw::RawRingBackend>>> =
+        const { RefCell::new(None) };
+}
+const VALUE_FIELD: FieldName = FieldName::new("value");
+
+#[cfg(not(target_arch = "wasm32"))]
+static NATIVE_TRACER: Tracer<perfetto_everywhere_native::NativeBackend> =
+    Tracer::new(perfetto_everywhere_native::NativeBackend);
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) const COUNTER_NAMES: &[StaticName] = &[
+    StaticName::new("engine.fx.bridge.midi_input_overflows"),
+    StaticName::new("engine.fx.bridge.slot_occupancy"),
+    StaticName::new("engine.fx.bridge.generation"),
+    StaticName::new("engine.fx.bridge.deadline_misses"),
+    StaticName::new("engine.fx.bridge.fallback_reason"),
+    StaticName::new("engine.fx.global_midi.rejected"),
+    StaticName::new("engine.fx.global_midi.pending_overwrites"),
+    StaticName::new("engine.fx.global_midi.pending_drained"),
+    StaticName::new("engine.fx.global_midi.capacity_deferrals"),
+];
+
+#[cfg(not(target_arch = "wasm32"))]
 #[ctor::ctor(unsafe)]
 fn configure_ci_tracing() {
     if std::env::var_os("SHOOP_CI_TRACING_ENGINE_DETAIL").is_some() {
@@ -37,7 +85,7 @@ pub fn set_tracing_output_enabled(enabled: bool) {
     TRACING_OUTPUT_ENABLED.store(enabled, Ordering::Release);
 }
 
-/// Enable detailed per-node engine zones. This remains subordinate to tracing.
+/// Enable detailed per-node engine records. This remains subordinate to tracing.
 pub fn set_engine_detail_enabled(enabled: bool) {
     ENGINE_DETAIL_ENABLED.store(enabled, Ordering::Relaxed);
 }
@@ -45,6 +93,11 @@ pub fn set_engine_detail_enabled(enabled: bool) {
 /// Whether tracing was explicitly requested, independent of capture quiescence.
 pub fn is_tracing_requested() -> bool {
     TRACING_ENABLED.load(Ordering::Relaxed)
+}
+
+/// Whether callback CPU clocks are available for auxiliary timing reports.
+pub fn is_realtime_cpu_timing_enabled() -> bool {
+    cfg!(not(target_arch = "wasm32")) && is_tracing_requested()
 }
 
 /// Whether ordinary tracing output may currently be emitted.
@@ -57,68 +110,48 @@ pub fn is_engine_detail_enabled() -> bool {
     is_tracing_enabled() && ENGINE_DETAIL_ENABLED.load(Ordering::Relaxed)
 }
 
-/// A direct Tracy span whose end operation receives the same narrow allocation
-/// exception as its begin operation.
-#[cfg(feature = "tracy")]
+#[cfg(not(target_arch = "wasm32"))]
+type NativeSpan =
+    perfetto_everywhere_core::SpanGuard<'static, perfetto_everywhere_native::NativeBackend>;
+
+/// A backend-neutral direct realtime span.
 #[must_use]
 pub struct RealtimeSpan {
-    inner: Option<tracy_client::Span>,
+    #[cfg(not(target_arch = "wasm32"))]
+    inner: Option<NativeSpan>,
+    #[cfg(target_arch = "wasm32")]
+    backend: Option<Rc<perfetto_everywhere_raw::RawRingBackend>>,
+    #[cfg(target_arch = "wasm32")]
+    active: bool,
 }
-
-#[cfg(not(feature = "tracy"))]
-#[must_use]
-pub struct RealtimeSpan;
 
 impl RealtimeSpan {
     fn disabled() -> Self {
-        #[cfg(feature = "tracy")]
-        {
-            Self { inner: None }
-        }
-        #[cfg(not(feature = "tracy"))]
-        {
-            Self
+        Self {
+            #[cfg(not(target_arch = "wasm32"))]
+            inner: None,
+            #[cfg(target_arch = "wasm32")]
+            backend: None,
+            #[cfg(target_arch = "wasm32")]
+            active: false,
         }
     }
 
-    /// Whether this wrapper entered the direct Tracy API.
-    pub fn entered_tracy(&self) -> bool {
-        #[cfg(feature = "tracy")]
+    /// Whether this wrapper entered the active tracing backend.
+    pub fn entered_tracing(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
         {
             self.inner.is_some()
         }
-        #[cfg(not(feature = "tracy"))]
+        #[cfg(target_arch = "wasm32")]
         {
-            false
+            self.active
         }
     }
 }
 
-#[cfg(feature = "tracy")]
-impl Drop for RealtimeSpan {
-    fn drop(&mut self) {
-        let Some(span) = self.inner.take() else {
-            return;
-        };
-        assert_no_alloc::permit_alloc(|| drop(span));
-    }
-}
-
 #[doc(hidden)]
-pub fn disabled_realtime_span() -> RealtimeSpan {
-    RealtimeSpan::disabled()
-}
-
-/// Start a direct Tracy span if its gate is active.
-///
-/// `location` is lazy so even the source-location cache is untouched on the
-/// disabled path. The returned span closes through the same scoped exception.
-#[cfg(feature = "tracy")]
-#[doc(hidden)]
-pub fn begin_realtime_span<F>(detailed: bool, location: F, value: Option<u64>) -> RealtimeSpan
-where
-    F: FnOnce() -> &'static tracy_client::SpanLocation,
-{
+pub fn begin_realtime_span(detailed: bool, name: &'static str, value: Option<u64>) -> RealtimeSpan {
     let enabled = if detailed {
         is_engine_detail_enabled()
     } else {
@@ -128,237 +161,204 @@ where
         return RealtimeSpan::disabled();
     }
 
-    assert_no_alloc::permit_alloc(|| {
-        let Some(client) = tracy_client::Client::running() else {
-            return RealtimeSpan::disabled();
-        };
-        let span = client.span(location(), 0);
-        if let Some(value) = value {
-            span.emit_value(value);
-        }
-        RealtimeSpan { inner: Some(span) }
-    })
-}
-
-/// Initialize a static source location before driver activation when practical.
-#[cfg(feature = "tracy")]
-pub fn prewarm_realtime_location<F>(location: F)
-where
-    F: FnOnce() -> &'static tracy_client::SpanLocation,
-{
-    assert_no_alloc::permit_alloc(|| {
-        let _ = location();
-    });
-}
-
-/// Name and prewarm the current callback thread before driver activation when possible.
-///
-/// This deliberately runs only for explicit tracing sessions. Tracy may allocate while
-/// naming the thread and creating its producer queue, so the operation is kept inside the
-/// same narrow diagnostic allocation exception as direct realtime instrumentation.
-#[cfg(feature = "tracy")]
-pub fn prewarm_realtime_thread(name: &str) {
-    if !is_tracing_requested() {
-        return;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        return assert_no_alloc::permit_alloc(|| {
+            let value_field = value.map(|value| Field::new(VALUE_FIELD, FieldValue::U64(value)));
+            let fields = value_field.as_slice();
+            let span = NATIVE_TRACER.span(REALTIME_CATEGORY, StaticName::new(name), fields);
+            span.status()
+                .was_recorded()
+                .then_some(RealtimeSpan { inner: Some(span) })
+                .unwrap_or_else(RealtimeSpan::disabled)
+        });
     }
-    assert_no_alloc::permit_alloc(|| {
-        if let Some(client) = tracy_client::Client::running() {
-            client.set_thread_name(name);
-            client.secondary_frame_mark(tracy_client::frame_name!("engine.prewarm"));
-        }
-    });
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        RAW_BACKEND.with(|slot| {
+            let Some(backend) = slot.borrow().as_ref().cloned() else {
+                return RealtimeSpan::disabled();
+            };
+            let value_field = value.map(|value| Field::new(VALUE_FIELD, FieldValue::U64(value)));
+            let fields = value_field.as_slice();
+            let status = backend.span_begin(
+                REALTIME_CATEGORY,
+                StaticName::new(name),
+                TrackId::CURRENT,
+                fields,
+                FlowAttachment::None,
+            );
+            RealtimeSpan {
+                backend: Some(backend),
+                active: status.was_recorded(),
+            }
+        })
+    }
 }
 
-#[cfg(not(feature = "tracy"))]
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for RealtimeSpan {
+    fn drop(&mut self) {
+        if let Some(span) = self.inner.take() {
+            assert_no_alloc::permit_alloc(|| drop(span));
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Drop for RealtimeSpan {
+    fn drop(&mut self) {
+        if self.active {
+            if let Some(backend) = &self.backend {
+                let _ = backend.span_end(TrackId::CURRENT);
+            }
+        }
+    }
+}
+
+/// Pre-register a static realtime name before driver activation when practical.
+pub fn prewarm_realtime_name(name: &'static str) {
+    let _ = StaticName::new(name);
+}
+
+/// Name/prewarm the current callback producer before driver activation when possible.
 pub fn prewarm_realtime_thread(_name: &str) {}
 
-/// Emit a named callback frame mark when tracing output is active.
-#[cfg(feature = "tracy")]
 #[doc(hidden)]
-pub fn emit_realtime_frame_mark(name: tracy_client::FrameName) {
+pub fn emit_realtime_event(name: &'static str) {
     if !is_tracing_enabled() {
         return;
     }
+    #[cfg(not(target_arch = "wasm32"))]
     assert_no_alloc::permit_alloc(|| {
-        if let Some(client) = tracy_client::Client::running() {
-            client.secondary_frame_mark(name);
+        let _ = NATIVE_TRACER.event(REALTIME_CATEGORY, StaticName::new(name), &[]);
+    });
+    #[cfg(target_arch = "wasm32")]
+    RAW_BACKEND.with(|slot| {
+        if let Some(backend) = slot.borrow().as_ref() {
+            let _ = backend.event(
+                REALTIME_CATEGORY,
+                StaticName::new(name),
+                TrackId::CURRENT,
+                &[],
+                FlowAttachment::None,
+            );
         }
     });
 }
 
-/// Emit a numeric plot point from a realtime callback when detailed tracing is active.
-#[cfg(feature = "tracy")]
 #[doc(hidden)]
-pub fn emit_realtime_plot(name: tracy_client::PlotName, value: f64) {
-    if !is_engine_detail_enabled() {
+pub fn emit_plot_i64(detailed: bool, name: &'static str, value: i64) {
+    let enabled = if detailed {
+        is_engine_detail_enabled()
+    } else {
+        is_tracing_enabled()
+    };
+    if !enabled {
         return;
     }
+    #[cfg(not(target_arch = "wasm32"))]
     assert_no_alloc::permit_alloc(|| {
-        if let Some(client) = tracy_client::Client::running() {
-            client.plot(name, value);
+        let _ = NATIVE_TRACER.counter_i64(StaticName::new(name), TrackId::CURRENT, value);
+    });
+    #[cfg(target_arch = "wasm32")]
+    RAW_BACKEND.with(|slot| {
+        if let Some(backend) = slot.borrow().as_ref() {
+            let _ = backend.counter_i64(StaticName::new(name), TrackId::CURRENT, value);
         }
     });
 }
 
-/// Create a coarse direct Tracy span guarded by the application tracing flags.
-#[cfg(feature = "tracy")]
+#[doc(hidden)]
+pub fn emit_plot_f64(detailed: bool, name: &'static str, value: f64) {
+    let enabled = if detailed {
+        is_engine_detail_enabled()
+    } else {
+        is_tracing_enabled()
+    };
+    if !enabled {
+        return;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    assert_no_alloc::permit_alloc(|| {
+        let _ = NATIVE_TRACER.counter_f64(StaticName::new(name), TrackId::CURRENT, value);
+    });
+    #[cfg(target_arch = "wasm32")]
+    RAW_BACKEND.with(|slot| {
+        if let Some(backend) = slot.borrow().as_ref() {
+            let _ = backend.counter_f64(StaticName::new(name), TrackId::CURRENT, value);
+        }
+    });
+}
+
+/// Build the native Perfetto compatibility layer without exposing its backend type.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn subscriber_layer<S>() -> impl tracing_subscriber::Layer<S>
+where
+    S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+{
+    perfetto_everywhere_tracing::PerfettoLayer::new(perfetto_everywhere_native::NativeBackend)
+}
+
+/// Create a coarse direct span guarded by application tracing flags.
 #[macro_export]
 macro_rules! realtime_span {
     ($name:literal) => {
-        $crate::begin_realtime_span(false, || $crate::tracy_client::span_location!($name), None)
+        $crate::begin_realtime_span(false, $name, None)
     };
     ($name:literal, value = $value:expr) => {
-        $crate::begin_realtime_span(
-            false,
-            || $crate::tracy_client::span_location!($name),
-            Some($value as u64),
-        )
+        $crate::begin_realtime_span(false, $name, Some($value as u64))
     };
 }
 
-#[cfg(not(feature = "tracy"))]
-#[macro_export]
-macro_rules! realtime_span {
-    ($name:literal) => {{
-        let _ = $name;
-        $crate::disabled_realtime_span()
-    }};
-    ($name:literal, value = $value:expr) => {{
-        let _ = ($name, $value);
-        $crate::disabled_realtime_span()
-    }};
-}
-
-/// Create a detailed direct Tracy span guarded by the engine-detail flag.
-#[cfg(feature = "tracy")]
+/// Create a detailed direct span guarded by the engine-detail flag.
 #[macro_export]
 macro_rules! realtime_span_detail {
     ($name:literal) => {
-        $crate::begin_realtime_span(true, || $crate::tracy_client::span_location!($name), None)
+        $crate::begin_realtime_span(true, $name, None)
     };
     ($name:literal, value = $value:expr) => {
-        $crate::begin_realtime_span(
-            true,
-            || $crate::tracy_client::span_location!($name),
-            Some($value as u64),
-        )
+        $crate::begin_realtime_span(true, $name, Some($value as u64))
     };
 }
 
-#[cfg(not(feature = "tracy"))]
+/// Emit a detailed i64 counter plot from a realtime callback.
 #[macro_export]
-macro_rules! realtime_span_detail {
-    ($name:literal) => {{
-        let _ = $name;
-        $crate::disabled_realtime_span()
-    }};
-    ($name:literal, value = $value:expr) => {{
-        let _ = ($name, $value);
-        $crate::disabled_realtime_span()
-    }};
+macro_rules! realtime_plot_i64_detail {
+    ($name:literal, $value:expr) => {
+        $crate::emit_plot_i64(true, $name, $value as i64)
+    };
 }
 
-/// Emit a detailed numeric Tracy plot point from a realtime callback.
-#[cfg(feature = "tracy")]
+/// Emit a detailed f64 counter plot from a realtime callback.
+#[macro_export]
+macro_rules! realtime_plot_f64_detail {
+    ($name:literal, $value:expr) => {
+        $crate::emit_plot_f64(true, $name, $value as f64)
+    };
+}
+
+/// Compatibility alias while integer/floating callsites are made explicit.
 #[macro_export]
 macro_rules! realtime_plot_detail {
     ($name:literal, $value:expr) => {
-        $crate::emit_realtime_plot($crate::tracy_client::plot_name!($name), $value as f64)
+        $crate::emit_plot_f64(true, $name, $value as f64)
     };
 }
 
-#[cfg(not(feature = "tracy"))]
-#[macro_export]
-macro_rules! realtime_plot_detail {
-    ($name:literal, $value:expr) => {{
-        let _ = ($name, $value);
-    }};
-}
-
-/// Emit a secondary frame mark from a realtime callback.
-#[cfg(feature = "tracy")]
+/// Emit an instant callback-boundary event.
 #[macro_export]
 macro_rules! realtime_frame_mark {
     ($name:literal) => {
-        $crate::emit_realtime_frame_mark($crate::tracy_client::frame_name!($name))
+        $crate::emit_realtime_event($name)
     };
 }
 
-#[cfg(not(feature = "tracy"))]
-#[macro_export]
-macro_rules! realtime_frame_mark {
-    ($name:literal) => {{
-        let _ = $name;
-    }};
-}
-
-/// Prewarm the source location used by a realtime span macro invocation.
-#[cfg(feature = "tracy")]
+/// Pre-register the static name used by a realtime span invocation.
 #[macro_export]
 macro_rules! prewarm_realtime_span {
     ($name:literal) => {
-        $crate::prewarm_realtime_location(|| $crate::tracy_client::span_location!($name))
+        $crate::prewarm_realtime_name($name)
     };
-}
-
-#[cfg(not(feature = "tracy"))]
-#[macro_export]
-macro_rules! prewarm_realtime_span {
-    ($name:literal) => {{
-        let _ = $name;
-    }};
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    #[shoop_wasm_test_support::shoop_test(no_wasm = "requires the native Tracy capture runtime")]
-    fn gates_keep_detail_subordinate_and_quiesce_output() {
-        let _guard = TEST_LOCK.lock().unwrap();
-        set_tracing_enabled(false);
-        set_tracing_output_enabled(true);
-        set_engine_detail_enabled(true);
-        assert!(!is_tracing_enabled());
-        assert!(!is_engine_detail_enabled());
-
-        set_tracing_enabled(true);
-        assert!(is_tracing_enabled());
-        assert!(is_engine_detail_enabled());
-
-        set_tracing_output_enabled(false);
-        assert!(!is_tracing_enabled());
-        assert!(!is_engine_detail_enabled());
-
-        set_tracing_output_enabled(true);
-        set_engine_detail_enabled(false);
-        assert!(is_tracing_enabled());
-        assert!(!is_engine_detail_enabled());
-        set_tracing_enabled(false);
-    }
-
-    #[shoop_wasm_test_support::shoop_test(no_wasm = "requires the native Tracy capture runtime")]
-    fn disabled_span_does_not_enter_tracy() {
-        let _guard = TEST_LOCK.lock().unwrap();
-        set_tracing_enabled(false);
-        set_tracing_output_enabled(true);
-        let span = crate::realtime_span!("engine.rt.disabled_test");
-        assert!(!span.entered_tracy());
-    }
-
-    #[cfg(feature = "tracy")]
-    #[shoop_wasm_test_support::shoop_test(no_wasm = "requires the native Tracy capture runtime")]
-    fn prewarm_reuses_the_static_location() {
-        fn location() -> &'static tracy_client::SpanLocation {
-            tracy_client::span_location!("engine.rt.prewarm_test")
-        }
-
-        let before = location() as *const tracy_client::SpanLocation;
-        prewarm_realtime_location(location);
-        let after = location() as *const tracy_client::SpanLocation;
-        assert_eq!(before, after);
-    }
 }

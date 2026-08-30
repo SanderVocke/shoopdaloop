@@ -294,7 +294,7 @@ impl Engine {
     /// rather than part-way through a buffer.
     pub fn process(&mut self, n_frames: usize) {
         let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
-        let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
+        let started = shoop_tracing::is_realtime_cpu_timing_enabled().then(std::time::Instant::now);
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
             crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.process_inner(n_frames))
         });
@@ -312,7 +312,7 @@ impl Engine {
     /// be used by code that intentionally bypasses the driver boundary.
     pub fn run_cycle(&mut self, n_frames: usize) {
         let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
-        let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
+        let started = shoop_tracing::is_realtime_cpu_timing_enabled().then(std::time::Instant::now);
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
             crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.cycle_inner(n_frames))
         });

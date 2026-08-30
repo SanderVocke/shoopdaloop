@@ -56,6 +56,7 @@ struct PhysicalAudioDriverState {
     track_ended_handlers: Vec<Closure<dyn FnMut(WebEvent)>>,
     input_mode: Option<AudioInputMode>,
     repaint_context: Option<eframe::egui::Context>,
+    trace: Option<crate::browser_trace::RealmTraceState>,
 }
 
 /// Owns browser audio resources and the restricted remote transport control.
@@ -97,6 +98,7 @@ impl BrowserAudioController {
             track_ended_handlers: Vec::new(),
             input_mode: None,
             repaint_context: None,
+            trace: None,
         }));
         let weak = Rc::downgrade(&inner);
         let microphone_enable_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
@@ -203,6 +205,67 @@ impl BrowserAudioController {
 
     pub fn set_repaint_context(&self, context: eframe::egui::Context) {
         self.driver.state.borrow_mut().repaint_context = Some(context);
+    }
+
+    pub fn start_tracing(&self, engine_detail: bool) -> Result<bool> {
+        let mut inner = self.driver.state.borrow_mut();
+        if inner.trace.is_some() {
+            return Ok(true);
+        }
+        if inner.node.is_none() {
+            return Ok(false);
+        }
+        let context = inner
+            .context
+            .as_ref()
+            .ok_or_else(|| anyhow!("browser audio context is unavailable"))?;
+        let trace = crate::browser_trace::RealmTraceState::new(
+            4,
+            104,
+            "AudioWorklet",
+            context.sample_rate().round() as u64,
+            128,
+            8192,
+        )?;
+        let message = trace.start_message(engine_detail)?;
+        inner
+            .node
+            .as_ref()
+            .unwrap()
+            .port()
+            .map_err(|error| anyhow!("could not access AudioWorklet trace port: {error:?}"))?
+            .post_message(&message)
+            .map_err(|error| anyhow!("could not start AudioWorklet tracing: {error:?}"))?;
+        inner.trace = Some(trace);
+        Ok(true)
+    }
+
+    pub fn request_stop_tracing(&self) -> Result<()> {
+        let inner = self.driver.state.borrow();
+        if inner.trace.is_none() {
+            return Ok(());
+        }
+        inner
+            .node
+            .as_ref()
+            .ok_or_else(|| anyhow!("AudioWorklet node disappeared during tracing"))?
+            .port()
+            .map_err(|error| anyhow!("could not access AudioWorklet trace port: {error:?}"))?
+            .post_message(&crate::browser_trace::RealmTraceState::stop_message()?)
+            .map_err(|error| anyhow!("could not stop AudioWorklet tracing: {error:?}"))?;
+        Ok(())
+    }
+
+    pub fn take_trace(&self) -> Result<Option<shoop_tracing::BrowserRealmData>> {
+        let mut inner = self.driver.state.borrow_mut();
+        if !inner.trace.as_ref().is_some_and(|trace| trace.stopped()) {
+            return Ok(None);
+        }
+        Ok(inner
+            .trace
+            .take()
+            .map(crate::browser_trace::RealmTraceState::finish)
+            .transpose()?)
     }
 
     pub fn update_presentation(&self) {
@@ -546,11 +609,20 @@ async fn start_audio_graph(
     let weak = Rc::downgrade(&inner);
     let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
         if let Some(inner) = weak.upgrade() {
-            let inner = inner.borrow();
+            let mut inner = inner.borrow_mut();
             if let Some(json) = event.data().as_string() {
                 let _ = inner.transport.receive(generation, &json);
             } else {
-                inner.transport.fail("worklet emitted a non-string event");
+                let handled = inner
+                    .trace
+                    .as_mut()
+                    .and_then(|trace| trace.handle_message(&event.data()).ok())
+                    .unwrap_or(false);
+                if !handled {
+                    inner
+                        .transport
+                        .fail("worklet emitted an unknown non-string event");
+                }
             }
             if let Some(context) = &inner.repaint_context {
                 context.request_repaint();

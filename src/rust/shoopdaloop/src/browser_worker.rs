@@ -41,6 +41,7 @@ pub struct BrowserWorkerDriver {
     message_handler: Closure<dyn FnMut(MessageEvent)>,
     error_handler: Closure<dyn FnMut(WebEvent)>,
     repaint_context: Rc<RefCell<Option<eframe::egui::Context>>>,
+    trace: Rc<RefCell<Option<crate::browser_trace::RealmTraceState>>>,
 }
 
 impl BrowserWorkerDriver {
@@ -68,11 +69,20 @@ impl BrowserWorkerDriver {
         let receive_control = transport.clone();
         let repaint_context = Rc::new(RefCell::new(None::<eframe::egui::Context>));
         let receive_repaint_context = Rc::clone(&repaint_context);
+        let trace = Rc::new(RefCell::new(None::<crate::browser_trace::RealmTraceState>));
+        let receive_trace = Rc::clone(&trace);
         let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
             if let Some(json) = event.data().as_string() {
                 let _ = receive_control.receive(GENERATION, &json);
             } else {
-                receive_control.fail("worker engine emitted a non-string event");
+                let handled = receive_trace
+                    .borrow_mut()
+                    .as_mut()
+                    .and_then(|trace| trace.handle_message(&event.data()).ok())
+                    .unwrap_or(false);
+                if !handled {
+                    receive_control.fail("worker engine emitted an unknown non-string event");
+                }
             }
             if let Some(context) = receive_repaint_context.borrow().as_ref() {
                 context.request_repaint();
@@ -169,11 +179,51 @@ impl BrowserWorkerDriver {
             message_handler,
             error_handler,
             repaint_context,
+            trace,
         })
     }
 
     pub fn set_repaint_context(&self, context: eframe::egui::Context) {
         *self.repaint_context.borrow_mut() = Some(context);
+    }
+
+    pub fn start_tracing(&self, engine_detail: bool) -> Result<bool> {
+        if self.trace.borrow().is_some() {
+            return Ok(true);
+        }
+        let trace =
+            crate::browser_trace::RealmTraceState::new(2, 102, "Engine Worker", 48_000, 128, 8192)?;
+        self.application_port
+            .post_message(&trace.start_message(engine_detail)?)
+            .map_err(|error| anyhow!("could not start Worker tracing: {error:?}"))?;
+        *self.trace.borrow_mut() = Some(trace);
+        Ok(true)
+    }
+
+    pub fn request_stop_tracing(&self) -> Result<()> {
+        if self.trace.borrow().is_some() {
+            self.application_port
+                .post_message(&crate::browser_trace::RealmTraceState::stop_message()?)
+                .map_err(|error| anyhow!("could not stop Worker tracing: {error:?}"))?;
+        }
+        Ok(())
+    }
+
+    pub fn take_trace(&self) -> Result<Option<shoop_tracing::BrowserRealmData>> {
+        if !self
+            .trace
+            .borrow()
+            .as_ref()
+            .is_some_and(|trace| trace.stopped())
+        {
+            return Ok(None);
+        }
+        Ok(self
+            .trace
+            .borrow_mut()
+            .take()
+            .map(crate::browser_trace::RealmTraceState::finish)
+            .transpose()?)
     }
 
     pub fn state(&self) -> BackendDriverState {

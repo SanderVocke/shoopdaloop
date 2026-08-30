@@ -5,7 +5,7 @@ pub use shoop_test_macros::shoop_test;
 #[cfg(not(target_arch = "wasm32"))]
 pub use futures::executor::block_on;
 #[cfg(not(target_arch = "wasm32"))]
-pub use tracy_nextest_capture::tracy_capture_test;
+pub use shoop_tracing::{run_test, run_test_result};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn assert_panics(function: impl FnOnce(), expected: Option<&str>) {
@@ -25,6 +25,8 @@ pub fn assert_panics(function: impl FnOnce(), expected: Option<&str>) {
 }
 
 #[cfg(target_arch = "wasm32")]
+pub use shoop_tracing::{wasm_test_trace_begin, wasm_test_trace_finish};
+#[cfg(target_arch = "wasm32")]
 pub use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -37,6 +39,11 @@ mod tests {
     #[shoop_test]
     fn shared_sync_test_runs() {
         assert_eq!(2 + 2, 4);
+    }
+
+    #[shoop_test]
+    fn shared_result_test_runs() -> Result<(), &'static str> {
+        Ok(())
     }
 
     #[shoop_test]
@@ -65,9 +72,15 @@ mod tests {
         assert!(cfg!(not(target_arch = "wasm32")));
     }
 
-    #[shoop_test(no_tracy = "exercises the uninstrumented native expansion")]
-    fn no_tracy_modifier_runs() {
+    #[shoop_test(no_trace = "exercises the uninstrumented native expansion")]
+    fn no_trace_modifier_runs() {
         assert_eq!(6 * 7, 42);
+    }
+
+    #[shoop_test(no_wasm = "exercises native Result error preservation")]
+    #[ignore = "opt-in Result failure canary"]
+    fn native_result_failure_canary() -> Result<(), &'static str> {
+        Err("intentional native Result failure")
     }
 
     #[shoop_test(wasm_only = "exercises the Wasm-only expansion")]

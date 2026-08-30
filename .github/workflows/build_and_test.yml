@@ -9,7 +9,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
-      tracy_failure_canary:
+      perfetto_failure_canary:
         description: Run the intentional nextest failure-capture canary
         required: false
         default: false
@@ -64,47 +64,16 @@ jobs:
             libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
             libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev
-
-      - name: Prepare prebuilt embedded Tracy native library
-        shell: bash
-        run: |
-          asset=tracy-embedded-native-linux-x86_64.tar.gz
-          root="$RUNNER_TEMP/tracy-embedded-native"
-          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0
-          rm -rf "$root"
-          mkdir -p "$root/download" "$root/extracted"
-          curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
-          curl -L --fail --retry 3 "$base/SHA256SUMS" -o "$root/download/SHA256SUMS"
-          python3 - "$root/download" "$asset" <<'PY'
-          import hashlib
-          import pathlib
-          import sys
-
-          root = pathlib.Path(sys.argv[1])
-          asset = sys.argv[2]
-          matches = [
-              line.split()[0]
-              for line in (root / "SHA256SUMS").read_text().splitlines()
-              if line.endswith(f"  {asset}")
-          ]
-          if len(matches) != 1:
-              raise SystemExit(f"expected one checksum for {asset}, found {len(matches)}")
-          actual = hashlib.sha256((root / asset).read_bytes()).hexdigest()
-          if actual != matches[0]:
-              raise SystemExit(f"SHA-256 mismatch for {asset}: {actual} != {matches[0]}")
-          PY
-          tar -xzf "$root/download/$asset" -C "$root/extracted"
-          test -f "$root/extracted/tracy-embedded-native/manifest.txt"
-          echo "TRACY_CLIENT_SYS_PREBUILT_DIR=$root/extracted/tracy-embedded-native" >> "$GITHUB_ENV"
+            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
+            protobuf-compiler
 
       - name: Generate Rust coverage
         env:
           SHOOP_ALLOW_MISSING_BACKENDS: 1
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-rust-coverage
+          SHOOP_TEST_TRACE: failure
+          SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-rust-coverage
         run: |
-          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo llvm-cov nextest --locked --workspace \
             --features shoop_engine/app_backend --profile ci \
             --lcov --output-path lcov.info
@@ -118,12 +87,12 @@ jobs:
           fail_ci_if_error: true
           flags: rust
 
-      - name: Upload Tracy failure captures
+      - name: Upload Perfetto failure captures
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: tracy-nextest-rust-coverage-${{ github.run_id }}
-          path: ${{ runner.temp }}/tracy-nextest-rust-coverage/*.tracy
+          name: perfetto-nextest-rust-coverage-${{ github.run_id }}
+          path: ${{ runner.temp }}/perfetto-nextest-rust-coverage/*.pftrace
           if-no-files-found: ignore
           retention-days: 14
 
@@ -308,79 +277,17 @@ jobs:
             libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
-            patchelf python3-venv xvfb
+            patchelf protobuf-compiler python3-venv xvfb
 
       - name: Install web build and test dependencies
         if: matrix.target == 'web' && env.ACT != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev pulseaudio xvfb
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev protobuf-compiler pulseaudio xvfb
           if ! command -v trunk >/dev/null 2>&1; then
             cargo install --locked trunk --version 0.21.14
           fi
           trunk --version
-
-      - name: Prepare prebuilt embedded Tracy native library on Unix
-        if: matrix.target != 'windows'
-        shell: bash
-        run: |
-          case "${{ matrix.target }}" in
-            linux|web) asset=tracy-embedded-native-linux-x86_64.tar.gz ;;
-            macos) asset=tracy-embedded-native-macos-arm64.tar.gz ;;
-            *) exit 1 ;;
-          esac
-          root="$RUNNER_TEMP/tracy-embedded-native"
-          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0
-          rm -rf "$root"
-          mkdir -p "$root/download" "$root/extracted"
-          curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
-          curl -L --fail --retry 3 "$base/SHA256SUMS" -o "$root/download/SHA256SUMS"
-          python3 - "$root/download" "$asset" <<'PY'
-          import hashlib
-          import pathlib
-          import sys
-
-          root = pathlib.Path(sys.argv[1])
-          asset = sys.argv[2]
-          matches = [
-              line.split()[0]
-              for line in (root / "SHA256SUMS").read_text().splitlines()
-              if line.endswith(f"  {asset}")
-          ]
-          if len(matches) != 1:
-              raise SystemExit(f"expected one checksum for {asset}, found {len(matches)}")
-          actual = hashlib.sha256((root / asset).read_bytes()).hexdigest()
-          if actual != matches[0]:
-              raise SystemExit(f"SHA-256 mismatch for {asset}: {actual} != {matches[0]}")
-          PY
-          tar -xzf "$root/download/$asset" -C "$root/extracted"
-          test -f "$root/extracted/tracy-embedded-native/manifest.txt"
-          echo "TRACY_CLIENT_SYS_PREBUILT_DIR=$root/extracted/tracy-embedded-native" >> "$GITHUB_ENV"
-
-      - name: Prepare prebuilt embedded Tracy native library on Windows
-        if: matrix.target == 'windows'
-        shell: pwsh
-        run: |
-          $Asset = "tracy-embedded-native-windows-x86_64.zip"
-          $Root = Join-Path $env:RUNNER_TEMP "tracy-embedded-native"
-          $Download = Join-Path $Root "download"
-          $Extracted = Join-Path $Root "extracted"
-          $Base = "https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0"
-          Remove-Item $Root -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force $Download, $Extracted | Out-Null
-          curl.exe --fail --location --retry 3 "$Base/$Asset" --output (Join-Path $Download $Asset)
-          if ($LASTEXITCODE -ne 0) { throw "Embedded Tracy bundle download failed" }
-          curl.exe --fail --location --retry 3 "$Base/SHA256SUMS" --output (Join-Path $Download "SHA256SUMS")
-          if ($LASTEXITCODE -ne 0) { throw "Embedded Tracy checksum download failed" }
-          $Matches = @(Get-Content (Join-Path $Download "SHA256SUMS") | Where-Object { $_ -match "  $([regex]::Escape($Asset))$" })
-          if ($Matches.Count -ne 1) { throw "Expected one checksum for $Asset, found $($Matches.Count)" }
-          $Expected = ($Matches[0] -split " ")[0]
-          $Actual = (Get-FileHash (Join-Path $Download $Asset) -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($Actual -ne $Expected) { throw "SHA-256 mismatch for $Asset`: $Actual != $Expected" }
-          Expand-Archive (Join-Path $Download $Asset) $Extracted -Force
-          $Bundle = Join-Path $Extracted "tracy-embedded-native"
-          if (-not (Test-Path (Join-Path $Bundle "manifest.txt"))) { throw "Embedded Tracy manifest is missing" }
-          "TRACY_CLIENT_SYS_PREBUILT_DIR=$Bundle" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build pinned Linux Carla runtime
         if: matrix.target == 'linux'
@@ -703,11 +610,11 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+          SHOOP_TEST_TRACE: failure
+          SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-${{ matrix.target }}-${{ matrix.profile }}
         shell: bash
         run: |
-          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
             -p shoop_app_api \
             -p shoop_engine \
@@ -722,10 +629,10 @@ jobs:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
           SHOOP_REQUIRE_CARLA_TESTS: 1
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+          SHOOP_TEST_TRACE: failure
+          SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-${{ matrix.target }}-${{ matrix.profile }}
         run: |
-          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 
       - name: Smoke-test Carla benchmarks
@@ -742,8 +649,8 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_REQUIRE_CARLA_TESTS: 1
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+          SHOOP_TEST_TRACE: failure
+          SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-${{ matrix.target }}-${{ matrix.profile }}
         run: >-
           cargo nextest run --locked -p shoop_engine --features carla --profile ci
           -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
@@ -753,8 +660,8 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_REQUIRE_CARLA_TESTS: 1
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+          SHOOP_TEST_TRACE: failure
+          SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-${{ matrix.target }}-${{ matrix.profile }}
         shell: pwsh
         run: |
           cargo nextest run --locked -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
@@ -782,51 +689,58 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_TEST_CARLA_UI: 1
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+          SHOOP_TEST_TRACE: failure
+          SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-${{ matrix.target }}-${{ matrix.profile }}
         run: |
           ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
           xvfb-run -a cargo nextest run --locked ${{ matrix.cargo_args }} -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::shows_and_hides_carla_ui_when_opted_in)'
           sleep 1
           ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
 
-      - name: Run intentional Tracy failure-capture canary
-        if: matrix.target == 'linux' && matrix.profile == 'debug' && inputs.tracy_failure_canary
+      - name: Run intentional Perfetto failure-capture canary
+        if: matrix.target == 'linux' && matrix.profile == 'debug' && inputs.perfetto_failure_canary
         env:
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-canary
+          SHOOP_TEST_TRACE: failure
+          SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-canary
         shell: bash
         run: |
-          rm -rf "$TRACY_NEXTEST_OUTPUT_DIR"
-          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          rm -rf "$SHOOP_TEST_TRACE_DIR"
+          mkdir -p "$SHOOP_TEST_TRACE_DIR"
           set +e
           cargo nextest run --locked -p shoop_common --test nextest_capture_smoke \
             --profile ci --run-ignored ignored-only \
             -E 'test(intentional_failure_publishes_trace)' \
-            > "$RUNNER_TEMP/tracy-nextest-canary.log" 2>&1
+            > "$RUNNER_TEMP/perfetto-nextest-canary.log" 2>&1
           status=$?
           set -e
-          cat "$RUNNER_TEMP/tracy-nextest-canary.log"
+          cat "$RUNNER_TEMP/perfetto-nextest-canary.log"
           test "$status" -ne 0
-          grep 'intentional Tracy nextest capture smoke failure' "$RUNNER_TEMP/tracy-nextest-canary.log"
-          mapfile -t traces < <(find "$TRACY_NEXTEST_OUTPUT_DIR" -maxdepth 1 -name '*.tracy' -type f)
+          grep 'intentional nextest capture smoke failure' "$RUNNER_TEMP/perfetto-nextest-canary.log"
+          mapfile -t traces < <(find "$SHOOP_TEST_TRACE_DIR" -maxdepth 1 -name '*.pftrace' -type f)
           test "${#traces[@]}" -eq 1
-          ! find "$TRACY_NEXTEST_OUTPUT_DIR" -name '*.partial' -print -quit | grep -q .
-          curl -L --fail --retry 3 \
-            -o "$RUNNER_TEMP/tracy-query" \
-            https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0/tracy-query-linux-x86_64
-          chmod +x "$RUNNER_TEMP/tracy-query"
-          "$RUNNER_TEMP/tracy-query" check "${traces[0]}"
-          "$RUNNER_TEMP/tracy-query" range "${traces[0]}"
-          "$RUNNER_TEMP/tracy-query" info "${traces[0]}"
-          "$RUNNER_TEMP/tracy-query" query --kind message \
-            --filter 'message.text=shoop\.nextest_capture\.smoke\.failure' "${traces[0]}"
-          "$RUNNER_TEMP/tracy-query" query --kind cpu-zone \
-            --filter 'cpu-zone.name=^shoop\.nextest_capture\.smoke\.tracing_span$' "${traces[0]}"
-          "$RUNNER_TEMP/tracy-query" query --kind message \
-            --filter 'message.text=shoop\.nextest_capture\.smoke\.tracing_event' "${traces[0]}"
-          "$RUNNER_TEMP/tracy-query" query --kind message \
-            --filter 'message.text=shoop\.nextest_capture\.smoke\.log_event' "${traces[0]}"
+          if find "$SHOOP_TEST_TRACE_DIR" -name '*.partial' -print -quit | grep -q .; then
+            echo "unexpected partial Perfetto trace" >&2
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/perfetto-canary.sql" <<'SQL'
+          SELECT name FROM slice WHERE name IN (
+            'shoop.nextest_capture.smoke.zone',
+            'shoop.nextest_capture.smoke.tracing_span'
+          ) ORDER BY name;
+          SELECT display_value FROM args WHERE display_value IN (
+            'shoop.nextest_capture.smoke.tracing_event',
+            'shoop.nextest_capture.smoke.log_event'
+          ) ORDER BY display_value;
+          SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id
+            WHERE t.name = 'shoop.test_capture.smoke.plot' AND c.value = 42;
+          SQL
+          scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-canary.sql" \
+            "${traces[0]}" | tee "$RUNNER_TEMP/perfetto-canary-query.txt"
+          grep 'shoop.nextest_capture.smoke.zone' "$RUNNER_TEMP/perfetto-canary-query.txt"
+          grep 'shoop.nextest_capture.smoke.tracing_span' "$RUNNER_TEMP/perfetto-canary-query.txt"
+          grep 'shoop.nextest_capture.smoke.tracing_event' "$RUNNER_TEMP/perfetto-canary-query.txt"
+          grep 'shoop.nextest_capture.smoke.log_event' "$RUNNER_TEMP/perfetto-canary-query.txt"
+          grep 'shoop.test_capture.smoke.plot' "$RUNNER_TEMP/perfetto-canary-query.txt"
 
       - name: Check formatting, tracing, and test attributes
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -834,6 +748,12 @@ jobs:
           cargo fmt --all -- --check
           python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
+
+      - name: Validate native and multirealm Perfetto traces
+        if: matrix.target == 'linux' && matrix.profile == 'debug'
+        env:
+          RUSTFLAGS: -D warnings
+        run: python3 scripts/validate_perfetto_traces.py
 
       - name: Verify web application artifacts
         if: matrix.target == 'web'
@@ -891,6 +811,35 @@ jobs:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
 
+      - name: Run intentional Node and Chromium Perfetto failure canaries
+        if: >-
+          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
+          inputs.perfetto_failure_canary
+        shell: bash
+        run: |
+          for runtime in node chrome; do
+            set +e
+            python3 scripts/run_wasm_tests.py --profile dev --runtime "$runtime" \
+              --package shoop_wasm_test_support \
+              --feature wasm-test-failure-canary \
+              --filter shared_failure_canary_is_ignored_by_default \
+              --trace failure
+            status=$?
+            set -e
+            test "$status" -ne 0
+            trace=$(find "target/wasm-tests/dev/reports/$runtime/traces" \
+              -name '*.pftrace' -type f -print -quit)
+            test -n "$trace"
+            printf '%s\n' \
+              "SELECT name FROM slice WHERE name = 'shoop.wasm_test_capture.span';" \
+              "SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id WHERE t.name LIKE '%shoop.wasm_test_capture.plot';" \
+              > "$RUNNER_TEMP/perfetto-wasm-canary.sql"
+            scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
+              "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
+            grep 'shoop.wasm_test_capture.span' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
+            grep 'shoop.wasm_test_capture.plot' "$RUNNER_TEMP/perfetto-wasm-$runtime-query.txt"
+          done
+
       - name: Run optimized nightly/manual Wasm suites
         if: >-
           matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true' &&
@@ -906,7 +855,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: wasm-test-reports-${{ matrix.profile }}-${{ github.run_id }}
-          path: target/wasm-tests/*/reports
+          path: |
+            target/wasm-tests/*/reports
+            target/perfetto-validation/*.pftrace
           if-no-files-found: ignore
           retention-days: 14
 
@@ -914,6 +865,28 @@ jobs:
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         run: OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+
+      - name: Run hosted Chromium multirealm Perfetto smokes
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        working-directory: src/rust/shoopdaloop
+        run: |
+          TRACE_REALM=worker WEB_PORT=19890 DEBUG_PORT=19891 \
+            node --experimental-websocket browser_tracing_smoke.mjs
+          TRACE_REALM=audio WEB_PORT=19892 DEBUG_PORT=19893 \
+            node --experimental-websocket browser_tracing_smoke.mjs
+          cat > "$RUNNER_TEMP/browser-perfetto.sql" <<'SQL'
+          SELECT
+            (SELECT COUNT(*) FROM track WHERE name = 'Window') AS window_tracks,
+            (SELECT COUNT(*) FROM track WHERE name IN ('Engine Worker', 'AudioWorklet')) AS engine_tracks,
+            (SELECT COUNT(*) FROM slice WHERE name = 'engine.rt.callback') AS callbacks,
+            (SELECT COALESCE(SUM(value), 0) FROM stats WHERE severity = 'error') AS import_errors;
+          SQL
+          for trace in ../../../target/perfetto-validation/browser-{worker,audio}.pftrace; do
+            ../../../scripts/trace_processor --query-file "$RUNNER_TEMP/browser-perfetto.sql" \
+              "$trace" | tee "$trace.query.txt"
+            grep '1,1,' "$trace.query.txt"
+            grep ',0$' "$trace.query.txt"
+          done
 
       - name: Run retained self-contained Chrome AudioWorklet smoke
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
@@ -949,11 +922,11 @@ jobs:
         working-directory: src/rust/shoopdaloop
         run: xvfb-run -a python3 browser_firefox_smoke.py
 
-      - name: Upload Tracy failure captures
+      - name: Upload Perfetto failure captures
         if: always() && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: tracy-nextest-${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/tracy-nextest-*/*.tracy
+          name: perfetto-nextest-${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/perfetto-nextest-*/*.pftrace
           if-no-files-found: ignore
           retention-days: 14

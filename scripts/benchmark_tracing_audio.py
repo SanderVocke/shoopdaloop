@@ -66,7 +66,7 @@ def median(rows: list[dict], name: str) -> float:
 
 def markdown(report: dict) -> str:
     lines = [
-        "# Tracy audio tracing baseline",
+        f"# {report['backend_label']} audio tracing benchmark",
         "",
         "This is a same-process release-mode diagnostic benchmark, not a hardware-independent",
         "performance claim. It exercises a fixed 16-loop dummy-engine graph at 48 kHz with",
@@ -78,9 +78,6 @@ def markdown(report: dict) -> str:
         f"- Platform: `{report['machine']['platform']}`",
         f"- CPU: `{report['machine']['processor']}`",
         f"- Rust: `{report['machine']['rustc']}`",
-        f"- Tracy client: `{report['components']['tracy_client']}`",
-        f"- Embedded capture/query: `{report['components']['tracy_extensions']}`",
-        f"- Inspected Perfetto candidate: `{report['components']['perfetto_everywhere']}`",
         f"- Repetitions: {report['repetitions']}",
         f"- Measured cycles per repetition: {report['cycles']}",
         "",
@@ -113,10 +110,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cycles", type=int, default=20_000)
     parser.add_argument("--repetitions", type=int, default=5)
+    parser.add_argument("--backend-label", default="Perfetto")
     parser.add_argument(
         "--output-prefix",
         type=pathlib.Path,
-        default=ROOT / "artifacts" / "tracy-audio-baseline",
+        default=ROOT / "artifacts" / "perfetto-audio-benchmark",
     )
     parser.add_argument("--skip-build", action="store_true")
     args = parser.parse_args()
@@ -143,11 +141,7 @@ def main() -> int:
         "machine": machine_description(),
         "cycles": args.cycles,
         "repetitions": args.repetitions,
-        "components": {
-            "tracy_client": "0.18.4 / Tracy 0.13.1",
-            "tracy_extensions": "v0.7.0",
-            "perfetto_everywhere": "48ed779",
-        },
+        "backend_label": args.backend_label,
         "runs": runs,
     }
     prefix = args.output_prefix

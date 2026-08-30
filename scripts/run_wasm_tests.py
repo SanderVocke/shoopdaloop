@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import dataclasses
 import hashlib
@@ -10,6 +11,7 @@ import http.server
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -25,20 +27,56 @@ WASM_BINDGEN_VERSION = "0.2.127"
 WASM_BINDGEN_TEST_VERSION = "0.3.77"
 NODE_VERSION = "22.22.2"
 CHROME_VERSION = "147.0.7727.117"
+TRACE_SENTINEL = re.compile(
+    r"SHOOP_PFTRACE\\t(?P<identity>[A-Za-z0-9_-]+)\\t"
+    r"(?P<phase>bootstrap|full)\\t(?P<trace>[A-Za-z0-9+/=]+)"
+)
 
 
 class AssetHandler(http.server.SimpleHTTPRequestHandler):
+    trace_directory: pathlib.Path | None = None
+
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
         super().end_headers()
+
+    def do_POST(self):
+        match = re.fullmatch(
+            r"/__shoop_trace/(?P<identity>[A-Za-z0-9_-]+)/(?P<phase>bootstrap|full)",
+            self.path,
+        )
+        if not match or self.trace_directory is None:
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 100 * 1024 * 1024:
+            self.send_error(413)
+            return
+        try:
+            trace = base64.b64decode(self.rfile.read(length), validate=True)
+            if not trace:
+                raise ValueError("empty trace")
+            self.trace_directory.mkdir(parents=True, exist_ok=True)
+            destination = self.trace_directory / (
+                f"{match.group('identity')}.{match.group('phase')}.pftrace"
+            )
+            destination.write_bytes(trace)
+        except (OSError, ValueError) as error:
+            self.send_error(400, str(error))
+            return
+        self.send_response(204)
+        self.end_headers()
 
     def log_message(self, format, *args):
         pass
 
 
 @contextlib.contextmanager
-def asset_server(directory: pathlib.Path):
+def asset_server(directory: pathlib.Path, trace_directory: pathlib.Path):
+    AssetHandler.trace_directory = trace_directory
     handler = lambda *args, **kwargs: AssetHandler(  # noqa: E731
         *args, directory=str(directory), **kwargs
     )
@@ -51,6 +89,7 @@ def asset_server(directory: pathlib.Path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+        AssetHandler.trace_directory = None
         if thread.is_alive():
             raise RuntimeError("Wasm test asset server did not stop")
 
@@ -234,6 +273,79 @@ def stage_assets(profile: str, env: dict[str, str]) -> tuple[pathlib.Path, dict]
     return directory, manifest
 
 
+def write_test_traces(
+    output: str,
+    *,
+    parsed,
+    reports: pathlib.Path,
+    incoming: pathlib.Path,
+    policy: str,
+) -> tuple[dict[str, str], list[str]]:
+    if policy == "off":
+        return {}, []
+    captured: dict[str, dict[str, bytes]] = {}
+    errors: list[str] = []
+    for path in sorted(incoming.glob("*.pftrace")):
+        try:
+            encoded_identity, phase, _extension = path.name.rsplit(".", 2)
+            padded = encoded_identity + "=" * (-len(encoded_identity) % 4)
+            identity = base64.urlsafe_b64decode(padded).decode()
+            if phase not in {"bootstrap", "full"}:
+                raise ValueError(f"unknown trace phase {phase}")
+            trace = path.read_bytes()
+            if not trace:
+                raise ValueError("trace is empty")
+            if phase in captured.setdefault(identity, {}):
+                raise ValueError(f"duplicate {phase} trace")
+            captured[identity][phase] = trace
+        except (UnicodeDecodeError, ValueError) as error:
+            errors.append(f"malformed incoming trace {path.name}: {error}")
+        finally:
+            path.unlink(missing_ok=True)
+    for match in TRACE_SENTINEL.finditer(output):
+        try:
+            encoded_identity = match.group("identity")
+            encoded_identity += "=" * (-len(encoded_identity) % 4)
+            identity = base64.urlsafe_b64decode(encoded_identity).decode()
+            trace = base64.b64decode(match.group("trace"), validate=True)
+            if not trace:
+                raise ValueError("trace is empty")
+            phase = match.group("phase")
+            if phase in captured.setdefault(identity, {}):
+                raise ValueError(f"duplicate {phase} trace")
+            captured[identity][phase] = trace
+        except (UnicodeDecodeError, ValueError) as error:
+            errors.append(f"malformed trace sentinel: {error}")
+
+    written: dict[str, str] = {}
+    trace_dir = reports / "traces"
+    for case in parsed.cases:
+        if case.status == "ignored" or (policy == "failure" and case.status != "failed"):
+            continue
+        matches = [
+            (identity, phases)
+            for identity, phases in captured.items()
+            if identity.endswith(case.name) or case.name.endswith(identity.split("::", 1)[-1])
+        ]
+        if not matches:
+            continue
+        if len(matches) != 1:
+            errors.append(f"expected one trace identity for {case.name}, found {len(matches)}")
+            continue
+        identity, phases = matches[0]
+        trace = phases.get("full") or phases.get("bootstrap")
+        if trace is None:
+            errors.append(f"testcase {case.name} emitted no finalized trace")
+            continue
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", case.name)[:96] or "test"
+        digest = hashlib.sha256(identity.encode()).hexdigest()[:12]
+        destination = trace_dir / f"{safe}-{digest}.pftrace"
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(trace)
+        written[case.name] = str(destination.relative_to(ROOT))
+    return written, errors
+
+
 def invoke_package(
     package: dict,
     *,
@@ -244,6 +356,7 @@ def invoke_package(
     timeout: int,
     filters: list[str],
     features: list[str],
+    trace_policy: str,
     tool_versions: dict[str, str],
 ):
     command = ["wasm-pack", "test"]
@@ -279,13 +392,18 @@ def invoke_package(
             + "\n"
         )
 
+    command_env = env.copy()
+    incoming = reports / ".trace-incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    command_env["SHOOP_WASM_TEST_TRACE_DIR"] = str(incoming.resolve())
+
     started = time.monotonic()
     try:
         try:
             result = subprocess.run(
                 command,
                 cwd=ROOT,
-                env=env,
+                env=command_env,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -320,12 +438,21 @@ def invoke_package(
             "raw_log": str(log.relative_to(ROOT)),
             "filters": json.dumps(filters),
             "features": json.dumps(features),
+            "trace_policy": trace_policy,
             **{f"tool.{name}": value for name, value in tool_versions.items()},
         },
+    )
+    traces, trace_errors = write_test_traces(
+        output,
+        parsed=parsed,
+        reports=reports,
+        incoming=reports / ".trace-incoming",
+        policy=trace_policy,
     )
     valid = (
         parsed.listed > 0
         and not parsed.malformed
+        and not trace_errors
         and ((returncode == 0 and parsed.failed == 0) or (returncode != 0 and parsed.failed > 0))
     )
     success = valid and returncode == 0 and parsed.failed == 0
@@ -345,8 +472,12 @@ def invoke_package(
         "passed": parsed.passed,
         "failed": parsed.failed,
         "ignored": parsed.ignored,
-        "testcases": [dataclasses.asdict(case) for case in parsed.cases],
-        "malformed": list(parsed.malformed),
+        "testcases": [
+            {**dataclasses.asdict(case), "trace": traces.get(case.name)}
+            for case in parsed.cases
+        ],
+        "malformed": [*parsed.malformed, *trace_errors],
+        "traces": traces,
         "success": success,
         "log": str(log.relative_to(ROOT)),
         "junit": str(junit.relative_to(ROOT)),
@@ -362,6 +493,7 @@ def synthetic_package_failure(
     message: str,
     filters: list[str],
     features: list[str],
+    trace_policy: str,
     tool_versions: dict[str, str],
 ):
     stem = f"{package['name']}-{runtime}"
@@ -382,6 +514,7 @@ def synthetic_package_failure(
             "raw_log": str(log.relative_to(ROOT)),
             "filters": json.dumps(filters),
             "features": json.dumps(features),
+            "trace_policy": trace_policy,
             **{f"tool.{name}": value for name, value in tool_versions.items()},
         },
     )
@@ -400,6 +533,7 @@ def synthetic_package_failure(
         "ignored": parsed.ignored,
         "testcases": [dataclasses.asdict(case) for case in parsed.cases],
         "malformed": list(parsed.malformed),
+        "traces": {},
         "success": False,
         "log": str(log.relative_to(ROOT)),
         "junit": str(junit.relative_to(ROOT)),
@@ -413,6 +547,7 @@ def main() -> int:
     parser.add_argument("--package", action="append")
     parser.add_argument("--filter", action="append", default=[])
     parser.add_argument("--feature", action="append", default=[])
+    parser.add_argument("--trace", choices=("off", "failure", "always"), default="failure")
     parser.add_argument("--package-timeout", type=int, default=600)
     parser.add_argument("--global-timeout", type=int, default=3600)
     args = parser.parse_args()
@@ -420,6 +555,7 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("RUSTFLAGS", "-D warnings")
     env.setdefault("WASM_BINDGEN_TEST_TIMEOUT", "60")
+    env["SHOOP_WASM_TEST_TRACE"] = args.trace
     tool_versions = validate_tools(args.runtime, env)
     print(
         "Wasm tools: "
@@ -432,7 +568,11 @@ def main() -> int:
         shutil.rmtree(reports)
     reports.mkdir(parents=True)
 
-    server_context = asset_server(assets) if args.runtime == "chrome" else contextlib.nullcontext(None)
+    server_context = (
+        asset_server(assets, reports / ".trace-incoming")
+        if args.runtime == "chrome"
+        else contextlib.nullcontext(None)
+    )
     with server_context as base_url:
         test_env = env.copy()
         test_env["SHOOP_WASM_TEST_ASSET_DIR"] = str(assets)
@@ -455,6 +595,7 @@ def main() -> int:
                         ),
                         filters=args.filter,
                         features=args.feature,
+                        trace_policy=args.trace,
                         tool_versions=tool_versions,
                     )
                 )
@@ -469,6 +610,7 @@ def main() -> int:
                     timeout=min(args.package_timeout, max(1, int(remaining))),
                     filters=args.filter,
                     features=args.feature,
+                    trace_policy=args.trace,
                     tool_versions=tool_versions,
                 )
             )
@@ -479,6 +621,7 @@ def main() -> int:
         "profile": args.profile,
         "filters": args.filter,
         "features": args.feature,
+        "trace_policy": args.trace,
         "package_timeout": args.package_timeout,
         "global_timeout": args.global_timeout,
         "tool_versions": tool_versions,

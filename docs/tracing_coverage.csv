@@ -1,24 +1,17 @@
 path,context,classification,coverage_or_rationale
+src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
+src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_audio_worklet/src/lib.rs,mixed_realtime_and_control,instrumented_direct,"Owns the raw producer lifecycle, timestamp updates, drain ABI, and static metadata exports around engine processing."
+src/rust/shoop_backend/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_backend/src/native.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_common/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
-src/rust/shoop_engine/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
 src/rust/shoop_common/src/lib.rs,non_realtime_support,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_common/src/logging/macros.rs,logging_support,excluded,Logging macro declarations; tracing them would recurse into logging setup.
 src/rust/shoop_common/src/logging/mod.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_common/src/logging/setup.rs,non_realtime_support,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_common/src/tracing_capture.rs,non_realtime_support,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_common/src/tracing_helpers.rs,non_realtime_support,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
-src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
-src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_test_macros/src/lib.rs,test_infrastructure,excluded,Compile-time test attribute expansion; not part of the application runtime.
-src/rust/shoop_wasm_runtime_tests/src/lib.rs,test_infrastructure,excluded,Wasm-only integration-test declarations; not part of the application runtime.
-src/rust/shoop_wasm_test_support/src/lib.rs,test_infrastructure,excluded,Cross-target test harness support; not part of the application runtime.
-src/rust/shoop_audio_worklet/src/lib.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_worklet_client/src/host_midi.rs,non_realtime_support,instrumented_indirect,"Runs within traced application and browser MIDI orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_worklet_client/src/lib.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application polling and intent orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_worklet_client/src/transport.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application polling and driver callbacks; a separate span would duplicate its owning boundary."
-src/rust/shoop_backend/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_backend/src/native.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/app_widget.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_egui/src/click_track_dialog.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/colors.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -44,11 +37,13 @@ src/rust/shoop_egui/src/track_widget.rs,application_ui_and_control,instrumented_
 src/rust/shoop_egui/src/tracks_widget.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_egui/src/waveform.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/waveform_widget.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_engine/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
 src/rust/shoop_engine/src/app_backend.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/audio_channel.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/audio_midi_loop.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/basic_loop.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/buffer_queue.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_engine/src/carla_native.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/carla_processor.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/carla_shared_memory.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/carla_subprocess.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
@@ -82,7 +77,6 @@ src/rust/shoop_engine/src/graph_scheduler.rs,mixed_realtime_and_control,instrume
 src/rust/shoop_engine/src/internal_audio_port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/lib.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/loop_mode.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_engine/src/carla_native.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/midi.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midi_buffering_input_port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midi_channel.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -95,7 +89,7 @@ src/rust/shoop_engine/src/midi_storage.rs,mixed_realtime_and_control,instrumente
 src/rust/shoop_engine/src/midir_driver.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/multichannel_audio.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/oxisynth.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
-src/rust/shoop_engine/src/pending_midi_control.rs,realtime_processing,instrumented_indirect,"Runs within the traced processor routing boundary; a separate per-control span would add callback overhead."
+src/rust/shoop_engine/src/pending_midi_control.rs,realtime_processing,instrumented_indirect,Runs within the traced processor routing boundary; a separate per-control span would add callback overhead.
 src/rust/shoop_engine/src/port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/profiling.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/realtime_alloc_guard.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -120,16 +114,27 @@ src/rust/shoop_session/src/document.rs,non_realtime_support,instrumented_indirec
 src/rust/shoop_session/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/media.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/resample.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_settings/src/settings.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_settings/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_settings/src/native_store.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_settings/src/settings.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_test_macros/src/lib.rs,test_infrastructure,excluded,Compile-time test attribute expansion; not part of the application runtime.
+src/rust/shoop_tracing/src/browser.rs,application_ui_and_control,instrumented_direct,"Owns bounded Window production, collection, clocks, health, and Wasm testcase publication."
+src/rust/shoop_tracing/src/capture.rs,non_realtime_support,instrumented_direct,Owns native Perfetto session lifecycle and atomic file publication.
 src/rust/shoop_tracing/src/lib.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
+src/rust/shoop_tracing/src/raw.rs,mixed_realtime_and_control,instrumented_direct,Owns the bounded import-free raw Wasm producer and static metadata catalog.
+src/rust/shoop_tracing/src/test_capture.rs,non_realtime_support,instrumented_direct,"Owns native per-attempt capture policy, identity, unwind handling, and retention."
+src/rust/shoop_wasm_runtime_tests/src/lib.rs,test_infrastructure,excluded,Wasm-only integration-test declarations; not part of the application runtime.
+src/rust/shoop_wasm_test_support/src/lib.rs,test_infrastructure,excluded,Cross-target test harness support; not part of the application runtime.
+src/rust/shoop_worklet_client/src/host_midi.rs,non_realtime_support,instrumented_indirect,Runs within traced application and browser MIDI orchestration; a separate span would duplicate its owning boundary.
+src/rust/shoop_worklet_client/src/lib.rs,application_ui_and_control,instrumented_indirect,Runs within traced application polling and intent orchestration; a separate span would duplicate its owning boundary.
+src/rust/shoop_worklet_client/src/transport.rs,application_ui_and_control,instrumented_indirect,Runs within traced application polling and driver callbacks; a separate span would duplicate its owning boundary.
 src/rust/shoopdaloop/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
-src/rust/shoopdaloop/src/app_args.rs,application_ui_and_control,excluded,"Parses startup inputs before runtime tracing boundaries are established."
-src/rust/shoopdaloop/src/browser_audio.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoopdaloop/src/app_args.rs,application_ui_and_control,excluded,Parses startup inputs before runtime tracing boundaries are established.
+src/rust/shoopdaloop/src/browser_audio.rs,application_ui_and_control,instrumented_direct,"Owns AudioWorklet trace ring attachment, producer stop, and realm publication."
 src/rust/shoopdaloop/src/browser_midi.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/browser_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoopdaloop/src/browser_worker.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application and remote-driver orchestration; browser Worker timing is reported through ordinary diagnostics."
+src/rust/shoopdaloop/src/browser_trace.rs,application_ui_and_control,instrumented_direct,"Owns browser realm ring setup, metadata, calibration, draining, and health conversion."
+src/rust/shoopdaloop/src/browser_worker.rs,application_ui_and_control,instrumented_direct,"Owns Engine Worker trace ring attachment, producer stop, and realm publication."
 src/rust/shoopdaloop/src/main.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoopdaloop/src/native_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/settings.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

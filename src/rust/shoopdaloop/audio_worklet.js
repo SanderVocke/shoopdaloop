@@ -15,10 +15,88 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
         maxQuantum,
         commandMaxBytes,
       );
-      this.port.onmessage = event => this.handleCommand(event.data);
+      this.port.onmessage = event => {
+        if (event.data?.kind === 'shoop-trace-start') this.startTracing(event.data);
+        else if (event.data?.kind === 'shoop-trace-stop') this.stopTracing(event.data);
+        else this.handleCommand(event.data);
+      };
     } catch (error) {
       this.initializationError = `AudioWorklet initialization failed: ${error?.stack || error}`;
     }
+  }
+
+  startTracing(options) {
+    if (this.trace) throw new Error('AudioWorklet tracing is already active');
+    const metadata = this.host.traceStart(
+      options.realmId,
+      options.clockId,
+      options.capacityRecords,
+      options.engineDetail,
+    );
+    const header = new Int32Array(options.sab, 0, 16);
+    if (Atomics.load(header, 0) !== 0x50454631) {
+      this.host.traceStop();
+      throw new Error('AudioWorklet trace ring magic/version mismatch');
+    }
+    const capacity = Atomics.load(header, 1) >>> 0;
+    if (capacity !== options.capacityRecords) {
+      this.host.traceStop();
+      throw new Error('AudioWorklet trace ring capacity mismatch');
+    }
+    Atomics.store(header, 11, currentFrame | 0);
+    Atomics.store(header, 12, Math.floor(currentFrame / 0x1_0000_0000) | 0);
+    this.host.traceSetFrame(currentFrame);
+    this.trace = {
+      header,
+      data: new Uint8Array(options.sab, 64),
+      capacity,
+    };
+    const timer = globalThis.performance;
+    this.port.postMessage({
+      kind: 'shoop-trace-metadata',
+      metadata,
+      sourceTicks: currentFrame,
+      referenceMs: timer ? timer.timeOrigin + timer.now() : options.referenceMs,
+    });
+  }
+
+  drainTracing() {
+    if (!this.trace) return;
+    const {header, data, capacity} = this.trace;
+    let write = Atomics.load(header, 2) >>> 0;
+    const read = Atomics.load(header, 3) >>> 0;
+    let free = capacity - ((write - read) >>> 0);
+    while (free > 0) {
+      const slot = write % capacity;
+      const records = Math.min(free, capacity - slot);
+      const bytes = this.host.traceDrainInto(data, slot * 48, records * 48);
+      if (!bytes) break;
+      const written = bytes / 48;
+      write = (write + written) >>> 0;
+      free -= written;
+    }
+    const occupancy = (write - read) >>> 0;
+    if (occupancy > (Atomics.load(header, 8) >>> 0)) Atomics.store(header, 8, occupancy);
+    Atomics.store(header, 2, write | 0);
+    Atomics.store(header, 4, this.host.traceDropped() | 0);
+  }
+
+  stopTracing(options = {}) {
+    if (!this.trace) return;
+    this.drainTracing();
+    Atomics.store(this.trace.header, 6, 1);
+    const status = {
+      kind: 'shoop-trace-stopped',
+      dropped: this.host.traceDropped(),
+      highWater: Atomics.load(this.trace.header, 8) >>> 0,
+      sourceTicks: currentFrame,
+      referenceMs: globalThis.performance
+        ? performance.timeOrigin + performance.now()
+        : options.referenceMs,
+    };
+    this.host.traceStop();
+    this.trace = null;
+    this.port.postMessage(status);
   }
 
   handleCommand(message) {
@@ -67,10 +145,17 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       this.renderDiscontinuities += 1;
     }
     this.expectedFrame = currentFrame + frames;
+    if (this.trace) {
+      Atomics.store(this.trace.header, 11, currentFrame | 0);
+      Atomics.store(this.trace.header, 12, Math.floor(currentFrame / 0x1_0000_0000) | 0);
+      Atomics.add(this.trace.header, 5, 1);
+    }
     const timer = globalThis.performance;
     const startedAt = timer ? timer.now() : 0;
     try {
+      this.host.traceSetFrame(currentFrame);
       this.host.process(inputChannels, outputChannels, frames);
+      this.drainTracing();
     } catch (error) {
       return this.fail(`AudioWorklet process failed: ${error?.stack || error}`);
     }

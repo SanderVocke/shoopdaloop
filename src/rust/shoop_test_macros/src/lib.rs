@@ -6,7 +6,7 @@ use syn::{parse_macro_input, Attribute, Ident, ItemFn, LitStr, Token};
 #[derive(Default)]
 struct ShoopTestOptions {
     no_wasm: Option<LitStr>,
-    no_tracy: Option<LitStr>,
+    no_trace: Option<LitStr>,
     wasm_only: Option<LitStr>,
 }
 
@@ -25,12 +25,12 @@ impl Parse for ShoopTestOptions {
             }
             let slot = match name.to_string().as_str() {
                 "no_wasm" => &mut options.no_wasm,
-                "no_tracy" => &mut options.no_tracy,
+                "no_trace" => &mut options.no_trace,
                 "wasm_only" => &mut options.wasm_only,
                 _ => {
                     return Err(syn::Error::new(
                         name.span(),
-                        "unknown shoop_test modifier; expected no_wasm, no_tracy, or wasm_only",
+                        "unknown shoop_test modifier; expected no_wasm, no_trace, or wasm_only",
                     ));
                 }
             };
@@ -54,6 +54,19 @@ impl Parse for ShoopTestOptions {
     }
 }
 
+fn returns_result(function: &ItemFn) -> bool {
+    let syn::ReturnType::Type(_, output) = &function.sig.output else {
+        return false;
+    };
+    let syn::Type::Path(path) = output.as_ref() else {
+        return false;
+    };
+    path.path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "Result")
+}
+
 fn panic_expectation(attributes: &[Attribute]) -> syn::Result<Option<Option<String>>> {
     let Some(attribute) = attributes
         .iter()
@@ -75,9 +88,9 @@ fn panic_expectation(attributes: &[Attribute]) -> syn::Result<Option<Option<Stri
     Ok(Some(expected))
 }
 
-/// Mark one test body for native nextest with Tracy capture and wasm-bindgen-test.
+/// Mark one test body for native nextest with Perfetto capture and wasm-bindgen-test.
 ///
-/// `no_wasm`, `no_tracy`, and `wasm_only` opt out of defaults and require a
+/// `no_wasm`, `no_trace`, and `wasm_only` opt out of defaults and require a
 /// non-empty reason. Ordinary test attributes such as `ignore` and
 /// `should_panic` belong below this attribute and are retained.
 #[proc_macro_attribute]
@@ -89,6 +102,7 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
         Err(error) => return error.to_compile_error().into(),
     };
     let mut native = function.clone();
+    let native_returns_result = returns_result(&native);
     native
         .attrs
         .retain(|attribute| !attribute.path().is_ident("should_panic"));
@@ -113,26 +127,58 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
 
     let native_test = if options.wasm_only.is_some() {
         quote!()
-    } else if options.no_tracy.is_some() {
+    } else {
+        if options.no_trace.is_none() {
+            let traced_body = native.block;
+            native.block = if native_returns_result {
+                Box::new(syn::parse_quote!({
+                    ::shoop_wasm_test_support::run_test_result(|| #traced_body)
+                }))
+            } else {
+                Box::new(syn::parse_quote!({
+                    ::shoop_wasm_test_support::run_test(|| #traced_body)
+                }))
+            };
+        }
         quote! {
             #[cfg(not(target_arch = "wasm32"))]
             #[test]
-            #native
-        }
-    } else {
-        quote! {
-            #[cfg(not(target_arch = "wasm32"))]
-            #[::shoop_wasm_test_support::tracy_capture_test]
             #native
         }
     };
     let wasm_test = if options.no_wasm.is_some() {
         quote!()
     } else {
+        let mut wasm = function;
+        if options.no_trace.is_none() {
+            let test_name = wasm.sig.ident.clone();
+            let body = wasm.block;
+            wasm.block = if wasm.sig.asyncness.is_some() {
+                Box::new(syn::parse_quote!({
+                    ::shoop_wasm_test_support::wasm_test_trace_begin(
+                        module_path!(),
+                        stringify!(#test_name),
+                    );
+                    let output = (async move #body).await;
+                    ::shoop_wasm_test_support::wasm_test_trace_finish();
+                    output
+                }))
+            } else {
+                Box::new(syn::parse_quote!({
+                    ::shoop_wasm_test_support::wasm_test_trace_begin(
+                        module_path!(),
+                        stringify!(#test_name),
+                    );
+                    let output = (|| #body)();
+                    ::shoop_wasm_test_support::wasm_test_trace_finish();
+                    output
+                }))
+            };
+        }
         quote! {
             #[cfg(target_arch = "wasm32")]
             #[::shoop_wasm_test_support::wasm_bindgen_test]
-            #function
+            #wasm
         }
     };
 
