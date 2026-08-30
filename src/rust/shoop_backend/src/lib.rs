@@ -2348,7 +2348,7 @@ impl EngineBackend {
             .expect("track was validated before loop construction")
             .loops
             .push(loop_id);
-        if let Ok(values) = prepared_backend_latency(&latency) {
+        if let Ok(values) = callback_backend_latency(&latency) {
             self.session
                 .loop_mut(engine_loop)
                 .expect("engine loop was created above")
@@ -3183,6 +3183,18 @@ fn prepared_backend_latency(
     ))
 }
 
+fn callback_backend_latency(
+    state: &BackendTrackLatencyState,
+) -> Result<shoop_engine::PreparedLatency> {
+    match prepared_backend_latency(state) {
+        Ok(values) => Ok(values),
+        Err(_) => Ok(shoop_engine::PreparedLatency::new(
+            shoop_latency::RecordingOffset::default(),
+            shoop_latency::ProcessorRenderAdvance::new(state.processor_advance_frames)?,
+        )),
+    }
+}
+
 fn update_backend_latency(
     state: &mut BackendTrackLatencyState,
     adjustment: BackendRecordingOffsetAdjustment,
@@ -4004,8 +4016,9 @@ impl Backend for EngineBackend {
             .tracks
             .get_mut(&track_id)
             .expect("backend track was checked above");
-        update_backend_latency(&mut track.latency, adjustment, processor_advance_frames)?;
-        let values = prepared_backend_latency(&track.latency)?;
+        let resolution =
+            update_backend_latency(&mut track.latency, adjustment, processor_advance_frames);
+        let values = callback_backend_latency(&track.latency)?;
         for loop_id in loops {
             let engine_loop = self.engine_loop_index(loop_id)?;
             self.session
@@ -4013,7 +4026,7 @@ impl Backend for EngineBackend {
                 .ok_or_else(|| anyhow!("missing engine loop"))?
                 .set_pending_latency(values);
         }
-        Ok(())
+        resolution
     }
 
     fn set_take_alignment(
@@ -8728,29 +8741,32 @@ mod tests {
                 port_name_base: "future-loop-latency".to_owned(),
                 audio_channels: 1,
                 midi: false,
-                initial_loops: 0,
+                initial_loops: 1,
             })
             .unwrap();
-        backend
+        let unavailable = backend
             .set_track_latency(
                 track.track_id,
-                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendRecordingOffsetAdjustment::Automatic,
                 19,
             )
-            .unwrap();
-        let loop_id = backend.add_loop_to_track(track.track_id).unwrap();
-        backend
-            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
-            .unwrap();
-        let channel = backend.loop_channels[&loop_id].audio[0];
-        assert_eq!(
+            .unwrap_err();
+        assert!(unavailable.to_string().contains("manual"));
+        let added_loop = backend.add_loop_to_track(track.track_id).unwrap();
+        for loop_id in [track.loops[0], added_loop] {
             backend
-                .session
-                .audio_channel(channel)
-                .unwrap()
-                .render_advance_frames(),
-            19
-        );
+                .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
+                .unwrap();
+            let channel = backend.loop_channels[&loop_id].audio[0];
+            assert_eq!(
+                backend
+                    .session
+                    .audio_channel(channel)
+                    .unwrap()
+                    .render_advance_frames(),
+                19
+            );
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -662,7 +662,7 @@ impl NativeRuntime {
             .expect("track was checked before loop creation")
             .loops
             .push(id);
-        if let Ok(values) = prepared_backend_latency(&latency) {
+        if let Ok(values) = callback_backend_latency(&latency) {
             self.loops
                 .get(&id)
                 .expect("native loop was created above")
@@ -1597,7 +1597,7 @@ impl NativeRuntime {
             ));
         }
         let logical_capacity = loop_.handle.get_state()?.length as usize;
-        self.set_track_latency(track_id, adjustment, processor_advance_frames)?;
+        self.resolve_track_latency(track_id, adjustment, processor_advance_frames)?;
         let latency = self.tracks[&track_id].state.latency.clone();
         let values = prepared_backend_latency(&latency)?;
         self.loops
@@ -1674,17 +1674,12 @@ impl NativeRuntime {
         Ok(false)
     }
 
-    fn set_track_latency(
+    fn resolve_track_latency(
         &mut self,
         track_id: BackendTrackId,
         adjustment: BackendRecordingOffsetAdjustment,
         processor_advance_frames: u32,
     ) -> Result<()> {
-        if self.track_has_armed_recording(track_id)? {
-            return Err(anyhow!(
-                "cannot change recording offset while an operation is armed; cancel it first"
-            ));
-        }
         let track = self
             .tracks
             .get(&track_id)
@@ -1708,12 +1703,12 @@ impl NativeRuntime {
             .get_mut(&track_id)
             .expect("track was checked above");
         track.state.latency.automatic_offset_frames = automatic;
-        update_backend_latency(
+        let resolution = update_backend_latency(
             &mut track.state.latency,
             adjustment,
             processor_advance_frames,
-        )?;
-        let values = prepared_backend_latency(&track.state.latency)?;
+        );
+        let values = callback_backend_latency(&track.state.latency)?;
         let loops = track.loops.clone();
         for loop_id in loops {
             let loop_ = self
@@ -1723,7 +1718,21 @@ impl NativeRuntime {
             loop_.handle.set_pending_latency(values)?;
         }
         self.wait();
-        Ok(())
+        resolution
+    }
+
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        processor_advance_frames: u32,
+    ) -> Result<()> {
+        if self.track_has_armed_recording(track_id)? {
+            return Err(anyhow!(
+                "cannot change recording offset while an operation is armed; cancel it first"
+            ));
+        }
+        self.resolve_track_latency(track_id, adjustment, processor_advance_frames)
     }
 
     fn set_take_alignment(
@@ -3508,24 +3517,27 @@ mod tests {
                 port_name_base: "native-future-loop-latency".to_owned(),
                 audio_channels: 1,
                 midi: false,
-                initial_loops: 0,
+                initial_loops: 1,
             })
             .unwrap();
-        backend
+        let unavailable = backend
             .set_track_latency(
                 created.track_id,
-                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendRecordingOffsetAdjustment::Automatic,
                 19,
             )
-            .unwrap();
-        let loop_id = backend.add_loop_to_track(created.track_id).unwrap();
-        backend
-            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
-            .unwrap();
-        assert!(backend.runtime().unwrap().loops[&loop_id]
-            .audio
-            .iter()
-            .all(|channel| channel.get_state().unwrap().render_advance_frames == 19));
+            .unwrap_err();
+        assert!(unavailable.to_string().contains("manual"));
+        let added_loop = backend.add_loop_to_track(created.track_id).unwrap();
+        for loop_id in [created.loops[0], added_loop] {
+            backend
+                .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
+                .unwrap();
+            assert!(backend.runtime().unwrap().loops[&loop_id]
+                .audio
+                .iter()
+                .all(|channel| channel.get_state().unwrap().render_advance_frames == 19));
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3540,10 +3552,12 @@ mod tests {
                 port_name_base: "native-armed-latency".to_owned(),
                 audio_channels: 1,
                 midi: true,
-                initial_loops: 1,
+                initial_loops: 2,
             })
             .unwrap();
-        backend.set_loop_length(created.loops[0], 4).unwrap();
+        for loop_id in &created.loops {
+            backend.set_loop_length(*loop_id, 4).unwrap();
+        }
         backend
             .set_track_latency(
                 created.track_id,
@@ -3551,14 +3565,19 @@ mod tests {
                 0,
             )
             .unwrap();
-        backend
-            .transition_loop(created.loops[0], BackendLoopMode::Playing, None)
-            .unwrap();
+        for loop_id in &created.loops {
+            backend
+                .transition_loop(*loop_id, BackendLoopMode::Playing, None)
+                .unwrap();
+        }
         backend
             .transition_loop(created.loops[0], BackendLoopMode::Stopped, Some(1))
             .unwrap();
         backend
             .transition_loop(created.loops[0], BackendLoopMode::Recording, Some(2))
+            .unwrap();
+        backend
+            .transition_loop(created.loops[1], BackendLoopMode::Recording, Some(2))
             .unwrap();
         let input = created
             .ports
