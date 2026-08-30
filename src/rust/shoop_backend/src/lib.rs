@@ -7680,11 +7680,13 @@ impl Backend for FakeBackend {
             content.length = 0;
             for channel in &mut content.audio {
                 channel.samples.clear();
+                channel.capture_alignment_frames = 0;
             }
             for channel in &mut content.midi {
                 channel.length = 0;
                 channel.start_state.clear();
                 channel.events.clear();
+                channel.capture_alignment_frames = 0;
             }
         }
         self.operations.push(FakeOperation::Clear(loop_id));
@@ -8204,6 +8206,43 @@ impl Backend for FakeBackend {
                 BackendTrackControl::InputMonitoring(source_track.state.input_monitoring),
             ] {
                 staged.set_track_control(created.track_id, control)?;
+            }
+            {
+                let target_latency = &mut staged
+                    .tracks
+                    .get_mut(&created.track_id)
+                    .expect("created track exists")
+                    .state
+                    .latency;
+                target_latency.automatic_offset_frames =
+                    source_track.state.latency.automatic_offset_frames;
+                target_latency.automatic_processor_advance_frames = source_track
+                    .state
+                    .latency
+                    .automatic_processor_advance_frames;
+            }
+            if let Err(error) = staged.set_track_latency(
+                created.track_id,
+                source_track.state.latency.adjustment,
+                source_track.state.latency.processor_adjustment,
+                source_track.state.latency.processor_manual_frames,
+            ) {
+                if source_track.state.latency.effective_offset_frames.is_some()
+                    && source_track
+                        .state
+                        .latency
+                        .effective_processor_advance_frames
+                        .is_some()
+                {
+                    return Err(error);
+                }
+                staged
+                    .tracks
+                    .get_mut(&created.track_id)
+                    .expect("created track exists")
+                    .state
+                    .latency
+                    .clone_from(&source_track.state.latency);
             }
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
                 let target_loop = staged
@@ -8730,6 +8769,96 @@ mod tests {
             backend.track_processor_catalog().unwrap().as_ref(),
             &[descriptor]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_session_replacement_restores_latency_and_future_alignment() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "restored-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(5),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                7,
+            )
+            .unwrap();
+        let captured = backend.capture_session().unwrap();
+        let replacement = backend.replace_session(&captured).unwrap();
+        let restored_track = replacement.tracks[&created.track_id.raw()].track_id;
+        let restored_loop = replacement.loops[&created.loops[0].raw()];
+        let latency = &backend.poll().unwrap().tracks[&restored_track].latency;
+        assert_eq!(latency.effective_offset_frames, Some(5));
+        assert_eq!(latency.effective_processor_advance_frames, Some(7));
+
+        backend
+            .transition_loop(restored_loop, BackendLoopMode::Recording, None)
+            .unwrap();
+        let content = &backend.loop_content[&restored_loop];
+        assert_eq!(
+            content
+                .audio
+                .iter()
+                .map(|channel| channel.capture_alignment_frames)
+                .collect::<Vec<_>>(),
+            [5, 12]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_clear_resets_channel_alignment_with_media() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "clear-alignment".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![0.0; 6],
+                        start_offset: None,
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 6,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: None,
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend.clear_loop(loop_id).unwrap();
+        let captured = backend.capture_session().unwrap();
+        let loop_ = &captured.tracks[0].loops[0];
+        assert_eq!(loop_.length, 0);
+        assert!(loop_.audio[0].samples.is_empty());
+        assert_eq!(loop_.audio[0].capture_alignment_frames, 0);
+        assert_eq!(loop_.midi[0].length, 0);
+        assert_eq!(loop_.midi[0].capture_alignment_frames, 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
