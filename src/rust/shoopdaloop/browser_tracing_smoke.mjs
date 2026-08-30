@@ -55,7 +55,7 @@ try {
     '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
     '--disable-gpu-sandbox', '--enable-webgl', '--enable-unsafe-swiftshader',
     '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required',
-    '--use-fake-ui-for-media-stream',
+    '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${path.join(downloads, 'profile')}`,
     `http://127.0.0.1:${webPort}/?${realm === 'worker' ? 'worker=1&' : ''}tracing=1&tracing-smoke-test=1`,
