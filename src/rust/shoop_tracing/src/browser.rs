@@ -600,6 +600,9 @@ extern "C" {
 }
 
 pub fn wasm_test_trace_opt_out(module: &str, test: &str) {
+    if !wasm_test_tracing_enabled() {
+        return;
+    }
     let identity = format!("{module}::{test}");
     let identity = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(identity);
     write_trace_opt_out(

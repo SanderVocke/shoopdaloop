@@ -214,7 +214,9 @@ impl RealmTraceState {
 
     pub fn abort(&mut self) -> Result<()> {
         self.poll()?;
-        self.add_calibration()?;
+        if self.calibrations.is_empty() {
+            self.add_startup_calibration()?;
+        }
         self.stopped = true;
         Ok(())
     }
@@ -297,33 +299,25 @@ impl RealmTraceState {
             });
             return Ok(());
         }
-        self.add_calibration()
+        self.add_startup_calibration()
     }
 
-    fn add_calibration(&mut self) -> Result<()> {
-        let low = Atomics::load(&self.header, 11)? as u32;
-        let high = Atomics::load(&self.header, 12)? as u32;
-        let source_ticks = u64::from(low) | (u64::from(high) << 32);
-        if self
-            .calibrations
-            .last()
-            .is_some_and(|previous| previous.source_ticks >= source_ticks)
-        {
+    fn add_startup_calibration(&mut self) -> Result<()> {
+        if !self.calibrations.is_empty() || Atomics::load(&self.header, 15)? == 0 {
             return Ok(());
         }
-        let performance = web_sys::window()
-            .ok_or_else(|| anyhow!("browser window is unavailable"))?
-            .performance()
-            .ok_or_else(|| anyhow!("browser performance clock is unavailable"))?;
-        let before = performance.now();
-        let after = performance.now();
-        let reference_ms = performance.time_origin() + (before + after) * 0.5;
+        let source_low = Atomics::load(&self.header, 9)? as u32;
+        let source_high = Atomics::load(&self.header, 10)? as u32;
+        let reference_low = Atomics::load(&self.header, 13)? as u32;
+        let reference_high = Atomics::load(&self.header, 14)? as u32;
+        let source_ticks = u64::from(source_low) | (u64::from(source_high) << 32);
+        let reference_ms = u64::from(reference_low) | (u64::from(reference_high) << 32);
         self.calibrations.push(shoop_tracing::BrowserCalibration {
             realm_id: self.realm_id,
             clock_id: self.clock_id,
             source_ticks,
-            reference_time_ns: (reference_ms * 1_000_000.0).round() as u64,
-            uncertainty_ns: (((after - before) * 500_000.0).round() as u64).max(5_000_000),
+            reference_time_ns: reference_ms.saturating_mul(1_000_000),
+            uncertainty_ns: 1_000_000_000,
         });
         Ok(())
     }

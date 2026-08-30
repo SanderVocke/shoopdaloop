@@ -50,6 +50,12 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       this.host.traceStop();
       throw new Error('AudioWorklet trace ring capacity mismatch');
     }
+    const referenceMs = Math.max(0, Math.round(options.referenceMs));
+    Atomics.store(header, 9, currentFrame | 0);
+    Atomics.store(header, 10, Math.floor(currentFrame / 0x1_0000_0000) | 0);
+    Atomics.store(header, 13, referenceMs | 0);
+    Atomics.store(header, 14, Math.floor(referenceMs / 0x1_0000_0000) | 0);
+    Atomics.store(header, 15, 1);
     Atomics.store(header, 11, currentFrame | 0);
     Atomics.store(header, 12, Math.floor(currentFrame / 0x1_0000_0000) | 0);
     this.host.traceSetFrame(currentFrame);

@@ -46,6 +46,12 @@ function startTracing(options) {
   }
   const capacity = Atomics.load(header, 1) >>> 0;
   const frame = scheduler.processedQuanta * scheduler.quantum;
+  const referenceMs = Math.max(0, Math.round(options.referenceMs));
+  Atomics.store(header, 9, frame | 0);
+  Atomics.store(header, 10, Math.floor(frame / 0x1_0000_0000) | 0);
+  Atomics.store(header, 13, referenceMs | 0);
+  Atomics.store(header, 14, Math.floor(referenceMs / 0x1_0000_0000) | 0);
+  Atomics.store(header, 15, 1);
   Atomics.store(header, 11, frame | 0);
   Atomics.store(header, 12, Math.floor(frame / 0x1_0000_0000) | 0);
   host.traceSetFrame(frame);
