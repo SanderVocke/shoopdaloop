@@ -45,6 +45,17 @@ pub struct BrowserWorkerDriver {
     trace: Rc<RefCell<Option<crate::browser_trace::RealmTraceState>>>,
 }
 
+fn abort_pending_trace(trace: &Rc<RefCell<Option<crate::browser_trace::RealmTraceState>>>) {
+    if let Some(trace) = trace.borrow_mut().as_mut() {
+        if let Err(error) = trace.abort() {
+            tracing::error!(
+                error = %error,
+                "frontend.browser_trace.worker_abort_failed"
+            );
+        }
+    }
+}
+
 impl BrowserWorkerDriver {
     pub fn new(transport: shoop_worklet_client::RemoteBackendControl) -> Result<Self> {
         let window = web_sys::window().ok_or_else(|| anyhow!("browser window is unavailable"))?;
@@ -93,7 +104,9 @@ impl BrowserWorkerDriver {
         application_port.start();
 
         let failure_control = transport.clone();
+        let failure_trace = Rc::clone(&trace);
         let error_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
+            abort_pending_trace(&failure_trace);
             failure_control.fail("browser engine Worker terminated unexpectedly");
         }) as Box<dyn FnMut(_)>);
         worker.set_onerror(Some(error_handler.as_ref().unchecked_ref()));
@@ -102,6 +115,7 @@ impl BrowserWorkerDriver {
         let initialize_worker = worker.clone();
         let initialize_port = application_port.clone();
         let initialize_control = transport.clone();
+        let initialize_trace = Rc::clone(&trace);
         wasm_bindgen_futures::spawn_local(async move {
             match load_engine_module().await {
                 Ok(module) => {
@@ -151,6 +165,7 @@ impl BrowserWorkerDriver {
                             initialize_worker.post_message_with_transfer(&options, &transfer)
                         });
                     if let Err(error) = result {
+                        abort_pending_trace(&initialize_trace);
                         initialize_control.fail(format!(
                             "could not initialize browser engine Worker: {error:?}"
                         ));
@@ -162,14 +177,18 @@ impl BrowserWorkerDriver {
                         0,
                         0,
                     ) {
+                        abort_pending_trace(&initialize_trace);
                         initialize_control
                             .fail(format!("could not attach browser engine Worker: {error}"));
                         return;
                     }
                     initialize_control.set_driver_state(BackendDriverState::Dummy);
                 }
-                Err(error) => initialize_control
-                    .fail(format!("could not load browser engine Worker: {error:?}")),
+                Err(error) => {
+                    abort_pending_trace(&initialize_trace);
+                    initialize_control
+                        .fail(format!("could not load browser engine Worker: {error:?}"));
+                }
             }
         });
 
