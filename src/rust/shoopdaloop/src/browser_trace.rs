@@ -256,6 +256,10 @@ impl RealmTraceState {
                         (((received - sent).max(0.0) * 500_000.0).ceil() as u64).max(100_000);
                     Some(((sent + received) * 500_000.0).round() as u64)
                 }
+                (None, Some(received)) => {
+                    uncertainty_ns = 1_000_000_000;
+                    Some((received * 1_000_000.0).round() as u64)
+                }
                 _ => None,
             }
         } else {

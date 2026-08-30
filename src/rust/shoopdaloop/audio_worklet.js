@@ -57,7 +57,6 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       header,
       data: new Uint8Array(options.sab, 64),
       capacity,
-      startReferenceMs: options.referenceMs,
     };
     const timer = globalThis.performance;
     const hasReferenceClock = timer
@@ -147,10 +146,8 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       dropped: this.host?.traceDropped?.() || 0,
       highWater: Atomics.load(active.header, 8) >>> 0,
       sourceTicks: currentFrame,
-      referenceMs: hasReferenceClock
-        ? timer.timeOrigin + timer.now()
-        : active.startReferenceMs,
-      requestReferenceMs: active.startReferenceMs,
+      referenceMs: hasReferenceClock ? timer.timeOrigin + timer.now() : undefined,
+      requestReferenceMs: undefined,
       fallbackClock: !hasReferenceClock,
       aborted: true,
     };
