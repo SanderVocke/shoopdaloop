@@ -16,9 +16,16 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
         commandMaxBytes,
       );
       this.port.onmessage = event => {
-        if (event.data?.kind === 'shoop-trace-start') this.startTracing(event.data);
-        else if (event.data?.kind === 'shoop-trace-stop') this.stopTracing(event.data);
-        else this.handleCommand(event.data);
+        try {
+          if (event.data?.kind === 'shoop-trace-start') this.startTracing(event.data);
+          else if (event.data?.kind === 'shoop-trace-stop') this.stopTracing(event.data);
+          else this.handleCommand(event.data);
+        } catch (error) {
+          if (event.data?.kind === 'shoop-trace-start' && !this.trace) {
+            this.reportTraceStartFailure(event.data);
+          }
+          this.fail(`AudioWorklet trace control failed: ${error?.stack || error}`);
+        }
       };
     } catch (error) {
       this.initializationError = `AudioWorklet initialization failed: ${error?.stack || error}`;
@@ -63,6 +70,23 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       referenceMs: hasReferenceClock ? timer.timeOrigin + timer.now() : options.referenceMs,
       requestReferenceMs: options.referenceMs,
       fallbackClock: !hasReferenceClock,
+    });
+  }
+
+  reportTraceStartFailure(options) {
+    const timer = globalThis.performance;
+    const hasReferenceClock = timer
+      && Number.isFinite(timer.timeOrigin)
+      && typeof timer.now === 'function';
+    this.port.postMessage({
+      kind: 'shoop-trace-stopped',
+      dropped: 0,
+      highWater: 0,
+      sourceTicks: currentFrame,
+      referenceMs: hasReferenceClock ? timer.timeOrigin + timer.now() : options.referenceMs,
+      requestReferenceMs: options.referenceMs,
+      fallbackClock: !hasReferenceClock,
+      aborted: true,
     });
   }
 

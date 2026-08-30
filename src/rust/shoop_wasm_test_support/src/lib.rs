@@ -25,7 +25,9 @@ pub fn assert_panics(function: impl FnOnce(), expected: Option<&str>) {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use shoop_tracing::{wasm_test_trace_begin, wasm_test_trace_finish};
+pub use shoop_tracing::{
+    wasm_test_trace_begin, wasm_test_trace_finish, wasm_test_trace_finish_failure,
+};
 
 #[cfg(target_arch = "wasm32")]
 pub fn wasm_test_trace_finish_result<T, E>(result: &Result<T, E>) {

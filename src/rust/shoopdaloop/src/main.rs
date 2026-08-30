@@ -144,7 +144,7 @@ impl NativeTracing {
     fn stop_capture(&mut self, save: bool) -> anyhow::Result<TracingStopped> {
         use shoop_common::tracing_capture::CaptureDisposition;
 
-        let Some(capture) = self.capture.as_mut() else {
+        let Some(mut capture) = self.capture.take() else {
             anyhow::bail!("tracing is not active");
         };
         shoop_common::tracing_helpers::set_engine_detail_enabled(false);
@@ -153,14 +153,13 @@ impl NativeTracing {
         } else {
             CaptureDisposition::Discard
         };
+        let path = capture.path().display().to_string();
         capture.stop(disposition)?;
-        let stopped = if save {
-            TracingStopped::Saved(capture.path().display().to_string())
+        Ok(if save {
+            TracingStopped::Saved(path)
         } else {
             TracingStopped::Discarded
-        };
-        self.capture = None;
-        Ok(stopped)
+        })
     }
 
     fn status(&self) -> TracingStatus {

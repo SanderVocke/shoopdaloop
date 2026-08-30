@@ -26,7 +26,8 @@ and preservation of equal-timestamp producer ordering.
   drains allocation-free into a SharedArrayBuffer ring, and publishes exact
   sample-frame timestamps, calibrations, metadata, loss, and high-water health.
   The Window continuously consumes each ring during capture, so captures are not
-  limited to one ring capacity.
+  limited to one ring capacity. Retention is capped at 262,144 complete records
+  per realm; later records increment health drops instead of growing memory.
 - Browser final protobuf collection currently runs during explicit finalization
   on the Window thread rather than in a separate collector Worker. This avoids a
   second generated Wasm artifact while preserving bounded realtime producers and

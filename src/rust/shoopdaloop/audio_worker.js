@@ -114,15 +114,15 @@ function abortTracing() {
 
 function handleApplicationCommand(message) {
   if (terminal) return;
-  if (message?.kind === 'shoop-trace-start') {
-    startTracing(message);
-    return;
-  }
-  if (message?.kind === 'shoop-trace-stop') {
-    stopTracing();
-    return;
-  }
   try {
+    if (message?.kind === 'shoop-trace-start') {
+      startTracing(message);
+      return;
+    }
+    if (message?.kind === 'shoop-trace-stop') {
+      stopTracing();
+      return;
+    }
     let response = host.command(message);
     const event = JSON.parse(response);
     if (event.event?.kind === 'snapshot') {
@@ -140,6 +140,19 @@ function handleApplicationCommand(message) {
       setTimeout(() => releaseAndClose(true), 0);
     }
   } catch (error) {
+    if (message?.kind === 'shoop-trace-start' && !trace) {
+      const frame = (scheduler?.processedQuanta || 0) * (scheduler?.quantum || 0);
+      try {
+        applicationPort?.postMessage({
+          kind: 'shoop-trace-stopped',
+          dropped: 0,
+          highWater: 0,
+          sourceTicks: frame,
+          referenceMs: performance.timeOrigin + performance.now(),
+          aborted: true,
+        });
+      } catch (_) { /* realm is terminating */ }
+    }
     applicationFailure(`Worker engine command failed: ${error?.stack || error}`);
   }
 }

@@ -147,7 +147,9 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
             #native
         }
     };
-    let wasm_trace_finish = if native_returns_result {
+    let wasm_trace_finish = if expects_panic {
+        quote!(::shoop_wasm_test_support::wasm_test_trace_finish_failure();)
+    } else if native_returns_result {
         quote!(::shoop_wasm_test_support::wasm_test_trace_finish_result(&output);)
     } else {
         quote!(::shoop_wasm_test_support::wasm_test_trace_finish();)
@@ -164,7 +166,6 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
                     ::shoop_wasm_test_support::wasm_test_trace_begin(
                         module_path!(),
                         stringify!(#test_name),
-                        #expects_panic,
                     );
                     let output = (async move #body).await;
                     #wasm_trace_finish
@@ -175,7 +176,6 @@ pub fn shoop_test(arguments: TokenStream, item: TokenStream) -> TokenStream {
                     ::shoop_wasm_test_support::wasm_test_trace_begin(
                         module_path!(),
                         stringify!(#test_name),
-                        #expects_panic,
                     );
                     let output = (|| #body)();
                     #wasm_trace_finish

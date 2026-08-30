@@ -61,8 +61,11 @@ fractional loads/ratios use floating counters. Structured logs preserve level,
 target, message, and typed fields as Perfetto arguments.
 
 AudioWorklet timestamps are exact logical sample frames, not callback CPU
-entry/exit measurements. Always inspect clock calibration, producer drops,
-discontinuities, and health data when interpreting a browser trace.
+entry/exit measurements. Browser collection retains at most 262,144 complete
+records per realm (12 MiB of raw records); later records are discarded and
+reported in producer health rather than growing tab memory indefinitely. Always
+inspect clock calibration, producer drops, discontinuities, and health data when
+interpreting a browser trace.
 
 Tracing is diagnostic instrumentation, not a transparent realtime measurement.
 Start with coarse mode, compare equivalent workloads/modes, and use native CPU

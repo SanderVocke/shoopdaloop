@@ -7,7 +7,9 @@ use std::sync::Once;
 
 use base64::Engine as _;
 use perfetto_everywhere_collector::{Collector, CollectorConfig, RealmDescriptor};
-use perfetto_everywhere_core::{MetadataId, StaticName, TraceBackend, TrackId};
+use perfetto_everywhere_core::{
+    MetadataId, Record, StaticName, TraceBackend, TrackId, FLAG_GROUP_END, RECORD_SIZE,
+};
 use perfetto_everywhere_tracing::{PerfettoLayer, SharedBackend};
 use perfetto_everywhere_web::{
     ClockCalibration, MetadataEntry, OrdinaryBackend, PerformanceClock, ProducerHealth,
@@ -21,6 +23,7 @@ const WINDOW_REALM_ID: u32 = 1;
 const WINDOW_CLOCK_ID: u32 = 101;
 const WINDOW_TICKS_PER_SECOND: u64 = 1_000_000_000;
 const WINDOW_BATCH_RECORDS: usize = 16_384;
+const MAX_RETAINED_RECORDS_PER_REALM: usize = 262_144;
 
 static BROWSER_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
 static WASM_TEST_PANIC_HOOK: Once = Once::new();
@@ -28,6 +31,7 @@ static WASM_TEST_PANIC_HOOK: Once = Once::new();
 struct BrowserState {
     backend: SharedBackend<OrdinaryBackend<PerformanceClock>>,
     records: Vec<u8>,
+    retention_dropped_records: u64,
     active: bool,
 }
 
@@ -59,7 +63,7 @@ impl<S: Subscriber> Layer<S> for ConsoleLayer {
 
 thread_local! {
     static STATE: RefCell<Option<BrowserState>> = const { RefCell::new(None) };
-    static TEST_CAPTURE: RefCell<Option<(String, BrowserCapture, BrowserCalibration, bool)>> =
+    static TEST_CAPTURE: RefCell<Option<(String, BrowserCapture, BrowserCalibration)>> =
         const { RefCell::new(None) };
 }
 
@@ -132,6 +136,7 @@ pub fn initialize_browser_tracing() -> Result<(), String> {
         *state.borrow_mut() = Some(BrowserState {
             backend,
             records: Vec::new(),
+            retention_dropped_records: 0,
             active: false,
         });
         Ok(())
@@ -150,6 +155,7 @@ impl BrowserCapture {
                 return Err("browser tracing is already active".to_owned());
             }
             state.records.clear();
+            state.retention_dropped_records = 0;
             state
                 .backend
                 .with(|backend| {
@@ -199,10 +205,13 @@ impl BrowserCapture {
                 .with(|backend| backend.set_enabled(false))
                 .ok_or_else(|| "browser tracing backend lock is poisoned".to_owned())?;
             drain(state)?;
-            let (metadata, health) = state
+            let (metadata, mut health) = state
                 .backend
                 .with(|backend| (backend.take_metadata(), backend.health()))
                 .ok_or_else(|| "browser tracing backend lock is poisoned".to_owned())?;
+            health.dropped_records = health
+                .dropped_records
+                .saturating_add(state.retention_dropped_records);
             state.active = false;
             Ok(BrowserRealmData {
                 id: WINDOW_REALM_ID,
@@ -234,6 +243,7 @@ impl BrowserCapture {
                 })
                 .ok_or_else(|| "browser tracing backend lock is poisoned".to_owned())?;
             state.records.clear();
+            state.retention_dropped_records = 0;
             state.active = false;
             Ok::<(), String>(())
         })?;
@@ -283,8 +293,39 @@ fn drain(state: &mut BrowserState) -> Result<(), String> {
         let Some(batch) = batch else {
             break;
         };
-        state.records.extend_from_slice(&batch);
+        append_bounded_browser_records(
+            &mut state.records,
+            &mut state.retention_dropped_records,
+            &batch,
+        )?;
     }
+    Ok(())
+}
+
+pub fn append_bounded_browser_records(
+    destination: &mut Vec<u8>,
+    dropped_records: &mut u64,
+    batch: &[u8],
+) -> Result<(), String> {
+    if batch.len() % RECORD_SIZE != 0 {
+        return Err("browser trace backend returned partial record bytes".to_owned());
+    }
+    let remaining = MAX_RETAINED_RECORDS_PER_REALM.saturating_sub(destination.len() / RECORD_SIZE);
+    let candidate_records = remaining.min(batch.len() / RECORD_SIZE);
+    let mut retained_records = 0;
+    for (index, bytes) in batch
+        .chunks_exact(RECORD_SIZE)
+        .take(candidate_records)
+        .enumerate()
+    {
+        let record = Record::decode(bytes).map_err(|error| error.to_string())?;
+        if record.flags & FLAG_GROUP_END != 0 {
+            retained_records = index + 1;
+        }
+    }
+    destination.extend_from_slice(&batch[..retained_records * RECORD_SIZE]);
+    *dropped_records =
+        dropped_records.saturating_add((batch.len() / RECORD_SIZE - retained_records) as u64);
     Ok(())
 }
 
@@ -358,14 +399,14 @@ fn health_to_perfetto(health: BrowserHealth) -> ProducerHealth {
     }
 }
 
-pub fn wasm_test_trace_begin(module: &str, test: &str, panic_expected: bool) {
+pub fn wasm_test_trace_begin(module: &str, test: &str) {
     if !wasm_test_tracing_enabled() {
         return;
     }
     let identity = format!("{module}::{test}");
     initialize_browser_tracing().expect("initialize Wasm test tracing");
     install_wasm_test_panic_hook();
-    if let Some((_identity, stale, _calibration, _panic_expected)) =
+    if let Some((_identity, stale, _calibration)) =
         TEST_CAPTURE.with(|slot| slot.borrow_mut().take())
     {
         stale
@@ -386,9 +427,9 @@ pub fn wasm_test_trace_begin(module: &str, test: &str, panic_expected: bool) {
     let capture_start = ordinary_calibration();
     emit_test_markers(&identity, "begin");
     TEST_CAPTURE.with(|slot| {
-        let previous =
-            slot.borrow_mut()
-                .replace((identity, capture, capture_start, panic_expected));
+        let previous = slot
+            .borrow_mut()
+            .replace((identity, capture, capture_start));
         assert!(previous.is_none(), "Wasm testcase traces must not overlap");
     });
 }
@@ -398,6 +439,13 @@ pub fn wasm_test_trace_finish() {
         return;
     }
     finalize_wasm_test_trace("success").expect("finish Wasm testcase trace");
+}
+
+pub fn wasm_test_trace_finish_failure() {
+    if !wasm_test_tracing_enabled() {
+        return;
+    }
+    finalize_wasm_test_trace("failure").expect("finish failed Wasm testcase trace");
 }
 
 pub fn wasm_test_trace_finish_result(failed: bool) {
@@ -412,17 +460,9 @@ fn install_wasm_test_panic_hook() {
     WASM_TEST_PANIC_HOOK.call_once(|| {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |information| {
-            let phase = TEST_CAPTURE.with(|slot| {
-                slot.borrow().as_ref().map(|(_, _, _, panic_expected)| {
-                    if *panic_expected {
-                        "expected-panic"
-                    } else {
-                        "failure"
-                    }
-                })
-            });
-            if let Some(phase) = phase {
-                if let Err(error) = finalize_wasm_test_trace(phase) {
+            let active = TEST_CAPTURE.with(|slot| slot.borrow().is_some());
+            if active {
+                if let Err(error) = finalize_wasm_test_trace("failure") {
                     web_sys::console::error_1(
                         &format!("could not finalize panicking Wasm testcase trace: {error}")
                             .into(),
@@ -436,7 +476,7 @@ fn install_wasm_test_panic_hook() {
 
 fn finalize_wasm_test_trace(phase: &str) -> Result<(), String> {
     let capture = TEST_CAPTURE.with(|slot| slot.borrow_mut().take());
-    let Some((identity, capture, capture_start, _panic_expected)) = capture else {
+    let Some((identity, capture, capture_start)) = capture else {
         return Err("Wasm testcase trace is not active".to_owned());
     };
     emit_test_markers(&identity, phase);

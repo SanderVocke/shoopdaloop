@@ -51,6 +51,7 @@ pub struct RealmTraceState {
     metadata: Vec<shoop_tracing::BrowserMetadata>,
     calibrations: Vec<shoop_tracing::BrowserCalibration>,
     records: Vec<u8>,
+    retention_dropped_records: u64,
     stopped: bool,
 }
 
@@ -89,6 +90,7 @@ impl RealmTraceState {
             metadata: Vec::new(),
             calibrations: Vec::new(),
             records: Vec::new(),
+            retention_dropped_records: 0,
             stopped: false,
         })
     }
@@ -181,17 +183,21 @@ impl RealmTraceState {
             return Ok(());
         }
         let data = Uint8Array::new_with_byte_offset(&self.sab, HEADER_BYTES);
-        self.records
-            .reserve(available as usize * RECORD_BYTES as usize);
+        let mut drained = vec![0_u8; available as usize * RECORD_BYTES as usize];
         for offset in 0..available {
             let slot = read.wrapping_add(offset) % self.capacity;
             let source = slot * RECORD_BYTES;
-            let destination = self.records.len();
-            self.records.resize(destination + RECORD_BYTES as usize, 0);
+            let destination = offset as usize * RECORD_BYTES as usize;
             data.slice(source, source + RECORD_BYTES)
-                .copy_to(&mut self.records[destination..]);
+                .copy_to(&mut drained[destination..destination + RECORD_BYTES as usize]);
         }
         Atomics::store(&self.header, 3, write as i32)?;
+        shoop_tracing::append_bounded_browser_records(
+            &mut self.records,
+            &mut self.retention_dropped_records,
+            &drained,
+        )
+        .map_err(BrowserTraceError)?;
         Ok(())
     }
 
@@ -220,7 +226,8 @@ impl RealmTraceState {
             calibrations: self.calibrations,
             health: shoop_tracing::BrowserHealth {
                 emitted_records: emitted_records as u64,
-                dropped_records: u64::from(Atomics::load(&self.header, 4)? as u32),
+                dropped_records: u64::from(Atomics::load(&self.header, 4)? as u32)
+                    .saturating_add(self.retention_dropped_records),
                 completed_batches: u64::from(Atomics::load(&self.header, 5)? as u32),
                 high_water_records: Atomics::load(&self.header, 8)? as u32 as usize,
                 repaired_span_boundaries: 0,
