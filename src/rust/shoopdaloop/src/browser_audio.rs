@@ -21,6 +21,8 @@ const WORKLET_SCRIPT_URL: &str = "./audio_worklet.js";
 const WORKLET_WASM_URL: &str = "./generated/shoop_audio_worklet.wasm";
 const EMBEDDED_WORKLET_ASSETS: &str = "shoopEmbeddedAudioWorklet";
 const MAX_QUANTUM: u32 = 2048;
+const MAX_RETAINED_TRACE_RECORDS: usize = 262_144;
+const TRACE_RECORD_BYTES: usize = 48;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AudioInputMode {
@@ -225,6 +227,12 @@ impl BrowserAudioController {
             .ok_or_else(|| anyhow!("browser audio context is unavailable"))?
             .sample_rate()
             .round() as u64;
+        let retained_records = inner
+            .completed_trace_segments
+            .iter()
+            .map(|segment| segment.records.len() / TRACE_RECORD_BYTES)
+            .sum::<usize>();
+        let max_retained_records = MAX_RETAINED_TRACE_RECORDS.saturating_sub(retained_records);
         let realm_id = inner.next_trace_realm_id;
         inner.next_trace_realm_id = inner.next_trace_realm_id.saturating_add(1);
         let label = if realm_id == 4 {
@@ -239,6 +247,7 @@ impl BrowserAudioController {
             sample_rate,
             128,
             8192,
+            max_retained_records,
         )?;
         let message = trace.start_message(engine_detail)?;
         inner

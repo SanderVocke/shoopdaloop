@@ -46,6 +46,7 @@ pub struct RealmTraceState {
     label: String,
     ticks_per_second: u64,
     capacity: u32,
+    max_retained_records: usize,
     sab: SharedArrayBuffer,
     header: Int32Array,
     metadata: Vec<shoop_tracing::BrowserMetadata>,
@@ -63,6 +64,7 @@ impl RealmTraceState {
         ticks_per_second: u64,
         quantum_frames: u32,
         capacity: u32,
+        max_retained_records: usize,
     ) -> Result<Self> {
         let constructor = Reflect::get(&js_sys::global(), &JsValue::from_str("SharedArrayBuffer"))?
             .dyn_into::<js_sys::Function>()
@@ -85,6 +87,7 @@ impl RealmTraceState {
             label: label.into(),
             ticks_per_second,
             capacity,
+            max_retained_records,
             sab,
             header,
             metadata: Vec::new(),
@@ -196,6 +199,7 @@ impl RealmTraceState {
             &mut self.records,
             &mut self.retention_dropped_records,
             &drained,
+            self.max_retained_records,
         )
         .map_err(BrowserTraceError)?;
         Ok(())

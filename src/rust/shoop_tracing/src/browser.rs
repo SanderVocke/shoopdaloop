@@ -297,6 +297,7 @@ fn drain(state: &mut BrowserState) -> Result<(), String> {
             &mut state.records,
             &mut state.retention_dropped_records,
             &batch,
+            MAX_RETAINED_RECORDS_PER_REALM,
         )?;
     }
     Ok(())
@@ -306,11 +307,12 @@ pub fn append_bounded_browser_records(
     destination: &mut Vec<u8>,
     dropped_records: &mut u64,
     batch: &[u8],
+    max_records: usize,
 ) -> Result<(), String> {
     if batch.len() % RECORD_SIZE != 0 {
         return Err("browser trace backend returned partial record bytes".to_owned());
     }
-    let remaining = MAX_RETAINED_RECORDS_PER_REALM.saturating_sub(destination.len() / RECORD_SIZE);
+    let remaining = max_records.saturating_sub(destination.len() / RECORD_SIZE);
     let candidate_records = remaining.min(batch.len() / RECORD_SIZE);
     let mut retained_records = 0;
     for (index, bytes) in batch

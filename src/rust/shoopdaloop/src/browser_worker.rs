@@ -17,6 +17,7 @@ const WORKER_SCRIPT_URL: &str = "./audio_worker.js";
 const WORKLET_WASM_URL: &str = "./generated/shoop_audio_worklet.wasm";
 const EMBEDDED_WORKLET_ASSETS: &str = "shoopEmbeddedAudioWorklet";
 const MAX_QUANTUM: u32 = 2048;
+const MAX_RETAINED_TRACE_RECORDS: usize = 262_144;
 const GENERATION: u64 = 1;
 
 struct BrowserWorkerEndpoint(MessagePort);
@@ -191,8 +192,15 @@ impl BrowserWorkerDriver {
         if self.trace.borrow().is_some() {
             return Ok(true);
         }
-        let trace =
-            crate::browser_trace::RealmTraceState::new(2, 102, "Engine Worker", 48_000, 128, 8192)?;
+        let trace = crate::browser_trace::RealmTraceState::new(
+            2,
+            102,
+            "Engine Worker",
+            48_000,
+            128,
+            8192,
+            MAX_RETAINED_TRACE_RECORDS,
+        )?;
         self.application_port
             .post_message(&trace.start_message(engine_detail)?)
             .map_err(|error| anyhow!("could not start Worker tracing: {error:?}"))?;
