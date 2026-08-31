@@ -39,6 +39,10 @@ pub enum TracingStopped {
 #[derive(Clone, Debug)]
 pub enum SettingsAction {
     Save(SettingsDraft),
+    SaveTrackDefaults {
+        request_id: u64,
+        draft: SettingsDraft,
+    },
     RequestAudioDriverSwitch {
         config: crate::AudioDriverConfig,
         draft: SettingsDraft,
@@ -66,6 +70,7 @@ impl SettingsAction {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Save(_) => "settings.save",
+            Self::SaveTrackDefaults { .. } => "settings.save_track_defaults",
             Self::RequestAudioDriverSwitch { .. } => "settings.request_audio_driver_switch",
             Self::RetryAudioDriverPersistence { .. } => "settings.retry_audio_persistence",
             Self::RequestBrowserPermissions => "settings.request_browser_permissions",

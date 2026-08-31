@@ -824,6 +824,35 @@ impl UnifiedApp {
         let result = match action {
             SettingsAction::Save(draft) => validate_script_draft(&draft)
                 .and_then(|()| self.settings.request_save(draft).map_err(Into::into)),
+            SettingsAction::SaveTrackDefaults { request_id, draft } => {
+                match validate_script_draft(&draft) {
+                    Err(error) => {
+                        self.widget
+                            .notify_track_default_save_result(request_id, true);
+                        Err(error)
+                    }
+                    Ok(()) => match self.settings.request_save(draft) {
+                        Ok(()) => {
+                            self.widget
+                                .notify_track_default_save_result(request_id, true);
+                            Ok(())
+                        }
+                        Err(
+                            settings::SettingsManagerError::Saving
+                            | settings::SettingsManagerError::StaleRevision { .. },
+                        ) => {
+                            self.widget
+                                .notify_track_default_save_result(request_id, false);
+                            Ok(())
+                        }
+                        Err(error) => {
+                            self.widget
+                                .notify_track_default_save_result(request_id, true);
+                            Err(error.into())
+                        }
+                    },
+                }
+            }
             SettingsAction::RequestAudioDriverSwitch { config, draft } => {
                 validate_script_draft(&draft).and_then(|()| {
                     self.runtime
@@ -917,6 +946,28 @@ impl UnifiedApp {
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let result = match action {
             SettingsAction::Save(draft) => self.settings.request_save(draft),
+            SettingsAction::SaveTrackDefaults { request_id, draft } => {
+                match self.settings.request_save(draft) {
+                    Ok(()) => {
+                        self.widget
+                            .notify_track_default_save_result(request_id, true);
+                        Ok(())
+                    }
+                    Err(
+                        settings::SettingsManagerError::Saving
+                        | settings::SettingsManagerError::StaleRevision { .. },
+                    ) => {
+                        self.widget
+                            .notify_track_default_save_result(request_id, false);
+                        Ok(())
+                    }
+                    Err(error) => {
+                        self.widget
+                            .notify_track_default_save_result(request_id, true);
+                        Err(error)
+                    }
+                }
+            }
             SettingsAction::RequestAudioDriverSwitch { .. }
             | SettingsAction::RetryAudioDriverPersistence { .. } => {
                 self.settings.report_action_error(

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::{
     click_track_dialog::ClickTrackDialog, colors, ephemeral_script_display_name,
@@ -10,9 +10,9 @@ use crate::{
     TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
-    SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
-    SettingsRegistryBuilder, SettingsRegistryError, SettingsSnapshot, SettingsViewState,
-    StringToggleList,
+    SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsDraftError,
+    SettingsRegistry, SettingsRegistryBuilder, SettingsRegistryError, SettingsSnapshot,
+    SettingsViewState, StringToggleList,
 };
 use std::sync::Arc;
 
@@ -67,6 +67,23 @@ const LATENCY_ADJUSTMENT_CHOICES: &[(&str, &str)] = &[
     ("manual", "Manual"),
     ("automatic_plus_trim", "Automatic + trim"),
 ];
+
+fn validate_track_default_latency(draft: &SettingsDraft) -> Result<(), SettingsDraftError> {
+    let adjustment = draft
+        .get(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT)
+        .map_err(|_| {
+            SettingsDraftError::MissingValue(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT.id().to_owned())
+        })?;
+    let frames = draft.get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES).map_err(|_| {
+        SettingsDraftError::MissingValue(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES.id().to_owned())
+    })?;
+    if adjustment == "manual" && frames < 0 {
+        return Err(SettingsDraftError::InvalidValue(
+            DEFAULT_NEW_TRACK_PROCESSOR_FRAMES.id().to_owned(),
+        ));
+    }
+    Ok(())
+}
 
 pub fn register_settings(
     builder: &mut SettingsRegistryBuilder,
@@ -199,7 +216,9 @@ pub fn register_settings_with_appearance_defaults(
         .category_order(2)
         .setting_order(20)
         .effect(SettingEffect::Immediate),
-    )
+    )?;
+    builder.register_draft_validator(validate_track_default_latency);
+    Ok(())
 }
 
 pub fn register_audio_settings(
@@ -761,6 +780,7 @@ pub struct AppWidget {
     add_track_make_default: bool,
     next_add_track_request_id: u64,
     pending_track_defaults: BTreeMap<u64, SettingsDraft>,
+    confirmed_track_defaults: BTreeSet<u64>,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
@@ -839,6 +859,7 @@ impl AppWidget {
             add_track_make_default: false,
             next_add_track_request_id: 1,
             pending_track_defaults: BTreeMap::new(),
+            confirmed_track_defaults: BTreeSet::new(),
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
@@ -962,7 +983,7 @@ impl AppWidget {
         .map(AppAction::KeyEvent)
         .collect::<Vec<_>>();
         let mut settings_actions = Vec::new();
-        self.resolve_track_default_saves(state, &mut settings_actions);
+        self.resolve_track_default_saves(state, settings_state, &mut settings_actions);
         let mut about_requested = false;
         let touch_mode = settings_state.active.get(TOUCH_MODE).unwrap_or(false);
         crate::loop_widget::set_touch_mode(ui.ctx(), touch_mode);
@@ -2082,17 +2103,87 @@ impl AppWidget {
         Some(AppAction::AddTrackWithTopology(spec))
     }
 
+    fn rebased_track_defaults(
+        draft: &SettingsDraft,
+        settings_state: &SettingsViewState,
+    ) -> SettingsDraft {
+        let mut rebased = SettingsDraft::from_snapshot(&settings_state.active);
+        rebased.set(
+            DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
+            draft
+                .get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
+                .expect("pending track defaults have an audio channel count"),
+        );
+        rebased.set(
+            DEFAULT_NEW_TRACK_MIDI,
+            draft
+                .get(DEFAULT_NEW_TRACK_MIDI)
+                .expect("pending track defaults have a MIDI value"),
+        );
+        rebased.set(
+            DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
+            draft
+                .get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT)
+                .expect("pending track defaults have a recording adjustment"),
+        );
+        rebased.set(
+            DEFAULT_NEW_TRACK_RECORDING_FRAMES,
+            draft
+                .get(DEFAULT_NEW_TRACK_RECORDING_FRAMES)
+                .expect("pending track defaults have recording frames"),
+        );
+        rebased.set(
+            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
+            draft
+                .get(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT)
+                .expect("pending track defaults have a processor adjustment"),
+        );
+        rebased.set(
+            DEFAULT_NEW_TRACK_PROCESSOR_FRAMES,
+            draft
+                .get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES)
+                .expect("pending track defaults have processor frames"),
+        );
+        rebased
+    }
+
     fn resolve_track_default_saves(
         &mut self,
         state: &AppState,
+        settings_state: &SettingsViewState,
         settings_actions: &mut Vec<SettingsAction>,
     ) {
         for result in state.track_creation_results.iter() {
-            if let Some(draft) = self.pending_track_defaults.remove(&result.request_id) {
-                if result.success {
-                    settings_actions.push(SettingsAction::Save(draft));
-                }
+            if !self.pending_track_defaults.contains_key(&result.request_id) {
+                continue;
             }
+            if result.success {
+                self.confirmed_track_defaults.insert(result.request_id);
+            } else {
+                self.pending_track_defaults.remove(&result.request_id);
+                self.confirmed_track_defaults.remove(&result.request_id);
+            }
+        }
+        if settings_state.persistence == shoop_settings::SettingsPersistenceState::Saving
+            || settings_state.recovery_required
+        {
+            return;
+        }
+        for request_id in self.confirmed_track_defaults.iter().copied() {
+            let Some(draft) = self.pending_track_defaults.get(&request_id) else {
+                continue;
+            };
+            settings_actions.push(SettingsAction::SaveTrackDefaults {
+                request_id,
+                draft: Self::rebased_track_defaults(draft, settings_state),
+            });
+        }
+    }
+
+    pub fn notify_track_default_save_result(&mut self, request_id: u64, complete: bool) {
+        if complete {
+            self.pending_track_defaults.remove(&request_id);
+            self.confirmed_track_defaults.remove(&request_id);
         }
     }
 
@@ -2536,6 +2627,27 @@ mod tests {
         let defaults = registry.defaults(1);
         assert_eq!(defaults.get(UI_SCALE_FACTOR).unwrap(), 1.25);
         assert!(defaults.get(TOUCH_MODE).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn manual_processor_track_defaults_reject_negative_frames_but_trim_accepts_them() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES, -1);
+        assert_eq!(
+            registry.validate_draft(&draft),
+            Err(SettingsDraftError::InvalidValue(
+                DEFAULT_NEW_TRACK_PROCESSOR_FRAMES.id().to_owned()
+            ))
+        );
+
+        draft.set(
+            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
+            "automatic_plus_trim".to_owned(),
+        );
+        assert_eq!(registry.validate_draft(&draft), Ok(()));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3532,7 +3644,7 @@ mod tests {
         };
         let request_id = spec.creation_request_id.unwrap();
         let mut settings_actions = Vec::new();
-        widget.resolve_track_default_saves(&AppState::default(), &mut settings_actions);
+        widget.resolve_track_default_saves(&AppState::default(), &settings, &mut settings_actions);
         assert!(settings_actions.is_empty());
 
         let confirmed = AppState {
@@ -3542,10 +3654,34 @@ mod tests {
             }]),
             ..Default::default()
         };
-        widget.resolve_track_default_saves(&confirmed, &mut settings_actions);
-        let [SettingsAction::Save(draft)] = settings_actions.as_slice() else {
-            panic!("expected default save after confirmation");
+        let mut busy_settings = settings.clone();
+        busy_settings.persistence = SettingsPersistenceState::Saving;
+        widget.resolve_track_default_saves(&confirmed, &busy_settings, &mut settings_actions);
+        assert!(settings_actions.is_empty());
+        assert!(widget.pending_track_defaults.contains_key(&request_id));
+
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let rebased_settings = SettingsViewState {
+            active: Arc::new(registry.defaults(2)),
+            persistence: SettingsPersistenceState::Idle,
+            ..settings.clone()
         };
+        widget.resolve_track_default_saves(
+            &AppState::default(),
+            &rebased_settings,
+            &mut settings_actions,
+        );
+        let [SettingsAction::SaveTrackDefaults {
+            request_id: saved_request_id,
+            draft,
+        }] = settings_actions.as_slice()
+        else {
+            panic!("expected correlated default save after confirmation");
+        };
+        assert_eq!(*saved_request_id, request_id);
+        assert_eq!(draft.base_revision(), 2);
         assert_eq!(draft.get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS).unwrap(), 3);
         assert!(draft.get(DEFAULT_NEW_TRACK_MIDI).unwrap());
         assert_eq!(
@@ -3558,6 +3694,27 @@ mod tests {
             "automatic_plus_trim"
         );
         assert_eq!(draft.get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES).unwrap(), 128);
+
+        widget.notify_track_default_save_result(request_id, false);
+        assert!(widget.pending_track_defaults.contains_key(&request_id));
+        settings_actions.clear();
+        let latest_settings = SettingsViewState {
+            active: Arc::new(registry.defaults(3)),
+            ..rebased_settings
+        };
+        widget.resolve_track_default_saves(
+            &AppState::default(),
+            &latest_settings,
+            &mut settings_actions,
+        );
+        let [SettingsAction::SaveTrackDefaults { draft, .. }] = settings_actions.as_slice() else {
+            panic!("expected rejected default save to retry");
+        };
+        assert_eq!(draft.base_revision(), 3);
+
+        widget.notify_track_default_save_result(request_id, true);
+        assert!(widget.pending_track_defaults.is_empty());
+        assert!(widget.confirmed_track_defaults.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3575,8 +3732,9 @@ mod tests {
             ..Default::default()
         };
         let mut settings_actions = Vec::new();
-        widget.resolve_track_default_saves(&rejected, &mut settings_actions);
+        widget.resolve_track_default_saves(&rejected, &settings, &mut settings_actions);
         assert!(settings_actions.is_empty());
         assert!(widget.pending_track_defaults.is_empty());
+        assert!(widget.confirmed_track_defaults.is_empty());
     }
 }
