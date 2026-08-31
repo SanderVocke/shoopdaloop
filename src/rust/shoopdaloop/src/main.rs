@@ -361,6 +361,7 @@ enum StartupSessionAction {
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
+    about_open: bool,
     settings: SettingsManager,
     #[cfg(not(target_arch = "wasm32"))]
     pending_audio_settings: Option<PendingAudioSettings>,
@@ -462,6 +463,7 @@ impl UnifiedApp {
         Ok(Self {
             runtime,
             widget,
+            about_open: false,
             settings,
             #[cfg(not(target_arch = "wasm32"))]
             pending_audio_settings: None,
@@ -1140,12 +1142,14 @@ impl UnifiedApp {
         let response = self
             .widget
             .show(ui, &snapshot, &settings_state, script_paths);
+        self.about_open |= response.about_requested;
         for intent in response.app_actions {
             self.handle_ui_intent(intent);
         }
         for action in response.settings_actions {
             self.handle_settings_action(action);
         }
+        self.show_about_dialog(ui.ctx());
         self.show_file_drop_overlay(ui.ctx());
         self.show_session_url_dialogs(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
@@ -1164,6 +1168,27 @@ impl UnifiedApp {
             }
         }
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
+    }
+
+    fn show_about_dialog(&mut self, context: &egui::Context) {
+        if !self.about_open {
+            return;
+        }
+        egui::Window::new("About ShoopDaLoop")
+            .open(&mut self.about_open)
+            .resizable(false)
+            .show(context, |ui| {
+                ui.heading("ShoopDaLoop by Sander Vocke");
+                ui.separator();
+                ui.label(format!("Build: {}", env!("SHOOP_BUILD_KIND")));
+                if env!("SHOOP_BUILD_KIND") == "release" {
+                    ui.label(format!("Version: {}", env!("SHOOP_BUILD_VERSION")));
+                } else {
+                    ui.label(format!("Branch: {}", env!("SHOOP_BUILD_BRANCH")));
+                    ui.label(format!("Commit: {}", env!("SHOOP_BUILD_REVISION")));
+                }
+                ui.label(format!("Built: {}", env!("SHOOP_BUILD_DATE")));
+            });
     }
 
     #[cfg(not(target_arch = "wasm32"))]

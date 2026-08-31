@@ -1,7 +1,65 @@
 use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const SOURCE_TREE_MARKER: &str = "SHOOP_SRC_TREE";
+
+fn command_output(program: &str, arguments: &[&str], directory: &Path) -> Option<String> {
+    let output = Command::new(program)
+        .args(arguments)
+        .current_dir(directory)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn emit_build_identity() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let release_version = std::env::var("SHOOP_RELEASE_VERSION")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let revision = command_output("git", &["rev-parse", "--short=8", "HEAD"], &root)
+        .unwrap_or_else(|| "unknown".to_owned());
+    let branch = std::env::var("GITHUB_HEAD_REF")
+        .or_else(|_| std::env::var("GITHUB_REF_NAME"))
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| command_output("git", &["branch", "--show-current"], &root))
+        .unwrap_or_else(|| "unknown".to_owned());
+    let build_date = std::env::var("SHOOP_BUILD_DATE")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| command_output("date", &["-u", "+%Y-%m-%dT%H:%M:%SZ"], &root))
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| format!("Unix timestamp {}", duration.as_secs()))
+                .unwrap_or_else(|_| "unknown".to_owned())
+        });
+    let kind = if release_version.is_some() {
+        "release"
+    } else {
+        "development"
+    };
+    let version = release_version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned());
+
+    println!("cargo:rustc-env=SHOOP_BUILD_KIND={kind}");
+    println!("cargo:rustc-env=SHOOP_BUILD_VERSION={version}");
+    println!("cargo:rustc-env=SHOOP_BUILD_REVISION={revision}");
+    println!("cargo:rustc-env=SHOOP_BUILD_BRANCH={branch}");
+    println!("cargo:rustc-env=SHOOP_BUILD_DATE={build_date}");
+    println!("cargo:rerun-if-env-changed=SHOOP_RELEASE_VERSION");
+    println!("cargo:rerun-if-env-changed=SHOOP_BUILD_DATE");
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join(".git/HEAD").display()
+    );
+}
 
 fn profile_output_directory(out_directory: &Path) -> Option<&Path> {
     let build_directory = out_directory.parent()?.parent()?;
@@ -75,6 +133,7 @@ fn write_source_tree_marker() -> Result<(), String> {
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    emit_build_identity();
     if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
         return;
     }
