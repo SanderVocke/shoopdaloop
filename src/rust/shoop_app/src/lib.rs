@@ -913,6 +913,8 @@ struct LoopModel {
     auto_arm_active_plan_version: Option<u64>,
     auto_arm_active_sync_length: Option<u32>,
     auto_arm_active_source_lengths: BTreeMap<LoopId, u32>,
+    auto_arm_active_target_kinds: BTreeMap<LoopId, bool>,
+    auto_arm_latest_configured_plan: Option<AutoArmCompositePlan>,
     auto_arm_configured_plans: BTreeMap<u64, AutoArmCompositePlan>,
     active_composite_children: Vec<ActiveCompositeChildModel>,
     repeat_sync: bool,
@@ -924,6 +926,7 @@ struct AutoArmCompositePlan {
     composite: CompositeDocument,
     sync_length: u32,
     source_lengths: BTreeMap<LoopId, u32>,
+    target_kinds: BTreeMap<LoopId, bool>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -931,6 +934,7 @@ struct ActiveCompositeChildModel {
     id: LoopId,
     mode: LoopMode,
     cycle_offset: u32,
+    is_composite: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -962,6 +966,8 @@ fn clear_composite_runtime_state(model: &mut LoopModel) {
     model.auto_arm_active_plan_version = None;
     model.auto_arm_active_sync_length = None;
     model.auto_arm_active_source_lengths.clear();
+    model.auto_arm_active_target_kinds.clear();
+    model.auto_arm_latest_configured_plan = None;
     model.auto_arm_configured_plans.clear();
     model.active_composite_children.clear();
 }
@@ -1268,6 +1274,8 @@ impl ApplicationModel {
             auto_arm_active_plan_version: None,
             auto_arm_active_sync_length: None,
             auto_arm_active_source_lengths: BTreeMap::new(),
+            auto_arm_active_target_kinds: BTreeMap::new(),
+            auto_arm_latest_configured_plan: None,
             auto_arm_configured_plans: BTreeMap::new(),
             active_composite_children: Vec::new(),
             repeat_sync: false,
@@ -2473,6 +2481,8 @@ impl ApplicationModel {
                     model.auto_arm_active_plan_version = None;
                     model.auto_arm_active_sync_length = None;
                     model.auto_arm_active_source_lengths.clear();
+                    model.auto_arm_active_target_kinds.clear();
+                    model.auto_arm_latest_configured_plan = None;
                     model.auto_arm_configured_plans.clear();
                     model.active_composite_children.clear();
                 }
@@ -4671,6 +4681,8 @@ impl ApplicationModel {
                 auto_arm_active_plan_version: None,
                 auto_arm_active_sync_length: None,
                 auto_arm_active_source_lengths: BTreeMap::new(),
+                auto_arm_active_target_kinds: BTreeMap::new(),
+                auto_arm_latest_configured_plan: None,
                 auto_arm_configured_plans: BTreeMap::new(),
                 active_composite_children: Vec::new(),
                 repeat_sync: self.global.sync,
@@ -5092,6 +5104,8 @@ impl ApplicationModel {
         model.auto_arm_active_plan_version = None;
         model.auto_arm_active_sync_length = None;
         model.auto_arm_active_source_lengths.clear();
+        model.auto_arm_active_target_kinds.clear();
+        model.auto_arm_latest_configured_plan = None;
         model.auto_arm_configured_plans.clear();
         model.active_composite_children.clear();
         model.repeat_sync = source.repeat_sync;
@@ -5301,6 +5315,16 @@ impl ApplicationModel {
                     self.loops.get(&id).map(|source| (id, source.length))
                 })
                 .collect(),
+            target_kinds: composite
+                .instances
+                .iter()
+                .filter_map(|event| {
+                    let id = LoopId::from_raw(event.loop_id);
+                    self.loops
+                        .get(&id)
+                        .map(|source| (id, source.backend_composite.is_some()))
+                })
+                .collect(),
         }
     }
 
@@ -5310,10 +5334,47 @@ impl ApplicationModel {
         version: u64,
         composite: &CompositeDocument,
     ) {
-        let plan = self.auto_arm_composite_plan(composite);
-        if let Some(model) = self.loops.get_mut(&id) {
+        let edited_plan = self.auto_arm_composite_plan(composite);
+        let plans = self
+            .loops
+            .values()
+            .filter_map(|model| {
+                if model.id == id {
+                    return Some((model.id, edited_plan.clone()));
+                }
+                if model.backend_composite.is_none() {
+                    return None;
+                }
+                let latest = model.auto_arm_latest_configured_plan.as_ref();
+                let document = latest
+                    .map(|plan| &plan.composite)
+                    .or(model.composite.as_ref())?;
+                let mut plan = self.auto_arm_composite_plan(document);
+                if let Some(latest) = latest {
+                    plan.target_kinds.clone_from(&latest.target_kinds);
+                }
+                Some((model.id, plan))
+            })
+            .collect::<Vec<_>>();
+        for (plan_id, plan) in plans {
+            let model = self.loops.get_mut(&plan_id).unwrap();
+            if plan_id == id {
+                model.auto_arm_latest_configured_plan = Some(edited_plan.clone());
+            }
             model.auto_arm_configured_plans.insert(version, plan);
         }
+    }
+
+    fn auto_arm_target_is_composite(&self, composite_id: LoopId, target: LoopId) -> bool {
+        self.loops
+            .get(&composite_id)
+            .and_then(|model| model.auto_arm_active_target_kinds.get(&target))
+            .copied()
+            .unwrap_or_else(|| {
+                self.loops
+                    .get(&target)
+                    .is_some_and(|model| model.backend_composite.is_some())
+            })
     }
 
     fn scheduled_composite_occurrences(
@@ -5433,13 +5494,14 @@ impl ApplicationModel {
         }
         if let Some((desired, _)) = self.composite_desired_at(composite_id, mode, 0) {
             for (target, child) in desired {
+                let target_is_composite = self.auto_arm_target_is_composite(composite_id, target);
                 if external_capture_mode(child.mode) {
-                    if self.auto_arm_composite_document(target).is_none() {
-                        self.insert_capture_track(target, demanded);
-                    } else {
+                    if target_is_composite {
                         self.collect_composite_start_capture(target, child.mode, demanded, stack);
+                    } else {
+                        self.insert_capture_track(target, demanded);
                     }
-                } else if self.auto_arm_composite_document(target).is_some() {
+                } else if target_is_composite {
                     self.collect_composite_start_capture(target, child.mode, demanded, stack);
                 }
             }
@@ -5465,7 +5527,7 @@ impl ApplicationModel {
             let Some(model) = self.loops.get(&child.id) else {
                 continue;
             };
-            if self.auto_arm_composite_document(child.id).is_some() {
+            if child.is_composite {
                 if runnable_composite_mode(model.state.mode) {
                     self.collect_current_composite_capture(child.id, demanded, stack);
                 }
@@ -5521,7 +5583,7 @@ impl ApplicationModel {
             let Some(child) = self.loops.get(&target) else {
                 continue;
             };
-            if self.auto_arm_composite_document(target).is_none() {
+            if !self.auto_arm_target_is_composite(composite_id, target) {
                 if external_capture_mode(desired_child.mode) {
                     self.insert_capture_track(target, demanded);
                 }
@@ -5723,6 +5785,7 @@ impl ApplicationModel {
             model.auto_arm_active_plan_version = None;
             model.auto_arm_active_sync_length = None;
             model.auto_arm_active_source_lengths.clear();
+            model.auto_arm_active_target_kinds.clear();
             pending.remove(&id);
         }
         Ok(())
@@ -7358,6 +7421,11 @@ impl ApplicationModel {
                 Some((model.id, length))
             })
             .collect::<BTreeMap<_, _>>();
+        let auto_arm_runtime_target_kinds = self
+            .loops
+            .values()
+            .map(|model| (model.id, model.backend_composite.is_some()))
+            .collect::<BTreeMap<_, _>>();
         let auto_arm_runtime_sync_length = self
             .tracks
             .iter()
@@ -7381,8 +7449,12 @@ impl ApplicationModel {
                     model.auto_arm_active_composite = Some(plan.composite);
                     model.auto_arm_active_sync_length = Some(plan.sync_length);
                     model.auto_arm_active_source_lengths = plan.source_lengths;
+                    model.auto_arm_active_target_kinds = plan.target_kinds;
                 } else {
-                    model.auto_arm_active_composite.clone_from(&model.composite);
+                    let latest = model.auto_arm_latest_configured_plan.as_ref();
+                    model.auto_arm_active_composite = latest
+                        .map(|plan| plan.composite.clone())
+                        .or_else(|| model.composite.clone());
                     model.auto_arm_active_sync_length = auto_arm_runtime_sync_length;
                     model.auto_arm_active_source_lengths = model
                         .auto_arm_active_composite
@@ -7396,6 +7468,22 @@ impl ApplicationModel {
                                 .map(|length| (id, length))
                         })
                         .collect();
+                    model.auto_arm_active_target_kinds = latest
+                        .map(|plan| plan.target_kinds.clone())
+                        .unwrap_or_else(|| {
+                            model
+                                .auto_arm_active_composite
+                                .iter()
+                                .flat_map(|composite| &composite.instances)
+                                .filter_map(|event| {
+                                    let id = LoopId::from_raw(event.loop_id);
+                                    auto_arm_runtime_target_kinds
+                                        .get(&id)
+                                        .copied()
+                                        .map(|is_composite| (id, is_composite))
+                                })
+                                .collect()
+                        });
                 }
                 model
                     .auto_arm_configured_plans
@@ -7413,16 +7501,19 @@ impl ApplicationModel {
                 .active_children
                 .iter()
                 .filter_map(|child| {
-                    let id = match child.target {
-                        BackendCompositeTarget::Loop(id) => app_loop_by_backend.get(&id).copied(),
-                        BackendCompositeTarget::Composite(id) => {
-                            app_composite_by_backend.get(&id).copied()
+                    let (id, is_composite) = match child.target {
+                        BackendCompositeTarget::Loop(id) => {
+                            (app_loop_by_backend.get(&id).copied(), false)
                         }
-                    }?;
+                        BackendCompositeTarget::Composite(id) => {
+                            (app_composite_by_backend.get(&id).copied(), true)
+                        }
+                    };
                     Some(ActiveCompositeChildModel {
-                        id,
+                        id: id?,
                         mode: app_loop_mode(child.mode),
                         cycle_offset: child.cycle_offset,
+                        is_composite,
                     })
                 })
                 .collect();
@@ -8388,6 +8479,8 @@ impl ApplicationModel {
                         auto_arm_active_plan_version: None,
                         auto_arm_active_sync_length: None,
                         auto_arm_active_source_lengths: BTreeMap::new(),
+                        auto_arm_active_target_kinds: BTreeMap::new(),
+                        auto_arm_latest_configured_plan: None,
                         auto_arm_configured_plans: BTreeMap::new(),
                         active_composite_children: Vec::new(),
                         repeat_sync: bundle.document.global.sync,
@@ -10447,6 +10540,7 @@ mod tests {
                 id: first,
                 mode: LoopMode::Recording,
                 cycle_offset: 0,
+                is_composite: false,
             }];
         }
         assert_eq!(
@@ -10471,16 +10565,19 @@ mod tests {
                     id: second,
                     mode: LoopMode::Replacing,
                     cycle_offset: 0,
+                    is_composite: false,
                 },
                 ActiveCompositeChildModel {
                     id: same_track_peer,
                     mode: LoopMode::Replacing,
                     cycle_offset: 0,
+                    is_composite: false,
                 },
                 ActiveCompositeChildModel {
                     id: channel_free,
                     mode: LoopMode::Recording,
                     cycle_offset: 0,
+                    is_composite: false,
                 },
             ];
         }
@@ -10566,6 +10663,67 @@ mod tests {
             model.loops[&root].auto_arm_active_composite.as_ref(),
             Some(&plan_b)
         );
+
+        let peer = model.tracks[4].loops[0];
+        let peer_document = CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: second.raw(),
+                mode: Some("recording".to_owned()),
+                n_cycles: Some(1),
+            }],
+        };
+        model.loops.get_mut(&peer).unwrap().composite = Some(peer_document.clone());
+        model.loops.get_mut(&peer).unwrap().backend_composite =
+            Some(backend.create_composite_loop().unwrap());
+        let global_version = version_b + 1;
+        model.remember_auto_arm_composite_plan(root, global_version, &plan_b);
+        assert_eq!(
+            model.loops[&peer].auto_arm_configured_plans[&global_version].composite,
+            peer_document
+        );
+
+        let primitive_target_version = global_version + 1;
+        model.remember_auto_arm_composite_plan(root, primitive_target_version, &plan_a);
+        model.loops.get_mut(&first).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: Vec::new(),
+        });
+        model.loops.get_mut(&first).unwrap().backend_composite =
+            Some(backend.create_composite_loop().unwrap());
+        let unrelated_version = primitive_target_version + 1;
+        model.remember_auto_arm_composite_plan(peer, unrelated_version, &peer_document);
+        assert_eq!(
+            model.loops[&root].auto_arm_configured_plans[&unrelated_version].composite,
+            plan_a
+        );
+        let first_backend = model.loops[&first].backend_id;
+        let mut primitive_target_active = backend.poll().unwrap();
+        let state = primitive_target_active
+            .composites
+            .get_mut(&backend_composite)
+            .unwrap();
+        state.active_plan_version = unrelated_version;
+        state.pending_plan_version = None;
+        state.active_children = vec![shoop_backend::BackendActiveCompositeChild {
+            target: BackendCompositeTarget::Loop(first_backend),
+            mode: BackendLoopMode::Recording,
+            cycle_offset: 0,
+        }];
+        model.apply_backend_snapshot(primitive_target_active);
+        assert!(!model.auto_arm_target_is_composite(root, first));
+        assert!(!model.loops[&root].active_composite_children[0].is_composite);
+        {
+            let root_model = model.loops.get_mut(&root).unwrap();
+            root_model.state.mode = LoopMode::Playing;
+            root_model.state.composite_iteration = Some(0);
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track])
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -10618,6 +10776,7 @@ mod tests {
             root.state.composite_iteration = Some(0);
             root.auto_arm_active_sync_length = Some(10);
             root.auto_arm_active_source_lengths.insert(nested, 30);
+            root.auto_arm_active_target_kinds.insert(nested, true);
         }
         model.loops.get_mut(&sync).unwrap().length = 20;
         model.loops.get_mut(&nested).unwrap().length = 10;
@@ -10637,6 +10796,7 @@ mod tests {
                 id: nested,
                 mode: LoopMode::Recording,
                 cycle_offset: 1,
+                is_composite: true,
             }];
             let nested_model = model.loops.get_mut(&nested).unwrap();
             nested_model.state.mode = LoopMode::Recording;
@@ -10673,6 +10833,7 @@ mod tests {
                 id: nested,
                 mode: LoopMode::Playing,
                 cycle_offset: 0,
+                is_composite: true,
             }];
             let nested_model = model.loops.get_mut(&nested).unwrap();
             nested_model.state.mode = LoopMode::Playing;
@@ -14154,6 +14315,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 id: sources[2],
                 mode: LoopMode::Recording,
                 cycle_offset: 0,
+                is_composite: false,
             }];
         }
         assert_eq!(model.auto_arm_demanded_tracks(), BTreeSet::from([track_id]));
@@ -14171,6 +14333,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(target_model.auto_arm_active_plan_version, None);
         assert_eq!(target_model.auto_arm_active_sync_length, None);
         assert!(target_model.auto_arm_active_source_lengths.is_empty());
+        assert!(target_model.auto_arm_active_target_kinds.is_empty());
         assert!(target_model.active_composite_children.is_empty());
         assert!(model.auto_arm_demanded_tracks().is_empty());
     }
