@@ -2456,18 +2456,20 @@ impl ApplicationModel {
             ControlOperation::ClearLoops { loops } => {
                 for id in loops {
                     self.script_composition_playback.remove(&id);
-                    let model = self
+                    let existing = self
                         .loops
-                        .get_mut(&id)
+                        .get(&id)
                         .ok_or_else(|| format!("stale or unknown loop {id}"))?;
-                    if let Some(composite_id) = model.backend_composite {
-                        backend
-                            .remove_composite_loop(composite_id)
+                    let backend_composite = existing.backend_composite;
+                    let backend_loop = existing.backend_id;
+                    if let Some(composite_id) = backend_composite {
+                        self.remove_backend_composite(backend, composite_id)
                             .map_err(|error| format!("could not remove composite {id}: {error}"))?;
                     }
                     backend
-                        .clear_loop(model.backend_id)
+                        .clear_loop(backend_loop)
                         .map_err(|error| format!("could not clear loop {id}: {error}"))?;
+                    let model = self.loops.get_mut(&id).unwrap();
                     model.length = 0;
                     model.state.empty = true;
                     model.state.composite_kind = shoop_app_api::CompositeKind::None;
@@ -2605,9 +2607,10 @@ impl ApplicationModel {
                     },
                     None => {
                         if let Some(id) = previous_backend_composite {
-                            backend.remove_composite_loop(id).map_err(|error| {
-                                format!("could not remove composite loop: {error}")
-                            })?;
+                            self.remove_backend_composite(backend, id)
+                                .map_err(|error| {
+                                    format!("could not remove composite loop: {error}")
+                                })?;
                         }
                         None
                     }
@@ -4480,8 +4483,7 @@ impl ApplicationModel {
         }
         for loop_id in &loop_ids {
             if let Some(composite_id) = self.loops[loop_id].backend_composite {
-                backend
-                    .remove_composite_loop(composite_id)
+                self.remove_backend_composite(backend, composite_id)
                     .map_err(|error| format!("could not remove track composite: {error}"))?;
             }
         }
@@ -4878,7 +4880,7 @@ impl ApplicationModel {
                     self.create_and_configure_backend_composite(backend, loop_id, &composite)?;
                 if let Err(error) = backend.clear_loop(backend_loop_id) {
                     if let Some(id) = backend_composite {
-                        let _ = backend.remove_composite_loop(id);
+                        let _ = self.remove_backend_composite(backend, id);
                     }
                     return Err(format!("could not clear loop {loop_id}: {error}"));
                 }
@@ -5000,7 +5002,7 @@ impl ApplicationModel {
                 self.create_and_configure_backend_composite(backend, target, composite)?;
             if let Err(error) = backend.clear_loop(target_backend) {
                 if let Some(id) = created {
-                    let _ = backend.remove_composite_loop(id);
+                    let _ = self.remove_backend_composite(backend, id);
                 }
                 return Err(format!(
                     "could not clear duplicate target {target}: {error}"
@@ -5020,8 +5022,7 @@ impl ApplicationModel {
             return Ok(());
         };
         if let Some(id) = previous_backend_composite {
-            backend
-                .remove_composite_loop(id)
+            self.remove_backend_composite(backend, id)
                 .map_err(|error| format!("could not replace duplicate target: {error}"))?;
         }
 
@@ -5075,8 +5076,7 @@ impl ApplicationModel {
             .set_loop_balance(target_backend, balance)
             .map_err(|error| format!("could not duplicate loop balance: {error}"))?;
         if let Some(id) = previous_backend_composite {
-            backend
-                .remove_composite_loop(id)
+            self.remove_backend_composite(backend, id)
                 .map_err(|error| format!("could not replace duplicate target: {error}"))?;
         }
 
@@ -5377,6 +5377,46 @@ impl ApplicationModel {
             })
     }
 
+    fn remember_auto_arm_registry_plan(&mut self, version: u64, removed: BackendCompositeId) {
+        let plans = self
+            .loops
+            .values()
+            .filter(|model| model.backend_composite.is_some_and(|id| id != removed))
+            .filter_map(|model| {
+                let latest = model.auto_arm_latest_configured_plan.as_ref();
+                let document = latest
+                    .map(|plan| &plan.composite)
+                    .or(model.composite.as_ref())?;
+                let mut plan = self.auto_arm_composite_plan(document);
+                if let Some(latest) = latest {
+                    plan.target_kinds.clone_from(&latest.target_kinds);
+                }
+                Some((model.id, plan))
+            })
+            .collect::<Vec<_>>();
+        for (id, plan) in plans {
+            self.loops
+                .get_mut(&id)
+                .unwrap()
+                .auto_arm_configured_plans
+                .insert(version, plan);
+        }
+    }
+
+    fn remove_backend_composite(
+        &mut self,
+        backend: &mut dyn Backend,
+        composite_id: BackendCompositeId,
+    ) -> Result<(), String> {
+        if let Some(version) = backend
+            .remove_composite_loop(composite_id)
+            .map_err(|error| error.to_string())?
+        {
+            self.remember_auto_arm_registry_plan(version, composite_id);
+        }
+        Ok(())
+    }
+
     fn scheduled_composite_occurrences(
         &self,
         composite_id: LoopId,
@@ -5480,6 +5520,36 @@ impl ApplicationModel {
         {
             demanded.insert(loop_.track_id);
         }
+    }
+
+    fn collect_starting_composite_parents(
+        &self,
+        composite_id: LoopId,
+        mode: LoopMode,
+        controlling_parents: &mut BTreeMap<LoopId, BTreeSet<LoopId>>,
+        stack: &mut BTreeSet<LoopId>,
+    ) {
+        if !runnable_composite_mode(mode) || !stack.insert(composite_id) {
+            return;
+        }
+        if let Some((desired, _)) = self.composite_desired_at(composite_id, mode, 0) {
+            for (target, child) in desired {
+                if !self.auto_arm_target_is_composite(composite_id, target) {
+                    continue;
+                }
+                controlling_parents
+                    .entry(target)
+                    .or_default()
+                    .insert(composite_id);
+                self.collect_starting_composite_parents(
+                    target,
+                    child.mode,
+                    controlling_parents,
+                    stack,
+                );
+            }
+        }
+        stack.remove(&composite_id);
     }
 
     fn collect_composite_start_capture(
@@ -5630,13 +5700,20 @@ impl ApplicationModel {
             else {
                 continue;
             };
-            for target in desired.keys().copied() {
-                if self.auto_arm_target_is_composite(parent.id, target) {
-                    controlling_parents
-                        .entry(target)
-                        .or_default()
-                        .insert(parent.id);
+            for (target, child) in desired {
+                if !self.auto_arm_target_is_composite(parent.id, target) {
+                    continue;
                 }
+                controlling_parents
+                    .entry(target)
+                    .or_default()
+                    .insert(parent.id);
+                self.collect_starting_composite_parents(
+                    target,
+                    child.mode,
+                    &mut controlling_parents,
+                    &mut BTreeSet::new(),
+                );
             }
         }
         let mut roots = BTreeSet::new();
@@ -5756,7 +5833,7 @@ impl ApplicationModel {
         let version = match backend.configure_composite_loop(id, &config) {
             Ok(version) => version,
             Err(error) => {
-                let _ = backend.remove_composite_loop(id);
+                let _ = self.remove_backend_composite(backend, id);
                 return Err(format!("could not configure composite loop: {error}"));
             }
         };
@@ -5974,8 +6051,7 @@ impl ApplicationModel {
             },
             None => {
                 if let Some(id) = previous_backend_composite {
-                    backend
-                        .remove_composite_loop(id)
+                    self.remove_backend_composite(backend, id)
                         .map_err(|error| format!("could not remove composite loop: {error}"))?;
                 }
                 None
@@ -6234,15 +6310,14 @@ impl ApplicationModel {
                 let version = match backend.configure_composite_loop(id, &config) {
                     Ok(version) => version,
                     Err(error) => {
-                        let _ = backend.remove_composite_loop(id);
+                        let _ = self.remove_backend_composite(backend, id);
                         return Err(format!("could not configure composite loop: {error}"));
                     }
                 };
                 (Some(id), Some(version))
             }
             (Some(id), None) => {
-                backend
-                    .remove_composite_loop(id)
+                self.remove_backend_composite(backend, id)
                     .map_err(|error| format!("could not remove composite loop: {error}"))?;
                 (None, None)
             }
@@ -10900,6 +10975,42 @@ mod tests {
             let nested_model = model.loops.get_mut(&nested).unwrap();
             nested_model.state.mode = LoopMode::Stopped;
             nested_model.composite.as_mut().unwrap().instances[0].start_cycle = 0;
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([second_track])
+        );
+
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances[0]
+            .loop_id = first.raw();
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .auto_arm_active_target_kinds = BTreeMap::from([(first, true)]);
+        model.loops.get_mut(&first).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: nested.raw(),
+                mode: None,
+                n_cycles: Some(1),
+            }],
+        });
+        {
+            let first_model = model.loops.get_mut(&first).unwrap();
+            first_model.state.mode = LoopMode::Stopped;
+            first_model
+                .auto_arm_active_target_kinds
+                .insert(nested, true);
         }
         assert_eq!(
             model.auto_arm_demanded_tracks(),
