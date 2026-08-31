@@ -923,6 +923,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             }
             validate_finite(port.gain, "bus port gain")?;
         }
+        let mut channel_output_ids = BTreeSet::new();
         for channel in &bus.channels {
             require_id(channel.id, "bus channel")?;
             if !bus_channel_ids.insert(channel.id) {
@@ -930,6 +931,11 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     "duplicate bus channel ID {}",
                     channel.id
                 )));
+            }
+            if !channel_output_ids.insert(channel.output_port_id) {
+                return Err(SessionError::Validation(
+                    "bus channels share one output port".to_owned(),
+                ));
             }
             if !bus
                 .ports
