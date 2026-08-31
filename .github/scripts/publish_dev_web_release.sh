@@ -18,18 +18,22 @@ if [[ ! $SOURCE_RUN_ID =~ ^[0-9]+$ || ! $ASSET_NAME =~ ^[A-Za-z0-9._-]+$ ]]; the
     echo "Invalid run ID or asset name" >&2
     exit 1
 fi
+if [[ -n ${LEGACY_ASSET_NAME:-} && ! $LEGACY_ASSET_NAME =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "Invalid legacy asset name" >&2
+    exit 1
+fi
 
 if [[ -d $input_path ]]; then
-    mapfile -d '' candidates < <(find "$input_path" -type f -name "$ASSET_NAME" -print0)
+    mapfile -d '' candidates < <(find "$input_path" -type f -name '*.html' -print0)
     if (( ${#candidates[@]} != 1 )); then
-        echo "Expected exactly one $ASSET_NAME in $input_path, found ${#candidates[@]}" >&2
+        echo "Expected exactly one HTML file in $input_path, found ${#candidates[@]}" >&2
         exit 1
     fi
     source_file=${candidates[0]}
-elif [[ -f $input_path && $(basename "$input_path") == "$ASSET_NAME" ]]; then
+elif [[ -f $input_path && $input_path == *.html ]]; then
     source_file=$input_path
 else
-    echo "Artifact input does not contain $ASSET_NAME: $input_path" >&2
+    echo "Artifact input is not an HTML file: $input_path" >&2
     exit 1
 fi
 
@@ -189,7 +193,7 @@ new_promoted=true
 published_at=$(date --utc +'%Y-%m-%dT%H:%M:%SZ')
 short_sha=${CANDIDATE_SHA:0:12}
 cat >"$notes_file" <<EOF
-Rolling standalone web build from the latest \`master\` commit that produced the release HTML artifact. This is not an official release. The \`$RELEASE_TAG\` tag is a stable release locator; the commit below identifies the attached build.
+Rolling standalone web development preview from the latest \`master\` commit that produced the optimized HTML artifact. This is not an official release. The \`$RELEASE_TAG\` tag is a stable preview locator; the commit below identifies the attached build.
 
 - Commit: [$short_sha](https://github.com/$GITHUB_REPOSITORY/commit/$CANDIDATE_SHA)
 - Workflow run: [$SOURCE_RUN_ID]($SOURCE_RUN_URL)
@@ -211,6 +215,12 @@ trap - ERR INT TERM
 backup_id=$(asset_id "$backup_name")
 if [[ -n $backup_id ]] && ! delete_asset "$backup_id"; then
     echo "Warning: could not remove backup asset $backup_name" >&2
+fi
+if [[ -n ${LEGACY_ASSET_NAME:-} ]]; then
+    legacy_id=$(asset_id "$LEGACY_ASSET_NAME")
+    if [[ -n $legacy_id ]] && ! delete_asset "$legacy_id"; then
+        echo "Warning: could not remove legacy asset $LEGACY_ASSET_NAME" >&2
+    fi
 fi
 rm -rf "$staging_dir"
 

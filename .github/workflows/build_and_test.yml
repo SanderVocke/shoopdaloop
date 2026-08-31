@@ -547,6 +547,7 @@ jobs:
         if: matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
+          name: ${{ matrix.html_artifact }}
           path: ${{ env.SHOOP_HTML_ARTIFACT }}
           archive: false
 
