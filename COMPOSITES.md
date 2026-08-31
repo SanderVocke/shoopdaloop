@@ -101,17 +101,19 @@ Immediate transitions and seeks use authoritative reconciliation. Delayed transi
 
 ### Stage 5: End-to-End Validation
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run the repository's Rust test-usage check if Rust tests were changed.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the documented browser smoke checks when browsers are available.
-- [ ] Run `python3 scripts/run_wasm_tests.py --profile ci --runtime node --package shoop_engine` and also use the Chrome runtime when available.
-- [ ] Review the final diff for unrelated changes and verify every immutable acceptance criterion has direct test or inspection evidence.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run the repository's Rust test-usage check if Rust tests were changed.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the documented browser smoke checks when browsers are available.
+- [x] Run `python3 scripts/run_wasm_tests.py --profile ci --runtime node --package shoop_engine` and also use the Chrome runtime when available.
+- [x] Review the final diff for unrelated changes and verify every immutable acceptance criterion has direct test or inspection evidence.
 
 **Verification**
 
-- [ ] Record every command and outcome, including any environment-only limitation.
-- [ ] Confirm native and WebAssembly behavior uses the same authoritative runtime implementation.
-- [ ] Commit the completed validation milestone with this plan updated to reflect actual progress.
+- [x] Record every command and outcome, including any environment-only limitation.
+- [x] Confirm native and WebAssembly behavior uses the same authoritative runtime implementation.
+- [x] Commit the completed validation milestone with this plan updated to reflect actual progress.
+
+Native validation passed 1,529 tests with four environment skips. The Node WebAssembly harness passed all 794 `shoop_engine` tests. The application Wasm check and release AudioWorklet build passed. Chrome and packaged-browser smoke tests were not run because no Chrome or Chromium executable is available in this environment; the Node harness covers the shared composite runtime implementation.
