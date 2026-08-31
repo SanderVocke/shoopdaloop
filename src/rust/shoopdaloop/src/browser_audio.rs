@@ -55,6 +55,7 @@ struct PhysicalAudioDriverState {
     context_state_handler: Option<Closure<dyn FnMut(WebEvent)>>,
     track_ended_handlers: Vec<Closure<dyn FnMut(WebEvent)>>,
     input_mode: Option<AudioInputMode>,
+    pending_input_mode: Option<AudioInputMode>,
     repaint_context: Option<eframe::egui::Context>,
     trace: Option<crate::browser_trace::RealmTraceState>,
     completed_trace_segments: Vec<shoop_tracing::BrowserRealmData>,
@@ -100,6 +101,7 @@ impl BrowserAudioController {
             context_state_handler: None,
             track_ended_handlers: Vec::new(),
             input_mode: None,
+            pending_input_mode: None,
             repaint_context: None,
             trace: None,
             completed_trace_segments: Vec::new(),
@@ -215,8 +217,11 @@ impl BrowserAudioController {
 
     pub fn start_tracing(&self, engine_detail: bool) -> Result<bool> {
         let mut inner = self.driver.state.borrow_mut();
-        if inner.trace.is_some() {
+        if inner.trace.as_ref().is_some_and(|trace| !trace.stopped()) {
             return Ok(true);
+        }
+        if let Some(trace) = inner.trace.take() {
+            inner.completed_trace_segments.push(trace.finish()?);
         }
         if inner.node.is_none() {
             return Ok(false);
@@ -263,7 +268,12 @@ impl BrowserAudioController {
     }
 
     pub fn has_active_trace(&self) -> bool {
-        self.driver.state.borrow().trace.is_some()
+        self.driver
+            .state
+            .borrow()
+            .trace
+            .as_ref()
+            .is_some_and(|trace| !trace.stopped())
     }
 
     pub fn trace_stopped(&self) -> bool {
@@ -276,17 +286,23 @@ impl BrowserAudioController {
     }
 
     pub fn discard_tracing(&self) {
-        let mut inner = self.driver.state.borrow_mut();
-        if let (Some(trace), Some(node)) = (inner.trace.as_ref(), inner.node.as_ref()) {
-            if let (Ok(port), Ok(message)) = (node.port(), trace.abort_message()) {
-                let _ = port.post_message(&message);
+        let pending_input_mode = {
+            let mut inner = self.driver.state.borrow_mut();
+            if let (Some(trace), Some(node)) = (inner.trace.as_ref(), inner.node.as_ref()) {
+                if let (Ok(port), Ok(message)) = (node.port(), trace.abort_message()) {
+                    let _ = port.post_message(&message);
+                }
             }
+            if let Some(mut trace) = inner.trace.take() {
+                trace.abort();
+            }
+            inner.completed_trace_segments.clear();
+            inner.trace_failure = None;
+            inner.pending_input_mode.take()
+        };
+        if let Some(input_mode) = pending_input_mode {
+            begin_enable(Rc::clone(&self.driver.state), input_mode);
         }
-        if let Some(mut trace) = inner.trace.take() {
-            trace.abort();
-        }
-        inner.completed_trace_segments.clear();
-        inner.trace_failure = None;
     }
 
     pub fn request_stop_tracing(&self) -> Result<()> {
@@ -507,6 +523,33 @@ fn begin_enable(inner: Rc<RefCell<PhysicalAudioDriverState>>, input_mode: AudioI
     {
         return;
     }
+    if microphone_upgrade {
+        let mut state = inner.borrow_mut();
+        if state.pending_input_mode.is_some() {
+            return;
+        }
+        if let Some(trace) = state.trace.as_ref().filter(|trace| !trace.stopped()) {
+            let result = state
+                .node
+                .as_ref()
+                .ok_or_else(|| anyhow!("AudioWorklet node disappeared during tracing"))
+                .and_then(|node| {
+                    let message = trace.stop_message()?;
+                    node.port()
+                        .map_err(|error| {
+                            anyhow!("could not access AudioWorklet trace port: {error:?}")
+                        })?
+                        .post_message(&message)
+                        .map_err(|error| anyhow!("could not stop AudioWorklet tracing: {error:?}"))
+                });
+            if let Err(error) = result {
+                state.transport.fail(error.to_string());
+                return;
+            }
+            state.pending_input_mode = Some(input_mode);
+            return;
+        }
+    }
     let Some(window) = web_sys::window() else {
         inner
             .borrow()
@@ -665,6 +708,7 @@ async fn start_audio_graph(
     let trace_port = port.clone();
     let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
         if let Some(inner) = weak.upgrade() {
+            let state = Rc::clone(&inner);
             let mut inner = inner.borrow_mut();
             if let Some(json) = event.data().as_string() {
                 let _ = inner.transport.receive(generation, &json);
@@ -700,6 +744,15 @@ async fn start_audio_graph(
             }
             if let Some(context) = &inner.repaint_context {
                 context.request_repaint();
+            }
+            let pending_input_mode = if inner.trace.as_ref().is_some_and(|trace| trace.stopped()) {
+                inner.pending_input_mode.take()
+            } else {
+                None
+            };
+            drop(inner);
+            if let Some(input_mode) = pending_input_mode {
+                begin_enable(state, input_mode);
             }
         }
     }) as Box<dyn FnMut(_)>);
@@ -921,14 +974,27 @@ fn stop_stream(stream: &MediaStream) {
 }
 
 fn finalize_active_trace_segment(inner: &mut PhysicalAudioDriverState) {
-    if let (Some(trace), Some(node)) = (inner.trace.as_ref(), inner.node.as_ref()) {
+    let Some(trace) = inner.trace.take() else {
+        return;
+    };
+    if trace.stopped() {
+        match trace.finish() {
+            Ok(segment) => inner.completed_trace_segments.push(segment),
+            Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    "frontend.browser_trace.audio_segment_finalize_failed"
+                );
+                inner.trace_failure = Some(error.to_string());
+            }
+        }
+        return;
+    }
+    if let Some(node) = inner.node.as_ref() {
         if let (Ok(port), Ok(message)) = (node.port(), trace.abort_message()) {
             let _ = port.post_message(&message);
         }
     }
-    let Some(trace) = inner.trace.take() else {
-        return;
-    };
     let error = format!(
         "AudioWorklet graph ended before trace completion ({})",
         trace.label()
