@@ -12,6 +12,8 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
+#[cfg(test)]
+use shoop_app_api::TrackLatencySpec;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, AudioChannelMappingState,
     AudioChannelSelectionState, AudioDriverConfig, AudioDriverRuntimeState, AudioDriverState,
@@ -4248,6 +4250,44 @@ impl ApplicationModel {
                 initial_loops: slot_count,
             })
             .map_err(|error| format!("could not create track: {error}"))?;
+        let latency_pending = spec.latency != Default::default();
+        if latency_pending {
+            let backend_adjustment = match spec.latency.adjustment {
+                RecordingOffsetAdjustmentState::Automatic => {
+                    BackendRecordingOffsetAdjustment::Automatic
+                }
+                RecordingOffsetAdjustmentState::ManualOverride => {
+                    BackendRecordingOffsetAdjustment::ManualOverride(spec.latency.manual_frames)
+                }
+                RecordingOffsetAdjustmentState::AutomaticPlusTrim => {
+                    BackendRecordingOffsetAdjustment::AutomaticPlusTrim(spec.latency.manual_frames)
+                }
+            };
+            let backend_processor_adjustment = match spec.latency.processor_adjustment {
+                ProcessorLatencyAdjustmentState::Automatic => {
+                    BackendProcessorLatencyAdjustment::Automatic
+                }
+                ProcessorLatencyAdjustmentState::ManualOverride => {
+                    BackendProcessorLatencyAdjustment::ManualOverride
+                }
+                ProcessorLatencyAdjustmentState::AutomaticPlusTrim => {
+                    BackendProcessorLatencyAdjustment::AutomaticPlusTrim
+                }
+            };
+            if let Err(error) = backend.set_track_latency(
+                created.track_id,
+                backend_adjustment,
+                backend_processor_adjustment,
+                spec.latency.processor_manual_frames,
+            ) {
+                return match backend.remove_track(created.track_id) {
+                    Ok(()) => Err(format!("could not set initial track latency: {error}")),
+                    Err(rollback) => Err(format!(
+                        "could not set initial track latency: {error}; could not remove the new track: {rollback}"
+                    )),
+                };
+            }
+        }
         let sync_backend = self.global.sync.then(|| self.sync_backend_loop()).flatten();
         for backend_loop in &created.loops {
             backend
@@ -4284,7 +4324,20 @@ impl ApplicationModel {
             loops: loop_ids,
             port_ids,
             controls: Default::default(),
-            latency: Default::default(),
+            latency: if latency_pending {
+                TrackLatencyState {
+                    adjustment: spec.latency.adjustment,
+                    manual_frames: spec.latency.manual_frames,
+                    effective_offset_frames: None,
+                    processor_adjustment: spec.latency.processor_adjustment,
+                    processor_manual_frames: spec.latency.processor_manual_frames,
+                    effective_processor_advance_frames: None,
+                    pending: true,
+                    ..Default::default()
+                }
+            } else {
+                TrackLatencyState::default()
+            },
         });
         Ok(())
     }
@@ -10251,6 +10304,12 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
                 },
+                latency: TrackLatencySpec {
+                    adjustment: RecordingOffsetAdjustmentState::ManualOverride,
+                    manual_frames: -5,
+                    processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
+                    processor_manual_frames: 11,
+                },
             }))
             .unwrap();
         let snapshot = wait_for(&runtime.handle(), |snapshot| snapshot.tracks.len() == 2);
@@ -10281,18 +10340,12 @@ mod tests {
         });
         assert_eq!(snapshot.tracks[1].topology, track.topology);
         assert!(snapshot.tracks[1].loops[8].has_audio);
-        runtime
-            .handle()
-            .dispatch(AppIntent::SetTrackLatency {
-                track_id: track.id,
-                adjustment: RecordingOffsetAdjustmentState::ManualOverride,
-                manual_frames: -5,
-                processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
-                processor_manual_frames: 11,
-            })
-            .unwrap();
         let _ = wait_for(&runtime.handle(), |snapshot| {
             snapshot.tracks[1].latency.effective_offset_frames == Some(-5)
+                && snapshot.tracks[1]
+                    .latency
+                    .effective_processor_advance_frames
+                    == Some(11)
         });
         runtime
             .handle()
@@ -10360,6 +10413,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::OXISYNTH,
                     ),
                 },
+                latency: TrackLatencySpec::default(),
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -10616,6 +10670,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
                 },
+                latency: TrackLatencySpec::default(),
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -10751,6 +10806,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
                 },
+                latency: TrackLatencySpec::default(),
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -14716,6 +14772,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
                 },
+                latency: TrackLatencySpec::default(),
             }),
         );
         let first = model.tracks[1].id;
@@ -17422,6 +17479,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
                 },
+                latency: TrackLatencySpec::default(),
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);

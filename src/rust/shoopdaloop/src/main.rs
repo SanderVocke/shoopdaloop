@@ -3486,6 +3486,7 @@ impl BrowserSelfTest {
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
                         },
+                        latency: shoop_egui::TrackLatencySpec::default(),
                     }))
                 })
                 .map(|()| Self::WaitForWebMidiTrack),
@@ -3966,6 +3967,7 @@ impl BrowserSelfTest {
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
                         },
+                        latency: shoop_egui::TrackLatencySpec::default(),
                     }))
                 })
                 .map(|()| Self::WaitForTrack),

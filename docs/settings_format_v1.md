@@ -55,7 +55,11 @@ The file is canonical UTF-8 JSON with a trailing newline:
       }
     ],
     "tracks.new.default_audio_channels": 2,
-    "tracks.new.default_midi": false
+    "tracks.new.default_midi": false,
+    "tracks.new.default_processor_adjustment": "manual",
+    "tracks.new.default_processor_frames": 0,
+    "tracks.new.default_recording_adjustment": "manual",
+    "tracks.new.default_recording_frames": 0
   }
 }
 ```
@@ -88,6 +92,10 @@ Version 1 registers the cross-target appearance scale, track defaults, and dynam
 | `appearance.ui_scale_factor` | number | `1.0`, or `1.25` when the detected screen's shortest side is at most 800 UI points | Explicit Apply and save; allowed range is 0.75–2.0 |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
+| `tracks.new.default_processor_adjustment` | string choice | `"manual"` | Next Add Track dialog opened; allowed values are `"automatic"`, `"manual"`, and `"automatic_plus_trim"` |
+| `tracks.new.default_processor_frames` | `i32` | `0` | Next Add Track dialog opened |
+| `tracks.new.default_recording_adjustment` | string choice | `"manual"` | Next Add Track dialog opened; allowed values are `"automatic"`, `"manual"`, and `"automatic_plus_trim"` |
+| `tracks.new.default_recording_frames` | `i32` | `0` | Next Add Track dialog opened |
 | `scripting.builtins.location` | string | source-tree `resources/builtins` when an exact executable-sibling `SHOOP_SRC_TREE` marker is present; otherwise packaged `builtins` beside the executable on Linux/Windows, `Contents/Resources/builtins` on macOS, and external `builtins` root in hosted browser builds | Startup, successful Save, or explicit rescan |
 | `scripting.builtins.scripts` | ordered string/toggle list | `[]` | After a successful Save |
 | `scripting.user_scripts` | ordered string/toggle list | `[]` | After a successful Save |
@@ -116,7 +124,7 @@ An ordered string/toggle list is a JSON array. Each entry is exactly an object w
 
 The UI scale multiplies egui's monitor-native pixels-per-point value and is applied at startup. Moving its slider only changes the settings draft; applying it requires the explicit **Apply and save** action.
 
-The track defaults do not change an existing track, an already-open Add Track draft, or session data. Built-in identities are normalized slash-separated paths, never basenames. New discoveries are disabled until explicitly enabled. The former keyboard/MK1 boolean keys migrate once into `scripting.builtins.scripts` when present and are removed from the active document model. Dynamic toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state.
+The track defaults do not change an existing track, an already-open Add Track draft, or session data. The Add Track **make default** checkbox saves its channel, MIDI, recording-alignment, and processor-latency values into these defaults when the track is created. Built-in identities are normalized slash-separated paths, never basenames. New discoveries are disabled until explicitly enabled. The former keyboard/MK1 boolean keys migrate once into `scripting.builtins.scripts` when present and are removed from the active document model. Dynamic toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state.
 
 ## Version checks and migration
 

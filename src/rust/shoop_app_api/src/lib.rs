@@ -1337,10 +1337,19 @@ pub struct AppSnapshot {
 
 pub type AppState = AppSnapshot;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TrackLatencySpec {
+    pub adjustment: RecordingOffsetAdjustmentState,
+    pub manual_frames: i32,
+    pub processor_adjustment: ProcessorLatencyAdjustmentState,
+    pub processor_manual_frames: i32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrackSpec {
     pub name: String,
     pub topology: TrackSpecTopology,
+    pub latency: TrackLatencySpec,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1434,6 +1443,7 @@ impl From<DirectTrackSpec> for TrackSpec {
                 audio_channels: value.audio_channels,
                 midi: value.midi,
             },
+            latency: TrackLatencySpec::default(),
         }
     }
 }
@@ -2058,6 +2068,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
             },
+            latency: TrackLatencySpec::default(),
         };
         assert_eq!(
             spec.validate(&[]),

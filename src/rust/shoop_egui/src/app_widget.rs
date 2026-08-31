@@ -5,7 +5,8 @@ use crate::{
     is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
     AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
     DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
-    SettingsAction, SettingsDialog, TracingStatus, TracingStopped, TrackProcessorDescriptor,
+    ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState, SettingsAction,
+    SettingsDialog, TracingStatus, TracingStopped, TrackLatencySpec, TrackProcessorDescriptor,
     TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
@@ -23,6 +24,14 @@ const SIDEBAR_SECTION_GAP: f32 = 8.0;
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
 pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+pub const DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT: SettingKey<String> =
+    SettingKey::new("tracks.new.default_recording_adjustment");
+pub const DEFAULT_NEW_TRACK_RECORDING_FRAMES: SettingKey<i32> =
+    SettingKey::new("tracks.new.default_recording_frames");
+pub const DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT: SettingKey<String> =
+    SettingKey::new("tracks.new.default_processor_adjustment");
+pub const DEFAULT_NEW_TRACK_PROCESSOR_FRAMES: SettingKey<i32> =
+    SettingKey::new("tracks.new.default_processor_frames");
 pub const UI_SCALE_FACTOR: SettingKey<f64> = SettingKey::new("appearance.ui_scale_factor");
 pub const TOUCH_MODE: SettingKey<bool> = SettingKey::new("appearance.touch_mode");
 pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
@@ -52,6 +61,12 @@ pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
     SettingKey::new("audio.cpal.capture_ring_frames");
 pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
+
+const LATENCY_ADJUSTMENT_CHOICES: &[(&str, &str)] = &[
+    ("automatic", "Automatic"),
+    ("manual", "Manual"),
+    ("automatic_plus_trim", "Automatic + trim"),
+];
 
 pub fn register_settings(
     builder: &mut SettingsRegistryBuilder,
@@ -93,6 +108,60 @@ pub fn register_settings_with_appearance_defaults(
         )
         .category_order(10)
         .setting_order(20)
+        .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
+            "manual".to_owned(),
+            "Track defaults",
+            "Recording alignment",
+            "Automatic or manual recording alignment used for new tracks.",
+        )
+        .category_order(10)
+        .setting_order(30)
+        .effect(SettingEffect::NextUse)
+        .editor(SettingEditor::StringChoice {
+            choices: LATENCY_ADJUSTMENT_CHOICES,
+        }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_RECORDING_FRAMES,
+            0,
+            "Track defaults",
+            "Recording offset or trim",
+            "Manual recording alignment value used for new tracks, in frames.",
+        )
+        .category_order(10)
+        .setting_order(40)
+        .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
+            "manual".to_owned(),
+            "Track defaults",
+            "Processor latency",
+            "Automatic or manual processor latency compensation used for new tracks.",
+        )
+        .category_order(10)
+        .setting_order(50)
+        .effect(SettingEffect::NextUse)
+        .editor(SettingEditor::StringChoice {
+            choices: LATENCY_ADJUSTMENT_CHOICES,
+        }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_PROCESSOR_FRAMES,
+            0,
+            "Track defaults",
+            "Processor latency or trim",
+            "Manual processor latency value used for new tracks, in frames.",
+        )
+        .category_order(10)
+        .setting_order(60)
         .effect(SettingEffect::NextUse),
     )?;
     builder.register(
@@ -590,6 +659,56 @@ enum AddTrackMode {
     DryWet,
 }
 
+fn recording_adjustment_value(value: RecordingOffsetAdjustmentState) -> &'static str {
+    match value {
+        RecordingOffsetAdjustmentState::Automatic => "automatic",
+        RecordingOffsetAdjustmentState::ManualOverride => "manual",
+        RecordingOffsetAdjustmentState::AutomaticPlusTrim => "automatic_plus_trim",
+    }
+}
+
+fn recording_adjustment_from_value(value: &str) -> Option<RecordingOffsetAdjustmentState> {
+    match value {
+        "automatic" => Some(RecordingOffsetAdjustmentState::Automatic),
+        "manual" => Some(RecordingOffsetAdjustmentState::ManualOverride),
+        "automatic_plus_trim" => Some(RecordingOffsetAdjustmentState::AutomaticPlusTrim),
+        _ => None,
+    }
+}
+
+fn processor_adjustment_value(value: ProcessorLatencyAdjustmentState) -> &'static str {
+    match value {
+        ProcessorLatencyAdjustmentState::Automatic => "automatic",
+        ProcessorLatencyAdjustmentState::ManualOverride => "manual",
+        ProcessorLatencyAdjustmentState::AutomaticPlusTrim => "automatic_plus_trim",
+    }
+}
+
+fn processor_adjustment_from_value(value: &str) -> Option<ProcessorLatencyAdjustmentState> {
+    match value {
+        "automatic" => Some(ProcessorLatencyAdjustmentState::Automatic),
+        "manual" => Some(ProcessorLatencyAdjustmentState::ManualOverride),
+        "automatic_plus_trim" => Some(ProcessorLatencyAdjustmentState::AutomaticPlusTrim),
+        _ => None,
+    }
+}
+
+fn recording_adjustment_label(value: RecordingOffsetAdjustmentState) -> &'static str {
+    match value {
+        RecordingOffsetAdjustmentState::Automatic => "Automatic",
+        RecordingOffsetAdjustmentState::ManualOverride => "Manual",
+        RecordingOffsetAdjustmentState::AutomaticPlusTrim => "Automatic + trim",
+    }
+}
+
+fn processor_adjustment_label(value: ProcessorLatencyAdjustmentState) -> &'static str {
+    match value {
+        ProcessorLatencyAdjustmentState::Automatic => "Automatic",
+        ProcessorLatencyAdjustmentState::ManualOverride => "Manual",
+        ProcessorLatencyAdjustmentState::AutomaticPlusTrim => "Automatic + trim",
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BottomPane {
     Details,
@@ -627,6 +746,11 @@ pub struct AppWidget {
     add_track_midi: bool,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
+    add_track_recording_adjustment: RecordingOffsetAdjustmentState,
+    add_track_recording_frames: i32,
+    add_track_processor_adjustment: ProcessorLatencyAdjustmentState,
+    add_track_processor_frames: i32,
+    add_track_make_default: bool,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
@@ -652,6 +776,12 @@ pub struct AppWidget {
     add_track_cancel_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_midi_id: Option<egui::Id>,
+    #[cfg(test)]
+    add_track_recording_frames_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    add_track_processor_frames_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    add_track_make_default_rect: Option<egui::Rect>,
     #[cfg(test)]
     details_toggle_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -692,6 +822,11 @@ impl AppWidget {
             add_track_midi: false,
             add_track_dry_midi: false,
             add_track_processor: None,
+            add_track_recording_adjustment: RecordingOffsetAdjustmentState::default(),
+            add_track_recording_frames: 0,
+            add_track_processor_adjustment: ProcessorLatencyAdjustmentState::default(),
+            add_track_processor_frames: 0,
+            add_track_make_default: false,
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
@@ -717,6 +852,12 @@ impl AppWidget {
             add_track_cancel_rect: None,
             #[cfg(test)]
             add_track_midi_id: None,
+            #[cfg(test)]
+            add_track_recording_frames_rect: None,
+            #[cfg(test)]
+            add_track_processor_frames_rect: None,
+            #[cfg(test)]
+            add_track_make_default_rect: None,
             #[cfg(test)]
             details_toggle_rect: None,
             #[cfg(test)]
@@ -1012,7 +1153,13 @@ impl AppWidget {
                 actions.extend(response.intents);
             });
 
-        self.show_add_track_dialog(ui.ctx(), &state.track_processors, &mut actions);
+        self.show_add_track_dialog(
+            ui.ctx(),
+            &state.track_processors,
+            settings_state,
+            &mut actions,
+            &mut settings_actions,
+        );
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
@@ -1191,6 +1338,29 @@ impl AppWidget {
             .expect("registered MIDI setting must retain its type");
         self.add_track_dry_midi = self.add_track_midi;
         self.add_track_processor = None;
+        self.add_track_recording_adjustment = recording_adjustment_from_value(
+            &settings_state
+                .active
+                .get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT)
+                .expect("registered recording-adjustment setting must retain its type"),
+        )
+        .expect("registered recording-adjustment setting must retain a valid choice");
+        self.add_track_recording_frames = settings_state
+            .active
+            .get(DEFAULT_NEW_TRACK_RECORDING_FRAMES)
+            .expect("registered recording-frame setting must retain its type");
+        self.add_track_processor_adjustment = processor_adjustment_from_value(
+            &settings_state
+                .active
+                .get(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT)
+                .expect("registered processor-adjustment setting must retain its type"),
+        )
+        .expect("registered processor-adjustment setting must retain a valid choice");
+        self.add_track_processor_frames = settings_state
+            .active
+            .get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES)
+            .expect("registered processor-frame setting must retain its type");
+        self.add_track_make_default = false;
         self.add_track_open = true;
     }
 
@@ -1493,7 +1663,9 @@ impl AppWidget {
         &mut self,
         context: &egui::Context,
         processors: &[TrackProcessorDescriptor],
+        settings_state: &SettingsViewState,
         actions: &mut Vec<AppAction>,
+        settings_actions: &mut Vec<SettingsAction>,
     ) {
         if !self.add_track_open {
             return;
@@ -1644,7 +1816,102 @@ impl AppWidget {
                                 });
                         });
                         ui.end_row();
+
+                        ui.label("Recording alignment:");
+                        egui::ComboBox::from_id_salt("add_track_recording_adjustment")
+                            .selected_text(recording_adjustment_label(
+                                self.add_track_recording_adjustment,
+                            ))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.add_track_recording_adjustment,
+                                    RecordingOffsetAdjustmentState::Automatic,
+                                    "Automatic",
+                                );
+                                ui.selectable_value(
+                                    &mut self.add_track_recording_adjustment,
+                                    RecordingOffsetAdjustmentState::ManualOverride,
+                                    "Manual",
+                                );
+                                ui.selectable_value(
+                                    &mut self.add_track_recording_adjustment,
+                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim,
+                                    "Automatic + trim",
+                                );
+                            });
+                        ui.end_row();
+
+                        ui.label(
+                            if self.add_track_recording_adjustment
+                                == RecordingOffsetAdjustmentState::AutomaticPlusTrim
+                            {
+                                "Recording trim:"
+                            } else {
+                                "Recording offset:"
+                            },
+                        );
+                        let _recording_frames = ui.add_enabled(
+                            self.add_track_recording_adjustment
+                                != RecordingOffsetAdjustmentState::Automatic,
+                            egui::DragValue::new(&mut self.add_track_recording_frames)
+                                .suffix(" frames"),
+                        );
+                        #[cfg(test)]
+                        {
+                            self.add_track_recording_frames_rect = Some(_recording_frames.rect);
+                        }
+                        ui.end_row();
+
+                        ui.label("Processor latency:");
+                        egui::ComboBox::from_id_salt("add_track_processor_adjustment")
+                            .selected_text(processor_adjustment_label(
+                                self.add_track_processor_adjustment,
+                            ))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.add_track_processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::Automatic,
+                                    "Automatic",
+                                );
+                                ui.selectable_value(
+                                    &mut self.add_track_processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::ManualOverride,
+                                    "Manual",
+                                );
+                                ui.selectable_value(
+                                    &mut self.add_track_processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
+                                    "Automatic + trim",
+                                );
+                            });
+                        ui.end_row();
+
+                        ui.label(
+                            if self.add_track_processor_adjustment
+                                == ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+                            {
+                                "Processor trim:"
+                            } else {
+                                "Processor latency value:"
+                            },
+                        );
+                        let _processor_frames = ui.add_enabled(
+                            self.add_track_processor_adjustment
+                                != ProcessorLatencyAdjustmentState::Automatic,
+                            egui::DragValue::new(&mut self.add_track_processor_frames)
+                                .suffix(" frames"),
+                        );
+                        #[cfg(test)]
+                        {
+                            self.add_track_processor_frames_rect = Some(_processor_frames.rect);
+                        }
+                        ui.end_row();
                     });
+                let _make_default = ui.checkbox(&mut self.add_track_make_default, "make default");
+                #[cfg(test)]
+                {
+                    self.add_track_make_default_rect = Some(_make_default.rect);
+                }
                 let spec = self.add_track_spec();
                 let validation = spec
                     .as_ref()
@@ -1687,8 +1954,11 @@ impl AppWidget {
                 });
             });
         if accepted {
-            if let Some(action) = self.accept_add_track(processors) {
+            if let Some((action, defaults)) =
+                self.accept_add_track_with_defaults(processors, settings_state)
+            {
                 actions.push(action);
+                settings_actions.extend(defaults);
                 open = false;
             }
         }
@@ -1719,7 +1989,44 @@ impl AppWidget {
         Some(TrackSpec {
             name: self.add_track_name.trim().to_owned(),
             topology,
+            latency: TrackLatencySpec {
+                adjustment: self.add_track_recording_adjustment,
+                manual_frames: self.add_track_recording_frames,
+                processor_adjustment: self.add_track_processor_adjustment,
+                processor_manual_frames: self.add_track_processor_frames,
+            },
         })
+    }
+
+    fn add_track_defaults_draft(&self, settings_state: &SettingsViewState) -> SettingsDraft {
+        let mut draft = SettingsDraft::from_snapshot(&settings_state.active);
+        draft.set(
+            DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
+            self.add_track_audio_channels,
+        );
+        let midi = match self.add_track_mode {
+            AddTrackMode::Regular => self.add_track_midi,
+            AddTrackMode::Trigger => false,
+            AddTrackMode::DryWet => self.add_track_dry_midi,
+        };
+        draft.set(DEFAULT_NEW_TRACK_MIDI, midi);
+        draft.set(
+            DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
+            recording_adjustment_value(self.add_track_recording_adjustment).to_owned(),
+        );
+        draft.set(
+            DEFAULT_NEW_TRACK_RECORDING_FRAMES,
+            self.add_track_recording_frames,
+        );
+        draft.set(
+            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
+            processor_adjustment_value(self.add_track_processor_adjustment).to_owned(),
+        );
+        draft.set(
+            DEFAULT_NEW_TRACK_PROCESSOR_FRAMES,
+            self.add_track_processor_frames,
+        );
+        draft
     }
 
     fn accept_add_track(&mut self, processors: &[TrackProcessorDescriptor]) -> Option<AppAction> {
@@ -1727,6 +2034,18 @@ impl AppWidget {
         spec.validate(processors).ok()?;
         self.add_track_open = false;
         Some(AppAction::AddTrackWithTopology(spec))
+    }
+
+    fn accept_add_track_with_defaults(
+        &mut self,
+        processors: &[TrackProcessorDescriptor],
+        settings_state: &SettingsViewState,
+    ) -> Option<(AppAction, Option<SettingsAction>)> {
+        let action = self.accept_add_track(processors)?;
+        let defaults = self
+            .add_track_make_default
+            .then(|| SettingsAction::Save(self.add_track_defaults_draft(settings_state)));
+        Some((action, defaults))
     }
 
     fn cancel_add_track(&mut self) {
@@ -2669,8 +2988,15 @@ mod tests {
         widget.add_track_name = "New Track".to_owned();
         widget.add_track_audio_channels = 4;
         widget.add_track_midi = true;
+        widget.add_track_recording_adjustment = RecordingOffsetAdjustmentState::AutomaticPlusTrim;
+        widget.add_track_recording_frames = -12;
+        widget.add_track_processor_adjustment = ProcessorLatencyAdjustmentState::ManualOverride;
+        widget.add_track_processor_frames = 256;
         frame(&context, &mut widget, &state, Vec::new());
         assert!(widget.add_track_accept_rect.is_some());
+        assert!(widget.add_track_recording_frames_rect.is_some());
+        assert!(widget.add_track_processor_frames_rect.is_some());
+        assert!(widget.add_track_make_default_rect.is_some());
         assert_eq!(
             widget.accept_add_track(&[]),
             Some(AppAction::AddTrackWithTopology(TrackSpec {
@@ -2678,6 +3004,12 @@ mod tests {
                 topology: TrackSpecTopology::Direct {
                     audio_channels: 4,
                     midi: true,
+                },
+                latency: TrackLatencySpec {
+                    adjustment: RecordingOffsetAdjustmentState::AutomaticPlusTrim,
+                    manual_frames: -12,
+                    processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
+                    processor_manual_frames: 256,
                 },
             }))
         );
@@ -2719,6 +3051,7 @@ mod tests {
                     audio_channels: 0,
                     midi: false,
                 },
+                latency: TrackLatencySpec::default(),
             }))
         );
     }
@@ -2776,6 +3109,7 @@ mod tests {
                     dry_midi: true,
                     processor_type: processor.id,
                 },
+                latency: TrackLatencySpec::default(),
             }))
         );
     }
@@ -3047,6 +3381,16 @@ mod tests {
         let mut draft = SettingsDraft::from_snapshot(&initial);
         draft.set(DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
         draft.set(DEFAULT_NEW_TRACK_MIDI, true);
+        draft.set(
+            DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
+            "automatic_plus_trim".to_owned(),
+        );
+        draft.set(DEFAULT_NEW_TRACK_RECORDING_FRAMES, -24);
+        draft.set(
+            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
+            "automatic".to_owned(),
+        );
+        draft.set(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES, 480);
         let document = registry
             .document_from_draft(
                 &shoop_settings::SettingsDocument::empty("test"),
@@ -3066,6 +3410,17 @@ mod tests {
         assert_eq!(widget.add_track_name, "Track 3");
         assert_eq!(widget.add_track_audio_channels, 6);
         assert!(widget.add_track_midi);
+        assert_eq!(
+            widget.add_track_recording_adjustment,
+            RecordingOffsetAdjustmentState::AutomaticPlusTrim
+        );
+        assert_eq!(widget.add_track_recording_frames, -24);
+        assert_eq!(
+            widget.add_track_processor_adjustment,
+            ProcessorLatencyAdjustmentState::Automatic
+        );
+        assert_eq!(widget.add_track_processor_frames, 480);
+        assert!(!widget.add_track_make_default);
 
         let replacement = registry.defaults(6);
         assert_eq!(
@@ -3074,5 +3429,55 @@ mod tests {
         );
         assert_eq!(widget.add_track_audio_channels, 6);
         assert!(widget.add_track_midi);
+        assert_eq!(widget.add_track_recording_frames, -24);
+        assert_eq!(widget.add_track_processor_frames, 480);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn add_track_make_default_saves_all_track_defaults_on_acceptance() {
+        let settings = settings_state();
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Saved defaults".to_owned();
+        widget.add_track_mode = AddTrackMode::DryWet;
+        widget.add_track_audio_channels = 3;
+        widget.add_track_dry_midi = true;
+        widget.add_track_processor = Some(TrackProcessorTypeId::new("processor"));
+        widget.add_track_recording_adjustment = RecordingOffsetAdjustmentState::Automatic;
+        widget.add_track_recording_frames = -9;
+        widget.add_track_processor_adjustment = ProcessorLatencyAdjustmentState::AutomaticPlusTrim;
+        widget.add_track_processor_frames = 128;
+        widget.add_track_make_default = true;
+        let processor = TrackProcessorDescriptor {
+            id: TrackProcessorTypeId::new("processor"),
+            label: "Processor".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: crate::TrackProcessorConstraints {
+                midi: crate::TrackProcessorMidiPolicy::Optional,
+                ..Default::default()
+            },
+            features: Default::default(),
+            editor: None,
+        };
+
+        let (_, Some(SettingsAction::Save(draft))) = widget
+            .accept_add_track_with_defaults(&[processor], &settings)
+            .unwrap()
+        else {
+            panic!("expected track creation and default save");
+        };
+        assert_eq!(draft.get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS).unwrap(), 3);
+        assert!(draft.get(DEFAULT_NEW_TRACK_MIDI).unwrap());
+        assert_eq!(
+            draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).unwrap(),
+            "automatic"
+        );
+        assert_eq!(draft.get(DEFAULT_NEW_TRACK_RECORDING_FRAMES).unwrap(), -9);
+        assert_eq!(
+            draft.get(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT).unwrap(),
+            "automatic_plus_trim"
+        );
+        assert_eq!(draft.get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES).unwrap(), 128);
     }
 }
