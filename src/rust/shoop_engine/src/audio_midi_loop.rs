@@ -354,6 +354,13 @@ impl AudioMidiLoop {
         n_cycles_delay: Option<u32>,
         to_sync_cycle: Option<u32>,
     ) {
+        let immediately = (self.loop_.sync_source().is_none()
+            && self.loop_.mode() != LoopMode::Playing)
+            || n_cycles_delay.is_none()
+            || to_sync_cycle.is_some();
+        if immediately && mode != self.active_latency_mode {
+            self.latch_latency_for_mode(mode);
+        }
         self.loop_
             .plan_transition(mode, n_cycles_delay, to_sync_cycle);
         self.resync_poi();

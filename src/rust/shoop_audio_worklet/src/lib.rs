@@ -1544,6 +1544,76 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn immediate_worklet_play_repeats_before_its_sync_source() {
+        let mut host = WorkletHost::new(1_000, 8).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1, 2],
+                    port_name_base: "unsynced".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 0,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (sequence, loop_id, length) in [(2, 1, 10), (3, 2, 4)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetLoopLength { loop_id, length },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::SetLoopSyncSource {
+                    loop_id: 2,
+                    source: Some(1),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (sequence, loop_id) in [(5, 1), (6, 2)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::TransitionLoop {
+                        loop_id,
+                        mode: WireLoopMode::Playing,
+                        cycles_delay: None,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+
+        assert!(host.process(0, 0, 4));
+        let Event::Snapshot(snapshot) = command(&mut host, 7, Command::Poll).event else {
+            panic!("poll did not return a snapshot");
+        };
+        let sync = snapshot.loops.iter().find(|loop_| loop_.id == 1).unwrap();
+        let follower = snapshot.loops.iter().find(|loop_| loop_.id == 2).unwrap();
+        assert_eq!(sync.position, 4);
+        assert_eq!(follower.mode, WireLoopMode::Playing);
+        assert_eq!(follower.position, 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn worklet_applies_zero_and_nonzero_loop_smoothing_values() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(

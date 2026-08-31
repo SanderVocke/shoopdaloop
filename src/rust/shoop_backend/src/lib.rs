@@ -4827,15 +4827,10 @@ impl Backend for EngineBackend {
         ) {
             self.prepare_recording_storage(loop_id, mode == BackendLoopMode::Replacing)?;
         }
-        if let Some(delay) = cycles_delay {
-            self.session
-                .loop_mut(engine_loop)
-                .ok_or_else(|| anyhow!("missing engine loop"))?
-                .plan_transition(to_engine_mode(mode), Some(delay), None);
-        } else {
-            self.session
-                .set_loop_mode(engine_loop, to_engine_mode(mode))?;
-        }
+        self.session
+            .loop_mut(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .plan_transition(to_engine_mode(mode), cycles_delay, None);
         Ok(())
     }
 

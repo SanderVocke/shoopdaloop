@@ -132,7 +132,16 @@ Run all commands in the environment selected by `.agents/info/build.md`; on Nix/
 - [x] Confirm `git status` contains only intended source, test, documentation, and plan updates.
 - [x] Commit the final validated state if validation required any follow-up changes.
 
-Completed evidence: formatting and the warning-denying workspace build passed; the test-usage and closed tracing-inventory checks passed; the complete CI-profile workspace suite passed 1,623 tests with four permitted host-facility skips. The acceptance-criteria audit found direct focused or integration coverage for every behavioral requirement, and the final diff contains only the plan, primitive engine/session/application implementation and tests, and Lua contract documentation.
+Completed evidence: formatting and the warning-denying workspace build passed; the test-usage and closed tracing-inventory checks passed; the complete CI-profile workspace suite passed 1,623 tests with four permitted host-facility skips. The acceptance-criteria audit found direct focused or integration coverage for every behavioral requirement, and the final diff contains only the plan, primitive engine/session/backend/application/worklet implementation and tests, and Lua contract documentation.
+
+## Review follow-up
+
+- [x] Route unaligned immediate backend and worklet commands through the same latch-aware planned-transition path.
+- [x] Preserve immediate latency latching when that path applies synchronously.
+- [x] Add a worklet command-path regression proving a four-frame primitive wraps before its ten-frame sync source.
+- [x] Re-run native, WebAssembly, formatting, warning, and policy validation before pushing the review update.
+
+Review evidence: the complete CI-profile workspace suite passed 1,624 tests with four permitted host-facility skips, and the focused Node WebAssembly worklet regression passed.
 
 ## Execution contract
 

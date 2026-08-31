@@ -4227,16 +4227,12 @@ impl Loop {
             let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
                 return;
             };
-            if !immediate {
-                if let Some(l) = s.loop_mut(idx) {
-                    l.plan_transition(
-                        to_mode.into(),
-                        (maybe_cycles_delay >= 0).then_some(maybe_cycles_delay as u32),
-                        (maybe_to_sync_at_cycle >= 0).then_some(maybe_to_sync_at_cycle as u32),
-                    );
-                }
-            } else {
-                let _ = s.set_loop_mode(idx, to_mode.into());
+            if let Some(l) = s.loop_mut(idx) {
+                l.plan_transition(
+                    to_mode.into(),
+                    (maybe_cycles_delay >= 0).then_some(maybe_cycles_delay as u32),
+                    (maybe_to_sync_at_cycle >= 0).then_some(maybe_to_sync_at_cycle as u32),
+                );
             }
         })?;
         if immediate {
