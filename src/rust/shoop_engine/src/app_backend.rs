@@ -4291,6 +4291,32 @@ impl Loop {
         result
     }
 
+    pub fn has_planned_latency_transition(&self) -> Result<bool> {
+        let control = Arc::clone(&self.control);
+        let outcome = Arc::new(Mutex::new(None));
+        let command_outcome = Arc::clone(&outcome);
+        let sequence = self
+            .shared
+            .send_control(move |session: &mut engine::Session| {
+                let result = control
+                    .ready_id()
+                    .map(ObjectIdentity::index)
+                    .and_then(|index| session.loop_(index))
+                    .map(engine::AudioMidiLoop::has_planned_latency_transition);
+                *command_outcome
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = result;
+            })?;
+        self.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)?;
+        let result = outcome
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+            .ok_or_else(|| anyhow!("loop is unavailable"));
+        result
+    }
+
     pub fn has_unsettled_latency_postroll(&self) -> Result<bool> {
         let control = Arc::clone(&self.control);
         let outcome = Arc::new(Mutex::new(None));

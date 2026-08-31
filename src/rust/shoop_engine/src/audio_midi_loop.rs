@@ -247,6 +247,22 @@ impl AudioMidiLoop {
         })
     }
 
+    pub fn has_planned_latency_transition(&self) -> bool {
+        (0..self.loop_.n_planned_transitions()).any(|index| {
+            self.loop_
+                .planned_transition_mode(index)
+                .is_some_and(|mode| {
+                    matches!(
+                        mode,
+                        LoopMode::Recording
+                            | LoopMode::Replacing
+                            | LoopMode::PlayingDryThroughWet
+                            | LoopMode::RecordingDryIntoWet
+                    )
+                })
+        })
+    }
+
     pub const fn pending_latency(&self) -> Option<PreparedLatency> {
         self.pending_latency
     }

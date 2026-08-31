@@ -1696,6 +1696,23 @@ impl NativeRuntime {
         Ok(false)
     }
 
+    fn track_has_armed_latency_transition(&self, track_id: BackendTrackId) -> Result<bool> {
+        let track = self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
+        for loop_id in &track.loops {
+            let loop_ = self
+                .loops
+                .get(loop_id)
+                .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+            if loop_.handle.has_planned_latency_transition()? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     fn mark_unresolved_automatic_recording_latency(
         &mut self,
         track_id: BackendTrackId,
@@ -1785,9 +1802,9 @@ impl NativeRuntime {
         processor_adjustment: BackendProcessorLatencyAdjustment,
         processor_manual_frames: i32,
     ) -> Result<()> {
-        if self.track_has_armed_recording(track_id)? {
+        if self.track_has_armed_latency_transition(track_id)? {
             return Err(anyhow!(
-                "cannot change recording offset while an operation is armed; cancel it first"
+                "cannot change track latency while an operation is armed; cancel it first"
             ));
         }
         self.resolve_track_latency(
@@ -4091,6 +4108,62 @@ mod tests {
                 .latency
                 .effective_offset_frames,
             Some(1)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_freezes_latency_while_dry_wet_playback_is_armed() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "native-armed-dry-wet-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                5,
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, Some(2))
+            .unwrap();
+
+        assert!(backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                9,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("operation is armed"));
+        assert_eq!(
+            backend.poll().unwrap().tracks[&created.track_id]
+                .latency
+                .effective_processor_advance_frames,
+            Some(5)
         );
     }
 

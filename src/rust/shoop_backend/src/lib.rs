@@ -4159,9 +4159,9 @@ impl Backend for EngineBackend {
                 .session
                 .loop_(self.engine_loop_index(*loop_id)?)
                 .ok_or_else(|| anyhow!("missing engine loop"))?;
-            if loop_.has_planned_recording_transition() {
+            if loop_.has_planned_latency_transition() {
                 return Err(anyhow!(
-                    "cannot change recording offset while an operation is armed; cancel it first"
+                    "cannot change track latency while an operation is armed; cancel it first"
                 ));
             }
         }
@@ -7067,13 +7067,14 @@ impl Backend for FakeBackend {
                         mode,
                         BackendLoopMode::Recording
                             | BackendLoopMode::Replacing
+                            | BackendLoopMode::PlayingDryThroughWet
                             | BackendLoopMode::RecordingDryIntoWet
                     )
                 })
             })
         }) {
             return Err(anyhow!(
-                "cannot change recording offset while an operation is armed; cancel it first"
+                "cannot change track latency while an operation is armed; cancel it first"
             ));
         }
         let track = self
@@ -9327,6 +9328,56 @@ mod tests {
         );
     }
 
+    fn armed_dry_wet_playback_latency_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "armed-dry-wet-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                5,
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, Some(2))
+            .unwrap();
+
+        let error = backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                9,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("operation is armed"));
+        assert_eq!(
+            backend.poll().unwrap().tracks[&created.track_id]
+                .latency
+                .effective_processor_advance_frames,
+            Some(5)
+        );
+    }
+
     fn armed_recording_length_edit_contract(backend: &mut dyn Backend) {
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -10379,6 +10430,13 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_freezes_latency_while_dry_wet_playback_is_armed() {
+        armed_dry_wet_playback_latency_contract(
+            &mut EngineBackend::new_dummy(48_000, 256).unwrap(),
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_and_engine_backends_reject_length_edits_while_recording_is_armed() {
         armed_recording_length_edit_contract(&mut FakeBackend::default());
         armed_recording_length_edit_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
@@ -10468,6 +10526,19 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("recording operation is armed"));
+
+        backend.loops.get_mut(&loop_id).unwrap().next_mode =
+            Some(BackendLoopMode::PlayingDryThroughWet);
+        assert!(backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                1,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("operation is armed"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
