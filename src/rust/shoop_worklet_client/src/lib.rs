@@ -1466,7 +1466,9 @@ impl Backend for RemoteWorkletBackend {
         self.submit(Command::RemoveComposite {
             composite_id: composite_id.raw(),
         })?;
-        self.reserved_composites.remove(&composite_id);
+        if self.reserved_composites.remove(&composite_id) {
+            self.next_composite_plan_version = self.next_composite_plan_version.saturating_add(1);
+        }
         Ok(())
     }
 
@@ -3746,5 +3748,23 @@ mod tests {
         );
         backend.poll().unwrap();
         assert!(backend.is_quiescent());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn remote_composite_plan_versions_include_removals() {
+        let (mut backend, _control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        let config = BackendCompositeConfig {
+            kind: BackendCompositeKind::Script,
+            sync_source: BackendLoopId::from_raw(1),
+            timelines: Vec::new(),
+        };
+        let first = backend.create_composite_loop().unwrap();
+        assert_eq!(backend.configure_composite_loop(first, &config).unwrap(), 1);
+        backend.remove_composite_loop(first).unwrap();
+        let second = backend.create_composite_loop().unwrap();
+        assert_eq!(
+            backend.configure_composite_loop(second, &config).unwrap(),
+            3
+        );
     }
 }

@@ -7450,7 +7450,9 @@ impl ApplicationModel {
                     model.auto_arm_active_sync_length = Some(plan.sync_length);
                     model.auto_arm_active_source_lengths = plan.source_lengths;
                     model.auto_arm_active_target_kinds = plan.target_kinds;
-                } else {
+                } else if state.pending_plan_version.is_none()
+                    || model.auto_arm_active_composite.is_none()
+                {
                     let latest = model.auto_arm_latest_configured_plan.as_ref();
                     model.auto_arm_active_composite = latest
                         .map(|plan| plan.composite.clone())
