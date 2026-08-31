@@ -752,6 +752,13 @@ impl UnifiedApp {
             self.tracing_stop_started = None;
         }
         if let Err(error) = self.tracing.poll() {
+            self.runtime.cancel_tracing_request();
+            if let Err(discard_error) = self.tracing.discard_active() {
+                tracing::error!(
+                    error = %discard_error,
+                    "frontend.browser_trace.window_storage_failure_cleanup_failed"
+                );
+            }
             self.settings.report_action_error(error.to_string());
         }
         if let Err(error) = self.runtime.poll_tracing() {

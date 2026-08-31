@@ -21,6 +21,7 @@ const WINDOW_REALM_ID: u32 = 1;
 const WINDOW_CLOCK_ID: u32 = 101;
 const WINDOW_TICKS_PER_SECOND: u64 = 1_000_000_000;
 const WINDOW_BATCH_RECORDS: usize = 16_384;
+const MAX_WINDOW_TRACE_BYTES: usize = 512 * 1024 * 1024;
 
 static BROWSER_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
 static WASM_TEST_PANIC_HOOK: Once = Once::new();
@@ -289,10 +290,18 @@ fn drain(state: &mut BrowserState) -> Result<(), String> {
         let Some(batch) = batch else {
             break;
         };
+        let next_len = state
+            .records
+            .len()
+            .checked_add(batch.len())
+            .ok_or_else(|| "browser Window trace storage size overflowed".to_owned())?;
+        if next_len > MAX_WINDOW_TRACE_BYTES {
+            return Err("browser Window trace storage quota exhausted".to_owned());
+        }
         state
             .records
             .try_reserve(batch.len())
-            .map_err(|_| "browser trace storage quota exhausted".to_owned())?;
+            .map_err(|_| "browser Window trace storage allocation failed".to_owned())?;
         state.records.extend_from_slice(&batch);
     }
     Ok(())

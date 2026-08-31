@@ -252,7 +252,6 @@ impl BrowserAudioController {
             .post_message(&message)
             .map_err(|error| anyhow!("could not start AudioWorklet tracing: {error:?}"))?;
         inner.trace = Some(trace);
-        inner.trace_failure = None;
         Ok(true)
     }
 
