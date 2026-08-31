@@ -5501,11 +5501,50 @@ impl ApplicationModel {
     }
 
     fn auto_arm_demanded_tracks(&self) -> BTreeSet<TrackId> {
-        let mut demanded = BTreeSet::new();
-        for model in self.loops.values().filter(|model| {
+        let active_parents = self
+            .loops
+            .values()
+            .filter(|model| runnable_composite_mode(model.state.mode))
+            .flat_map(|parent| {
+                parent
+                    .active_composite_children
+                    .iter()
+                    .map(move |child| (child.id, parent.id))
+            })
+            .fold(
+                BTreeMap::<LoopId, BTreeSet<LoopId>>::new(),
+                |mut parents, (child, parent)| {
+                    parents.entry(child).or_default().insert(parent);
+                    parents
+                },
+            );
+        let mut roots = BTreeSet::new();
+        for script in self.loops.values().filter(|model| {
             self.auto_arm_composite_document(model.id)
                 .is_some_and(|composite| composite.kind == CompositeKindDocument::Script)
         }) {
+            let mut pending = vec![script.id];
+            let mut visited = BTreeSet::new();
+            while let Some(id) = pending.pop() {
+                if !visited.insert(id) {
+                    continue;
+                }
+                match active_parents.get(&id) {
+                    Some(parents) if !parents.is_empty() => {
+                        pending.extend(parents.iter().copied());
+                    }
+                    _ => {
+                        roots.insert(id);
+                    }
+                }
+            }
+        }
+
+        let mut demanded = BTreeSet::new();
+        for id in roots {
+            let Some(model) = self.loops.get(&id) else {
+                continue;
+            };
             let mut stack = BTreeSet::new();
             if runnable_composite_mode(model.state.mode) {
                 self.collect_current_composite_capture(model.id, &mut demanded, &mut stack);
@@ -10550,6 +10589,26 @@ mod tests {
             model.auto_arm_demanded_tracks(),
             BTreeSet::from([second_track])
         );
+
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances
+            .truncate(1);
+        model
+            .loops
+            .get_mut(&nested)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances[0]
+            .start_cycle = 1;
+        assert!(model.auto_arm_demanded_tracks().is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
