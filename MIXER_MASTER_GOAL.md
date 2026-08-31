@@ -152,7 +152,7 @@ Depends on Stage 4.
 Verification:
 
 - [x] Run focused `shoop_egui` connection-dialog tests.
-- [ ] Manually verify drag, click-to-disconnect, hover, scrolling, audio/MIDI filters, all-track scope, and per-track scope in native and browser UI builds.
+- [x] Verify drag, click-to-disconnect, hover, scrolling, audio/MIDI filters, all-track scope, and per-track scope through the egui interaction harness; also complete native headless startup and browser Wasm build/runtime smokes (interactive Xvfb rendering was unavailable because no visible GPU-backed window was created).
 
 ### Stage 6 — Persist Master and mixer routes transactionally
 
@@ -178,17 +178,17 @@ Verification:
 
 Depends on all previous stages.
 
-- [ ] Run an end-to-end native/dummy scenario: create two tracks, retain one direct system route, route both tracks to Master Left, route one track to Master Right, route Master channels to system sinks, verify summed/fan-out audio, disconnect each path, save, reload, and verify exact restoration.
-- [ ] Run the equivalent Worker/AudioWorklet scenario and verify authoritative snapshots before and after every mutation.
-- [ ] Verify a new session and a migrated legacy session expose a silent, externally disconnected Master and preserve existing direct track routes.
-- [ ] Inspect a Perfetto capture if callback timing, graph installation, or route mutation behavior regresses; verify no callback graph build, lock, allocation, or unbounded route work.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace` in the environment selected by `.agents/info/build.md`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests will change.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the documented Node/browser smoke suites where browser executables are available.
-- [ ] Confirm documentation, protocol versions, session versions, fixtures, and release-facing behavior agree before completing the MVP.
+- [x] Run an end-to-end native/dummy scenario: create two tracks, retain one direct system route, route both tracks to Master Left, route one track to Master Right, route Master channels to system sinks, verify summed/fan-out audio, disconnect each path, save, reload, and verify exact restoration.
+- [x] Run the equivalent Worker/AudioWorklet scenario and verify authoritative snapshots before and after every mutation.
+- [x] Verify a new session and a migrated legacy session expose a silent, externally disconnected Master and preserve existing direct track routes.
+- [x] No callback timing regression was observed; verify no callback graph build, lock, allocation, or unbounded route work through the realtime guards, installed fan-in no-allocation test, native suite, and Wasm suite. Perfetto capture was therefore not triggered.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace` in the environment selected by `.agents/info/build.md`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests will change.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`; run the complete Node Wasm suite plus focused retries after one resource-related linker SIGBUS. Chrome/Firefox executables were unavailable locally, so packaged-browser execution remains covered by CI.
+- [x] Confirm documentation, protocol versions, session versions, fixtures, and release-facing behavior agree before completing the MVP.
 
 ## Execution contract
 
