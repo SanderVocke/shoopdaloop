@@ -19,9 +19,19 @@ Track controls
 Input gain affects monitored and recorded input. Input mute disables monitoring
 without discarding recording input. The top-bar exclusive-input toggle makes
 enabling one track's input monitoring mute all other track inputs, which is
-useful when switching recording tracks. Output gain and mute affect monitored
-and played-back output. Stereo sides expose balance controls. Meters and MIDI
-activity indicators summarize applicable ports.
+useful when switching recording tracks.
+
+The separate top-bar **Auto-arm track inputs** toggle defaults on. While script
+composites run, it enables input monitoring for each track one sync cycle before
+a child loop records or replaces and keeps it enabled through that capture.
+Simultaneous recordings may monitor multiple tracks regardless of the
+exclusive-input setting. Afterward, auto-arm remutes only tracks that it enabled;
+tracks monitored beforehand remain monitored. This cycle-ahead application
+control is intentionally not sample-exact.
+
+Output gain and mute affect monitored and played-back output. Stereo sides
+expose balance controls. Meters and MIDI activity indicators summarize
+applicable ports.
 
 A track title can be edited after creation. Its stable port-name base does not
 change when the title changes.

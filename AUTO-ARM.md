@@ -95,17 +95,17 @@ Verification:
 
 ## Stage 4 — Documentation and integration coverage
 
-- [ ] Document auto-arm beside input monitoring and the exclusive-input control in `docs/source/usage.trackcontrols.rst`.
-- [ ] State that it is default-on, operates one composite cycle ahead, restores only monitoring it enabled, supports simultaneous demanded tracks, and is not sample-exact.
-- [ ] Update session-format documentation for the persisted global setting and missing-field default.
-- [ ] Update concise application README text where top-bar/input-monitoring behavior is summarized.
-- [ ] Review terminology so **Auto-arm track inputs** is not confused with exclusive input, loop recording mode, or backend recording preparation.
-- [ ] Add or extend a browser smoke assertion only if the existing smoke harness can exercise the control and composite progression without duplicating lower-level coverage.
+- [x] Document auto-arm beside input monitoring and the exclusive-input control in `docs/source/usage.trackcontrols.rst`.
+- [x] State that it is default-on, operates one composite cycle ahead, restores only monitoring it enabled, supports simultaneous demanded tracks, and is not sample-exact.
+- [x] Update session-format documentation for the persisted global setting and missing-field default.
+- [x] Update concise application README text where top-bar/input-monitoring behavior is summarized.
+- [x] Review terminology so **Auto-arm track inputs** is not confused with exclusive input, loop recording mode, or backend recording preparation.
+- [x] No browser smoke assertion was added: the smoke harness has no script-composite editor flow, while the shared application and UI behavior is covered directly on native and Node Wasm.
 
 Verification:
 
-- [ ] Documentation references and UI tooltip agree with the acceptance criteria.
-- [ ] Relevant application/UI tests pass on the Wasm-compatible test path.
+- [x] Documentation references and UI tooltip agree with the acceptance criteria.
+- [x] Relevant `shoop_app` auto-arm and `shoop_egui` global-control tests pass in the Node Wasm harness.
 
 ## Stage 5 — End-to-end validation
 
