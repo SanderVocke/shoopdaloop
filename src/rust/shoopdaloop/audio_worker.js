@@ -70,11 +70,8 @@ function drainTracing() {
   const read = Atomics.load(trace.header, 3) >>> 0;
   let free = trace.capacity - ((write - read) >>> 0);
   while (free > 0) {
-    const slot = write % trace.capacity;
-    const records = Math.min(free, trace.capacity - slot);
-    const bytes = host.traceDrainInto(trace.data, slot * 48, records * 48);
-    if (!bytes) break;
-    const written = bytes / 48;
+    const written = host.traceDrainRing(trace.data, write, free);
+    if (!written) break;
     write = (write + written) >>> 0;
     free -= written;
   }

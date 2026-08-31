@@ -2,16 +2,16 @@
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
-    WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
-    WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
-    WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
-    WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
-    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    decode_binary, encode_binary, Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk,
+    WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
+    WireChannelMode, WireCompositeConfig, WireCompositeKind, WireCompositeState,
+    WireCompositeTarget, WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode,
+    WireLoopState, WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
+    WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
+    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
+    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
@@ -714,7 +714,7 @@ impl WorkletHost {
                     .backend
                     .capture_session()
                     .map_err(|error| error.to_string())?;
-                let bytes = serde_json::to_vec(&capture).map_err(|error| error.to_string())?;
+                let bytes = encode_binary(&capture).map_err(|error| error.to_string())?;
                 if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
                     return Err("session capture exceeds the transfer limit".to_owned());
                 }
@@ -782,7 +782,7 @@ impl WorkletHost {
                 {
                     return Err("session replacement is incomplete or stale".to_owned());
                 }
-                let session: BackendSessionData = serde_json::from_slice(&self.replace_bytes)
+                let session: BackendSessionData = decode_binary(&self.replace_bytes)
                     .map_err(|error| format!("invalid prepared session: {error}"))?;
                 self.backend
                     .replace_session(&session)
@@ -2650,7 +2650,7 @@ mod tests {
             assert_eq!(final_chunk, captured.len() == total_bytes);
             assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
         }
-        let mut session: BackendSessionData = serde_json::from_slice(&captured).unwrap();
+        let mut session: BackendSessionData = decode_binary(&captured).unwrap();
         session.tracks[0].loops[0].length = 4;
         session.tracks[0].loops[0].audio[0].samples = vec![0.1, 0.2, 0.3, 0.4];
         session.tracks[0].loops[0].midi[0] = shoop_backend::BackendMidiContent {
@@ -2664,7 +2664,7 @@ mod tests {
             start_offset: 0,
             preplay: 0,
         };
-        let replacement = serde_json::to_vec(&session).unwrap();
+        let replacement = encode_binary(&session).unwrap();
         assert!(matches!(
             command(
                 &mut host,
@@ -2744,20 +2744,20 @@ mod tests {
             audio: vec![
                 shoop_backend::BackendAudioChannelUpdate {
                     channel: 0,
-                    samples: vec![0.25; 1024],
+                    samples: vec![0.25; 8_192],
                     start_offset: Some(-1),
                     preplay: Some(2),
                 },
                 shoop_backend::BackendAudioChannelUpdate {
                     channel: 1,
-                    samples: vec![0.5; 1024],
+                    samples: vec![0.5; 8_192],
                     start_offset: Some(-2),
                     preplay: Some(3),
                 },
             ],
             midi: vec![shoop_backend::BackendMidiChannelUpdate {
                 channel: 0,
-                length: 1024,
+                length: 8_192,
                 start_state: vec![vec![0xB0, 7, 99]],
                 events: vec![BackendMidiEvent {
                     time: 512,
@@ -2766,7 +2766,7 @@ mod tests {
                 start_offset: Some(-3),
                 preplay: Some(4),
             }],
-            length: Some(1024),
+            length: Some(8_192),
         };
         let bytes = serde_json::to_vec(&update).unwrap();
         assert!(bytes.len() > SESSION_TRANSFER_CHUNK_BYTES);
@@ -2845,11 +2845,11 @@ mod tests {
         assert_eq!(captured.tracks[0].loops[0].source_id, 1);
         assert_eq!(
             captured.tracks[0].loops[0].audio[0].samples,
-            vec![0.25; 1024]
+            vec![0.25; 8_192]
         );
         assert_eq!(
             captured.tracks[0].loops[0].audio[1].samples,
-            vec![0.5; 1024]
+            vec![0.5; 8_192]
         );
         assert_eq!(captured.tracks[0].loops[0].midi[0].events[0].time, 512);
         assert!(matches!(

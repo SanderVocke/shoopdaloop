@@ -947,6 +947,9 @@ pub trait Backend {
         let _ = session;
         Err(anyhow!("session replacement is unavailable"))
     }
+    /// Starts replacement when no operation is active, then polls that single operation.
+    /// Implementations consume `session` only while starting and while applying a successful
+    /// completion; callers must keep the original value available until completion.
     fn replace_session_async(
         &mut self,
         session: &BackendSessionData,
