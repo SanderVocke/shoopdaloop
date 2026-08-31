@@ -358,9 +358,50 @@ enum StartupSessionAction {
     FetchUrl(String),
 }
 
+#[derive(Clone, Copy)]
+struct BuildIdentity {
+    kind: &'static str,
+    version: &'static str,
+    branch: &'static str,
+    revision: &'static str,
+    date: &'static str,
+}
+
+impl BuildIdentity {
+    const CURRENT: Self = Self {
+        kind: env!("SHOOP_BUILD_KIND"),
+        version: env!("SHOOP_BUILD_VERSION"),
+        branch: env!("SHOOP_BUILD_BRANCH"),
+        revision: env!("SHOOP_BUILD_REVISION"),
+        date: env!("SHOOP_BUILD_DATE"),
+    };
+}
+
+fn show_about_dialog(context: &egui::Context, open: &mut bool, identity: BuildIdentity) {
+    if !*open {
+        return;
+    }
+    egui::Window::new("About ShoopDaLoop")
+        .open(open)
+        .resizable(false)
+        .show(context, |ui| {
+            ui.heading("ShoopDaLoop by Sander Vocke");
+            ui.separator();
+            ui.label(format!("Build: {}", identity.kind));
+            if identity.kind == "release" {
+                ui.label(format!("Version: {}", identity.version));
+            } else {
+                ui.label(format!("Branch: {}", identity.branch));
+                ui.label(format!("Commit: {}", identity.revision));
+            }
+            ui.label(format!("Built: {}", identity.date));
+        });
+}
+
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
+    about_open: bool,
     settings: SettingsManager,
     #[cfg(not(target_arch = "wasm32"))]
     pending_audio_settings: Option<PendingAudioSettings>,
@@ -462,6 +503,7 @@ impl UnifiedApp {
         Ok(Self {
             runtime,
             widget,
+            about_open: false,
             settings,
             #[cfg(not(target_arch = "wasm32"))]
             pending_audio_settings: None,
@@ -1140,12 +1182,14 @@ impl UnifiedApp {
         let response = self
             .widget
             .show(ui, &snapshot, &settings_state, script_paths);
+        self.about_open |= response.about_requested;
         for intent in response.app_actions {
             self.handle_ui_intent(intent);
         }
         for action in response.settings_actions {
             self.handle_settings_action(action);
         }
+        show_about_dialog(ui.ctx(), &mut self.about_open, BuildIdentity::CURRENT);
         self.show_file_drop_overlay(ui.ctx());
         self.show_session_url_dialogs(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
@@ -5352,6 +5396,41 @@ mod tests {
     };
 
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn about_dialog_renders_release_and_development_identities() {
+        let context = egui::Context::default();
+        for identity in [
+            BuildIdentity {
+                kind: "release",
+                version: "1.2.3",
+                branch: "unused",
+                revision: "unused",
+                date: "2026-08-31T12:00:00Z",
+            },
+            BuildIdentity {
+                kind: "development",
+                version: "unused",
+                branch: "topic/build-identity",
+                revision: "12345678",
+                date: "2026-08-31T12:00:00Z",
+            },
+        ] {
+            let mut open = true;
+            let mut output = context.run_ui(Default::default(), |ui| {
+                show_about_dialog(ui.ctx(), &mut open, identity);
+            });
+            output.textures_delta.clear();
+            assert!(open);
+        }
+
+        let mut open = false;
+        let mut output = context.run_ui(Default::default(), |ui| {
+            show_about_dialog(ui.ctx(), &mut open, BuildIdentity::CURRENT);
+        });
+        output.textures_delta.clear();
+        assert!(!open);
+    }
 
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
     #[shoop_wasm_test_support::shoop_test(

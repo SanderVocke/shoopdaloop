@@ -18,6 +18,7 @@ pub struct GlobalControls {
     load_session_requested: bool,
     load_session_url_requested: bool,
     settings_requested: bool,
+    about_requested: bool,
     apply_n_cycles: OptimisticValue<u32>,
     apply_n_cycles_dragging: bool,
     #[cfg(test)]
@@ -33,6 +34,7 @@ enum TestGlobalControl {
     LoadSession,
     LoadSessionUrl,
     Settings,
+    About,
     StopAll,
     MidiPanic,
     DeselectAll,
@@ -56,6 +58,7 @@ struct TestGlobalControlRects {
     load_session: Option<egui::Rect>,
     load_session_url: Option<egui::Rect>,
     settings: Option<egui::Rect>,
+    about: Option<egui::Rect>,
     stop_all: Option<egui::Rect>,
     midi_panic: Option<egui::Rect>,
     deselect_all: Option<egui::Rect>,
@@ -81,6 +84,7 @@ impl GlobalControls {
         self.load_session_requested = false;
         self.load_session_url_requested = false;
         self.settings_requested = false;
+        self.about_requested = false;
         let mut actions = Vec::new();
         ui.horizontal(|ui| {
             let response = ui
@@ -120,6 +124,13 @@ impl GlobalControls {
                     self.record_rect(TestGlobalControl::Settings, &settings);
                     if settings.clicked() {
                         self.settings_requested = true;
+                        ui.close();
+                    }
+                    ui.separator();
+                    let about = ui.button("About ShoopDaLoop");
+                    self.record_rect(TestGlobalControl::About, &about);
+                    if about.clicked() {
+                        self.about_requested = true;
                         ui.close();
                     }
                 })
@@ -378,6 +389,10 @@ impl GlobalControls {
         std::mem::take(&mut self.settings_requested)
     }
 
+    pub fn take_about_requested(&mut self) -> bool {
+        std::mem::take(&mut self.about_requested)
+    }
+
     #[cfg(test)]
     fn record_rect(&mut self, control: TestGlobalControl, response: &egui::Response) {
         let target = match control {
@@ -388,6 +403,7 @@ impl GlobalControls {
             TestGlobalControl::LoadSession => &mut self.test_rects.load_session,
             TestGlobalControl::LoadSessionUrl => &mut self.test_rects.load_session_url,
             TestGlobalControl::Settings => &mut self.test_rects.settings,
+            TestGlobalControl::About => &mut self.test_rects.about,
             TestGlobalControl::StopAll => &mut self.test_rects.stop_all,
             TestGlobalControl::MidiPanic => &mut self.test_rects.midi_panic,
             TestGlobalControl::DeselectAll => &mut self.test_rects.deselect_all,
@@ -420,6 +436,7 @@ impl GlobalControls {
             TestGlobalControl::LoadSession => self.test_rects.load_session,
             TestGlobalControl::LoadSessionUrl => self.test_rects.load_session_url,
             TestGlobalControl::Settings => self.test_rects.settings,
+            TestGlobalControl::About => self.test_rects.about,
             TestGlobalControl::StopAll => self.test_rects.stop_all,
             TestGlobalControl::MidiPanic => self.test_rects.midi_panic,
             TestGlobalControl::DeselectAll => self.test_rects.deselect_all,
@@ -667,6 +684,9 @@ mod tests {
         assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
         assert!(click(&context, &mut controls, &state, TestGlobalControl::Settings).is_empty());
         assert!(controls.take_settings_requested());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::About).is_empty());
+        assert!(controls.take_about_requested());
         assert_eq!(
             click(&context, &mut controls, &state, TestGlobalControl::StopAll),
             vec![GlobalControlAction::StopAll]

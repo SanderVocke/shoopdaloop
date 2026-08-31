@@ -11,7 +11,7 @@ pub use transport::{
 };
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,14 +23,14 @@ use shoop_app_api::{
     ResolvedAudioDriverConfig, TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
-    Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
-    WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
-    WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment,
-    WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole,
-    WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl,
-    WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    decode_binary, encode_binary, Command, Event, MidiDataChunk, WaveformChunk,
+    WireApplicationPortOwner, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
+    WireCompositeKind, WireCompositeTarget, WireGrabRequest, WireHostPort, WireLoopMode,
+    WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
+    WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
+    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
@@ -53,10 +53,11 @@ struct WaveformAssembly {
     revision: u64,
     channels: Vec<Vec<f32>>,
     timing: Vec<(i32, i32, u32)>,
-    next_channel: usize,
-    next_offset: usize,
+    request_channel: usize,
+    request_offset: usize,
+    channel_total: Option<usize>,
+    expected: VecDeque<(usize, usize)>,
     complete: bool,
-    in_flight: bool,
 }
 
 struct MidiDataAssembly {
@@ -69,6 +70,8 @@ struct MidiDataAssembly {
 }
 
 const SESSION_CAPTURE_IN_FLIGHT_LIMIT: usize = 8;
+const WAVEFORM_IN_FLIGHT_LIMIT: usize = 8;
+const WAVEFORM_PENDING_COMMAND_LIMIT: usize = COMMAND_CAPACITY / 2;
 
 struct SessionCaptureAssembly {
     generation: u64,
@@ -80,7 +83,6 @@ struct SessionCaptureAssembly {
 
 struct SessionReplaceAssembly {
     generation: u64,
-    session: BackendSessionData,
     bytes: Vec<u8>,
     next_offset: usize,
     commit_sent: bool,
@@ -193,7 +195,7 @@ impl RemoteWorkletBackend {
             && self
                 .waveforms
                 .values()
-                .all(|assembly| assembly.complete && !assembly.in_flight)
+                .all(|assembly| assembly.complete && assembly.expected.is_empty())
             && self
                 .midi_data
                 .values()
@@ -309,19 +311,32 @@ impl RemoteWorkletBackend {
         let Some(assembly) = self.waveforms.get_mut(&loop_id) else {
             return Ok(());
         };
-        if assembly.complete || assembly.in_flight {
-            return Ok(());
+        while !assembly.complete
+            && assembly.expected.len() < WAVEFORM_IN_FLIGHT_LIMIT
+            && self.transport.borrow().pending_len() < WAVEFORM_PENDING_COMMAND_LIMIT
+        {
+            if let Some(total) = assembly.channel_total {
+                if assembly.request_offset >= total {
+                    break;
+                }
+            } else if !assembly.expected.is_empty() {
+                break;
+            }
+            let request = (assembly.request_channel, assembly.request_offset);
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::RequestWaveform {
+                    loop_id: loop_id.raw(),
+                    revision: assembly.revision,
+                    channel: request.0,
+                    offset: request.1,
+                    max_samples: WAVEFORM_CHUNK_SAMPLES,
+                })?;
+            assembly.expected.push_back(request);
+            assembly.request_offset = assembly
+                .request_offset
+                .saturating_add(WAVEFORM_CHUNK_SAMPLES);
         }
-        self.transport
-            .borrow_mut()
-            .ephemeral(Command::RequestWaveform {
-                loop_id: loop_id.raw(),
-                revision: assembly.revision,
-                channel: assembly.next_channel,
-                offset: assembly.next_offset,
-                max_samples: WAVEFORM_CHUNK_SAMPLES,
-            })?;
-        assembly.in_flight = true;
         Ok(())
     }
 
@@ -331,12 +346,12 @@ impl RemoteWorkletBackend {
             return Ok(());
         };
         if assembly.revision != chunk.revision
-            || assembly.next_channel != chunk.channel
-            || assembly.next_offset != chunk.offset
+            || assembly.expected.front().copied() != Some((chunk.channel, chunk.offset))
         {
             return Ok(());
         }
-        assembly.in_flight = false;
+        assembly.expected.pop_front();
+        assembly.channel_total = Some(chunk.total_samples);
         if assembly.channels.len() < chunk.channel_count {
             assembly.channels.resize_with(chunk.channel_count, Vec::new);
             assembly.timing.resize(chunk.channel_count, (0, 0, 0));
@@ -352,11 +367,10 @@ impl RemoteWorkletBackend {
             );
         }
         if chunk.final_chunk {
-            assembly.next_channel += 1;
-            assembly.next_offset = 0;
-            assembly.complete = assembly.next_channel >= chunk.channel_count;
-        } else {
-            assembly.next_offset = chunk.offset.saturating_add(chunk.samples.len());
+            assembly.request_channel += 1;
+            assembly.request_offset = 0;
+            assembly.channel_total = None;
+            assembly.complete = assembly.request_channel >= chunk.channel_count;
         }
         self.request_waveform_chunk(loop_id)
     }
@@ -1800,10 +1814,11 @@ impl Backend for RemoteWorkletBackend {
                 revision: *revision,
                 channels: Vec::new(),
                 timing: Vec::new(),
-                next_channel: 0,
-                next_offset: 0,
+                request_channel: 0,
+                request_offset: 0,
+                channel_total: None,
+                expected: VecDeque::new(),
                 complete: false,
-                in_flight: false,
             },
         );
         self.request_waveform_chunk(loop_id)?;
@@ -2032,7 +2047,7 @@ impl Backend for RemoteWorkletBackend {
         }
         if let Some(capture) = &self.session_capture {
             if capture.total_bytes == Some(capture.bytes.len()) && capture.in_flight == 0 {
-                let session: BackendSessionData = serde_json::from_slice(&capture.bytes)
+                let session: BackendSessionData = decode_binary(&capture.bytes)
                     .map_err(|error| anyhow!("invalid worklet session capture: {error}"))?;
                 for global in &session.global_ports {
                     self.snapshot
@@ -2091,9 +2106,6 @@ impl Backend for RemoteWorkletBackend {
             return Err(anyhow!(error));
         }
         if let Some(replace) = &self.session_replace {
-            if &replace.session != session {
-                return Err(anyhow!("another session replacement is active"));
-            }
             if replace.complete {
                 let replacement = browser_replacement_mapping(session);
                 self.apply_replaced_session(session, &replacement);
@@ -2109,7 +2121,7 @@ impl Backend for RemoteWorkletBackend {
             self.pump_session_replace()?;
             return Ok(BackendAsyncResult::Pending(progress));
         }
-        let bytes = serde_json::to_vec(session)?;
+        let bytes = encode_binary(session)?;
         if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
             return Err(anyhow!("prepared session exceeds browser transfer limit"));
         }
@@ -2125,7 +2137,6 @@ impl Backend for RemoteWorkletBackend {
         let total = bytes.len();
         self.session_replace = Some(SessionReplaceAssembly {
             generation,
-            session: session.clone(),
             bytes,
             next_offset: 0,
             commit_sent: false,
@@ -2223,13 +2234,24 @@ impl Backend for RemoteWorkletBackend {
                 Event::Ack | Event::Stopped => {}
                 Event::Error { message } => {
                     let retry_media_read = match &received.command {
-                        Command::RequestWaveform { loop_id, .. }
-                            if message.contains("postroll is still finalizing") =>
-                        {
+                        Command::RequestWaveform {
+                            loop_id,
+                            revision,
+                            channel,
+                            offset,
+                            ..
+                        } if message.contains("postroll is still finalizing") => {
                             if let Some(assembly) =
                                 self.waveforms.get_mut(&BackendLoopId::from_raw(*loop_id))
                             {
-                                assembly.in_flight = false;
+                                if assembly.revision == *revision
+                                    && assembly.expected.front().copied()
+                                        == Some((*channel, *offset))
+                                {
+                                    assembly.expected.clear();
+                                    assembly.request_channel = *channel;
+                                    assembly.request_offset = *offset;
+                                }
                             }
                             true
                         }
@@ -2779,11 +2801,12 @@ mod tests {
             },
         );
         backend.poll().unwrap();
-        assert!(!backend.waveforms[&loop_id].in_flight);
+        assert!(backend.waveforms[&loop_id].expected.is_empty());
         assert!(backend
             .loop_audio_data_with_metadata(loop_id)
             .unwrap()
             .is_none());
+        assert_eq!(backend.waveforms[&loop_id].expected.front(), Some(&(0, 0)));
         deliver(
             &control,
             1,
@@ -2796,7 +2819,7 @@ mod tests {
                 offset: 0,
                 total_samples: 3,
                 start_offset: -4,
-                capture_alignment_frames: 0,
+                capture_alignment_frames: 3,
                 preplay: 6,
                 final_chunk: true,
                 samples: vec![0.25, -0.5, 0.75],
@@ -2809,6 +2832,7 @@ mod tests {
             .unwrap();
         assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
         assert_eq!(audio.channels[0].start_offset, -4);
+        assert_eq!(audio.channels[0].capture_alignment_frames, 3);
         assert_eq!(audio.channels[0].preplay, 6);
 
         backend.midi_data.insert(
@@ -3536,6 +3560,93 @@ mod tests {
         assert!(backend
             .replace_loop_content_async(creation.loops[0], &loop_update)
             .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn active_session_replacement_is_polled_without_reencoding_or_restarting() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        sent.borrow_mut().clear();
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+        assert!(matches!(
+            backend.replace_session_async(&session).unwrap(),
+            BackendAsyncResult::Pending(_)
+        ));
+        let staged = backend.session_replace.as_ref().unwrap().bytes.clone();
+        let mut ignored_argument = session.clone();
+        ignored_argument.sample_rate = 44_100;
+        assert!(matches!(
+            backend.replace_session_async(&ignored_argument).unwrap(),
+            BackendAsyncResult::Pending(_)
+        ));
+        assert_eq!(backend.session_replace.as_ref().unwrap().bytes, staged);
+        let begin_count = sent
+            .borrow()
+            .iter()
+            .map(|message| serde_json::from_str::<CommandEnvelope>(message).unwrap())
+            .filter(|envelope| matches!(envelope.command, Command::BeginSessionReplace { .. }))
+            .count();
+        assert_eq!(begin_count, 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn representative_waveform_uses_large_chunk_request_count() {
+        let frames = 242_526_usize;
+        let channels = 4;
+        let requests = frames.div_ceil(WAVEFORM_CHUNK_SAMPLES) * channels;
+        assert_eq!(requests, 240);
+        assert_eq!(frames.div_ceil(512) * channels, 1_896);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn concurrent_waveform_pipelines_reserve_transport_headroom() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+
+        for raw_loop_id in 1..=COMMAND_CAPACITY as u64 {
+            let loop_id = BackendLoopId::from_raw(raw_loop_id);
+            backend.waveforms.insert(
+                loop_id,
+                WaveformAssembly {
+                    revision: 1,
+                    channels: Vec::new(),
+                    timing: Vec::new(),
+                    request_channel: 0,
+                    request_offset: 0,
+                    channel_total: Some(WAVEFORM_CHUNK_SAMPLES * WAVEFORM_IN_FLIGHT_LIMIT),
+                    expected: VecDeque::new(),
+                    complete: false,
+                },
+            );
+            backend.request_waveform_chunk(loop_id).unwrap();
+        }
+
+        assert_eq!(
+            backend.transport.borrow().pending_len(),
+            WAVEFORM_PENDING_COMMAND_LIMIT
+        );
+        backend
+            .transport
+            .borrow_mut()
+            .ephemeral(Command::Poll)
+            .unwrap();
+        assert_eq!(
+            backend.transport.borrow().pending_len(),
+            WAVEFORM_PENDING_COMMAND_LIMIT + 1
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

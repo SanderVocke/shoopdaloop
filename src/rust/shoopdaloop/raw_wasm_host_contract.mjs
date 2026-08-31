@@ -7,7 +7,7 @@ const module = await WebAssembly.compile(bytes);
 if (WebAssembly.Module.imports(module).length !== 0) {
   throw new Error('raw host contract requires an import-free Wasm artifact');
 }
-const protocolVersion = 17;
+const protocolVersion = 18;
 const host = new ShoopRawWasmHost(module, 48000, 2048, 262144);
 const poll = JSON.stringify({ version: protocolVersion, sequence: 1, command: { kind: 'poll' } });
 const first = JSON.parse(host.command(poll));
@@ -30,14 +30,22 @@ if (!metadata.some(entry => entry.label === 'engine.rt.callback')) {
 host.traceSetFrame(256);
 host.process([], [], 128);
 const traceBytes = new Uint8Array(1024 * 48);
-const traceLength = host.traceDrainInto(traceBytes);
-if (!traceLength || traceLength % 48) throw new Error(`invalid raw trace length ${traceLength}`);
-const firstTraceRecord = new DataView(traceBytes.buffer, 0, 48);
+const wrapWrite = 1023;
+const wrappedRecords = host.traceDrainRing(traceBytes, wrapWrite, 1024);
+if (wrappedRecords <= 1) throw new Error(`trace group did not cross ring boundary: ${wrappedRecords}`);
+const traceLength = wrappedRecords * 48;
+const firstTraceRecord = new DataView(traceBytes.buffer, wrapWrite * 48, 48);
 if (firstTraceRecord.getUint32(4, true) !== 4 || firstTraceRecord.getUint32(12, true) !== 104) {
   throw new Error('raw trace record lost realm or clock identity');
 }
 if (firstTraceRecord.getUint32(16, true) !== 256 || firstTraceRecord.getUint32(20, true) !== 0) {
   throw new Error('raw trace record lost exact source frame');
+}
+if (!traceBytes[0]) throw new Error('wrapped trace group was not copied into the ring head');
+host.traceSetFrame(320);
+host.process([], [], 128);
+if (!host.traceDrainRing(traceBytes, wrapWrite + wrappedRecords, 1024 - wrappedRecords)) {
+  throw new Error('trace producer stalled after wrapping');
 }
 host.exports.memory.grow(1);
 host.traceSetFrame(384);

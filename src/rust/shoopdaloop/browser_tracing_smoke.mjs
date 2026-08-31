@@ -30,11 +30,14 @@ async function waitForHttp(url, attempts = 300) {
   throw new Error(`timed out waiting for ${url}`);
 }
 
-async function waitForJson(url, attempts = 300) {
+async function waitForJson(url, attempts = 300, accept = () => true) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url);
-      if (response.ok) return response.json();
+      if (response.ok) {
+        const value = await response.json();
+        if (accept(value)) return value;
+      }
     } catch {}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -60,7 +63,11 @@ try {
     `--user-data-dir=${path.join(downloads, 'profile')}`,
     `http://127.0.0.1:${webPort}/?${realm === 'worker' ? 'worker=1&' : ''}tracing=1&tracing-smoke-test=1`,
   ], {env: {...process.env, HOME: process.env.HOME}});
-  const targets = await waitForJson(`http://127.0.0.1:${debugPort}/json/list`);
+  const targets = await waitForJson(
+    `http://127.0.0.1:${debugPort}/json/list`,
+    300,
+    candidates => candidates.some(candidate => candidate.type === 'page'),
+  );
   const page = targets.find(target => target.type === 'page');
   if (!page) throw new Error('Chrome exposed no page target');
   socket = new WebSocket(page.webSocketDebuggerUrl);

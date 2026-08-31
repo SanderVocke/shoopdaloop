@@ -70,12 +70,15 @@ async function waitForHttp(url, timeoutMilliseconds) {
   throw new Error(`timed out waiting for ${url}`);
 }
 
-async function waitForJson(url, timeoutMilliseconds) {
+async function waitForJson(url, timeoutMilliseconds, accept = () => true) {
   const deadline = Date.now() + timeoutMilliseconds;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url);
-      if (response.ok) return response.json();
+      if (response.ok) {
+        const value = await response.json();
+        if (accept(value)) return value;
+      }
     } catch (_) {
       // The process is still starting.
     }
@@ -137,7 +140,11 @@ try {
   if (settingsUnavailable) chromeArgs.splice(-1, 0, '--disable-local-storage');
   start(chrome, chromeArgs);
 
-  const targets = await waitForJson(`http://${host}:${debugPort}/json`, 60_000);
+  const targets = await waitForJson(
+    `http://${host}:${debugPort}/json`,
+    60_000,
+    candidates => candidates.some(candidate => candidate.type === 'page'),
+  );
   const target = targets.find(candidate => candidate.type === 'page');
   if (!target) throw new Error('Chrome exposed no page target');
 

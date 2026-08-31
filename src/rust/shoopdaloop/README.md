@@ -211,7 +211,8 @@ Domain, Worker, settings, Web MIDI, lifecycle, and stress behavior belongs in th
 cd src/rust/shoopdaloop
 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 OUTPUT_ONLY=1 \
-  SELF_CONTAINED_PATH=../../../artifacts/shoopdaloop-web-wasm32-debug.html \
+  SELF_CONTAINED_PATH=$(find ../../../artifacts -maxdepth 1 -type f \
+    -name 'shoopdaloop-web-wasm32-debug-*.html' -print -quit) \
   node --experimental-websocket browser_smoke.mjs
 xvfb-run -a python3 browser_firefox_smoke.py
 ```
