@@ -911,6 +911,7 @@ struct LoopModel {
     backend_composite_signature: Vec<(LoopId, u32)>,
     auto_arm_active_composite: Option<CompositeDocument>,
     auto_arm_active_plan_version: Option<u64>,
+    auto_arm_active_source_lengths: BTreeMap<LoopId, u32>,
     active_composite_children: Vec<ActiveCompositeChildModel>,
     repeat_sync: bool,
     recorded_fx_state: Option<RecordedFxState>,
@@ -929,6 +930,22 @@ struct ScheduledCompositeOccurrence {
     end: u32,
     mode: Option<LoopMode>,
     occurrence: u32,
+}
+
+fn clear_composite_runtime_state(model: &mut LoopModel) {
+    model.state.mode = LoopMode::Stopped;
+    model.state.next_mode = LoopMode::Stopped;
+    model.state.next_transition_delay = None;
+    model.state.composite_iteration = None;
+    model.state.composite_cycle_count = 0;
+    model.state.active_composite_children = Arc::from([]);
+    model.state.empty = true;
+    model.position = 0;
+    model.state.position = 0.0;
+    model.auto_arm_active_composite = None;
+    model.auto_arm_active_plan_version = None;
+    model.auto_arm_active_source_lengths.clear();
+    model.active_composite_children.clear();
 }
 
 fn composite_with_appended_sources(
@@ -1231,6 +1248,7 @@ impl ApplicationModel {
             backend_composite_signature: Vec::new(),
             auto_arm_active_composite: None,
             auto_arm_active_plan_version: None,
+            auto_arm_active_source_lengths: BTreeMap::new(),
             active_composite_children: Vec::new(),
             repeat_sync: false,
             recorded_fx_state: None,
@@ -2433,6 +2451,7 @@ impl ApplicationModel {
                     model.backend_composite_signature.clear();
                     model.auto_arm_active_composite = None;
                     model.auto_arm_active_plan_version = None;
+                    model.auto_arm_active_source_lengths.clear();
                     model.active_composite_children.clear();
                 }
                 Ok(())
@@ -4622,6 +4641,7 @@ impl ApplicationModel {
                 backend_composite_signature: Vec::new(),
                 auto_arm_active_composite: None,
                 auto_arm_active_plan_version: None,
+                auto_arm_active_source_lengths: BTreeMap::new(),
                 active_composite_children: Vec::new(),
                 repeat_sync: self.global.sync,
                 recorded_fx_state: None,
@@ -5038,6 +5058,7 @@ impl ApplicationModel {
         model.backend_composite_signature.clear();
         model.auto_arm_active_composite = None;
         model.auto_arm_active_plan_version = None;
+        model.auto_arm_active_source_lengths.clear();
         model.active_composite_children.clear();
         model.repeat_sync = source.repeat_sync;
         model.recorded_fx_state = source.recorded_fx_state;
@@ -5235,22 +5256,31 @@ impl ApplicationModel {
 
     fn scheduled_composite_occurrences(
         &self,
+        composite_id: LoopId,
         composite: &CompositeDocument,
     ) -> Option<(Vec<ScheduledCompositeOccurrence>, u32)> {
         let sync_length = self.sync_length();
         if sync_length == 0 {
             return None;
         }
+        let active_source_lengths = &self
+            .loops
+            .get(&composite_id)?
+            .auto_arm_active_source_lengths;
         let mut occurrences = composite
             .instances
             .iter()
             .map(|event| {
                 let source = self.loops.get(&LoopId::from_raw(event.loop_id))?;
+                let source_length = active_source_lengths
+                    .get(&source.id)
+                    .copied()
+                    .unwrap_or(source.length);
                 let start = u32::try_from(event.start_cycle).ok()?;
                 let duration = match event.n_cycles {
                     Some(cycles) if cycles > 0 => cycles,
                     Some(_) => return None,
-                    None => source.length.saturating_add(sync_length - 1) / sync_length,
+                    None => source_length.saturating_add(sync_length - 1) / sync_length,
                 }
                 .max(1);
                 Some(ScheduledCompositeOccurrence {
@@ -5292,7 +5322,8 @@ impl ApplicationModel {
         iteration: u32,
     ) -> Option<(BTreeMap<LoopId, LoopMode>, u32)> {
         let composite = self.auto_arm_composite_document(composite_id)?;
-        let (occurrences, length) = self.scheduled_composite_occurrences(composite)?;
+        let (occurrences, length) =
+            self.scheduled_composite_occurrences(composite_id, composite)?;
         let first_occurrences_only = composite.kind == CompositeKindDocument::Regular
             && matches!(
                 composite_mode,
@@ -5577,6 +5608,7 @@ impl ApplicationModel {
             model.backend_composite_signature = signature;
             model.auto_arm_active_composite = None;
             model.auto_arm_active_plan_version = None;
+            model.auto_arm_active_source_lengths.clear();
             pending.remove(&id);
         }
         Ok(())
@@ -5782,6 +5814,9 @@ impl ApplicationModel {
         target_model.composite = Some(composite);
         target_model.backend_composite = backend_composite;
         target_model.backend_composite_signature = signature;
+        if empty {
+            clear_composite_runtime_state(target_model);
+        }
         Ok(())
     }
 
@@ -6056,6 +6091,9 @@ impl ApplicationModel {
         target_model.composite = Some(composite);
         target_model.backend_composite = backend_composite;
         target_model.backend_composite_signature = signature;
+        if !has_events {
+            clear_composite_runtime_state(target_model);
+        }
         Ok(())
     }
 
@@ -7203,6 +7241,23 @@ impl ApplicationModel {
             .values()
             .filter_map(|model| model.backend_composite.map(|id| (id, model.id)))
             .collect::<BTreeMap<_, _>>();
+        let auto_arm_runtime_lengths = self
+            .loops
+            .values()
+            .filter_map(|model| {
+                let length = match model.backend_composite {
+                    Some(id) => snapshot
+                        .composites
+                        .get(&id)
+                        .and_then(|state| u32::try_from(state.length).ok()),
+                    None => snapshot
+                        .loops
+                        .get(&model.backend_id)
+                        .map(|state| state.length),
+                }?;
+                Some((model.id, length))
+            })
+            .collect::<BTreeMap<_, _>>();
         for model in self.loops.values_mut() {
             let Some(composite_id) = model.backend_composite else {
                 continue;
@@ -7213,6 +7268,18 @@ impl ApplicationModel {
             if model.auto_arm_active_plan_version != Some(state.active_plan_version) {
                 model.auto_arm_active_plan_version = Some(state.active_plan_version);
                 model.auto_arm_active_composite.clone_from(&model.composite);
+                model.auto_arm_active_source_lengths = model
+                    .auto_arm_active_composite
+                    .iter()
+                    .flat_map(|composite| &composite.instances)
+                    .filter_map(|event| {
+                        let id = LoopId::from_raw(event.loop_id);
+                        auto_arm_runtime_lengths
+                            .get(&id)
+                            .copied()
+                            .map(|length| (id, length))
+                    })
+                    .collect();
             }
             model.state.mode = app_loop_mode(state.mode);
             model.state.next_mode = state
@@ -8197,6 +8264,7 @@ impl ApplicationModel {
                         backend_composite_signature: Vec::new(),
                         auto_arm_active_composite: None,
                         auto_arm_active_plan_version: None,
+                        auto_arm_active_source_lengths: BTreeMap::new(),
                         active_composite_children: Vec::new(),
                         repeat_sync: bundle.document.global.sync,
                         recorded_fx_state,
@@ -10312,7 +10380,7 @@ mod tests {
         assert!(model.auto_arm_demanded_tracks().is_empty());
 
         let (occurrences, length) = model
-            .scheduled_composite_occurrences(model.loops[&root].composite.as_ref().unwrap())
+            .scheduled_composite_occurrences(root, model.loops[&root].composite.as_ref().unwrap())
             .unwrap();
         assert_eq!(occurrences[0].end - occurrences[0].start, 2);
         assert_eq!(length, 7);
@@ -10327,9 +10395,10 @@ mod tests {
         let nested = model.tracks[4].loops[0];
         let first_track = model.tracks[2].id;
         let second_track = model.tracks[3].id;
-        for id in [first, second, nested] {
+        for id in [first, second] {
             model.loops.get_mut(&id).unwrap().length = 10;
         }
+        model.loops.get_mut(&nested).unwrap().length = 30;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
@@ -10337,7 +10406,7 @@ mod tests {
                 start_cycle: 1,
                 loop_id: nested.raw(),
                 mode: Some("recording".to_owned()),
-                n_cycles: Some(3),
+                n_cycles: None,
             }],
         });
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
@@ -10364,7 +10433,13 @@ mod tests {
             root.state.composite_kind = shoop_app_api::CompositeKind::Script;
             root.state.mode = LoopMode::Playing;
             root.state.composite_iteration = Some(0);
+            root.auto_arm_active_source_lengths.insert(nested, 30);
         }
+        model.loops.get_mut(&nested).unwrap().length = 10;
+        let (_, active_length) = model
+            .scheduled_composite_occurrences(root, model.loops[&root].composite.as_ref().unwrap())
+            .unwrap();
+        assert_eq!(active_length, 4);
         assert_eq!(
             model.auto_arm_demanded_tracks(),
             BTreeSet::from([first_track])
@@ -13752,7 +13827,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
 
     #[shoop_wasm_test_support::shoop_test]
     fn composite_event_deletion_leaves_other_instance_positions_unchanged() {
-        let (mut backend, mut model, _, target, sources) = engine_model_with_regular_composite();
+        let (mut backend, mut model, track_id, target, sources) =
+            engine_model_with_regular_composite();
         let before =
             model.composite_details_snapshot(model.loops[&target].composite.as_ref().unwrap());
         let last_start = before
@@ -13795,12 +13871,38 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .contains("stale event"));
         assert_eq!(model.loops[&target].composite, unchanged);
 
+        let mut active_composite = model.loops[&target].composite.clone().unwrap();
+        active_composite.kind = CompositeKindDocument::Script;
+        {
+            let target_model = model.loops.get_mut(&target).unwrap();
+            target_model.state.mode = LoopMode::Playing;
+            target_model.state.composite_iteration = Some(2);
+            target_model.auto_arm_active_composite = Some(active_composite);
+            target_model.auto_arm_active_plan_version = Some(1);
+            target_model
+                .auto_arm_active_source_lengths
+                .insert(sources[2], 4);
+            target_model.active_composite_children = vec![ActiveCompositeChildModel {
+                id: sources[2],
+                mode: LoopMode::Recording,
+            }];
+        }
+        assert_eq!(model.auto_arm_demanded_tracks(), BTreeSet::from([track_id]));
+
         model
             .delete_composite_events(&mut backend, target, &[CompositeEventId { instance_id: 3 }])
             .unwrap();
-        assert!(model.loops[&target].composite.is_some());
-        assert!(model.loops[&target].state.empty);
-        assert_eq!(model.loops[&target].length, 0);
+        let target_model = &model.loops[&target];
+        assert!(target_model.composite.is_some());
+        assert!(target_model.state.empty);
+        assert_eq!(target_model.length, 0);
+        assert_eq!(target_model.state.mode, LoopMode::Stopped);
+        assert_eq!(target_model.state.composite_iteration, None);
+        assert!(target_model.auto_arm_active_composite.is_none());
+        assert_eq!(target_model.auto_arm_active_plan_version, None);
+        assert!(target_model.auto_arm_active_source_lengths.is_empty());
+        assert!(target_model.active_composite_children.is_empty());
+        assert!(model.auto_arm_demanded_tracks().is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
