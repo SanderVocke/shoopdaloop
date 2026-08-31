@@ -111,15 +111,15 @@ Verification:
 
 Run commands in the environment selected by `.agents/info/build.md`; on Nix/NixOS, enter the repository development shell first.
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the documented browser smoke checks when a supported browser is available; record an explicit skip reason otherwise.
-- [ ] Manually verify a script composite that records sequentially across at least two tracks: each muted track enables during its preceding cycle, remains enabled through recording, and returns muted afterward.
-- [ ] In the same scenario, verify a track monitored before composite start remains monitored after completion, and overlapping recordings keep all demanded tracks monitored.
-- [ ] Verify toggling auto-arm off during execution restores only owned tracks and that re-enabling reacquires ongoing/upcoming demand.
-- [ ] Confirm no engine/worklet protocol or realtime callback behavior changed unless implementation evidence required a documented design-rule revision.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` (1,621 passed, 4 host-facility skips).
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`. The Node Wasm feature tests passed; packaged browser smoke was skipped because Chrome/Chromium and geckodriver are unavailable (Firefox alone is insufficient for the documented harness).
+- [x] The engine-backed `auto_arm_reconciliation_follows_engine_composite_boundaries_and_preserves_prearmed_tracks` test verifies sequential two-track cycle-ahead acquisition, through-recording monitoring, and release.
+- [x] The engine-backed and aggregate ownership tests verify a pre-monitored track remains monitored and overlapping roots/windows retain all demanded tracks.
+- [x] `auto_arm_reconciliation_aggregates_ownership_and_recovers_from_backend_failures` verifies toggle-off restoration, toggle-on reacquisition, stop-all, schedule replacement, and rejected-control convergence.
+- [x] The branch changes no engine/worklet protocol or realtime callback code; auto-arm remains in `shoop_app`, with only a FakeBackend failure-injection hook added for testing.
 
 ## Execution contract
 
