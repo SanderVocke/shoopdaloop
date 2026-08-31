@@ -1158,6 +1158,7 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         }
         | Command::RemoveComposite {
             composite_id: expected_composite_id,
+            ..
         } => (
             BackendMutationKind::CompositeStructure,
             Some(*expected_composite_id),
@@ -1427,11 +1428,12 @@ impl Backend for RemoteWorkletBackend {
                 })
                 .collect(),
         };
+        let version = self.next_composite_plan_version;
         self.submit(Command::ConfigureComposite {
             composite_id: composite_id.raw(),
+            plan_version: version,
             config: wire,
         })?;
-        let version = self.next_composite_plan_version;
         self.next_composite_plan_version = self.next_composite_plan_version.saturating_add(1);
         Ok(version)
     }
@@ -1462,14 +1464,19 @@ impl Backend for RemoteWorkletBackend {
         })
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
+        let plan_version = self
+            .reserved_composites
+            .contains(&composite_id)
+            .then_some(self.next_composite_plan_version);
         self.submit(Command::RemoveComposite {
             composite_id: composite_id.raw(),
+            plan_version,
         })?;
         if self.reserved_composites.remove(&composite_id) {
             self.next_composite_plan_version = self.next_composite_plan_version.saturating_add(1);
         }
-        Ok(())
+        Ok(plan_version)
     }
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
@@ -2313,7 +2320,7 @@ impl Backend for RemoteWorkletBackend {
                             self.reserved_composites
                                 .remove(&BackendCompositeId::from_raw(*expected_composite_id));
                         }
-                        Command::RemoveComposite { composite_id } => {
+                        Command::RemoveComposite { composite_id, .. } => {
                             self.reserved_composites
                                 .insert(BackendCompositeId::from_raw(*composite_id));
                         }

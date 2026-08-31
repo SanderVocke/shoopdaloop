@@ -46,6 +46,7 @@ pub struct WorkletHost {
     loop_content_id: Option<BackendLoopId>,
     loop_content_expected_bytes: usize,
     loop_content_bytes: Vec<u8>,
+    composite_plan_versions: std::collections::BTreeMap<u64, u64>,
     #[cfg(target_arch = "wasm32")]
     trace: Option<shoop_tracing::RawTraceProducer>,
     #[cfg(target_arch = "wasm32")]
@@ -86,6 +87,7 @@ impl WorkletHost {
             loop_content_id: None,
             loop_content_expected_bytes: 0,
             loop_content_bytes: Vec::new(),
+            composite_plan_versions: std::collections::BTreeMap::new(),
             #[cfg(target_arch = "wasm32")]
             trace: None,
             #[cfg(target_arch = "wasm32")]
@@ -419,14 +421,18 @@ impl WorkletHost {
             }
             Command::ConfigureComposite {
                 composite_id,
+                plan_version,
                 config,
             } => {
-                self.backend
+                let backend_version = self
+                    .backend
                     .configure_composite_loop(
                         BackendCompositeId::from_raw(composite_id),
                         &from_wire_composite_config(config),
                     )
                     .map_err(|error| error.to_string())?;
+                self.composite_plan_versions
+                    .insert(backend_version, plan_version);
                 Ok(Event::Ack)
             }
             Command::TransitionComposite {
@@ -457,10 +463,19 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
-            Command::RemoveComposite { composite_id } => {
-                self.backend
-                    .remove_composite_loop(BackendCompositeId::from_raw(composite_id))
-                    .map_err(|error| error.to_string())?;
+            Command::RemoveComposite {
+                composite_id,
+                plan_version,
+            } => {
+                if let (Some(backend_version), Some(plan_version)) = (
+                    self.backend
+                        .remove_composite_loop(BackendCompositeId::from_raw(composite_id))
+                        .map_err(|error| error.to_string())?,
+                    plan_version,
+                ) {
+                    self.composite_plan_versions
+                        .insert(backend_version, plan_version);
+                }
                 Ok(Event::Ack)
             }
             Command::SetTrackControl { track_id, control } => {
@@ -874,6 +889,7 @@ impl WorkletHost {
                 self.replace_bytes.clear();
                 self.capture_generation = None;
                 self.capture_bytes.clear();
+                self.composite_plan_versions.clear();
                 Ok(Event::SessionReplaceComplete { generation })
             }
             Command::AbortSessionTransfer { generation } => {
@@ -898,11 +914,21 @@ impl WorkletHost {
                 if let Some(message) = self.fatal_error.clone() {
                     return Err(message);
                 }
-                self.backend
-                    .poll()
-                    .map(to_wire_snapshot)
-                    .map(Event::Snapshot)
-                    .map_err(|error| error.to_string())
+                let mut snapshot = self.backend.poll().map_err(|error| error.to_string())?;
+                for state in snapshot.composites.values_mut() {
+                    state.active_plan_version = self
+                        .composite_plan_versions
+                        .get(&state.active_plan_version)
+                        .copied()
+                        .unwrap_or(state.active_plan_version);
+                    state.pending_plan_version = state.pending_plan_version.map(|version| {
+                        self.composite_plan_versions
+                            .get(&version)
+                            .copied()
+                            .unwrap_or(version)
+                    });
+                }
+                Ok(Event::Snapshot(to_wire_snapshot(snapshot)))
             }
             Command::Shutdown => {
                 self.stopped = true;
@@ -1702,6 +1728,7 @@ mod tests {
                 7,
                 Command::ConfigureComposite {
                     composite_id: 1,
+                    plan_version: 101,
                     config: config.clone(),
                 },
             )
@@ -1739,6 +1766,7 @@ mod tests {
             panic!("expected composite snapshot");
         };
         assert_eq!(started.composites[0].mode, WireLoopMode::Playing);
+        assert_eq!(started.composites[0].active_plan_version, 101);
         assert_eq!(
             started.composites[0].active_children[0].target,
             WireCompositeTarget::Loop(2)
@@ -1774,6 +1802,7 @@ mod tests {
                 13,
                 Command::ConfigureComposite {
                     composite_id: 2,
+                    plan_version: 202,
                     config,
                 },
             )
@@ -1797,6 +1826,10 @@ mod tests {
         let Event::Snapshot(isolated) = command(&mut host, 15, Command::Poll).event else {
             panic!("expected composite snapshot");
         };
+        assert!(isolated
+            .composites
+            .iter()
+            .all(|composite| composite.active_plan_version == 202));
         assert_eq!(isolated.composites[1].mode, WireLoopMode::Stopped);
         assert_eq!(isolated.composites[1].position, 0);
         assert!(isolated.composites[1].active_children.is_empty());

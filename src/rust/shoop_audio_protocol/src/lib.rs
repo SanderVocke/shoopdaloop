@@ -96,6 +96,7 @@ pub enum Command {
     },
     ConfigureComposite {
         composite_id: u64,
+        plan_version: u64,
         config: WireCompositeConfig,
     },
     TransitionComposite {
@@ -110,6 +111,7 @@ pub enum Command {
     },
     RemoveComposite {
         composite_id: u64,
+        plan_version: Option<u64>,
     },
     SetTrackControl {
         track_id: u64,
@@ -793,6 +795,7 @@ mod tests {
             41,
             Command::ConfigureComposite {
                 composite_id: 7,
+                plan_version: 41,
                 config: WireCompositeConfig {
                     kind: WireCompositeKind::Script,
                     sync_source: 1,

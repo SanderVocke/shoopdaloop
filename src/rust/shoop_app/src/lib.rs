@@ -5538,6 +5538,25 @@ impl ApplicationModel {
         stack.remove(&composite_id);
     }
 
+    fn next_composite_iteration(&self, composite_id: LoopId) -> Option<(u32, bool)> {
+        let model = self.loops.get(&composite_id)?;
+        let mode = model.state.mode;
+        let iteration = model.state.composite_iteration.unwrap_or(0);
+        let (_, length) = self.composite_desired_at(composite_id, mode, iteration)?;
+        match iteration.checked_add(1) {
+            Some(next) if next < length => Some((next, false)),
+            _ if self
+                .auto_arm_composite_document(composite_id)
+                .is_some_and(|composite| composite.kind == CompositeKindDocument::Regular)
+                && !matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
+                && length > 0 =>
+            {
+                Some((0, true))
+            }
+            _ => None,
+        }
+    }
+
     fn collect_next_composite_capture(
         &self,
         composite_id: LoopId,
@@ -5552,25 +5571,7 @@ impl ApplicationModel {
             return;
         };
         let mode = model.state.mode;
-        let iteration = model.state.composite_iteration.unwrap_or(0);
-        let Some((_, length)) = self.composite_desired_at(composite_id, mode, iteration) else {
-            stack.remove(&composite_id);
-            return;
-        };
-        let advanced = iteration.checked_add(1);
-        let (next_iteration, restarting) = match advanced {
-            Some(next) if next < length => (Some(next), false),
-            _ if self
-                .auto_arm_composite_document(composite_id)
-                .is_some_and(|composite| composite.kind == CompositeKindDocument::Regular)
-                && !matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
-                && length > 0 =>
-            {
-                (Some(0), true)
-            }
-            _ => (None, false),
-        };
-        let Some(next_iteration) = next_iteration else {
+        let Some((next_iteration, restarting)) = self.next_composite_iteration(composite_id) else {
             stack.remove(&composite_id);
             return;
         };
@@ -5609,23 +5610,35 @@ impl ApplicationModel {
     }
 
     fn auto_arm_demanded_tracks(&self) -> BTreeSet<TrackId> {
-        let active_parents = self
+        let mut controlling_parents = BTreeMap::<LoopId, BTreeSet<LoopId>>::new();
+        for parent in self
             .loops
             .values()
             .filter(|model| runnable_composite_mode(model.state.mode))
-            .flat_map(|parent| {
-                parent
-                    .active_composite_children
-                    .iter()
-                    .map(move |child| (child.id, parent.id))
-            })
-            .fold(
-                BTreeMap::<LoopId, BTreeSet<LoopId>>::new(),
-                |mut parents, (child, parent)| {
-                    parents.entry(child).or_default().insert(parent);
-                    parents
-                },
-            );
+        {
+            for child in &parent.active_composite_children {
+                controlling_parents
+                    .entry(child.id)
+                    .or_default()
+                    .insert(parent.id);
+            }
+            let Some((next_iteration, _)) = self.next_composite_iteration(parent.id) else {
+                continue;
+            };
+            let Some((desired, _)) =
+                self.composite_desired_at(parent.id, parent.state.mode, next_iteration)
+            else {
+                continue;
+            };
+            for target in desired.keys().copied() {
+                if self.auto_arm_target_is_composite(parent.id, target) {
+                    controlling_parents
+                        .entry(target)
+                        .or_default()
+                        .insert(parent.id);
+                }
+            }
+        }
         let mut roots = BTreeSet::new();
         for script in self.loops.values().filter(|model| {
             self.auto_arm_composite_document(model.id)
@@ -5637,7 +5650,7 @@ impl ApplicationModel {
                 if !visited.insert(id) {
                     continue;
                 }
-                match active_parents.get(&id) {
+                match controlling_parents.get(&id) {
                     Some(parents) if !parents.is_empty() => {
                         pending.extend(parents.iter().copied());
                     }
@@ -10866,6 +10879,32 @@ mod tests {
             .instances[0]
             .start_cycle = 1;
         assert!(model.auto_arm_demanded_tracks().is_empty());
+
+        model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 1,
+                loop_id: nested.raw(),
+                mode: None,
+                n_cycles: Some(1),
+            }],
+        });
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .active_composite_children
+            .clear();
+        {
+            let nested_model = model.loops.get_mut(&nested).unwrap();
+            nested_model.state.mode = LoopMode::Stopped;
+            nested_model.composite.as_mut().unwrap().instances[0].start_cycle = 0;
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([second_track])
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

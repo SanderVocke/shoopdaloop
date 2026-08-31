@@ -869,7 +869,7 @@ pub trait Backend {
     ) -> Result<()> {
         Err(anyhow!("composite loops are unavailable"))
     }
-    fn remove_composite_loop(&mut self, _composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, _composite_id: BackendCompositeId) -> Result<Option<u64>> {
         Err(anyhow!("composite loops are unavailable"))
     }
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -3768,9 +3768,9 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
         if !self.composites.contains_key(&composite_id) {
-            return Ok(());
+            return Ok(None);
         }
         let configs = self
             .composites
@@ -3778,9 +3778,9 @@ impl Backend for EngineBackend {
             .filter(|(id, _)| **id != composite_id)
             .filter_map(|(id, composite)| composite.config.clone().map(|config| (*id, config)))
             .collect::<BTreeMap<_, _>>();
-        self.install_composite_configs(configs)?;
+        let version = self.install_composite_configs(configs)?;
         self.composites.remove(&composite_id);
-        Ok(())
+        Ok(Some(version))
     }
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
@@ -5578,7 +5578,7 @@ impl Backend for LocalDummyBackend {
             .set_composite_play_after_record(composite_id, enabled)
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
         self.runtime.remove_composite_loop(composite_id)
     }
 
@@ -6830,12 +6830,25 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
-        self.composites.remove(&composite_id);
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
+        let existed = self.composites.remove(&composite_id).is_some();
         self.composite_configs.remove(&composite_id);
         self.operations
             .push(FakeOperation::RemoveComposite(composite_id));
-        Ok(())
+        if !existed {
+            return Ok(None);
+        }
+        let version = self
+            .composites
+            .values()
+            .map(|state| state.active_plan_version)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        for state in self.composites.values_mut() {
+            state.active_plan_version = version;
+        }
+        Ok(Some(version))
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {

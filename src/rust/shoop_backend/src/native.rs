@@ -2556,21 +2556,24 @@ impl Backend for NativeBackend {
         Ok(())
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
         let runtime = self.runtime_mut()?;
         let Some(composite) = runtime.composites.remove(&composite_id) else {
-            return Ok(());
+            return Ok(None);
         };
         let primitive_sync_sources = runtime.session.primitive_sync_sources();
-        if let Err(error) = runtime
+        let version = match runtime
             .session
             .remove_composite_loop(&composite.handle, &primitive_sync_sources)
         {
-            runtime.composites.insert(composite_id, composite);
-            return Err(error);
-        }
+            Ok(version) => version,
+            Err(error) => {
+                runtime.composites.insert(composite_id, composite);
+                return Err(error);
+            }
+        };
         runtime.wait();
-        Ok(())
+        Ok((version > 0).then_some(version))
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
