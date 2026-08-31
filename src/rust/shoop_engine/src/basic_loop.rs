@@ -912,10 +912,36 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn immediate_playing_transition_repeats_at_own_boundary() {
+    fn immediate_playing_transitions_repeat_at_own_boundary() {
+        for mode in [
+            LoopMode::Playing,
+            LoopMode::Replacing,
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+        ] {
+            let mut l = BasicLoop::default();
+            l.set_sync_source(playing_sync_source(false));
+            l.set_length(4);
+
+            l.plan_transition(mode, None, None);
+            l.process(4);
+
+            check!(l.mode() == mode);
+            check!(l.position() == 0);
+            check!(l.cycle_count == 1);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn immediate_same_mode_transition_changes_repeat_policy() {
         let mut l = BasicLoop::default();
         l.set_sync_source(playing_sync_source(false));
         l.set_length(4);
+        l.plan_transition(LoopMode::Playing, Some(0), None);
+        l.set_sync_source(playing_sync_source(true));
+        l.handle_sync();
+        l.process(0);
+        l.set_sync_source(playing_sync_source(false));
 
         l.plan_transition(LoopMode::Playing, None, None);
         l.process(4);

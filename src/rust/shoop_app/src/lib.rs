@@ -2244,6 +2244,14 @@ impl ApplicationModel {
                 cycles_delay,
                 align_to_sync_at,
             } => {
+                let repeat_sync = matches!(
+                    mode,
+                    LoopMode::Playing
+                        | LoopMode::Replacing
+                        | LoopMode::PlayingDryThroughWet
+                        | LoopMode::RecordingDryIntoWet
+                )
+                .then_some(cycles_delay.is_some());
                 for id in loops {
                     let model = self
                         .loops
@@ -2267,6 +2275,9 @@ impl ApplicationModel {
                                 align_to_sync_at,
                             )
                             .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                        if let Some(repeat_sync) = repeat_sync {
+                            self.loops.get_mut(&id).unwrap().repeat_sync = repeat_sync;
+                        }
                     }
                 }
                 Ok(())
@@ -13028,6 +13039,154 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
 
         assert_eq!(state.mode, BackendLoopMode::Playing);
         assert_eq!(state.position, 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn immediate_script_play_repeats_unsynced_and_later_policies_override_it() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let sync = model.tracks[0].loops[0];
+        let loop_id = model.tracks[1].loops[0];
+        let sync_backend = model.loops[&sync].backend_id;
+        let loop_backend = model.loops[&loop_id].backend_id;
+        backend.set_loop_length(sync_backend, 10).unwrap();
+        backend.set_loop_length(loop_backend, 4).unwrap();
+        backend
+            .transition_loop(sync_backend, BackendLoopMode::Playing, None)
+            .unwrap();
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::Transition {
+                    loops: vec![loop_id],
+                    mode: LoopMode::Playing,
+                    cycles_delay: None,
+                    align_to_sync_at: None,
+                },
+            )
+            .unwrap();
+        assert!(!model.loops[&loop_id].repeat_sync);
+        backend.advance(Duration::from_millis(4));
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.loops[&sync_backend].position, 4);
+        assert_eq!(snapshot.loops[&loop_backend].mode, BackendLoopMode::Playing);
+        assert_eq!(snapshot.loops[&loop_backend].position, 0);
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::Transition {
+                    loops: vec![loop_id],
+                    mode: LoopMode::Stopped,
+                    cycles_delay: None,
+                    align_to_sync_at: None,
+                },
+            )
+            .unwrap();
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::Transition {
+                    loops: vec![loop_id],
+                    mode: LoopMode::Playing,
+                    cycles_delay: Some(0),
+                    align_to_sync_at: None,
+                },
+            )
+            .unwrap();
+        assert!(model.loops[&loop_id].repeat_sync);
+        backend.advance(Duration::from_millis(6));
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.loops[&sync_backend].position, 0);
+        assert_eq!(snapshot.loops[&loop_backend].mode, BackendLoopMode::Playing);
+        assert_eq!(snapshot.loops[&loop_backend].position, 0);
+        backend.advance(Duration::from_millis(4));
+        assert_eq!(backend.poll().unwrap().loops[&loop_backend].position, 4);
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::SetRepeatSync {
+                    loops: vec![loop_id],
+                    active: false,
+                },
+            )
+            .unwrap();
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::Transition {
+                    loops: vec![loop_id],
+                    mode: LoopMode::Stopped,
+                    cycles_delay: None,
+                    align_to_sync_at: None,
+                },
+            )
+            .unwrap();
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::Transition {
+                    loops: vec![loop_id],
+                    mode: LoopMode::Playing,
+                    cycles_delay: None,
+                    align_to_sync_at: None,
+                },
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(4));
+        assert_eq!(backend.poll().unwrap().loops[&loop_backend].position, 0);
+        assert!(!model.loops[&loop_id].repeat_sync);
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::SetRepeatSync {
+                    loops: vec![loop_id],
+                    active: true,
+                },
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(4));
+        assert_eq!(backend.poll().unwrap().loops[&loop_backend].position, 4);
+        assert!(model.loops[&loop_id].repeat_sync);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn immediate_composite_transition_does_not_change_primitive_repeat_policy() {
+        let (mut backend, mut model, _, target, _) = engine_model_with_regular_composite();
+        let repeat_sync = model.loops[&target].repeat_sync;
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::Transition {
+                    loops: vec![target],
+                    mode: LoopMode::Playing,
+                    cycles_delay: None,
+                    align_to_sync_at: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(model.loops[&target].repeat_sync, repeat_sync);
     }
 
     #[shoop_wasm_test_support::shoop_test]

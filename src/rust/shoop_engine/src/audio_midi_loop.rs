@@ -330,6 +330,9 @@ impl AudioMidiLoop {
         self.loop_.set_sync_source(src);
         self.resync_poi();
     }
+    pub fn set_repeat_sync(&mut self, active: bool) {
+        self.loop_.set_repeat_sync(active);
+    }
     pub fn set_mode(&mut self, mode: LoopMode) {
         if mode != self.active_latency_mode {
             self.latch_latency_for_mode(mode);

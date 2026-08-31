@@ -76,22 +76,22 @@ Completed evidence: `cargo test -p shoop_engine basic_loop::tests` passed 20 foc
 
 Depends on Stage 1.
 
-- [ ] Update `Session::set_loop_sync_source()` so an explicit source configuration applies the corresponding repeat policy exactly once at configuration time.
-- [ ] Ensure per-processing-cycle sync-source snapshot refreshes only refresh source state and cannot reset an immediate transition's independent-repeat latch.
-- [ ] In primitive handling for `ControlOperation::Transition`, update `LoopModel.repeat_sync` after an accepted playing transition according to whether `cycles_delay` is present.
-- [ ] Leave `LoopModel.repeat_sync` unchanged for stop, plain recording, and composite transitions.
-- [ ] Preserve `ControlOperation::SetRepeatSync` as the explicit override path and verify that application metadata and engine behavior agree after both `true` and `false` operations.
-- [ ] Add an application integration test using the real in-process engine backend:
+- [x] Update `Session::set_loop_sync_source()` so an explicit source configuration applies the corresponding repeat policy exactly once at configuration time.
+- [x] Ensure per-processing-cycle sync-source snapshot refreshes only refresh source state and cannot reset an immediate transition's independent-repeat latch.
+- [x] In primitive handling for `ControlOperation::Transition`, update `LoopModel.repeat_sync` after an accepted playing transition according to whether `cycles_delay` is present.
+- [x] Leave `LoopModel.repeat_sync` unchanged for stop, plain recording, and composite transitions.
+- [x] Preserve `ControlOperation::SetRepeatSync` as the explicit override path and verify that application metadata and engine behavior agree after both `true` and `false` operations.
+- [x] Add an application integration test using the real in-process engine backend:
   - configure a playing sync loop longer than the primitive;
   - keep the primitive configured with that sync source;
   - apply a primitive scripting transition with `cycles_delay: None`;
   - advance exactly one primitive length;
   - assert the primitive is still playing at position zero before the sync loop wraps.
-- [ ] Extend the integration coverage to verify a subsequent synchronized start and explicit repeat-sync overrides.
-- [ ] Add a negative assertion or focused test showing a composite transition does not receive primitive repeat-policy bookkeeping.
-- [ ] Run targeted `shoop_engine` and `shoop_app` tests.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests changed.
-- [ ] Commit session/application integration and regression coverage as one meaningful milestone.
+- [x] Extend the integration coverage to verify a subsequent synchronized start and explicit repeat-sync overrides.
+- [x] Add a negative assertion or focused test showing a composite transition does not receive primitive repeat-policy bookkeeping.
+- [x] Run targeted `shoop_engine` and `shoop_app` tests.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests changed.
+- [x] Commit session/application integration and regression coverage as one meaningful milestone.
 
 ### Stage 2 verification
 
@@ -99,6 +99,8 @@ Depends on Stage 1.
 - Repeat-policy metadata agrees with observed primitive behavior.
 - Explicit setters override the transition-derived policy when applied later.
 - Composite tests retain their previous behavior.
+
+Completed evidence: `cargo nextest run -p shoop_engine -p shoop_app` passed all 1,015 package tests, including the real-backend timing and composite-negative regressions. Formatting, the test-usage checker, and a workspace warning-denying build passed before the milestone commit.
 
 ## Stage 3: Contract documentation and focused review
 
