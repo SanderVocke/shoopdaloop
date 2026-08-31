@@ -18,6 +18,29 @@ fn command_output(program: &str, arguments: &[&str], directory: &Path) -> Option
         .filter(|value| !value.is_empty())
 }
 
+fn git_path(root: &Path, path: &str) -> Option<PathBuf> {
+    command_output(
+        "git",
+        &["rev-parse", "--path-format=absolute", "--git-path", path],
+        root,
+    )
+    .map(PathBuf::from)
+}
+
+fn emit_git_rerun_paths(root: &Path) {
+    if let Some(head) = git_path(root, "HEAD") {
+        println!("cargo:rerun-if-changed={}", head.display());
+    }
+    if let Some(reference) = command_output("git", &["symbolic-ref", "HEAD"], root)
+        .and_then(|reference| git_path(root, &reference))
+    {
+        println!("cargo:rerun-if-changed={}", reference.display());
+    }
+    if let Some(packed_refs) = git_path(root, "packed-refs") {
+        println!("cargo:rerun-if-changed={}", packed_refs.display());
+    }
+}
+
 fn emit_build_identity() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let release_version = std::env::var("SHOOP_RELEASE_VERSION")
@@ -55,10 +78,7 @@ fn emit_build_identity() {
     println!("cargo:rustc-env=SHOOP_BUILD_DATE={build_date}");
     println!("cargo:rerun-if-env-changed=SHOOP_RELEASE_VERSION");
     println!("cargo:rerun-if-env-changed=SHOOP_BUILD_DATE");
-    println!(
-        "cargo:rerun-if-changed={}",
-        root.join(".git/HEAD").display()
-    );
+    emit_git_rerun_paths(&root);
 }
 
 fn profile_output_directory(out_directory: &Path) -> Option<&Path> {

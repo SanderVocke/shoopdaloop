@@ -173,6 +173,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Set release build identity
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: echo "SHOOP_RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
       - name: Install Rust stable
         if: env.ACT != 'true'
         uses: dtolnay/rust-toolchain@stable
@@ -519,15 +524,27 @@ jobs:
 
       - name: Record identified artifact paths
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
-          artifact=$(find artifacts -maxdepth 1 -type f ! -name '*.html' -print -quit)
-          test -n "$artifact"
-          echo "SHOOP_ARTIFACT=$PWD/$artifact" >> "$GITHUB_ENV"
-          if [ "${{ matrix.target }}" = "web" ]; then
-            html=$(find artifacts -maxdepth 1 -type f -name '*.html' -print -quit)
-            test -n "$html"
-            echo "SHOOP_HTML_ARTIFACT=$PWD/$html" >> "$GITHUB_ENV"
-          fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          artifacts = [path for path in Path("artifacts").iterdir() if path.is_file()]
+          archives = [path for path in artifacts if path.suffix != ".html"]
+          html = [path for path in artifacts if path.suffix == ".html"]
+          if len(archives) != 1:
+              raise RuntimeError(f"expected one packaged archive, found: {archives}")
+          if os.environ["TARGET"] == "web" and len(html) != 1:
+              raise RuntimeError(f"expected one packaged HTML file, found: {html}")
+          if os.environ["TARGET"] != "web" and html:
+              raise RuntimeError(f"unexpected packaged HTML files: {html}")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as environment:
+              environment.write(f"SHOOP_ARTIFACT={archives[0].resolve()}\n")
+              if html:
+                  environment.write(f"SHOOP_HTML_ARTIFACT={html[0].resolve()}\n")
+          PY
 
       - name: Upload native application
         if: matrix.target != 'web' && env.ACT != 'true'
