@@ -382,6 +382,54 @@ fn natural_advancement_does_not_repeat_authoritative_stops() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn natural_parent_start_keeps_nested_reconciliation_incremental() {
+    let active = basic(1);
+    let delayed = basic(2);
+    let sync = basic(3);
+    let nested = composite(10);
+    let root = composite(20);
+    let targets = catalog(&[active, delayed, sync, nested, root]);
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![
+            CompositeTimelineNode {
+                plan: plan(
+                    nested,
+                    4,
+                    &[(active, 0, None), (delayed, 1, None)],
+                    &targets,
+                ),
+                sync_source: sync,
+            },
+            CompositeTimelineNode {
+                plan: plan(root, 4, &[(nested, 1, None)], &targets),
+                sync_source: sync,
+            },
+        ],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline
+        .queue_control(start(0, 1, root, LoopMode::Playing))
+        .unwrap();
+    timeline.resolve_boundary(&[], &[], |_| true).unwrap();
+    timeline.advance_clock(4);
+
+    let trace = timeline.resolve_boundary(&[sync], &[], |_| true).unwrap();
+
+    assert!(trace.iter().any(|entry| {
+        entry.target == active
+            && matches!(
+                entry.action,
+                BoundaryTargetAction::SetMode {
+                    mode: LoopMode::Playing,
+                    ..
+                }
+            )
+    }));
+    assert!(!trace.iter().any(|entry| entry.target == delayed));
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn a_source_trigger_advances_the_schedule_at_the_exact_sample() {
     let child = basic(1);
     let source = basic(2);

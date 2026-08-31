@@ -26,11 +26,13 @@ pub enum CompositeTargetAction {
 pub struct CompositeTargetTransition {
     pub target: LoopIdentity,
     pub action: CompositeTargetAction,
+    pub authoritative: bool,
 }
 
 const EMPTY_TRANSITION: CompositeTargetTransition = CompositeTargetTransition {
     target: EMPTY_IDENTITY,
     action: CompositeTargetAction::Stop,
+    authoritative: false,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -280,13 +282,52 @@ impl CompositeRuntime {
     where
         F: FnMut(LoopIdentity) -> bool,
     {
+        self.transition_immediate_inner(
+            plan,
+            mode,
+            seek_iteration,
+            ReconcileScope::Authoritative,
+            &mut target_is_current,
+        )
+    }
+
+    pub(crate) fn transition_immediate_delta<F>(
+        &mut self,
+        plan: &CompiledCompositePlan,
+        mode: LoopMode,
+        seek_iteration: Option<i64>,
+        mut target_is_current: F,
+    ) -> Result<CompositeTransitionBatch, CompositeRuntimeError>
+    where
+        F: FnMut(LoopIdentity) -> bool,
+    {
+        self.transition_immediate_inner(
+            plan,
+            mode,
+            seek_iteration,
+            ReconcileScope::Delta,
+            &mut target_is_current,
+        )
+    }
+
+    fn transition_immediate_inner<F>(
+        &mut self,
+        plan: &CompiledCompositePlan,
+        mode: LoopMode,
+        seek_iteration: Option<i64>,
+        scope: ReconcileScope,
+        target_is_current: &mut F,
+    ) -> Result<CompositeTransitionBatch, CompositeRuntimeError>
+    where
+        F: FnMut(LoopIdentity) -> bool,
+    {
         self.ensure_plan_mut(plan)?;
         if mode == LoopMode::Unknown {
             self.counters.rejected_modes = self.counters.rejected_modes.saturating_add(1);
             return Err(CompositeRuntimeError::UnknownMode);
         }
         if mode == LoopMode::Stopped {
-            return self.stop_inner(&mut target_is_current);
+            return self.stop_inner(target_is_current);
         }
         if plan.n_iterations() == 0 {
             self.mode = LoopMode::Stopped;
@@ -308,10 +349,10 @@ impl CompositeRuntime {
             plan,
             Some(self.iteration),
             mode,
-            ReconcileScope::Authoritative,
+            scope,
             true,
             false,
-            &mut target_is_current,
+            target_is_current,
         )
     }
 
@@ -490,6 +531,7 @@ impl CompositeRuntime {
                     &mut output,
                     old_index,
                     CompositeTargetAction::Stop,
+                    false,
                     &mut target_is_current,
                 )?;
                 self.active[old_index] = INACTIVE_TARGET;
@@ -721,6 +763,7 @@ impl CompositeRuntime {
                 &mut batch,
                 index,
                 CompositeTargetAction::Stop,
+                false,
                 target_is_current,
             )?;
             self.active[index] = INACTIVE_TARGET;
@@ -764,6 +807,7 @@ impl CompositeRuntime {
                     &mut batch,
                     index,
                     CompositeTargetAction::Stop,
+                    false,
                     target_is_current,
                 )?;
                 self.active[index] = INACTIVE_TARGET;
@@ -800,6 +844,7 @@ impl CompositeRuntime {
                         cycle_offset: desired.cycle_offset,
                         retrigger: force_seek || !current.active || retrigger_composite,
                     },
+                    scope == ReconcileScope::Authoritative,
                     target_is_current,
                 )?
             } else {
@@ -824,6 +869,7 @@ impl CompositeRuntime {
         batch: &mut CompositeTransitionBatch,
         target_index: usize,
         action: CompositeTargetAction,
+        authoritative: bool,
         target_is_current: &mut F,
     ) -> Result<bool, CompositeRuntimeError>
     where
@@ -835,7 +881,11 @@ impl CompositeRuntime {
             self.active[target_index] = INACTIVE_TARGET;
             return Ok(false);
         }
-        if let Err(error) = batch.push(CompositeTargetTransition { target, action }) {
+        if let Err(error) = batch.push(CompositeTargetTransition {
+            target,
+            action,
+            authoritative,
+        }) {
             self.counters.output_overflows = self.counters.output_overflows.saturating_add(1);
             self.fault = CompositeRuntimeFault::OutputCapacity;
             return Err(error);

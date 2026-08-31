@@ -75,6 +75,8 @@ This work changes composite runtime reconciliation and its tests. It may update 
 
 Immediate transitions and seeks use authoritative reconciliation. Delayed transitions reuse the immediate path when due. Natural advancement, pass completion, wraparound, and plan activation use delta reconciliation because they continue or retire existing runtime ownership rather than establish an externally requested snapshot.
 
+The reconciliation scope is carried with composite-generated start intents. This keeps nested transitions authoritative when they descend from an explicit start or seek, while a nested composite first started by natural parent advancement remains incremental.
+
 ### Stage 3: Verify Nested Propagation and Conflict Resolution
 
 - [x] Add a boundary-timeline test where starting a root composite starts a nested composite and stops a deep primitive that is referenced but not desired at iteration zero.
@@ -116,4 +118,4 @@ Immediate transitions and seeks use authoritative reconciliation. Delayed transi
 - [x] Confirm native and WebAssembly behavior uses the same authoritative runtime implementation.
 - [x] Commit the completed validation milestone with this plan updated to reflect actual progress.
 
-Native validation passed 1,529 tests with four environment skips. The Node WebAssembly harness passed all 794 `shoop_engine` tests. The application Wasm check and release AudioWorklet build passed. Chrome and packaged-browser smoke tests were not run because no Chrome or Chromium executable is available in this environment; the Node harness covers the shared composite runtime implementation.
+Native validation passed all feature-relevant tests; one unrelated graph-control timing test failed in the 1,530-test concurrent run and passed immediately when rerun alone. Four host-facility tests were skipped. The Node WebAssembly harness passed all 795 `shoop_engine` tests. The application Wasm check and release AudioWorklet build passed. Chrome and packaged-browser smoke tests were not run because no Chrome or Chromium executable is available in this environment; the Node harness covers the shared composite runtime implementation.
