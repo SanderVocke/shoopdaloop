@@ -2466,6 +2466,148 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn master_bus_sums_two_tracks_fans_out_and_disconnects_in_the_worklet() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 1,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (sequence, track_id, loop_id, name) in [(2, 1, 1, "first"), (3, 2, 2, "second")] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::CreateTrack {
+                        expected_track_id: track_id,
+                        expected_loop_ids: vec![loop_id],
+                        port_name_base: name.to_owned(),
+                        topology: WireTrackTopology::Direct {
+                            audio_channels: 1,
+                            midi: false,
+                        },
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        for (sequence, track_id) in [(4, 1), (5, 2)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetTrackControl {
+                        track_id,
+                        control: WireTrackControl::InputMonitoring(true),
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        let Event::Snapshot(snapshot) = command(&mut host, 6, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        let master = &snapshot.buses[0];
+        let left = master.channels[0].clone();
+        let right = master.channels[1].clone();
+        for (sequence, source_port_id, destination_channel_id) in
+            [(7, 2, left.id), (8, 4, left.id), (9, 2, right.id)]
+        {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetMixerRoute {
+                        source_port_id,
+                        destination_channel_id,
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        let mut sequence = 10;
+        for source_port_id in [2, 4] {
+            for destination in ["webaudio:destination_1", "webaudio:destination_2"] {
+                assert!(matches!(
+                    command(
+                        &mut host,
+                        sequence,
+                        Command::SetPortConnected {
+                            application_port_id: source_port_id,
+                            host_port_id: destination.to_owned(),
+                            connected: false,
+                        },
+                    )
+                    .event,
+                    Event::Ack
+                ));
+                sequence += 1;
+            }
+        }
+        for (output_port_id, destination) in [
+            (left.output_port_id, "webaudio:destination_1"),
+            (right.output_port_id, "webaudio:destination_2"),
+        ] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetPortConnected {
+                        application_port_id: output_port_id,
+                        host_port_id: destination.to_owned(),
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+            sequence += 1;
+        }
+
+        host.input()[..128].fill(0.25);
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.5).abs() < 1.0e-6));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.25).abs() < 1.0e-6));
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::SetMixerRoute {
+                    source_port_id: 2,
+                    destination_channel_id: left.id,
+                    connected: false,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.25).abs() < 1.0e-6));
+        let Event::Snapshot(snapshot) = command(&mut host, sequence + 1, Command::Poll).event
+        else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.confirmed_mixer_links.len(), 2);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn track_midi_injection_needs_no_web_midi_endpoint() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(

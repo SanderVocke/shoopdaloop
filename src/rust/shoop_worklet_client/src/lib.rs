@@ -46,7 +46,8 @@ use shoop_backend::{
     BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
     BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
     BackendTrackState, BackendTrackTopology, DirectTrackRequest, OxiSynthControl,
-    TrackProcessorTypeId, TrackRequest,
+    TrackProcessorTypeId, TrackRequest, MASTER_BUS_CHANNEL_IDS, MASTER_BUS_ID,
+    MASTER_BUS_OUTPUT_PORT_IDS,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -1034,6 +1035,28 @@ fn browser_replacement_mapping(session: &BackendSessionData) -> BackendSessionRe
         replacement
             .global_ports
             .insert(global.source_id, global.descriptor.id);
+    }
+    for source_bus in &session.buses {
+        replacement
+            .buses
+            .insert(source_bus.source_id, MASTER_BUS_ID);
+        for (index, source_channel) in source_bus.channels.iter().enumerate() {
+            let Some((&channel_id, &output_port_id)) = MASTER_BUS_CHANNEL_IDS
+                .get(index)
+                .zip(MASTER_BUS_OUTPUT_PORT_IDS.get(index))
+            else {
+                continue;
+            };
+            replacement
+                .bus_channels
+                .insert(source_channel.source_id, channel_id);
+            replacement
+                .bus_output_ports
+                .insert(source_channel.source_id, output_port_id);
+            replacement
+                .ports
+                .insert(source_channel.output_port.source_id, output_port_id);
+        }
     }
     let mut next_track_id = 1_u64;
     let mut next_loop_id = 1_u64;

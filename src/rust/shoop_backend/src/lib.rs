@@ -226,7 +226,16 @@ pub struct BackendMixerSnapshot {
 }
 
 pub const MASTER_BUS_NAME: &str = "Master";
+pub const MASTER_BUS_ID: BackendBusId = BackendBusId::from_raw(1);
 pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
+pub const MASTER_BUS_CHANNEL_IDS: [BackendBusChannelId; 2] = [
+    BackendBusChannelId::from_raw(1),
+    BackendBusChannelId::from_raw(2),
+];
+pub const MASTER_BUS_OUTPUT_PORT_IDS: [BackendPortId; 2] = [
+    BackendPortId::from_raw(9_007_199_254_740_989),
+    BackendPortId::from_raw(9_007_199_254_740_990),
+];
 
 fn validate_mixer_source_descriptor(descriptor: &BackendPortDescriptor) -> Result<()> {
     if descriptor.owner != BackendPortOwner::Track
