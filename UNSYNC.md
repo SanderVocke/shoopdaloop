@@ -123,14 +123,16 @@ Completed evidence: focused tests cover every playing mode plus same-mode and al
 
 Run all commands in the environment selected by `.agents/info/build.md`; on Nix/NixOS, enter the repository development shell first.
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `RUSTFLAGS="-D warnings" cargo build --workspace`
-- [ ] `python3 scripts/check_shoop_test_usage.py`
-- [ ] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`
-- [ ] `python3 scripts/check_tracing_coverage.py --require-closed`
-- [ ] Review the final diff and test output against every immutable acceptance criterion.
-- [ ] Confirm `git status` contains only intended source, test, documentation, and plan updates.
-- [ ] Commit the final validated state if validation required any follow-up changes.
+- [x] `cargo fmt --all -- --check`
+- [x] `RUSTFLAGS="-D warnings" cargo build --workspace`
+- [x] `python3 scripts/check_shoop_test_usage.py`
+- [x] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`
+- [x] `python3 scripts/check_tracing_coverage.py --require-closed`
+- [x] Review the final diff and test output against every immutable acceptance criterion.
+- [x] Confirm `git status` contains only intended source, test, documentation, and plan updates.
+- [x] Commit the final validated state if validation required any follow-up changes.
+
+Completed evidence: formatting and the warning-denying workspace build passed; the test-usage and closed tracing-inventory checks passed; the complete CI-profile workspace suite passed 1,623 tests with four permitted host-facility skips. The acceptance-criteria audit found direct focused or integration coverage for every behavioral requirement, and the final diff contains only the plan, primitive engine/session/application implementation and tests, and Lua contract documentation.
 
 ## Execution contract
 
