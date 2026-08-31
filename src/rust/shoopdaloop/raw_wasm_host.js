@@ -141,6 +141,30 @@ export class ShoopRawWasmHost {
     return length;
   }
 
+  traceDrainRing(destination, writeRecord, maximumRecords, recordBytes = 48) {
+    if (!this.trace || maximumRecords === 0) return 0;
+    const capacityRecords = Math.floor(destination.length / recordBytes);
+    const maximumBytes = Math.min(maximumRecords, capacityRecords) * recordBytes;
+    const length = this.exports.shoop_worklet_trace_drain(this.host, maximumBytes) >>> 0;
+    if (length > maximumBytes || length % recordBytes) {
+      throw new RangeError('invalid trace drain length');
+    }
+    if (this.exports.memory.buffer !== this.memoryBuffer) {
+      this.refreshViews(false);
+      const pointer = this.exports.shoop_worklet_trace_ptr(this.host) >>> 0;
+      this.trace.bytes = new Uint8Array(
+        this.exports.memory.buffer, pointer, this.trace.capacityRecords * recordBytes,
+      );
+    }
+    const records = length / recordBytes;
+    const slot = writeRecord % capacityRecords;
+    const tailRecords = Math.min(records, capacityRecords - slot);
+    const tailBytes = tailRecords * recordBytes;
+    destination.set(this.trace.bytes.subarray(0, tailBytes), slot * recordBytes);
+    destination.set(this.trace.bytes.subarray(tailBytes, length), 0);
+    return records;
+  }
+
   traceDropped() {
     return this.trace ? Number(this.exports.shoop_worklet_trace_dropped(this.host)) : 0;
   }

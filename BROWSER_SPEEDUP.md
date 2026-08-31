@@ -154,19 +154,19 @@ Depends on the protocol groundwork but can otherwise be developed independently 
 
 Independent of Stages 1–3 except for the protocol-version update in JS contracts.
 
-- [ ] Add a wrap-aware trace-drain operation to `raw_wasm_host.js` that:
+- [x] Add a wrap-aware trace-drain operation to `raw_wasm_host.js` that:
   - drains complete groups into the existing contiguous Wasm transfer buffer;
   - copies the result into SAB tail and head segments;
   - performs no per-record allocation;
   - returns the complete record count.
-- [ ] Use the shared operation from both `audio_worklet.js` and `audio_worker.js`.
-- [ ] Publish the SAB write index only after both copies complete.
-- [ ] Retain the existing contiguous `traceDrainInto` API where needed by contracts.
-- [ ] Extend `raw_wasm_host_contract.mjs` with the exact failure boundary:
+- [x] Use the shared operation from both `audio_worklet.js` and `audio_worker.js`.
+- [x] Publish the SAB write index only after both copies complete.
+- [x] Retain the existing contiguous `traceDrainInto` API where needed by contracts.
+- [x] Extend `raw_wasm_host_contract.mjs` with the exact failure boundary:
   - write position `capacity - 1`;
   - next group larger than one record;
   - successful split copy and continued draining after wrap.
-- [ ] Add a bounded repeated-wrap test proving the producer does not become permanently stuck and reports no source drops when total consumer capacity is sufficient.
+- [x] Add a bounded repeated-wrap test proving the producer does not become permanently stuck and reports no source drops when total consumer capacity is sufficient.
 
 **Verification**
 

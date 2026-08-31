@@ -102,11 +102,8 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     const read = Atomics.load(header, 3) >>> 0;
     let free = capacity - ((write - read) >>> 0);
     while (free > 0) {
-      const slot = write % capacity;
-      const records = Math.min(free, capacity - slot);
-      const bytes = this.host.traceDrainInto(data, slot * 48, records * 48);
-      if (!bytes) break;
-      const written = bytes / 48;
+      const written = this.host.traceDrainRing(data, write, free);
+      if (!written) break;
       write = (write + written) >>> 0;
       free -= written;
     }
