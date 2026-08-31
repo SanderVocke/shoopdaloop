@@ -56,10 +56,22 @@ pub enum BoundaryTargetAction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundaryIntentOrigin {
-    Direct { acceptance_sequence: u64 },
-    ScriptComposite { source: LoopIdentity, ordinal: u32 },
-    RegularComposite { source: LoopIdentity, ordinal: u32 },
-    Natural { source: LoopIdentity },
+    Direct {
+        acceptance_sequence: u64,
+    },
+    ScriptComposite {
+        source: LoopIdentity,
+        ordinal: u32,
+        authoritative: bool,
+    },
+    RegularComposite {
+        source: LoopIdentity,
+        ordinal: u32,
+        authoritative: bool,
+    },
+    Natural {
+        source: LoopIdentity,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1062,8 +1074,12 @@ impl CompositeBoundaryTimeline {
             if let Some(intent) = incoming {
                 controlled = true;
                 self.delivered_composites[node_index] = true;
-                let batch =
-                    self.apply_to_composite(node_index, intent.action, &mut primitive_is_current)?;
+                let batch = self.apply_to_composite(
+                    node_index,
+                    intent.action,
+                    intent_is_authoritative(intent.origin),
+                    &mut primitive_is_current,
+                )?;
                 self.append_batch(node_index, &batch)?;
                 if matches!(
                     intent.action,
@@ -1254,6 +1270,7 @@ impl CompositeBoundaryTimeline {
         &mut self,
         node_index: usize,
         action: BoundaryTargetAction,
+        authoritative: bool,
         primitive_is_current: &mut F,
     ) -> Result<CompositeTransitionBatch, CompositeTimelineFaultRecord>
     where
@@ -1282,8 +1299,13 @@ impl CompositeBoundaryTimeline {
                 } else {
                     Some((offset_samples / sync_length) as i64)
                 };
-                self.working_runtimes[node_index]
-                    .transition_immediate(plan, mode, iteration, is_current)
+                if authoritative {
+                    self.working_runtimes[node_index]
+                        .transition_immediate(plan, mode, iteration, is_current)
+                } else {
+                    self.working_runtimes[node_index]
+                        .transition_immediate_delta(plan, mode, iteration, is_current)
+                }
             }
         };
         result.map_err(|_| self.runtime_fault())
@@ -1325,10 +1347,12 @@ impl CompositeBoundaryTimeline {
                 CompiledCompositeKind::Script => BoundaryIntentOrigin::ScriptComposite {
                     source,
                     ordinal: ordinal as u32,
+                    authoritative: transition.authoritative,
                 },
                 CompiledCompositeKind::Regular => BoundaryIntentOrigin::RegularComposite {
                     source,
                     ordinal: ordinal as u32,
+                    authoritative: transition.authoritative,
                 },
             };
             self.push_intent(BoundaryIntent {
@@ -1611,6 +1635,15 @@ fn intent_priority(origin: BoundaryIntentOrigin) -> u8 {
     }
 }
 
+fn intent_is_authoritative(origin: BoundaryIntentOrigin) -> bool {
+    match origin {
+        BoundaryIntentOrigin::Direct { .. } => true,
+        BoundaryIntentOrigin::ScriptComposite { authoritative, .. }
+        | BoundaryIntentOrigin::RegularComposite { authoritative, .. } => authoritative,
+        BoundaryIntentOrigin::Natural { .. } => false,
+    }
+}
+
 fn tie_break(candidate: BoundaryIntentOrigin, incumbent: BoundaryIntentOrigin) -> Ordering {
     match (candidate, incumbent) {
         (
@@ -1625,18 +1658,22 @@ fn tie_break(candidate: BoundaryIntentOrigin, incumbent: BoundaryIntentOrigin) -
             BoundaryIntentOrigin::ScriptComposite {
                 source: candidate_source,
                 ordinal: candidate_ordinal,
+                ..
             }
             | BoundaryIntentOrigin::RegularComposite {
                 source: candidate_source,
                 ordinal: candidate_ordinal,
+                ..
             },
             BoundaryIntentOrigin::ScriptComposite {
                 source: incumbent_source,
                 ordinal: incumbent_ordinal,
+                ..
             }
             | BoundaryIntentOrigin::RegularComposite {
                 source: incumbent_source,
                 ordinal: incumbent_ordinal,
+                ..
             },
         ) => incumbent_source
             .cmp(&candidate_source)
