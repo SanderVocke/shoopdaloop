@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import os
 import plistlib
 import json
 import re
@@ -50,8 +51,25 @@ WEB_REQUIRED_FILES = (
 )
 
 
+def build_identity() -> str:
+    release = os.environ.get("SHOOP_RELEASE_VERSION", "").strip()
+    if release:
+        return release
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        revision = "unknown"
+    return f"dev-{revision or 'unknown'}"
+
+
 def artifact_stem(platform: str, arch: str, profile: str) -> str:
-    return f"shoopdaloop-{platform}-{arch}-{profile}"
+    return f"shoopdaloop-{platform}-{arch}-{profile}-{build_identity()}"
 
 
 def copy_metadata(destination: Path) -> None:
@@ -515,6 +533,8 @@ def verify_web(bundle: Path, html: Path) -> None:
 
 
 def verify(args: argparse.Namespace) -> list[Path]:
+    if args.artifact == Path(".") and os.environ.get("SHOOP_ARTIFACT"):
+        args.artifact = Path(os.environ["SHOOP_ARTIFACT"])
     if args.platform == "web":
         if args.html is None:
             raise RuntimeError("--html is required when verifying a web artifact")

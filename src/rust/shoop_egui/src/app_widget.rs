@@ -599,6 +599,7 @@ enum BottomPane {
 pub struct AppWidgetResponse {
     pub app_actions: Vec<AppAction>,
     pub settings_actions: Vec<SettingsAction>,
+    pub about_requested: bool,
 }
 
 #[derive(Clone)]
@@ -808,6 +809,7 @@ impl AppWidget {
         .map(AppAction::KeyEvent)
         .collect::<Vec<_>>();
         let mut settings_actions = Vec::new();
+        let mut about_requested = false;
         let touch_mode = settings_state.active.get(TOUCH_MODE).unwrap_or(false);
         crate::loop_widget::set_touch_mode(ui.ctx(), touch_mode);
 
@@ -847,6 +849,7 @@ impl AppWidget {
                             if self.global_controls.take_settings_requested() {
                                 self.settings.open(settings_state);
                             }
+                            about_requested |= self.global_controls.take_about_requested();
                             ui.separator();
                             self.script_dialogs
                                 .show_control(ui, &state.scripting.dialogs);
@@ -1050,6 +1053,7 @@ impl AppWidget {
         AppWidgetResponse {
             app_actions: actions,
             settings_actions,
+            about_requested,
         }
     }
 
