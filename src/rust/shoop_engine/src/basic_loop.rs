@@ -952,6 +952,23 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn immediate_aligned_transition_repeats_at_own_boundary() {
+        let mut l = BasicLoop::default();
+        let mut sync = playing_sync_source(false).unwrap();
+        sync.position = 2;
+        l.set_sync_source(Some(sync));
+        l.set_length(4);
+
+        l.plan_transition(LoopMode::Playing, None, Some(0));
+        check!(l.position() == 2);
+        l.process(2);
+
+        check!(l.mode() == LoopMode::Playing);
+        check!(l.position() == 0);
+        check!(l.cycle_count == 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn synchronized_playing_transition_waits_at_own_boundary() {
         let mut l = BasicLoop::default();
         l.set_sync_source(playing_sync_source(false));

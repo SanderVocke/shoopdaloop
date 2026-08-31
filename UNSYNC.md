@@ -106,16 +106,18 @@ Completed evidence: `cargo nextest run -p shoop_engine -p shoop_app` passed all 
 
 Depends on Stages 1 and 2.
 
-- [ ] Clarify the Lua compatibility documentation: `Loop_DontWaitForSync` on a primitive playing transition also selects independent repeating until superseded by a later playing transition or explicit repeat-sync setting.
-- [ ] Review the implementation for all playing modes, same-mode playing transitions, aligned immediate transitions, inactive sync sources, and zero-length handling.
-- [ ] Confirm no backend trait, worklet protocol, or session-format changes were introduced.
-- [ ] Run formatting and the targeted tests again.
-- [ ] Commit documentation and any review-driven cleanup as a meaningful milestone.
+- [x] Clarify the Lua compatibility documentation: `Loop_DontWaitForSync` on a primitive playing transition also selects independent repeating until superseded by a later playing transition or explicit repeat-sync setting.
+- [x] Review the implementation for all playing modes, same-mode playing transitions, aligned immediate transitions, inactive sync sources, and zero-length handling.
+- [x] Confirm no backend trait, worklet protocol, or session-format changes were introduced.
+- [x] Run formatting and the targeted tests again.
+- [x] Commit documentation and any review-driven cleanup as a meaningful milestone.
 
 ### Stage 3 verification
 
 - Documentation matches tested precedence and lifetime semantics.
 - The diff remains limited to primitive engine mechanics, application bookkeeping/tests, and relevant documentation.
+
+Completed evidence: focused tests cover every playing mode plus same-mode and aligned immediate transitions; existing zero-length and inactive/no-source behavior remains passing. The refined application test applies both explicit repeat-policy overrides while playback is active. No backend trait, protocol, or session-format file changed. Formatting, focused tests, the test-usage checker, and the warning-denying workspace build passed before the milestone commit.
 
 ## Final end-to-end validation
 

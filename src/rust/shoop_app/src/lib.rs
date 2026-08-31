@@ -13117,8 +13117,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(snapshot.loops[&sync_backend].position, 0);
         assert_eq!(snapshot.loops[&loop_backend].mode, BackendLoopMode::Playing);
         assert_eq!(snapshot.loops[&loop_backend].position, 0);
-        backend.advance(Duration::from_millis(4));
-        assert_eq!(backend.poll().unwrap().loops[&loop_backend].position, 4);
+        backend.advance(Duration::from_millis(2));
+        assert_eq!(backend.poll().unwrap().loops[&loop_backend].position, 2);
 
         model
             .apply_script_operation(
@@ -13129,29 +13129,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 },
             )
             .unwrap();
-        model
-            .apply_script_operation(
-                &mut backend,
-                ControlOperation::Transition {
-                    loops: vec![loop_id],
-                    mode: LoopMode::Stopped,
-                    cycles_delay: None,
-                    align_to_sync_at: None,
-                },
-            )
-            .unwrap();
-        model
-            .apply_script_operation(
-                &mut backend,
-                ControlOperation::Transition {
-                    loops: vec![loop_id],
-                    mode: LoopMode::Playing,
-                    cycles_delay: None,
-                    align_to_sync_at: None,
-                },
-            )
-            .unwrap();
-        backend.advance(Duration::from_millis(4));
+        backend.advance(Duration::from_millis(2));
         assert_eq!(backend.poll().unwrap().loops[&loop_backend].position, 0);
         assert!(!model.loops[&loop_id].repeat_sync);
 
