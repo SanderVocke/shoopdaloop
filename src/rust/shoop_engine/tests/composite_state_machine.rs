@@ -569,12 +569,21 @@ fn regular_runtime_inherits_modes_and_empty_playback_is_duration_only() {
         let batch = runtime
             .transition_immediate(&plan, mode, None, always_current)
             .unwrap();
-        let expected_count = if mode == LoopMode::Replacing { 2 } else { 1 };
-        assert_eq!(batch.as_slice().len(), expected_count);
-        assert!(batch
-            .as_slice()
-            .iter()
-            .all(|transition| matches!(transition.action, CompositeTargetAction::SetMode { mode: actual, .. } if actual == mode)));
+        assert_eq!(batch.as_slice().len(), 2);
+        if mode == LoopMode::Replacing {
+            assert_eq!(batch.as_slice()[0].target, full);
+            assert_eq!(
+                batch.as_slice()[0].action,
+                set_mode(LoopMode::Replacing, 0, true)
+            );
+            assert_eq!(batch.as_slice()[1].target, empty);
+            assert_eq!(batch.as_slice()[1].action, set_mode(mode, 0, true));
+        } else {
+            assert_eq!(batch.as_slice()[0].target, empty);
+            assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
+            assert_eq!(batch.as_slice()[1].target, full);
+            assert_eq!(batch.as_slice()[1].action, set_mode(mode, 0, true));
+        }
     }
 
     for mode in [LoopMode::Recording, LoopMode::RecordingDryIntoWet] {
@@ -604,10 +613,12 @@ fn script_empty_playback_is_reserved_but_empty_recording_is_applied() {
     let output = runtime
         .transition_immediate(&plan, LoopMode::Playing, None, always_current)
         .unwrap();
-    assert_eq!(output.as_slice().len(), 1);
-    assert_eq!(output.as_slice()[0].target, recording);
+    assert_eq!(output.as_slice().len(), 2);
+    assert_eq!(output.as_slice()[0].target, playing);
+    assert_eq!(output.as_slice()[0].action, CompositeTargetAction::Stop);
+    assert_eq!(output.as_slice()[1].target, recording);
     assert_eq!(
-        output.as_slice()[0].action,
+        output.as_slice()[1].action,
         set_mode(LoopMode::Recording, 0, true)
     );
 }

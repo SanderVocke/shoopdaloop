@@ -60,18 +60,20 @@ This work changes composite runtime reconciliation and its tests. It may update 
 
 ### Stage 2: Implement Explicit Reconciliation Policy
 
-- [ ] Add a private reconciliation policy type and thread it through composite runtime reconciliation.
-- [ ] Change the stop pass so authoritative reconciliation emits `Stop` for every undesired installed target, while delta reconciliation preserves the existing active-to-inactive behavior.
-- [ ] Use authoritative reconciliation for explicit non-stopped immediate transitions and explicit seeks.
-- [ ] Confirm delayed transitions execute through the authoritative immediate-transition path.
-- [ ] Keep natural advancement, regular wraparound, recording pass completion, script completion, and plan activation/replacement on the appropriate delta paths.
-- [ ] Preserve desired-target mode selection, offsets, retrigger behavior, local active state, stale-target handling, batch capacity, counters, and empty-plan behavior.
+- [x] Add a private reconciliation policy type and thread it through composite runtime reconciliation.
+- [x] Change the stop pass so authoritative reconciliation emits `Stop` for every undesired installed target, while delta reconciliation preserves the existing active-to-inactive behavior.
+- [x] Use authoritative reconciliation for explicit non-stopped immediate transitions and explicit seeks.
+- [x] Confirm delayed transitions execute through the authoritative immediate-transition path.
+- [x] Keep natural advancement, regular wraparound, recording pass completion, script completion, and plan activation/replacement on the appropriate delta paths.
+- [x] Preserve desired-target mode selection, offsets, retrigger behavior, local active state, stale-target handling, batch capacity, counters, and empty-plan behavior.
 
 **Verification**
 
-- [ ] Run the targeted composite state-machine tests and confirm all Stage 1 cases pass.
-- [ ] Run the realtime no-allocation composite test to ensure the policy adds no allocation.
-- [ ] Review every reconciliation call site and record its authoritative or delta rationale in the implementation commit or plan progress notes.
+- [x] Run the targeted composite state-machine tests and confirm all Stage 1 cases pass.
+- [x] Run the realtime no-allocation composite test to ensure the policy adds no allocation.
+- [x] Review every reconciliation call site and record its authoritative or delta rationale in the implementation commit or plan progress notes.
+
+Immediate transitions and seeks use authoritative reconciliation. Delayed transitions reuse the immediate path when due. Natural advancement, pass completion, wraparound, and plan activation use delta reconciliation because they continue or retire existing runtime ownership rather than establish an externally requested snapshot.
 
 ### Stage 3: Verify Nested Propagation and Conflict Resolution
 

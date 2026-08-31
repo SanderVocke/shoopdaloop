@@ -128,6 +128,12 @@ struct ActiveTarget {
     cycle_offset: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReconcileScope {
+    Delta,
+    Authoritative,
+}
+
 const INACTIVE_TARGET: ActiveTarget = ActiveTarget {
     active: false,
     mode: LoopMode::Stopped,
@@ -302,6 +308,7 @@ impl CompositeRuntime {
             plan,
             Some(self.iteration),
             mode,
+            ReconcileScope::Authoritative,
             true,
             false,
             &mut target_is_current,
@@ -330,6 +337,7 @@ impl CompositeRuntime {
             plan,
             Some(self.iteration),
             self.mode,
+            ReconcileScope::Authoritative,
             true,
             false,
             &mut target_is_current,
@@ -401,6 +409,7 @@ impl CompositeRuntime {
             current_plan,
             None,
             LoopMode::Stopped,
+            ReconcileScope::Delta,
             false,
             false,
             &mut target_is_current,
@@ -518,6 +527,7 @@ impl CompositeRuntime {
                 candidate,
                 Some(0),
                 next_mode,
+                ReconcileScope::Delta,
                 false,
                 recorded_children,
                 &mut target_is_current,
@@ -623,7 +633,15 @@ impl CompositeRuntime {
         let next = self.iteration + 1;
         if next < plan.n_iterations() {
             self.iteration = next;
-            return self.reconcile(plan, Some(next), self.mode, false, false, target_is_current);
+            return self.reconcile(
+                plan,
+                Some(next),
+                self.mode,
+                ReconcileScope::Delta,
+                false,
+                false,
+                target_is_current,
+            );
         }
 
         match plan.kind() {
@@ -632,6 +650,7 @@ impl CompositeRuntime {
                     plan,
                     None,
                     LoopMode::Stopped,
+                    ReconcileScope::Delta,
                     false,
                     false,
                     target_is_current,
@@ -645,12 +664,21 @@ impl CompositeRuntime {
                 self.iteration = 0;
                 if self.play_after_record {
                     self.mode = playback_mode_after_record(self.mode);
-                    self.reconcile(plan, Some(0), self.mode, false, true, target_is_current)
+                    self.reconcile(
+                        plan,
+                        Some(0),
+                        self.mode,
+                        ReconcileScope::Delta,
+                        false,
+                        true,
+                        target_is_current,
+                    )
                 } else {
                     let batch = self.reconcile(
                         plan,
                         None,
                         LoopMode::Stopped,
+                        ReconcileScope::Delta,
                         false,
                         false,
                         target_is_current,
@@ -666,7 +694,15 @@ impl CompositeRuntime {
                 } else {
                     self.cycle_count += 1;
                 }
-                self.reconcile(plan, Some(0), self.mode, false, false, target_is_current)
+                self.reconcile(
+                    plan,
+                    Some(0),
+                    self.mode,
+                    ReconcileScope::Delta,
+                    false,
+                    false,
+                    target_is_current,
+                )
             }
         }
     }
@@ -700,6 +736,7 @@ impl CompositeRuntime {
         plan: &CompiledCompositePlan,
         desired_iteration: Option<u32>,
         composite_mode: LoopMode,
+        scope: ReconcileScope,
         force_seek: bool,
         assume_recorded_children_nonempty: bool,
         target_is_current: &mut F,
@@ -720,7 +757,9 @@ impl CompositeRuntime {
                     state
                 })
                 .and_then(|state| effective_target(state, composite_mode, self.iteration));
-            if self.active[index].active && desired.is_none() {
+            if desired.is_none()
+                && (scope == ReconcileScope::Authoritative || self.active[index].active)
+            {
                 self.emit(
                     &mut batch,
                     index,
