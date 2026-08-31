@@ -87,92 +87,92 @@ Verification:
 
 Depends on Stage 1.
 
-- [ ] Introduce stable backend bus/channel identities and generic bus descriptions containing ordered audio channels and their input/output facets.
-- [ ] Introduce a typed confirmed mixer-route key for `track audio output -> bus input channel`, plus normalized failures/revision state separate from external host links.
-- [ ] Extend backend snapshots with buses and confirmed mixer routes; extend the backend trait with the control operation needed to request a unity track-to-bus connect/disconnect.
-- [ ] Extend port ownership so Master output ports are bus-owned without pretending they belong to a track. Preserve existing track/global ownership behavior.
-- [ ] Define one shared validator/lowering description for allowed mixer routes and fixed bus construction so native and engine backends cannot diverge semantically.
-- [ ] Create a two-channel Master bus in `EngineBackend`: each channel has an internal summing input, a fixed owner-managed pass-through to a bus-owned external output, and no user route by default.
-- [ ] Implement equivalent Master construction and route mutation in `NativeRuntime` using shared session/internal-port facilities.
-- [ ] Confirm mixer routes only once the graph scheduler has installed the corresponding active route table; report rejected mutations through bounded backend failure state.
-- [ ] Remove track-to-Master routes safely when a source track disappears; keep Master lifetime tied to the enclosing backend session.
-- [ ] Add backend tests for Master shape/ownership, initial disconnection, source validation, duplicate/idempotent commands, summing, fan-out, disconnect, track removal, and coexistence with direct host links.
+- [x] Introduce stable backend bus/channel identities and generic bus descriptions containing ordered audio channels and their input/output facets.
+- [x] Introduce a typed confirmed mixer-route key for `track audio output -> bus input channel`, plus normalized failures/revision state separate from external host links.
+- [x] Extend backend snapshots with buses and confirmed mixer routes; extend the backend trait with the control operation needed to request a unity track-to-bus connect/disconnect.
+- [x] Extend port ownership so Master output ports are bus-owned without pretending they belong to a track. Preserve existing track/global ownership behavior.
+- [x] Define one shared validator/lowering description for allowed mixer routes and fixed bus construction so native and engine backends cannot diverge semantically.
+- [x] Create a two-channel Master bus in `EngineBackend`: each channel has an internal summing input, a fixed owner-managed pass-through to a bus-owned external output, and no user route by default.
+- [x] Implement equivalent Master construction and route mutation in `NativeRuntime` using shared session/internal-port facilities.
+- [x] Confirm mixer routes only once the graph scheduler has installed the corresponding active route table; report rejected mutations through bounded backend failure state.
+- [x] Remove track-to-Master routes safely when a source track disappears; keep Master lifetime tied to the enclosing backend session.
+- [x] Add backend tests for Master shape/ownership, initial disconnection, source validation, duplicate/idempotent commands, summing, fan-out, disconnect, track removal, and coexistence with direct host links.
 
 Verification:
 
-- [ ] Run focused `shoop_backend` tests against engine/dummy and native app-backend implementations.
-- [ ] Exercise a two-track deterministic signal fixture and assert direct outputs and Master outputs independently.
+- [x] Run focused `shoop_backend` tests against engine/dummy and native app-backend implementations.
+- [x] Exercise a two-track deterministic signal fixture and assert direct outputs and Master outputs independently.
 
 ### Stage 3 — Carry the mixer contract through Worker and AudioWorklet
 
 Depends on Stage 2 and may be developed alongside Stage 4 after backend types stabilize.
 
-- [ ] Bump the audio protocol version and add wire bus/channel descriptions, confirmed mixer routes, route failures as needed, and a bounded set-mixer-route command.
-- [ ] Define command journal/supersession behavior so repeated changes to one route coalesce without affecting another route.
-- [ ] Extend AudioWorklet command handling and snapshots to use the same backend operation and authoritative active-route confirmation.
-- [ ] Extend the worklet client to map wire identities and state into normalized backend bus/route snapshots and submit mixer-route commands.
-- [ ] Update protocol serialization fixtures, command-capacity tests, worklet snapshot tests, remote application tests, and browser route/audio tests.
+- [x] Bump the audio protocol version and add wire bus/channel descriptions, confirmed mixer routes, route failures as needed, and a bounded set-mixer-route command.
+- [x] Define command journal/supersession behavior so repeated changes to one route coalesce without affecting another route.
+- [x] Extend AudioWorklet command handling and snapshots to use the same backend operation and authoritative active-route confirmation.
+- [x] Extend the worklet client to map wire identities and state into normalized backend bus/route snapshots and submit mixer-route commands.
+- [x] Update protocol serialization fixtures, command-capacity tests, worklet snapshot tests, remote application tests, and browser route/audio tests.
 
 Verification:
 
-- [ ] Build and test `shoop_audio_protocol`, `shoop_audio_worklet`, and `shoop_worklet_client` for their native test harnesses and `wasm32-unknown-unknown` targets.
-- [ ] Verify command saturation and stale generations do not create false confirmed routes.
+- [x] Build and test `shoop_audio_protocol`, `shoop_audio_worklet`, and `shoop_worklet_client` for their native test harnesses and `wasm32-unknown-unknown` targets.
+- [x] Verify command saturation and stale generations do not create false confirmed routes.
 
 ### Stage 4 — Add application bus identity, route reconciliation, and intents
 
 Depends on Stage 2; wire-backed verification depends on Stage 3.
 
-- [ ] Add stable application `BusId`/channel identity and immutable bus state to `shoop_app_api`; expose buses in `AppState` without adding edit controls.
-- [ ] Add typed application mixer-route confirmed/pending/error state and a connect/disconnect intent whose endpoints cannot represent forbidden graph edges.
-- [ ] Map backend Master and channel identities transactionally into application identities, including backend recreation during session replacement and driver switching.
-- [ ] Register bus-owned external output ports without requiring a track owner. Keep bus input facets in mixer state rather than host-port candidate state.
-- [ ] Reconcile pending mixer requests against authoritative backend snapshots with the same bounded timeout, saturation, stale endpoint, and error-reporting standards as host links.
-- [ ] Preserve structurally shared immutable snapshots and revision changes only when visible bus/route state changes.
-- [ ] Route application intents to the backend and reject stale track outputs, stale buses/channels, MIDI sources, and unavailable backends before mutation.
-- [ ] Add application tests for initial Master state, identity stability, pending-to-confirmed and pending-to-error transitions, timeout, source-track removal, snapshot sharing, and remote backend parity.
+- [x] Add stable application `BusId`/channel identity and immutable bus state to `shoop_app_api`; expose buses in `AppState` without adding edit controls.
+- [x] Add typed application mixer-route confirmed/pending/error state and a connect/disconnect intent whose endpoints cannot represent forbidden graph edges.
+- [x] Map backend Master and channel identities transactionally into application identities, including backend recreation during session replacement and driver switching.
+- [x] Register bus-owned external output ports without requiring a track owner. Keep bus input facets in mixer state rather than host-port candidate state.
+- [x] Reconcile pending mixer requests against authoritative backend snapshots with the same bounded timeout, saturation, stale endpoint, and error-reporting standards as host links.
+- [x] Preserve structurally shared immutable snapshots and revision changes only when visible bus/route state changes.
+- [x] Route application intents to the backend and reject stale track outputs, stale buses/channels, MIDI sources, and unavailable backends before mutation.
+- [x] Add application tests for initial Master state, identity stability, pending-to-confirmed and pending-to-error transitions, timeout, source-track removal, snapshot sharing, and remote backend parity.
 
 Verification:
 
-- [ ] Run focused `shoop_app_api`, `shoop_app`, fake-backend, and remote-application tests.
+- [x] Run focused `shoop_app_api`, `shoop_app`, fake-backend, and remote-application tests.
 
 ### Stage 5 — Extend the Connections dialog with bus facets
 
 Depends on Stage 4.
 
-- [ ] Refactor connection-graph presentation so source/sink capability belongs to an endpoint facet rather than to an entire column.
-- [ ] Add a `Buses` column between ShoopDaLoop sources and System sinks. Present each Master channel as one grouped row with a left mixer-input connector and right bus-output connector.
-- [ ] Render confirmed and pending track-to-Master curves from normalized mixer-route state while retaining existing application-to-host curves.
-- [ ] Permit only these output-side drags: track source to Master input, track source directly to system sink, and Master output to system sink. Reject Master input/output misuse, MIDI-to-bus, system-to-bus, and bus-to-track paths.
-- [ ] Emit the typed mixer-route intent for track-to-Master operations and the existing host-link intent for track/Master-to-system operations.
-- [ ] Make confirmed user-managed mixer curves clickable for exact disconnect and include mixer routes in hover/error/hit-test state without conflating their keys with host links.
-- [ ] Preserve filters and scopes: audio filtering hides Master; MIDI filtering does not fabricate bus endpoints; track scope shows the selected track plus Master; all-tracks scope shows all eligible sources.
-- [ ] Adjust layout, scrolling, clipping, route painting, and visibility pruning for five columns and direct curves that bypass the bus column.
-- [ ] Add egui tests for classification, facet compatibility, intent generation, confirmation/pending/error painting, exact disconnect, filters/scopes, direct bypass, empty host inventory, and large-graph layout.
+- [x] Refactor connection-graph presentation so source/sink capability belongs to an endpoint facet rather than to an entire column.
+- [x] Add a `Buses` column between ShoopDaLoop sources and System sinks. Present each Master channel as one grouped row with a left mixer-input connector and right bus-output connector.
+- [x] Render confirmed and pending track-to-Master curves from normalized mixer-route state while retaining existing application-to-host curves.
+- [x] Permit only these output-side drags: track source to Master input, track source directly to system sink, and Master output to system sink. Reject Master input/output misuse, MIDI-to-bus, system-to-bus, and bus-to-track paths.
+- [x] Emit the typed mixer-route intent for track-to-Master operations and the existing host-link intent for track/Master-to-system operations.
+- [x] Make confirmed user-managed mixer curves clickable for exact disconnect and include mixer routes in hover/error/hit-test state without conflating their keys with host links.
+- [x] Preserve filters and scopes: audio filtering hides Master; MIDI filtering does not fabricate bus endpoints; track scope shows the selected track plus Master; all-tracks scope shows all eligible sources.
+- [x] Adjust layout, scrolling, clipping, route painting, and visibility pruning for five columns and direct curves that bypass the bus column.
+- [x] Add egui tests for classification, facet compatibility, intent generation, confirmation/pending/error painting, exact disconnect, filters/scopes, direct bypass, empty host inventory, and large-graph layout.
 
 Verification:
 
-- [ ] Run focused `shoop_egui` connection-dialog tests.
+- [x] Run focused `shoop_egui` connection-dialog tests.
 - [ ] Manually verify drag, click-to-disconnect, hover, scrolling, audio/MIDI filters, all-track scope, and per-track scope in native and browser UI builds.
 
 ### Stage 6 — Persist Master and mixer routes transactionally
 
 Depends on Stages 2–4. Complete before claiming the MVP acceptance criteria.
 
-- [ ] Extend `BackendSessionData` and replacement mappings with buses, ordered channels, mixer routes, and bus-owned external ports.
-- [ ] Use the existing session bus representation where it matches the architecture, and add explicit stable mixer-route documents rather than overloading host IDs or runtime indices. Bump the session document version.
-- [ ] Define and validate the MVP capability shape: exactly one stereo Master bus, stable channel identities, audio-only routes from track output ports to Master channels, and no processors or editable controls.
-- [ ] Migrate accepted legacy documents with no buses to a disconnected Master while preserving every direct track external connection. Reject malformed, duplicate, stale, incompatible, or unsupported bus graphs before backend mutation.
-- [ ] Capture exact Master-to-system connections and track-to-Master routes; preserve intentional disconnection.
-- [ ] Rebuild Master, tracks, routes, and external links in dependency order inside staged session replacement, and return complete source-to-runtime identity mappings.
-- [ ] Preserve mixer state across compatible audio-driver switches and report unavailable system sinks through existing desired/confirmed connection semantics.
-- [ ] Remove the current blanket rejection of non-empty bus documents only for the validated MVP shape.
-- [ ] Update deterministic archive, validation, resampling, migration, session round-trip, browser transfer, and malformed-input tests.
-- [ ] Update `docs/session_format_v1.md` and `docs/port_model.md` to describe the implemented Master shape, mixer links, five-column presentation, migration, and target parity.
+- [x] Extend `BackendSessionData` and replacement mappings with buses, ordered channels, mixer routes, and bus-owned external ports.
+- [x] Use the existing session bus representation where it matches the architecture, and add explicit stable mixer-route documents rather than overloading host IDs or runtime indices. Bump the session document version.
+- [x] Define and validate the MVP capability shape: exactly one stereo Master bus, stable channel identities, audio-only routes from track output ports to Master channels, and no processors or editable controls.
+- [x] Migrate accepted legacy documents with no buses to a disconnected Master while preserving every direct track external connection. Reject malformed, duplicate, stale, incompatible, or unsupported bus graphs before backend mutation.
+- [x] Capture exact Master-to-system connections and track-to-Master routes; preserve intentional disconnection.
+- [x] Rebuild Master, tracks, routes, and external links in dependency order inside staged session replacement, and return complete source-to-runtime identity mappings.
+- [x] Preserve mixer state across compatible audio-driver switches and report unavailable system sinks through existing desired/confirmed connection semantics.
+- [x] Remove the current blanket rejection of non-empty bus documents only for the validated MVP shape.
+- [x] Update deterministic archive, validation, resampling, migration, session round-trip, browser transfer, and malformed-input tests.
+- [x] Update `docs/session_format_v1.md` and `docs/port_model.md` to describe the implemented Master shape, mixer links, five-column presentation, migration, and target parity.
 
 Verification:
 
-- [ ] Round-trip sessions containing no Master routes, several track-to-Master routes, fan-out, and Master external links.
-- [ ] Verify new-session, legacy-load, failed-load rollback, same-rate replacement, resampled replacement, and driver-switch paths.
+- [x] Round-trip sessions containing no Master routes, several track-to-Master routes, fan-out, and Master external links.
+- [x] Verify new-session, legacy-load, failed-load rollback, same-rate replacement, resampled replacement, and driver-switch paths.
 
 ### Stage 7 — End-to-end validation and cleanup
 

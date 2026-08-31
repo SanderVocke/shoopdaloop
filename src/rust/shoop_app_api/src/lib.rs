@@ -34,6 +34,8 @@ macro_rules! entity_id {
 }
 
 entity_id!(TrackId);
+entity_id!(BusId);
+entity_id!(BusChannelId);
 entity_id!(LoopId);
 entity_id!(PortId);
 entity_id!(ChannelId);
@@ -769,6 +771,9 @@ pub enum TrackPortOwnerKind {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ApplicationPortOwner {
     GlobalFxControl,
+    Bus {
+        bus_id: BusId,
+    },
     Track {
         track_id: TrackId,
         kind: TrackPortOwnerKind,
@@ -802,6 +807,38 @@ pub struct HostPortState {
     pub name: String,
     pub data_type: PortDataType,
     pub direction: PortDirection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BusChannelState {
+    pub id: BusChannelId,
+    pub label: String,
+    pub output_port_id: PortId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BusState {
+    pub id: BusId,
+    pub name: String,
+    pub channels: Arc<[BusChannelState]>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct MixerRouteState {
+    pub source_port_id: PortId,
+    pub destination_channel_id: BusChannelId,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PendingMixerRouteState {
+    pub route: MixerRouteState,
+    pub desired_connected: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MixerRouteErrorState {
+    pub route: MixerRouteState,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -845,6 +882,9 @@ pub struct ConnectionViewState {
     pub host_ports: Arc<[HostPortState]>,
     pub confirmed_links: Arc<[ConfirmedConnectionState]>,
     pub pending_links: Arc<[PendingConnectionState]>,
+    pub mixer_links: Arc<[MixerRouteState]>,
+    pub pending_mixer_links: Arc<[PendingMixerRouteState]>,
+    pub mixer_errors: Arc<[MixerRouteErrorState]>,
     pub errors: Arc<[ConnectionErrorState]>,
 }
 
@@ -858,6 +898,9 @@ impl Default for ConnectionViewState {
             host_ports: Arc::from([]),
             confirmed_links: Arc::from([]),
             pending_links: Arc::from([]),
+            mixer_links: Arc::from([]),
+            pending_mixer_links: Arc::from([]),
+            mixer_errors: Arc::from([]),
             errors: Arc::from([]),
         }
     }
@@ -1332,6 +1375,7 @@ pub struct TrackCreationResult {
 pub struct AppSnapshot {
     pub revision: u64,
     pub tracks: Vec<TrackState>,
+    pub buses: Arc<[BusState]>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
     pub track_creation_results: Arc<[TrackCreationResult]>,
     pub global_controls: GlobalControlState,
@@ -1787,6 +1831,11 @@ pub enum AppIntent {
         host_port_id: HostPortId,
         connected: bool,
     },
+    SetMixerRouteConnected {
+        source_port_id: PortId,
+        destination_channel_id: BusChannelId,
+        connected: bool,
+    },
     RefreshAudioDriverDiscovery {
         config: AudioDriverConfig,
     },
@@ -2004,6 +2053,7 @@ impl AppIntent {
             Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
             Self::SetPortConnected { .. } => "connection.set",
+            Self::SetMixerRouteConnected { .. } => "mixer.connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
             Self::RequestAudioDriverSwitch { .. } => "audio_driver.request_switch",
             Self::ConfirmAudioDriverSwitch { .. } => "audio_driver.confirm_switch",
@@ -2558,6 +2608,12 @@ mod tests {
                 connected: true,
             }
         );
+        let mixer_intent = AppIntent::SetMixerRouteConnected {
+            source_port_id: port_id,
+            destination_channel_id: BusChannelId::from_raw(2),
+            connected: true,
+        };
+        assert_eq!(mixer_intent.kind(), "mixer.connection.set");
         assert_eq!(
             PortRole::ORDERED.map(PortRole::label),
             [
@@ -2584,6 +2640,9 @@ mod tests {
                 host_ports: Arc::from([]),
                 confirmed_links: Arc::from([]),
                 pending_links: Arc::from([]),
+                mixer_links: Arc::from([]),
+                pending_mixer_links: Arc::from([]),
+                mixer_errors: Arc::from([]),
                 errors: Arc::from([]),
             }),
             ..Default::default()

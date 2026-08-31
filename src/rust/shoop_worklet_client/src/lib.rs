@@ -34,17 +34,19 @@ use shoop_audio_protocol::{
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
-    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
+    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendBusChannelId,
+    BackendBusChannelState, BackendBusId, BackendBusState, BackendChannelMode,
     BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
     BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
     BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
     BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
-    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
+    BackendMixerFailure, BackendMixerLink, BackendMutationDetail, BackendMutationFailure,
+    BackendMutationKind, BackendOperationKind, BackendOperationProgress, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, DirectTrackRequest, OxiSynthControl,
+    TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -761,6 +763,9 @@ impl RemoteWorkletBackend {
                         id,
                         owner: match port.owner {
                             WireApplicationPortOwner::Track => BackendPortOwner::Track,
+                            WireApplicationPortOwner::Bus { bus_id } => {
+                                BackendPortOwner::Bus(BackendBusId::from_raw(bus_id))
+                            }
                             WireApplicationPortOwner::GlobalFxControl => {
                                 BackendPortOwner::GlobalFxControl
                             }
@@ -797,6 +802,55 @@ impl RemoteWorkletBackend {
             })
             .collect();
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
+        self.snapshot.mixer.buses = wire
+            .buses
+            .into_iter()
+            .map(|bus| {
+                let id = BackendBusId::from_raw(bus.id);
+                (
+                    id,
+                    BackendBusState {
+                        id,
+                        name: bus.name,
+                        channels: bus
+                            .channels
+                            .into_iter()
+                            .map(|channel| BackendBusChannelState {
+                                id: BackendBusChannelId::from_raw(channel.id),
+                                label: channel.label,
+                                output_port_id: BackendPortId::from_raw(channel.output_port_id),
+                            })
+                            .collect(),
+                    },
+                )
+            })
+            .collect();
+        self.snapshot.mixer.confirmed_links = wire
+            .confirmed_mixer_links
+            .into_iter()
+            .map(|link| BackendMixerLink {
+                source_port_id: BackendPortId::from_raw(link.source_port_id),
+                destination_channel_id: BackendBusChannelId::from_raw(link.destination_channel_id),
+            })
+            .collect();
+        self.snapshot
+            .mixer
+            .failures
+            .extend(
+                wire.mixer_failures
+                    .into_iter()
+                    .map(|failure| BackendMixerFailure {
+                        link: BackendMixerLink {
+                            source_port_id: BackendPortId::from_raw(failure.link.source_port_id),
+                            destination_channel_id: BackendBusChannelId::from_raw(
+                                failure.link.destination_channel_id,
+                            ),
+                        },
+                        desired_connected: failure.desired_connected,
+                        message: failure.message,
+                    }),
+            );
+        self.snapshot.mixer.revision = self.snapshot.mixer.revision.wrapping_add(1);
         let observed_track_ids = wire
             .tracks
             .iter()
@@ -1202,6 +1256,9 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
             application_port_id,
             ..
         } => (BackendMutationKind::Connection, Some(*application_port_id)),
+        Command::SetMixerRoute { source_port_id, .. } => {
+            (BackendMutationKind::MixerRoute, Some(*source_port_id))
+        }
         Command::BeginSessionCapture { .. }
         | Command::ReadSessionCapture { .. }
         | Command::BeginSessionReplace { .. }
@@ -2208,6 +2265,41 @@ impl Backend for RemoteWorkletBackend {
         })
     }
 
+    fn set_mixer_route(
+        &mut self,
+        source_port_id: BackendPortId,
+        destination_channel_id: BackendBusChannelId,
+        connected: bool,
+    ) -> Result<()> {
+        let source = self
+            .snapshot
+            .connections
+            .application_ports
+            .get(&source_port_id)
+            .ok_or_else(|| anyhow!("unknown browser mixer source {source_port_id:?}"))?;
+        if source.owner != BackendPortOwner::Track
+            || source.data_type != BackendPortDataType::Audio
+            || source.direction != BackendPortDirection::Output
+            || source.role != BackendPortRole::AudioOutput
+        {
+            return Err(anyhow!("browser mixer source is not a track audio output"));
+        }
+        if !self.snapshot.mixer.buses.values().any(|bus| {
+            bus.channels
+                .iter()
+                .any(|channel| channel.id == destination_channel_id)
+        }) {
+            return Err(anyhow!(
+                "unknown browser mixer destination {destination_channel_id:?}"
+            ));
+        }
+        self.submit(Command::SetMixerRoute {
+            source_port_id: source_port_id.raw(),
+            destination_channel_id: destination_channel_id.raw(),
+            connected,
+        })
+    }
+
     fn advance(&mut self, elapsed: Duration) {
         self.poll_elapsed = self.poll_elapsed.saturating_add(elapsed);
     }
@@ -2423,6 +2515,21 @@ impl Backend for RemoteWorkletBackend {
                         desired_connected,
                         message,
                     }),
+                Event::MixerMutationFailed {
+                    source_port_id,
+                    destination_channel_id,
+                    desired_connected,
+                    message,
+                } => self.snapshot.mixer.failures.push(BackendMixerFailure {
+                    link: BackendMixerLink {
+                        source_port_id: BackendPortId::from_raw(source_port_id),
+                        destination_channel_id: BackendBusChannelId::from_raw(
+                            destination_channel_id,
+                        ),
+                    },
+                    desired_connected,
+                    message,
+                }),
                 Event::MidiOutput {
                     events,
                     dropped,
@@ -3198,6 +3305,20 @@ mod tests {
                     application_port_id: 1,
                     host_port_id: "audio-in".to_owned(),
                 }],
+                buses: vec![shoop_audio_protocol::WireBus {
+                    id: 1,
+                    name: "Master".to_owned(),
+                    channels: vec![shoop_audio_protocol::WireBusChannel {
+                        id: 1,
+                        label: "Left".to_owned(),
+                        output_port_id: 2,
+                    }],
+                }],
+                confirmed_mixer_links: vec![shoop_audio_protocol::WireMixerLink {
+                    source_port_id: 2,
+                    destination_channel_id: 1,
+                }],
+                mixer_failures: Vec::new(),
             }),
         );
         let snapshot = backend.poll().unwrap();
@@ -3241,6 +3362,15 @@ mod tests {
         assert_eq!(snapshot.connections.application_ports.len(), roles.len());
         assert_eq!(snapshot.connections.host_ports.len(), 2);
         assert_eq!(snapshot.connections.confirmed_links.len(), 1);
+        assert_eq!(snapshot.mixer.buses.len(), 1);
+        assert_eq!(snapshot.mixer.confirmed_links.len(), 1);
+        backend
+            .set_mixer_route(
+                BackendPortId::from_raw(2),
+                BackendBusChannelId::from_raw(1),
+                false,
+            )
+            .unwrap();
         assert_eq!(snapshot.status.storage_exhaustions, 8);
     }
 
@@ -3536,6 +3666,8 @@ mod tests {
         let session = BackendSessionData {
             sample_rate: 48_000,
             tracks: Vec::new(),
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             use_legacy_browser_default_routes: false,
         };
@@ -3613,6 +3745,8 @@ mod tests {
         let session = BackendSessionData {
             sample_rate: 48_000,
             tracks: Vec::new(),
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             use_legacy_browser_default_routes: false,
         };

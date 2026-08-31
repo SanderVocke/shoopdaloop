@@ -1,17 +1,19 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    colors, AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionPolicy,
-    ConnectionViewState, HostPortId, HostPortState, PortDataType, PortDirection, PortId, ScriptId,
-    TrackId,
+    colors, AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, BusChannelId,
+    ConnectionPolicy, ConnectionViewState, HostPortId, HostPortState, MixerRouteState,
+    PortDataType, PortDirection, PortId, ScriptId, TrackId,
 };
+#[cfg(test)]
+use crate::{BusChannelState, BusId, BusState};
 
 const COLUMN_WIDTH: f32 = 145.0;
 const SYSTEM_COLUMN_GAP: f32 = 56.0;
 const SHOOP_COLUMN_GAP: f32 = 24.0;
 const ENDPOINT_HEIGHT: f32 = 28.0;
 const GRAPH_FONT_SIZE: f32 = 12.0;
-const DEFAULT_WINDOW_WIDTH: f32 = 780.0;
+const DEFAULT_WINDOW_WIDTH: f32 = 980.0;
 const CONNECTOR_RADIUS: f32 = 5.0;
 const CONNECTOR_HIT_RADIUS: f32 = 11.0;
 const CURVE_HIT_DISTANCE: f32 = 7.0;
@@ -64,6 +66,7 @@ impl ConnectionFilters {
             (TrackFilter::Selected(track_ids), ApplicationPortOwner::Track { track_id, .. }) => {
                 track_ids.contains(track_id)
             }
+            (TrackFilter::Selected(_), ApplicationPortOwner::Bus { .. }) => true,
             (
                 TrackFilter::Selected(_),
                 ApplicationPortOwner::LuaControl { .. } | ApplicationPortOwner::GlobalFxControl,
@@ -77,14 +80,16 @@ enum GraphColumn {
     SystemSources,
     ShoopSinks,
     ShoopSources,
+    Buses,
     SystemSinks,
 }
 
 impl GraphColumn {
-    const ORDERED: [Self; 4] = [
+    const ORDERED: [Self; 5] = [
         Self::SystemSources,
         Self::ShoopSinks,
         Self::ShoopSources,
+        Self::Buses,
         Self::SystemSinks,
     ];
 
@@ -92,28 +97,24 @@ impl GraphColumn {
         match self {
             Self::SystemSources => Some("System sources"),
             Self::ShoopSinks | Self::ShoopSources => None,
+            Self::Buses => Some("Buses"),
             Self::SystemSinks => Some("System sinks"),
         }
-    }
-
-    const fn is_source(self) -> bool {
-        matches!(self, Self::SystemSources | Self::ShoopSources)
-    }
-
-    const fn connector_on_right(self) -> bool {
-        matches!(self, Self::SystemSources | Self::ShoopSources)
     }
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum EndpointId {
     Application(PortId),
+    BusInput(BusChannelId),
     Host(HostPortId),
 }
 
 #[derive(Clone, Debug)]
 struct GraphEndpoint {
     id: EndpointId,
+    source_id: Option<EndpointId>,
+    sink_id: Option<EndpointId>,
     column: GraphColumn,
     group: String,
     label: String,
@@ -133,9 +134,17 @@ enum GraphRouteState {
 }
 
 #[derive(Clone, Debug)]
+enum GraphRouteKey {
+    Host {
+        application_port_id: PortId,
+        host_port_id: HostPortId,
+    },
+    Mixer(MixerRouteState),
+}
+
+#[derive(Clone, Debug)]
 struct GraphRoute {
-    application_port_id: PortId,
-    host_port_id: HostPortId,
+    key: GraphRouteKey,
     source: EndpointId,
     sink: EndpointId,
     data_type: PortDataType,
@@ -168,10 +177,12 @@ impl ConnectionGraph {
             .application_ports
             .iter()
             .filter(|port| {
-                filters.includes_type(port.data_type) && filters.includes_owner(&port.owner)
+                filters.includes_type(port.data_type)
+                    && filters.includes_owner(&port.owner)
+                    && !matches!(port.owner, ApplicationPortOwner::Bus { .. })
             })
             .collect();
-        let visible_application_ids: BTreeSet<_> = visible_application_ports
+        let mut visible_application_ids: BTreeSet<_> = visible_application_ports
             .iter()
             .map(|port| port.id)
             .collect();
@@ -193,6 +204,10 @@ impl ConnectionGraph {
                 .or_default()
                 .push(GraphEndpoint {
                     id: EndpointId::Application(port.id),
+                    source_id: (port.direction == PortDirection::Output)
+                        .then_some(EndpointId::Application(port.id)),
+                    sink_id: (port.direction == PortDirection::Input)
+                        .then_some(EndpointId::Application(port.id)),
                     column,
                     group: application_group_label(&port.owner, &track_names, &script_names),
                     label: short_port_name(&port.name).to_owned(),
@@ -202,6 +217,44 @@ impl ConnectionGraph {
                     pending,
                     error,
                 });
+        }
+
+        if filters.audio {
+            for bus in app_state.buses.iter() {
+                for channel in bus.channels.iter() {
+                    let Some(output) = find_application_port(state, channel.output_port_id) else {
+                        continue;
+                    };
+                    visible_application_ids.insert(output.id);
+                    let pending = state
+                        .pending_mixer_links
+                        .iter()
+                        .any(|pending| pending.route.destination_channel_id == channel.id);
+                    let error = state
+                        .mixer_errors
+                        .iter()
+                        .rev()
+                        .find(|error| error.route.destination_channel_id == channel.id)
+                        .map(|error| error.message.clone());
+                    graph
+                        .endpoints
+                        .entry(GraphColumn::Buses)
+                        .or_default()
+                        .push(GraphEndpoint {
+                            id: EndpointId::BusInput(channel.id),
+                            source_id: Some(EndpointId::Application(output.id)),
+                            sink_id: Some(EndpointId::BusInput(channel.id)),
+                            column: GraphColumn::Buses,
+                            group: bus.name.clone(),
+                            label: channel.label.clone(),
+                            full_name: format!("{} {}", bus.name, channel.label),
+                            data_type: PortDataType::Audio,
+                            policy: ConnectionPolicy::UserManaged,
+                            pending,
+                            error,
+                        });
+                }
+            }
         }
 
         let visible_host_ports: Vec<_> = state
@@ -241,6 +294,10 @@ impl ConnectionGraph {
                 .or_default()
                 .push(GraphEndpoint {
                     id: EndpointId::Host(host.id.clone()),
+                    source_id: (host.direction == PortDirection::Output)
+                        .then_some(EndpointId::Host(host.id.clone())),
+                    sink_id: (host.direction == PortDirection::Input)
+                        .then_some(EndpointId::Host(host.id.clone())),
                     column,
                     group,
                     label,
@@ -314,14 +371,54 @@ impl ConnectionGraph {
                 ),
             };
             graph.routes.push(GraphRoute {
-                application_port_id,
-                host_port_id: host_port_id.clone(),
+                key: GraphRouteKey::Host {
+                    application_port_id,
+                    host_port_id: host_port_id.clone(),
+                },
                 source,
                 sink,
                 data_type: port.data_type,
                 policy: port.connection_policy,
                 state: route_state,
                 error: latest_error(state, application_port_id, Some(&host_port_id)),
+            });
+        }
+        let confirmed_mixer = state.mixer_links.iter().copied().collect::<BTreeSet<_>>();
+        let pending_mixer = state
+            .pending_mixer_links
+            .iter()
+            .map(|pending| (pending.route, pending.desired_connected))
+            .collect::<BTreeMap<_, _>>();
+        let mut mixer_keys = confirmed_mixer.clone();
+        mixer_keys.extend(pending_mixer.keys().copied());
+        mixer_keys.extend(state.mixer_errors.iter().map(|error| error.route));
+        for route in mixer_keys {
+            if !visible_application_ids.contains(&route.source_port_id)
+                || graph
+                    .endpoint(&EndpointId::BusInput(route.destination_channel_id))
+                    .is_none()
+            {
+                continue;
+            }
+            let route_state = match pending_mixer.get(&route) {
+                Some(true) => GraphRouteState::PendingConnect,
+                Some(false) => GraphRouteState::PendingDisconnect,
+                None if confirmed_mixer.contains(&route) => GraphRouteState::Confirmed,
+                None => GraphRouteState::Error,
+            };
+            graph.routes.push(GraphRoute {
+                key: GraphRouteKey::Mixer(route),
+                source: EndpointId::Application(route.source_port_id),
+                sink: EndpointId::BusInput(route.destination_channel_id),
+                data_type: PortDataType::Audio,
+                policy: ConnectionPolicy::UserManaged,
+                state: route_state,
+                error: state
+                    .mixer_errors
+                    .iter()
+                    .rev()
+                    .find(|error| error.route == route)
+                    .map(|error| error.message.clone()),
             });
         }
         graph
@@ -338,10 +435,19 @@ impl ConnectionGraph {
     }
 
     fn endpoint(&self, id: &EndpointId) -> Option<&GraphEndpoint> {
-        self.endpoints
-            .values()
-            .flatten()
-            .find(|endpoint| &endpoint.id == id)
+        self.endpoints.values().flatten().find(|endpoint| {
+            endpoint.source_id.as_ref() == Some(id) || endpoint.sink_id.as_ref() == Some(id)
+        })
+    }
+
+    fn is_source(&self, id: &EndpointId) -> bool {
+        self.endpoint(id)
+            .is_some_and(|endpoint| endpoint.source_id.as_ref() == Some(id))
+    }
+
+    fn is_sink(&self, id: &EndpointId) -> bool {
+        self.endpoint(id)
+            .is_some_and(|endpoint| endpoint.sink_id.as_ref() == Some(id))
     }
 
     fn blocks_pair(&self, source: &EndpointId, sink: &EndpointId) -> bool {
@@ -356,13 +462,14 @@ impl ConnectionGraph {
         else {
             return false;
         };
-        source_endpoint.column.is_source()
-            && !sink_endpoint.column.is_source()
+        self.is_source(source)
+            && self.is_sink(sink)
             && source_endpoint.data_type == sink_endpoint.data_type
             && adjacent_columns(source_endpoint.column, sink_endpoint.column)
-            && application_endpoint(source_endpoint, sink_endpoint).is_some_and(|endpoint| {
-                endpoint.policy == ConnectionPolicy::UserManaged && !endpoint.pending
-            })
+            && source_endpoint.policy == ConnectionPolicy::UserManaged
+            && sink_endpoint.policy == ConnectionPolicy::UserManaged
+            && !source_endpoint.pending
+            && !sink_endpoint.pending
             && !self.blocks_pair(source, sink)
     }
 }
@@ -371,21 +478,10 @@ fn adjacent_columns(source: GraphColumn, sink: GraphColumn) -> bool {
     matches!(
         (source, sink),
         (GraphColumn::SystemSources, GraphColumn::ShoopSinks)
+            | (GraphColumn::ShoopSources, GraphColumn::Buses)
             | (GraphColumn::ShoopSources, GraphColumn::SystemSinks)
+            | (GraphColumn::Buses, GraphColumn::SystemSinks)
     )
-}
-
-fn application_endpoint<'a>(
-    first: &'a GraphEndpoint,
-    second: &'a GraphEndpoint,
-) -> Option<&'a GraphEndpoint> {
-    if matches!(first.id, EndpointId::Application(_)) {
-        Some(first)
-    } else if matches!(second.id, EndpointId::Application(_)) {
-        Some(second)
-    } else {
-        None
-    }
 }
 
 fn find_application_port(state: &ConnectionViewState, id: PortId) -> Option<&ApplicationPortState> {
@@ -464,6 +560,7 @@ fn application_group_label(
             .get(track_id)
             .map(|name| (*name).to_owned())
             .unwrap_or_else(|| format!("Track {track_id}")),
+        ApplicationPortOwner::Bus { bus_id } => format!("Bus {bus_id}"),
         ApplicationPortOwner::LuaControl { script_id, .. } => script_names
             .get(script_id)
             .map(|name| format!("Script: {name}"))
@@ -783,6 +880,13 @@ impl ConnectionDialog {
                         egui::vec2(COLUMN_WIDTH, column_height),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
+                            self.show_column(ui, revision, GraphColumn::Buses, graph, &mut anchors)
+                        },
+                    );
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(COLUMN_WIDTH, column_height),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
                             self.show_column(
                                 ui,
                                 revision,
@@ -817,11 +921,7 @@ impl ConnectionDialog {
                         .inner
                         .0
                         .iter()
-                        .filter(|(id, _)| {
-                            graph
-                                .endpoint(id)
-                                .is_some_and(|endpoint| !endpoint.column.is_source())
-                        })
+                        .filter(|(id, _)| graph.is_sink(id))
                         .filter(|(_, anchor)| anchor.hit_rect.contains(pointer))
                         .min_by(|(_, left), (_, right)| {
                             left.center
@@ -897,6 +997,7 @@ impl ConnectionDialog {
                     "No compatible system ports"
                 }
                 GraphColumn::ShoopSinks | GraphColumn::ShoopSources => "No ShoopDaLoop ports",
+                GraphColumn::Buses => "No buses",
             });
             return;
         }
@@ -911,7 +1012,7 @@ impl ConnectionDialog {
                 egui::vec2(COLUMN_WIDTH, ENDPOINT_HEIGHT),
                 egui::Sense::hover(),
             );
-            row_response.on_hover_text(endpoint_hover(endpoint, column.is_source()));
+            row_response.on_hover_text(endpoint_hover(endpoint, endpoint.source_id.is_some()));
             let visuals = ui.visuals().widgets.inactive;
             ui.painter().rect(
                 rect.shrink(1.0),
@@ -920,66 +1021,80 @@ impl ConnectionDialog {
                 visuals.bg_stroke,
                 egui::StrokeKind::Inside,
             );
-            let connector = if column.connector_on_right() {
-                egui::pos2(rect.right() - 3.0, rect.center().y)
-            } else {
-                egui::pos2(rect.left() + 3.0, rect.center().y)
-            };
-            let hit_rect = egui::Rect::from_center_size(
-                connector,
-                egui::vec2(CONNECTOR_HIT_RADIUS * 2.0, CONNECTOR_HIT_RADIUS * 2.0),
-            );
             let mutable = endpoint.policy == ConnectionPolicy::UserManaged;
-            let response = ui
-                .interact(
-                    hit_rect,
-                    ui.id().with(("connector", &endpoint.id)),
-                    if column.is_source() && mutable {
-                        egui::Sense::drag()
-                    } else {
-                        egui::Sense::hover()
-                    },
-                )
-                .on_hover_text(endpoint_hover(endpoint, column.is_source()));
-            let primary_pressed_on_connector = ui.input(|input| {
-                input.pointer.button_pressed(egui::PointerButton::Primary)
-                    && input
-                        .pointer
-                        .interact_pos()
-                        .is_some_and(|pointer| hit_rect.contains(pointer))
-            });
-            if column.is_source()
-                && mutable
-                && (response.drag_started() || primary_pressed_on_connector)
-            {
-                self.drag = Some(DragState {
-                    source: endpoint.id.clone(),
-                    revision,
-                    filters: self.filters.clone(),
-                });
-            }
-            let compatible_target = self.drag.as_ref().is_some_and(|drag| {
-                !column.is_source() && graph.compatible_drop(&drag.source, &endpoint.id)
-            });
-            let connector_color = if endpoint.error.is_some() {
-                colors::ERROR
-            } else if endpoint.pending {
-                colors::WARNING
-            } else if endpoint.policy == ConnectionPolicy::OwnerManaged {
-                colors::MUTED_FOREGROUND
-            } else if compatible_target || response.hovered() || response.dragged() {
-                colors::COLORED_HIGHLIGHT
-            } else {
-                data_type_color(endpoint.data_type)
-            };
-            ui.painter()
-                .circle_filled(connector, CONNECTOR_RADIUS, connector_color);
-            if compatible_target {
-                ui.painter().circle_stroke(
+            for (facet, source) in [
+                (endpoint.sink_id.as_ref(), false),
+                (endpoint.source_id.as_ref(), true),
+            ] {
+                let Some(facet) = facet else { continue };
+                let connector = if source {
+                    egui::pos2(rect.right() - 3.0, rect.center().y)
+                } else {
+                    egui::pos2(rect.left() + 3.0, rect.center().y)
+                };
+                let hit_rect = egui::Rect::from_center_size(
                     connector,
-                    CONNECTOR_RADIUS + 3.0,
-                    egui::Stroke::new(2.0, colors::SUCCESS),
+                    egui::vec2(CONNECTOR_HIT_RADIUS * 2.0, CONNECTOR_HIT_RADIUS * 2.0),
                 );
+                let response = ui
+                    .interact(
+                        hit_rect,
+                        ui.id().with(("connector", facet)),
+                        if source && mutable {
+                            egui::Sense::drag()
+                        } else {
+                            egui::Sense::hover()
+                        },
+                    )
+                    .on_hover_text(endpoint_hover(endpoint, source));
+                let primary_pressed_on_connector = ui.input(|input| {
+                    input.pointer.button_pressed(egui::PointerButton::Primary)
+                        && input
+                            .pointer
+                            .interact_pos()
+                            .is_some_and(|pointer| hit_rect.contains(pointer))
+                });
+                if source && mutable && (response.drag_started() || primary_pressed_on_connector) {
+                    self.drag = Some(DragState {
+                        source: facet.clone(),
+                        revision,
+                        filters: self.filters.clone(),
+                    });
+                }
+                let compatible_target = !source
+                    && self
+                        .drag
+                        .as_ref()
+                        .is_some_and(|drag| graph.compatible_drop(&drag.source, facet));
+                let connector_color = if endpoint.error.is_some() {
+                    colors::ERROR
+                } else if endpoint.pending {
+                    colors::WARNING
+                } else if endpoint.policy == ConnectionPolicy::OwnerManaged {
+                    colors::MUTED_FOREGROUND
+                } else if compatible_target || response.hovered() || response.dragged() {
+                    colors::COLORED_HIGHLIGHT
+                } else {
+                    data_type_color(endpoint.data_type)
+                };
+                ui.painter()
+                    .circle_filled(connector, CONNECTOR_RADIUS, connector_color);
+                if compatible_target {
+                    ui.painter().circle_stroke(
+                        connector,
+                        CONNECTOR_RADIUS + 3.0,
+                        egui::Stroke::new(2.0, colors::SUCCESS),
+                    );
+                }
+                anchors.insert(
+                    facet.clone(),
+                    EndpointAnchor {
+                        center: connector,
+                        hit_rect,
+                    },
+                );
+                #[cfg(test)]
+                self.endpoint_rects.insert(facet.clone(), rect);
             }
             let status_glyph = if endpoint.error.is_some() {
                 Some("!")
@@ -1002,15 +1117,6 @@ impl ConnectionDialog {
                 egui::FontId::proportional(GRAPH_FONT_SIZE),
                 data_type_color(endpoint.data_type),
             );
-            anchors.insert(
-                endpoint.id.clone(),
-                EndpointAnchor {
-                    center: connector,
-                    hit_rect,
-                },
-            );
-            #[cfg(test)]
-            self.endpoint_rects.insert(endpoint.id.clone(), rect);
         }
     }
 
@@ -1036,11 +1142,17 @@ impl ConnectionDialog {
             let curve = route_curve(source.center, sink.center);
             let points = curve.flatten(Some(1.0));
             #[cfg(test)]
-            self.route_points.push((
-                route.application_port_id,
-                route.host_port_id.clone(),
-                points.clone(),
-            ));
+            if let GraphRouteKey::Host {
+                application_port_id,
+                host_port_id,
+            } = &route.key
+            {
+                self.route_points.push((
+                    *application_port_id,
+                    host_port_id.clone(),
+                    points.clone(),
+                ));
+            }
             if let Some(pointer) = pointer.filter(|point| clip_rect.contains(*point)) {
                 let distance = distance_to_polyline(pointer, &points);
                 if distance <= CURVE_HIT_DISTANCE && distance < closest_distance {
@@ -1085,8 +1197,12 @@ impl ConnectionDialog {
         if let Some(index) = hovered_route {
             let route = &graph.routes[index];
             #[cfg(test)]
+            if let GraphRouteKey::Host {
+                application_port_id,
+                host_port_id,
+            } = &route.key
             {
-                self.hovered_route = Some((route.application_port_id, route.host_port_id.clone()));
+                self.hovered_route = Some((*application_port_id, host_port_id.clone()));
             }
             ui.ctx().set_cursor_icon(
                 if route.policy == ConnectionPolicy::UserManaged
@@ -1113,11 +1229,7 @@ impl ConnectionDialog {
                 && route.policy == ConnectionPolicy::UserManaged
                 && route.state == GraphRouteState::Confirmed
             {
-                intents.push(AppIntent::SetPortConnected {
-                    port_id: route.application_port_id,
-                    host_port_id: route.host_port_id.clone(),
-                    connected: false,
-                });
+                intents.push(disconnect_intent(route));
             }
         }
     }
@@ -1146,24 +1258,51 @@ impl ConnectionDialog {
     }
 }
 
+fn disconnect_intent(route: &GraphRoute) -> AppIntent {
+    match &route.key {
+        GraphRouteKey::Host {
+            application_port_id,
+            host_port_id,
+        } => AppIntent::SetPortConnected {
+            port_id: *application_port_id,
+            host_port_id: host_port_id.clone(),
+            connected: false,
+        },
+        GraphRouteKey::Mixer(route) => AppIntent::SetMixerRouteConnected {
+            source_port_id: route.source_port_id,
+            destination_channel_id: route.destination_channel_id,
+            connected: false,
+        },
+    }
+}
+
 fn route_intent(
     graph: &ConnectionGraph,
     source: &EndpointId,
     sink: &EndpointId,
     connected: bool,
 ) -> Option<AppIntent> {
-    let (application_port_id, host_port_id) = match (source, sink) {
+    if !graph.compatible_drop(source, sink) {
+        return None;
+    }
+    match (source, sink) {
         (EndpointId::Host(host), EndpointId::Application(port))
-        | (EndpointId::Application(port), EndpointId::Host(host)) => (*port, host.clone()),
-        _ => return None,
-    };
-    graph
-        .compatible_drop(source, sink)
-        .then_some(AppIntent::SetPortConnected {
-            port_id: application_port_id,
-            host_port_id,
-            connected,
-        })
+        | (EndpointId::Application(port), EndpointId::Host(host)) => {
+            Some(AppIntent::SetPortConnected {
+                port_id: *port,
+                host_port_id: host.clone(),
+                connected,
+            })
+        }
+        (EndpointId::Application(source_port_id), EndpointId::BusInput(destination_channel_id)) => {
+            Some(AppIntent::SetMixerRouteConnected {
+                source_port_id: *source_port_id,
+                destination_channel_id: *destination_channel_id,
+                connected,
+            })
+        }
+        _ => None,
+    }
 }
 
 fn route_curve(source: egui::Pos2, sink: egui::Pos2) -> egui::epaint::CubicBezierShape {
@@ -1416,6 +1555,9 @@ mod tests {
                     host_port_id: HostPortId::new("synth:midi_sink"),
                 }]),
                 pending_links: Arc::from([]),
+                mixer_links: Arc::from([]),
+                pending_mixer_links: Arc::from([]),
+                mixer_errors: Arc::from([]),
                 errors: Arc::from([]),
             }),
             ..Default::default()
@@ -1423,7 +1565,87 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn graph_classifies_four_columns_and_prunes_incompatible_system_ports() {
+    fn graph_classifies_master_facets_and_emits_typed_routes() {
+        let mut state = state();
+        state.buses = Arc::from([BusState {
+            id: BusId::from_raw(1),
+            name: "Master".to_owned(),
+            channels: Arc::from([BusChannelState {
+                id: BusChannelId::from_raw(1),
+                label: "Left".to_owned(),
+                output_port_id: PortId::from_raw(14),
+            }]),
+        }]);
+        let connections = Arc::make_mut(&mut state.connections);
+        let mut ports = connections.application_ports.to_vec();
+        ports.push(ApplicationPortState {
+            id: PortId::from_raw(14),
+            owner: ApplicationPortOwner::Bus {
+                bus_id: BusId::from_raw(1),
+            },
+            name: "master_out_left".to_owned(),
+            data_type: PortDataType::Audio,
+            direction: PortDirection::Output,
+            role: crate::PortRole::AudioOutput,
+            connection_policy: ConnectionPolicy::UserManaged,
+        });
+        connections.application_ports = ports.into();
+
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        assert_eq!(graph.column(GraphColumn::Buses).len(), 1);
+        let bus_input = EndpointId::BusInput(BusChannelId::from_raw(1));
+        let bus_output = EndpointId::Application(PortId::from_raw(14));
+        let track_output = EndpointId::Application(PortId::from_raw(13));
+        let system_sink = EndpointId::Host(HostPortId::new("speaker:audio_sink"));
+        assert!(graph.is_sink(&bus_input));
+        assert!(graph.is_source(&bus_output));
+        assert!(graph.compatible_drop(&track_output, &bus_input));
+        assert_eq!(
+            route_intent(&graph, &track_output, &bus_input, true),
+            Some(AppIntent::SetMixerRouteConnected {
+                source_port_id: PortId::from_raw(13),
+                destination_channel_id: BusChannelId::from_raw(1),
+                connected: true,
+            })
+        );
+        assert!(graph.compatible_drop(&bus_output, &system_sink));
+        assert_eq!(
+            route_intent(&graph, &bus_output, &system_sink, true),
+            Some(AppIntent::SetPortConnected {
+                port_id: PortId::from_raw(14),
+                host_port_id: HostPortId::new("speaker:audio_sink"),
+                connected: true,
+            })
+        );
+        Arc::make_mut(&mut state.connections).mixer_links = Arc::from([MixerRouteState {
+            source_port_id: PortId::from_raw(13),
+            destination_channel_id: BusChannelId::from_raw(1),
+        }]);
+        let confirmed = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        let mixer_route = confirmed
+            .routes
+            .iter()
+            .find(|route| matches!(route.key, GraphRouteKey::Mixer(_)))
+            .unwrap();
+        assert_eq!(mixer_route.state, GraphRouteState::Confirmed);
+        assert_eq!(
+            disconnect_intent(mixer_route),
+            AppIntent::SetMixerRouteConnected {
+                source_port_id: PortId::from_raw(13),
+                destination_channel_id: BusChannelId::from_raw(1),
+                connected: false,
+            }
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn graph_classifies_five_columns_and_prunes_incompatible_system_ports() {
         let state = state();
         let graph = ConnectionGraph::build(
             &state,
@@ -1431,7 +1653,13 @@ mod tests {
         );
         assert_eq!(
             GraphColumn::ORDERED.map(GraphColumn::system_heading),
-            [Some("System sources"), None, None, Some("System sinks")]
+            [
+                Some("System sources"),
+                None,
+                None,
+                Some("Buses"),
+                Some("System sinks")
+            ]
         );
         assert_eq!(graph.column(GraphColumn::SystemSources).len(), 1);
         assert_eq!(graph.column(GraphColumn::ShoopSinks).len(), 1);
@@ -1487,7 +1715,7 @@ mod tests {
             .flatten()
             .filter_map(|endpoint| match endpoint.id {
                 EndpointId::Application(id) => Some(id),
-                EndpointId::Host(_) => None,
+                EndpointId::BusInput(_) | EndpointId::Host(_) => None,
             })
             .collect();
         assert_eq!(
@@ -1598,7 +1826,15 @@ mod tests {
         let managed_route = global
             .routes
             .iter()
-            .find(|route| route.application_port_id == PortId::from_raw(99))
+            .find(|route| {
+                matches!(
+                    route.key,
+                    GraphRouteKey::Host {
+                        application_port_id,
+                        ..
+                    } if application_port_id == PortId::from_raw(99)
+                )
+            })
             .expect("Lua owner-managed route should remain visible");
         assert_eq!(managed_route.policy, ConnectionPolicy::OwnerManaged);
         assert_eq!(managed_route.state, GraphRouteState::Confirmed);
@@ -2528,6 +2764,9 @@ mod tests {
                 host_ports,
                 confirmed_links,
                 pending_links: Arc::from([]),
+                mixer_links: Arc::from([]),
+                pending_mixer_links: Arc::from([]),
+                mixer_errors: Arc::from([]),
                 errors: Arc::from([]),
             }),
             ..Default::default()

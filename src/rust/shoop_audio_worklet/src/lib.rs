@@ -4,25 +4,26 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk,
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
-    WireChannelMode, WireCompositeConfig, WireCompositeKind, WireCompositeState,
-    WireCompositeTarget, WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode,
-    WireLoopState, WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
-    WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
-    WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl,
-    WireTrackFxControl, WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology,
-    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
-    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireBus, WireBusChannel, WireChannelMode, WireCompositeConfig, WireCompositeKind,
+    WireCompositeState, WireCompositeTarget, WireConfirmedLink, WireHostPort,
+    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent, WireMixerFailure,
+    WireMixerLink, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
+    WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
+    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
+    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
-    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest,
-    MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendBusChannelId, BackendCompositeConfig, BackendCompositeEntry,
+    BackendCompositeId, BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest,
+    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
+    BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl,
+    OxiSynthMidiCcAssignment, OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId,
+    TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -711,6 +712,25 @@ impl WorkletHost {
                     }),
                 }
             }
+            Command::SetMixerRoute {
+                source_port_id,
+                destination_channel_id,
+                connected,
+            } => {
+                match self.backend.set_mixer_route(
+                    BackendPortId::from_raw(source_port_id),
+                    BackendBusChannelId::from_raw(destination_channel_id),
+                    connected,
+                ) {
+                    Ok(()) => Ok(Event::Ack),
+                    Err(error) => Ok(Event::MixerMutationFailed {
+                        source_port_id,
+                        destination_channel_id,
+                        desired_connected: connected,
+                        message: error.to_string(),
+                    }),
+                }
+            }
             Command::RequestWaveform {
                 loop_id,
                 revision,
@@ -1157,6 +1177,9 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             id: port.id.raw(),
             owner: match port.owner {
                 BackendPortOwner::Track => WireApplicationPortOwner::Track,
+                BackendPortOwner::Bus(bus_id) => WireApplicationPortOwner::Bus {
+                    bus_id: bus_id.raw(),
+                },
                 BackendPortOwner::GlobalFxControl => WireApplicationPortOwner::GlobalFxControl,
             },
             name: port.name,
@@ -1183,6 +1206,46 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         .map(|link| WireConfirmedLink {
             application_port_id: link.application_port_id.raw(),
             host_port_id: link.host_port_id,
+        })
+        .collect();
+    let buses = snapshot
+        .mixer
+        .buses
+        .into_values()
+        .map(|bus| WireBus {
+            id: bus.id.raw(),
+            name: bus.name,
+            channels: bus
+                .channels
+                .into_iter()
+                .map(|channel| WireBusChannel {
+                    id: channel.id.raw(),
+                    label: channel.label,
+                    output_port_id: channel.output_port_id.raw(),
+                })
+                .collect(),
+        })
+        .collect();
+    let confirmed_mixer_links = snapshot
+        .mixer
+        .confirmed_links
+        .into_iter()
+        .map(|link| WireMixerLink {
+            source_port_id: link.source_port_id.raw(),
+            destination_channel_id: link.destination_channel_id.raw(),
+        })
+        .collect();
+    let mixer_failures = snapshot
+        .mixer
+        .failures
+        .into_iter()
+        .map(|failure| WireMixerFailure {
+            link: WireMixerLink {
+                source_port_id: failure.link.source_port_id.raw(),
+                destination_channel_id: failure.link.destination_channel_id.raw(),
+            },
+            desired_connected: failure.desired_connected,
+            message: failure.message,
         })
         .collect();
     WireSnapshot {
@@ -1339,6 +1402,9 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         application_ports,
         host_ports,
         confirmed_links,
+        buses,
+        confirmed_mixer_links,
+        mixer_failures,
     }
 }
 
@@ -2401,9 +2467,13 @@ mod tests {
         let Event::Snapshot(snapshot) = command(&mut host, 4, Command::Poll).event else {
             panic!("expected snapshot");
         };
-        assert_eq!(snapshot.application_ports.len(), 5);
+        assert_eq!(snapshot.application_ports.len(), 7);
         assert_eq!(snapshot.host_ports.len(), 4);
         assert_eq!(snapshot.confirmed_links.len(), 4);
+        assert_eq!(snapshot.buses.len(), 1);
+        assert_eq!(snapshot.buses[0].name, "Master");
+        assert_eq!(snapshot.buses[0].channels.len(), 2);
+        assert!(snapshot.confirmed_mixer_links.is_empty());
 
         host.input()[..128].fill(0.2);
         host.input()[128..256].fill(0.4);
@@ -2433,17 +2503,56 @@ mod tests {
         assert!(host.output()[128..256]
             .iter()
             .all(|sample| (*sample - 0.4).abs() < 1.0e-6));
-        let Event::Snapshot(snapshot) = command(&mut host, 6, Command::Poll).event else {
+
+        let master_left = snapshot.buses[0].channels[0].clone();
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::SetMixerRoute {
+                    source_port_id: 2,
+                    destination_channel_id: master_left.id,
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::SetPortConnected {
+                    application_port_id: master_left.output_port_id,
+                    host_port_id: "webaudio:destination_1".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(2, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.2).abs() < 1.0e-6));
+        let Event::Snapshot(snapshot) = command(&mut host, 8, Command::Poll).event else {
             panic!("expected snapshot");
         };
         assert!(!snapshot.confirmed_links.iter().any(|link| {
             link.application_port_id == 2 && link.host_port_id == "webaudio:destination_1"
         }));
+        assert_eq!(
+            snapshot.confirmed_mixer_links,
+            [WireMixerLink {
+                source_port_id: 2,
+                destination_channel_id: master_left.id,
+            }]
+        );
 
         assert!(matches!(
             command(
                 &mut host,
-                7,
+                9,
                 Command::SetPortConnected {
                     application_port_id: 2,
                     host_port_id: "webaudio:capture_1".to_owned(),
@@ -2454,7 +2563,7 @@ mod tests {
             Event::ConnectionMutationFailed { .. }
         ));
         assert!(matches!(
-            command(&mut host, 8, Command::Poll).event,
+            command(&mut host, 10, Command::Poll).event,
             Event::Snapshot(_)
         ));
     }
