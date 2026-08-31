@@ -4210,6 +4210,11 @@ impl Backend for EngineBackend {
                 "cannot edit take alignment while loop content is changing"
             ));
         }
+        if engine_loop.has_planned_recording_transition() {
+            return Err(anyhow!(
+                "cannot edit take alignment while a recording operation is armed"
+            ));
+        }
         if engine_loop.mode().is_playing_mode() {
             return Err(anyhow!("stop loop playback before editing take alignment"));
         }
@@ -4316,6 +4321,11 @@ impl Backend for EngineBackend {
         {
             return Err(anyhow!(
                 "cannot edit take processor alignment while loop content is changing"
+            ));
+        }
+        if engine_loop.has_planned_recording_transition() {
+            return Err(anyhow!(
+                "cannot edit take processor alignment while a recording operation is armed"
             ));
         }
         if engine_loop.mode().is_playing_mode() {
@@ -7099,6 +7109,20 @@ impl Backend for FakeBackend {
             ));
         }
         if self.loops.get(&loop_id).is_some_and(|state| {
+            state.next_mode.is_some_and(|mode| {
+                matches!(
+                    mode,
+                    BackendLoopMode::Recording
+                        | BackendLoopMode::Replacing
+                        | BackendLoopMode::RecordingDryIntoWet
+                )
+            })
+        }) {
+            return Err(anyhow!(
+                "cannot edit take alignment while a recording operation is armed"
+            ));
+        }
+        if self.loops.get(&loop_id).is_some_and(|state| {
             matches!(
                 state.mode,
                 BackendLoopMode::Playing | BackendLoopMode::PlayingDryThroughWet
@@ -7198,6 +7222,20 @@ impl Backend for FakeBackend {
         }) {
             return Err(anyhow!(
                 "cannot edit take processor alignment while loop content is changing"
+            ));
+        }
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            state.next_mode.is_some_and(|mode| {
+                matches!(
+                    mode,
+                    BackendLoopMode::Recording
+                        | BackendLoopMode::Replacing
+                        | BackendLoopMode::RecordingDryIntoWet
+                )
+            })
+        }) {
+            return Err(anyhow!(
+                "cannot edit take processor alignment while a recording operation is armed"
             ));
         }
         if self.loops.get(&loop_id).is_some_and(|state| {
@@ -7592,12 +7630,37 @@ impl Backend for FakeBackend {
             } else {
                 alignment
             };
-            if mode == BackendLoopMode::Replacing
-                && (alignment != 0 || (has_wet && wet_alignment != 0))
-            {
-                return Err(anyhow!(
-                    "replacement with a nonzero recording offset is unsupported; record a new take instead"
-                ));
+            if mode == BackendLoopMode::Replacing {
+                if alignment != 0 || (has_wet && wet_alignment != 0) {
+                    return Err(anyhow!(
+                        "replacement with a nonzero recording offset is unsupported; record a new take instead"
+                    ));
+                }
+                let alignment_matches = self.loop_content.get(&loop_id).is_none_or(|content| {
+                    content
+                        .audio
+                        .iter()
+                        .map(|channel| (channel.mode, channel.capture_alignment_frames))
+                        .chain(
+                            content
+                                .midi
+                                .iter()
+                                .map(|channel| (channel.mode, channel.capture_alignment_frames)),
+                        )
+                        .all(|(mode, actual)| {
+                            let expected = if mode == BackendChannelMode::Wet {
+                                wet_alignment
+                            } else {
+                                alignment
+                            };
+                            actual == expected
+                        })
+                });
+                if !alignment_matches {
+                    return Err(anyhow!(
+                        "replacement offset differs from the take; match the take alignment first"
+                    ));
+                }
             }
             if let Some(content) = self.loop_content.get_mut(&loop_id) {
                 for channel in &mut content.audio {
@@ -9298,6 +9361,68 @@ mod tests {
         assert_eq!(backend.poll().unwrap().loops[&loop_id].length, 4);
     }
 
+    fn armed_take_correction_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "armed-take-correction".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..4)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![0.0; 8],
+                            start_offset: Some(0),
+                            capture_alignment_frames: Some(0),
+                            preplay: None,
+                        })
+                        .collect(),
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 8,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: Some(0),
+                        capture_alignment_frames: Some(0),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, Some(2))
+            .unwrap();
+
+        let alignment_error = backend.set_take_alignment(loop_id, 1).unwrap_err();
+        assert!(alignment_error
+            .to_string()
+            .contains("recording operation is armed"));
+        let processor_error = backend
+            .set_take_processor_alignment(loop_id, 1)
+            .unwrap_err();
+        assert!(processor_error
+            .to_string()
+            .contains("recording operation is armed"));
+    }
+
     fn take_alignment_window_contract(backend: &mut dyn Backend) {
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -10260,9 +10385,89 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_rejects_take_corrections_while_recording_is_armed() {
+        armed_take_correction_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_and_engine_backends_reject_take_alignment_outside_retained_media_atomically() {
         take_alignment_window_contract(&mut FakeBackend::default());
         take_alignment_window_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_replacement_rejects_mismatched_retained_take_alignment() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "replacement-alignment".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![0.0; 8],
+                        start_offset: Some(0),
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 8,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: Some(0),
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        let before = backend.loop_content[&loop_id].clone();
+
+        let error = backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, None)
+            .unwrap_err();
+        assert!(error.to_string().contains("offset differs from the take"));
+        assert_eq!(backend.loop_content[&loop_id], before);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_take_corrections_reject_planned_recording_state() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "fake-armed-take-correction".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.loops.get_mut(&loop_id).unwrap().next_mode =
+            Some(BackendLoopMode::RecordingDryIntoWet);
+
+        assert!(backend
+            .set_take_alignment(loop_id, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("recording operation is armed"));
+        assert!(backend
+            .set_take_processor_alignment(loop_id, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("recording operation is armed"));
     }
 
     #[shoop_wasm_test_support::shoop_test]

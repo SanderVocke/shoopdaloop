@@ -1819,6 +1819,11 @@ impl NativeRuntime {
                 "cannot edit take alignment while loop content is changing"
             ));
         }
+        if loop_.handle.has_planned_recording_transition()? {
+            return Err(anyhow!(
+                "cannot edit take alignment while a recording operation is armed"
+            ));
+        }
         if loop_state.mode.is_playing_mode() {
             return Err(anyhow!("stop loop playback before editing take alignment"));
         }
@@ -1919,6 +1924,11 @@ impl NativeRuntime {
         {
             return Err(anyhow!(
                 "cannot edit take processor alignment while loop content is changing"
+            ));
+        }
+        if loop_.handle.has_planned_recording_transition()? {
+            return Err(anyhow!(
+                "cannot edit take processor alignment while a recording operation is armed"
             ));
         }
         if loop_state.mode.is_playing_mode() {
@@ -3908,6 +3918,65 @@ mod tests {
             .to_string()
             .contains("recording operation is armed"));
         assert_eq!(backend.poll().unwrap().loops[&loop_id].length, 4);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_rejects_take_corrections_while_recording_is_armed() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "native-armed-take-correction".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..2)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![0.0; 8],
+                            start_offset: Some(0),
+                            capture_alignment_frames: Some(0),
+                            preplay: None,
+                        })
+                        .collect(),
+                    length: Some(4),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, Some(2))
+            .unwrap();
+
+        assert!(backend
+            .set_take_alignment(loop_id, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("recording operation is armed"));
+        assert!(backend
+            .set_take_processor_alignment(loop_id, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("recording operation is armed"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
