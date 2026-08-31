@@ -81,6 +81,7 @@ pub struct BasicLoop {
     mode: LoopMode,
     triggering_now: bool,
     already_triggered: bool,
+    repeat_unsynced: bool,
     length: u32,
     position: u32,
     cycle_count: u64,
@@ -238,8 +239,9 @@ impl BasicLoop {
             if let Some(poi) = self.next_poi.as_mut() {
                 poi.flags = poi.flags.without(PoiFlags::LOOP_END);
             }
-            // Trigger ourselves only when no active sync source will do it.
-            if self.sync_source.is_none_or(|s| !s.mode.is_playing_mode()) {
+            // Trigger ourselves only when repeating independently or no active
+            // sync source will do it.
+            if self.repeat_unsynced || self.sync_source.is_none_or(|s| !s.mode.is_playing_mode()) {
                 self.trigger(true);
             }
             changed = true;
@@ -289,7 +291,7 @@ impl BasicLoop {
         }
         while self.planned_countdowns.front().is_some_and(|c| *c < 0) {
             let mode = self.planned_modes[0];
-            self.handle_transition(mode);
+            self.apply_planned_transition(mode, false);
             self.planned_countdowns.pop_front();
             self.planned_modes.pop_front();
         }
@@ -300,6 +302,13 @@ impl BasicLoop {
         if self.sync_source.is_some_and(|s| s.triggering_now) {
             self.trigger(true);
         }
+    }
+
+    fn apply_planned_transition(&mut self, new_mode: LoopMode, repeat_unsynced: bool) {
+        if new_mode.is_playing_mode() {
+            self.repeat_unsynced = repeat_unsynced;
+        }
+        self.handle_transition(new_mode);
     }
 
     pub fn handle_transition(&mut self, new_mode: LoopMode) {
@@ -460,7 +469,7 @@ impl BasicLoop {
             || to_sync_cycle.is_some();
 
         if immediately {
-            self.handle_transition(mode);
+            self.apply_planned_transition(mode, n_cycles_delay.is_none());
             if let (Some(cycle), Some(sync)) = (to_sync_cycle, self.sync_source) {
                 let pos = sync.position + cycle * sync.length;
                 if mode == LoopMode::Recording {
@@ -531,6 +540,10 @@ impl BasicLoop {
 
     pub fn set_mode(&mut self, mode: LoopMode) {
         self.handle_transition(mode);
+    }
+
+    pub fn set_repeat_sync(&mut self, active: bool) {
+        self.repeat_unsynced = !active;
     }
 }
 
@@ -886,5 +899,87 @@ mod tests {
         l.plan_transition(LoopMode::Stopped, Some(5), None);
         check!(l.mode() == LoopMode::Stopped);
         check!(l.n_planned_transitions() == 0);
+    }
+
+    fn playing_sync_source(triggering_now: bool) -> Option<SyncSourceState> {
+        Some(SyncSourceState {
+            mode: LoopMode::Playing,
+            triggering_now,
+            next_trigger_eta: Some(10),
+            position: 0,
+            length: 10,
+        })
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn immediate_playing_transition_repeats_at_own_boundary() {
+        let mut l = BasicLoop::default();
+        l.set_sync_source(playing_sync_source(false));
+        l.set_length(4);
+
+        l.plan_transition(LoopMode::Playing, None, None);
+        l.process(4);
+
+        check!(l.mode() == LoopMode::Playing);
+        check!(l.position() == 0);
+        check!(l.cycle_count == 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn synchronized_playing_transition_waits_at_own_boundary() {
+        let mut l = BasicLoop::default();
+        l.set_sync_source(playing_sync_source(false));
+        l.set_length(4);
+        l.plan_transition(LoopMode::Playing, Some(0), None);
+        l.set_sync_source(playing_sync_source(true));
+        l.handle_sync();
+        l.set_sync_source(playing_sync_source(false));
+
+        l.process(4);
+
+        check!(l.mode() == LoopMode::Playing);
+        check!(l.position() == 4);
+        check!(l.cycle_count == 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn synchronized_start_restores_repeat_sync_after_immediate_start() {
+        let mut l = BasicLoop::default();
+        l.set_sync_source(playing_sync_source(false));
+        l.set_length(4);
+        l.plan_transition(LoopMode::Playing, None, None);
+        l.process(4);
+        check!(l.position() == 0);
+
+        l.plan_transition(LoopMode::Stopped, None, None);
+        l.plan_transition(LoopMode::Playing, Some(0), None);
+        l.process(0);
+        l.set_sync_source(playing_sync_source(true));
+        l.handle_sync();
+        l.set_sync_source(playing_sync_source(false));
+        l.process(4);
+
+        check!(l.mode() == LoopMode::Playing);
+        check!(l.position() == 4);
+        check!(l.cycle_count == 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn non_playing_transitions_preserve_repeat_policy() {
+        let mut l = BasicLoop::default();
+        l.set_sync_source(playing_sync_source(false));
+        l.set_length(4);
+        l.plan_transition(LoopMode::Playing, None, None);
+        check!(l.repeat_unsynced);
+
+        l.plan_transition(LoopMode::Stopped, None, None);
+        check!(l.repeat_unsynced);
+        l.plan_transition(LoopMode::Recording, None, None);
+        check!(l.repeat_unsynced);
+
+        l.set_repeat_sync(true);
+        check!(!l.repeat_unsynced);
+        l.set_repeat_sync(false);
+        check!(l.repeat_unsynced);
     }
 }
