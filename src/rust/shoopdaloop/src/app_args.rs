@@ -10,6 +10,13 @@ pub enum SettingsTest {
     Unavailable,
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
+pub enum BrowserTracingScope {
+    Application,
+    Full,
+}
+
 #[derive(Clone, Debug, Default, Parser)]
 #[command(name = "shoopdaloop", about = "ShoopDaLoop application")]
 pub struct AppArgs {
@@ -25,6 +32,10 @@ pub struct AppArgs {
     /// Add detailed per-node engine zones. Requires tracing.
     #[arg(long, requires = "tracing")]
     pub tracing_engine_detail: bool,
+    #[cfg(target_arch = "wasm32")]
+    /// Select application-only or full browser tracing. Defaults to full.
+    #[arg(long, value_enum, requires = "tracing")]
+    pub tracing_scope: Option<BrowserTracingScope>,
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
     #[cfg(not(target_arch = "wasm32"))]
@@ -73,7 +84,7 @@ pub struct AppArgs {
 #[cfg(target_arch = "wasm32")]
 pub fn parse_web_query(query: &str) -> Result<AppArgs, clap::Error> {
     use clap::CommandFactory;
-    let command = AppArgs::command();
+    let mut command = AppArgs::command();
     let mut argv = vec!["shoopdaloop".to_owned()];
     for pair in query
         .trim_start_matches('?')
@@ -99,7 +110,14 @@ pub fn parse_web_query(query: &str) -> Result<AppArgs, clap::Error> {
             }
         }
     }
-    AppArgs::try_parse_from(argv)
+    let args = AppArgs::try_parse_from(argv)?;
+    if args.tracing_scope == Some(BrowserTracingScope::Application) && args.tracing_engine_detail {
+        return Err(command.error(
+            clap::error::ErrorKind::ArgumentConflict,
+            "--tracing-engine-detail requires --tracing-scope=full",
+        ));
+    }
+    Ok(args)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -178,6 +196,27 @@ mod tests {
             Some("https://example.com/demo.shoop")
         );
         assert!(args.force_url_session);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn web_query_parses_tracing_scope_and_rejects_application_engine_detail() {
+        let application = parse_web_query("?tracing=1&tracing-scope=application").unwrap();
+        assert_eq!(
+            application.tracing_scope,
+            Some(BrowserTracingScope::Application)
+        );
+        assert!(!application.tracing_engine_detail);
+
+        let full =
+            parse_web_query("?tracing=1&tracing-scope=full&tracing-engine-detail=1").unwrap();
+        assert_eq!(full.tracing_scope, Some(BrowserTracingScope::Full));
+        assert!(full.tracing_engine_detail);
+
+        assert!(
+            parse_web_query("?tracing=1&tracing-scope=application&tracing-engine-detail=1")
+                .is_err()
+        );
+        assert!(parse_web_query("?tracing-scope=application").is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

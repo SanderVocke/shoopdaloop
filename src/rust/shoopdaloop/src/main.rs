@@ -45,7 +45,7 @@ use shoop_egui::{
     register_audio_settings, register_settings_with_appearance_defaults, AppIntent, AppSnapshot,
     AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
-use shoop_egui::{TracingStatus, TracingStopped};
+use shoop_egui::{TracingMode, TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_app::CooperativeApplicationRuntime;
@@ -64,6 +64,8 @@ mod browser_worker;
 mod native_preview;
 mod settings;
 use app_args::AppArgs;
+#[cfg(target_arch = "wasm32")]
+use app_args::BrowserTracingScope;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_app::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
@@ -87,6 +89,7 @@ fn application_icon() -> egui::IconData {
 #[cfg(not(target_arch = "wasm32"))]
 struct NativeTracing {
     capture: Option<shoop_common::tracing_capture::ReusableCaptureSession>,
+    active_engine_detail: bool,
     start_on_app_init: Option<bool>,
 }
 
@@ -99,6 +102,7 @@ impl NativeTracing {
         shoop_common::init()?;
         Ok(Self {
             capture: None,
+            active_engine_detail: false,
             start_on_app_init: cli.tracing.then_some(cli.tracing_engine_detail),
         })
     }
@@ -129,6 +133,7 @@ impl NativeTracing {
             "frontend.egui.tracing_started"
         );
         self.capture = Some(capture);
+        self.active_engine_detail = engine_detail;
         Ok(())
     }
 
@@ -148,6 +153,7 @@ impl NativeTracing {
             anyhow::bail!("tracing is not active");
         };
         shoop_common::tracing_helpers::set_engine_detail_enabled(false);
+        self.active_engine_detail = false;
         let disposition = if save {
             CaptureDisposition::Save
         } else {
@@ -167,7 +173,11 @@ impl NativeTracing {
         TracingStatus {
             available: true,
             unavailable_reason: None,
-            active: status.active,
+            engine_available: true,
+            engine_unavailable_reason: None,
+            active_mode: status.active.then_some(TracingMode::Full {
+                engine_detail: self.active_engine_detail,
+            }),
             buffer_capacity_bytes: status.event_storage_bytes,
         }
     }
@@ -187,7 +197,7 @@ type SharedNativeTracing = Arc<Mutex<NativeTracing>>;
 
 #[derive(Clone, Copy)]
 enum PendingTracingAction {
-    Start { engine_detail: bool },
+    Start { mode: TracingMode },
     Stop { save: bool },
     FinishStop { save: bool },
 }
@@ -195,39 +205,44 @@ enum PendingTracingAction {
 #[cfg(target_arch = "wasm32")]
 struct BrowserTracing {
     capture: Option<shoop_tracing::BrowserCapture>,
+    active_mode: Option<TracingMode>,
     window_calibrations: Vec<shoop_tracing::BrowserCalibration>,
-    unavailable_reason: Option<&'static str>,
+    engine_unavailable_reason: Option<&'static str>,
 }
 
 #[cfg(target_arch = "wasm32")]
 impl BrowserTracing {
     fn new() -> Self {
         let global = js_sys::global();
-        let isolated = js_sys::Reflect::get(&global, &"crossOriginIsolated".into())
-            .ok()
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false);
         let has_shared_buffer = js_sys::Reflect::get(&global, &"SharedArrayBuffer".into())
             .is_ok_and(|value| value.is_function());
-        let unavailable_reason = (!isolated || !has_shared_buffer)
-            .then_some("Multirealm tracing requires COOP/COEP cross-origin isolation");
         Self {
             capture: None,
+            active_mode: None,
             window_calibrations: Vec::new(),
-            unavailable_reason,
+            engine_unavailable_reason: (!has_shared_buffer)
+                .then_some("Shared browser memory is unavailable"),
         }
     }
 
-    fn start_capture(&mut self, engine_detail: bool) -> anyhow::Result<()> {
-        if let Some(reason) = self.unavailable_reason {
-            anyhow::bail!(reason);
+    fn start_capture(&mut self, mode: TracingMode) -> anyhow::Result<()> {
+        if mode.includes_engine() {
+            if let Some(reason) = self.engine_unavailable_reason {
+                anyhow::bail!(reason);
+            }
         }
         if self.capture.is_none() {
-            self.capture = Some(
-                shoop_tracing::BrowserCapture::start(engine_detail).map_err(anyhow::Error::msg)?,
+            let capture = shoop_tracing::BrowserCapture::start(mode.engine_detail())
+                .map_err(anyhow::Error::msg)?;
+            let calibration = browser_window_calibration()?;
+            self.capture = Some(capture);
+            self.active_mode = Some(mode);
+            self.window_calibrations = vec![calibration];
+            tracing::info!(
+                scope = mode.label(),
+                engine_detail = mode.engine_detail(),
+                "frontend.egui.tracing_started"
             );
-            self.window_calibrations = vec![browser_window_calibration()?];
-            tracing::info!(engine_detail, "frontend.egui.tracing_started");
         }
         Ok(())
     }
@@ -240,11 +255,17 @@ impl BrowserTracing {
     }
 
     fn discard_active(&mut self) -> anyhow::Result<()> {
-        if let Some(capture) = self.capture.take() {
+        let capture = self.capture.take();
+        self.active_mode = None;
+        self.window_calibrations.clear();
+        if let Some(capture) = capture {
             capture.discard().map_err(anyhow::Error::msg)?;
         }
-        self.window_calibrations.clear();
         Ok(())
+    }
+
+    fn active_mode(&self) -> Option<TracingMode> {
+        self.active_mode
     }
 
     fn stop_capture(
@@ -256,6 +277,7 @@ impl BrowserTracing {
             .capture
             .take()
             .ok_or_else(|| anyhow::anyhow!("tracing is not active"))?;
+        self.active_mode = None;
         if !save {
             capture.discard().map_err(anyhow::Error::msg)?;
             self.window_calibrations.clear();
@@ -273,9 +295,11 @@ impl BrowserTracing {
 
     fn status(&self) -> TracingStatus {
         TracingStatus {
-            available: self.unavailable_reason.is_none(),
-            unavailable_reason: self.unavailable_reason,
-            active: self.capture.is_some(),
+            available: true,
+            unavailable_reason: None,
+            engine_available: self.engine_unavailable_reason.is_none(),
+            engine_unavailable_reason: self.engine_unavailable_reason,
+            active_mode: self.active_mode,
             buffer_capacity_bytes: 0,
         }
     }
@@ -472,9 +496,20 @@ impl UnifiedApp {
             #[cfg(target_arch = "wasm32")]
             tracing_smoke_started: None,
             pending_tracing_action: if cfg!(target_arch = "wasm32") && args.tracing {
-                Some(PendingTracingAction::Start {
-                    engine_detail: args.tracing_engine_detail,
-                })
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let mode = match args.tracing_scope.unwrap_or(BrowserTracingScope::Full) {
+                        BrowserTracingScope::Application => TracingMode::Application,
+                        BrowserTracingScope::Full => TracingMode::Full {
+                            engine_detail: args.tracing_engine_detail,
+                        },
+                    };
+                    Some(PendingTracingAction::Start { mode })
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    None
+                }
             } else {
                 None
             },
@@ -622,9 +657,14 @@ impl UnifiedApp {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
                 .and_then(|mut tracing| match action {
-                    PendingTracingAction::Start { engine_detail } => {
-                        tracing.start_capture(engine_detail).map(|()| None)
-                    }
+                    PendingTracingAction::Start { mode } => match mode {
+                        TracingMode::Full { engine_detail } => {
+                            tracing.start_capture(engine_detail).map(|()| None)
+                        }
+                        TracingMode::Application => {
+                            anyhow::bail!("application-only tracing is browser-only")
+                        }
+                    },
                     PendingTracingAction::Stop { save } => {
                         tracing.quiesce_capture()?;
                         self.pending_tracing_action =
@@ -652,25 +692,34 @@ impl UnifiedApp {
     fn process_tracing(&mut self) {
         if let Some(action) = self.pending_tracing_action.take() {
             let result: anyhow::Result<Option<TracingStopped>> = (|| match action {
-                PendingTracingAction::Start { engine_detail } => {
-                    self.tracing.start_capture(engine_detail)?;
-                    if let Err(error) = self.runtime.start_tracing(engine_detail) {
-                        self.runtime.cancel_tracing_request();
-                        if let Err(discard_error) = self.tracing.discard_active() {
-                            tracing::error!(
-                                error = %discard_error,
-                                "frontend.egui.tracing_start_rollback_failed"
-                            );
+                PendingTracingAction::Start { mode } => {
+                    self.tracing.start_capture(mode)?;
+                    if mode.includes_engine() {
+                        if let Err(error) = self.runtime.start_tracing(mode.engine_detail()) {
+                            self.runtime.cancel_tracing_request();
+                            if let Err(discard_error) = self.tracing.discard_active() {
+                                tracing::error!(
+                                    error = %discard_error,
+                                    "frontend.egui.tracing_start_rollback_failed"
+                                );
+                            }
+                            return Err(error);
                         }
-                        return Err(error);
                     }
                     Ok(None)
                 }
-                PendingTracingAction::Stop { save } => {
-                    self.runtime.request_stop_tracing()?;
-                    self.pending_tracing_action = Some(PendingTracingAction::FinishStop { save });
-                    Ok(None)
-                }
+                PendingTracingAction::Stop { save } => match self.tracing.active_mode() {
+                    Some(TracingMode::Application) => {
+                        self.tracing.stop_capture(save, Vec::new()).map(Some)
+                    }
+                    Some(TracingMode::Full { .. }) => {
+                        self.runtime.request_stop_tracing()?;
+                        self.pending_tracing_action =
+                            Some(PendingTracingAction::FinishStop { save });
+                        Ok(None)
+                    }
+                    None => anyhow::bail!("tracing is not active"),
+                },
                 PendingTracingAction::FinishStop { save } => {
                     match self.runtime.take_trace_realms()? {
                         Some(realms) => self.tracing.stop_capture(save, realms).map(Some),
@@ -694,12 +743,12 @@ impl UnifiedApp {
         if let Err(error) = self.tracing.poll() {
             self.settings.report_action_error(error.to_string());
         }
-        if let Err(error) = self.runtime.poll_tracing() {
-            tracing::error!(error = %error, "frontend.egui.tracing_realm_poll_failed");
-            self.settings.report_action_error(error.to_string());
-        }
         let mut status = self.tracing.status();
-        if status.active {
+        if status.active_mode.is_some_and(TracingMode::includes_engine) {
+            if let Err(error) = self.runtime.poll_tracing() {
+                tracing::error!(error = %error, "frontend.egui.tracing_realm_poll_failed");
+                self.settings.report_action_error(error.to_string());
+            }
             if let Err(error) = self.runtime.ensure_tracing_realm() {
                 self.runtime.cancel_tracing_request();
                 if let Err(discard_error) = self.tracing.discard_active() {
@@ -713,7 +762,12 @@ impl UnifiedApp {
                 status = self.tracing.status();
             }
         }
-        if self.args.tracing_smoke_test && status.active && self.runtime.tracing_realm_ready() {
+        let tracing_smoke_ready = match status.active_mode {
+            Some(TracingMode::Application) => true,
+            Some(TracingMode::Full { .. }) => self.runtime.tracing_realm_ready(),
+            None => false,
+        };
+        if self.args.tracing_smoke_test && tracing_smoke_ready {
             let started = self.tracing_smoke_started.get_or_insert_with(|| {
                 tracing::info!("frontend.egui.tracing_smoke_realm_ready");
                 Instant::now()
@@ -731,10 +785,9 @@ impl UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn handle_settings_action(&mut self, action: SettingsAction) {
         let action = match action {
-            SettingsAction::StartTracing { engine_detail } => {
+            SettingsAction::StartTracing { mode } => {
                 if self.tracing.is_some() {
-                    self.pending_tracing_action =
-                        Some(PendingTracingAction::Start { engine_detail });
+                    self.pending_tracing_action = Some(PendingTracingAction::Start { mode });
                 } else {
                     self.settings
                         .report_action_error("Tracing is unavailable in this build");
@@ -836,8 +889,8 @@ impl UnifiedApp {
     #[cfg(target_arch = "wasm32")]
     fn handle_settings_action(&mut self, action: SettingsAction) {
         let action = match action {
-            SettingsAction::StartTracing { engine_detail } => {
-                self.pending_tracing_action = Some(PendingTracingAction::Start { engine_detail });
+            SettingsAction::StartTracing { mode } => {
+                self.pending_tracing_action = Some(PendingTracingAction::Start { mode });
                 return;
             }
             SettingsAction::StopTracing { save } => {
@@ -1502,7 +1555,7 @@ impl eframe::App for UnifiedApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.process_tracing();
         #[cfg(target_arch = "wasm32")]
-        if self.tracing.status().active || self.pending_tracing_action.is_some() {
+        if self.tracing.status().active() || self.pending_tracing_action.is_some() {
             ui.ctx().request_repaint_after(Duration::from_millis(50));
         }
         self.show(ui);

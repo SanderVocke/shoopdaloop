@@ -39,10 +39,11 @@ and preservation of equal-timestamp producer ordering.
 - Integer counts, identifiers, occupancy, generations, and reason codes are i64
   counters. Fractional values use f64 counters.
 
-Hosted browser multirealm capture requires COOP `same-origin`, COEP
-`require-corp`, and `SharedArrayBuffer`. `scripts/serve_web.py` supplies those
-headers. Unsupported/direct-file deployments keep running and report tracing as
-unavailable.
+Hosted browser application-only capture needs no shared memory. Multirealm
+capture requires `SharedArrayBuffer`, normally enabled by COOP `same-origin` and
+COEP `require-corp`; `scripts/serve_web.py` supplies those headers. Deployments
+without shared memory keep application-only capture available and explain how
+to enable the full option.
 
 ## Test capture
 

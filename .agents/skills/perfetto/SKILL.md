@@ -24,11 +24,12 @@ start in the same process. Detailed engine recording increases callback overhead
 
 ## Browser capture
 
-Hosted Chromium exposes the same developer controls. Multirealm engine tracing
-requires `SharedArrayBuffer` and therefore COOP `same-origin` plus COEP
-`require-corp`. Save downloads one `.pftrace` containing Window and the active
-Engine Worker or AudioWorklet realm. Direct-file or unsupported browsers report
-tracing unavailable rather than silently omitting an active realm.
+Hosted Chromium exposes the same developer controls. Application-only capture
+works without shared browser memory. Full engine capture requires
+`SharedArrayBuffer`, normally through COOP `same-origin` plus COEP
+`require-corp`. Save downloads one `.pftrace` containing either Window alone or
+Window and the active Engine Worker or AudioWorklet realm. The selected scope is
+explicit; full capture never silently omits an active realm.
 
 AudioWorklet timestamps are exact logical sample frames. They do not measure
 callback CPU-entry/exit duration. Inspect clock snapshots, calibration events,

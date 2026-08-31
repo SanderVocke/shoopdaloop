@@ -51,7 +51,8 @@ pub use loop_widget::{LoopWidget, LoopWidgetResponse};
 pub use midi_sequence_widget::MidiSequenceWidget;
 pub use piano_pane::{c_label, is_black, PianoLayout, PianoPane, MIDDLE_C, MIDI_NOTE_COUNT};
 pub use settings_dialog::{
-    SettingsAction, SettingsDialog, SettingsDialogResponse, TracingStatus, TracingStopped,
+    SettingsAction, SettingsDialog, SettingsDialogResponse, TracingMode, TracingStatus,
+    TracingStopped,
 };
 pub use shoop_app_api::*;
 pub use shoop_settings::*;

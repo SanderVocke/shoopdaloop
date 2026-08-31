@@ -10,6 +10,7 @@ const debugPort = Number(process.env.DEBUG_PORT || 19891);
 const root = path.resolve('../../..');
 const downloads = path.join(root, 'target/browser-tracing-smoke');
 const realm = process.env.TRACE_REALM || 'worker';
+const applicationOnly = realm === 'application';
 const output = path.join(root, `target/perfetto-validation/browser-${realm}.pftrace`);
 const processes = [];
 
@@ -46,10 +47,16 @@ try {
   await rm(downloads, {recursive: true, force: true});
   await mkdir(downloads, {recursive: true});
   await mkdir(path.dirname(output), {recursive: true});
-  start('python3', [
-    path.join(root, 'scripts/serve_web.py'),
-    'dist', '--port', String(webPort),
-  ], {cwd: path.resolve('.')});
+  if (applicationOnly) {
+    start('python3', [
+      '-m', 'http.server', String(webPort), '--bind', '127.0.0.1', '--directory', 'dist',
+    ], {cwd: path.resolve('.')});
+  } else {
+    start('python3', [
+      path.join(root, 'scripts/serve_web.py'),
+      'dist', '--port', String(webPort),
+    ], {cwd: path.resolve('.')});
+  }
   await waitForHttp(`http://127.0.0.1:${webPort}/`, 100);
   start(chrome, [
     '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
@@ -58,7 +65,7 @@ try {
     '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${path.join(downloads, 'profile')}`,
-    `http://127.0.0.1:${webPort}/?${realm === 'worker' ? 'worker=1&' : ''}tracing=1&tracing-smoke-test=1`,
+    `http://127.0.0.1:${webPort}/?${realm === 'worker' ? 'worker=1&' : ''}tracing=1&${applicationOnly ? 'tracing-scope=application&' : ''}tracing-smoke-test=1`,
   ], {env: {...process.env, HOME: process.env.HOME}});
   const targets = await waitForJson(`http://127.0.0.1:${debugPort}/json/list`);
   const page = targets.find(target => target.type === 'page');

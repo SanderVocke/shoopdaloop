@@ -82,14 +82,23 @@ cd src/rust/shoopdaloop
 trunk serve --open
 ```
 
-Multirealm Perfetto tracing additionally requires cross-origin isolation. Build
-and serve the hosted output with the repository header-aware server:
+Application-only browser tracing works without cross-origin isolation. Select it
+under **Settings > Developer**, or start it with
+`?tracing=1&tracing-scope=application`. Full tracing additionally captures the
+active AudioWorklet or Worker and needs `SharedArrayBuffer`, normally enabled by
+cross-origin isolation. Build and serve the hosted output with the repository
+header-aware server:
 
 ```sh
 trunk build
 cd ../../..
 python3 scripts/serve_web.py src/rust/shoopdaloop/dist --port 8080
 ```
+
+The in-app tracing help lists the required COOP/COEP headers and local-only
+Chrome and Firefox test overrides. `?tracing=1` retains full tracing by default;
+`?tracing-scope=full&tracing-engine-detail=1` also enables detailed engine
+events.
 
 The same startup options are available as query parameters. For example, `?session=https%3A%2F%2Fexample.com%2Fdemo.shoop&force-url-session=1` fetches that trusted startup URL without confirmation. URL sessions opened later from the application still require confirmation.
 

@@ -881,10 +881,12 @@ jobs:
         working-directory: src/rust/shoopdaloop
         run: OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
-      - name: Run hosted Chromium multirealm Perfetto smokes
+      - name: Run Chromium browser Perfetto smokes
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         run: |
+          TRACE_REALM=application WEB_PORT=19888 DEBUG_PORT=19889 \
+            node --experimental-websocket browser_tracing_smoke.mjs
           TRACE_REALM=worker WEB_PORT=19890 DEBUG_PORT=19891 \
             node --experimental-websocket browser_tracing_smoke.mjs
           TRACE_REALM=audio TRACE_REBUILD=1 WEB_PORT=19892 DEBUG_PORT=19893 \
@@ -908,6 +910,18 @@ jobs:
             grep '1,1,' "$trace.query.txt"
             grep ',1,1,0$' "$trace.query.txt"
           done
+          cat > "$RUNNER_TEMP/browser-application-perfetto.sql" <<'SQL'
+          SELECT
+            (SELECT COUNT(*) FROM track WHERE name = 'Window') AS window_tracks,
+            (SELECT COUNT(*) FROM track WHERE name IN ('Engine Worker', 'AudioWorklet')) AS engine_tracks,
+            (SELECT COUNT(*) > 0 FROM slice) AS has_slices,
+            (SELECT COALESCE(SUM(value), 0) FROM stats WHERE severity = 'error') AS import_errors;
+          SQL
+          application_trace=../../../target/perfetto-validation/browser-application.pftrace
+          ../../../scripts/trace_processor \
+            --query-file "$RUNNER_TEMP/browser-application-perfetto.sql" \
+            "$application_trace" | tee "$application_trace.query.txt"
+          grep '1,0,1,0' "$application_trace.query.txt"
 
       - name: Run retained self-contained Chrome AudioWorklet smoke
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'

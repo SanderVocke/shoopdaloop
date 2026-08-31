@@ -1810,16 +1810,17 @@ impl AppWidget {
             state.status.buffer_size
         ));
         self.show_backend_status(ui, state);
-        if self.tracing_status.active {
+        if let Some(mode) = self.tracing_status.active_mode {
             ui.separator();
             ui.horizontal(|ui| {
                 if self.tracing_status.buffer_capacity_bytes > 0 {
                     ui.label(format!(
-                        "Tracing active ({} buffer capacity)",
+                        "Tracing active: {} ({} buffer capacity)",
+                        mode.label(),
                         format_memory_usage(self.tracing_status.buffer_capacity_bytes)
                     ));
                 } else {
-                    ui.label("Tracing active");
+                    ui.label(format!("Tracing active: {}", mode.label()));
                 }
                 let save = ui.small_button("Save");
                 let discard = ui.small_button("Discard");
@@ -2100,7 +2101,11 @@ mod tests {
         widget.set_tracing_status(TracingStatus {
             available: true,
             unavailable_reason: None,
-            active: true,
+            engine_available: true,
+            engine_unavailable_reason: None,
+            active_mode: Some(crate::TracingMode::Full {
+                engine_detail: false,
+            }),
             buffer_capacity_bytes: 3 * 1024 * 1024,
         });
         let state = AppState::default();

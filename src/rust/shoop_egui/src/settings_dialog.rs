@@ -22,12 +22,46 @@ use crate::{
     BUILTINS_LOCATION, BUILTIN_SCRIPTS, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TracingMode {
+    Application,
+    Full { engine_detail: bool },
+}
+
+impl TracingMode {
+    pub const fn includes_engine(self) -> bool {
+        matches!(self, Self::Full { .. })
+    }
+
+    pub const fn engine_detail(self) -> bool {
+        match self {
+            Self::Application => false,
+            Self::Full { engine_detail } => engine_detail,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Application => "application only",
+            Self::Full { .. } => "application + engine",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TracingStatus {
     pub available: bool,
     pub unavailable_reason: Option<&'static str>,
-    pub active: bool,
+    pub engine_available: bool,
+    pub engine_unavailable_reason: Option<&'static str>,
+    pub active_mode: Option<TracingMode>,
     pub buffer_capacity_bytes: u64,
+}
+
+impl TracingStatus {
+    pub const fn active(self) -> bool {
+        self.active_mode.is_some()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -55,7 +89,7 @@ pub enum SettingsAction {
         script_id: ScriptId,
     },
     StartTracing {
-        engine_detail: bool,
+        mode: TracingMode,
     },
     StopTracing {
         save: bool,
@@ -99,9 +133,13 @@ pub struct SettingsDialog {
     script_status_windows: BTreeSet<ScriptId>,
     markdown_cache: CommonMarkCache,
     tracing_status: TracingStatus,
+    tracing_include_engine: bool,
     tracing_engine_detail: bool,
+    tracing_requirements_open: bool,
     #[cfg(test)]
     tracing_start_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    tracing_requirements_rect: Option<egui::Rect>,
     #[cfg(test)]
     setting_card_rects: Vec<egui::Rect>,
     #[cfg(test)]
@@ -142,9 +180,13 @@ impl SettingsDialog {
             script_status_windows: BTreeSet::new(),
             markdown_cache: CommonMarkCache::default(),
             tracing_status: TracingStatus::default(),
+            tracing_include_engine: true,
             tracing_engine_detail: false,
+            tracing_requirements_open: false,
             #[cfg(test)]
             tracing_start_rect: None,
+            #[cfg(test)]
+            tracing_requirements_rect: None,
             #[cfg(test)]
             setting_card_rects: Vec::new(),
             #[cfg(test)]
@@ -183,6 +225,9 @@ impl SettingsDialog {
     }
 
     pub fn set_tracing_status(&mut self, status: TracingStatus) {
+        if !status.engine_available {
+            self.tracing_include_engine = false;
+        }
         self.tracing_status = status;
     }
 
@@ -377,11 +422,13 @@ impl SettingsDialog {
             self.script_log_windows.clear();
             self.script_documentation_windows.clear();
             self.script_status_windows.clear();
+            self.tracing_requirements_open = false;
         } else {
             self.open = open;
         }
         self.show_audio_confirmation(context, audio_drivers, &mut response);
         self.show_script_windows(context, scripting, script_paths);
+        self.show_tracing_requirements(context);
         response
     }
 
@@ -466,12 +513,48 @@ impl SettingsDialog {
             "Capture performance data or investigate UI/audio bugs. Tracing can be stopped again, but capturing may degrade performance.",
         );
         ui.add_space(8.0);
-        ui.checkbox(
-            &mut self.tracing_engine_detail,
-            "include detailed engine events",
+        #[cfg(any(target_arch = "wasm32", test))]
+        {
+            ui.strong("Trace contents");
+            ui.radio_value(&mut self.tracing_include_engine, false, "Application only");
+            ui.weak("Captures the UI and application, but not audio-engine processing.");
+            ui.add_enabled_ui(self.tracing_status.engine_available, |ui| {
+                ui.radio_value(
+                    &mut self.tracing_include_engine,
+                    true,
+                    "Application + engine",
+                );
+            });
+            if !self.tracing_status.engine_available {
+                let requirements = ui
+                    .link("COOP/COEP is needed for application + engine tracing. Learn more.")
+                    .on_hover_text(
+                        self.tracing_status
+                            .engine_unavailable_reason
+                            .unwrap_or("Engine tracing is unavailable"),
+                    );
+                #[cfg(test)]
+                {
+                    self.tracing_requirements_rect = Some(requirements.rect);
+                }
+                if requirements.clicked() {
+                    self.tracing_requirements_open = true;
+                }
+            }
+        }
+        #[cfg(not(any(target_arch = "wasm32", test)))]
+        ui.label("Application and engine events are included.");
+        ui.add_enabled_ui(
+            self.tracing_include_engine && self.tracing_status.engine_available,
+            |ui| {
+                ui.checkbox(
+                    &mut self.tracing_engine_detail,
+                    "Include detailed engine events",
+                );
+            },
         );
         let start = ui.add_enabled(
-            self.tracing_status.available && !self.tracing_status.active,
+            self.tracing_status.available && !self.tracing_status.active(),
             egui::Button::new("Start tracing"),
         );
         #[cfg(test)]
@@ -479,13 +562,18 @@ impl SettingsDialog {
             self.tracing_start_rect = Some(start.rect);
         }
         if start.clicked() {
+            let mode = if self.tracing_include_engine {
+                TracingMode::Full {
+                    engine_detail: self.tracing_engine_detail,
+                }
+            } else {
+                TracingMode::Application
+            };
             response
                 .settings_actions
-                .push(SettingsAction::StartTracing {
-                    engine_detail: self.tracing_engine_detail,
-                });
+                .push(SettingsAction::StartTracing { mode });
         }
-        if self.tracing_status.active {
+        if self.tracing_status.active() {
             ui.colored_label(colors::WARNING, "Tracing is already active");
         } else if !self.tracing_status.available {
             ui.colored_label(
@@ -495,6 +583,42 @@ impl SettingsDialog {
                     .unwrap_or("Tracing is unavailable in this build."),
             );
         }
+    }
+
+    fn show_tracing_requirements(&mut self, context: &egui::Context) {
+        if !self.tracing_requirements_open {
+            return;
+        }
+        let mut open = true;
+        let mut close = false;
+        egui::Window::new("Enable application + engine tracing")
+            .id(egui::Id::new("tracing_requirements"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(480.0)
+            .show(context, |ui| {
+                ui.label(
+                    "The audio engine runs separately from the app. Full tracing needs browser shared memory to collect its trace without disrupting audio.",
+                );
+                ui.add_space(6.0);
+                ui.label("Recommended: host the app over HTTPS or localhost and return these headers:");
+                ui.monospace("Cross-Origin-Opener-Policy: same-origin");
+                ui.monospace("Cross-Origin-Embedder-Policy: require-corp");
+                ui.add_space(6.0);
+                ui.label("For local testing only:");
+                ui.monospace("Chrome: --shared-array-buffer-unrestricted-access-allowed");
+                ui.label("Firefox Developer Edition or Nightly: set this to true in about:config:");
+                ui.monospace(
+                    "dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled",
+                );
+                ui.add_space(6.0);
+                ui.label("Restart or reload the browser after changing this. Test overrides weaken browser security, so use a separate test profile.");
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            });
+        self.tracing_requirements_open = open && !close;
     }
 
     fn show_appearance(&mut self, ui: &mut egui::Ui) {
@@ -1677,7 +1801,9 @@ mod tests {
         dialog.set_tracing_status(TracingStatus {
             available: true,
             unavailable_reason: None,
-            active: false,
+            engine_available: true,
+            engine_unavailable_reason: None,
+            active_mode: None,
             buffer_capacity_bytes: 0,
         });
         dialog.tracing_engine_detail = true;
@@ -1727,7 +1853,94 @@ mod tests {
         assert!(response.settings_actions.iter().any(|action| matches!(
             action,
             SettingsAction::StartTracing {
-                engine_detail: true
+                mode: TracingMode::Full {
+                    engine_detail: true
+                }
+            }
+        )));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn unavailable_engine_tracing_selects_application_and_links_requirements() {
+        let (registry, _) = fixture();
+        let context = egui::Context::default();
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.set_tracing_status(TracingStatus {
+            available: true,
+            unavailable_reason: None,
+            engine_available: false,
+            engine_unavailable_reason: Some("Shared browser memory is unavailable"),
+            active_mode: None,
+            buffer_capacity_bytes: 0,
+        });
+        let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
+            let mut response = SettingsDialogResponse::default();
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(600.0, 400.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| dialog.show_developer(ui, &mut response),
+            );
+            output.textures_delta.clear();
+            response
+        };
+
+        frame(&mut dialog, Vec::new());
+        let requirements = dialog.tracing_requirements_rect.unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(requirements),
+                egui::Event::PointerButton {
+                    pos: requirements,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: requirements,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(dialog.tracing_requirements_open);
+
+        let start = dialog.tracing_start_rect.unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response.settings_actions.iter().any(|action| matches!(
+            action,
+            SettingsAction::StartTracing {
+                mode: TracingMode::Application
             }
         )));
     }

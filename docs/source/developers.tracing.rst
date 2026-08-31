@@ -11,13 +11,19 @@ Modes
 Disabled
   Omit tracing options. Gated realtime helpers do not call a backend.
 
-Coarse
-  Use ``--tracing`` or **Settings > Developer**. This includes GUI/application
-  spans, engine control/graph work, and bounded callback/session categories.
+Application only
+  Browser Window capture includes GUI and application spans without requiring
+  shared browser memory. Select it under **Settings > Developer** or use
+  ``?tracing=1&tracing-scope=application``.
+
+Full
+  Use ``--tracing`` or select **Application + engine** under
+  **Settings > Developer**. This includes GUI/application spans, engine
+  control/graph work, and bounded callback/session categories.
 
 Engine detail
-  Add ``--tracing-engine-detail`` for per-stage realtime records. This increases
-  callback overhead and capture size.
+  Add ``--tracing-engine-detail`` to full capture for per-stage realtime
+  records. This increases callback overhead and capture size.
 
 Capture natively::
 
@@ -30,10 +36,11 @@ A normal Save or application shutdown atomically publishes a numbered
 are supported. Use the pinned ``scripts/trace_processor`` wrapper for queries.
 
 Hosted Chromium exposes the same controls and downloads application-owned trace
-bytes. One capture combines Window with the active Engine Worker or
-AudioWorklet. Multirealm audio tracing requires cross-origin isolation and
-``SharedArrayBuffer``; serve COOP ``same-origin`` and COEP ``require-corp``.
-Unsupported deployments remain functional and report why tracing is unavailable.
+bytes. Application-only capture retains the Window realm on ordinary static
+hosts. Full capture combines Window with the active Engine Worker or
+AudioWorklet and requires ``SharedArrayBuffer``. Normally, serve COOP
+``same-origin`` and COEP ``require-corp``. The disabled full-capture option links
+to concise hosting and local test-browser instructions.
 
 Trace structure
 ~~~~~~~~~~~~~~~
