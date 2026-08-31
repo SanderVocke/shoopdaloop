@@ -1,17 +1,41 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 14;
+pub const PROTOCOL_VERSION: u16 = 15;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
-pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
+pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
 pub const SESSION_TRANSFER_MAX_BYTES: usize = 256 * 1024 * 1024;
-pub const WAVEFORM_CHUNK_SAMPLES: usize = 512;
+pub const WAVEFORM_CHUNK_SAMPLES: usize = 4_096;
 pub const MIDI_DETAIL_CHUNK_EVENTS: usize = 16;
 pub const STATUS_INTERVAL_MS: u32 = 50;
 pub const MAX_DEVICE_AUDIO_CHANNELS: usize = 2;
 pub const MIDI_BATCH_CAPACITY: usize = 128;
 pub const MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 pub const TRACK_MIDI_MESSAGE_BYTES: usize = 4;
+
+pub fn encode_binary<T: Serialize>(value: &T) -> Result<Vec<u8>, bincode::Error> {
+    bincode::serialize(value)
+}
+
+pub fn decode_binary<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, bincode::Error> {
+    bincode::deserialize(bytes)
+}
+
+mod base64_bytes {
+    use base64::Engine;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        let encoded = String::deserialize(deserializer)?;
+        base64::engine::general_purpose::STANDARD
+            .decode(&encoded)
+            .map_err(serde::de::Error::custom)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CommandEnvelope {
@@ -136,6 +160,7 @@ pub enum Command {
     WriteLoopContentReplace {
         generation: u64,
         offset: usize,
+        #[serde(with = "base64_bytes")]
         bytes: Vec<u8>,
     },
     CommitLoopContentReplace {
@@ -175,6 +200,7 @@ pub enum Command {
     WriteSessionReplace {
         generation: u64,
         offset: usize,
+        #[serde(with = "base64_bytes")]
         bytes: Vec<u8>,
     },
     CommitSessionReplace {
@@ -467,6 +493,7 @@ pub enum Event {
         offset: usize,
         total_bytes: usize,
         final_chunk: bool,
+        #[serde(with = "base64_bytes")]
         bytes: Vec<u8>,
     },
     SessionReplaceComplete {
@@ -960,7 +987,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":14,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":15,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -971,8 +998,50 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":14,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":15,"sequence":17,"event":{"kind":"ack"}}"#
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn binary_codec_and_bulk_base64_are_stable_and_bounded() {
+        let payload = WireSnapshot {
+            sample_rate: 48_000,
+            quantum: 128,
+            ..Default::default()
+        };
+        let binary = encode_binary(&payload).unwrap();
+        assert_eq!(decode_binary::<WireSnapshot>(&binary).unwrap(), payload);
+
+        let bytes = vec![0, 1, 2, 127, 128, 255];
+        let command = CommandEnvelope::new(
+            7,
+            Command::WriteSessionReplace {
+                generation: 3,
+                offset: 11,
+                bytes: bytes.clone(),
+            },
+        );
+        let json = serde_json::to_value(&command).unwrap();
+        assert!(json["command"]["bytes"].is_string());
+        assert_eq!(
+            serde_json::from_value::<CommandEnvelope>(json).unwrap(),
+            command
+        );
+
+        let maximal = CommandEnvelope::new(
+            u64::MAX,
+            Command::WriteSessionReplace {
+                generation: u64::MAX,
+                offset: usize::MAX,
+                bytes: vec![255; SESSION_TRANSFER_CHUNK_BYTES],
+            },
+        );
+        assert!(serde_json::to_vec(&maximal).unwrap().len() < COMMAND_MAX_BYTES);
+
+        let malformed = format!(
+            r#"{{"version":{PROTOCOL_VERSION},"sequence":1,"command":{{"kind":"write_session_replace","generation":1,"offset":0,"bytes":"%%%"}}}}"#
+        );
+        assert!(serde_json::from_str::<CommandEnvelope>(&malformed).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

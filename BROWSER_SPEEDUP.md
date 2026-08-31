@@ -54,16 +54,16 @@ Goals and acceptance criteria may not change without explicit user approval.
 
 ### Stage 1 — Bulk codec and wire representation
 
-- [ ] Add a workspace-pinned binary serde dependency suitable for native and Wasm, with allocation support only as needed.
-- [ ] Add shared binary encode/decode helpers in `shoop_audio_protocol` so client and Worklet cannot select different configurations.
-- [ ] Add centralized base64 serde handling for bulk `Vec<u8>` fields in:
+- [x] Add a workspace-pinned binary serde dependency suitable for native and Wasm, with allocation support only as needed.
+- [x] Add shared binary encode/decode helpers in `shoop_audio_protocol` so client and Worklet cannot select different configurations.
+- [x] Add centralized base64 serde handling for bulk `Vec<u8>` fields in:
   - `WriteSessionReplace`
   - `SessionCaptureChunk`
   - `WriteLoopContentReplace`
-- [ ] Change `SESSION_TRANSFER_CHUNK_BYTES` from 2 KiB to 32 KiB.
-- [ ] Increment `PROTOCOL_VERSION` and update JS contract expectations.
-- [ ] Preserve decoded Rust command/event shapes so transfer assembly code still works with byte vectors.
-- [ ] Add protocol tests proving:
+- [x] Change `SESSION_TRANSFER_CHUNK_BYTES` from 2 KiB to 32 KiB.
+- [x] Increment `PROTOCOL_VERSION` and update JS contract expectations.
+- [x] Preserve decoded Rust command/event shapes so transfer assembly code still works with byte vectors.
+- [x] Add protocol tests proving:
   - binary representative payload round-trip;
   - base64 wire round-trip;
   - serialized bulk bytes are a JSON string;
@@ -84,21 +84,21 @@ Goals and acceptance criteria may not change without explicit user approval.
 
 Depends on Stage 1.
 
-- [ ] Replace `serde_json::{to_vec,from_slice}` for `BackendSessionData` with the shared binary codec in:
+- [x] Replace `serde_json::{to_vec,from_slice}` for `BackendSessionData` with the shared binary codec in:
   - `RemoteWorkletBackend::replace_session_async`
   - `RemoteWorkletBackend::capture_session_async`
   - AudioWorklet session capture
   - AudioWorklet session replacement commit
-- [ ] Remove `session: BackendSessionData` from `SessionReplaceAssembly`.
-- [ ] Remove the full `replace.session != session` comparison.
-- [ ] Document the asynchronous backend contract: once started, subsequent calls poll the single active operation; the current argument is consumed only when starting and when applying successful completion.
-- [ ] Retain only generation, encoded bytes, offsets, commit/completion state, and progress in the assembly.
-- [ ] Preserve transfer cancellation on driver generation change, detach, explicit abort, command error, and stale generation.
-- [ ] Ensure progress remains bounded and meaningful under the larger chunks.
-- [ ] Update session and loop-content transfer tests for binary payloads and base64 envelopes.
-- [ ] Add a multi-track fixture containing finite nontrivial audio, MIDI, timing, and processor state; verify capture → transfer → replacement equality.
-- [ ] Add a polling regression test proving an active replacement emits no second begin command and performs no second encoding.
-- [ ] Verify large-session command count is derived from 32 KiB chunks rather than sample count or 2 KiB chunks.
+- [x] Remove `session: BackendSessionData` from `SessionReplaceAssembly`.
+- [x] Remove the full `replace.session != session` comparison.
+- [x] Document the asynchronous backend contract: once started, subsequent calls poll the single active operation; the current argument is consumed only when starting and when applying successful completion.
+- [x] Retain only generation, encoded bytes, offsets, commit/completion state, and progress in the assembly.
+- [x] Preserve transfer cancellation on driver generation change, detach, explicit abort, command error, and stale generation.
+- [x] Ensure progress remains bounded and meaningful under the larger chunks.
+- [x] Update session and loop-content transfer tests for binary payloads and base64 envelopes.
+- [x] Add a multi-track fixture containing finite nontrivial audio, MIDI, timing, and processor state; verify capture → transfer → replacement equality.
+- [x] Add a polling regression test proving an active replacement emits no second begin command and performs no second encoding.
+- [x] Verify large-session command count is derived from 32 KiB chunks rather than sample count or 2 KiB chunks.
 
 **Verification**
 
@@ -115,21 +115,21 @@ Depends on Stage 1.
 
 Depends on the protocol groundwork but can otherwise be developed independently of Stage 2.
 
-- [ ] Change `WAVEFORM_CHUNK_SAMPLES` to 4,096.
-- [ ] Add a waveform in-flight limit of eight.
-- [ ] Refactor `WaveformAssembly` to track separately:
+- [x] Change `WAVEFORM_CHUNK_SAMPLES` to 4,096.
+- [x] Add a waveform in-flight limit of eight.
+- [x] Refactor `WaveformAssembly` to track separately:
   - next expected response;
   - next request offset/channel;
   - known channel count and current-channel sample count;
   - number of requests in flight;
   - completion state.
-- [ ] Initially request one chunk to learn channel metadata, then fill the bounded pipeline.
-- [ ] Never exceed either the waveform limit or the transport’s global pending-command threshold.
-- [ ] Continue relying on transport sequence ordering while validating returned channel, offset, revision, and totals.
-- [ ] Advance across channel boundaries without requesting beyond a channel’s declared total.
-- [ ] Preserve invalidation on loop mutation, replacement, grab, clear, driver restart, and revision change.
-- [ ] Keep audio unavailable to the app until the exact existing all-channel completion condition is met.
-- [ ] Extend tests to cover:
+- [x] Initially request one chunk to learn channel metadata, then fill the bounded pipeline.
+- [x] Never exceed either the waveform limit or the transport’s global pending-command threshold.
+- [x] Continue relying on transport sequence ordering while validating returned channel, offset, revision, and totals.
+- [x] Advance across channel boundaries without requesting beyond a channel’s declared total.
+- [x] Preserve invalidation on loop mutation, replacement, grab, clear, driver restart, and revision change.
+- [x] Keep audio unavailable to the app until the exact existing all-channel completion condition is met.
+- [x] Extend tests to cover:
   - initial metadata request;
   - eight-request fill and refill;
   - short final chunks;
