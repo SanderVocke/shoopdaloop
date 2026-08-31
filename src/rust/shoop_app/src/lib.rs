@@ -2731,6 +2731,9 @@ impl ApplicationModel {
                 .map_err(|error| format!("could not update track {track_id}: {error}"))?;
             self.desired_track_controls
                 .insert((backend_id, TrackControlKey::InputMonitoring), control);
+            if value {
+                self.auto_arm_owned_tracks.remove(&track_id);
+            }
             if let Some(track) = self.tracks.iter_mut().find(|track| track.id == track_id) {
                 apply_track_control(&mut track.controls, control);
             }
@@ -10755,6 +10758,28 @@ mod tests {
         model.apply_backend_snapshot(backend.poll().unwrap());
         model.reconcile_auto_arm(&mut backend).unwrap();
         assert!(model.auto_arm_owned_tracks.is_empty());
+
+        model.loops.get_mut(&first_root).unwrap().state.mode = LoopMode::Playing;
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model.loops.get_mut(&first_root).unwrap().state.mode = LoopMode::Stopped;
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model
+            .handle_track_input_monitoring(&mut backend, &[first_track], true, false)
+            .unwrap();
+        assert!(!model.auto_arm_owned_tracks.contains(&first_track));
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == first_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
