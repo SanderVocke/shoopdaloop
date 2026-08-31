@@ -3487,6 +3487,7 @@ impl BrowserSelfTest {
                             ),
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
+                        creation_request_id: None,
                     }))
                 })
                 .map(|()| Self::WaitForWebMidiTrack),
@@ -3968,6 +3969,7 @@ impl BrowserSelfTest {
                             ),
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
+                        creation_request_id: None,
                     }))
                 })
                 .map(|()| Self::WaitForTrack),

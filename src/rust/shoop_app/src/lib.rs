@@ -28,9 +28,9 @@ use shoop_app_api::{
     PianoAction, PortDataType, PortDirection, PortId, PortRole, ProcessorLatencyAdjustmentState,
     RecordingOffsetAdjustmentState, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
     ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
-    TaskId, TrackAction, TrackControlState, TrackId, TrackLatencyState, TrackPortOwnerKind,
-    TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState, TrackTopology,
-    WaveformChannelState,
+    TaskId, TrackAction, TrackControlState, TrackCreationResult, TrackId, TrackLatencyState,
+    TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
+    TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
@@ -598,6 +598,7 @@ struct ApplicationModel {
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
     track_processors: Arc<[TrackProcessorDescriptor]>,
+    track_creation_results: VecDeque<TrackCreationResult>,
     script_manager: ScriptManager,
     script_last_snapshot: ControlSnapshot,
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
@@ -648,6 +649,7 @@ struct TrackModel {
     port_ids: Arc<[PortId]>,
     controls: TrackControlState,
     latency: TrackLatencyState,
+    creation_request_id: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1236,6 +1238,7 @@ impl ApplicationModel {
                 port_ids,
                 controls: Default::default(),
                 latency: Default::default(),
+                creation_request_id: None,
             }],
             loops: BTreeMap::from([(loop_id, loop_model)]),
             connection_ports,
@@ -1256,6 +1259,7 @@ impl ApplicationModel {
             track_processors: backend
                 .track_processor_catalog()
                 .unwrap_or_else(|_| Arc::from([])),
+            track_creation_results: VecDeque::new(),
             script_manager,
             script_last_snapshot: ControlSnapshot::default(),
             script_composition_playback: BTreeMap::new(),
@@ -1444,7 +1448,16 @@ impl ApplicationModel {
                 Ok(())
             })(),
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
-            AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
+            AppIntent::AddTrackWithTopology(spec) => {
+                let request_id = spec.creation_request_id;
+                let result = self.add_track_spec(backend, spec);
+                if result.is_err() {
+                    if let Some(request_id) = request_id {
+                        self.record_track_creation_result(request_id, false);
+                    }
+                }
+                result
+            }
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
             AppIntent::ComposeLoopSerial {
                 target_loop_id,
@@ -4177,6 +4190,17 @@ impl ApplicationModel {
         }
     }
 
+    fn record_track_creation_result(&mut self, request_id: u64, success: bool) {
+        const MAX_RESULTS: usize = 64;
+        self.track_creation_results.push_back(TrackCreationResult {
+            request_id,
+            success,
+        });
+        while self.track_creation_results.len() > MAX_RESULTS {
+            self.track_creation_results.pop_front();
+        }
+    }
+
     fn add_track(
         &mut self,
         backend: &mut dyn Backend,
@@ -4338,6 +4362,7 @@ impl ApplicationModel {
             } else {
                 TrackLatencyState::default()
             },
+            creation_request_id: spec.creation_request_id,
         });
         Ok(())
     }
@@ -6646,17 +6671,22 @@ impl ApplicationModel {
                 failure.kind, failure.driver_generation, failure.sequence, failure.message
             ));
         }
-        let rejected_indices = self
+        let rejected_tracks = self
             .tracks
             .iter()
             .enumerate()
             .filter_map(|(index, track)| {
                 rejected_track_creations
                     .contains(&track.backend_id)
-                    .then_some(index)
+                    .then_some((index, track.creation_request_id))
             })
             .collect::<Vec<_>>();
-        for index in rejected_indices.into_iter().rev() {
+        for (_, request_id) in &rejected_tracks {
+            if let Some(request_id) = request_id {
+                self.record_track_creation_result(*request_id, false);
+            }
+        }
+        for (index, _) in rejected_tracks.into_iter().rev() {
             self.remove_track_model(index);
         }
         let confirmed_removal_indices = self
@@ -6761,12 +6791,16 @@ impl ApplicationModel {
                         LoopControlKey::Balance => (state.balance - *desired).abs() <= f32::EPSILON,
                     })
             });
+        let mut confirmed_track_requests = Vec::new();
         for track in &mut self.tracks {
             let Some(backend_state) = snapshot.tracks.get(&track.backend_id) else {
                 continue;
             };
             if track.structural_state == StructuralState::Creating {
                 track.structural_state = StructuralState::Confirmed;
+                if let Some(request_id) = track.creation_request_id.take() {
+                    confirmed_track_requests.push(request_id);
+                }
             }
             let (input_audio_channels, output_audio_channels, input_midi, output_midi) =
                 match &backend_state.topology {
@@ -6827,6 +6861,9 @@ impl ApplicationModel {
                 }
             }
             controls.clamp();
+        }
+        for request_id in confirmed_track_requests {
+            self.record_track_creation_result(request_id, true);
         }
         let track_capabilities = self
             .tracks
@@ -7919,6 +7956,7 @@ impl ApplicationModel {
                     ..Default::default()
                 },
                 latency: app_track_latency(&backend_document_latency(&track_document.latency)?),
+                creation_request_id: None,
             });
         }
         self.next_track_id = tracks
@@ -8062,6 +8100,12 @@ impl ApplicationModel {
                 })
                 .collect(),
             track_processors: Arc::clone(&self.track_processors),
+            track_creation_results: self
+                .track_creation_results
+                .iter()
+                .copied()
+                .collect::<Vec<_>>()
+                .into(),
             global_controls: self.global.clone(),
             status: self.status.clone(),
             audio_drivers: self.audio_drivers.clone(),
@@ -10310,9 +10354,16 @@ mod tests {
                     processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
                     processor_manual_frames: 11,
                 },
+                creation_request_id: Some(41),
             }))
             .unwrap();
         let snapshot = wait_for(&runtime.handle(), |snapshot| snapshot.tracks.len() == 2);
+        assert!(snapshot
+            .track_creation_results
+            .contains(&TrackCreationResult {
+                request_id: 41,
+                success: true,
+            }));
         let track = &snapshot.tracks[1];
         assert_eq!(
             track.topology,
@@ -10414,6 +10465,7 @@ mod tests {
                     ),
                 },
                 latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -10671,6 +10723,7 @@ mod tests {
                     ),
                 },
                 latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -10807,6 +10860,7 @@ mod tests {
                     ),
                 },
                 latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -14509,14 +14563,24 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let runtime = ApplicationRuntime::start(Box::new(backend)).unwrap();
         let handle = runtime.handle();
         handle
-            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
                 name: "Will fail".to_owned(),
-                audio_channels: 2,
-                midi: false,
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 2,
+                    midi: false,
+                },
+                latency: TrackLatencySpec::default(),
+                creation_request_id: Some(42),
             }))
             .unwrap();
         let snapshot = wait_for(&handle, |snapshot| snapshot.revision > 1);
         assert_eq!(snapshot.tracks.len(), 1);
+        assert!(snapshot
+            .track_creation_results
+            .contains(&TrackCreationResult {
+                request_id: 42,
+                success: false,
+            }));
         assert!(snapshot.connections.application_ports.iter().all(|port| {
             port.owner == ApplicationPortOwner::GlobalFxControl
                 || matches!(
@@ -14773,6 +14837,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     ),
                 },
                 latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }),
         );
         let first = model.tracks[1].id;
@@ -17480,6 +17545,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     ),
                 },
                 latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);

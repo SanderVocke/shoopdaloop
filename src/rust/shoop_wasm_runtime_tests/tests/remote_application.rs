@@ -547,6 +547,7 @@ async fn remote_builtin_synth_state_round_trips_through_session() {
             processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
         },
         latency: Default::default(),
+        creation_request_id: None,
     }));
     harness
         .drive_until("created Built-in Synth track", |snapshot| {

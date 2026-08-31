@@ -93,9 +93,9 @@ Version 1 registers the cross-target appearance scale, track defaults, and dynam
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
 | `tracks.new.default_processor_adjustment` | string choice | `"manual"` | Next Add Track dialog opened; allowed values are `"automatic"`, `"manual"`, and `"automatic_plus_trim"` |
-| `tracks.new.default_processor_frames` | `i32` | `0` | Next Add Track dialog opened |
+| `tracks.new.default_processor_frames` | `i32` | `0` | Next Add Track dialog opened; allowed range is -768000–768000 frames, with negative values valid only as automatic trim |
 | `tracks.new.default_recording_adjustment` | string choice | `"manual"` | Next Add Track dialog opened; allowed values are `"automatic"`, `"manual"`, and `"automatic_plus_trim"` |
-| `tracks.new.default_recording_frames` | `i32` | `0` | Next Add Track dialog opened |
+| `tracks.new.default_recording_frames` | `i32` | `0` | Next Add Track dialog opened; allowed range is -768000–768000 frames |
 | `scripting.builtins.location` | string | source-tree `resources/builtins` when an exact executable-sibling `SHOOP_SRC_TREE` marker is present; otherwise packaged `builtins` beside the executable on Linux/Windows, `Contents/Resources/builtins` on macOS, and external `builtins` root in hosted browser builds | Startup, successful Save, or explicit rescan |
 | `scripting.builtins.scripts` | ordered string/toggle list | `[]` | After a successful Save |
 | `scripting.user_scripts` | ordered string/toggle list | `[]` | After a successful Save |

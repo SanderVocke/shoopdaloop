@@ -135,7 +135,11 @@ pub fn register_settings_with_appearance_defaults(
         )
         .category_order(10)
         .setting_order(40)
-        .effect(SettingEffect::NextUse),
+        .effect(SettingEffect::NextUse)
+        .editor(SettingEditor::SignedInteger {
+            min: -crate::MAX_TRACK_LATENCY_FRAMES,
+            max: crate::MAX_TRACK_LATENCY_FRAMES,
+        }),
     )?;
     builder.register(
         SettingDefinition::new(
@@ -162,7 +166,11 @@ pub fn register_settings_with_appearance_defaults(
         )
         .category_order(10)
         .setting_order(60)
-        .effect(SettingEffect::NextUse),
+        .effect(SettingEffect::NextUse)
+        .editor(SettingEditor::SignedInteger {
+            min: -crate::MAX_TRACK_LATENCY_FRAMES,
+            max: crate::MAX_TRACK_LATENCY_FRAMES,
+        }),
     )?;
     builder.register(
         SettingDefinition::new(
@@ -751,6 +759,8 @@ pub struct AppWidget {
     add_track_processor_adjustment: ProcessorLatencyAdjustmentState,
     add_track_processor_frames: i32,
     add_track_make_default: bool,
+    next_add_track_request_id: u64,
+    pending_track_defaults: BTreeMap<u64, SettingsDraft>,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
@@ -827,6 +837,8 @@ impl AppWidget {
             add_track_processor_adjustment: ProcessorLatencyAdjustmentState::default(),
             add_track_processor_frames: 0,
             add_track_make_default: false,
+            next_add_track_request_id: 1,
+            pending_track_defaults: BTreeMap::new(),
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
@@ -950,6 +962,7 @@ impl AppWidget {
         .map(AppAction::KeyEvent)
         .collect::<Vec<_>>();
         let mut settings_actions = Vec::new();
+        self.resolve_track_default_saves(state, &mut settings_actions);
         let mut about_requested = false;
         let touch_mode = settings_state.active.get(TOUCH_MODE).unwrap_or(false);
         crate::loop_widget::set_touch_mode(ui.ctx(), touch_mode);
@@ -1156,9 +1169,9 @@ impl AppWidget {
         self.show_add_track_dialog(
             ui.ctx(),
             &state.track_processors,
+            state,
             settings_state,
             &mut actions,
-            &mut settings_actions,
         );
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
@@ -1663,9 +1676,9 @@ impl AppWidget {
         &mut self,
         context: &egui::Context,
         processors: &[TrackProcessorDescriptor],
+        state: &AppState,
         settings_state: &SettingsViewState,
         actions: &mut Vec<AppAction>,
-        settings_actions: &mut Vec<SettingsAction>,
     ) {
         if !self.add_track_open {
             return;
@@ -1920,6 +1933,9 @@ impl AppWidget {
                 if let Err(error) = validation {
                     let message = match error {
                         crate::TrackSpecError::EmptyName => "A track name is required.",
+                        crate::TrackSpecError::InvalidLatency => {
+                            "Latency values are outside the supported range."
+                        }
                         crate::TrackSpecError::ProcessorUnavailable => {
                             "No compatible dry/wet processor is available on this runtime."
                         }
@@ -1954,11 +1970,10 @@ impl AppWidget {
                 });
             });
         if accepted {
-            if let Some((action, defaults)) =
-                self.accept_add_track_with_defaults(processors, settings_state)
+            if let Some(action) =
+                self.accept_add_track_with_defaults(processors, state, settings_state)
             {
                 actions.push(action);
-                settings_actions.extend(defaults);
                 open = false;
             }
         }
@@ -1995,6 +2010,7 @@ impl AppWidget {
                 processor_adjustment: self.add_track_processor_adjustment,
                 processor_manual_frames: self.add_track_processor_frames,
             },
+            creation_request_id: None,
         })
     }
 
@@ -2029,6 +2045,7 @@ impl AppWidget {
         draft
     }
 
+    #[cfg(test)]
     fn accept_add_track(&mut self, processors: &[TrackProcessorDescriptor]) -> Option<AppAction> {
         let spec = self.add_track_spec()?;
         spec.validate(processors).ok()?;
@@ -2039,13 +2056,44 @@ impl AppWidget {
     fn accept_add_track_with_defaults(
         &mut self,
         processors: &[TrackProcessorDescriptor],
+        state: &AppState,
         settings_state: &SettingsViewState,
-    ) -> Option<(AppAction, Option<SettingsAction>)> {
-        let action = self.accept_add_track(processors)?;
-        let defaults = self
-            .add_track_make_default
-            .then(|| SettingsAction::Save(self.add_track_defaults_draft(settings_state)));
-        Some((action, defaults))
+    ) -> Option<AppAction> {
+        let mut spec = self.add_track_spec()?;
+        spec.validate(processors).ok()?;
+        if self.add_track_make_default {
+            while state
+                .track_creation_results
+                .iter()
+                .any(|result| result.request_id == self.next_add_track_request_id)
+                || self
+                    .pending_track_defaults
+                    .contains_key(&self.next_add_track_request_id)
+            {
+                self.next_add_track_request_id = self.next_add_track_request_id.wrapping_add(1);
+            }
+            let request_id = self.next_add_track_request_id;
+            self.next_add_track_request_id = self.next_add_track_request_id.wrapping_add(1);
+            spec.creation_request_id = Some(request_id);
+            self.pending_track_defaults
+                .insert(request_id, self.add_track_defaults_draft(settings_state));
+        }
+        self.add_track_open = false;
+        Some(AppAction::AddTrackWithTopology(spec))
+    }
+
+    fn resolve_track_default_saves(
+        &mut self,
+        state: &AppState,
+        settings_actions: &mut Vec<SettingsAction>,
+    ) {
+        for result in state.track_creation_results.iter() {
+            if let Some(draft) = self.pending_track_defaults.remove(&result.request_id) {
+                if result.success {
+                    settings_actions.push(SettingsAction::Save(draft));
+                }
+            }
+        }
     }
 
     fn cancel_add_track(&mut self) {
@@ -3011,9 +3059,22 @@ mod tests {
                     processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
                     processor_manual_frames: 256,
                 },
+                creation_request_id: None,
             }))
         );
         assert!(!widget.add_track_open);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn invalid_add_track_latency_keeps_the_dialog_draft_open() {
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Invalid latency".to_owned();
+        widget.add_track_processor_adjustment = ProcessorLatencyAdjustmentState::ManualOverride;
+        widget.add_track_processor_frames = -1;
+        assert_eq!(widget.accept_add_track(&[]), None);
+        assert!(widget.add_track_open);
+        assert_eq!(widget.add_track_processor_frames, -1);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3052,6 +3113,7 @@ mod tests {
                     midi: false,
                 },
                 latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
         );
     }
@@ -3110,6 +3172,7 @@ mod tests {
                     processor_type: processor.id,
                 },
                 latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
         );
     }
@@ -3434,7 +3497,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn add_track_make_default_saves_all_track_defaults_on_acceptance() {
+    fn add_track_make_default_saves_all_track_defaults_after_creation_confirmation() {
         let settings = settings_state();
         let mut widget = AppWidget::default();
         widget.add_track_open = true;
@@ -3461,11 +3524,27 @@ mod tests {
             editor: None,
         };
 
-        let (_, Some(SettingsAction::Save(draft))) = widget
-            .accept_add_track_with_defaults(&[processor], &settings)
+        let AppAction::AddTrackWithTopology(spec) = widget
+            .accept_add_track_with_defaults(&[processor], &AppState::default(), &settings)
             .unwrap()
         else {
-            panic!("expected track creation and default save");
+            panic!("expected track creation");
+        };
+        let request_id = spec.creation_request_id.unwrap();
+        let mut settings_actions = Vec::new();
+        widget.resolve_track_default_saves(&AppState::default(), &mut settings_actions);
+        assert!(settings_actions.is_empty());
+
+        let confirmed = AppState {
+            track_creation_results: Arc::from([crate::TrackCreationResult {
+                request_id,
+                success: true,
+            }]),
+            ..Default::default()
+        };
+        widget.resolve_track_default_saves(&confirmed, &mut settings_actions);
+        let [SettingsAction::Save(draft)] = settings_actions.as_slice() else {
+            panic!("expected default save after confirmation");
         };
         assert_eq!(draft.get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS).unwrap(), 3);
         assert!(draft.get(DEFAULT_NEW_TRACK_MIDI).unwrap());
@@ -3479,5 +3558,25 @@ mod tests {
             "automatic_plus_trim"
         );
         assert_eq!(draft.get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES).unwrap(), 128);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn rejected_track_creation_discards_pending_defaults_without_saving() {
+        let settings = settings_state();
+        let mut widget = AppWidget::default();
+        widget
+            .pending_track_defaults
+            .insert(7, SettingsDraft::from_snapshot(&settings.active));
+        let rejected = AppState {
+            track_creation_results: Arc::from([crate::TrackCreationResult {
+                request_id: 7,
+                success: false,
+            }]),
+            ..Default::default()
+        };
+        let mut settings_actions = Vec::new();
+        widget.resolve_track_default_saves(&rejected, &mut settings_actions);
+        assert!(settings_actions.is_empty());
+        assert!(widget.pending_track_defaults.is_empty());
     }
 }
