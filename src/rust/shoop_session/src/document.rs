@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 8;
+pub const SESSION_DOCUMENT_VERSION: u16 = 9;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -57,6 +57,8 @@ pub struct SessionDocument {
     pub selected_loop_ids: Vec<u64>,
     pub targeted_loop_id: Option<u64>,
     pub buses: Vec<BusDocument>,
+    #[serde(default)]
+    pub mixer_routes: Vec<MixerRouteDocument>,
     pub global_ports: Vec<PortDocument>,
     pub fx_states: Vec<FxStateDocument>,
     pub scripts: Vec<ScriptDocument>,
@@ -74,6 +76,7 @@ impl SessionDocument {
             selected_loop_ids: Vec::new(),
             targeted_loop_id: None,
             buses: Vec::new(),
+            mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             fx_states: Vec::new(),
             scripts: Vec::new(),
@@ -283,8 +286,23 @@ pub enum ConnectabilityDocument {
 pub struct BusDocument {
     pub id: u64,
     pub name: String,
+    #[serde(default)]
+    pub channels: Vec<BusChannelDocument>,
     pub ports: Vec<PortDocument>,
     pub fx_chain: Option<FxChainDocument>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct BusChannelDocument {
+    pub id: u64,
+    pub label: String,
+    pub output_port_id: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct MixerRouteDocument {
+    pub source_port_id: u64,
+    pub destination_channel_id: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

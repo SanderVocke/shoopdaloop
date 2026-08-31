@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 18;
+pub const PROTOCOL_VERSION: u16 = 19;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -186,6 +186,11 @@ pub enum Command {
         host_port_id: String,
         connected: bool,
     },
+    SetMixerRoute {
+        source_port_id: u64,
+        destination_channel_id: u64,
+        connected: bool,
+    },
     RequestWaveform {
         loop_id: u64,
         revision: u64,
@@ -352,6 +357,21 @@ impl Command {
                     ..
                 },
             ) => existing_port == replacement_port && existing_host == replacement_host,
+            (
+                Self::SetMixerRoute {
+                    source_port_id: existing_source,
+                    destination_channel_id: existing_destination,
+                    ..
+                },
+                Self::SetMixerRoute {
+                    source_port_id: replacement_source,
+                    destination_channel_id: replacement_destination,
+                    ..
+                },
+            ) => {
+                existing_source == replacement_source
+                    && existing_destination == replacement_destination
+            }
             _ => false,
         }
     }
@@ -491,6 +511,12 @@ pub enum Event {
         desired_connected: bool,
         message: String,
     },
+    MixerMutationFailed {
+        source_port_id: u64,
+        destination_channel_id: u64,
+        desired_connected: bool,
+        message: String,
+    },
     MidiOutput {
         events: Vec<WireMidiOutputEvent>,
         dropped: u32,
@@ -545,6 +571,9 @@ pub struct WireSnapshot {
     pub application_ports: Vec<WireApplicationPort>,
     pub host_ports: Vec<WireHostPort>,
     pub confirmed_links: Vec<WireConfirmedLink>,
+    pub buses: Vec<WireBus>,
+    pub confirmed_mixer_links: Vec<WireMixerLink>,
+    pub mixer_failures: Vec<WireMixerFailure>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -587,6 +616,7 @@ pub struct WireApplicationPort {
 #[serde(rename_all = "snake_case")]
 pub enum WireApplicationPortOwner {
     Track,
+    Bus { bus_id: u64 },
     GlobalFxControl,
 }
 
@@ -602,6 +632,33 @@ pub struct WireHostPort {
 pub struct WireConfirmedLink {
     pub application_port_id: u64,
     pub host_port_id: String,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireBus {
+    pub id: u64,
+    pub name: String,
+    pub channels: Vec<WireBusChannel>,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireBusChannel {
+    pub id: u64,
+    pub label: String,
+    pub output_port_id: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireMixerLink {
+    pub source_port_id: u64,
+    pub destination_channel_id: u64,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireMixerFailure {
+    pub link: WireMixerLink,
+    pub desired_connected: bool,
+    pub message: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -852,6 +909,23 @@ mod tests {
         };
         assert!(same_route.supersedes_in_journal(&route));
         assert!(!other_route.supersedes_in_journal(&route));
+        let mixer_route = Command::SetMixerRoute {
+            source_port_id: 7,
+            destination_channel_id: 1,
+            connected: false,
+        };
+        assert!(Command::SetMixerRoute {
+            source_port_id: 7,
+            destination_channel_id: 1,
+            connected: true,
+        }
+        .supersedes_in_journal(&mixer_route));
+        assert!(!Command::SetMixerRoute {
+            source_port_id: 7,
+            destination_channel_id: 2,
+            connected: true,
+        }
+        .supersedes_in_journal(&mixer_route));
         assert!(Command::ConfigureDeviceChannels {
             input_channels: 1,
             output_channels: 2,
@@ -1069,7 +1143,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":18,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":19,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1080,7 +1154,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":18,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":19,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

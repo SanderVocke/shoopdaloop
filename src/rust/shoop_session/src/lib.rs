@@ -187,6 +187,7 @@ mod tests {
             selected_loop_ids: vec![10],
             targeted_loop_id: Some(10),
             buses: Vec::new(),
+            mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             fx_states: vec![FxStateDocument {
                 id: 900,
@@ -399,6 +400,7 @@ mod tests {
         bundle.document.buses = vec![BusDocument {
             id: 5_000,
             name: "Main bus".to_owned(),
+            channels: Vec::new(),
             ports: Vec::new(),
             fx_chain: Some(FxChainDocument {
                 id: 802,
@@ -488,7 +490,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 9] {
+        for unsupported in [5, 10] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -497,6 +499,15 @@ mod tests {
                 Err(SessionError::UnsupportedVersion { .. })
             ));
         }
+        let pre_mixer = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(8);
+            manifest["document"]
+                .as_object_mut()
+                .unwrap()
+                .remove("mixer_routes");
+        });
+        assert_eq!(decode_session(&pre_mixer).unwrap(), bundle);
+
         let legacy = rewrite_manifest(encoded.clone(), |manifest| {
             manifest["document_version"] = serde_json::json!(6);
         });
@@ -1263,6 +1274,47 @@ mod tests {
         assert!(matches!(
             encode_session(&bundle, "test"),
             Err(SessionError::MissingMedia { .. })
+        ));
+
+        let mut bundle = direct_bundle(1);
+        let source_port_id = bundle.document.track_groups[0].tracks[0]
+            .ports
+            .iter()
+            .find(|port| port.role == PortRoleDocument::AudioOutput)
+            .unwrap()
+            .id;
+        bundle.document.buses = vec![BusDocument {
+            id: 8_000,
+            name: "Master".to_owned(),
+            channels: vec![BusChannelDocument {
+                id: 8_001,
+                label: "Left".to_owned(),
+                output_port_id: 8_002,
+            }],
+            ports: vec![PortDocument {
+                id: 8_002,
+                name: "master_out_1".to_owned(),
+                data_type: DataTypeDocument::Audio,
+                direction: PortDirectionDocument::Output,
+                role: PortRoleDocument::AudioOutput,
+                input_connectability: vec![ConnectabilityDocument::Internal],
+                output_connectability: vec![ConnectabilityDocument::External],
+                gain: 1.0,
+                muted: false,
+                passthrough_muted: false,
+                internal_connections: Vec::new(),
+                external_connections: Vec::new(),
+                ringbuffer_frames: 0,
+            }],
+            fx_chain: None,
+        }];
+        bundle.document.mixer_routes = vec![MixerRouteDocument {
+            source_port_id,
+            destination_channel_id: 999_999,
+        }];
+        assert!(matches!(
+            encode_session(&bundle, "test"),
+            Err(SessionError::Validation(message)) if message.contains("stale endpoint")
         ));
     }
 }

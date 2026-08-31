@@ -2133,6 +2133,11 @@ impl BackendSession {
         self.shared.wait_for_command(sequence, timeout)
     }
 
+    pub fn graph_up_to_date(&self) -> Result<bool> {
+        self.shared
+            .query_graph_scheduler_response(|session| session.graph_up_to_date())
+    }
+
     pub fn get_state(&self) -> BackendSessionState {
         let handle = self.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
         let stats = handle.stats();

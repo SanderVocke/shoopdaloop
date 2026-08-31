@@ -20,6 +20,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
+const PRE_MIXER_SESSION_DOCUMENT_VERSION: u16 = 8;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -220,6 +221,7 @@ pub fn decode_session_with_limits(
             header.document_version,
             PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
                 | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
+                | PRE_MIXER_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -899,6 +901,59 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     }
                 }
             }
+        }
+    }
+    let mut bus_ids = BTreeSet::new();
+    let mut bus_channel_ids = BTreeSet::new();
+    for bus in &bundle.document.buses {
+        require_id(bus.id, "bus")?;
+        if !bus_ids.insert(bus.id) {
+            return Err(SessionError::Validation(format!(
+                "duplicate bus ID {}",
+                bus.id
+            )));
+        }
+        for port in &bus.ports {
+            require_id(port.id, "bus port")?;
+            if !port_ids.insert(port.id) {
+                return Err(SessionError::Validation(format!(
+                    "duplicate port ID {}",
+                    port.id
+                )));
+            }
+            validate_finite(port.gain, "bus port gain")?;
+        }
+        for channel in &bus.channels {
+            require_id(channel.id, "bus channel")?;
+            if !bus_channel_ids.insert(channel.id) {
+                return Err(SessionError::Validation(format!(
+                    "duplicate bus channel ID {}",
+                    channel.id
+                )));
+            }
+            if !bus
+                .ports
+                .iter()
+                .any(|port| port.id == channel.output_port_id)
+            {
+                return Err(SessionError::Validation(format!(
+                    "bus channel {} references a stale output port",
+                    channel.id
+                )));
+            }
+        }
+    }
+    let mut mixer_routes = BTreeSet::new();
+    for route in &bundle.document.mixer_routes {
+        if !mixer_routes.insert((route.source_port_id, route.destination_channel_id)) {
+            return Err(SessionError::Validation("duplicate mixer route".to_owned()));
+        }
+        if !port_ids.contains(&route.source_port_id)
+            || !bus_channel_ids.contains(&route.destination_channel_id)
+        {
+            return Err(SessionError::Validation(
+                "mixer route references a stale endpoint".to_owned(),
+            ));
         }
     }
     for selected in &bundle.document.selected_loop_ids {
