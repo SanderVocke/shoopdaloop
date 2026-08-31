@@ -20,10 +20,9 @@ mod browser;
 pub mod capture;
 #[cfg(all(target_arch = "wasm32", feature = "ordinary-web"))]
 pub use browser::{
-    append_bounded_browser_records, initialize_browser_tracing, wasm_test_trace_begin,
-    wasm_test_trace_finish, wasm_test_trace_finish_failure, wasm_test_trace_finish_result,
-    wasm_test_trace_opt_out, BrowserCalibration, BrowserCapture, BrowserHealth, BrowserMetadata,
-    BrowserRealmData,
+    initialize_browser_tracing, wasm_test_trace_begin, wasm_test_trace_finish,
+    wasm_test_trace_finish_failure, wasm_test_trace_finish_result, wasm_test_trace_opt_out,
+    BrowserCalibration, BrowserCapture, BrowserHealth, BrowserMetadata, BrowserRealmData,
 };
 #[cfg(target_arch = "wasm32")]
 mod raw;

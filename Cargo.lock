@@ -3275,7 +3275,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perfetto-everywhere-collector"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4"
 dependencies = [
  "perfetto-everywhere-core",
  "perfetto-everywhere-web",
@@ -3287,12 +3287,12 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-core"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4"
 
 [[package]]
 name = "perfetto-everywhere-native"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4"
 dependencies = [
  "perfetto-everywhere-core",
  "perfetto-sdk",
@@ -3301,7 +3301,7 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-raw"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4"
 dependencies = [
  "perfetto-everywhere-core",
 ]
@@ -3309,7 +3309,7 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-tracing"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4"
 dependencies = [
  "perfetto-everywhere-core",
  "tracing",
@@ -3319,10 +3319,11 @@ dependencies = [
 [[package]]
 name = "perfetto-everywhere-web"
 version = "0.1.0"
-source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4"
 dependencies = [
  "js-sys",
  "perfetto-everywhere-core",
+ "perfetto-everywhere-raw",
  "wasm-bindgen",
 ]
 

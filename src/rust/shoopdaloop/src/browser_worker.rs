@@ -17,7 +17,6 @@ const WORKER_SCRIPT_URL: &str = "./audio_worker.js";
 const WORKLET_WASM_URL: &str = "./generated/shoop_audio_worklet.wasm";
 const EMBEDDED_WORKLET_ASSETS: &str = "shoopEmbeddedAudioWorklet";
 const MAX_QUANTUM: u32 = 2048;
-const MAX_RETAINED_TRACE_RECORDS: usize = 262_144;
 const GENERATION: u64 = 1;
 
 struct BrowserWorkerEndpoint(MessagePort);
@@ -47,12 +46,7 @@ pub struct BrowserWorkerDriver {
 
 fn abort_pending_trace(trace: &Rc<RefCell<Option<crate::browser_trace::RealmTraceState>>>) {
     if let Some(trace) = trace.borrow_mut().as_mut() {
-        if let Err(error) = trace.abort() {
-            tracing::error!(
-                error = %error,
-                "frontend.browser_trace.worker_abort_failed"
-            );
-        }
+        trace.abort();
     }
 }
 
@@ -83,6 +77,7 @@ impl BrowserWorkerDriver {
         let receive_repaint_context = Rc::clone(&repaint_context);
         let trace = Rc::new(RefCell::new(None::<crate::browser_trace::RealmTraceState>));
         let receive_trace = Rc::clone(&trace);
+        let trace_port = application_port.clone();
         let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
             if let Some(json) = event.data().as_string() {
                 let _ = receive_control.receive(GENERATION, &json);
@@ -90,14 +85,14 @@ impl BrowserWorkerDriver {
                 let handled = {
                     let mut slot = receive_trace.borrow_mut();
                     if let Some(trace) = slot.as_mut() {
-                        match trace.handle_message(&event.data()) {
+                        match trace.handle_message(&event.data(), &trace_port) {
                             Ok(handled) => handled,
                             Err(error) => {
                                 tracing::error!(
                                     error = %error,
                                     "frontend.browser_trace.worker_message_failed"
                                 );
-                                let _ = trace.abort();
+                                trace.abort();
                                 receive_control
                                     .fail(format!("Worker trace message failed: {error}"));
                                 true
@@ -226,15 +221,8 @@ impl BrowserWorkerDriver {
         if self.trace.borrow().is_some() {
             return Ok(true);
         }
-        let trace = crate::browser_trace::RealmTraceState::new(
-            2,
-            102,
-            "Engine Worker",
-            48_000,
-            128,
-            8192,
-            MAX_RETAINED_TRACE_RECORDS,
-        )?;
+        let trace =
+            crate::browser_trace::RealmTraceState::new(2, 102, "Engine Worker", 48_000, 128, 8192)?;
         self.application_port
             .post_message(&trace.start_message(engine_detail)?)
             .map_err(|error| anyhow!("could not start Worker tracing: {error:?}"))?;
@@ -254,16 +242,21 @@ impl BrowserWorkerDriver {
     }
 
     pub fn discard_tracing(&self) {
-        let _ = self.request_stop_tracing();
+        if let Some(trace) = self.trace.borrow().as_ref() {
+            if let Ok(message) = trace.abort_message() {
+                let _ = self.application_port.post_message(&message);
+            }
+        }
         if let Some(mut trace) = self.trace.borrow_mut().take() {
-            let _ = trace.abort();
+            trace.abort();
         }
     }
 
     pub fn request_stop_tracing(&self) -> Result<()> {
         if self.trace.borrow().is_some() {
+            let message = self.trace.borrow().as_ref().unwrap().stop_message()?;
             self.application_port
-                .post_message(&crate::browser_trace::RealmTraceState::stop_message()?)
+                .post_message(&message)
                 .map_err(|error| anyhow!("could not stop Worker tracing: {error:?}"))?;
         }
         Ok(())

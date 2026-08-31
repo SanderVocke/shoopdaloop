@@ -7,11 +7,12 @@ ShoopDaLoop tracing is implemented through `shoop_tracing` with standard
 nextest, Node Wasm tests, and Chromium Wasm tests. Tracy dependencies, patches,
 prebuilt setup, workflows, active documentation, and artifacts were removed.
 
-The reviewed upstream is `SanderVocke/perfetto-everywhere` merged PR 1 at commit
-`f621af951b80f702c6b710e420c8a1abf5e333c7`. Shoop pins that exact revision.
-The upstream additions are an import-free bounded raw-Wasm producer, configurable
-browser Worker assets, wasm-bindgen 0.2.127 alignment, native static-name caching,
-and preservation of equal-timestamp producer ordering.
+The reviewed upstream is `SanderVocke/perfetto-everywhere` through merged PR 2
+at commit `caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4`. Shoop pins that exact
+revision. The upstream additions include an import-free bounded raw-Wasm
+producer, recyclable transferable browser chunks, configurable Worker assets,
+wasm-bindgen 0.2.127 alignment, native static-name caching, and preservation of
+equal-timestamp producer ordering.
 
 ## Architecture and semantics
 
@@ -23,11 +24,12 @@ and preservation of equal-timestamp producer ordering.
   can restart in one process.
 - Browser Window records use `performance.now()`. The active Worker or
   AudioWorklet writes fixed 48-byte records into preallocated raw-Wasm storage,
-  drains allocation-free into a SharedArrayBuffer ring, and publishes exact
+  drains into a preallocated transferable ArrayBuffer pool, and publishes exact
   sample-frame timestamps, calibrations, metadata, loss, and high-water health.
-  The Window continuously consumes each ring during capture, so captures are not
-  limited to one ring capacity. Retention is capped at 262,144 complete records
-  per realm; later records increment health drops instead of growing memory.
+  The Window continuously consumes each chunk and returns its detached buffer to
+  the originating realm, so captures are not limited to one pool rotation or a
+  fixed record count. Collector allocation or storage failure makes the capture
+  incomplete and prevents save rather than silently truncating it.
 - Browser final protobuf collection currently runs during explicit finalization
   on the Window thread rather than in a separate collector Worker. This avoids a
   second generated Wasm artifact while preserving bounded realtime producers and
@@ -39,9 +41,7 @@ and preservation of equal-timestamp producer ordering.
 - Integer counts, identifiers, occupancy, generations, and reason codes are i64
   counters. Fractional values use f64 counters.
 
-Hosted browser multirealm capture requires COOP `same-origin`, COEP
-`require-corp`, and `SharedArrayBuffer`. `scripts/serve_web.py` supplies those
-headers. Unsupported/direct-file deployments keep running and report tracing as
+Hosted browser multirealm capture uses recyclable transferable buffers and does not require COOP/COEP isolation headers. Unsupported/direct-file deployments keep running and report tracing as
 unavailable.
 
 ## Test capture
@@ -88,7 +88,7 @@ ChromeDriver 147.0.7727.137 included:
   emitted more than the 8,192-record ring capacity with zero drops. The audio
   smoke also rebuilt the AudioWorklet graph during capture and retained both
   synchronized realm segments. The captures were produced from the packaged
-  application through actual SharedArrayBuffer/raw-Wasm bridges.
+  application through the transferable-buffer/raw-Wasm bridges.
 - The retained hosted output-only AudioWorklet workflow passed after the tracing
   changes. Trunk debug packaging and the raw worklet artifact contract passed.
 

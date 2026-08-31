@@ -1,4 +1,4 @@
-import { ShoopRawWasmHost } from './raw_wasm_host.js';
+import { ShoopRawWasmHost, ShoopTraceChunkTransport } from './raw_wasm_host.js';
 
 let applicationPort = null;
 let fixturePort = null;
@@ -39,25 +39,12 @@ function startTracing(options) {
     options.capacityRecords,
     options.engineDetail,
   );
-  const header = new Int32Array(options.sab, 0, 16);
-  if (Atomics.load(header, 0) !== 0x50454631) {
-    host.traceStop();
-    throw new Error('Worker trace ring magic/version mismatch');
-  }
-  const capacity = Atomics.load(header, 1) >>> 0;
   const frame = scheduler.processedQuanta * scheduler.quantum;
-  const referenceMs = Math.max(0, Math.round(options.referenceMs));
-  Atomics.store(header, 9, frame | 0);
-  Atomics.store(header, 10, Math.floor(frame / 0x1_0000_0000) | 0);
-  Atomics.store(header, 13, referenceMs | 0);
-  Atomics.store(header, 14, Math.floor(referenceMs / 0x1_0000_0000) | 0);
-  Atomics.store(header, 15, 1);
-  Atomics.store(header, 11, frame | 0);
-  Atomics.store(header, 12, Math.floor(frame / 0x1_0000_0000) | 0);
   host.traceSetFrame(frame);
-  trace = {header, data: new Uint8Array(options.sab, 64), capacity};
+  trace = new ShoopTraceChunkTransport(host, applicationPort, options);
   applicationPort.postMessage({
     kind: 'shoop-trace-metadata',
+    captureId: options.captureId,
     metadata,
     sourceTicks: frame,
     referenceMs: performance.timeOrigin + performance.now(),
@@ -65,54 +52,31 @@ function startTracing(options) {
 }
 
 function drainTracing() {
-  if (!trace) return;
-  let write = Atomics.load(trace.header, 2) >>> 0;
-  const read = Atomics.load(trace.header, 3) >>> 0;
-  let free = trace.capacity - ((write - read) >>> 0);
-  while (free > 0) {
-    const written = host.traceDrainRing(trace.data, write, free);
-    if (!written) break;
-    write = (write + written) >>> 0;
-    free -= written;
-  }
-  const occupancy = (write - read) >>> 0;
-  if (occupancy > (Atomics.load(trace.header, 8) >>> 0)) Atomics.store(trace.header, 8, occupancy);
-  Atomics.store(trace.header, 2, write | 0);
-  Atomics.store(trace.header, 4, host.traceDropped() | 0);
+  trace?.drain();
 }
 
-function stopTracing() {
+function recycleTracing(message) {
   if (!trace) return;
-  drainTracing();
-  Atomics.store(trace.header, 6, 1);
-  const status = {
-    kind: 'shoop-trace-stopped',
-    dropped: host.traceDropped(),
-    highWater: Atomics.load(trace.header, 8) >>> 0,
+  trace.recycle(message);
+  if (trace.finished) trace = null;
+}
+
+function stopTracing(options) {
+  if (!trace || options.captureId !== trace.captureId) return;
+  trace.stop({
     sourceTicks: scheduler.processedQuanta * scheduler.quantum,
     referenceMs: performance.timeOrigin + performance.now(),
-  };
-  host.traceStop();
-  trace = null;
-  applicationPort.postMessage(status);
+  });
+  if (trace.finished) trace = null;
 }
 
 function abortTracing() {
   if (!trace) return;
-  const active = trace;
-  try { drainTracing(); } catch (_) { /* preserve records already in the shared ring */ }
-  Atomics.store(active.header, 6, 1);
-  const status = {
-    kind: 'shoop-trace-stopped',
-    dropped: host?.traceDropped?.() || 0,
-    highWater: Atomics.load(active.header, 8) >>> 0,
+  trace.abort({
     sourceTicks: (scheduler?.processedQuanta || 0) * (scheduler?.quantum || 0),
     referenceMs: performance.timeOrigin + performance.now(),
-    aborted: true,
-  };
-  try { host?.traceStop(); } catch (_) { /* host is already failing */ }
+  });
   trace = null;
-  try { applicationPort?.postMessage(status); } catch (_) { /* realm is terminating */ }
 }
 
 function handleApplicationCommand(message) {
@@ -123,7 +87,15 @@ function handleApplicationCommand(message) {
       return;
     }
     if (message?.kind === 'shoop-trace-stop') {
-      stopTracing();
+      stopTracing(message);
+      return;
+    }
+    if (message?.kind === 'shoop-trace-abort') {
+      abortTracing();
+      return;
+    }
+    if (message?.kind === 'shoop-trace-recycle') {
+      recycleTracing(message);
       return;
     }
     let response = host.command(message);
@@ -147,9 +119,8 @@ function handleApplicationCommand(message) {
       const frame = (scheduler?.processedQuanta || 0) * (scheduler?.quantum || 0);
       try {
         applicationPort?.postMessage({
-          kind: 'shoop-trace-stopped',
-          dropped: 0,
-          highWater: 0,
+          kind: 'shoop-trace-aborted',
+          captureId: message.captureId,
           sourceTicks: frame,
           referenceMs: performance.timeOrigin + performance.now(),
           aborted: true,
@@ -193,12 +164,7 @@ class WorkerScheduler {
     this.host.traceSetFrame(frame);
     this.host.process(inputs, outputs, this.quantum);
     this.processedQuanta += 1;
-    if (trace) {
-      Atomics.store(trace.header, 11, frame | 0);
-      Atomics.store(trace.header, 12, Math.floor(frame / 0x1_0000_0000) | 0);
-      Atomics.add(trace.header, 5, 1);
-      drainTracing();
-    }
+    if (trace) drainTracing();
     if (performance.now() - startedAt > this.quantum * 1000 / this.sampleRate) {
       this.overruns += 1;
     }

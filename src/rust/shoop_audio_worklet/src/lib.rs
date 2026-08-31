@@ -138,6 +138,13 @@ impl WorkletHost {
     }
 
     #[cfg(target_arch = "wasm32")]
+    pub fn disable_tracing(&mut self) {
+        if let Some(trace) = &self.trace {
+            trace.set_recording(false, false);
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub fn set_trace_frame(&mut self, frame: u64) {
         self.trace_frame = frame;
     }
@@ -164,6 +171,14 @@ impl WorkletHost {
             .as_ref()
             .map(shoop_tracing::RawTraceProducer::health)
             .unwrap_or_default()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn trace_available_records(&self) -> usize {
+        self.trace
+            .as_ref()
+            .map(shoop_tracing::RawTraceProducer::available_records)
+            .unwrap_or(0)
     }
 
     pub fn process(
@@ -1287,6 +1302,14 @@ pub unsafe extern "C" fn shoop_worklet_trace_stop(host: *mut WorkletHost) {
 
 #[cfg(target_arch = "wasm32")]
 #[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_disable(host: *mut WorkletHost) {
+    if let Some(host) = host.as_mut() {
+        host.disable_tracing();
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
 pub unsafe extern "C" fn shoop_worklet_trace_set_frame(
     host: *mut WorkletHost,
     frame_low: u32,
@@ -1322,6 +1345,38 @@ pub unsafe extern "C" fn shoop_worklet_trace_ptr(host: *const WorkletHost) -> *c
 pub unsafe extern "C" fn shoop_worklet_trace_dropped(host: *const WorkletHost) -> u64 {
     host.as_ref()
         .map(|host| host.trace_health().dropped_records)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_emitted(host: *const WorkletHost) -> u64 {
+    host.as_ref()
+        .map(|host| host.trace_health().emitted_records)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_completed_drains(host: *const WorkletHost) -> u64 {
+    host.as_ref()
+        .map(|host| host.trace_health().completed_drains)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_high_water(host: *const WorkletHost) -> usize {
+    host.as_ref()
+        .map(|host| host.trace_health().high_water_records)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_trace_available(host: *const WorkletHost) -> usize {
+    host.as_ref()
+        .map(WorkletHost::trace_available_records)
         .unwrap_or(0)
 }
 

@@ -31,9 +31,9 @@ are supported. Use the pinned ``scripts/trace_processor`` wrapper for queries.
 
 Hosted Chromium exposes the same controls and downloads application-owned trace
 bytes. One capture combines Window with the active Engine Worker or
-AudioWorklet. Multirealm audio tracing requires cross-origin isolation and
-``SharedArrayBuffer``; serve COOP ``same-origin`` and COEP ``require-corp``.
-Unsupported deployments remain functional and report why tracing is unavailable.
+AudioWorklet. Multirealm audio tracing transfers recyclable ``ArrayBuffer``
+chunks and does not require cross-origin isolation. Unsupported browser APIs
+remain functional and report why tracing is unavailable.
 
 Trace structure
 ~~~~~~~~~~~~~~~
@@ -61,10 +61,12 @@ fractional loads/ratios use floating counters. Structured logs preserve level,
 target, message, and typed fields as Perfetto arguments.
 
 AudioWorklet timestamps are exact logical sample frames, not callback CPU
-entry/exit measurements. Browser collection retains at most 262,144 complete
-records per realm (12 MiB of raw records); later records are discarded and
-reported in producer health rather than growing tab memory indefinitely. Always
-inspect clock calibration, producer drops, discontinuities, and health data when
+entry/exit measurements. Browser realms rotate preallocated transferable
+``ArrayBuffer`` chunks and the Window recycles each buffer after consumption,
+so capture duration is not limited by the producer pool size. The collector
+retains consumed trace data until save; allocation or storage failure aborts the
+capture rather than silently producing a complete-looking trace. Always inspect
+clock calibration, producer drops, discontinuities, and health data when
 interpreting a browser trace.
 
 Tracing is diagnostic instrumentation, not a transparent realtime measurement.

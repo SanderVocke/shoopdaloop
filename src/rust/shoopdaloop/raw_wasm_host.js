@@ -169,6 +169,23 @@ export class ShoopRawWasmHost {
     return this.trace ? Number(this.exports.shoop_worklet_trace_dropped(this.host)) : 0;
   }
 
+  traceHealth() {
+    return this.trace ? {
+      emittedRecords: Number(this.exports.shoop_worklet_trace_emitted(this.host)),
+      droppedRecords: Number(this.exports.shoop_worklet_trace_dropped(this.host)),
+      completedDrains: Number(this.exports.shoop_worklet_trace_completed_drains(this.host)),
+      highWaterRecords: Number(this.exports.shoop_worklet_trace_high_water(this.host)),
+    } : {emittedRecords: 0, droppedRecords: 0, completedDrains: 0, highWaterRecords: 0};
+  }
+
+  traceAvailableRecords() {
+    return this.trace ? Number(this.exports.shoop_worklet_trace_available(this.host)) : 0;
+  }
+
+  traceDisable() {
+    if (this.trace) this.exports.shoop_worklet_trace_disable(this.host);
+  }
+
   traceStop() {
     if (!this.trace) return;
     this.exports.shoop_worklet_trace_stop(this.host);
@@ -243,5 +260,154 @@ export class ShoopRawWasmHost {
     this.input = null;
     this.output = null;
     this.memoryBuffer = null;
+  }
+}
+
+export class ShoopTraceChunkTransport {
+  constructor(host, port, options) {
+    if (options.protocolVersion !== 2) throw new Error('trace chunk protocol version mismatch');
+    if (!Number.isInteger(options.captureId) || options.captureId <= 0) {
+      throw new Error('trace capture ID must be positive');
+    }
+    if (!Number.isInteger(options.poolSize) || options.poolSize < 2) {
+      throw new Error('trace chunk pool must contain at least two buffers');
+    }
+    const minimumBytes = options.capacityRecords * 48;
+    if (!Number.isInteger(options.chunkBytes)
+        || options.chunkBytes < minimumBytes
+        || options.chunkBytes % 48 !== 0) {
+      throw new Error('trace chunk capacity cannot hold the largest raw record group');
+    }
+    this.host = host;
+    this.port = port;
+    this.captureId = options.captureId;
+    this.chunkBytes = options.chunkBytes;
+    this.available = [];
+    for (let token = 0; token < options.poolSize; token += 1) {
+      const buffer = new ArrayBuffer(this.chunkBytes);
+      this.available.push({token, buffer, view: new Uint8Array(buffer), used: 0});
+    }
+    this.active = this.available.pop();
+    this.sequence = 0;
+    this.inFlight = new Array(options.poolSize).fill(false);
+    this.inFlightCount = 0;
+    this.maxInFlight = 0;
+    this.returnedBuffers = 0;
+    this.poolStarvationRecords = 0;
+    this.starvationDropStart = null;
+    this.rejectedChunks = 0;
+    this.stopping = null;
+    this.finished = false;
+  }
+
+  drain() {
+    while (this.host.traceAvailableRecords() > 0) {
+      if (!this.active) this.active = this.available.pop() || null;
+      if (!this.active) {
+        if (this.starvationDropStart === null) {
+          this.starvationDropStart = this.host.traceDropped();
+        }
+        return false;
+      }
+      const remaining = this.chunkBytes - this.active.used;
+      const bytes = this.host.traceDrainInto(this.active.view, this.active.used, remaining);
+      if (bytes > 0) this.active.used += bytes;
+      if (this.active.used === this.chunkBytes) {
+        this.transferActive();
+      } else if (bytes === 0 && this.host.traceAvailableRecords() > 0) {
+        // The next complete group fits an empty chunk but not this remaining tail.
+        this.transferActive();
+      }
+    }
+    return true;
+  }
+
+  transferActive() {
+    if (!this.active || this.active.used === 0) return;
+    const chunk = this.active;
+    this.active = this.available.pop() || null;
+    this.inFlight[chunk.token] = true;
+    this.inFlightCount += 1;
+    this.maxInFlight = Math.max(this.maxInFlight, this.inFlightCount);
+    this.port.postMessage({
+      kind: 'shoop-trace-chunk',
+      captureId: this.captureId,
+      sequence: this.sequence,
+      poolToken: chunk.token,
+      usedBytes: chunk.used,
+      buffer: chunk.buffer,
+    }, [chunk.buffer]);
+    this.sequence += 1;
+  }
+
+  recycle(message) {
+    if (message.captureId !== this.captureId || this.finished) return false;
+    if (!Number.isInteger(message.poolToken) || !this.inFlight[message.poolToken]) {
+      this.rejectedChunks += 1;
+      throw new Error('trace recycle has an unknown or duplicate pool token');
+    }
+    this.inFlight[message.poolToken] = false;
+    this.inFlightCount -= 1;
+    this.returnedBuffers += 1;
+    if (this.starvationDropStart !== null) {
+      this.poolStarvationRecords += this.host.traceDropped() - this.starvationDropStart;
+      this.starvationDropStart = null;
+    }
+    if (!(message.buffer instanceof ArrayBuffer) || message.buffer.byteLength !== this.chunkBytes) {
+      throw new Error('trace recycle buffer capacity mismatch');
+    }
+    this.available.push({
+      token: message.poolToken,
+      buffer: message.buffer,
+      view: new Uint8Array(message.buffer),
+      used: 0,
+    });
+    if (!this.active) this.active = this.available.pop();
+    if (this.stopping) this.tryFinish();
+    return true;
+  }
+
+  stop(status) {
+    if (this.stopping || this.finished) return;
+    this.host.traceDisable();
+    this.stopping = status;
+    this.tryFinish();
+  }
+
+  tryFinish() {
+    if (!this.stopping || this.finished || !this.drain()) return false;
+    this.transferActive();
+    const health = this.host.traceHealth();
+    this.host.traceStop();
+    this.finished = true;
+    this.port.postMessage({
+      kind: 'shoop-trace-stopped',
+      captureId: this.captureId,
+      chunkCount: this.sequence,
+      emittedRecords: health.emittedRecords,
+      droppedRecords: health.droppedRecords,
+      rawDroppedRecords: health.droppedRecords - this.poolStarvationRecords,
+      poolStarvationRecords: this.poolStarvationRecords,
+      highWaterRecords: health.highWaterRecords,
+      maxInFlight: this.maxInFlight,
+      returnedBuffers: this.returnedBuffers,
+      rejectedChunks: this.rejectedChunks,
+      ...this.stopping,
+    });
+    return true;
+  }
+
+  abort(status = {}) {
+    if (this.finished) return;
+    this.host.traceDisable();
+    this.host.traceStop();
+    this.finished = true;
+    try {
+      this.port.postMessage({
+        kind: 'shoop-trace-aborted',
+        captureId: this.captureId,
+        ...status,
+      });
+    } catch (_) { /* producer realm is terminating */ }
   }
 }

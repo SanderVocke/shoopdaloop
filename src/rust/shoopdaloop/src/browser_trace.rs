@@ -1,11 +1,11 @@
 use anyhow::anyhow;
-use js_sys::{Array, Atomics, Int32Array, Object, Reflect, SharedArrayBuffer, Uint8Array};
+use js_sys::{Array, ArrayBuffer, Object, Reflect, Uint8Array};
 use wasm_bindgen::{JsCast, JsValue};
+use web_sys::MessagePort;
 
-const HEADER_WORDS: u32 = 16;
-const HEADER_BYTES: u32 = HEADER_WORDS * 4;
-const RECORD_BYTES: u32 = 48;
-const MAGIC: i32 = 0x5045_4631;
+const RECORD_BYTES: usize = 48;
+const TRACE_PROTOCOL_VERSION: u32 = 2;
+const TRACE_POOL_SIZE: usize = 3;
 
 type Result<T> = std::result::Result<T, BrowserTraceError>;
 
@@ -40,19 +40,25 @@ fn reference_time_ms() -> Result<f64> {
     Ok(performance.time_origin() + performance.now())
 }
 
+fn number(data: &JsValue, name: &str) -> Result<f64> {
+    Reflect::get(data, &name.into())?
+        .as_f64()
+        .ok_or_else(|| anyhow!("trace message {name} is not numeric").into())
+}
+
 pub struct RealmTraceState {
     realm_id: u32,
+    capture_id: u64,
     clock_id: u32,
     label: String,
     ticks_per_second: u64,
-    capacity: u32,
-    max_retained_records: usize,
-    sab: SharedArrayBuffer,
-    header: Int32Array,
+    chunk_bytes: usize,
+    next_sequence: u64,
+    collector_owned_tokens: Vec<bool>,
     metadata: Vec<shoop_tracing::BrowserMetadata>,
     calibrations: Vec<shoop_tracing::BrowserCalibration>,
     records: Vec<u8>,
-    retention_dropped_records: u64,
+    health: shoop_tracing::BrowserHealth,
     stopped: bool,
 }
 
@@ -62,38 +68,25 @@ impl RealmTraceState {
         clock_id: u32,
         label: impl Into<String>,
         ticks_per_second: u64,
-        quantum_frames: u32,
+        _quantum_frames: u32,
         capacity: u32,
-        max_retained_records: usize,
     ) -> Result<Self> {
-        let constructor = Reflect::get(&js_sys::global(), &JsValue::from_str("SharedArrayBuffer"))?
-            .dyn_into::<js_sys::Function>()
-            .map_err(|_| anyhow!("SharedArrayBuffer is unavailable; serve with COOP/COEP"))?;
-        let arguments = Array::new();
-        arguments.push(&JsValue::from_f64(
-            (HEADER_BYTES + capacity * RECORD_BYTES) as f64,
-        ));
-        let sab = Reflect::construct(&constructor, &arguments)?
-            .dyn_into::<SharedArrayBuffer>()
-            .map_err(|_| anyhow!("SharedArrayBuffer construction returned the wrong type"))?;
-        let header = Int32Array::new_with_byte_offset_and_length(&sab, 0, HEADER_WORDS);
-        header.set_index(0, MAGIC);
-        header.set_index(1, capacity as i32);
-        header.set_index(9, ticks_per_second.min(i32::MAX as u64) as i32);
-        header.set_index(10, quantum_frames as i32);
+        if realm_id == 0 || clock_id == 0 || capacity == 0 {
+            return Err(anyhow!("trace realm, clock, and capacity must be nonzero").into());
+        }
         Ok(Self {
             realm_id,
+            capture_id: u64::from(realm_id),
             clock_id,
             label: label.into(),
             ticks_per_second,
-            capacity,
-            max_retained_records,
-            sab,
-            header,
+            chunk_bytes: capacity as usize * RECORD_BYTES,
+            next_sequence: 0,
+            collector_owned_tokens: vec![false; TRACE_POOL_SIZE],
             metadata: Vec::new(),
             calibrations: Vec::new(),
             records: Vec::new(),
-            retention_dropped_records: 0,
+            health: shoop_tracing::BrowserHealth::default(),
             stopped: false,
         })
     }
@@ -101,7 +94,16 @@ impl RealmTraceState {
     pub fn start_message(&self, engine_detail: bool) -> Result<JsValue> {
         let message = Object::new();
         Reflect::set(&message, &"kind".into(), &"shoop-trace-start".into())?;
-        Reflect::set(&message, &"sab".into(), self.sab.as_ref())?;
+        Reflect::set(
+            &message,
+            &"protocolVersion".into(),
+            &JsValue::from_f64(TRACE_PROTOCOL_VERSION as f64),
+        )?;
+        Reflect::set(
+            &message,
+            &"captureId".into(),
+            &JsValue::from_f64(self.capture_id as f64),
+        )?;
         Reflect::set(
             &message,
             &"realmId".into(),
@@ -115,7 +117,17 @@ impl RealmTraceState {
         Reflect::set(
             &message,
             &"capacityRecords".into(),
-            &JsValue::from_f64(self.capacity as f64),
+            &JsValue::from_f64((self.chunk_bytes / RECORD_BYTES) as f64),
+        )?;
+        Reflect::set(
+            &message,
+            &"chunkBytes".into(),
+            &JsValue::from_f64(self.chunk_bytes as f64),
+        )?;
+        Reflect::set(
+            &message,
+            &"poolSize".into(),
+            &JsValue::from_f64(TRACE_POOL_SIZE as f64),
         )?;
         Reflect::set(
             &message,
@@ -130,13 +142,29 @@ impl RealmTraceState {
         Ok(message.into())
     }
 
-    pub fn stop_message() -> Result<JsValue> {
+    pub fn stop_message(&self) -> Result<JsValue> {
         let message = Object::new();
         Reflect::set(&message, &"kind".into(), &"shoop-trace-stop".into())?;
         Reflect::set(
             &message,
+            &"captureId".into(),
+            &JsValue::from_f64(self.capture_id as f64),
+        )?;
+        Reflect::set(
+            &message,
             &"referenceMs".into(),
             &JsValue::from_f64(reference_time_ms()?),
+        )?;
+        Ok(message.into())
+    }
+
+    pub fn abort_message(&self) -> Result<JsValue> {
+        let message = Object::new();
+        Reflect::set(&message, &"kind".into(), &"shoop-trace-abort".into())?;
+        Reflect::set(
+            &message,
+            &"captureId".into(),
+            &JsValue::from_f64(self.capture_id as f64),
         )?;
         Ok(message.into())
     }
@@ -148,20 +176,23 @@ impl RealmTraceState {
             .is_some_and(|kind| kind.starts_with("shoop-trace-"))
     }
 
-    pub fn handle_message(&mut self, data: &JsValue) -> Result<bool> {
+    pub fn poll(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn handle_message(&mut self, data: &JsValue, port: &MessagePort) -> Result<bool> {
         let kind = Reflect::get(data, &"kind".into())
             .ok()
             .and_then(|value| value.as_string());
         match kind.as_deref() {
             Some("shoop-trace-metadata") => {
+                self.validate_capture(data)?;
                 let entries = Array::from(&Reflect::get(data, &"metadata".into())?);
                 self.metadata.clear();
                 for value in entries.iter() {
                     self.metadata.push(shoop_tracing::BrowserMetadata {
-                        id: Reflect::get(&value, &"id".into())?.as_f64().unwrap_or(0.0) as u32,
-                        namespace: Reflect::get(&value, &"namespace".into())?
-                            .as_f64()
-                            .unwrap_or(0.0) as u8,
+                        id: number(&value, "id")? as u32,
+                        namespace: number(&value, "namespace")? as u8,
                         label: Reflect::get(&value, &"label".into())?
                             .as_string()
                             .ok_or_else(|| anyhow!("trace metadata label is not a string"))?,
@@ -174,63 +205,121 @@ impl RealmTraceState {
                 );
                 Ok(true)
             }
+            Some("shoop-trace-chunk") => {
+                self.handle_chunk(data, port)?;
+                Ok(true)
+            }
             Some("shoop-trace-stopped") => {
-                self.poll()?;
-                self.stopped = true;
+                self.validate_capture(data)?;
+                let chunk_count = number(data, "chunkCount")? as u64;
+                if chunk_count != self.next_sequence {
+                    return Err(anyhow!(
+                        "trace stopped with {chunk_count} chunks after receiving {}",
+                        self.next_sequence
+                    )
+                    .into());
+                }
+                self.health.emitted_records = number(data, "emittedRecords")? as u64;
+                self.health.dropped_records = number(data, "droppedRecords")? as u64;
+                self.health.raw_dropped_records = number(data, "rawDroppedRecords")? as u64;
+                self.health.pool_starvation_records = number(data, "poolStarvationRecords")? as u64;
+                self.health.completed_batches = chunk_count;
+                self.health.high_water_records = number(data, "highWaterRecords")? as usize;
+                self.health.max_in_flight_chunks = number(data, "maxInFlight")? as usize;
+                self.health.returned_buffers = number(data, "returnedBuffers")? as u64;
+                self.health.rejected_chunks = number(data, "rejectedChunks")? as u64;
                 self.add_message_calibration(data)?;
+                self.stopped = true;
                 tracing::info!(realm = self.realm_id, "frontend.browser_trace.stopped");
                 Ok(true)
+            }
+            Some("shoop-trace-aborted") => {
+                self.validate_capture(data)?;
+                self.stopped = true;
+                Err(anyhow!("{} trace producer aborted", self.label).into())
             }
             _ => Ok(false),
         }
     }
 
-    pub fn poll(&mut self) -> Result<()> {
-        let write = Atomics::load(&self.header, 2)? as u32;
-        let read = Atomics::load(&self.header, 3)? as u32;
-        let available = write.wrapping_sub(read).min(self.capacity);
-        if available == 0 {
-            return Ok(());
+    fn handle_chunk(&mut self, data: &JsValue, port: &MessagePort) -> Result<()> {
+        self.validate_capture(data)?;
+        let sequence = number(data, "sequence")? as u64;
+        if sequence != self.next_sequence {
+            return Err(anyhow!(
+                "expected trace chunk {}, received {sequence}",
+                self.next_sequence
+            )
+            .into());
         }
-        let data = Uint8Array::new_with_byte_offset(&self.sab, HEADER_BYTES);
-        let mut drained = vec![0_u8; available as usize * RECORD_BYTES as usize];
-        for offset in 0..available {
-            let slot = read.wrapping_add(offset) % self.capacity;
-            let source = slot * RECORD_BYTES;
-            let destination = offset as usize * RECORD_BYTES as usize;
-            data.slice(source, source + RECORD_BYTES)
-                .copy_to(&mut drained[destination..destination + RECORD_BYTES as usize]);
+        let token = number(data, "poolToken")? as usize;
+        let owned = self
+            .collector_owned_tokens
+            .get_mut(token)
+            .ok_or_else(|| anyhow!("unknown trace pool token {token}"))?;
+        if *owned {
+            return Err(anyhow!("trace pool token {token} is already collector-owned").into());
         }
-        Atomics::store(&self.header, 3, write as i32)?;
-        shoop_tracing::append_bounded_browser_records(
-            &mut self.records,
-            &mut self.retention_dropped_records,
-            &drained,
-            self.max_retained_records,
-        )
-        .map_err(BrowserTraceError)?;
+        let used_bytes = number(data, "usedBytes")? as usize;
+        if used_bytes == 0 || used_bytes > self.chunk_bytes || used_bytes % RECORD_BYTES != 0 {
+            return Err(anyhow!("invalid trace chunk byte count {used_bytes}").into());
+        }
+        let buffer = Reflect::get(data, &"buffer".into())?
+            .dyn_into::<ArrayBuffer>()
+            .map_err(|_| anyhow!("trace chunk buffer is not an ArrayBuffer"))?;
+        if buffer.byte_length() as usize != self.chunk_bytes {
+            return Err(anyhow!("trace chunk capacity mismatch").into());
+        }
+        *owned = true;
+        let view = Uint8Array::new_with_byte_offset_and_length(&buffer, 0, used_bytes as u32);
+        let offset = self.records.len();
+        self.records
+            .try_reserve(used_bytes)
+            .map_err(|_| anyhow!("browser trace storage quota exhausted"))?;
+        self.records.resize(offset + used_bytes, 0);
+        view.copy_to(&mut self.records[offset..]);
+        self.next_sequence = self.next_sequence.saturating_add(1);
+
+        let recycle = Object::new();
+        Reflect::set(&recycle, &"kind".into(), &"shoop-trace-recycle".into())?;
+        Reflect::set(
+            &recycle,
+            &"captureId".into(),
+            &JsValue::from_f64(self.capture_id as f64),
+        )?;
+        Reflect::set(
+            &recycle,
+            &"poolToken".into(),
+            &JsValue::from_f64(token as f64),
+        )?;
+        Reflect::set(&recycle, &"buffer".into(), buffer.as_ref())?;
+        let transfer = Array::new();
+        transfer.push(buffer.as_ref());
+        port.post_message_with_transferable(recycle.as_ref(), &transfer)?;
+        *owned = false;
         Ok(())
     }
 
-    pub fn abort(&mut self) -> Result<()> {
-        self.poll()?;
-        if self.calibrations.is_empty() {
-            self.add_startup_calibration()?;
+    fn validate_capture(&self, data: &JsValue) -> Result<()> {
+        let capture_id = number(data, "captureId")? as u64;
+        if capture_id != self.capture_id {
+            return Err(anyhow!("stale trace capture {capture_id}").into());
         }
-        self.stopped = true;
         Ok(())
+    }
+
+    pub fn abort(&mut self) {
+        self.stopped = true;
     }
 
     pub fn stopped(&self) -> bool {
         self.stopped
     }
 
-    pub fn finish(mut self) -> Result<shoop_tracing::BrowserRealmData> {
+    pub fn finish(self) -> Result<shoop_tracing::BrowserRealmData> {
         if !self.stopped {
             return Err(anyhow!("{} trace producer has not stopped", self.label).into());
         }
-        self.poll()?;
-        let emitted_records = self.records.len() / RECORD_BYTES as usize;
         Ok(shoop_tracing::BrowserRealmData {
             id: self.realm_id,
             label: self.label,
@@ -238,14 +327,7 @@ impl RealmTraceState {
             records: self.records,
             metadata: self.metadata,
             calibrations: self.calibrations,
-            health: shoop_tracing::BrowserHealth {
-                emitted_records: emitted_records as u64,
-                dropped_records: u64::from(Atomics::load(&self.header, 4)? as u32)
-                    .saturating_add(self.retention_dropped_records),
-                completed_batches: u64::from(Atomics::load(&self.header, 5)? as u32),
-                high_water_records: Atomics::load(&self.header, 8)? as u32 as usize,
-                repaired_span_boundaries: 0,
-            },
+            health: self.health,
         })
     }
 
@@ -299,26 +381,6 @@ impl RealmTraceState {
             });
             return Ok(());
         }
-        self.add_startup_calibration()
-    }
-
-    fn add_startup_calibration(&mut self) -> Result<()> {
-        if !self.calibrations.is_empty() || Atomics::load(&self.header, 15)? == 0 {
-            return Ok(());
-        }
-        let source_low = Atomics::load(&self.header, 9)? as u32;
-        let source_high = Atomics::load(&self.header, 10)? as u32;
-        let reference_low = Atomics::load(&self.header, 13)? as u32;
-        let reference_high = Atomics::load(&self.header, 14)? as u32;
-        let source_ticks = u64::from(source_low) | (u64::from(source_high) << 32);
-        let reference_ms = u64::from(reference_low) | (u64::from(reference_high) << 32);
-        self.calibrations.push(shoop_tracing::BrowserCalibration {
-            realm_id: self.realm_id,
-            clock_id: self.clock_id,
-            source_ticks,
-            reference_time_ns: reference_ms.saturating_mul(1_000_000),
-            uncertainty_ns: 1_000_000_000,
-        });
-        Ok(())
+        Err(anyhow!("trace calibration message is incomplete").into())
     }
 }
