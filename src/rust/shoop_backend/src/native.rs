@@ -465,7 +465,7 @@ impl NativeRuntime {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let composite = self
             .composites
             .get(&composite_id)
@@ -527,7 +527,7 @@ impl NativeRuntime {
             });
         }
         let primitive_sync_sources = self.session.primitive_sync_sources();
-        self.session.configure_composite_loop(
+        let version = self.session.configure_composite_loop(
             &composite.handle,
             descriptor,
             sync_identity,
@@ -535,7 +535,7 @@ impl NativeRuntime {
             &primitive_sync_sources,
         )?;
         self.composites.get_mut(&composite_id).unwrap().config = Some(config.clone());
-        Ok(())
+        Ok(version)
     }
 
     fn next_port(
@@ -2508,7 +2508,7 @@ impl Backend for NativeBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         self.runtime_mut()?
             .configure_composite(composite_id, config)
     }

@@ -913,9 +913,17 @@ struct LoopModel {
     auto_arm_active_plan_version: Option<u64>,
     auto_arm_active_sync_length: Option<u32>,
     auto_arm_active_source_lengths: BTreeMap<LoopId, u32>,
+    auto_arm_configured_plans: BTreeMap<u64, AutoArmCompositePlan>,
     active_composite_children: Vec<ActiveCompositeChildModel>,
     repeat_sync: bool,
     recorded_fx_state: Option<RecordedFxState>,
+}
+
+#[derive(Clone)]
+struct AutoArmCompositePlan {
+    composite: CompositeDocument,
+    sync_length: u32,
+    source_lengths: BTreeMap<LoopId, u32>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -954,6 +962,7 @@ fn clear_composite_runtime_state(model: &mut LoopModel) {
     model.auto_arm_active_plan_version = None;
     model.auto_arm_active_sync_length = None;
     model.auto_arm_active_source_lengths.clear();
+    model.auto_arm_configured_plans.clear();
     model.active_composite_children.clear();
 }
 
@@ -1259,6 +1268,7 @@ impl ApplicationModel {
             auto_arm_active_plan_version: None,
             auto_arm_active_sync_length: None,
             auto_arm_active_source_lengths: BTreeMap::new(),
+            auto_arm_configured_plans: BTreeMap::new(),
             active_composite_children: Vec::new(),
             repeat_sync: false,
             recorded_fx_state: None,
@@ -2463,6 +2473,7 @@ impl ApplicationModel {
                     model.auto_arm_active_plan_version = None;
                     model.auto_arm_active_sync_length = None;
                     model.auto_arm_active_source_lengths.clear();
+                    model.auto_arm_configured_plans.clear();
                     model.active_composite_children.clear();
                 }
                 Ok(())
@@ -2570,14 +2581,17 @@ impl ApplicationModel {
                 let backend_composite = match self.backend_composite_config(&composite)? {
                     Some(config) => match previous_backend_composite {
                         Some(id) => {
-                            backend
-                                .configure_composite_loop(id, &config)
-                                .map_err(|error| {
-                                    format!("could not configure composite loop: {error}")
-                                })?;
+                            let version =
+                                backend
+                                    .configure_composite_loop(id, &config)
+                                    .map_err(|error| {
+                                        format!("could not configure composite loop: {error}")
+                                    })?;
+                            self.remember_auto_arm_composite_plan(target, version, &composite);
                             Some(id)
                         }
-                        None => self.create_and_configure_backend_composite(backend, &composite)?,
+                        None => self
+                            .create_and_configure_backend_composite(backend, target, &composite)?,
                     },
                     None => {
                         if let Some(id) = previous_backend_composite {
@@ -4657,6 +4671,7 @@ impl ApplicationModel {
                 auto_arm_active_plan_version: None,
                 auto_arm_active_sync_length: None,
                 auto_arm_active_source_lengths: BTreeMap::new(),
+                auto_arm_configured_plans: BTreeMap::new(),
                 active_composite_children: Vec::new(),
                 repeat_sync: self.global.sync,
                 recorded_fx_state: None,
@@ -4846,9 +4861,10 @@ impl ApplicationModel {
                     instances: Vec::new(),
                 };
                 let signature = self.composite_length_signature(&composite);
+                let backend_loop_id = loop_model.backend_id;
                 let backend_composite =
-                    self.create_and_configure_backend_composite(backend, &composite)?;
-                if let Err(error) = backend.clear_loop(loop_model.backend_id) {
+                    self.create_and_configure_backend_composite(backend, loop_id, &composite)?;
+                if let Err(error) = backend.clear_loop(backend_loop_id) {
                     if let Some(id) = backend_composite {
                         let _ = backend.remove_composite_loop(id);
                     }
@@ -4968,7 +4984,8 @@ impl ApplicationModel {
         let previous_backend_composite = self.loops[&target].backend_composite;
 
         let backend_composite = if let Some(composite) = &source_composite {
-            let created = self.create_and_configure_backend_composite(backend, composite)?;
+            let created =
+                self.create_and_configure_backend_composite(backend, target, composite)?;
             if let Err(error) = backend.clear_loop(target_backend) {
                 if let Some(id) = created {
                     let _ = backend.remove_composite_loop(id);
@@ -5075,6 +5092,7 @@ impl ApplicationModel {
         model.auto_arm_active_plan_version = None;
         model.auto_arm_active_sync_length = None;
         model.auto_arm_active_source_lengths.clear();
+        model.auto_arm_configured_plans.clear();
         model.active_composite_children.clear();
         model.repeat_sync = source.repeat_sync;
         model.recorded_fx_state = source.recorded_fx_state;
@@ -5195,9 +5213,10 @@ impl ApplicationModel {
             let Some(config) = self.backend_composite_config(&composite)? else {
                 continue;
             };
-            backend
+            let version = backend
                 .configure_composite_loop(composite_id, &config)
                 .map_err(|error| format!("could not refresh composite {id}: {error}"))?;
+            self.remember_auto_arm_composite_plan(id, version, &composite);
             self.loops.get_mut(&id).unwrap().backend_composite_signature = signature;
         }
         Ok(())
@@ -5268,6 +5287,33 @@ impl ApplicationModel {
             .auto_arm_active_composite
             .as_ref()
             .or(model.composite.as_ref())
+    }
+
+    fn auto_arm_composite_plan(&self, composite: &CompositeDocument) -> AutoArmCompositePlan {
+        AutoArmCompositePlan {
+            composite: composite.clone(),
+            sync_length: self.sync_length(),
+            source_lengths: composite
+                .instances
+                .iter()
+                .filter_map(|event| {
+                    let id = LoopId::from_raw(event.loop_id);
+                    self.loops.get(&id).map(|source| (id, source.length))
+                })
+                .collect(),
+        }
+    }
+
+    fn remember_auto_arm_composite_plan(
+        &mut self,
+        id: LoopId,
+        version: u64,
+        composite: &CompositeDocument,
+    ) {
+        let plan = self.auto_arm_composite_plan(composite);
+        if let Some(model) = self.loops.get_mut(&id) {
+            model.auto_arm_configured_plans.insert(version, plan);
+        }
     }
 
     fn scheduled_composite_occurrences(
@@ -5618,8 +5664,9 @@ impl ApplicationModel {
     }
 
     fn create_and_configure_backend_composite(
-        &self,
+        &mut self,
         backend: &mut dyn Backend,
+        target: LoopId,
         composite: &CompositeDocument,
     ) -> Result<Option<BackendCompositeId>, String> {
         if !backend.supports_composite_loops() {
@@ -5631,10 +5678,14 @@ impl ApplicationModel {
         let id = backend
             .create_composite_loop()
             .map_err(|error| format!("could not create composite loop: {error}"))?;
-        if let Err(error) = backend.configure_composite_loop(id, &config) {
-            let _ = backend.remove_composite_loop(id);
-            return Err(format!("could not configure composite loop: {error}"));
-        }
+        let version = match backend.configure_composite_loop(id, &config) {
+            Ok(version) => version,
+            Err(error) => {
+                let _ = backend.remove_composite_loop(id);
+                return Err(format!("could not configure composite loop: {error}"));
+            }
+        };
+        self.remember_auto_arm_composite_plan(target, version, composite);
         Ok(Some(id))
     }
 
@@ -5663,7 +5714,7 @@ impl ApplicationModel {
             let id = ready.ok_or_else(|| "composite dependency cycle".to_owned())?;
             let composite = self.loops[&id].composite.clone().unwrap();
             let backend_composite =
-                self.create_and_configure_backend_composite(backend, &composite)?;
+                self.create_and_configure_backend_composite(backend, id, &composite)?;
             let signature = self.composite_length_signature(&composite);
             let model = self.loops.get_mut(&id).unwrap();
             model.backend_composite = backend_composite;
@@ -5777,18 +5828,20 @@ impl ApplicationModel {
 
         let composite = composite_with_source_at(existing, source, start_iteration)?;
         let previous_backend_composite = target_model.backend_composite;
+        let mut sections = target_model.script_composition.clone();
         let config = self.backend_composite_config(&composite)?.ok_or_else(|| {
             "positioned composite schedule is not backend-configurable".to_owned()
         })?;
         let backend_composite = match previous_backend_composite {
             Some(id) => {
-                backend
+                let version = backend
                     .configure_composite_loop(id, &config)
                     .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                self.remember_auto_arm_composite_plan(target, version, &composite);
                 id
             }
             None => self
-                .create_and_configure_backend_composite(backend, &composite)?
+                .create_and_configure_backend_composite(backend, target, &composite)?
                 .ok_or_else(|| "could not create positioned composite schedule".to_owned())?,
         };
         let signature = self.composite_length_signature(&composite);
@@ -5797,7 +5850,6 @@ impl ApplicationModel {
             .timeline_length_frames
             .try_into()
             .unwrap_or(u32::MAX);
-        let mut sections = target_model.script_composition.clone();
         sections.push(vec![source]);
         let target_model = self.loops.get_mut(&target).unwrap();
         target_model.script_composition = sections;
@@ -5836,12 +5888,13 @@ impl ApplicationModel {
         let backend_composite = match self.backend_composite_config(&composite)? {
             Some(config) => match previous_backend_composite {
                 Some(id) => {
-                    backend
+                    let version = backend
                         .configure_composite_loop(id, &config)
                         .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                    self.remember_auto_arm_composite_plan(target, version, &composite);
                     Some(id)
                 }
-                None => self.create_and_configure_backend_composite(backend, &composite)?,
+                None => self.create_and_configure_backend_composite(backend, target, &composite)?,
             },
             None => {
                 if let Some(id) = previous_backend_composite {
@@ -5960,13 +6013,14 @@ impl ApplicationModel {
             .ok_or_else(|| "relocated composite is not backend-configurable".to_owned())?;
         let backend_composite = match target_model.backend_composite {
             Some(id) => {
-                backend
+                let version = backend
                     .configure_composite_loop(id, &config)
                     .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                self.remember_auto_arm_composite_plan(target, version, &composite);
                 id
             }
             None => self
-                .create_and_configure_backend_composite(backend, &composite)?
+                .create_and_configure_backend_composite(backend, target, &composite)?
                 .ok_or_else(|| "could not create relocated composite schedule".to_owned())?,
         };
         let signature = self.composite_length_signature(&composite);
@@ -6009,30 +6063,7 @@ impl ApplicationModel {
             .ok_or_else(|| "stale or unknown composite event".to_owned())?;
         event.n_cycles = n_cycles;
 
-        let backend_composite = match target_model.backend_composite {
-            Some(id) => {
-                let config = self
-                    .backend_composite_config(&composite)?
-                    .ok_or_else(|| "composite is not backend-configurable".to_owned())?;
-                backend
-                    .configure_composite_loop(id, &config)
-                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
-                Some(id)
-            }
-            None => self.create_and_configure_backend_composite(backend, &composite)?,
-        };
-        let signature = self.composite_length_signature(&composite);
-        let length = self
-            .composite_details_snapshot(&composite)
-            .timeline_length_frames
-            .try_into()
-            .unwrap_or(u32::MAX);
-        let target_model = self.loops.get_mut(&target).unwrap();
-        target_model.length = length;
-        target_model.composite = Some(composite);
-        target_model.backend_composite = backend_composite;
-        target_model.backend_composite_signature = signature;
-        Ok(())
+        self.commit_composite_editor_change(backend, target, composite)
     }
 
     fn set_composite_kind(
@@ -6113,31 +6144,37 @@ impl ApplicationModel {
             .then(|| self.backend_composite_config(&composite))
             .transpose()?
             .flatten();
-        let backend_composite = match (previous_backend_composite, config) {
+        let (backend_composite, configured_version) = match (previous_backend_composite, config) {
             (Some(id), Some(config)) => {
-                backend
+                let version = backend
                     .configure_composite_loop(id, &config)
                     .map_err(|error| format!("could not configure composite loop: {error}"))?;
-                Some(id)
+                (Some(id), Some(version))
             }
             (None, Some(config)) => {
                 let id = backend
                     .create_composite_loop()
                     .map_err(|error| format!("could not create composite loop: {error}"))?;
-                if let Err(error) = backend.configure_composite_loop(id, &config) {
-                    let _ = backend.remove_composite_loop(id);
-                    return Err(format!("could not configure composite loop: {error}"));
-                }
-                Some(id)
+                let version = match backend.configure_composite_loop(id, &config) {
+                    Ok(version) => version,
+                    Err(error) => {
+                        let _ = backend.remove_composite_loop(id);
+                        return Err(format!("could not configure composite loop: {error}"));
+                    }
+                };
+                (Some(id), Some(version))
             }
             (Some(id), None) => {
                 backend
                     .remove_composite_loop(id)
                     .map_err(|error| format!("could not remove composite loop: {error}"))?;
-                None
+                (None, None)
             }
-            (None, None) => None,
+            (None, None) => (None, None),
         };
+        if let Some(version) = configured_version {
+            self.remember_auto_arm_composite_plan(target, version, &composite);
+        }
         let signature = self.composite_length_signature(&composite);
         let length = self
             .composite_details_snapshot(&composite)
@@ -7337,20 +7374,32 @@ impl ApplicationModel {
             };
             if model.auto_arm_active_plan_version != Some(state.active_plan_version) {
                 model.auto_arm_active_plan_version = Some(state.active_plan_version);
-                model.auto_arm_active_composite.clone_from(&model.composite);
-                model.auto_arm_active_sync_length = auto_arm_runtime_sync_length;
-                model.auto_arm_active_source_lengths = model
-                    .auto_arm_active_composite
-                    .iter()
-                    .flat_map(|composite| &composite.instances)
-                    .filter_map(|event| {
-                        let id = LoopId::from_raw(event.loop_id);
-                        auto_arm_runtime_lengths
-                            .get(&id)
-                            .copied()
-                            .map(|length| (id, length))
-                    })
-                    .collect();
+                if let Some(plan) = model
+                    .auto_arm_configured_plans
+                    .remove(&state.active_plan_version)
+                {
+                    model.auto_arm_active_composite = Some(plan.composite);
+                    model.auto_arm_active_sync_length = Some(plan.sync_length);
+                    model.auto_arm_active_source_lengths = plan.source_lengths;
+                } else {
+                    model.auto_arm_active_composite.clone_from(&model.composite);
+                    model.auto_arm_active_sync_length = auto_arm_runtime_sync_length;
+                    model.auto_arm_active_source_lengths = model
+                        .auto_arm_active_composite
+                        .iter()
+                        .flat_map(|composite| &composite.instances)
+                        .filter_map(|event| {
+                            let id = LoopId::from_raw(event.loop_id);
+                            auto_arm_runtime_lengths
+                                .get(&id)
+                                .copied()
+                                .map(|length| (id, length))
+                        })
+                        .collect();
+                }
+                model
+                    .auto_arm_configured_plans
+                    .retain(|version, _| *version > state.active_plan_version);
             }
             model.state.mode = app_loop_mode(state.mode);
             model.state.next_mode = state
@@ -8339,6 +8388,7 @@ impl ApplicationModel {
                         auto_arm_active_plan_version: None,
                         auto_arm_active_sync_length: None,
                         auto_arm_active_source_lengths: BTreeMap::new(),
+                        auto_arm_configured_plans: BTreeMap::new(),
                         active_composite_children: Vec::new(),
                         repeat_sync: bundle.document.global.sync,
                         recorded_fx_state,
@@ -10318,7 +10368,7 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn auto_arm_planner_tracks_preceding_current_pending_and_excluded_cycles() {
-        let (_backend, mut model) = auto_arm_planner_model();
+        let (mut backend, mut model) = auto_arm_planner_model();
         let sync = model.tracks[0].loops[0];
         let root = model.tracks[1].loops[0];
         let first = model.tracks[2].loops[0];
@@ -10471,6 +10521,50 @@ mod tests {
         assert_eq!(
             model.auto_arm_demanded_tracks(),
             BTreeSet::from([first_track])
+        );
+
+        backend.enable_composite_loops();
+        let plan_a = model.loops[&root].composite.clone().unwrap();
+        model
+            .commit_composite_editor_change(&mut backend, root, plan_a.clone())
+            .unwrap();
+        let version_a = *model.loops[&root]
+            .auto_arm_configured_plans
+            .keys()
+            .next_back()
+            .unwrap();
+        let mut plan_b = plan_a.clone();
+        plan_b.instances[0].mode = Some("playing".to_owned());
+        model
+            .commit_composite_editor_change(&mut backend, root, plan_b.clone())
+            .unwrap();
+        let version_b = *model.loops[&root]
+            .auto_arm_configured_plans
+            .keys()
+            .next_back()
+            .unwrap();
+        assert!(version_b > version_a);
+        let backend_composite = model.loops[&root].backend_composite.unwrap();
+        let mut first_active = backend.poll().unwrap();
+        let state = first_active.composites.get_mut(&backend_composite).unwrap();
+        state.active_plan_version = version_a;
+        state.pending_plan_version = Some(version_b);
+        model.apply_backend_snapshot(first_active);
+        assert_eq!(
+            model.loops[&root].auto_arm_active_composite.as_ref(),
+            Some(&plan_a)
+        );
+        let mut second_active = backend.poll().unwrap();
+        let state = second_active
+            .composites
+            .get_mut(&backend_composite)
+            .unwrap();
+        state.active_plan_version = version_b;
+        state.pending_plan_version = None;
+        model.apply_backend_snapshot(second_active);
+        assert_eq!(
+            model.loops[&root].auto_arm_active_composite.as_ref(),
+            Some(&plan_b)
         );
     }
 

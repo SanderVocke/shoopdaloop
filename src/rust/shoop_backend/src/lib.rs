@@ -845,11 +845,12 @@ pub trait Backend {
     fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
         Err(anyhow!("composite loops are unavailable"))
     }
+    /// Installs a composite configuration and returns its backend-wide plan version.
     fn configure_composite_loop(
         &mut self,
         _composite_id: BackendCompositeId,
         _config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         Err(anyhow!("composite loops are unavailable"))
     }
     fn transition_composite_loop(
@@ -1758,7 +1759,7 @@ impl EngineBackend {
     fn install_composite_configs(
         &mut self,
         configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let mut timeline = self.compile_composite_timeline(&configs)?;
         let version = self.next_composite_version;
         self.next_composite_version = self.next_composite_version.saturating_add(1);
@@ -1781,7 +1782,7 @@ impl EngineBackend {
                 )?;
             }
         }
-        Ok(())
+        Ok(version)
     }
 
     pub fn configure_web_audio_channels(
@@ -3689,7 +3690,7 @@ impl Backend for EngineBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         if !self.composites.contains_key(&composite_id) {
             return Err(anyhow!("unknown composite {composite_id:?}"));
         }
@@ -5553,7 +5554,7 @@ impl Backend for LocalDummyBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         self.runtime.configure_composite_loop(composite_id, config)
     }
 
@@ -6712,7 +6713,7 @@ impl Backend for FakeBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         if !self.composites.contains_key(&composite_id) {
             return Err(anyhow!("unknown fake composite {composite_id:?}"));
         }
@@ -6781,7 +6782,7 @@ impl Backend for FakeBackend {
             composite_id,
             config.clone(),
         ));
-        Ok(())
+        Ok(state.active_plan_version)
     }
 
     fn transition_composite_loop(

@@ -114,6 +114,7 @@ pub struct RemoteWorkletBackend {
     next_track_id: u64,
     next_loop_id: u64,
     next_composite_id: u64,
+    next_composite_plan_version: u64,
     next_port_id: u64,
     transport_generation: u64,
     poll_elapsed: Duration,
@@ -168,6 +169,7 @@ impl RemoteWorkletBackend {
                 next_track_id: 1,
                 next_loop_id: 1,
                 next_composite_id: 1,
+                next_composite_plan_version: 1,
                 next_port_id: 1,
                 transport_generation: 0,
                 poll_elapsed: Duration::ZERO,
@@ -641,6 +643,7 @@ impl RemoteWorkletBackend {
         self.snapshot.loops.clear();
         self.snapshot.composites.clear();
         self.next_composite_id = 1;
+        self.next_composite_plan_version = 1;
         self.snapshot.connections.application_ports.clear();
         self.snapshot.connections.confirmed_links.clear();
         self.track_resources.clear();
@@ -1389,7 +1392,7 @@ impl Backend for RemoteWorkletBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let wire = WireCompositeConfig {
             kind: match config.kind {
                 BackendCompositeKind::Regular => WireCompositeKind::Regular,
@@ -1427,7 +1430,10 @@ impl Backend for RemoteWorkletBackend {
         self.submit(Command::ConfigureComposite {
             composite_id: composite_id.raw(),
             config: wire,
-        })
+        })?;
+        let version = self.next_composite_plan_version;
+        self.next_composite_plan_version = self.next_composite_plan_version.saturating_add(1);
+        Ok(version)
     }
 
     fn transition_composite_loop(
