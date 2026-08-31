@@ -89,15 +89,15 @@ Immediate transitions and seeks use authoritative reconciliation. Delayed transi
 
 ### Stage 4: Document and Audit the Contract
 
-- [ ] Document that explicit start and seek establish a complete target snapshot, while natural schedule advancement is incremental.
-- [ ] Document that authoritative operations still participate in normal conflict resolution.
-- [ ] Where tie-break semantics are documented, state that engine source identity is a deterministic runtime tie-break and not a persisted user-defined priority.
-- [ ] Audit native and AudioWorklet command paths to confirm they both reach the same engine runtime semantics without backend-specific duplication.
+- [x] Document that explicit start and seek establish a complete target snapshot, while natural schedule advancement is incremental.
+- [x] Document that authoritative operations still participate in normal conflict resolution.
+- [x] Where tie-break semantics are documented, state that engine source identity is a deterministic runtime tie-break and not a persisted user-defined priority.
+- [x] Audit native and AudioWorklet command paths to confirm they both reach the same engine runtime semantics without backend-specific duplication.
 
 **Verification**
 
-- [ ] Review terminology consistently for `authoritative`, `snapshot`, `explicit`, and `delta` behavior.
-- [ ] Confirm no session schema, wire protocol, or public API change is required.
+- [x] Review terminology consistently for `authoritative`, `snapshot`, `explicit`, and `delta` behavior.
+- [x] Confirm no session schema, wire protocol, or public API change is required.
 
 ### Stage 5: End-to-End Validation
 
