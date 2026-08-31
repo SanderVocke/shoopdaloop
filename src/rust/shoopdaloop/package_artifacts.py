@@ -533,6 +533,8 @@ def verify_web(bundle: Path, html: Path) -> None:
 
 
 def verify(args: argparse.Namespace) -> list[Path]:
+    if args.artifact == Path(".") and os.environ.get("SHOOP_ARTIFACT"):
+        args.artifact = Path(os.environ["SHOOP_ARTIFACT"])
     if args.platform == "web":
         if args.html is None:
             raise RuntimeError("--html is required when verifying a web artifact")
