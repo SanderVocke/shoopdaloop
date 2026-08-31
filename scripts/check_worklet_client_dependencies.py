@@ -15,8 +15,6 @@ FORBIDDEN = {
     "libloading",
     "midir",
     "shoop_egui",
-    "tracy-client",
-    "tracy-client-sys",
     "wasm-bindgen",
     "web-sys",
 }

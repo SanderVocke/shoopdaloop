@@ -21,6 +21,8 @@ const WORKLET_SCRIPT_URL: &str = "./audio_worklet.js";
 const WORKLET_WASM_URL: &str = "./generated/shoop_audio_worklet.wasm";
 const EMBEDDED_WORKLET_ASSETS: &str = "shoopEmbeddedAudioWorklet";
 const MAX_QUANTUM: u32 = 2048;
+const MAX_RETAINED_TRACE_RECORDS: usize = 262_144;
+const TRACE_RECORD_BYTES: usize = 48;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AudioInputMode {
@@ -56,6 +58,9 @@ struct PhysicalAudioDriverState {
     track_ended_handlers: Vec<Closure<dyn FnMut(WebEvent)>>,
     input_mode: Option<AudioInputMode>,
     repaint_context: Option<eframe::egui::Context>,
+    trace: Option<crate::browser_trace::RealmTraceState>,
+    completed_trace_segments: Vec<shoop_tracing::BrowserRealmData>,
+    next_trace_realm_id: u32,
 }
 
 /// Owns browser audio resources and the restricted remote transport control.
@@ -97,6 +102,9 @@ impl BrowserAudioController {
             track_ended_handlers: Vec::new(),
             input_mode: None,
             repaint_context: None,
+            trace: None,
+            completed_trace_segments: Vec::new(),
+            next_trace_realm_id: 4,
         }));
         let weak = Rc::downgrade(&inner);
         let microphone_enable_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
@@ -203,6 +211,105 @@ impl BrowserAudioController {
 
     pub fn set_repaint_context(&self, context: eframe::egui::Context) {
         self.driver.state.borrow_mut().repaint_context = Some(context);
+    }
+
+    pub fn start_tracing(&self, engine_detail: bool) -> Result<bool> {
+        let mut inner = self.driver.state.borrow_mut();
+        if inner.trace.is_some() {
+            return Ok(true);
+        }
+        if inner.node.is_none() {
+            return Ok(false);
+        }
+        let sample_rate = inner
+            .context
+            .as_ref()
+            .ok_or_else(|| anyhow!("browser audio context is unavailable"))?
+            .sample_rate()
+            .round() as u64;
+        let retained_records = inner
+            .completed_trace_segments
+            .iter()
+            .map(|segment| segment.records.len() / TRACE_RECORD_BYTES)
+            .sum::<usize>();
+        let max_retained_records = MAX_RETAINED_TRACE_RECORDS.saturating_sub(retained_records);
+        let realm_id = inner.next_trace_realm_id;
+        inner.next_trace_realm_id = inner.next_trace_realm_id.saturating_add(1);
+        let label = if realm_id == 4 {
+            "AudioWorklet".to_owned()
+        } else {
+            format!("AudioWorklet segment {}", realm_id - 3)
+        };
+        let trace = crate::browser_trace::RealmTraceState::new(
+            realm_id,
+            100 + realm_id,
+            label,
+            sample_rate,
+            128,
+            8192,
+            max_retained_records,
+        )?;
+        let message = trace.start_message(engine_detail)?;
+        inner
+            .node
+            .as_ref()
+            .unwrap()
+            .port()
+            .map_err(|error| anyhow!("could not access AudioWorklet trace port: {error:?}"))?
+            .post_message(&message)
+            .map_err(|error| anyhow!("could not start AudioWorklet tracing: {error:?}"))?;
+        inner.trace = Some(trace);
+        Ok(true)
+    }
+
+    pub fn poll_tracing(&self) -> Result<()> {
+        if let Some(trace) = self.driver.state.borrow_mut().trace.as_mut() {
+            trace.poll()?;
+        }
+        Ok(())
+    }
+
+    pub fn has_active_trace(&self) -> bool {
+        self.driver.state.borrow().trace.is_some()
+    }
+
+    pub fn discard_tracing(&self) {
+        let _ = self.request_stop_tracing();
+        let mut inner = self.driver.state.borrow_mut();
+        if let Some(mut trace) = inner.trace.take() {
+            let _ = trace.abort();
+        }
+        inner.completed_trace_segments.clear();
+    }
+
+    pub fn request_stop_tracing(&self) -> Result<()> {
+        let inner = self.driver.state.borrow();
+        if inner.trace.is_none() {
+            return Ok(());
+        }
+        inner
+            .node
+            .as_ref()
+            .ok_or_else(|| anyhow!("AudioWorklet node disappeared during tracing"))?
+            .port()
+            .map_err(|error| anyhow!("could not access AudioWorklet trace port: {error:?}"))?
+            .post_message(&crate::browser_trace::RealmTraceState::stop_message()?)
+            .map_err(|error| anyhow!("could not stop AudioWorklet tracing: {error:?}"))?;
+        Ok(())
+    }
+
+    pub fn take_traces(&self) -> Result<Option<Vec<shoop_tracing::BrowserRealmData>>> {
+        let mut inner = self.driver.state.borrow_mut();
+        if inner.trace.as_ref().is_some_and(|trace| !trace.stopped()) {
+            return Ok(None);
+        }
+        if let Some(trace) = inner.trace.take() {
+            inner.completed_trace_segments.push(trace.finish()?);
+        }
+        if inner.completed_trace_segments.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(std::mem::take(&mut inner.completed_trace_segments)))
     }
 
     pub fn update_presentation(&self) {
@@ -546,11 +653,33 @@ async fn start_audio_graph(
     let weak = Rc::downgrade(&inner);
     let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
         if let Some(inner) = weak.upgrade() {
-            let inner = inner.borrow();
+            let mut inner = inner.borrow_mut();
             if let Some(json) = event.data().as_string() {
                 let _ = inner.transport.receive(generation, &json);
             } else {
-                inner.transport.fail("worklet emitted a non-string event");
+                let handled = if let Some(trace) = inner.trace.as_mut() {
+                    match trace.handle_message(&event.data()) {
+                        Ok(handled) => handled,
+                        Err(error) => {
+                            tracing::error!(
+                                error = %error,
+                                "frontend.browser_trace.audio_message_failed"
+                            );
+                            let _ = trace.abort();
+                            inner
+                                .transport
+                                .fail(format!("AudioWorklet trace message failed: {error}"));
+                            true
+                        }
+                    }
+                } else {
+                    crate::browser_trace::RealmTraceState::is_trace_message(&event.data())
+                };
+                if !handled {
+                    inner
+                        .transport
+                        .fail("worklet emitted an unknown non-string event");
+                }
             }
             if let Some(context) = &inner.repaint_context {
                 context.request_repaint();
@@ -774,7 +903,22 @@ fn stop_stream(stream: &MediaStream) {
     }
 }
 
+fn finalize_active_trace_segment(inner: &mut PhysicalAudioDriverState) {
+    let Some(mut trace) = inner.trace.take() else {
+        return;
+    };
+    let result = trace.abort().and_then(|()| trace.finish());
+    match result {
+        Ok(segment) => inner.completed_trace_segments.push(segment),
+        Err(error) => tracing::error!(
+            error = %error,
+            "frontend.browser_trace.audio_segment_finalize_failed"
+        ),
+    }
+}
+
 fn shutdown_graph(inner: &mut PhysicalAudioDriverState) {
+    finalize_active_trace_segment(inner);
     inner.startup_started = None;
     if let Some(stream) = inner.stream.take() {
         for value in stream.get_tracks().iter() {

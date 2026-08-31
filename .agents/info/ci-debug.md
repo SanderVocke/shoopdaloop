@@ -14,7 +14,7 @@ Run attempts share a run ID, so the attempt and head SHA matter when comparing f
 
 Workflow logs usually expose the failing command, environment, test name, compiler output, and surrounding warnings. Artifacts may contain stronger evidence than logs.
 
-The build workflow can upload finalized failure-only Tracy captures named `tracy-nextest-<target>-<arch>-<profile>-<run-id>`. A trace may reveal the application, engine, thread, timing, and event sequence leading to a test failure and can be more useful than going straight to local reproduction. Tracy artifacts exist only for eligible captured test failures; aborts, signals, timeouts, OOMs, unsupported harnesses, and failures outside tests generally produce none. Read `.agents/skills/tracy/SKILL.md` before analyzing a downloaded `.tracy` file.
+The build workflow can upload finalized failure-only Perfetto captures named `perfetto-nextest-<target>-<arch>-<profile>-<run-id>`; Wasm test reports include their Node/Chromium traces and testcase mappings. A trace may reveal the application, engine, realm/thread, timing, and event sequence leading to a failure. Abort, signal, timeout, OOM, and failures outside eligible tests can still prevent complete capture. Read `.agents/skills/perfetto/SKILL.md` before analyzing a downloaded `.pftrace` file.
 
 Other useful options include comparing matrix jobs or attempts, rerunning a suspected flake, reproducing the CI command and environment locally, and applying the resource-contention techniques in `.agents/info/ci-repro.md` for timing-sensitive failures.
 

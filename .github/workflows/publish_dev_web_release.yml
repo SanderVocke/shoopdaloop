@@ -16,7 +16,6 @@ concurrency:
 jobs:
   publish:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'master' &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -31,15 +30,15 @@ jobs:
       - name: Download release web application
         uses: actions/download-artifact@v8
         with:
-          name: shoopdaloop-web-wasm32-release.zip
-          path: ${{ runner.temp }}/hosted-web-release
+          name: shoopdaloop-web-wasm32-release.html
+          path: ${{ runner.temp }}/self-contained-web-release
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           skip-decompress: true
 
       - name: Publish rolling development release
         env:
-          ASSET_NAME: shoopdaloop-web-wasm32-release.zip
+          ASSET_NAME: shoopdaloop-web-wasm32-release.html
           CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: dev-web
@@ -47,4 +46,4 @@ jobs:
           SOURCE_RUN_URL: ${{ github.event.workflow_run.html_url }}
         run: >-
           bash .github/scripts/publish_dev_web_release.sh
-          "${{ runner.temp }}/hosted-web-release"
+          "${{ runner.temp }}/self-contained-web-release"

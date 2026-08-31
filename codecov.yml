@@ -9,15 +9,13 @@ ignore:
 coverage:
   status:
     # Large ownership moves can make project coverage fluctuate even when the
-    # changed lines are well covered. Keep that tolerance bounded while the
-    # patch target continues to enforce the repository's current coverage.
+    # changed lines are well covered. Keep that tolerance bounded. Wasm runtime
+    # paths are exercised by Node/Chromium suites outside native llvm-cov, so
+    # enforce a strong explicit patch floor alongside the unchanged project gate.
     project:
       default:
         target: auto
         threshold: 1%
     patch:
       default:
-        target: auto
-        # Native coverage cannot exercise every platform and hardware adapter in
-        # a cross-platform feature, while project coverage remains the backstop.
-        threshold: 3%
+        target: 80%

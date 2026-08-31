@@ -189,7 +189,7 @@ new_promoted=true
 published_at=$(date --utc +'%Y-%m-%dT%H:%M:%SZ')
 short_sha=${CANDIDATE_SHA:0:12}
 cat >"$notes_file" <<EOF
-Rolling development build from the latest successfully built \`master\` commit. This is not an official release. The \`$RELEASE_TAG\` tag is a stable release locator; the commit below identifies the attached build.
+Rolling standalone web build from the latest \`master\` commit that produced the release HTML artifact. This is not an official release. The \`$RELEASE_TAG\` tag is a stable release locator; the commit below identifies the attached build.
 
 - Commit: [$short_sha](https://github.com/$GITHUB_REPOSITORY/commit/$CANDIDATE_SHA)
 - Workflow run: [$SOURCE_RUN_ID]($SOURCE_RUN_URL)

@@ -45,7 +45,6 @@ use shoop_egui::{
     register_audio_settings, register_settings_with_appearance_defaults, AppIntent, AppSnapshot,
     AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
-#[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
@@ -57,6 +56,8 @@ mod browser_audio;
 mod browser_midi;
 #[cfg(target_arch = "wasm32")]
 mod browser_preview;
+#[cfg(target_arch = "wasm32")]
+mod browser_trace;
 #[cfg(target_arch = "wasm32")]
 mod browser_worker;
 #[cfg(not(target_arch = "wasm32"))]
@@ -92,18 +93,10 @@ struct NativeTracing {
 #[cfg(not(target_arch = "wasm32"))]
 impl NativeTracing {
     fn initialize(cli: &AppArgs) -> anyhow::Result<Self> {
-        use shoop_common::tracing_capture::{CaptureDisposition, ReusableCaptureSession};
-
         shoop_common::tracing_helpers::set_engine_detail_enabled(false);
-        shoop_common::tracing_helpers::set_tracing_enabled(true);
         shoop_common::tracing_helpers::set_tracing_output_enabled(true);
-        let mut bootstrap =
-            ReusableCaptureSession::start(&std::env::temp_dir(), "shoopdaloop-initialization")?;
-        shoop_common::init()?;
-        bootstrap.wait_until_capturing()?;
-        shoop_common::tracing_helpers::set_tracing_output_enabled(false);
         shoop_common::tracing_helpers::set_tracing_enabled(false);
-        bootstrap.stop(CaptureDisposition::Discard)?;
+        shoop_common::init()?;
         Ok(Self {
             capture: None,
             start_on_app_init: cli.tracing.then_some(cli.tracing_engine_detail),
@@ -151,7 +144,7 @@ impl NativeTracing {
     fn stop_capture(&mut self, save: bool) -> anyhow::Result<TracingStopped> {
         use shoop_common::tracing_capture::CaptureDisposition;
 
-        let Some(capture) = self.capture.as_mut() else {
+        let Some(mut capture) = self.capture.take() else {
             anyhow::bail!("tracing is not active");
         };
         shoop_common::tracing_helpers::set_engine_detail_enabled(false);
@@ -160,22 +153,22 @@ impl NativeTracing {
         } else {
             CaptureDisposition::Discard
         };
+        let path = capture.path().display().to_string();
         capture.stop(disposition)?;
-        let stopped = if save {
-            TracingStopped::Saved(capture.path().display().to_string())
+        Ok(if save {
+            TracingStopped::Saved(path)
         } else {
             TracingStopped::Discarded
-        };
-        self.capture = None;
-        Ok(stopped)
+        })
     }
 
     fn status(&self) -> TracingStatus {
         let status = shoop_common::tracing_capture::CaptureStatus::current();
         TracingStatus {
             available: true,
+            unavailable_reason: None,
             active: status.active,
-            memory_usage_bytes: status.event_storage_bytes,
+            buffer_capacity_bytes: status.event_storage_bytes,
         }
     }
 
@@ -192,12 +185,155 @@ impl NativeTracing {
 #[cfg(not(target_arch = "wasm32"))]
 type SharedNativeTracing = Arc<Mutex<NativeTracing>>;
 
-#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Copy)]
 enum PendingTracingAction {
     Start { engine_detail: bool },
     Stop { save: bool },
     FinishStop { save: bool },
+}
+
+#[cfg(target_arch = "wasm32")]
+struct BrowserTracing {
+    capture: Option<shoop_tracing::BrowserCapture>,
+    window_calibrations: Vec<shoop_tracing::BrowserCalibration>,
+    unavailable_reason: Option<&'static str>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl BrowserTracing {
+    fn new() -> Self {
+        let global = js_sys::global();
+        let isolated = js_sys::Reflect::get(&global, &"crossOriginIsolated".into())
+            .ok()
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let has_shared_buffer = js_sys::Reflect::get(&global, &"SharedArrayBuffer".into())
+            .is_ok_and(|value| value.is_function());
+        let unavailable_reason = (!isolated || !has_shared_buffer)
+            .then_some("Multirealm tracing requires COOP/COEP cross-origin isolation");
+        Self {
+            capture: None,
+            window_calibrations: Vec::new(),
+            unavailable_reason,
+        }
+    }
+
+    fn start_capture(&mut self, engine_detail: bool) -> anyhow::Result<()> {
+        if let Some(reason) = self.unavailable_reason {
+            anyhow::bail!(reason);
+        }
+        if self.capture.is_none() {
+            self.capture = Some(
+                shoop_tracing::BrowserCapture::start(engine_detail).map_err(anyhow::Error::msg)?,
+            );
+            self.window_calibrations = vec![browser_window_calibration()?];
+            tracing::info!(engine_detail, "frontend.egui.tracing_started");
+        }
+        Ok(())
+    }
+
+    fn poll(&self) -> anyhow::Result<()> {
+        if let Some(capture) = &self.capture {
+            capture.poll().map_err(anyhow::Error::msg)?;
+        }
+        Ok(())
+    }
+
+    fn discard_active(&mut self) -> anyhow::Result<()> {
+        if let Some(capture) = self.capture.take() {
+            capture.discard().map_err(anyhow::Error::msg)?;
+        }
+        self.window_calibrations.clear();
+        Ok(())
+    }
+
+    fn stop_capture(
+        &mut self,
+        save: bool,
+        realms: Vec<shoop_tracing::BrowserRealmData>,
+    ) -> anyhow::Result<TracingStopped> {
+        let capture = self
+            .capture
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("tracing is not active"))?;
+        if !save {
+            capture.discard().map_err(anyhow::Error::msg)?;
+            self.window_calibrations.clear();
+            return Ok(TracingStopped::Discarded);
+        }
+        self.window_calibrations.push(browser_window_calibration()?);
+        let calibrations = std::mem::take(&mut self.window_calibrations);
+        let bytes = capture
+            .finish(calibrations, realms)
+            .map_err(anyhow::Error::msg)?;
+        let filename = "shoopdaloop-browser.pftrace";
+        download_browser_trace(&bytes, filename)?;
+        Ok(TracingStopped::Saved(filename.to_owned()))
+    }
+
+    fn status(&self) -> TracingStatus {
+        TracingStatus {
+            available: self.unavailable_reason.is_none(),
+            unavailable_reason: self.unavailable_reason,
+            active: self.capture.is_some(),
+            buffer_capacity_bytes: 0,
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_window_calibration() -> anyhow::Result<shoop_tracing::BrowserCalibration> {
+    let performance = web_sys::window()
+        .ok_or_else(|| anyhow::anyhow!("browser window is unavailable"))?
+        .performance()
+        .ok_or_else(|| anyhow::anyhow!("browser performance clock is unavailable"))?;
+    let before = performance.now();
+    let after = performance.now();
+    let source_ms = (before + after) * 0.5;
+    Ok(shoop_tracing::BrowserCalibration {
+        realm_id: 1,
+        clock_id: 101,
+        source_ticks: (source_ms * 1_000_000.0).round() as u64,
+        reference_time_ns: ((performance.time_origin() + source_ms) * 1_000_000.0).round() as u64,
+        uncertainty_ns: (((after - before) * 500_000.0).round() as u64).max(1),
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn download_browser_trace(bytes: &[u8], filename: &str) -> anyhow::Result<()> {
+    use wasm_bindgen::JsCast as _;
+
+    let data = js_sys::Uint8Array::from(bytes);
+    let parts = js_sys::Array::new();
+    parts.push(&data.buffer());
+    let blob = web_sys::Blob::new_with_u8_array_sequence(&parts)
+        .map_err(|error| anyhow::anyhow!("could not create trace Blob: {error:?}"))?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob)
+        .map_err(|error| anyhow::anyhow!("could not create trace URL: {error:?}"))?;
+    let document = web_sys::window()
+        .and_then(|window| window.document())
+        .ok_or_else(|| anyhow::anyhow!("browser document is unavailable"))?;
+    let anchor = document
+        .create_element("a")
+        .map_err(|error| anyhow::anyhow!("could not create trace download: {error:?}"))?
+        .dyn_into::<web_sys::HtmlAnchorElement>()
+        .map_err(|_| anyhow::anyhow!("trace download element is not an anchor"))?;
+    anchor.set_href(&url);
+    anchor.set_download(filename);
+    anchor.click();
+    let revoke_url = url.clone();
+    let revoke = wasm_bindgen::closure::Closure::once_into_js(move || {
+        let _ = web_sys::Url::revoke_object_url(&revoke_url);
+    });
+    web_sys::window()
+        .ok_or_else(|| anyhow::anyhow!("browser window disappeared before trace URL cleanup"))?
+        .set_timeout_with_callback_and_timeout_and_arguments_0(revoke.unchecked_ref(), 0)
+        .map_err(|error| anyhow::anyhow!("could not schedule trace URL cleanup: {error:?}"))?;
+    if let Some(body) = document.body() {
+        body.set_attribute("data-perfetto-trace-saved", filename)
+            .map_err(|error| anyhow::anyhow!("could not publish trace status: {error:?}"))?;
+    }
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -230,7 +366,10 @@ struct UnifiedApp {
     pending_audio_settings: Option<PendingAudioSettings>,
     #[cfg(not(target_arch = "wasm32"))]
     tracing: Option<SharedNativeTracing>,
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_arch = "wasm32")]
+    tracing: BrowserTracing,
+    #[cfg(target_arch = "wasm32")]
+    tracing_smoke_started: Option<Instant>,
     pending_tracing_action: Option<PendingTracingAction>,
     last_update: Instant,
     startup_session: Option<(String, bool)>,
@@ -328,8 +467,17 @@ impl UnifiedApp {
             pending_audio_settings: None,
             #[cfg(not(target_arch = "wasm32"))]
             tracing: None,
-            #[cfg(not(target_arch = "wasm32"))]
-            pending_tracing_action: None,
+            #[cfg(target_arch = "wasm32")]
+            tracing: BrowserTracing::new(),
+            #[cfg(target_arch = "wasm32")]
+            tracing_smoke_started: None,
+            pending_tracing_action: if cfg!(target_arch = "wasm32") && args.tracing {
+                Some(PendingTracingAction::Start {
+                    engine_detail: args.tracing_engine_detail,
+                })
+            } else {
+                None
+            },
             last_update: Instant::now(),
             startup_session: args
                 .session
@@ -500,6 +648,86 @@ impl UnifiedApp {
         self.widget.set_tracing_status(status);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn process_tracing(&mut self) {
+        if let Some(action) = self.pending_tracing_action.take() {
+            let result: anyhow::Result<Option<TracingStopped>> = (|| match action {
+                PendingTracingAction::Start { engine_detail } => {
+                    self.tracing.start_capture(engine_detail)?;
+                    if let Err(error) = self.runtime.start_tracing(engine_detail) {
+                        self.runtime.cancel_tracing_request();
+                        if let Err(discard_error) = self.tracing.discard_active() {
+                            tracing::error!(
+                                error = %discard_error,
+                                "frontend.egui.tracing_start_rollback_failed"
+                            );
+                        }
+                        return Err(error);
+                    }
+                    Ok(None)
+                }
+                PendingTracingAction::Stop { save } => {
+                    self.runtime.request_stop_tracing()?;
+                    self.pending_tracing_action = Some(PendingTracingAction::FinishStop { save });
+                    Ok(None)
+                }
+                PendingTracingAction::FinishStop { save } => {
+                    match self.runtime.take_trace_realms()? {
+                        Some(realms) => self.tracing.stop_capture(save, realms).map(Some),
+                        None => {
+                            self.pending_tracing_action =
+                                Some(PendingTracingAction::FinishStop { save });
+                            Ok(None)
+                        }
+                    }
+                }
+            })();
+            match result {
+                Ok(Some(stopped)) => self.widget.notify_tracing_stopped(stopped),
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::error!(error = %error, "frontend.egui.tracing_action_failed");
+                    self.settings.report_action_error(error.to_string());
+                }
+            }
+        }
+        if let Err(error) = self.tracing.poll() {
+            self.settings.report_action_error(error.to_string());
+        }
+        if let Err(error) = self.runtime.poll_tracing() {
+            tracing::error!(error = %error, "frontend.egui.tracing_realm_poll_failed");
+            self.settings.report_action_error(error.to_string());
+        }
+        let mut status = self.tracing.status();
+        if status.active {
+            if let Err(error) = self.runtime.ensure_tracing_realm() {
+                self.runtime.cancel_tracing_request();
+                if let Err(discard_error) = self.tracing.discard_active() {
+                    tracing::error!(
+                        error = %discard_error,
+                        "frontend.egui.tracing_start_rollback_failed"
+                    );
+                }
+                tracing::error!(error = %error, "frontend.egui.tracing_realm_attach_failed");
+                self.settings.report_action_error(error.to_string());
+                status = self.tracing.status();
+            }
+        }
+        if self.args.tracing_smoke_test && status.active && self.runtime.tracing_realm_ready() {
+            let started = self.tracing_smoke_started.get_or_insert_with(|| {
+                tracing::info!("frontend.egui.tracing_smoke_realm_ready");
+                Instant::now()
+            });
+            if started.elapsed() >= Duration::from_secs(3) && self.pending_tracing_action.is_none()
+            {
+                tracing::info!("frontend.egui.tracing_smoke_stop_requested");
+                self.pending_tracing_action = Some(PendingTracingAction::Stop { save: true });
+                self.args.tracing_smoke_test = false;
+            }
+        }
+        self.widget.set_tracing_status(status);
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn handle_settings_action(&mut self, action: SettingsAction) {
         let action = match action {
@@ -607,6 +835,17 @@ impl UnifiedApp {
 
     #[cfg(target_arch = "wasm32")]
     fn handle_settings_action(&mut self, action: SettingsAction) {
+        let action = match action {
+            SettingsAction::StartTracing { engine_detail } => {
+                self.pending_tracing_action = Some(PendingTracingAction::Start { engine_detail });
+                return;
+            }
+            SettingsAction::StopTracing { save } => {
+                self.pending_tracing_action = Some(PendingTracingAction::Stop { save });
+                return;
+            }
+            action => action,
+        };
         let kind = action.kind();
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let result = match action {
@@ -653,9 +892,7 @@ impl UnifiedApp {
                 return;
             }
             SettingsAction::StartTracing { .. } | SettingsAction::StopTracing { .. } => {
-                self.settings
-                    .report_action_error("Tracing is unavailable in browser builds");
-                return;
+                unreachable!("tracing actions are handled before traced settings actions")
             }
         };
         if let Err(error) = result {
@@ -1263,8 +1500,11 @@ fn save_file_output(
 
 impl eframe::App for UnifiedApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        #[cfg(not(target_arch = "wasm32"))]
         self.process_tracing();
+        #[cfg(target_arch = "wasm32")]
+        if self.tracing.status().active || self.pending_tracing_action.is_some() {
+            ui.ctx().request_repaint_after(Duration::from_millis(50));
+        }
         self.show(ui);
     }
 }
@@ -2047,6 +2287,9 @@ struct Runtime {
     catalog_completions: Rc<RefCell<VecDeque<BrowserCatalogCompletion>>>,
     applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
+    tracing_requested: bool,
+    tracing_engine_detail: bool,
+    tracing_realm_active: bool,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -2099,6 +2342,9 @@ impl Runtime {
             catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
+            tracing_requested: false,
+            tracing_engine_detail: false,
+            tracing_realm_active: false,
         };
         runtime.request_builtin_rescan(settings);
         Ok(runtime)
@@ -2111,6 +2357,90 @@ impl Runtime {
             }
             BrowserRuntimeMode::Worker(driver) => driver.set_repaint_context(context),
         }
+    }
+
+    fn start_tracing(&mut self, engine_detail: bool) -> anyhow::Result<()> {
+        self.tracing_requested = true;
+        self.tracing_engine_detail = engine_detail;
+        self.ensure_tracing_realm()
+    }
+
+    fn ensure_tracing_realm(&mut self) -> anyhow::Result<()> {
+        if self.tracing_realm_active {
+            self.tracing_realm_active = match &self.mode {
+                BrowserRuntimeMode::WebAudio(controller) => controller.has_active_trace(),
+                BrowserRuntimeMode::Worker(driver) => driver.has_active_trace(),
+            };
+        }
+        if !self.tracing_requested || self.tracing_realm_active {
+            return Ok(());
+        }
+        self.tracing_realm_active = match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => {
+                controller.start_tracing(self.tracing_engine_detail)?
+            }
+            BrowserRuntimeMode::Worker(driver) => {
+                driver.start_tracing(self.tracing_engine_detail)?
+            }
+        };
+        Ok(())
+    }
+
+    fn poll_tracing(&self) -> anyhow::Result<()> {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.poll_tracing(),
+            BrowserRuntimeMode::Worker(driver) => driver.poll_tracing(),
+        }
+    }
+
+    fn cancel_tracing_request(&mut self) {
+        self.tracing_requested = false;
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.discard_tracing(),
+            BrowserRuntimeMode::Worker(driver) => driver.discard_tracing(),
+        }
+        self.tracing_realm_active = false;
+    }
+
+    fn tracing_realm_ready(&self) -> bool {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => {
+                controller.state() == shoop_backend::BackendDriverState::Running
+            }
+            BrowserRuntimeMode::Worker(driver) => {
+                driver.state() == shoop_backend::BackendDriverState::Dummy
+            }
+        }
+    }
+
+    fn request_stop_tracing(&mut self) -> anyhow::Result<()> {
+        self.tracing_requested = false;
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.request_stop_tracing(),
+            BrowserRuntimeMode::Worker(driver) => driver.request_stop_tracing(),
+        }
+    }
+
+    fn take_trace_realms(
+        &mut self,
+    ) -> anyhow::Result<Option<Vec<shoop_tracing::BrowserRealmData>>> {
+        if !self.tracing_realm_active {
+            if let BrowserRuntimeMode::WebAudio(controller) = &self.mode {
+                if let Some(realms) = controller.take_traces()? {
+                    return Ok(Some(realms));
+                }
+            }
+            return Ok(Some(Vec::new()));
+        }
+        let realms = match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.take_traces()?,
+            BrowserRuntimeMode::Worker(driver) => driver.take_trace()?.map(|realm| vec![realm]),
+        };
+        let Some(realms) = realms else {
+            return Ok(None);
+        };
+        self.tracing_realm_active = false;
+        Ok(Some(realms))
     }
 
     fn tick(&mut self, elapsed: Duration) {
@@ -2413,7 +2743,7 @@ fn main() {
                 tracing.shutdown()
             });
         if let Err(error) = result {
-            eprintln!("Failed to run Tracy capture smoke test: {error:#}");
+            eprintln!("Failed to run Perfetto capture smoke test: {error:#}");
             std::process::exit(1);
         }
         return;
@@ -2437,7 +2767,7 @@ fn main() {
         .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
         .and_then(|mut tracing| tracing.shutdown());
     if let Err(error) = shutdown {
-        eprintln!("Failed to shut down Tracy capture: {error:#}");
+        eprintln!("Failed to shut down Perfetto capture: {error:#}");
         std::process::exit(1);
     }
     if let Err(error) = result {
@@ -4969,7 +5299,10 @@ fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
 fn main() {
     use wasm_bindgen::JsCast as _;
 
-    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+    if let Err(error) = shoop_tracing::initialize_browser_tracing() {
+        web_sys::console::error_1(&format!("Could not initialize browser tracing: {error}").into());
+        return;
+    }
     wasm_bindgen_futures::spawn_local(async {
         let window = web_sys::window().expect("browser window is unavailable");
         let document = window.document().expect("browser document is unavailable");
@@ -5019,6 +5352,25 @@ mod tests {
     };
 
     use super::*;
+
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+    #[shoop_wasm_test_support::shoop_test(
+        wasm_only = "requires browser performance APIs",
+        no_trace = "manages the browser capture lifecycle directly"
+    )]
+    fn browser_window_perfetto_capture_is_nonempty() {
+        shoop_tracing::initialize_browser_tracing().unwrap();
+        let capture = shoop_tracing::BrowserCapture::start(false).unwrap();
+        {
+            let _span = tracing::info_span!("shoop.browser.capture.test").entered();
+            tracing::info!(answer = 42_u64, "shoop.browser.capture.event");
+        }
+        capture.poll().unwrap();
+        let bytes = capture
+            .finish(vec![browser_window_calibration().unwrap()], Vec::new())
+            .unwrap();
+        assert!(bytes.len() > 128);
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn session_sources_recognize_http_urls_and_names() {

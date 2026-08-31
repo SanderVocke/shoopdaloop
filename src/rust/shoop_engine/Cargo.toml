@@ -52,7 +52,7 @@ sha2 = { workspace = true }
 soundfont = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-shoop_tracing = { workspace = true, features = ["tracy"] }
+shoop_tracing = { workspace = true, features = ["perfetto"] }
 uuid = { workspace = true }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"], optional = true }
 
@@ -78,8 +78,7 @@ rtrb = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-tracy-client.workspace = true
-tracy-nextest-capture.workspace = true
+shoop_common = { path = "../shoop_common" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

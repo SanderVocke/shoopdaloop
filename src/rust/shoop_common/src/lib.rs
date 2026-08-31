@@ -1,6 +1,7 @@
 #![cfg(not(feature = "prebuild"))]
 
 pub mod logging;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tracing_capture;
 pub mod tracing_helpers;
 use anyhow::Context;

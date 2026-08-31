@@ -510,7 +510,7 @@ mod bridge {
                     .midi_input_overflows
                     .fetch_add(overflows, Ordering::Relaxed)
                     + overflows;
-                shoop_tracing::realtime_plot_detail!(
+                shoop_tracing::realtime_plot_i64_detail!(
                     "engine.fx.bridge.midi_input_overflows",
                     total
                 );
@@ -554,11 +554,11 @@ mod bridge {
                     let _notify_span =
                         shoop_tracing::realtime_span_detail!("engine.rt.fx.bridge_notify");
                     self.wake.unpark();
-                    shoop_tracing::realtime_plot_detail!(
+                    shoop_tracing::realtime_plot_i64_detail!(
                         "engine.fx.bridge.slot_occupancy",
                         self.transport.occupied_slots()
                     );
-                    shoop_tracing::realtime_plot_detail!(
+                    shoop_tracing::realtime_plot_i64_detail!(
                         "engine.fx.bridge.generation",
                         self.transport.generation().0
                     );
@@ -574,11 +574,14 @@ mod bridge {
                     }
                     self.midi_output_counts.fill(0);
                     let misses = self.deadline_misses.fetch_add(1, Ordering::Relaxed) + 1;
-                    shoop_tracing::realtime_plot_detail!(
+                    shoop_tracing::realtime_plot_i64_detail!(
                         "engine.fx.bridge.deadline_misses",
                         misses
                     );
-                    shoop_tracing::realtime_plot_detail!("engine.fx.bridge.fallback_reason", 1_u64);
+                    shoop_tracing::realtime_plot_i64_detail!(
+                        "engine.fx.bridge.fallback_reason",
+                        1_u64
+                    );
                     return Ok(());
                 }
             };
@@ -612,12 +615,15 @@ mod bridge {
                 }
                 self.midi_output_counts.fill(0);
                 let misses = self.deadline_misses.fetch_add(1, Ordering::Relaxed) + 1;
-                shoop_tracing::realtime_plot_detail!("engine.fx.bridge.deadline_misses", misses);
-                shoop_tracing::realtime_plot_detail!("engine.fx.bridge.fallback_reason", 2_u64);
+                shoop_tracing::realtime_plot_i64_detail!(
+                    "engine.fx.bridge.deadline_misses",
+                    misses
+                );
+                shoop_tracing::realtime_plot_i64_detail!("engine.fx.bridge.fallback_reason", 2_u64);
                 return Ok(());
             }
-            shoop_tracing::realtime_plot_detail!("engine.fx.bridge.fallback_reason", 0_u64);
-            shoop_tracing::realtime_plot_detail!(
+            shoop_tracing::realtime_plot_i64_detail!("engine.fx.bridge.fallback_reason", 0_u64);
+            shoop_tracing::realtime_plot_i64_detail!(
                 "engine.fx.bridge.slot_occupancy",
                 self.transport.occupied_slots()
             );

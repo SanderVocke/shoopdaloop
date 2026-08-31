@@ -17,6 +17,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
 shoop_backend = { path = "../shoop_backend" }
+shoop_tracing = { workspace = true, default-features = false }
 serde_json = { workspace = true }
 
 [dev-dependencies]
@@ -24,7 +25,6 @@ assert_no_alloc = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-tracy-nextest-capture.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

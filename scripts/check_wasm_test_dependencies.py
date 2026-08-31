@@ -15,11 +15,6 @@ FORBIDDEN = {
     "libloading",
     "midir",
     "rodio",
-    "tracy-client",
-    "tracy-client-sys",
-    "tracy-nextest-capture",
-    "tracy-nextest-capture-macros",
-    "tracing-tracy",
 }
 
 

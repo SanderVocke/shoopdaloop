@@ -514,15 +514,6 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
 name = "block-buffer"
-version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
-dependencies = [
- "generic-array",
-]
-
-[[package]]
-name = "block-buffer"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
@@ -794,7 +785,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -967,15 +958,6 @@ dependencies = [
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "cpufeatures"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
@@ -1025,16 +1007,6 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypto-common"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
-dependencies = [
- "generic-array",
- "typenum",
-]
-
-[[package]]
-name = "crypto-common"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
@@ -1072,23 +1044,13 @@ checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
 name = "digest"
-version = "0.10.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
-dependencies = [
- "block-buffer 0.10.4",
- "crypto-common 0.1.7",
-]
-
-[[package]]
-name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
- "block-buffer 0.12.1",
+ "block-buffer",
  "const-oid",
- "crypto-common 0.2.2",
+ "crypto-common",
 ]
 
 [[package]]
@@ -1109,7 +1071,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1496,7 +1458,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1572,6 +1534,12 @@ name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
+
+[[package]]
+name = "fixedbitset"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
 name = "flate2"
@@ -1734,31 +1702,6 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
-]
-
-[[package]]
-name = "generator"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3b854b0e584ead1a33f18b2fcad7cf7be18b3875c78816b753639aa501513ae"
-dependencies = [
- "cc",
- "cfg-if",
- "libc",
- "log",
- "rustversion",
- "windows-link",
- "windows-result 0.4.1",
-]
-
-[[package]]
-name = "generic-array"
-version = "0.14.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
-dependencies = [
- "typenum",
- "version_check",
 ]
 
 [[package]]
@@ -2455,19 +2398,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
-name = "loom"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
-dependencies = [
- "cfg-if",
- "generator",
- "scoped-tls",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "lua-code"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2670,6 +2600,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "multimap"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
+
+[[package]]
 name = "naga"
 version = "30.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2758,7 +2694,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3303,6 +3239,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "peniko"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3320,6 +3262,91 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "perfetto-everywhere-collector"
+version = "0.1.0"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+dependencies = [
+ "perfetto-everywhere-core",
+ "perfetto-everywhere-web",
+ "prost",
+ "tracing-perfetto-sdk-schema",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "perfetto-everywhere-core"
+version = "0.1.0"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+
+[[package]]
+name = "perfetto-everywhere-native"
+version = "0.1.0"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+dependencies = [
+ "perfetto-everywhere-core",
+ "perfetto-sdk",
+]
+
+[[package]]
+name = "perfetto-everywhere-raw"
+version = "0.1.0"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+dependencies = [
+ "perfetto-everywhere-core",
+]
+
+[[package]]
+name = "perfetto-everywhere-tracing"
+version = "0.1.0"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+dependencies = [
+ "perfetto-everywhere-core",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "perfetto-everywhere-web"
+version = "0.1.0"
+source = "git+https://github.com/SanderVocke/perfetto-everywhere?rev=f621af951b80f702c6b710e420c8a1abf5e333c7#f621af951b80f702c6b710e420c8a1abf5e333c7"
+dependencies = [
+ "js-sys",
+ "perfetto-everywhere-core",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "perfetto-sdk"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "906401224f846cae9d27feff932e9f1b5b97e35684c8a21c076f8f8dff203777"
+dependencies = [
+ "bitflags 2.13.1",
+ "paste",
+ "perfetto-sdk-sys",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "perfetto-sdk-sys"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40bcb782edea39a38a0e00fa740ad8dd6f5f5d341e766114a818de05464bfea"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "petgraph"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
+dependencies = [
+ "fixedbitset",
+ "indexmap",
+]
 
 [[package]]
 name = "phf"
@@ -3541,6 +3568,58 @@ name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
+
+[[package]]
+name = "prost"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7231bd9b3d3d33c86b58adbac74b5ec0ad9f496b19d22801d773636feaa95f3d"
+dependencies = [
+ "bytes",
+ "prost-derive",
+]
+
+[[package]]
+name = "prost-build"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
+dependencies = [
+ "heck",
+ "itertools 0.13.0",
+ "log",
+ "multimap",
+ "once_cell",
+ "petgraph",
+ "prettyplease",
+ "prost",
+ "prost-types",
+ "regex",
+ "syn 2.0.119",
+ "tempfile",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
+dependencies = [
+ "anyhow",
+ "itertools 0.13.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9b4db3d6da204ed77bb26ba83b6122a73aeb2e87e25fbf7ad2e84c4ccbf8f72"
+dependencies = [
+ "prost",
+]
 
 [[package]]
 name = "pulldown-cmark"
@@ -3888,7 +3967,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4030,24 +4109,13 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.10.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
-dependencies = [
- "cfg-if",
- "cpufeatures 0.2.17",
- "digest 0.10.7",
-]
-
-[[package]]
-name = "sha2"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
 dependencies = [
  "cfg-if",
- "cpufeatures 0.3.0",
- "digest 0.11.3",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]
@@ -4086,7 +4154,6 @@ dependencies = [
  "shoop_wasm_test_support",
  "tempfile",
  "tracing",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4096,7 +4163,6 @@ version = "0.3.0"
 dependencies = [
  "shoop_script_resources",
  "shoop_wasm_test_support",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4107,7 +4173,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_wasm_test_support",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4119,8 +4184,8 @@ dependencies = [
  "serde_json",
  "shoop_audio_protocol",
  "shoop_backend",
+ "shoop_tracing",
  "shoop_wasm_test_support",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4138,7 +4203,6 @@ dependencies = [
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_wasm_test_support",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4151,20 +4215,14 @@ dependencies = [
  "ctor",
  "humantime",
  "lazy_static",
- "libc",
  "log",
  "shoop_tracing",
  "shoop_wasm_test_support",
  "tempfile",
- "thiserror 2.0.20",
  "toml",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
- "tracing-tracy",
- "tracy-client",
- "tracy-client-sys",
- "tracy-nextest-capture",
 ]
 
 [[package]]
@@ -4182,7 +4240,6 @@ dependencies = [
  "shoop_wasm_test_support",
  "tempfile",
  "tracing",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4211,7 +4268,8 @@ dependencies = [
  "rtrb",
  "rubato",
  "serde_json",
- "sha2 0.11.0",
+ "sha2",
+ "shoop_common",
  "shoop_latency",
  "shoop_plugin_protocol",
  "shoop_settings",
@@ -4221,8 +4279,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
- "tracy-client",
- "tracy-nextest-capture",
  "uuid",
  "wasm-bindgen-test",
 ]
@@ -4233,7 +4289,6 @@ version = "0.3.0"
 dependencies = [
  "shoop_wasm_test_support",
  "thiserror 2.0.20",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4244,7 +4299,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_wasm_test_support",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4254,11 +4308,10 @@ version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2",
  "shoop_wasm_test_support",
  "tempfile",
  "thiserror 2.0.20",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4273,7 +4326,6 @@ dependencies = [
  "shoop_app_api",
  "shoop_script_resources",
  "shoop_wasm_test_support",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4286,12 +4338,11 @@ dependencies = [
  "rubato",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2",
  "shoop_latency",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "thiserror 2.0.20",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
  "zip",
 ]
@@ -4306,7 +4357,6 @@ dependencies = [
  "serde_json",
  "shoop_wasm_test_support",
  "tempfile",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4323,11 +4373,23 @@ name = "shoop_tracing"
 version = "0.3.0"
 dependencies = [
  "assert_no_alloc",
+ "base64",
  "ctor",
- "shoop_wasm_test_support",
- "tracy-client",
- "tracy-client-sys",
- "tracy-nextest-capture",
+ "js-sys",
+ "log",
+ "perfetto-everywhere-collector",
+ "perfetto-everywhere-core",
+ "perfetto-everywhere-native",
+ "perfetto-everywhere-raw",
+ "perfetto-everywhere-tracing",
+ "perfetto-everywhere-web",
+ "sha2",
+ "thiserror 2.0.20",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -4353,7 +4415,9 @@ version = "0.3.0"
 dependencies = [
  "futures",
  "shoop_test_macros",
- "tracy-nextest-capture",
+ "shoop_tracing",
+ "tempfile",
+ "tracing",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -4368,7 +4432,6 @@ dependencies = [
  "shoop_audio_protocol",
  "shoop_backend",
  "shoop_wasm_test_support",
- "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]
 
@@ -4397,11 +4460,11 @@ dependencies = [
  "shoop_scripting",
  "shoop_session",
  "shoop_settings",
+ "shoop_tracing",
  "shoop_wasm_test_support",
  "shoop_worklet_client",
  "tempfile",
  "tracing",
- "tracy-nextest-capture",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
@@ -4776,7 +4839,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4786,7 +4849,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4958,6 +5021,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-perfetto-sdk-schema"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77d18ccf373ae17dca853cec94e5df67401397671b9cd4db8ed7f1a7564e6edf"
+dependencies = [
+ "anyhow",
+ "prost",
+ "prost-build",
+ "prost-types",
+]
+
+[[package]]
 name = "tracing-subscriber"
 version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4973,57 +5048,6 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
-]
-
-[[package]]
-name = "tracing-tracy"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0eaa1852afa96e0fe9e44caa53dc0bd2d9d05e0f2611ce09f97f8677af56e4ba"
-dependencies = [
- "tracing-core",
- "tracing-subscriber",
- "tracy-client",
-]
-
-[[package]]
-name = "tracy-client"
-version = "0.18.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4f6fc3baeac5d86ab90c772e9e30620fc653bf1864295029921a15ef478e6a5"
-dependencies = [
- "loom",
- "once_cell",
- "tracy-client-sys",
-]
-
-[[package]]
-name = "tracy-client-sys"
-version = "0.28.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.7.0#f7d34231cf3d57b20afa35d23d37805bedd0b699"
-dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "tracy-nextest-capture"
-version = "0.7.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.7.0#f7d34231cf3d57b20afa35d23d37805bedd0b699"
-dependencies = [
- "sha2 0.10.9",
- "tracy-client",
- "tracy-client-sys",
- "tracy-nextest-capture-macros",
-]
-
-[[package]]
-name = "tracy-nextest-capture-macros"
-version = "0.7.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.7.0#f7d34231cf3d57b20afa35d23d37805bedd0b699"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
 ]
 
 [[package]]
@@ -5662,7 +5686,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

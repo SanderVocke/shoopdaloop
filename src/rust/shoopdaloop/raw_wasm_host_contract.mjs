@@ -23,8 +23,31 @@ try {
   capacityRejected = error instanceof RangeError;
 }
 if (!capacityRejected) throw new Error('oversized raw host command was not rejected');
+const metadata = host.traceStart(4, 104, 1024, true);
+if (!metadata.some(entry => entry.label === 'engine.rt.callback')) {
+  throw new Error('raw trace metadata omitted the callback span');
+}
+host.traceSetFrame(256);
 host.process([], [], 128);
+const traceBytes = new Uint8Array(1024 * 48);
+const traceLength = host.traceDrainInto(traceBytes);
+if (!traceLength || traceLength % 48) throw new Error(`invalid raw trace length ${traceLength}`);
+const firstTraceRecord = new DataView(traceBytes.buffer, 0, 48);
+if (firstTraceRecord.getUint32(4, true) !== 4 || firstTraceRecord.getUint32(12, true) !== 104) {
+  throw new Error('raw trace record lost realm or clock identity');
+}
+if (firstTraceRecord.getUint32(16, true) !== 256 || firstTraceRecord.getUint32(20, true) !== 0) {
+  throw new Error('raw trace record lost exact source frame');
+}
 host.exports.memory.grow(1);
+host.traceSetFrame(384);
+host.process([], [], 128);
+traceBytes.fill(0);
+const postGrowthTraceLength = host.traceDrainInto(traceBytes);
+if (!postGrowthTraceLength || traceBytes[0] !== 1) {
+  throw new Error('raw trace views did not recover after Wasm memory growth');
+}
+host.traceStop();
 host.command(JSON.stringify({ version: protocolVersion, sequence: 2, command: { kind: 'poll' } }));
 if (host.diagnostics().memoryGrowths < 1) throw new Error('memory growth was not diagnosed');
 host.destroy();

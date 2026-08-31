@@ -1813,10 +1813,14 @@ impl AppWidget {
         if self.tracing_status.active {
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Tracing active ({})",
-                    format_memory_usage(self.tracing_status.memory_usage_bytes)
-                ));
+                if self.tracing_status.buffer_capacity_bytes > 0 {
+                    ui.label(format!(
+                        "Tracing active ({} buffer capacity)",
+                        format_memory_usage(self.tracing_status.buffer_capacity_bytes)
+                    ));
+                } else {
+                    ui.label("Tracing active");
+                }
                 let save = ui.small_button("Save");
                 let discard = ui.small_button("Discard");
                 #[cfg(test)]
@@ -2095,8 +2099,9 @@ mod tests {
         let mut widget = AppWidget::default();
         widget.set_tracing_status(TracingStatus {
             available: true,
+            unavailable_reason: None,
             active: true,
-            memory_usage_bytes: 3 * 1024 * 1024,
+            buffer_capacity_bytes: 3 * 1024 * 1024,
         });
         let state = AppState::default();
         let frame = |widget: &mut AppWidget, events: Vec<egui::Event>| {

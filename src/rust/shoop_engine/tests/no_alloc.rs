@@ -37,7 +37,7 @@ static A: AllocDisabler = AllocDisabler;
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
     realtime_alloc_guard::set_enabled(true);
@@ -51,7 +51,7 @@ fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn realtime_lock_guard_is_allocation_free() {
     use shoop_engine::realtime_lock_guard;
@@ -74,7 +74,7 @@ fn realtime_lock_guard_is_allocation_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn snapshot_process_publication_is_allocation_free() {
     let runtime = ContentSnapshotRuntime::new();
@@ -116,7 +116,7 @@ fn snapshot_process_publication_is_allocation_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn midi_replacement_is_allocation_free() {
     let mut channel =
@@ -157,7 +157,7 @@ fn midi_replacement_is_allocation_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn interrupting_midi_playback_is_allocation_free() {
     let mut channel =
@@ -206,7 +206,7 @@ fn interrupting_midi_playback_is_allocation_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn midi_passthrough_cleanup_is_allocation_free() {
     let mut session = Session::default();
@@ -235,7 +235,7 @@ fn midi_passthrough_cleanup_is_allocation_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn snapshot_process_endpoint_retirement_defers_pooled_destruction() {
     let runtime = ContentSnapshotRuntime::new();
@@ -284,7 +284,7 @@ fn assert_steady_state_is_alloc_free(mut s: Session, n_frames: usize, cycles: us
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn global_fx_active_inactive_full_restore_and_external_send_are_allocation_free() {
     let mut session = Session::default();
@@ -338,7 +338,7 @@ fn global_fx_active_inactive_full_restore_and_external_send_are_allocation_free(
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn test_and_external_processor_nodes_are_allocation_free() {
     let mut test = Session::default();
@@ -377,7 +377,7 @@ fn test_and_external_processor_nodes_are_allocation_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn composite_state_machine_does_not_allocate_or_free() {
     let source = LoopIdentity {
@@ -485,7 +485,7 @@ fn composite_state_machine_does_not_allocate_or_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn composite_timeline_processing_does_not_allocate_or_free() {
     let mut session = Session::default();
@@ -670,7 +670,7 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn dense_composite_events_and_fail_closed_overflow_do_not_allocate() {
     let source = LoopIdentity {
@@ -773,7 +773,7 @@ fn dense_composite_events_and_fail_closed_overflow_do_not_allocate() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn composite_callback_state_sources_are_structurally_lock_free() {
     for source in [
@@ -792,7 +792,7 @@ fn composite_callback_state_sources_are_structurally_lock_free() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply() {
     let mut session = Session::default();
@@ -883,7 +883,7 @@ fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply(
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn an_empty_session_does_not_allocate() {
     assert_steady_state_is_alloc_free(Session::default(), 4, 8);
@@ -891,7 +891,7 @@ fn an_empty_session_does_not_allocate() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn recording_audio_does_not_allocate() {
     let mut s = Session::default();
@@ -908,7 +908,7 @@ fn recording_audio_does_not_allocate() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn playing_audio_does_not_allocate() {
     let mut s = Session::default();
@@ -931,7 +931,7 @@ fn playing_audio_does_not_allocate() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn a_full_audio_chain_does_not_allocate() {
     let mut s = Session::default();
@@ -953,7 +953,7 @@ fn a_full_audio_chain_does_not_allocate() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn midi_routing_does_not_allocate() {
     let mut s = Session::default();
@@ -971,7 +971,7 @@ fn midi_routing_does_not_allocate() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn several_loops_and_channels_do_not_allocate() {
     let mut s = Session::default();
@@ -995,7 +995,7 @@ fn several_loops_and_channels_do_not_allocate() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn feeding_queued_input_does_not_allocate_while_processing() {
     let mut s = Session::default();
@@ -1026,7 +1026,7 @@ fn feeding_queued_input_does_not_allocate_while_processing() {
 
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn queued_midi_is_consumed_without_allocating() {
     let mut s = Session::default();
@@ -1054,7 +1054,7 @@ fn queued_midi_is_consumed_without_allocating() {
 /// Recording long enough to grow past its first chunk, which used to allocate.
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn recording_past_a_chunk_boundary_does_not_allocate() {
     let mut s = Session::default();
@@ -1084,7 +1084,7 @@ fn recording_past_a_chunk_boundary_does_not_allocate() {
 /// scratch buffer is the obvious place for a hidden reallocation.
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn restoring_drifted_state_on_playback_does_not_allocate() {
     let mut s = Session::default();
@@ -1147,7 +1147,7 @@ fn restoring_drifted_state_on_playback_does_not_allocate() {
 /// allocation. Reverting the return queue to a plain drop fails this test.
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn applying_commands_does_not_allocate() {
     use shoop_engine::engine::split;
@@ -1207,7 +1207,7 @@ fn applying_commands_does_not_allocate() {
 /// and handing the result over -- which is all the audio thread ever does for it.
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn returning_a_result_from_a_command_does_not_allocate() {
     use shoop_engine::engine::split;
@@ -1249,7 +1249,7 @@ fn returning_a_result_from_a_command_does_not_allocate() {
 /// having first taken the chunks so the pool is what supplies them.
 #[shoop_wasm_test_support::shoop_test(
     no_wasm = "requires native allocation instrumentation",
-    no_tracy = "measures allocation behavior without an outer capture"
+    no_trace = "measures allocation behavior without an outer capture"
 )]
 fn resizing_a_loop_from_the_audio_thread_does_not_allocate() {
     use shoop_engine::channel_mode::ChannelMode;
