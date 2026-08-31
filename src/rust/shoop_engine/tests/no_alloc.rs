@@ -286,6 +286,46 @@ fn assert_steady_state_is_alloc_free(mut s: Session, n_frames: usize, cycles: us
     no_wasm = "requires native allocation instrumentation",
     no_trace = "measures allocation behavior without an outer capture"
 )]
+fn installed_audio_fan_in_is_allocation_free() {
+    let mut session = Session::default();
+    let left = session.add_port(internal("left", 4));
+    let right = session.add_port(internal("right", 4));
+    let sum = session.add_port(internal("sum", 4));
+    let loop_ = session.create_loop();
+    let left_channel = session
+        .add_audio_channel(loop_, 4, ChannelMode::Direct)
+        .unwrap();
+    let right_channel = session
+        .add_audio_channel(loop_, 4, ChannelMode::Direct)
+        .unwrap();
+    session.connect_channel_output(left_channel, left).unwrap();
+    session
+        .connect_channel_output(right_channel, right)
+        .unwrap();
+    session.connect_ports_internal(left, sum).unwrap();
+    session.connect_ports_internal(right, sum).unwrap();
+    session
+        .loop_mut(loop_)
+        .unwrap()
+        .audio_channel_mut(0)
+        .unwrap()
+        .load_data(&[0.25; 4]);
+    session
+        .loop_mut(loop_)
+        .unwrap()
+        .audio_channel_mut(1)
+        .unwrap()
+        .load_data(&[0.5; 4]);
+    session.loop_mut(loop_).unwrap().set_length(4);
+    session.set_loop_mode(loop_, LoopMode::Playing).unwrap();
+
+    assert_steady_state_is_alloc_free(session, 4, 4);
+}
+
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_trace = "measures allocation behavior without an outer capture"
+)]
 fn global_fx_active_inactive_full_restore_and_external_send_are_allocation_free() {
     let mut session = Session::default();
     session.set_buffer_size(4);

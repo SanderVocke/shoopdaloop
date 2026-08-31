@@ -70,18 +70,18 @@ Dependencies are linear unless a stage explicitly says work can proceed in paral
 
 ### Stage 1 — Define mixer contracts and harden internal route installation
 
-- [ ] Add engine-level typed internal audio-link data with deduplication and explicit connect/disconnect operations; reject missing, self, and audio/MIDI-incompatible endpoints.
-- [ ] Split desired internal links from the active callback link table. Include the active link table in `PreparedSchedule` or an equivalent prepared graph object and swap it atomically with its matching schedule.
-- [ ] Ensure stale processing runs the complete previous graph: `propagate_port` must not read newly requested links before their schedule is installed.
-- [ ] Make failed schedule construction leave active links untouched and keep the desired failure observable/recoverable rather than poisoning later callback execution.
-- [ ] Add a reusable internal audio-port handle/factory to the application backend layer so buses do not depend on FX-chain-private port construction.
-- [ ] Add engine tests for connect, duplicate connect, disconnect, fan-out, fan-in, coherent stale schedules, cycle/build failure rollback, tombstoned endpoints, and audio/MIDI mismatch.
-- [ ] Extend realtime no-allocation tests to cover installed mixer fan-in and route changes between callbacks.
+- [x] Add engine-level typed internal audio-link data with deduplication and explicit connect/disconnect operations; reject missing, self, and audio/MIDI-incompatible endpoints.
+- [x] Split desired internal links from the active callback link table. Include the active link table in `PreparedSchedule` or an equivalent prepared graph object and swap it atomically with its matching schedule.
+- [x] Ensure stale processing runs the complete previous graph: `propagate_port` must not read newly requested links before their schedule is installed.
+- [x] Make failed schedule construction leave active links untouched and keep the desired failure observable/recoverable rather than poisoning later callback execution.
+- [x] Add a reusable internal audio-port handle/factory to the application backend layer so buses do not depend on FX-chain-private port construction.
+- [x] Add engine tests for connect, duplicate connect, disconnect, fan-out, fan-in, coherent stale schedules, cycle/build failure rollback, tombstoned endpoints, and audio/MIDI mismatch.
+- [x] Extend realtime no-allocation tests to cover installed mixer fan-in and route changes between callbacks.
 
 Verification:
 
-- [ ] Run focused `shoop_engine` graph, session, app-backend, and no-allocation tests.
-- [ ] Verify an intentionally delayed graph apply continues rendering only the old routes until the new prepared graph is installed.
+- [x] Run focused `shoop_engine` graph, session, app-backend, and no-allocation tests.
+- [x] Verify an intentionally delayed graph apply continues rendering only the old routes until the new prepared graph is installed.
 
 ### Stage 2 — Add normalized backend bus and mixer-route state
 

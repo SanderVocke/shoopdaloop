@@ -6,10 +6,8 @@
 //! brings the applied id up to it.
 //!
 //! the audio callback. Here recomputation is an explicit call, because the thread
-//! boundary only exists once a driver does; [`Session::process`] refuses to run a
-//! stale graph rather than silently using one.
-//!
-//! Audio only for now: MIDI channels are not yet routed through the session.
+//! boundary only exists once a driver does. [`Session::process`] keeps running the
+//! last complete prepared graph while a replacement is pending.
 
 #[cfg(feature = "carla")]
 use crate::carla_processor::CarlaProcessor;
@@ -112,6 +110,10 @@ pub enum SessionError {
     Graph(#[from] GraphError),
     #[error("no such port: {0}")]
     NoSuchPort(usize),
+    #[error("port {0} cannot be connected to itself")]
+    SelfPortConnection(usize),
+    #[error("ports {0} and {1} carry incompatible data types")]
+    IncompatiblePortConnection(usize, usize),
     #[error("no such loop: {0}")]
     NoSuchLoop(usize),
     #[error("no such processor")]
@@ -337,8 +339,10 @@ pub struct Session {
     ports: Vec<Port>,
     loops: Vec<AudioMidiLoop>,
     channels: Vec<ChannelMapping>,
-    /// Pass-through wiring: port -> the ports it feeds.
+    /// Desired pass-through wiring used to build the next prepared graph.
     port_connections: HashMap<usize, Vec<usize>>,
+    /// Pass-through wiring installed with the active processing schedule.
+    active_port_connections: HashMap<usize, Vec<usize>>,
     /// Sync source per loop, if any: the loop whose triggers it follows.
     sync_sources: Vec<Option<usize>>,
     /// Snapshots gathered before they are handed to the loops, reused each cycle.
@@ -437,6 +441,7 @@ struct ProcessorRoute {
 #[derive(Debug)]
 pub struct Topology {
     graph: GraphDesc,
+    port_connections: HashMap<usize, Vec<usize>>,
     /// MIDI channel indices per loop, in channel order.
     midi_by_loop: Vec<Vec<usize>>,
     n_loops: usize,
@@ -456,6 +461,7 @@ pub struct PreparedSchedule {
     node_map: NodeMap,
     schedule: Vec<Vec<NodeIdx>>,
     node_actions: Vec<NodeAction>,
+    port_connections: HashMap<usize, Vec<usize>>,
     midi_mappings_by_loop: Vec<Vec<usize>>,
     /// Per-MIDI-channel scratch, pre-reserved so no cycle grows one.
     midi_in_scratch: Vec<Vec<MidiStorageElem>>,
@@ -479,6 +485,7 @@ pub struct PreparedSchedule {
 pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionError> {
     let Topology {
         graph,
+        port_connections,
         midi_by_loop,
         n_loops,
         graph_id,
@@ -524,6 +531,7 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
         node_map,
         schedule,
         node_actions,
+        port_connections,
         midi_mappings_by_loop: midi_by_loop,
         midi_in_scratch,
         midi_out_scratch,
@@ -1476,8 +1484,44 @@ impl Session {
         if to >= self.ports.len() {
             return Err(SessionError::NoSuchPort(to));
         }
-        self.port_connections.entry(from).or_default().push(to);
-        self.note_graph_change();
+        if from == to {
+            return Err(SessionError::SelfPortConnection(from));
+        }
+        if self.ports[from].is_audio() != self.ports[to].is_audio() {
+            return Err(SessionError::IncompatiblePortConnection(from, to));
+        }
+        let targets = self.port_connections.entry(from).or_default();
+        if !targets.contains(&to) {
+            targets.push(to);
+            targets.sort_unstable();
+            self.note_graph_change();
+        }
+        Ok(())
+    }
+
+    pub fn disconnect_ports_internal(
+        &mut self,
+        from: usize,
+        to: usize,
+    ) -> Result<(), SessionError> {
+        if from >= self.ports.len() {
+            return Err(SessionError::NoSuchPort(from));
+        }
+        if to >= self.ports.len() {
+            return Err(SessionError::NoSuchPort(to));
+        }
+        let mut changed = false;
+        if let Some(targets) = self.port_connections.get_mut(&from) {
+            let previous_len = targets.len();
+            targets.retain(|target| *target != to);
+            changed = targets.len() != previous_len;
+            if targets.is_empty() {
+                self.port_connections.remove(&from);
+            }
+        }
+        if changed {
+            self.note_graph_change();
+        }
         Ok(())
     }
 
@@ -2155,6 +2199,7 @@ impl Session {
 
         Topology {
             graph: self.describe(),
+            port_connections: self.port_connections.clone(),
             midi_by_loop,
             n_loops: self.loops.len(),
             graph_id: self.graph_request_id,
@@ -2199,6 +2244,10 @@ impl Session {
         std::mem::swap(&mut self.node_map, &mut prepared.node_map);
         std::mem::swap(&mut self.schedule, &mut prepared.schedule);
         std::mem::swap(&mut self.node_actions, &mut prepared.node_actions);
+        std::mem::swap(
+            &mut self.active_port_connections,
+            &mut prepared.port_connections,
+        );
         std::mem::swap(
             &mut self.midi_mappings_by_loop,
             &mut prepared.midi_mappings_by_loop,
@@ -2269,9 +2318,9 @@ impl Session {
         // Running the old schedule is sound because the arenas are append-only --
         // `remove_port`, `remove_channel` and `remove_loop` clear a slot but never shrink
         // `ports`/`channels`/`loops` -- so indices captured by an older schedule stay
-        // valid. Routing is read live from `port_connections` in `propagate_port`, so a
-        // disconnect still takes effect on the next cycle; only nodes added since the last
-        // apply are missing, and those are genuinely not wired up yet.
+        // valid. Active routes are installed with the schedule, so a stale cycle executes
+        // the complete previous graph. Only nodes and routes added since the last apply
+        // are absent.
         if !self.graph_up_to_date() {
             self.n_stale_cycles = self.n_stale_cycles.saturating_add(1);
         }
@@ -2737,7 +2786,7 @@ impl Session {
             let cleanup = self.ports[from]
                 .midi_mut()
                 .and_then(|midi| midi.take_passthrough_cleanup());
-            let conns = std::mem::take(&mut self.port_connections);
+            let conns = std::mem::take(&mut self.active_port_connections);
             if let Some(targets) = conns.get(&from) {
                 if let Some(messages) = cleanup.as_ref() {
                     for &to in targets {
@@ -2776,11 +2825,11 @@ impl Session {
                     midi.finish_passthrough_cleanup(messages);
                 }
             }
-            self.port_connections = conns;
+            self.active_port_connections = conns;
             return;
         }
 
-        let conns = std::mem::take(&mut self.port_connections);
+        let conns = std::mem::take(&mut self.active_port_connections);
         if let Some(targets) = conns.get(&from) {
             if !targets.is_empty() {
                 if self.scratch.len() < n_frames {
@@ -2806,7 +2855,7 @@ impl Session {
                 }
             }
         }
-        self.port_connections = conns;
+        self.active_port_connections = conns;
     }
 
     /// Advances a co-processed group of loops together.
@@ -3394,9 +3443,8 @@ mod tests {
         check!(s.n_stale_cycles() == 1);
     }
 
-    /// Pass-through routing is read live, so a disconnect does not wait for a reschedule.
     #[shoop_wasm_test_support::shoop_test]
-    fn a_disconnect_takes_effect_before_the_graph_is_reapplied() {
+    fn a_disconnect_waits_for_its_matching_schedule() {
         let mut s = Session::default();
         let from = s.add_port(internal("from", 4));
         let to = s.add_port(internal("to", 4));
@@ -3416,13 +3464,48 @@ mod tests {
         s.process(4);
         check!(s.port_mut(to).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
 
-        // Drop the pass-through wiring but do not reschedule.
-        s.port_connections.remove(&from);
-        s.note_graph_change();
+        assert2::assert!(let Ok(()) = s.disconnect_ports_internal(from, to));
         check!(!s.graph_up_to_date());
 
         s.process(4);
+        check!(s.port_mut(to).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
+
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
+        s.process(4);
         check!(s.port_mut(to).unwrap().buffer(4).to_vec() == vec![0.0; 4]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn internal_connections_are_typed_deduplicated_and_idempotent() {
+        let mut s = Session::default();
+        let audio_a = s.add_port(internal("audio-a", 4));
+        let audio_b = s.add_port(internal("audio-b", 4));
+        let midi = s.add_port(Port::DummyMidi(DummyMidiPort::new(
+            PortId(3),
+            "midi",
+            PortDirection::Input,
+        )));
+
+        check!(
+            s.connect_ports_internal(audio_a, audio_a)
+                == Err(SessionError::SelfPortConnection(audio_a))
+        );
+        check!(
+            s.connect_ports_internal(audio_a, midi)
+                == Err(SessionError::IncompatiblePortConnection(audio_a, midi))
+        );
+
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(audio_a, audio_b));
+        let request = s.graph_request_id();
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(audio_a, audio_b));
+        check!(s.graph_request_id() == request);
+        check!(s.port_connections[&audio_a] == vec![audio_b]);
+
+        assert2::assert!(let Ok(()) = s.disconnect_ports_internal(audio_a, audio_b));
+        let request = s.graph_request_id();
+        assert2::assert!(let Ok(()) = s.disconnect_ports_internal(audio_a, audio_b));
+        check!(s.graph_request_id() == request);
+        check!(!s.port_connections.contains_key(&audio_a));
     }
 
     /// Indices held by an older schedule must stay valid, which is why removal keeps slots.
@@ -4702,13 +4785,22 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn a_passthrough_cycle_is_reported() {
+    fn a_passthrough_cycle_is_reported_without_replacing_the_active_routes() {
         let mut s = Session::default();
         let a = s.add_port(internal("a", 4));
         let b = s.add_port(internal("b", 4));
         assert2::assert!(let Ok(()) = s.connect_ports_internal(a, b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
+        check!(s.active_port_connections[&a] == vec![b]);
+
         assert2::assert!(let Ok(()) = s.connect_ports_internal(b, a));
         check!(s.apply_graph_changes() == Err(SessionError::Graph(GraphError::Cycle)));
+        check!(s.active_port_connections[&a] == vec![b]);
+        check!(!s.active_port_connections.contains_key(&b));
+
+        assert2::assert!(let Ok(()) = s.disconnect_ports_internal(b, a));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
+        check!(s.graph_up_to_date());
     }
 
     #[cfg(feature = "carla")]
