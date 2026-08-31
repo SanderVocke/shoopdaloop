@@ -346,6 +346,7 @@ pub struct GlobalControlState {
     pub sync: bool,
     pub solo: bool,
     pub auto_mute_other_track_inputs: bool,
+    pub auto_arm_track_inputs: bool,
     pub apply_n_cycles: u32,
 }
 
@@ -357,6 +358,7 @@ impl Default for GlobalControlState {
             sync: true,
             solo: false,
             auto_mute_other_track_inputs: false,
+            auto_arm_track_inputs: true,
             apply_n_cycles: 0,
         }
     }
@@ -1572,6 +1574,7 @@ pub enum GlobalControlAction {
     SetSync(bool),
     SetSolo(bool),
     SetAutoMuteOtherTrackInputs(bool),
+    SetAutoArmTrackInputs(bool),
     SetApplyNCycles(u32),
 }
 
@@ -1896,6 +1899,7 @@ impl GlobalControlAction {
             Self::SetSync(_) => "global.sync",
             Self::SetSolo(_) => "global.solo",
             Self::SetAutoMuteOtherTrackInputs(_) => "global.auto_mute_other_track_inputs",
+            Self::SetAutoArmTrackInputs(_) => "global.auto_arm_track_inputs",
             Self::SetApplyNCycles(_) => "global.apply_n_cycles",
         }
     }
@@ -2276,6 +2280,10 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn global_controls_have_stable_intent_kinds() {
         assert_eq!(GlobalControlAction::MidiPanic.kind(), "global.midi_panic");
+        assert_eq!(
+            GlobalControlAction::SetAutoArmTrackInputs(false).kind(),
+            "global.auto_arm_track_inputs"
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

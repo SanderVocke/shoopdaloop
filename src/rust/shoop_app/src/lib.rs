@@ -6473,6 +6473,9 @@ impl ApplicationModel {
             GlobalControlAction::SetAutoMuteOtherTrackInputs(value) => {
                 self.global.auto_mute_other_track_inputs = value;
             }
+            GlobalControlAction::SetAutoArmTrackInputs(value) => {
+                self.global.auto_arm_track_inputs = value;
+            }
             GlobalControlAction::SetApplyNCycles(value) => self.global.apply_n_cycles = value,
         }
         Ok(())
@@ -7609,6 +7612,7 @@ impl ApplicationModel {
                 sync: self.global.sync,
                 solo: self.global.solo,
                 auto_mute_other_track_inputs: self.global.auto_mute_other_track_inputs,
+                auto_arm_track_inputs: self.global.auto_arm_track_inputs,
                 apply_n_cycles: self.global.apply_n_cycles,
             },
             track_groups: vec![
@@ -7950,6 +7954,7 @@ impl ApplicationModel {
         self.global.solo = bundle.document.global.solo;
         self.global.auto_mute_other_track_inputs =
             bundle.document.global.auto_mute_other_track_inputs;
+        self.global.auto_arm_track_inputs = bundle.document.global.auto_arm_track_inputs;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
         self.script_manager
             .replace_session_scripts(&session_script_sources(bundle)?)
@@ -14505,6 +14510,56 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(snapshot.tracks[1..]
             .iter()
             .all(|track| track.loops.len() == 9));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_arm_track_inputs_defaults_on_and_round_trips_with_sessions() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        assert!(runtime.snapshot().global_controls.auto_arm_track_inputs);
+
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoArmTrackInputs(false),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(!runtime.snapshot().global_controls.auto_arm_track_inputs);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        let output = loop {
+            runtime.tick(Duration::ZERO);
+            if let Some(output) = runtime.take_file_output() {
+                break output;
+            }
+        };
+        let saved = decode_session(&output.bytes).unwrap();
+        assert!(!saved.document.global.auto_arm_track_inputs);
+
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoArmTrackInputs(true),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "auto-arm-round-trip.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        assert!(!runtime.snapshot().global_controls.auto_arm_track_inputs);
     }
 
     #[shoop_wasm_test_support::shoop_test]

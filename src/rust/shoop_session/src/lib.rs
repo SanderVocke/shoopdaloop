@@ -140,6 +140,7 @@ mod tests {
                 sync: true,
                 solo: true,
                 auto_mute_other_track_inputs: true,
+                auto_arm_track_inputs: false,
                 apply_n_cycles: 4,
             },
             track_groups: vec![TrackGroupDocument {
@@ -571,6 +572,20 @@ mod tests {
                 .as_object_mut()
                 .unwrap()
                 .remove("auto_mute_other_track_inputs");
+        });
+        assert_eq!(decode_session(&without_field).unwrap(), bundle);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn missing_auto_arm_track_inputs_defaults_on() {
+        let mut bundle = direct_bundle(1);
+        bundle.document.global.auto_arm_track_inputs = true;
+        let encoded = encode_session(&bundle, "legacy-auto-arm-fixture").unwrap();
+        let without_field = rewrite_manifest(encoded, |manifest| {
+            manifest["document"]["global"]
+                .as_object_mut()
+                .unwrap()
+                .remove("auto_arm_track_inputs");
         });
         assert_eq!(decode_session(&without_field).unwrap(), bundle);
     }
