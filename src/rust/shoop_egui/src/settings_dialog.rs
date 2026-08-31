@@ -1794,6 +1794,21 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn tracing_modes_report_scope_detail_and_labels() {
+        let application = TracingMode::Application;
+        assert!(!application.includes_engine());
+        assert!(!application.engine_detail());
+        assert_eq!(application.label(), "application only");
+
+        let full = TracingMode::Full {
+            engine_detail: true,
+        };
+        assert!(full.includes_engine());
+        assert!(full.engine_detail());
+        assert_eq!(full.label(), "application + engine");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn developer_category_starts_tracing_with_engine_detail() {
         let (registry, _) = fixture();
         let context = egui::Context::default();
@@ -1911,7 +1926,20 @@ mod tests {
             ],
         );
         assert!(dialog.tracing_requirements_open);
+        let mut requirements_output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 500.0),
+                )),
+                ..Default::default()
+            },
+            |ui| dialog.show_tracing_requirements(ui.ctx()),
+        );
+        requirements_output.textures_delta.clear();
+        assert!(!requirements_output.shapes.is_empty());
 
+        frame(&mut dialog, Vec::new());
         let start = dialog.tracing_start_rect.unwrap().center();
         frame(
             &mut dialog,
