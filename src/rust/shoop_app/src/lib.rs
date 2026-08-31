@@ -5275,10 +5275,8 @@ impl ApplicationModel {
         let composite_model = self.loops.get(&composite_id)?;
         let sync_length = composite_model
             .auto_arm_active_sync_length
-            .unwrap_or_else(|| self.sync_length());
-        if sync_length == 0 {
-            return None;
-        }
+            .unwrap_or_else(|| self.sync_length())
+            .max(1);
         let active_source_lengths = &composite_model.auto_arm_active_source_lengths;
         let mut occurrences = composite
             .instances
@@ -10279,6 +10277,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn auto_arm_planner_tracks_preceding_current_pending_and_excluded_cycles() {
         let (_backend, mut model) = auto_arm_planner_model();
+        let sync = model.tracks[0].loops[0];
         let root = model.tracks[1].loops[0];
         let first = model.tracks[2].loops[0];
         let second = model.tracks[3].loops[0];
@@ -10422,6 +10421,15 @@ mod tests {
             .unwrap();
         assert_eq!(occurrences[0].end - occurrences[0].start, 2);
         assert_eq!(length, 7);
+
+        model.loops.get_mut(&sync).unwrap().length = 0;
+        let root_model = model.loops.get_mut(&root).unwrap();
+        root_model.auto_arm_active_sync_length = Some(0);
+        root_model.state.next_transition_delay = Some(0);
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track])
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
