@@ -3326,6 +3326,15 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn representative_waveform_uses_large_chunk_request_count() {
+        let frames = 242_526_usize;
+        let channels = 4;
+        let requests = frames.div_ceil(WAVEFORM_CHUNK_SAMPLES) * channels;
+        assert_eq!(requests, 240);
+        assert_eq!(frames.div_ceil(512) * channels, 1_896);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn negotiated_transport_polls_to_observe_the_engine_before_ready() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
