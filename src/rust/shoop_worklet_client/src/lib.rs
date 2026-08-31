@@ -705,9 +705,10 @@ impl RemoteWorkletBackend {
             .unwrap_or(0)
             .saturating_add(1);
         self.next_port_id = replacement
-            .ports
+            .tracks
             .values()
-            .map(|id| id.raw())
+            .flat_map(|created| &created.ports)
+            .map(|port| port.id.raw())
             .max()
             .unwrap_or(0)
             .saturating_add(1);
@@ -2617,6 +2618,8 @@ impl Backend for RemoteWorkletBackend {
         }
         let snapshot = self.snapshot.clone();
         self.snapshot.status.xruns = 0;
+        self.snapshot.connections.failures.clear();
+        self.snapshot.mixer.failures.clear();
         self.snapshot.mutation_failures.clear();
         Ok(snapshot)
     }
@@ -3715,6 +3718,60 @@ mod tests {
         assert!(backend
             .replace_loop_content_async(creation.loops[0], &loop_update)
             .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fixed_bus_mappings_do_not_advance_the_next_track_port_identity() {
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: Vec::new(),
+            buses: vec![shoop_backend::BackendSessionBus {
+                source_id: 41,
+                name: "Master".to_owned(),
+                channels: vec![shoop_backend::BackendSessionBusChannel {
+                    source_id: 42,
+                    label: "Left".to_owned(),
+                    output_port: shoop_backend::BackendSessionPort {
+                        source_id: 43,
+                        descriptor: BackendPortDescriptor {
+                            id: BackendPortId::from_raw(43),
+                            owner: BackendPortOwner::Bus(BackendBusId::from_raw(41)),
+                            name: "master_out_1".to_owned(),
+                            data_type: BackendPortDataType::Audio,
+                            direction: BackendPortDirection::Output,
+                            role: BackendPortRole::AudioOutput,
+                        },
+                        external_connections: Vec::new(),
+                    },
+                }],
+            }],
+            mixer_routes: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+        let replacement = browser_replacement_mapping(&session);
+        assert_eq!(
+            replacement.bus_output_ports[&42],
+            MASTER_BUS_OUTPUT_PORT_IDS[0]
+        );
+        let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.apply_replaced_session(&session, &replacement);
+        assert_eq!(backend.next_port_id, 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mixer_failures_are_published_once_then_drained() {
+        let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.snapshot.mixer.failures.push(BackendMixerFailure {
+            link: BackendMixerLink {
+                source_port_id: BackendPortId::from_raw(1),
+                destination_channel_id: BackendBusChannelId::from_raw(1),
+            },
+            desired_connected: true,
+            message: "rejected".to_owned(),
+        });
+        assert_eq!(backend.poll().unwrap().mixer.failures.len(), 1);
+        assert!(backend.poll().unwrap().mixer.failures.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
