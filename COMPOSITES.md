@@ -47,16 +47,16 @@ This work changes composite runtime reconciliation and its tests. It may update 
 
 ### Stage 1: Lock Down Runtime Semantics
 
-- [ ] Add focused state-machine tests showing that an explicit start stops a referenced primitive that is not desired at the selected iteration even when the composite does not remember it as active.
-- [ ] Add a two-target test showing that one authoritative operation emits `SetMode` for the desired target and `Stop` for the undesired target.
-- [ ] Add explicit-seek coverage for the same complete destination snapshot, including a target whose external state cannot be inferred from local `active` bookkeeping.
-- [ ] Add delayed-start coverage proving execution matches an immediate start.
-- [ ] Verify the new tests fail for the missing authoritative stops while existing start, seek, invalid-input, empty-child, and recording cases remain meaningful.
+- [x] Add focused state-machine tests showing that an explicit start stops a referenced primitive that is not desired at the selected iteration even when the composite does not remember it as active.
+- [x] Add a two-target test showing that one authoritative operation emits `SetMode` for the desired target and `Stop` for the undesired target.
+- [x] Add explicit-seek coverage for the same complete destination snapshot, including a target whose external state cannot be inferred from local `active` bookkeeping.
+- [x] Add delayed-start coverage proving execution matches an immediate start.
+- [x] Verify the new tests fail for the missing authoritative stops while existing start, seek, invalid-input, empty-child, and recording cases remain meaningful.
 
 **Verification**
 
-- [ ] Run the targeted `shoop_engine` composite state-machine tests.
-- [ ] Confirm failures are limited to the new authoritative expectations before changing runtime code.
+- [x] Run the targeted `shoop_engine` composite state-machine tests.
+- [x] Confirm failures are limited to the new authoritative expectations before changing runtime code.
 
 ### Stage 2: Implement Explicit Reconciliation Policy
 
@@ -105,6 +105,7 @@ This work changes composite runtime reconciliation and its tests. It may update 
 - [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
 - [ ] Run the repository's Rust test-usage check if Rust tests were changed.
 - [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the documented browser smoke checks when browsers are available.
+- [ ] Run `python3 scripts/run_wasm_tests.py --profile ci --runtime node --package shoop_engine` and also use the Chrome runtime when available.
 - [ ] Review the final diff for unrelated changes and verify every immutable acceptance criterion has direct test or inspection evidence.
 
 **Verification**

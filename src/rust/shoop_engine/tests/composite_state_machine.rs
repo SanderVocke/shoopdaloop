@@ -456,6 +456,96 @@ fn an_empty_plan_start_is_a_successful_stopped_no_op() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn explicit_start_establishes_an_authoritative_target_snapshot() {
+    let source = composite(100);
+    let active = basic(1);
+    let delayed = basic(2);
+    let desc = descriptor(
+        source,
+        1,
+        vec![timeline(vec![section(vec![
+            entry(active, 0, Some(1), None),
+            entry(delayed, 1, Some(1), None),
+        ])])],
+    );
+    let plan = compile(&desc, &catalog(source, &[(active, 1), (delayed, 1)]));
+    let mut runtime = CompositeRuntime::new(&plan);
+
+    let batch = runtime
+        .transition_immediate(&plan, LoopMode::Playing, None, always_current)
+        .unwrap();
+
+    assert_eq!(batch.as_slice().len(), 2);
+    assert_eq!(batch.as_slice()[0].target, delayed);
+    assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
+    assert_eq!(batch.as_slice()[1].target, active);
+    assert_eq!(
+        batch.as_slice()[1].action,
+        set_mode(LoopMode::Playing, 0, true)
+    );
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn explicit_seek_reestablishes_the_complete_destination_snapshot() {
+    let source = composite(100);
+    let active = basic(1);
+    let delayed = basic(2);
+    let desc = descriptor(
+        source,
+        1,
+        vec![timeline(vec![section(vec![
+            entry(active, 0, Some(1), None),
+            entry(delayed, 1, Some(1), None),
+        ])])],
+    );
+    let plan = compile(&desc, &catalog(source, &[(active, 1), (delayed, 1)]));
+    let mut runtime = CompositeRuntime::new(&plan);
+    runtime
+        .transition_immediate(&plan, LoopMode::Playing, None, always_current)
+        .unwrap();
+
+    let batch = runtime.seek(&plan, 0, always_current).unwrap();
+
+    assert_eq!(batch.as_slice().len(), 2);
+    assert_eq!(batch.as_slice()[0].target, delayed);
+    assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
+    assert_eq!(batch.as_slice()[1].target, active);
+    assert_eq!(
+        batch.as_slice()[1].action,
+        set_mode(LoopMode::Playing, 0, true)
+    );
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn delayed_start_executes_the_authoritative_snapshot() {
+    let source = composite(100);
+    let active = basic(1);
+    let delayed = basic(2);
+    let desc = descriptor(
+        source,
+        1,
+        vec![timeline(vec![section(vec![
+            entry(active, 0, Some(1), None),
+            entry(delayed, 1, Some(1), None),
+        ])])],
+    );
+    let plan = compile(&desc, &catalog(source, &[(active, 1), (delayed, 1)]));
+    let mut runtime = CompositeRuntime::new(&plan);
+    runtime.request_transition(LoopMode::Playing, 0).unwrap();
+
+    let batch = runtime.sync_boundary(&plan, always_current).unwrap();
+
+    assert_eq!(batch.as_slice().len(), 2);
+    assert_eq!(batch.as_slice()[0].target, delayed);
+    assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
+    assert_eq!(batch.as_slice()[1].target, active);
+    assert_eq!(
+        batch.as_slice()[1].action,
+        set_mode(LoopMode::Playing, 0, true)
+    );
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn regular_runtime_inherits_modes_and_empty_playback_is_duration_only() {
     let source = composite(100);
     let full = basic(1);
