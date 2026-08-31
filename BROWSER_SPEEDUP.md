@@ -124,7 +124,7 @@ Depends on the protocol groundwork but can otherwise be developed independently 
   - number of requests in flight;
   - completion state.
 - [x] Initially request one chunk to learn channel metadata, then fill the bounded pipeline.
-- [x] Never exceed either the waveform limit or the transport’s global pending-command threshold.
+- [x] Never exceed either the per-loop waveform limit or half of the transport’s global pending-command capacity, preserving headroom for ordinary controls.
 - [x] Continue relying on transport sequence ordering while validating returned channel, offset, revision, and totals.
 - [x] Advance across channel boundaries without requesting beyond a channel’s declared total.
 - [x] Preserve invalidation on loop mutation, replacement, grab, clear, driver restart, and revision change.
@@ -208,7 +208,7 @@ Depends on all previous stages.
 
 ## Validation results
 
-Completed on 2026-08-31. Native and Wasm protocol/session/waveform tests cover mixed audio/MIDI round trips, atomic replacement, cancellation, exact multi-channel waveform assembly, the 240-request representative waveform bound, and the absence of repeated replacement encoding. The raw-host artifact contract exercises a complete trace group across the ring boundary and verifies continued draining. Repository formatting, warning-denying builds, policy checks, native tests, Node Wasm tests, and pinned Chromium Wasm tests passed. The full native suite encountered three resource-contention failures during its parallel run; all three passed when rerun in isolation with the same feature set.
+Completed on 2026-08-31. Native and Wasm protocol/session/waveform tests cover mixed audio/MIDI round trips, atomic replacement, cancellation, exact multi-channel waveform assembly, the 240-request representative waveform bound, concurrent-loop transport headroom, and the absence of repeated replacement encoding. The raw-host artifact contract exercises a complete trace group across the ring boundary and verifies continued draining. Repository formatting, warning-denying builds, policy checks, native tests, Node Wasm tests, and pinned Chromium Wasm tests passed. The full native suite encountered three resource-contention failures during its parallel run; all three passed when rerun in isolation with the same feature set.
 
 ## Out of scope / possible further improvements
 

@@ -71,6 +71,7 @@ struct MidiDataAssembly {
 
 const SESSION_CAPTURE_IN_FLIGHT_LIMIT: usize = 8;
 const WAVEFORM_IN_FLIGHT_LIMIT: usize = 8;
+const WAVEFORM_PENDING_COMMAND_LIMIT: usize = COMMAND_CAPACITY / 2;
 
 struct SessionCaptureAssembly {
     generation: u64,
@@ -312,7 +313,7 @@ impl RemoteWorkletBackend {
         };
         while !assembly.complete
             && assembly.expected.len() < WAVEFORM_IN_FLIGHT_LIMIT
-            && self.transport.borrow().pending_len() < COMMAND_CAPACITY
+            && self.transport.borrow().pending_len() < WAVEFORM_PENDING_COMMAND_LIMIT
         {
             if let Some(total) = assembly.channel_total {
                 if assembly.request_offset >= total {
@@ -3332,6 +3333,48 @@ mod tests {
         let requests = frames.div_ceil(WAVEFORM_CHUNK_SAMPLES) * channels;
         assert_eq!(requests, 240);
         assert_eq!(frames.div_ceil(512) * channels, 1_896);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn concurrent_waveform_pipelines_reserve_transport_headroom() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+
+        for raw_loop_id in 1..=COMMAND_CAPACITY as u64 {
+            let loop_id = BackendLoopId::from_raw(raw_loop_id);
+            backend.waveforms.insert(
+                loop_id,
+                WaveformAssembly {
+                    revision: 1,
+                    channels: Vec::new(),
+                    timing: Vec::new(),
+                    request_channel: 0,
+                    request_offset: 0,
+                    channel_total: Some(WAVEFORM_CHUNK_SAMPLES * WAVEFORM_IN_FLIGHT_LIMIT),
+                    expected: VecDeque::new(),
+                    complete: false,
+                },
+            );
+            backend.request_waveform_chunk(loop_id).unwrap();
+        }
+
+        assert_eq!(
+            backend.transport.borrow().pending_len(),
+            WAVEFORM_PENDING_COMMAND_LIMIT
+        );
+        backend
+            .transport
+            .borrow_mut()
+            .ephemeral(Command::Poll)
+            .unwrap();
+        assert_eq!(
+            backend.transport.borrow().pending_len(),
+            WAVEFORM_PENDING_COMMAND_LIMIT + 1
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
