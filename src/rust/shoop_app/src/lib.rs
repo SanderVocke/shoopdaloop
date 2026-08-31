@@ -7152,13 +7152,53 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::CompositeConfiguration { plan_version }) => {
+                    let rejected = failure.entity.and_then(|entity| {
+                        let backend_id = BackendCompositeId::from_raw(entity);
+                        self.loops.iter().find_map(|(id, model)| {
+                            (model.backend_composite == Some(backend_id)).then_some(*id)
+                        })
+                    });
+                    let previous = rejected.and_then(|id| {
+                        let model = &self.loops[&id];
+                        model
+                            .auto_arm_configured_plans
+                            .range(..*plan_version)
+                            .next_back()
+                            .map(|(_, plan)| plan.clone())
+                            .or_else(|| {
+                                model.auto_arm_active_composite.as_ref().map(|composite| {
+                                    AutoArmCompositePlan {
+                                        composite: composite.clone(),
+                                        sync_length: model
+                                            .auto_arm_active_sync_length
+                                            .unwrap_or_else(|| self.sync_length()),
+                                        source_lengths: model
+                                            .auto_arm_active_source_lengths
+                                            .clone(),
+                                        target_kinds: model.auto_arm_active_target_kinds.clone(),
+                                    }
+                                })
+                            })
+                    });
+                    for model in self.loops.values_mut() {
+                        model.auto_arm_configured_plans.remove(plan_version);
+                    }
+                    if let Some(id) = rejected {
+                        self.loops
+                            .get_mut(&id)
+                            .unwrap()
+                            .auto_arm_latest_configured_plan = previous;
+                    }
+                }
                 _ => {}
             }
             match failure.detail.as_ref() {
                 Some(
                     BackendMutationDetail::TrackCreation
                     | BackendMutationDetail::TrackRemoval
-                    | BackendMutationDetail::LoopCreation { .. },
+                    | BackendMutationDetail::LoopCreation { .. }
+                    | BackendMutationDetail::CompositeConfiguration { .. },
                 ) => {}
                 Some(BackendMutationDetail::TrackControl(rejected)) => {
                     if let Some(entity) = failure.entity {
@@ -10754,6 +10794,48 @@ mod tests {
             Some(&plan_b)
         );
 
+        let mut rejected_plan = plan_b.clone();
+        rejected_plan.instances[0].mode = Some("replacing".to_owned());
+        model
+            .commit_composite_editor_change(&mut backend, root, rejected_plan)
+            .unwrap();
+        let rejected_version = *model.loops[&root]
+            .auto_arm_configured_plans
+            .keys()
+            .next_back()
+            .unwrap();
+        let mut rejected_snapshot = backend.poll().unwrap();
+        let state = rejected_snapshot
+            .composites
+            .get_mut(&backend_composite)
+            .unwrap();
+        state.active_plan_version = version_b;
+        state.pending_plan_version = None;
+        rejected_snapshot
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 1,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::CompositeStructure,
+                entity: Some(backend_composite.raw()),
+                detail: Some(BackendMutationDetail::CompositeConfiguration {
+                    plan_version: rejected_version,
+                }),
+                message: "rejected composite plan".to_owned(),
+            });
+        model.apply_backend_snapshot(rejected_snapshot);
+        assert!(!model.loops[&root]
+            .auto_arm_configured_plans
+            .contains_key(&rejected_version));
+        assert_eq!(
+            model.loops[&root]
+                .auto_arm_latest_configured_plan
+                .as_ref()
+                .map(|plan| &plan.composite),
+            Some(&plan_b)
+        );
+
         let peer = model.tracks[4].loops[0];
         let peer_document = CompositeDocument {
             kind: CompositeKindDocument::Script,
@@ -10768,11 +10850,15 @@ mod tests {
         model.loops.get_mut(&peer).unwrap().composite = Some(peer_document.clone());
         model.loops.get_mut(&peer).unwrap().backend_composite =
             Some(backend.create_composite_loop().unwrap());
-        let global_version = version_b + 1;
-        model.remember_auto_arm_composite_plan(root, global_version, &plan_b);
+        let global_version = rejected_version + 1;
+        model.remember_auto_arm_composite_plan(peer, global_version, &peer_document);
         assert_eq!(
             model.loops[&peer].auto_arm_configured_plans[&global_version].composite,
             peer_document
+        );
+        assert_eq!(
+            model.loops[&root].auto_arm_configured_plans[&global_version].composite,
+            plan_b
         );
 
         let primitive_target_version = global_version + 1;

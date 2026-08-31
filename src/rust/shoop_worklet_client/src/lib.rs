@@ -1257,6 +1257,11 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
         } => Some(BackendMutationDetail::LoopCreation {
             loop_id: BackendLoopId::from_raw(*expected_loop_id),
         }),
+        Command::ConfigureComposite { plan_version, .. } => {
+            Some(BackendMutationDetail::CompositeConfiguration {
+                plan_version: *plan_version,
+            })
+        }
         Command::SetTrackControl { control, .. } => {
             Some(BackendMutationDetail::TrackControl(match control {
                 WireTrackControl::OutputGainDb(value) => BackendTrackControl::OutputGainDb(*value),

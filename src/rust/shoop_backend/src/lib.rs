@@ -778,6 +778,7 @@ pub enum BackendMutationDetail {
     TrackCreation,
     TrackRemoval,
     LoopCreation { loop_id: BackendLoopId },
+    CompositeConfiguration { plan_version: u64 },
     TrackControl(BackendTrackControl),
     TrackFxControl(BackendTrackFxControl),
     LoopGain(f32),
