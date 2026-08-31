@@ -646,6 +646,9 @@ impl RemoteWorkletBackend {
         self.next_composite_id = 1;
         self.snapshot.connections.application_ports.clear();
         self.snapshot.connections.confirmed_links.clear();
+        self.snapshot.mixer.buses.clear();
+        self.snapshot.mixer.confirmed_links.clear();
+        self.snapshot.mixer.failures.clear();
         self.track_resources.clear();
         self.pending_removed_tracks.clear();
         self.reserved_composites.clear();
@@ -690,6 +693,45 @@ impl RemoteWorkletBackend {
                 );
             }
         }
+        for source_bus in &session.buses {
+            let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
+                continue;
+            };
+            let channels = source_bus
+                .channels
+                .iter()
+                .filter_map(|source_channel| {
+                    Some(BackendBusChannelState {
+                        id: *replacement.bus_channels.get(&source_channel.source_id)?,
+                        label: source_channel.label.clone(),
+                        output_port_id: *replacement
+                            .bus_output_ports
+                            .get(&source_channel.source_id)?,
+                    })
+                })
+                .collect();
+            self.snapshot.mixer.buses.insert(
+                bus_id,
+                BackendBusState {
+                    id: bus_id,
+                    name: source_bus.name.clone(),
+                    channels,
+                },
+            );
+        }
+        self.snapshot.mixer.confirmed_links = session
+            .mixer_routes
+            .iter()
+            .filter_map(|route| {
+                Some(BackendMixerLink {
+                    source_port_id: *replacement.ports.get(&route.source_port_id)?,
+                    destination_channel_id: *replacement
+                        .bus_channels
+                        .get(&route.destination_channel_id)?,
+                })
+            })
+            .collect();
+        self.snapshot.mixer.revision = self.snapshot.mixer.revision.wrapping_add(1);
         self.next_track_id = replacement
             .tracks
             .values()
@@ -3755,8 +3797,18 @@ mod tests {
             MASTER_BUS_OUTPUT_PORT_IDS[0]
         );
         let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend
+            .snapshot
+            .mixer
+            .confirmed_links
+            .insert(BackendMixerLink {
+                source_port_id: BackendPortId::from_raw(99),
+                destination_channel_id: BackendBusChannelId::from_raw(99),
+            });
         backend.apply_replaced_session(&session, &replacement);
         assert_eq!(backend.next_port_id, 1);
+        assert_eq!(backend.snapshot.mixer.buses.len(), 1);
+        assert!(backend.snapshot.mixer.confirmed_links.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

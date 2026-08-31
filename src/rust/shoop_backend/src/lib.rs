@@ -6654,13 +6654,13 @@ impl Default for FakeBackend {
         ];
         connections.with_state(|state| {
             state.ports.insert(global_fx_port.id, global_fx_port);
-            for (_, label, output_port_id) in master_channels {
+            for (index, (_, _, output_port_id)) in master_channels.into_iter().enumerate() {
                 state.ports.insert(
                     output_port_id,
                     BackendPortDescriptor {
                         id: output_port_id,
                         owner: BackendPortOwner::Bus(bus_id),
-                        name: format!("master_out_{}", label.to_lowercase()),
+                        name: format!("master_out_{}", index + 1),
                         data_type: BackendPortDataType::Audio,
                         direction: BackendPortDirection::Output,
                         role: BackendPortRole::AudioOutput,
