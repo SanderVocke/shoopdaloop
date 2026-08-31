@@ -6064,6 +6064,7 @@ pub struct FakeBackend {
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
+    fail_next_track_control: Option<String>,
     fail_next_session_replace: Option<String>,
     fail_next_loop_content_replace: Option<String>,
     pending_session_captures: usize,
@@ -6156,6 +6157,7 @@ impl Default for FakeBackend {
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
+            fail_next_track_control: None,
             fail_next_session_replace: None,
             fail_next_loop_content_replace: None,
             pending_session_captures: 0,
@@ -6201,6 +6203,10 @@ impl FakeBackend {
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
         self.fail_track_creation_after = Some(successful_creations);
+    }
+
+    pub fn fail_next_track_control(&mut self, message: impl Into<String>) {
+        self.fail_next_track_control = Some(message.into());
     }
 
     pub fn fail_midi_input_for(&mut self, track_id: BackendTrackId) {
@@ -7030,6 +7036,9 @@ impl Backend for FakeBackend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()> {
+        if let Some(message) = self.fail_next_track_control.take() {
+            return Err(anyhow!(message));
+        }
         let track = self
             .tracks
             .get_mut(&track_id)

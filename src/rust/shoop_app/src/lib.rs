@@ -537,6 +537,8 @@ fn update_application(
         Ok(snapshot) => {
             model.clear_periodic_failure("backend.poll");
             model.apply_backend_snapshot(snapshot);
+            let auto_arm_result = model.reconcile_auto_arm(backend);
+            model.report_periodic_result("tracks.auto_arm", auto_arm_result);
         }
         Err(error) => {
             model.connection_backend_available = false;
@@ -600,6 +602,7 @@ struct ApplicationModel {
     script_last_snapshot: ControlSnapshot,
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
     script_composition_frame_remainder: u128,
+    auto_arm_owned_tracks: BTreeSet<TrackId>,
     active_piano_notes: BTreeMap<u8, BTreeSet<TrackId>>,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
@@ -906,8 +909,24 @@ struct LoopModel {
     composite: Option<CompositeDocument>,
     backend_composite: Option<BackendCompositeId>,
     backend_composite_signature: Vec<(LoopId, u32)>,
+    active_composite_children: Vec<ActiveCompositeChildModel>,
     repeat_sync: bool,
     recorded_fx_state: Option<RecordedFxState>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ActiveCompositeChildModel {
+    id: LoopId,
+    mode: LoopMode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ScheduledCompositeOccurrence {
+    target: LoopId,
+    start: u32,
+    end: u32,
+    mode: Option<LoopMode>,
+    occurrence: u32,
 }
 
 fn composite_with_appended_sources(
@@ -1208,6 +1227,7 @@ impl ApplicationModel {
             composite: None,
             backend_composite: None,
             backend_composite_signature: Vec::new(),
+            active_composite_children: Vec::new(),
             repeat_sync: false,
             recorded_fx_state: None,
         };
@@ -1258,6 +1278,7 @@ impl ApplicationModel {
             script_last_snapshot: ControlSnapshot::default(),
             script_composition_playback: BTreeMap::new(),
             script_composition_frame_remainder: 0,
+            auto_arm_owned_tracks: BTreeSet::new(),
             active_piano_notes: BTreeMap::new(),
             global: Default::default(),
             status: Default::default(),
@@ -4347,6 +4368,7 @@ impl ApplicationModel {
 
     fn remove_track_model(&mut self, index: usize) {
         let track = self.tracks.remove(index);
+        self.auto_arm_owned_tracks.remove(&track.id);
         let backend_loop_ids = track
             .loops
             .iter()
@@ -4591,6 +4613,7 @@ impl ApplicationModel {
                 composite: None,
                 backend_composite: None,
                 backend_composite_signature: Vec::new(),
+                active_composite_children: Vec::new(),
                 repeat_sync: self.global.sync,
                 recorded_fx_state: None,
             },
@@ -5156,18 +5179,15 @@ impl ApplicationModel {
                 };
                 let delay = i64::try_from(event.start_cycle)
                     .map_err(|_| "composite delay exceeds engine range".to_owned())?;
-                let mode = match event.mode.as_deref() {
-                    None => None,
-                    Some("stopped") => Some(BackendLoopMode::Stopped),
-                    Some("playing") => Some(BackendLoopMode::Playing),
-                    Some("recording") => Some(BackendLoopMode::Recording),
-                    Some("replacing") => Some(BackendLoopMode::Replacing),
-                    Some("playing_dry_through_wet") => Some(BackendLoopMode::PlayingDryThroughWet),
-                    Some("recording_dry_into_wet") => Some(BackendLoopMode::RecordingDryIntoWet),
-                    Some(mode) => {
-                        return Err(format!("unsupported composite mode {mode}"));
-                    }
-                };
+                let mode = event
+                    .mode
+                    .as_deref()
+                    .map(|mode| {
+                        document_loop_mode(mode)
+                            .map(backend_loop_mode)
+                            .ok_or_else(|| format!("unsupported composite mode {mode}"))
+                    })
+                    .transpose()?;
                 Ok(Some(BackendCompositeEntry {
                     target,
                     delay,
@@ -5191,6 +5211,308 @@ impl ApplicationModel {
                 .into_iter()
                 .collect(),
         }))
+    }
+
+    fn scheduled_composite_occurrences(
+        &self,
+        composite: &CompositeDocument,
+    ) -> Option<(Vec<ScheduledCompositeOccurrence>, u32)> {
+        let sync_length = self.sync_length();
+        if sync_length == 0 {
+            return None;
+        }
+        let mut occurrences = composite
+            .instances
+            .iter()
+            .map(|event| {
+                let source = self.loops.get(&LoopId::from_raw(event.loop_id))?;
+                let start = u32::try_from(event.start_cycle).ok()?;
+                let duration = match event.n_cycles {
+                    Some(cycles) if cycles > 0 => cycles,
+                    Some(_) => return None,
+                    None => source.length.saturating_add(sync_length - 1) / sync_length,
+                }
+                .max(1);
+                Some(ScheduledCompositeOccurrence {
+                    target: source.id,
+                    start,
+                    end: start.checked_add(duration)?,
+                    mode: event.mode.as_deref().and_then(document_loop_mode),
+                    occurrence: 0,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        occurrences.sort_unstable_by(|left, right| {
+            left.start
+                .cmp(&right.start)
+                .then_with(|| left.target.cmp(&right.target))
+                .then_with(|| left.end.cmp(&right.end))
+                .then_with(|| {
+                    composite_mode_sort_key(left.mode).cmp(&composite_mode_sort_key(right.mode))
+                })
+        });
+        let mut occurrence_counts = BTreeMap::<LoopId, u32>::new();
+        for occurrence in &mut occurrences {
+            let count = occurrence_counts.entry(occurrence.target).or_default();
+            occurrence.occurrence = *count;
+            *count = count.checked_add(1)?;
+        }
+        let length = occurrences
+            .iter()
+            .map(|occurrence| occurrence.end)
+            .max()
+            .unwrap_or(0);
+        Some((occurrences, length))
+    }
+
+    fn composite_desired_at(
+        &self,
+        composite_id: LoopId,
+        composite_mode: LoopMode,
+        iteration: u32,
+    ) -> Option<(BTreeMap<LoopId, LoopMode>, u32)> {
+        let composite = self.loops.get(&composite_id)?.composite.as_ref()?;
+        let (occurrences, length) = self.scheduled_composite_occurrences(composite)?;
+        let first_occurrences_only = composite.kind == CompositeKindDocument::Regular
+            && matches!(
+                composite_mode,
+                LoopMode::Recording | LoopMode::RecordingDryIntoWet
+            );
+        let mut desired = BTreeMap::new();
+        for occurrence in occurrences {
+            if first_occurrences_only && occurrence.occurrence != 0 {
+                continue;
+            }
+            if occurrence.start <= iteration && iteration < occurrence.end {
+                desired.insert(occurrence.target, occurrence.mode.unwrap_or(composite_mode));
+            }
+        }
+        Some((desired, length))
+    }
+
+    fn insert_capture_track(&self, loop_id: LoopId, demanded: &mut BTreeSet<TrackId>) {
+        let Some(loop_) = self.loops.get(&loop_id) else {
+            return;
+        };
+        if self
+            .tracks
+            .iter()
+            .find(|track| track.id == loop_.track_id)
+            .is_some_and(|track| track.controls.has_input)
+        {
+            demanded.insert(loop_.track_id);
+        }
+    }
+
+    fn collect_composite_start_capture(
+        &self,
+        composite_id: LoopId,
+        mode: LoopMode,
+        demanded: &mut BTreeSet<TrackId>,
+        stack: &mut BTreeSet<LoopId>,
+    ) {
+        if !runnable_composite_mode(mode) || !stack.insert(composite_id) {
+            return;
+        }
+        if let Some((desired, _)) = self.composite_desired_at(composite_id, mode, 0) {
+            for (target, child_mode) in desired {
+                if external_capture_mode(child_mode) {
+                    if self
+                        .loops
+                        .get(&target)
+                        .is_some_and(|child| child.composite.is_none())
+                    {
+                        self.insert_capture_track(target, demanded);
+                    } else {
+                        self.collect_composite_start_capture(target, child_mode, demanded, stack);
+                    }
+                } else if self
+                    .loops
+                    .get(&target)
+                    .is_some_and(|child| child.composite.is_some())
+                {
+                    self.collect_composite_start_capture(target, child_mode, demanded, stack);
+                }
+            }
+        }
+        stack.remove(&composite_id);
+    }
+
+    fn collect_current_composite_capture(
+        &self,
+        composite_id: LoopId,
+        demanded: &mut BTreeSet<TrackId>,
+        stack: &mut BTreeSet<LoopId>,
+    ) {
+        if !stack.insert(composite_id) {
+            return;
+        }
+        let children = self
+            .loops
+            .get(&composite_id)
+            .map(|composite| composite.active_composite_children.as_slice())
+            .unwrap_or_default();
+        for child in children {
+            let Some(model) = self.loops.get(&child.id) else {
+                continue;
+            };
+            if model.composite.is_some() {
+                if runnable_composite_mode(model.state.mode) {
+                    self.collect_current_composite_capture(child.id, demanded, stack);
+                }
+            } else if external_capture_mode(child.mode) {
+                self.insert_capture_track(child.id, demanded);
+            }
+        }
+        stack.remove(&composite_id);
+    }
+
+    fn collect_next_composite_capture(
+        &self,
+        composite_id: LoopId,
+        demanded: &mut BTreeSet<TrackId>,
+        stack: &mut BTreeSet<LoopId>,
+    ) {
+        if !stack.insert(composite_id) {
+            return;
+        }
+        let Some(model) = self.loops.get(&composite_id) else {
+            stack.remove(&composite_id);
+            return;
+        };
+        let mode = model.state.mode;
+        let iteration = model.state.composite_iteration.unwrap_or(0);
+        let Some((_, length)) = self.composite_desired_at(composite_id, mode, iteration) else {
+            stack.remove(&composite_id);
+            return;
+        };
+        let advanced = iteration.checked_add(1);
+        let (next_iteration, restarting) = match advanced {
+            Some(next) if next < length => (Some(next), false),
+            _ if model
+                .composite
+                .as_ref()
+                .is_some_and(|composite| composite.kind == CompositeKindDocument::Regular)
+                && !matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
+                && length > 0 =>
+            {
+                (Some(0), true)
+            }
+            _ => (None, false),
+        };
+        let Some(next_iteration) = next_iteration else {
+            stack.remove(&composite_id);
+            return;
+        };
+        let Some((desired, _)) = self.composite_desired_at(composite_id, mode, next_iteration)
+        else {
+            stack.remove(&composite_id);
+            return;
+        };
+        for (target, child_mode) in desired {
+            let Some(child) = self.loops.get(&target) else {
+                continue;
+            };
+            if child.composite.is_none() {
+                if external_capture_mode(child_mode) {
+                    self.insert_capture_track(target, demanded);
+                }
+                continue;
+            }
+            let active_mode = model
+                .active_composite_children
+                .iter()
+                .find(|active| active.id == target)
+                .map(|active| active.mode);
+            if !restarting && active_mode == Some(child_mode) {
+                if runnable_composite_mode(child.state.mode) {
+                    self.collect_next_composite_capture(target, demanded, stack);
+                }
+            } else {
+                self.collect_composite_start_capture(target, child_mode, demanded, stack);
+            }
+        }
+        stack.remove(&composite_id);
+    }
+
+    fn auto_arm_demanded_tracks(&self) -> BTreeSet<TrackId> {
+        let mut demanded = BTreeSet::new();
+        for model in self.loops.values().filter(|model| {
+            model
+                .composite
+                .as_ref()
+                .is_some_and(|composite| composite.kind == CompositeKindDocument::Script)
+        }) {
+            let mut stack = BTreeSet::new();
+            if runnable_composite_mode(model.state.mode) {
+                self.collect_current_composite_capture(model.id, &mut demanded, &mut stack);
+                self.collect_next_composite_capture(model.id, &mut demanded, &mut stack);
+            } else if model.state.next_transition_delay == Some(0)
+                && runnable_composite_mode(model.state.next_mode)
+            {
+                self.collect_composite_start_capture(
+                    model.id,
+                    model.state.next_mode,
+                    &mut demanded,
+                    &mut stack,
+                );
+            }
+        }
+        demanded
+    }
+
+    fn reconcile_auto_arm(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        let demanded = self
+            .global
+            .auto_arm_track_inputs
+            .then(|| self.auto_arm_demanded_tracks())
+            .unwrap_or_default();
+        let owned = self
+            .auto_arm_owned_tracks
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        for track_id in owned {
+            if demanded.contains(&track_id) {
+                continue;
+            }
+            let Some(track) = self.tracks.iter().find(|track| track.id == track_id) else {
+                self.auto_arm_owned_tracks.remove(&track_id);
+                continue;
+            };
+            let pending_mute = self
+                .desired_track_controls
+                .get(&(track.backend_id, TrackControlKey::InputMonitoring))
+                == Some(&BackendTrackControl::InputMonitoring(false));
+            if !track.controls.input_monitoring {
+                if !pending_mute {
+                    self.auto_arm_owned_tracks.remove(&track_id);
+                }
+                continue;
+            }
+            if !pending_mute {
+                self.handle_track_input_monitoring(backend, &[track_id], false, false)?;
+            }
+        }
+
+        for track_id in demanded {
+            let Some(track) = self.tracks.iter().find(|track| track.id == track_id) else {
+                continue;
+            };
+            if track.controls.input_monitoring {
+                continue;
+            }
+            let pending_unmute = self
+                .desired_track_controls
+                .get(&(track.backend_id, TrackControlKey::InputMonitoring))
+                == Some(&BackendTrackControl::InputMonitoring(true));
+            if pending_unmute {
+                continue;
+            }
+            self.handle_track_input_monitoring(backend, &[track_id], true, false)?;
+            self.auto_arm_owned_tracks.insert(track_id);
+        }
+        Ok(())
     }
 
     fn create_and_configure_backend_composite(
@@ -6475,6 +6797,9 @@ impl ApplicationModel {
             }
             GlobalControlAction::SetAutoArmTrackInputs(value) => {
                 self.global.auto_arm_track_inputs = value;
+                if !value {
+                    self.reconcile_auto_arm(backend)?;
+                }
             }
             GlobalControlAction::SetApplyNCycles(value) => self.global.apply_n_cycles = value,
         }
@@ -6882,15 +7207,26 @@ impl ApplicationModel {
             model.state.next_transition_delay = state.next_transition_delay;
             model.state.composite_iteration = Some(state.iteration);
             model.state.composite_cycle_count = state.cycle_count;
-            model.state.active_composite_children = state
+            model.active_composite_children = state
                 .active_children
                 .iter()
-                .filter_map(|child| match child.target {
-                    BackendCompositeTarget::Loop(id) => app_loop_by_backend.get(&id).copied(),
-                    BackendCompositeTarget::Composite(id) => {
-                        app_composite_by_backend.get(&id).copied()
-                    }
+                .filter_map(|child| {
+                    let id = match child.target {
+                        BackendCompositeTarget::Loop(id) => app_loop_by_backend.get(&id).copied(),
+                        BackendCompositeTarget::Composite(id) => {
+                            app_composite_by_backend.get(&id).copied()
+                        }
+                    }?;
+                    Some(ActiveCompositeChildModel {
+                        id,
+                        mode: app_loop_mode(child.mode),
+                    })
                 })
+                .collect();
+            model.state.active_composite_children = model
+                .active_composite_children
+                .iter()
+                .map(|child| child.id)
                 .collect::<Vec<_>>()
                 .into();
             model.length = u32::try_from(state.length).unwrap_or(u32::MAX);
@@ -6937,6 +7273,7 @@ impl ApplicationModel {
                     model.state.composite_iteration = None;
                     model.state.composite_cycle_count = 0;
                     model.state.active_composite_children = Arc::from([]);
+                    model.active_composite_children.clear();
                     model.position = 0;
                     model.state.position = 0.0;
                 }
@@ -7843,6 +8180,7 @@ impl ApplicationModel {
                         composite,
                         backend_composite: None,
                         backend_composite_signature: Vec::new(),
+                        active_composite_children: Vec::new(),
                         repeat_sync: bundle.document.global.sync,
                         recorded_fx_state,
                     },
@@ -7935,6 +8273,7 @@ impl ApplicationModel {
         self.restore_backend_composites(backend)?;
         self.script_composition_playback.clear();
         self.script_composition_frame_remainder = 0;
+        self.auto_arm_owned_tracks.clear();
         self.active_piano_notes.clear();
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
@@ -9599,6 +9938,30 @@ fn register_backend_ports(
     ids.into()
 }
 
+fn document_loop_mode(mode: &str) -> Option<LoopMode> {
+    match mode {
+        "stopped" => Some(LoopMode::Stopped),
+        "playing" => Some(LoopMode::Playing),
+        "recording" => Some(LoopMode::Recording),
+        "replacing" => Some(LoopMode::Replacing),
+        "playing_dry_through_wet" => Some(LoopMode::PlayingDryThroughWet),
+        "recording_dry_into_wet" => Some(LoopMode::RecordingDryIntoWet),
+        _ => None,
+    }
+}
+
+fn composite_mode_sort_key(mode: Option<LoopMode>) -> i32 {
+    mode.map(|mode| mode as i32).unwrap_or(-1)
+}
+
+fn external_capture_mode(mode: LoopMode) -> bool {
+    matches!(mode, LoopMode::Recording | LoopMode::Replacing)
+}
+
+fn runnable_composite_mode(mode: LoopMode) -> bool {
+    !matches!(mode, LoopMode::Unknown | LoopMode::Stopped)
+}
+
 fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
     match mode {
         LoopMode::Unknown => BackendLoopMode::Unknown,
@@ -9765,6 +10128,627 @@ mod tests {
         assert!(matches!(error, BackendIoStepError::Failed(message) if message == "typed failure"));
     }
 
+    fn auto_arm_planner_model() -> (FakeBackend, ApplicationModel) {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for name in ["Script", "First", "Second", "Nested"] {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: name.to_owned(),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+        let sync = model.tracks[0].loops[0];
+        backend
+            .set_loop_length(model.loops[&sync].backend_id, 10)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        (backend, model)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_arm_planner_tracks_preceding_current_pending_and_excluded_cycles() {
+        let (_backend, mut model) = auto_arm_planner_model();
+        let root = model.tracks[1].loops[0];
+        let first = model.tracks[2].loops[0];
+        let second = model.tracks[3].loops[0];
+        let same_track_peer = model.tracks[2].loops[1];
+        let channel_free = model.tracks[4].loops[1];
+        let first_track = model.tracks[2].id;
+        let second_track = model.tracks[3].id;
+        model.loops.get_mut(&first).unwrap().length = 20;
+        model.loops.get_mut(&second).unwrap().length = 10;
+        model.loops.get_mut(&same_track_peer).unwrap().length = 10;
+        model.tracks[4].controls.has_input = false;
+        model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![
+                CompositeLoopInstanceDocument {
+                    instance_id: 1,
+                    start_cycle: 2,
+                    loop_id: first.raw(),
+                    mode: Some("recording".to_owned()),
+                    n_cycles: None,
+                },
+                CompositeLoopInstanceDocument {
+                    instance_id: 2,
+                    start_cycle: 4,
+                    loop_id: second.raw(),
+                    mode: Some("replacing".to_owned()),
+                    n_cycles: Some(1),
+                },
+                CompositeLoopInstanceDocument {
+                    instance_id: 3,
+                    start_cycle: 4,
+                    loop_id: same_track_peer.raw(),
+                    mode: Some("replacing".to_owned()),
+                    n_cycles: Some(1),
+                },
+                CompositeLoopInstanceDocument {
+                    instance_id: 4,
+                    start_cycle: 4,
+                    loop_id: channel_free.raw(),
+                    mode: Some("recording".to_owned()),
+                    n_cycles: Some(1),
+                },
+                CompositeLoopInstanceDocument {
+                    instance_id: 5,
+                    start_cycle: 6,
+                    loop_id: second.raw(),
+                    mode: Some("recording_dry_into_wet".to_owned()),
+                    n_cycles: Some(1),
+                },
+            ],
+        });
+        {
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.composite_kind = shoop_app_api::CompositeKind::Script;
+            root.state.mode = LoopMode::Playing;
+            root.state.composite_iteration = Some(0);
+        }
+        assert!(model.auto_arm_demanded_tracks().is_empty());
+
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .state
+            .composite_iteration = Some(1);
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track])
+        );
+
+        {
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.composite_iteration = Some(2);
+            root.active_composite_children = vec![ActiveCompositeChildModel {
+                id: first,
+                mode: LoopMode::Recording,
+            }];
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track])
+        );
+
+        {
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.composite_iteration = Some(3);
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track, second_track])
+        );
+
+        {
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.composite_iteration = Some(4);
+            root.active_composite_children = vec![
+                ActiveCompositeChildModel {
+                    id: second,
+                    mode: LoopMode::Replacing,
+                },
+                ActiveCompositeChildModel {
+                    id: same_track_peer,
+                    mode: LoopMode::Replacing,
+                },
+                ActiveCompositeChildModel {
+                    id: channel_free,
+                    mode: LoopMode::Recording,
+                },
+            ];
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track, second_track])
+        );
+
+        {
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.mode = LoopMode::Stopped;
+            root.state.next_mode = LoopMode::Playing;
+            root.state.next_transition_delay = Some(0);
+            root.composite.as_mut().unwrap().instances[0].start_cycle = 0;
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track])
+        );
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .state
+            .next_transition_delay = Some(1);
+        assert!(model.auto_arm_demanded_tracks().is_empty());
+
+        let (occurrences, length) = model
+            .scheduled_composite_occurrences(model.loops[&root].composite.as_ref().unwrap())
+            .unwrap();
+        assert_eq!(occurrences[0].end - occurrences[0].start, 2);
+        assert_eq!(length, 7);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_arm_planner_descends_nested_script_and_regular_composites() {
+        let (_backend, mut model) = auto_arm_planner_model();
+        let root = model.tracks[1].loops[0];
+        let first = model.tracks[2].loops[0];
+        let second = model.tracks[3].loops[0];
+        let nested = model.tracks[4].loops[0];
+        let first_track = model.tracks[2].id;
+        let second_track = model.tracks[3].id;
+        for id in [first, second, nested] {
+            model.loops.get_mut(&id).unwrap().length = 10;
+        }
+        model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 1,
+                loop_id: nested.raw(),
+                mode: Some("recording".to_owned()),
+                n_cycles: Some(3),
+            }],
+        });
+        model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            instances: vec![
+                CompositeLoopInstanceDocument {
+                    instance_id: 1,
+                    start_cycle: 0,
+                    loop_id: first.raw(),
+                    mode: None,
+                    n_cycles: Some(1),
+                },
+                CompositeLoopInstanceDocument {
+                    instance_id: 2,
+                    start_cycle: 2,
+                    loop_id: first.raw(),
+                    mode: None,
+                    n_cycles: Some(1),
+                },
+            ],
+        });
+        {
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.composite_kind = shoop_app_api::CompositeKind::Script;
+            root.state.mode = LoopMode::Playing;
+            root.state.composite_iteration = Some(0);
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track])
+        );
+
+        {
+            let root_model = model.loops.get_mut(&root).unwrap();
+            root_model.state.composite_iteration = Some(2);
+            root_model.active_composite_children = vec![ActiveCompositeChildModel {
+                id: nested,
+                mode: LoopMode::Recording,
+            }];
+            let nested_model = model.loops.get_mut(&nested).unwrap();
+            nested_model.state.mode = LoopMode::Recording;
+            nested_model.state.composite_iteration = Some(1);
+            nested_model.active_composite_children.clear();
+        }
+        assert!(model.auto_arm_demanded_tracks().is_empty());
+
+        model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: second.raw(),
+                mode: Some("recording".to_owned()),
+                n_cycles: Some(1),
+            }],
+        });
+        {
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.composite_iteration = Some(0);
+            root.active_composite_children.clear();
+            root.composite.as_mut().unwrap().instances[0].mode = Some("playing".to_owned());
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([second_track])
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_arm_reconciliation_aggregates_ownership_and_recovers_from_backend_failures() {
+        let (mut backend, mut model) = auto_arm_planner_model();
+        let first_root = model.tracks[1].loops[0];
+        let first = model.tracks[2].loops[0];
+        let second = model.tracks[3].loops[0];
+        let second_root = model.tracks[4].loops[0];
+        let first_track = model.tracks[2].id;
+        let second_track = model.tracks[3].id;
+        for root in [first_root, second_root] {
+            model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+                kind: CompositeKindDocument::Script,
+                instances: vec![CompositeLoopInstanceDocument {
+                    instance_id: 1,
+                    start_cycle: 1,
+                    loop_id: first.raw(),
+                    mode: Some("recording".to_owned()),
+                    n_cycles: Some(1),
+                }],
+            });
+            let root = model.loops.get_mut(&root).unwrap();
+            root.state.composite_kind = shoop_app_api::CompositeKind::Script;
+            root.state.mode = LoopMode::Playing;
+            root.state.composite_iteration = Some(0);
+        }
+        model
+            .loops
+            .get_mut(&first_root)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances
+            .push(CompositeLoopInstanceDocument {
+                instance_id: 2,
+                start_cycle: 1,
+                loop_id: second.raw(),
+                mode: Some("recording".to_owned()),
+                n_cycles: Some(1),
+            });
+        model
+            .handle_track_input_monitoring(&mut backend, &[second_track], true, false)
+            .unwrap();
+        model.global.auto_mute_other_track_inputs = true;
+
+        backend.fail_next_track_control("injected auto-arm acquire failure");
+        assert!(model.reconcile_auto_arm(&mut backend).is_err());
+        assert!(!model.auto_arm_owned_tracks.contains(&first_track));
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        assert!(!model.auto_arm_owned_tracks.contains(&second_track));
+        assert!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == second_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+
+        model.loops.get_mut(&first_root).unwrap().state.mode = LoopMode::Stopped;
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+
+        backend.fail_next_track_control("injected auto-arm release failure");
+        model.loops.get_mut(&second_root).unwrap().state.mode = LoopMode::Stopped;
+        assert!(model.reconcile_auto_arm(&mut backend).is_err());
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.is_empty());
+        assert!(
+            !model
+                .tracks
+                .iter()
+                .find(|track| track.id == first_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+        assert!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == second_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+
+        model.loops.get_mut(&first_root).unwrap().state.mode = LoopMode::Playing;
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model
+            .loops
+            .get_mut(&first_root)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances[0]
+            .mode = Some("playing".to_owned());
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.is_empty());
+        model
+            .loops
+            .get_mut(&first_root)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances[0]
+            .mode = Some("recording".to_owned());
+        model.loops.get_mut(&first_root).unwrap().state.mode = LoopMode::Playing;
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoArmTrackInputs(false),
+            )
+            .unwrap();
+        assert!(
+            !model
+                .tracks
+                .iter()
+                .find(|track| track.id == first_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+        assert!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == second_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.is_empty());
+
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoArmTrackInputs(true),
+            )
+            .unwrap();
+        model.loops.get_mut(&first_root).unwrap().state.mode = LoopMode::Playing;
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::StopAll)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        let backend_track = model
+            .tracks
+            .iter()
+            .find(|track| track.id == first_track)
+            .unwrap()
+            .backend_id;
+        let mut rejected_release = backend.poll().unwrap();
+        rejected_release
+            .tracks
+            .get_mut(&backend_track)
+            .unwrap()
+            .input_monitoring = true;
+        rejected_release
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 1,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackControl(
+                    BackendTrackControl::InputMonitoring(false),
+                )),
+                message: "auto-arm release rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(rejected_release);
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_arm_reconciliation_follows_engine_composite_boundaries_and_preserves_prearmed_tracks() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for name in ["Script", "First", "Second"] {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: name.to_owned(),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+        let sync_track = model.tracks[0].id;
+        let sync = model.tracks[0].loops[0];
+        let script_track = model.tracks[1].id;
+        let root = model.tracks[1].loops[0];
+        let first_track = model.tracks[2].id;
+        let first = model.tracks[2].loops[0];
+        let second_track = model.tracks[3].id;
+        let second = model.tracks[3].loops[0];
+        for loop_id in [first, second] {
+            backend
+                .set_loop_length(model.loops[&loop_id].backend_id, 10)
+                .unwrap();
+        }
+        backend
+            .transition_loop(
+                model.loops[&sync].backend_id,
+                BackendLoopMode::Recording,
+                None,
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(10));
+        backend
+            .transition_loop(
+                model.loops[&sync].backend_id,
+                BackendLoopMode::Stopped,
+                None,
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(1));
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        model
+            .handle_loop_action(
+                &mut backend,
+                script_track,
+                root,
+                LoopAction::ConvertToComposite,
+            )
+            .unwrap();
+        model.compose_loop_at(&mut backend, root, first, 1).unwrap();
+        model
+            .compose_loop_at(&mut backend, root, second, 3)
+            .unwrap();
+        model
+            .set_composite_kind(&mut backend, root, shoop_app_api::CompositeKind::Script)
+            .unwrap();
+        let event_ids = model.loops[&root]
+            .composite
+            .as_ref()
+            .unwrap()
+            .instances
+            .iter()
+            .map(|event| CompositeEventId {
+                instance_id: event.instance_id,
+            })
+            .collect::<Vec<_>>();
+        for event in &event_ids {
+            model
+                .set_composite_event_mode(&mut backend, root, *event, LoopMode::Recording)
+                .unwrap();
+            model
+                .set_composite_loop_cycles(&mut backend, root, *event, Some(1))
+                .unwrap();
+        }
+        model
+            .handle_track_input_monitoring(&mut backend, &[second_track], true, false)
+            .unwrap();
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        model
+            .handle_loop_action(&mut backend, sync_track, sync, LoopAction::PlayClicked)
+            .unwrap();
+        model
+            .handle_loop_action(&mut backend, script_track, root, LoopAction::PlayClicked)
+            .unwrap();
+
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        assert_eq!(model.loops[&root].state.composite_iteration, Some(0));
+        assert!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == first_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        assert!(!model.auto_arm_owned_tracks.contains(&second_track));
+
+        update_application(&mut model, &mut backend, Duration::from_millis(11), |_| {});
+        assert_eq!(model.loops[&root].state.composite_iteration, Some(1));
+        assert_eq!(model.loops[&first].state.mode, LoopMode::Recording);
+
+        update_application(&mut model, &mut backend, Duration::from_millis(10), |_| {});
+        assert_eq!(model.loops[&root].state.composite_iteration, Some(2));
+        assert!(
+            !model
+                .tracks
+                .iter()
+                .find(|track| track.id == first_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+        assert!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == second_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+
+        update_application(&mut model, &mut backend, Duration::from_millis(10), |_| {});
+        assert_eq!(model.loops[&root].state.composite_iteration, Some(3));
+        assert_eq!(model.loops[&second].state.mode, LoopMode::Recording);
+        update_application(&mut model, &mut backend, Duration::from_millis(10), |_| {});
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        assert_eq!(model.loops[&root].state.mode, LoopMode::Stopped);
+        assert!(
+            !model
+                .tracks
+                .iter()
+                .find(|track| track.id == first_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+        assert!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == second_track)
+                .unwrap()
+                .controls
+                .input_monitoring
+        );
+        assert!(model.auto_arm_owned_tracks.is_empty());
+    }
+
     fn engine_model_with_regular_composite() -> (
         LocalDummyBackend,
         ApplicationModel,
@@ -9845,6 +10829,10 @@ mod tests {
             .unwrap();
         runtime.tick(Duration::ZERO);
         assert!(runtime.snapshot().tracks.len() > 1);
+        runtime
+            .model
+            .auto_arm_owned_tracks
+            .insert(runtime.snapshot().tracks[1].id);
 
         runtime.dispatch(AppIntent::RequestNewSession).unwrap();
         runtime.tick(Duration::ZERO);
@@ -9854,6 +10842,7 @@ mod tests {
         assert!(snapshot.tracks[0].is_sync);
         assert_eq!(snapshot.tracks[0].loops.len(), 1);
         assert!(snapshot.tracks[0].loops[0].sync);
+        assert!(runtime.model.auto_arm_owned_tracks.is_empty());
         assert_eq!(
             snapshot.io_task.as_ref().unwrap().status,
             IoTaskStatus::Completed
@@ -9895,6 +10884,7 @@ mod tests {
             .iter()
             .map(|id| before.connections.application_ports[id].name.clone())
             .collect::<Vec<_>>();
+        model.auto_arm_owned_tracks.insert(track_id);
 
         model
             .handle_track_action(&mut backend, track_id, TrackAction::Remove)
@@ -9917,6 +10907,7 @@ mod tests {
         );
         model.apply_backend_snapshot(removed);
         assert!(!model.tracks.iter().any(|track| track.id == track_id));
+        assert!(!model.auto_arm_owned_tracks.contains(&track_id));
 
         model.add_track(&mut backend, spec).unwrap();
         let recreated = model.tracks.last().unwrap();

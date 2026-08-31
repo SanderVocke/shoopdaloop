@@ -61,37 +61,37 @@ Verification:
 
 ## Stage 2 — Script-composite capture lookahead
 
-- [ ] Add a pure application-side planner that identifies externally capturing primitive descendants for a composite at the current iteration and at the next boundary.
-- [ ] Reuse the application composite documents, loop-to-track mapping, loop lengths, sync length, observed composite mode/iteration, pending transition delay, and active-child observations; do not add realtime backend automation.
-- [ ] Implement effective-mode propagation through nested regular and script composites, including regular first-recording behavior where applicable.
-- [ ] Distinguish `Recording` and `Replacing` from `RecordingDryIntoWet`, playback, stopped, and unknown modes.
-- [ ] Detect imminent iteration-zero capture for synchronized pending starts, and define first-observed demand for immediate starts/seeks where a preceding cycle is unavailable.
-- [ ] Aggregate all active script-composite roots into a deduplicated demanded-track set, while excluding stopped definitions and tracks without inputs.
-- [ ] Add focused planner tests for explicit/default durations, capture starting at iteration zero and later iterations, the preceding-cycle window, end boundaries, adjacent windows, overlapping entries, multiple loops on one track, multiple script roots, pending starts, early stop, seek, nested regular/script descendants, and excluded modes.
-- [ ] Add regression tests comparing planner expectations with observed backend composite advancement at representative boundaries so application lookahead cannot silently drift from composite semantics.
+- [x] Add a pure application-side planner that identifies externally capturing primitive descendants for a composite at the current iteration and at the next boundary.
+- [x] Reuse the application composite documents, loop-to-track mapping, loop lengths, sync length, observed composite mode/iteration, pending transition delay, and active-child observations; do not add realtime backend automation.
+- [x] Implement effective-mode propagation through nested regular and script composites, including regular first-recording behavior where applicable.
+- [x] Distinguish `Recording` and `Replacing` from `RecordingDryIntoWet`, playback, stopped, and unknown modes.
+- [x] Detect imminent iteration-zero capture for synchronized pending starts, and define first-observed demand for immediate starts/seeks where a preceding cycle is unavailable.
+- [x] Aggregate all active script-composite roots into a deduplicated demanded-track set, while excluding stopped definitions and tracks without inputs.
+- [x] Add focused planner tests for explicit/default durations, capture starting at iteration zero and later iterations, the preceding-cycle window, end boundaries, adjacent windows, overlapping entries, multiple loops on one track, multiple script roots, pending starts, early stop, seek, nested regular/script descendants, and excluded modes.
+- [x] Add regression tests comparing planner expectations with observed backend composite advancement at representative boundaries so application lookahead cannot silently drift from composite semantics.
 
 Verification:
 
-- [ ] Targeted `shoop_app` composite planner and positioned-composite tests pass.
-- [ ] Existing `shoop_engine` composite state-machine/timeline tests remain unchanged and pass if shared semantic helpers are touched.
+- [x] Targeted `shoop_app` composite planner and positioned-composite tests pass.
+- [x] Existing `shoop_engine` composite state-machine/timeline tests remain unchanged; no engine semantic helper was changed.
 
 ## Stage 3 — Monitoring ownership and reconciliation
 
-- [ ] Add private application-model ownership state for tracks auto-arm changed from muted to monitored; initialize and clear it at lifecycle boundaries.
-- [ ] Reconcile auto-arm after each successful backend snapshot, before publishing application state, using the demanded-track set from Stage 2.
-- [ ] Route acquire/release operations through the existing backend track-control and optimistic desired-control machinery, with `respect_auto_mute = false` behavior.
-- [ ] Acquire all demanded muted tracks without taking ownership of demanded tracks already monitored.
-- [ ] Keep owned tracks enabled while any demand remains, and release/mute them only when their aggregate demand reaches zero.
-- [ ] On toggle-off, restore owned tracks immediately and prevent new acquisition; on re-enable, acquire current demand on the next reconciliation.
-- [ ] Prune removed/stale tracks and clear ownership safely during new-session/session-replacement paths and backend structure changes.
-- [ ] Preserve convergence when an enable/disable command is rejected or a track disappears, using existing mutation-failure reporting rather than introducing a separate retry loop.
-- [ ] Add application tests covering sequential tracks, overlapping roots, adjacent windows, pre-monitored tracks, mixed pre-monitored/owned tracks, toggle-off/on, stop-all/early stop, schedule replacement, track removal, session replacement, backend rejection, and independence from exclusive-input auto-mute.
-- [ ] Verify published track controls show the optimistic auto-arm state without waiting for an extra backend poll.
+- [x] Add private application-model ownership state for tracks auto-arm changed from muted to monitored; initialize and clear it at lifecycle boundaries.
+- [x] Reconcile auto-arm after each successful backend snapshot, before publishing application state, using the demanded-track set from Stage 2.
+- [x] Route acquire/release operations through the existing backend track-control and optimistic desired-control machinery, with `respect_auto_mute = false` behavior.
+- [x] Acquire all demanded muted tracks without taking ownership of demanded tracks already monitored.
+- [x] Keep owned tracks enabled while any demand remains, and release/mute them only when their aggregate demand reaches zero.
+- [x] On toggle-off, restore owned tracks immediately and prevent new acquisition; on re-enable, acquire current demand on the next reconciliation.
+- [x] Prune removed/stale tracks and clear ownership safely during new-session/session-replacement paths and backend structure changes.
+- [x] Preserve convergence when an enable/disable command is rejected or a track disappears, using existing mutation-failure reporting rather than introducing a separate retry loop.
+- [x] Add application tests covering sequential tracks, overlapping roots, adjacent windows, pre-monitored tracks, mixed pre-monitored/owned tracks, toggle-off/on, stop-all/early stop, schedule replacement, track removal, session replacement, backend rejection, and independence from exclusive-input auto-mute.
+- [x] Verify published track controls show the optimistic auto-arm state without waiting for an extra backend poll.
 
 Verification:
 
-- [ ] `cargo nextest run -p shoop_app`
-- [ ] Targeted native engine-backend and browser-compatible application tests exercise the same reconciliation behavior.
+- [x] `cargo nextest run -p shoop_app`
+- [x] Targeted engine-backend and Wasm-compatible application tests exercise the shared reconciliation behavior.
 
 ## Stage 4 — Documentation and integration coverage
 
