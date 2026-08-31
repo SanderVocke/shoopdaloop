@@ -107,8 +107,7 @@ pub fn resample_session(
                         "resampled compensated media length exceeds the platform range".to_owned(),
                     )
                 })?;
-                let pad = audio.samples.last().copied().unwrap_or(0.0);
-                audio.samples.resize(required, pad);
+                audio.samples.resize(required, 0.0);
             }
             MediaPayload::Midi(midi) if midi.length_frames < required => {
                 midi.length_frames = required;

@@ -1131,7 +1131,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn resampling_pads_rounding_gap_at_compensated_window_end() {
+    fn resampling_pads_rounding_gap_at_compensated_window_end_with_silence() {
         let mut bundle = direct_bundle(1);
         let loop_ = &mut bundle.document.track_groups[0].tracks[0].loops[0];
         loop_.length_frames = 101;
@@ -1162,6 +1162,7 @@ mod tests {
             panic!("audio payload missing")
         };
         assert_eq!(audio.samples.len(), 52);
+        assert_eq!(audio.samples.last(), Some(&0.0));
         let midi_channel = loop_.channels.last().unwrap();
         assert_eq!(midi_channel.data_length_frames, 52);
         let MediaPayload::Midi(midi) = &converted.media["midi_main"] else {
