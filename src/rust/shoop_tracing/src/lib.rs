@@ -20,10 +20,9 @@ mod browser;
 pub mod capture;
 #[cfg(all(target_arch = "wasm32", feature = "ordinary-web"))]
 pub use browser::{
-    append_bounded_browser_records, initialize_browser_tracing, wasm_test_trace_begin,
-    wasm_test_trace_finish, wasm_test_trace_finish_failure, wasm_test_trace_finish_result,
-    wasm_test_trace_opt_out, BrowserCalibration, BrowserCapture, BrowserHealth, BrowserMetadata,
-    BrowserRealmData,
+    initialize_browser_tracing, wasm_test_trace_begin, wasm_test_trace_finish,
+    wasm_test_trace_finish_failure, wasm_test_trace_finish_result, wasm_test_trace_opt_out,
+    BrowserCalibration, BrowserCapture, BrowserHealth, BrowserMetadata, BrowserRealmData,
 };
 #[cfg(target_arch = "wasm32")]
 mod raw;
@@ -38,6 +37,12 @@ pub use tracing::{
     debug, debug_span, error, error_span, event, field, info, info_span, instrument, span, trace,
     trace_span, warn, warn_span, Level,
 };
+
+#[cfg(target_arch = "wasm32")]
+pub fn raw_chunk_ends_group(record: &[u8]) -> bool {
+    perfetto_everywhere_core::Record::decode(record)
+        .is_ok_and(|record| record.flags & perfetto_everywhere_core::FLAG_GROUP_END != 0)
+}
 
 static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
 static TRACING_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);

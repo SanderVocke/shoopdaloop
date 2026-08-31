@@ -7,9 +7,7 @@ use std::sync::Once;
 
 use base64::Engine as _;
 use perfetto_everywhere_collector::{Collector, CollectorConfig, RealmDescriptor};
-use perfetto_everywhere_core::{
-    MetadataId, Record, StaticName, TraceBackend, TrackId, FLAG_GROUP_END, RECORD_SIZE,
-};
+use perfetto_everywhere_core::{MetadataId, StaticName, TraceBackend, TrackId};
 use perfetto_everywhere_tracing::{PerfettoLayer, SharedBackend};
 use perfetto_everywhere_web::{
     ClockCalibration, MetadataEntry, OrdinaryBackend, PerformanceClock, ProducerHealth,
@@ -23,7 +21,7 @@ const WINDOW_REALM_ID: u32 = 1;
 const WINDOW_CLOCK_ID: u32 = 101;
 const WINDOW_TICKS_PER_SECOND: u64 = 1_000_000_000;
 const WINDOW_BATCH_RECORDS: usize = 16_384;
-const MAX_RETAINED_RECORDS_PER_REALM: usize = 262_144;
+const MAX_WINDOW_TRACE_BYTES: usize = 512 * 1024 * 1024;
 
 static BROWSER_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
 static WASM_TEST_PANIC_HOOK: Once = Once::new();
@@ -31,7 +29,6 @@ static WASM_TEST_PANIC_HOOK: Once = Once::new();
 struct BrowserState {
     backend: SharedBackend<OrdinaryBackend<PerformanceClock>>,
     records: Vec<u8>,
-    retention_dropped_records: u64,
     active: bool,
 }
 
@@ -87,8 +84,14 @@ pub struct BrowserCalibration {
 pub struct BrowserHealth {
     pub emitted_records: u64,
     pub dropped_records: u64,
+    pub raw_dropped_records: u64,
+    pub pool_starvation_records: u64,
     pub completed_batches: u64,
     pub high_water_records: usize,
+    pub max_in_flight_chunks: usize,
+    pub returned_buffers: u64,
+    pub rejected_chunks: u64,
+    pub storage_failures: u64,
     pub repaired_span_boundaries: u64,
 }
 
@@ -136,7 +139,6 @@ pub fn initialize_browser_tracing() -> Result<(), String> {
         *state.borrow_mut() = Some(BrowserState {
             backend,
             records: Vec::new(),
-            retention_dropped_records: 0,
             active: false,
         });
         Ok(())
@@ -155,7 +157,6 @@ impl BrowserCapture {
                 return Err("browser tracing is already active".to_owned());
             }
             state.records.clear();
-            state.retention_dropped_records = 0;
             state
                 .backend
                 .with(|backend| {
@@ -205,13 +206,10 @@ impl BrowserCapture {
                 .with(|backend| backend.set_enabled(false))
                 .ok_or_else(|| "browser tracing backend lock is poisoned".to_owned())?;
             drain(state)?;
-            let (metadata, mut health) = state
+            let (metadata, health) = state
                 .backend
                 .with(|backend| (backend.take_metadata(), backend.health()))
                 .ok_or_else(|| "browser tracing backend lock is poisoned".to_owned())?;
-            health.dropped_records = health
-                .dropped_records
-                .saturating_add(state.retention_dropped_records);
             state.active = false;
             Ok(BrowserRealmData {
                 id: WINDOW_REALM_ID,
@@ -243,7 +241,6 @@ impl BrowserCapture {
                 })
                 .ok_or_else(|| "browser tracing backend lock is poisoned".to_owned())?;
             state.records.clear();
-            state.retention_dropped_records = 0;
             state.active = false;
             Ok::<(), String>(())
         })?;
@@ -293,46 +290,26 @@ fn drain(state: &mut BrowserState) -> Result<(), String> {
         let Some(batch) = batch else {
             break;
         };
-        append_bounded_browser_records(
-            &mut state.records,
-            &mut state.retention_dropped_records,
-            &batch,
-            MAX_RETAINED_RECORDS_PER_REALM,
-        )?;
-    }
-    Ok(())
-}
-
-pub fn append_bounded_browser_records(
-    destination: &mut Vec<u8>,
-    dropped_records: &mut u64,
-    batch: &[u8],
-    max_records: usize,
-) -> Result<(), String> {
-    if batch.len() % RECORD_SIZE != 0 {
-        return Err("browser trace backend returned partial record bytes".to_owned());
-    }
-    let remaining = max_records.saturating_sub(destination.len() / RECORD_SIZE);
-    let candidate_records = remaining.min(batch.len() / RECORD_SIZE);
-    let mut retained_records = 0;
-    for (index, bytes) in batch
-        .chunks_exact(RECORD_SIZE)
-        .take(candidate_records)
-        .enumerate()
-    {
-        let record = Record::decode(bytes).map_err(|error| error.to_string())?;
-        if record.flags & FLAG_GROUP_END != 0 {
-            retained_records = index + 1;
+        let next_len = state
+            .records
+            .len()
+            .checked_add(batch.len())
+            .ok_or_else(|| "browser Window trace storage size overflowed".to_owned())?;
+        if next_len > MAX_WINDOW_TRACE_BYTES {
+            return Err("browser Window trace storage quota exhausted".to_owned());
         }
+        state
+            .records
+            .try_reserve(batch.len())
+            .map_err(|_| "browser Window trace storage allocation failed".to_owned())?;
+        state.records.extend_from_slice(&batch);
     }
-    destination.extend_from_slice(&batch[..retained_records * RECORD_SIZE]);
-    *dropped_records =
-        dropped_records.saturating_add((batch.len() / RECORD_SIZE - retained_records) as u64);
     Ok(())
 }
 
 fn collect(realms: Vec<BrowserRealmData>) -> Result<Vec<u8>, String> {
     let mut config = CollectorConfig::default();
+    config.max_records = usize::MAX;
     config.max_clock_uncertainty_ns = 1_000_000_000;
     let mut collector = Collector::new(config);
     for realm in realms {
@@ -385,8 +362,14 @@ fn health_from_perfetto(health: ProducerHealth) -> BrowserHealth {
     BrowserHealth {
         emitted_records: health.emitted_records,
         dropped_records: health.dropped_records,
+        raw_dropped_records: health.raw_dropped_records,
+        pool_starvation_records: health.pool_starvation_records,
         completed_batches: health.completed_batches,
         high_water_records: health.high_water_records,
+        max_in_flight_chunks: health.max_in_flight_chunks,
+        returned_buffers: health.returned_buffers,
+        rejected_chunks: health.rejected_chunks,
+        storage_failures: health.storage_failures,
         repaired_span_boundaries: health.repaired_span_boundaries,
     }
 }
@@ -395,8 +378,14 @@ fn health_to_perfetto(health: BrowserHealth) -> ProducerHealth {
     ProducerHealth {
         emitted_records: health.emitted_records,
         dropped_records: health.dropped_records,
+        raw_dropped_records: health.raw_dropped_records,
+        pool_starvation_records: health.pool_starvation_records,
         completed_batches: health.completed_batches,
         high_water_records: health.high_water_records,
+        max_in_flight_chunks: health.max_in_flight_chunks,
+        returned_buffers: health.returned_buffers,
+        rejected_chunks: health.rejected_chunks,
+        storage_failures: health.storage_failures,
         repaired_span_boundaries: health.repaired_span_boundaries,
     }
 }

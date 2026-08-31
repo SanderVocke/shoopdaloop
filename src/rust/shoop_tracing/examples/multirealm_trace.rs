@@ -69,6 +69,7 @@ fn raw_realm(realm_id: u32, clock_id: u32, begin: u64, end: u64) -> (Vec<u8>, Pr
             completed_batches: health.completed_drains,
             high_water_records: health.high_water_records,
             repaired_span_boundaries: 0,
+            ..ProducerHealth::default()
         },
     )
 }

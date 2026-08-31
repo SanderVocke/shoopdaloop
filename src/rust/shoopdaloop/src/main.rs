@@ -185,7 +185,7 @@ impl NativeTracing {
 #[cfg(not(target_arch = "wasm32"))]
 type SharedNativeTracing = Arc<Mutex<NativeTracing>>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum PendingTracingAction {
     Start { engine_detail: bool },
     Stop { save: bool },
@@ -202,19 +202,10 @@ struct BrowserTracing {
 #[cfg(target_arch = "wasm32")]
 impl BrowserTracing {
     fn new() -> Self {
-        let global = js_sys::global();
-        let isolated = js_sys::Reflect::get(&global, &"crossOriginIsolated".into())
-            .ok()
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false);
-        let has_shared_buffer = js_sys::Reflect::get(&global, &"SharedArrayBuffer".into())
-            .is_ok_and(|value| value.is_function());
-        let unavailable_reason = (!isolated || !has_shared_buffer)
-            .then_some("Multirealm tracing requires COOP/COEP cross-origin isolation");
         Self {
             capture: None,
             window_calibrations: Vec::new(),
-            unavailable_reason,
+            unavailable_reason: None,
         }
     }
 
@@ -411,6 +402,8 @@ struct UnifiedApp {
     tracing: BrowserTracing,
     #[cfg(target_arch = "wasm32")]
     tracing_smoke_started: Option<Instant>,
+    #[cfg(target_arch = "wasm32")]
+    tracing_stop_started: Option<Instant>,
     pending_tracing_action: Option<PendingTracingAction>,
     last_update: Instant,
     startup_session: Option<(String, bool)>,
@@ -513,6 +506,8 @@ impl UnifiedApp {
             tracing: BrowserTracing::new(),
             #[cfg(target_arch = "wasm32")]
             tracing_smoke_started: None,
+            #[cfg(target_arch = "wasm32")]
+            tracing_stop_started: None,
             pending_tracing_action: if cfg!(target_arch = "wasm32") && args.tracing {
                 Some(PendingTracingAction::Start {
                     engine_detail: args.tracing_engine_detail,
@@ -692,6 +687,22 @@ impl UnifiedApp {
 
     #[cfg(target_arch = "wasm32")]
     fn process_tracing(&mut self) {
+        if self
+            .pending_tracing_action
+            .is_some_and(|action| matches!(action, PendingTracingAction::FinishStop { .. }))
+            && self
+                .tracing_stop_started
+                .is_some_and(|started| started.elapsed() >= Duration::from_secs(5))
+            && !self.runtime.trace_stopped()
+        {
+            self.runtime.cancel_tracing_request();
+            let _ = self.tracing.discard_active();
+            self.pending_tracing_action = None;
+            self.tracing_stop_started = None;
+            tracing::error!("frontend.browser_trace.stop_timeout");
+            self.settings
+                .report_action_error("Browser trace stop timed out; capture is incomplete");
+        }
         if let Some(action) = self.pending_tracing_action.take() {
             let result: anyhow::Result<Option<TracingStopped>> = (|| match action {
                 PendingTracingAction::Start { engine_detail } => {
@@ -710,6 +721,7 @@ impl UnifiedApp {
                 }
                 PendingTracingAction::Stop { save } => {
                     self.runtime.request_stop_tracing()?;
+                    self.tracing_stop_started = Some(Instant::now());
                     self.pending_tracing_action = Some(PendingTracingAction::FinishStop { save });
                     Ok(None)
                 }
@@ -733,7 +745,20 @@ impl UnifiedApp {
                 }
             }
         }
+        if !self
+            .pending_tracing_action
+            .is_some_and(|action| matches!(action, PendingTracingAction::FinishStop { .. }))
+        {
+            self.tracing_stop_started = None;
+        }
         if let Err(error) = self.tracing.poll() {
+            self.runtime.cancel_tracing_request();
+            if let Err(discard_error) = self.tracing.discard_active() {
+                tracing::error!(
+                    error = %discard_error,
+                    "frontend.browser_trace.window_storage_failure_cleanup_failed"
+                );
+            }
             self.settings.report_action_error(error.to_string());
         }
         if let Err(error) = self.runtime.poll_tracing() {
@@ -2462,6 +2487,13 @@ impl Runtime {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => controller.request_stop_tracing(),
             BrowserRuntimeMode::Worker(driver) => driver.request_stop_tracing(),
+        }
+    }
+
+    fn trace_stopped(&self) -> bool {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.trace_stopped(),
+            BrowserRuntimeMode::Worker(driver) => driver.trace_stopped(),
         }
     }
 

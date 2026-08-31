@@ -82,8 +82,8 @@ cd src/rust/shoopdaloop
 trunk serve --open
 ```
 
-Multirealm Perfetto tracing additionally requires cross-origin isolation. Build
-and serve the hosted output with the repository header-aware server:
+Multirealm Perfetto tracing uses transferable buffers and requires no
+cross-origin isolation. Build and serve the hosted output normally:
 
 ```sh
 trunk build
