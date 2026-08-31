@@ -1619,6 +1619,7 @@ impl NativeRuntime {
             adjustment,
             processor_adjustment,
             processor_manual_frames,
+            Some(loop_id),
         )?;
         let latency = self.tracks[&track_id].state.latency.clone();
         let values = prepared_backend_latency(&latency, has_wet_channels)?;
@@ -1747,6 +1748,7 @@ impl NativeRuntime {
         adjustment: BackendRecordingOffsetAdjustment,
         processor_adjustment: BackendProcessorLatencyAdjustment,
         processor_manual_frames: i32,
+        target_loop: Option<BackendLoopId>,
     ) -> Result<()> {
         let track = self
             .tracks
@@ -1783,7 +1785,7 @@ impl NativeRuntime {
             has_wet_channels,
         );
         let values = callback_backend_latency(&track.state.latency, has_wet_channels)?;
-        let loops = track.loops.clone();
+        let loops = target_loop.map_or_else(|| track.loops.clone(), |loop_id| vec![loop_id]);
         for loop_id in loops {
             let loop_ = self
                 .loops
@@ -1812,6 +1814,7 @@ impl NativeRuntime {
             adjustment,
             processor_adjustment,
             processor_manual_frames,
+            None,
         )
     }
 
@@ -4109,6 +4112,71 @@ mod tests {
                 .effective_offset_frames,
             Some(1)
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_sibling_preparation_preserves_armed_loop_latency() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 4,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        backend
+            .runtime_mut()
+            .unwrap()
+            .driver
+            .dummy_enter_controlled_mode();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "native-armed-sibling-latency".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 2,
+            })
+            .unwrap();
+        for loop_id in &created.loops {
+            backend.set_loop_length(*loop_id, 4).unwrap();
+        }
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(5),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        let armed = created.loops[0];
+        backend
+            .transition_loop(armed, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(armed, BackendLoopMode::Recording, Some(1))
+            .unwrap();
+
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime
+                .tracks
+                .get_mut(&created.track_id)
+                .unwrap()
+                .state
+                .latency
+                .adjustment = BackendRecordingOffsetAdjustment::ManualOverride(9);
+            runtime.prepare_loop_latency(created.loops[1]).unwrap();
+            runtime.driver.dummy_request_controlled_frames(8);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        backend.wait_idle();
+
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.loops[&armed].mode, BackendLoopMode::Recording);
+        assert_eq!(
+            snapshot.tracks[&created.track_id]
+                .latency
+                .effective_offset_frames,
+            Some(9)
+        );
+        assert_eq!(snapshot.loops[&armed].capture_alignment_frames, 5);
     }
 
     #[shoop_wasm_test_support::shoop_test]
