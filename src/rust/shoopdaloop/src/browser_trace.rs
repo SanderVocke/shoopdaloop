@@ -1,11 +1,18 @@
 use anyhow::anyhow;
 use js_sys::{Array, ArrayBuffer, Object, Reflect, Uint8Array};
+use std::cell::Cell;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::MessagePort;
 
 const RECORD_BYTES: usize = 48;
 const TRACE_PROTOCOL_VERSION: u32 = 2;
 const TRACE_POOL_SIZE: usize = 3;
+const MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
+const MAX_REALM_TRACE_BYTES: usize = 512 * 1024 * 1024;
+
+thread_local! {
+    static NEXT_CAPTURE_ID: Cell<u64> = const { Cell::new(1) };
+}
 
 type Result<T> = std::result::Result<T, BrowserTraceError>;
 
@@ -46,6 +53,29 @@ fn number(data: &JsValue, name: &str) -> Result<f64> {
         .ok_or_else(|| anyhow!("trace message {name} is not numeric").into())
 }
 
+fn integer(data: &JsValue, name: &str, maximum: u64) -> Result<u64> {
+    let value = number(data, name)?;
+    if !value.is_finite() || value < 0.0 || value.fract() != 0.0 || value > maximum as f64 {
+        return Err(anyhow!("trace message {name} is not a valid integer").into());
+    }
+    Ok(value as u64)
+}
+
+fn next_capture_id() -> u64 {
+    NEXT_CAPTURE_ID.with(|next| {
+        let id = next.get();
+        next.set(if id == MAX_SAFE_INTEGER { 1 } else { id + 1 });
+        id
+    })
+}
+
+#[derive(Debug)]
+enum TerminalState {
+    Active,
+    Complete,
+    Aborted(String),
+}
+
 pub struct RealmTraceState {
     realm_id: u32,
     capture_id: u64,
@@ -59,7 +89,7 @@ pub struct RealmTraceState {
     calibrations: Vec<shoop_tracing::BrowserCalibration>,
     records: Vec<u8>,
     health: shoop_tracing::BrowserHealth,
-    stopped: bool,
+    terminal: TerminalState,
 }
 
 impl RealmTraceState {
@@ -76,7 +106,7 @@ impl RealmTraceState {
         }
         Ok(Self {
             realm_id,
-            capture_id: u64::from(realm_id),
+            capture_id: next_capture_id(),
             clock_id,
             label: label.into(),
             ticks_per_second,
@@ -87,7 +117,7 @@ impl RealmTraceState {
             calibrations: Vec::new(),
             records: Vec::new(),
             health: shoop_tracing::BrowserHealth::default(),
-            stopped: false,
+            terminal: TerminalState::Active,
         })
     }
 
@@ -184,15 +214,25 @@ impl RealmTraceState {
         let kind = Reflect::get(data, &"kind".into())
             .ok()
             .and_then(|value| value.as_string());
+        if kind
+            .as_deref()
+            .is_some_and(|kind| kind.starts_with("shoop-trace-"))
+            && !self.matches_capture(data)?
+        {
+            tracing::debug!(
+                realm = self.realm_id,
+                "frontend.browser_trace.stale_message_ignored"
+            );
+            return Ok(true);
+        }
         match kind.as_deref() {
             Some("shoop-trace-metadata") => {
-                self.validate_capture(data)?;
                 let entries = Array::from(&Reflect::get(data, &"metadata".into())?);
                 self.metadata.clear();
                 for value in entries.iter() {
                     self.metadata.push(shoop_tracing::BrowserMetadata {
-                        id: number(&value, "id")? as u32,
-                        namespace: number(&value, "namespace")? as u8,
+                        id: integer(&value, "id", u32::MAX.into())? as u32,
+                        namespace: integer(&value, "namespace", u8::MAX.into())? as u8,
                         label: Reflect::get(&value, &"label".into())?
                             .as_string()
                             .ok_or_else(|| anyhow!("trace metadata label is not a string"))?,
@@ -210,8 +250,7 @@ impl RealmTraceState {
                 Ok(true)
             }
             Some("shoop-trace-stopped") => {
-                self.validate_capture(data)?;
-                let chunk_count = number(data, "chunkCount")? as u64;
+                let chunk_count = integer(data, "chunkCount", MAX_SAFE_INTEGER)?;
                 if chunk_count != self.next_sequence {
                     return Err(anyhow!(
                         "trace stopped with {chunk_count} chunks after receiving {}",
@@ -219,32 +258,34 @@ impl RealmTraceState {
                     )
                     .into());
                 }
-                self.health.emitted_records = number(data, "emittedRecords")? as u64;
-                self.health.dropped_records = number(data, "droppedRecords")? as u64;
-                self.health.raw_dropped_records = number(data, "rawDroppedRecords")? as u64;
-                self.health.pool_starvation_records = number(data, "poolStarvationRecords")? as u64;
+                self.health.emitted_records = integer(data, "emittedRecords", MAX_SAFE_INTEGER)?;
+                self.health.dropped_records = integer(data, "droppedRecords", MAX_SAFE_INTEGER)?;
+                self.health.raw_dropped_records =
+                    integer(data, "rawDroppedRecords", MAX_SAFE_INTEGER)?;
+                self.health.pool_starvation_records =
+                    integer(data, "poolStarvationRecords", MAX_SAFE_INTEGER)?;
                 self.health.completed_batches = chunk_count;
-                self.health.high_water_records = number(data, "highWaterRecords")? as usize;
-                self.health.max_in_flight_chunks = number(data, "maxInFlight")? as usize;
-                self.health.returned_buffers = number(data, "returnedBuffers")? as u64;
-                self.health.rejected_chunks = number(data, "rejectedChunks")? as u64;
+                self.health.high_water_records =
+                    integer(data, "highWaterRecords", usize::MAX as u64)? as usize;
+                self.health.max_in_flight_chunks =
+                    integer(data, "maxInFlight", TRACE_POOL_SIZE as u64)? as usize;
+                self.health.returned_buffers = integer(data, "returnedBuffers", MAX_SAFE_INTEGER)?;
+                self.health.rejected_chunks = integer(data, "rejectedChunks", MAX_SAFE_INTEGER)?;
                 self.add_message_calibration(data)?;
-                self.stopped = true;
+                self.terminal = TerminalState::Complete;
                 tracing::info!(realm = self.realm_id, "frontend.browser_trace.stopped");
                 Ok(true)
             }
             Some("shoop-trace-aborted") => {
-                self.validate_capture(data)?;
-                self.stopped = true;
-                Err(anyhow!("{} trace producer aborted", self.label).into())
+                self.abort_with_reason(format!("{} trace producer aborted", self.label));
+                Ok(true)
             }
             _ => Ok(false),
         }
     }
 
     fn handle_chunk(&mut self, data: &JsValue, port: &MessagePort) -> Result<()> {
-        self.validate_capture(data)?;
-        let sequence = number(data, "sequence")? as u64;
+        let sequence = integer(data, "sequence", MAX_SAFE_INTEGER)?;
         if sequence != self.next_sequence {
             return Err(anyhow!(
                 "expected trace chunk {}, received {sequence}",
@@ -252,7 +293,7 @@ impl RealmTraceState {
             )
             .into());
         }
-        let token = number(data, "poolToken")? as usize;
+        let token = integer(data, "poolToken", (TRACE_POOL_SIZE - 1) as u64)? as usize;
         let owned = self
             .collector_owned_tokens
             .get_mut(token)
@@ -260,7 +301,7 @@ impl RealmTraceState {
         if *owned {
             return Err(anyhow!("trace pool token {token} is already collector-owned").into());
         }
-        let used_bytes = number(data, "usedBytes")? as usize;
+        let used_bytes = integer(data, "usedBytes", self.chunk_bytes as u64)? as usize;
         if used_bytes == 0 || used_bytes > self.chunk_bytes || used_bytes % RECORD_BYTES != 0 {
             return Err(anyhow!("invalid trace chunk byte count {used_bytes}").into());
         }
@@ -272,13 +313,29 @@ impl RealmTraceState {
         }
         *owned = true;
         let view = Uint8Array::new_with_byte_offset_and_length(&buffer, 0, used_bytes as u32);
+        let final_record = view
+            .slice((used_bytes - RECORD_BYTES) as u32, used_bytes as u32)
+            .to_vec();
+        if !shoop_tracing::raw_chunk_ends_group(&final_record) {
+            return Err(anyhow!("trace chunk ends inside a record group").into());
+        }
         let offset = self.records.len();
+        if offset > MAX_REALM_TRACE_BYTES.saturating_sub(used_bytes) {
+            self.health.storage_failures = self.health.storage_failures.saturating_add(1);
+            return Err(anyhow!("browser trace storage quota exhausted").into());
+        }
         self.records
             .try_reserve(used_bytes)
             .map_err(|_| anyhow!("browser trace storage quota exhausted"))?;
         self.records.resize(offset + used_bytes, 0);
         view.copy_to(&mut self.records[offset..]);
-        self.next_sequence = self.next_sequence.saturating_add(1);
+        self.next_sequence = self
+            .next_sequence
+            .checked_add(1)
+            .filter(|value| *value <= MAX_SAFE_INTEGER)
+            .ok_or_else(|| {
+                anyhow!("trace chunk sequence exceeds JavaScript's safe integer range")
+            })?;
 
         let recycle = Object::new();
         Reflect::set(&recycle, &"kind".into(), &"shoop-trace-recycle".into())?;
@@ -300,25 +357,33 @@ impl RealmTraceState {
         Ok(())
     }
 
-    fn validate_capture(&self, data: &JsValue) -> Result<()> {
-        let capture_id = number(data, "captureId")? as u64;
-        if capture_id != self.capture_id {
-            return Err(anyhow!("stale trace capture {capture_id}").into());
-        }
-        Ok(())
+    fn matches_capture(&self, data: &JsValue) -> Result<bool> {
+        Ok(integer(data, "captureId", MAX_SAFE_INTEGER)? == self.capture_id)
     }
 
     pub fn abort(&mut self) {
-        self.stopped = true;
+        self.abort_with_reason(format!("{} trace collection was aborted", self.label));
+    }
+
+    pub fn abort_with_reason(&mut self, reason: impl Into<String>) {
+        self.terminal = TerminalState::Aborted(reason.into());
     }
 
     pub fn stopped(&self) -> bool {
-        self.stopped
+        !matches!(self.terminal, TerminalState::Active)
+    }
+
+    pub fn label(&self) -> &str {
+        &self.label
     }
 
     pub fn finish(self) -> Result<shoop_tracing::BrowserRealmData> {
-        if !self.stopped {
-            return Err(anyhow!("{} trace producer has not stopped", self.label).into());
+        match &self.terminal {
+            TerminalState::Active => {
+                return Err(anyhow!("{} trace producer has not stopped", self.label).into())
+            }
+            TerminalState::Aborted(reason) => return Err(anyhow!(reason.clone()).into()),
+            TerminalState::Complete => {}
         }
         Ok(shoop_tracing::BrowserRealmData {
             id: self.realm_id,

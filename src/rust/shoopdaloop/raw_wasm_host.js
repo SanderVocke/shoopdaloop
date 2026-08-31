@@ -266,7 +266,7 @@ export class ShoopRawWasmHost {
 export class ShoopTraceChunkTransport {
   constructor(host, port, options) {
     if (options.protocolVersion !== 2) throw new Error('trace chunk protocol version mismatch');
-    if (!Number.isInteger(options.captureId) || options.captureId <= 0) {
+    if (!Number.isSafeInteger(options.captureId) || options.captureId <= 0) {
       throw new Error('trace capture ID must be positive');
     }
     if (!Number.isInteger(options.poolSize) || options.poolSize < 2) {
@@ -283,9 +283,26 @@ export class ShoopTraceChunkTransport {
     this.captureId = options.captureId;
     this.chunkBytes = options.chunkBytes;
     this.available = [];
+    this.chunks = [];
     for (let token = 0; token < options.poolSize; token += 1) {
       const buffer = new ArrayBuffer(this.chunkBytes);
-      this.available.push({token, buffer, view: new Uint8Array(buffer), used: 0});
+      const chunk = {
+        token,
+        buffer,
+        view: new Uint8Array(buffer),
+        used: 0,
+        message: {
+          kind: 'shoop-trace-chunk',
+          captureId: this.captureId,
+          sequence: 0,
+          poolToken: token,
+          usedBytes: 0,
+          buffer,
+        },
+        transfer: [buffer],
+      };
+      this.chunks.push(chunk);
+      this.available.push(chunk);
     }
     this.active = this.available.pop();
     this.sequence = 0;
@@ -324,19 +341,20 @@ export class ShoopTraceChunkTransport {
 
   transferActive() {
     if (!this.active || this.active.used === 0) return;
+    if (!Number.isSafeInteger(this.sequence) || this.sequence >= Number.MAX_SAFE_INTEGER) {
+      this.abort({reason: 'trace chunk sequence exceeds JavaScript safe integer range'});
+      return;
+    }
     const chunk = this.active;
     this.active = this.available.pop() || null;
     this.inFlight[chunk.token] = true;
     this.inFlightCount += 1;
     this.maxInFlight = Math.max(this.maxInFlight, this.inFlightCount);
-    this.port.postMessage({
-      kind: 'shoop-trace-chunk',
-      captureId: this.captureId,
-      sequence: this.sequence,
-      poolToken: chunk.token,
-      usedBytes: chunk.used,
-      buffer: chunk.buffer,
-    }, [chunk.buffer]);
+    chunk.message.sequence = this.sequence;
+    chunk.message.usedBytes = chunk.used;
+    chunk.message.buffer = chunk.buffer;
+    chunk.transfer[0] = chunk.buffer;
+    this.port.postMessage(chunk.message, chunk.transfer);
     this.sequence += 1;
   }
 
@@ -356,12 +374,13 @@ export class ShoopTraceChunkTransport {
     if (!(message.buffer instanceof ArrayBuffer) || message.buffer.byteLength !== this.chunkBytes) {
       throw new Error('trace recycle buffer capacity mismatch');
     }
-    this.available.push({
-      token: message.poolToken,
-      buffer: message.buffer,
-      view: new Uint8Array(message.buffer),
-      used: 0,
-    });
+    const chunk = this.chunks[message.poolToken];
+    chunk.buffer = message.buffer;
+    chunk.view = new Uint8Array(message.buffer);
+    chunk.used = 0;
+    chunk.message.buffer = message.buffer;
+    chunk.transfer[0] = message.buffer;
+    this.available.push(chunk);
     if (!this.active) this.active = this.available.pop();
     if (this.stopping) this.tryFinish();
     return true;

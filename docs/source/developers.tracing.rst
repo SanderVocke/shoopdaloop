@@ -64,8 +64,9 @@ AudioWorklet timestamps are exact logical sample frames, not callback CPU
 entry/exit measurements. Browser realms rotate preallocated transferable
 ``ArrayBuffer`` chunks and the Window recycles each buffer after consumption,
 so capture duration is not limited by the producer pool size. The collector
-retains consumed trace data until save; allocation or storage failure aborts the
-capture rather than silently producing a complete-looking trace. Always inspect
+retains consumed trace data until save, with a 512 MiB safety quota per realm;
+quota, allocation, or storage failure aborts the capture rather than silently
+producing a complete-looking trace. Always inspect
 clock calibration, producer drops, discontinuities, and health data when
 interpreting a browser trace.
 

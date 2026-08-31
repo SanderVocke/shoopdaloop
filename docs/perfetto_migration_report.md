@@ -28,8 +28,9 @@ equal-timestamp producer ordering.
   sample-frame timestamps, calibrations, metadata, loss, and high-water health.
   The Window continuously consumes each chunk and returns its detached buffer to
   the originating realm, so captures are not limited to one pool rotation or a
-  fixed record count. Collector allocation or storage failure makes the capture
-  incomplete and prevents save rather than silently truncating it.
+  fixed record count. A 512 MiB per-realm collector safety quota, allocation
+  failure, or storage failure makes the capture incomplete and prevents save
+  rather than silently truncating it.
 - Browser final protobuf collection currently runs during explicit finalization
   on the Window thread rather than in a separate collector Worker. This avoids a
   second generated Wasm artifact while preserving bounded realtime producers and

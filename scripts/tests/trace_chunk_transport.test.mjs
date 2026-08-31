@@ -32,8 +32,12 @@ class FakeHost {
 }
 
 class FakePort {
-  constructor() { this.messages = []; }
+  constructor() {
+    this.messages = [];
+    this.sources = [];
+  }
   postMessage(message, transfer = []) {
+    this.sources.push(message);
     this.messages.push(structuredClone(message, {transfer}));
   }
 }
@@ -73,6 +77,18 @@ test('rotates and recycles chunks beyond the producer pool', () => {
   const stopped = port.messages.find(message => message.kind === 'shoop-trace-stopped');
   assert.equal(stopped.chunkCount, 8);
   assert.equal(host.stopped, true);
+  const chunkEnvelopes = port.sources.filter(message => message.kind === 'shoop-trace-chunk');
+  assert.ok(new Set(chunkEnvelopes).size <= options.poolSize);
+});
+
+test('rejects capture IDs outside the JavaScript safe integer range', () => {
+  assert.throws(
+    () => new ShoopTraceChunkTransport(new FakeHost(), new FakePort(), {
+      ...options,
+      captureId: Number.MAX_SAFE_INTEGER + 1,
+    }),
+    /capture ID/,
+  );
 });
 
 test('capture exceeds the former per-realm record retention limit', () => {

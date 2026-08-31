@@ -92,7 +92,12 @@ impl BrowserWorkerDriver {
                                     error = %error,
                                     "frontend.browser_trace.worker_message_failed"
                                 );
-                                trace.abort();
+                                if let Ok(message) = trace.abort_message() {
+                                    let _ = trace_port.post_message(&message);
+                                }
+                                trace.abort_with_reason(format!(
+                                    "Worker trace message failed: {error}"
+                                ));
                                 receive_control
                                     .fail(format!("Worker trace message failed: {error}"));
                                 true
@@ -239,6 +244,13 @@ impl BrowserWorkerDriver {
 
     pub fn has_active_trace(&self) -> bool {
         self.trace.borrow().is_some()
+    }
+
+    pub fn trace_stopped(&self) -> bool {
+        self.trace
+            .borrow()
+            .as_ref()
+            .is_some_and(crate::browser_trace::RealmTraceState::stopped)
     }
 
     pub fn discard_tracing(&self) {

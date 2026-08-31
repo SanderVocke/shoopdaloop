@@ -38,6 +38,12 @@ pub use tracing::{
     trace_span, warn, warn_span, Level,
 };
 
+#[cfg(target_arch = "wasm32")]
+pub fn raw_chunk_ends_group(record: &[u8]) -> bool {
+    perfetto_everywhere_core::Record::decode(record)
+        .is_ok_and(|record| record.flags & perfetto_everywhere_core::FLAG_GROUP_END != 0)
+}
+
 static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
 static TRACING_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
 static ENGINE_DETAIL_ENABLED: AtomicBool = AtomicBool::new(false);

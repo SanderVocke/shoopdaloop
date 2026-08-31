@@ -58,6 +58,7 @@ struct PhysicalAudioDriverState {
     repaint_context: Option<eframe::egui::Context>,
     trace: Option<crate::browser_trace::RealmTraceState>,
     completed_trace_segments: Vec<shoop_tracing::BrowserRealmData>,
+    trace_failure: Option<String>,
     next_trace_realm_id: u32,
 }
 
@@ -102,6 +103,7 @@ impl BrowserAudioController {
             repaint_context: None,
             trace: None,
             completed_trace_segments: Vec::new(),
+            trace_failure: None,
             next_trace_realm_id: 4,
         }));
         let weak = Rc::downgrade(&inner);
@@ -250,6 +252,7 @@ impl BrowserAudioController {
             .post_message(&message)
             .map_err(|error| anyhow!("could not start AudioWorklet tracing: {error:?}"))?;
         inner.trace = Some(trace);
+        inner.trace_failure = None;
         Ok(true)
     }
 
@@ -264,6 +267,15 @@ impl BrowserAudioController {
         self.driver.state.borrow().trace.is_some()
     }
 
+    pub fn trace_stopped(&self) -> bool {
+        self.driver
+            .state
+            .borrow()
+            .trace
+            .as_ref()
+            .is_some_and(crate::browser_trace::RealmTraceState::stopped)
+    }
+
     pub fn discard_tracing(&self) {
         let mut inner = self.driver.state.borrow_mut();
         if let (Some(trace), Some(node)) = (inner.trace.as_ref(), inner.node.as_ref()) {
@@ -275,6 +287,7 @@ impl BrowserAudioController {
             trace.abort();
         }
         inner.completed_trace_segments.clear();
+        inner.trace_failure = None;
     }
 
     pub fn request_stop_tracing(&self) -> Result<()> {
@@ -296,6 +309,9 @@ impl BrowserAudioController {
 
     pub fn take_traces(&self) -> Result<Option<Vec<shoop_tracing::BrowserRealmData>>> {
         let mut inner = self.driver.state.borrow_mut();
+        if let Some(error) = inner.trace_failure.take() {
+            return Err(anyhow!(error).into());
+        }
         if inner.trace.as_ref().is_some_and(|trace| !trace.stopped()) {
             return Ok(None);
         }
@@ -662,7 +678,12 @@ async fn start_audio_graph(
                                 error = %error,
                                 "frontend.browser_trace.audio_message_failed"
                             );
-                            trace.abort();
+                            if let Ok(message) = trace.abort_message() {
+                                let _ = trace_port.post_message(&message);
+                            }
+                            trace.abort_with_reason(format!(
+                                "AudioWorklet trace message failed: {error}"
+                            ));
                             inner
                                 .transport
                                 .fail(format!("AudioWorklet trace message failed: {error}"));
@@ -901,18 +922,20 @@ fn stop_stream(stream: &MediaStream) {
 }
 
 fn finalize_active_trace_segment(inner: &mut PhysicalAudioDriverState) {
-    let Some(mut trace) = inner.trace.take() else {
+    if let (Some(trace), Some(node)) = (inner.trace.as_ref(), inner.node.as_ref()) {
+        if let (Ok(port), Ok(message)) = (node.port(), trace.abort_message()) {
+            let _ = port.post_message(&message);
+        }
+    }
+    let Some(trace) = inner.trace.take() else {
         return;
     };
-    trace.abort();
-    let result = trace.finish();
-    match result {
-        Ok(segment) => inner.completed_trace_segments.push(segment),
-        Err(error) => tracing::error!(
-            error = %error,
-            "frontend.browser_trace.audio_segment_finalize_failed"
-        ),
-    }
+    let error = format!(
+        "AudioWorklet graph ended before trace completion ({})",
+        trace.label()
+    );
+    tracing::error!(error = %error, "frontend.browser_trace.audio_segment_finalize_failed");
+    inner.trace_failure = Some(error);
 }
 
 fn shutdown_graph(inner: &mut PhysicalAudioDriverState) {

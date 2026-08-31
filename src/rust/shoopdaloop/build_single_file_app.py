@@ -98,12 +98,16 @@ def build_single_file(dist: Path, output: Path) -> None:
         raise RuntimeError("wasm-bindgen export footer has an unexpected shape")
 
     raw_host_source = raw_host_script_path.read_text(encoding="utf-8")
-    worklet_source = worklet_script_path.read_text(encoding="utf-8").replace(
-        "import { ShoopRawWasmHost } from './raw_wasm_host.js';\n", ""
-    )
-    worker_source = worker_script_path.read_text(encoding="utf-8").replace(
-        "import { ShoopRawWasmHost } from './raw_wasm_host.js';\n", ""
-    )
+    realm_import = "import { ShoopRawWasmHost, ShoopTraceChunkTransport } from './raw_wasm_host.js';\n"
+
+    def strip_realm_import(path: Path) -> str:
+        source = path.read_text(encoding="utf-8")
+        if source.count(realm_import) != 1:
+            raise RuntimeError(f"could not identify realm host import in {path.name}")
+        return source.replace(realm_import, "")
+
+    worklet_source = strip_realm_import(worklet_script_path)
+    worker_source = strip_realm_import(worker_script_path)
     encoded_worklet_source = base64.b64encode(
         f"{raw_host_source}\n{worklet_source}".encode("utf-8")
     ).decode("ascii")

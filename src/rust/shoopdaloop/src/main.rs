@@ -693,6 +693,7 @@ impl UnifiedApp {
             && self
                 .tracing_stop_started
                 .is_some_and(|started| started.elapsed() >= Duration::from_secs(5))
+            && !self.runtime.trace_stopped()
         {
             self.runtime.cancel_tracing_request();
             let _ = self.tracing.discard_active();
@@ -2479,6 +2480,13 @@ impl Runtime {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => controller.request_stop_tracing(),
             BrowserRuntimeMode::Worker(driver) => driver.request_stop_tracing(),
+        }
+    }
+
+    fn trace_stopped(&self) -> bool {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.trace_stopped(),
+            BrowserRuntimeMode::Worker(driver) => driver.trace_stopped(),
         }
     }
 
