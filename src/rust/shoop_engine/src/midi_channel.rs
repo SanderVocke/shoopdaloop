@@ -17,10 +17,12 @@
 
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
+use crate::latency_runtime::{cyclic_render_dispatch_position, LatchedLatency, PreparedLatency};
 use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
 use crate::state_mirror::MidiChannelStateMirror;
+use shoop_latency::{CaptureFrameMapping, LatencyDomainError, MAX_COMPENSATION_FRAMES};
 
 use std::sync::Arc;
 use thiserror::Error;
@@ -39,6 +41,12 @@ pub enum MidiChannelError {
     ReplaceCapacity { required: usize, capacity: usize },
     #[error("invalid MIDI replacement interval or event ordering")]
     InvalidReplacement,
+    #[error("latency mapping exceeds the supported signed media position")]
+    LatencyPositionOverflow,
+    #[error("retained latency margin {frames} exceeds the supported maximum")]
+    RetentionExceedsMaximum { frames: u32 },
+    #[error("MIDI recording storage is exhausted at its prepared capacity of {capacity} events")]
+    StorageExhausted { capacity: usize },
 }
 
 /// How much of the cycle's input buffer has been consumed.
@@ -139,7 +147,12 @@ pub struct MidiChannel {
     loaded_contents: bool,
 
     mode: ChannelMode,
+    /// Raw media layout offset retained for lead-in and MIDI start-state semantics.
     start_offset: i32,
+    /// Frozen raw-take to logical-timeline mapping.
+    capture_alignment_frames: i32,
+    /// Ephemeral early dispatch for current processor rendering.
+    render_advance_frames: u32,
     pre_play_samples: u32,
     n_events_triggered: u32,
     data_seq_nr: u32,
@@ -156,6 +169,12 @@ pub struct MidiChannel {
     replace_scratch: Vec<MidiStorageElem>,
     state: Arc<MidiChannelStateMirror>,
     content_snapshots: Option<MidiProcessSnapshotWriter>,
+    retained_before_frames: u32,
+    retained_after_frames: u32,
+    postroll_remaining_frames: u32,
+    latency_retention_incomplete: bool,
+    pending_latency: Option<PreparedLatency>,
+    latched_latency: Option<LatchedLatency>,
 }
 
 impl MidiChannel {
@@ -200,6 +219,8 @@ impl MidiChannel {
             loaded_contents: false,
             mode,
             start_offset: 0,
+            capture_alignment_frames: 0,
+            render_advance_frames: 0,
             pre_play_samples: 0,
             n_events_triggered: 0,
             data_seq_nr: 0,
@@ -212,6 +233,12 @@ impl MidiChannel {
             replace_scratch: Vec::with_capacity(capacity),
             state,
             content_snapshots,
+            retained_before_frames: 0,
+            retained_after_frames: 0,
+            postroll_remaining_frames: 0,
+            latency_retention_incomplete: false,
+            pending_latency: None,
+            latched_latency: None,
         };
         channel.publish_state();
         channel
@@ -223,6 +250,9 @@ impl MidiChannel {
             self.output_state.n_notes_active(),
             self.data_length,
             self.start_offset,
+            self.capture_alignment_frames,
+            self.postroll_remaining_frames,
+            self.render_advance_frames,
             self.last_played_back_sample,
             self.pre_play_samples,
             self.data_seq_nr as u64,
@@ -260,6 +290,71 @@ impl MidiChannel {
     pub fn mode(&self) -> ChannelMode {
         self.mode
     }
+    pub const fn pending_latency(&self) -> Option<PreparedLatency> {
+        self.pending_latency
+    }
+
+    pub const fn latched_latency(&self) -> Option<LatchedLatency> {
+        self.latched_latency
+    }
+
+    pub fn set_pending_latency(&mut self, values: PreparedLatency) {
+        self.pending_latency = Some(values);
+    }
+
+    pub fn latch_recording_latency(
+        &mut self,
+        operation_frame: u64,
+        require_captured_prerecord: bool,
+        recording_offset: shoop_latency::RecordingOffset,
+    ) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        let frames = recording_offset.frames();
+        self.capture_alignment_frames = frames;
+        self.latency_retention_incomplete = if frames >= 0 {
+            frames as u32 > self.retained_after_frames
+        } else {
+            let required = frames.unsigned_abs();
+            required > self.retained_before_frames
+                || (require_captured_prerecord && required > self.prerecord_data_length)
+        };
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
+    pub fn latch_render_latency(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.render_advance_frames = values.processor_advance().frames();
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
+    pub fn latch_canonical_render_destination(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
         self.publish_state();
@@ -269,6 +364,153 @@ impl MidiChannel {
     }
     pub fn start_offset(&self) -> i32 {
         self.start_offset
+    }
+    pub fn media_layout_offset(&self) -> i32 {
+        self.start_offset
+    }
+    pub fn capture_alignment_frames(&self) -> i32 {
+        self.capture_alignment_frames
+    }
+    pub fn set_capture_alignment_frames(&mut self, frames: i32) -> Result<(), LatencyDomainError> {
+        if frames.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(
+                frames.unsigned_abs(),
+            ));
+        }
+        self.capture_alignment_frames = frames;
+        self.publish_state();
+        Ok(())
+    }
+    pub fn render_advance_frames(&self) -> u32 {
+        self.render_advance_frames
+    }
+    pub fn retained_before_frames(&self) -> u32 {
+        self.retained_before_frames
+    }
+    pub fn retained_after_frames(&self) -> u32 {
+        self.retained_after_frames
+    }
+    pub fn restore_retained_margin_metadata(
+        &mut self,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<(), MidiChannelError> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(MidiChannelError::RetentionExceedsMaximum { frames });
+            }
+        }
+        self.retained_before_frames = retained_before_frames;
+        self.retained_after_frames = retained_after_frames;
+        Ok(())
+    }
+    pub fn is_finalizing_latency_postroll(&self) -> bool {
+        self.postroll_remaining_frames > 0
+    }
+    pub fn has_unsettled_latency_postroll(&self) -> bool {
+        self.is_finalizing_latency_postroll()
+            || (self.retained_after_frames > 0
+                && self.prev_process_flags.contains(ProcessFlags::RECORD))
+    }
+    pub fn latency_postroll_remaining_frames(&self) -> u32 {
+        self.postroll_remaining_frames
+    }
+    pub fn latency_retention_incomplete(&self) -> bool {
+        self.latency_retention_incomplete
+    }
+    pub fn restore_take_latency_mapping(
+        &mut self,
+        media_layout_offset: i32,
+        capture_alignment_frames: i32,
+    ) -> Result<(), LatencyDomainError> {
+        self.set_capture_alignment_frames(capture_alignment_frames)?;
+        self.start_offset = media_layout_offset;
+        self.publish_state();
+        Ok(())
+    }
+
+    pub fn can_commit_grab(&self, events: u32) -> bool {
+        events as usize <= self.storage.capacity_elems()
+    }
+    pub fn commit_latency_grab(
+        &mut self,
+        source: &MidiStorage,
+        raw_length: u32,
+        start_state: &MidiStateTracker,
+        media_layout_offset: i32,
+        capture_alignment_frames: i32,
+    ) -> Result<(), LatencyDomainError> {
+        if media_layout_offset.unsigned_abs() > MAX_COMPENSATION_FRAMES
+            || !self.can_commit_grab(source.n_events())
+        {
+            return Err(LatencyDomainError::ValueExceedsMaximum(
+                media_layout_offset.unsigned_abs(),
+            ));
+        }
+        self.set_capture_alignment_frames(capture_alignment_frames)?;
+        source.copy_into(&mut self.storage);
+        self.data_length = raw_length;
+        self.start_offset = media_layout_offset;
+        self.playback_cursor = self.storage.create_cursor();
+        self.recording_start_state.copy_relevant_state(start_state);
+        self.recording_start_valid = true;
+        self.loaded_contents = true;
+        self.publish_snapshot_contents(
+            crate::content_snapshot::ContentMutation::RingbufferAdoption,
+        );
+        self.data_changed();
+        Ok(())
+    }
+    pub fn compensated_take_ready(&self, logical_length: u32) -> bool {
+        let Some(raw_start) = self.raw_position_for_logical(0) else {
+            return false;
+        };
+        if self.capture_alignment_frames <= 0
+            || (self.capture_alignment_frames as u32) < logical_length
+        {
+            return raw_start >= 0;
+        }
+        let Some(raw_end) = raw_start.checked_add(logical_length.min(i32::MAX as u32) as i32)
+        else {
+            return false;
+        };
+        raw_start >= 0 && raw_end >= 0 && raw_end as u32 <= self.data_length
+    }
+    pub fn prepare_latency_retention(
+        &mut self,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<(), MidiChannelError> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(MidiChannelError::RetentionExceedsMaximum { frames });
+            }
+        }
+        self.retained_before_frames = retained_before_frames;
+        self.retained_after_frames = retained_after_frames;
+        self.latency_retention_incomplete = false;
+        Ok(())
+    }
+    pub fn set_render_advance_frames(&mut self, frames: u32) -> Result<(), LatencyDomainError> {
+        if frames > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(frames));
+        }
+        self.render_advance_frames = frames;
+        self.publish_state();
+        Ok(())
+    }
+    pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
+        let mapping = CaptureFrameMapping::new(self.capture_alignment_frames).ok()?;
+        i32::try_from(
+            mapping
+                .raw_media_frame(i64::from(logical_position), i64::from(self.start_offset))
+                .ok()?,
+        )
+        .ok()
+    }
+    pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
+        self.raw_position_for_logical(logical_position)?
+            .checked_add(i32::try_from(self.render_advance_frames).ok()?)
     }
     pub fn set_start_offset(&mut self, offset: i32) {
         self.start_offset = offset;
@@ -335,6 +577,15 @@ impl MidiChannel {
         self.pending_playback_valid = false;
         self.loaded_contents = false;
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.prev_process_flags =
+            ProcessFlags(self.prev_process_flags.0 & ProcessFlags::PLAYBACK.0);
+        self.retained_before_frames = 0;
+        self.retained_after_frames = 0;
+        self.postroll_remaining_frames = 0;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
@@ -342,6 +593,15 @@ impl MidiChannel {
             snapshots.finish_mutation(false);
         }
         self.data_changed();
+    }
+
+    pub(crate) fn abort_latency_take(&mut self) {
+        self.clear();
+        self.prev_process_flags = ProcessFlags::NONE;
+        self.postroll_remaining_frames = 0;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
+        self.publish_state();
     }
 
     /// Replaces contents. `start_state` is the state to restore when playback
@@ -369,6 +629,9 @@ impl MidiChannel {
             self.storage.append(m.time, m.data(), false, None);
         }
         self.data_length = length;
+        self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.playback_cursor = self.storage.create_cursor();
         self.recording_start_state.clear();
         self.recording_start_valid = start_state.is_some();
@@ -391,6 +654,9 @@ impl MidiChannel {
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         std::mem::swap(&mut self.recording_start_state, &mut prepared.start_state);
         self.recording_start_valid = prepared.start_state_valid;
+        self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.playback_cursor = self.storage.create_cursor();
         self.loaded_contents = true;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -533,8 +799,22 @@ impl MidiChannel {
             flags = ProcessFlags(flags.0 & !ProcessFlags::PLAYBACK.0);
         }
 
+        if self.prev_process_flags.contains(ProcessFlags::RECORD)
+            && !flags.contains(ProcessFlags::RECORD)
+            && self.postroll_remaining_frames == 0
+        {
+            self.postroll_remaining_frames = self.retained_after_frames;
+        }
+        let postroll_samples = if !flags.contains(ProcessFlags::RECORD) && self.rec.is_some() {
+            n_samples.min(self.postroll_remaining_frames)
+        } else {
+            0
+        };
+
         let previous_mutation = snapshot_mutation(self.prev_process_flags);
-        let current_mutation = snapshot_mutation(flags);
+        let current_mutation = snapshot_mutation(flags).or_else(|| {
+            (postroll_samples > 0).then_some(crate::content_snapshot::ContentMutation::Recording)
+        });
         if previous_mutation != current_mutation {
             if let Some(previous) = previous_mutation {
                 if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -606,23 +886,106 @@ impl MidiChannel {
 
         let mut processed_input = false;
 
+        if postroll_samples > 0 {
+            self.process_record(false, self.data_length, postroll_samples, input)?;
+            self.postroll_remaining_frames = self
+                .postroll_remaining_frames
+                .saturating_sub(postroll_samples);
+            processed_input = true;
+            if self.postroll_remaining_frames == 0 {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    snapshots.finish_mutation(false);
+                }
+            }
+        }
+
         if flags.contains(ProcessFlags::PLAYBACK) {
+            let mapping = CaptureFrameMapping::new(self.capture_alignment_frames)
+                .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
+            let render_advance_frames = if matches!(
+                mode,
+                LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+            ) || (params.flags.contains(ProcessFlags::PLAYBACK)
+                && matches!(
+                    next_mode,
+                    LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+                )) {
+                self.render_advance_frames
+            } else {
+                0
+            };
+            let dispatch_position = cyclic_render_dispatch_position(
+                params.position,
+                self.start_offset,
+                self.capture_alignment_frames,
+                render_advance_frames,
+                length_before,
+            )
+            .ok_or(MidiChannelError::LatencyPositionOverflow)?;
             let restarting = !self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
                 || self
                     .last_played_back_sample
-                    .is_some_and(|l| l > params.position);
+                    .is_some_and(|last| last > dispatch_position);
             if restarting {
-                self.playback_cursor.reset(&self.storage);
-                let MidiChannel {
-                    pending_playback_state,
-                    recording_start_state,
-                    ..
-                } = self;
-                pending_playback_state.copy_relevant_state(recording_start_state);
-                self.pending_playback_valid = self.recording_start_valid;
+                let crossed_source_wrap = self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
+                    && self
+                        .last_played_back_sample
+                        .is_some_and(|last| last > dispatch_position);
+                if crossed_source_wrap {
+                    let time = self.play.map(|play| play.n_frames_processed).unwrap_or(0);
+                    self.stop_active_playback_notes(out, time);
+                }
+                self.reset_playback_cursor_and_pending_state();
             }
-            self.process_playback(params.position, n_samples, false, out)?;
-        } else if self.last_played_back_sample.is_some() {
+
+            let cyclic_window = (render_advance_frames > 0 && length_before > 0)
+                .then(|| {
+                    let start = i32::try_from(
+                        mapping
+                            .raw_frame(i64::from(self.start_offset))
+                            .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
+                    )
+                    .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
+                    let end = start
+                        .checked_add(
+                            i32::try_from(length_before)
+                                .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
+                        )
+                        .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                    Ok::<_, MidiChannelError>((start, end))
+                })
+                .transpose()?;
+            let mut source_position = dispatch_position;
+            let mut remaining = n_samples;
+            let mut output_offset = 0;
+            while remaining > 0 {
+                let segment = cyclic_window
+                    .map(|(_, end)| remaining.min((end - source_position).max(0) as u32))
+                    .unwrap_or(remaining);
+                if segment == 0 {
+                    break;
+                }
+                self.process_playback(source_position, segment, false, out, output_offset)?;
+                source_position = source_position
+                    .checked_add(segment as i32)
+                    .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                remaining -= segment;
+                output_offset += segment;
+                if remaining > 0 {
+                    if let Some((start, end)) = cyclic_window {
+                        if source_position == end {
+                            let time = self
+                                .play
+                                .map(|play| play.n_frames_processed + output_offset)
+                                .unwrap_or(output_offset);
+                            self.stop_active_playback_notes(out, time);
+                            self.reset_playback_cursor_and_pending_state();
+                            source_position = start;
+                        }
+                    }
+                }
+            }
+        } else {
             self.last_played_back_sample = None;
         }
 
@@ -641,9 +1004,15 @@ impl MidiChannel {
             self.process_record(true, from, n_samples, input)?;
             processed_input = true;
         }
-
         self.prev_pos_after = pos_after;
-        self.prev_process_flags = flags;
+        if self.prev_process_flags.contains(ProcessFlags::REPLACE)
+            && !flags.contains(ProcessFlags::REPLACE)
+        {}
+        self.prev_process_flags = if self.postroll_remaining_frames > 0 {
+            flags.with(ProcessFlags::RECORD)
+        } else {
+            flags
+        };
 
         if adopted_prerecording {
             self.data_changed();
@@ -850,19 +1219,30 @@ impl MidiChannel {
                     }
                 }
                 let at = record_from + e.time - rec.n_frames_processed;
+                let storage_full = if into_prerecord {
+                    self.prerecord_storage.n_events() as usize
+                        >= self.prerecord_storage.capacity_elems()
+                } else {
+                    self.storage.n_events() as usize >= self.storage.capacity_elems()
+                };
                 let stored = if into_prerecord {
                     self.prerecord_storage.append(at, e.data(), false, None)
                 } else {
                     self.storage.append(at, e.data(), false, None)
                 };
+                if !stored && storage_full {
+                    return Err(MidiChannelError::StorageExhausted {
+                        capacity: self.storage.capacity_elems(),
+                    });
+                }
                 if stored {
                     if let Some(snapshots) = self.content_snapshots.as_mut() {
                         if let Some(event) = MidiStorageElem::new(at, e.data()) {
                             snapshots.append_storage_events(&[event], at, false);
                         }
                     }
+                    changed = true;
                 }
-                changed |= stored;
             }
             self.input_state.process(e.data());
             idx += 1;
@@ -896,19 +1276,32 @@ impl MidiChannel {
         Ok(())
     }
 
+    fn reset_playback_cursor_and_pending_state(&mut self) {
+        self.playback_cursor.reset(&self.storage);
+        let MidiChannel {
+            pending_playback_state,
+            recording_start_state,
+            ..
+        } = self;
+        pending_playback_state.copy_relevant_state(recording_start_state);
+        self.pending_playback_valid = self.recording_start_valid;
+    }
+
     fn process_playback(
         &mut self,
         our_pos: i32,
         n_samples: u32,
         muted: bool,
         out: &mut Vec<MidiStorageElem>,
+        output_offset: u32,
     ) -> Result<(), MidiChannelError> {
         let Some(play) = self.play else {
             return Err(MidiChannelError::NoPlaybackBuffer);
         };
-        if play.frames_left() < n_samples {
+        let required = output_offset.saturating_add(n_samples);
+        if play.frames_left() < required {
             return Err(MidiChannelError::PlaybackOutOfBounds {
-                n_samples,
+                n_samples: required,
                 available: play.frames_left(),
             });
         }
@@ -939,7 +1332,11 @@ impl MidiChannel {
             self.last_played_back_sample = Some(t);
         }
 
-        let valid_from = our_pos.max(self.start_offset - self.pre_play_samples as i32);
+        let valid_from = our_pos.max(
+            self.start_offset
+                .saturating_add(self.capture_alignment_frames)
+                .saturating_sub(self.pre_play_samples as i32),
+        );
         let valid_to = our_pos + n_samples as i32;
 
         while self.playback_cursor.valid() {
@@ -955,7 +1352,7 @@ impl MidiChannel {
                 && our_pos + n_samples as i32 > valid_from
             {
                 self.pending_playback_valid = false;
-                let time = play.n_frames_processed;
+                let time = play.n_frames_processed + output_offset;
                 let mut restore = std::mem::take(&mut self.restore_scratch);
                 restore.clear();
                 // Undo the drift of the *input*, not of what this channel sent. While
@@ -974,7 +1371,8 @@ impl MidiChannel {
                 break;
             }
             if t >= valid_from && !muted {
-                let buffer_time = (t - our_pos) + play.n_frames_processed as i32;
+                let buffer_time =
+                    (t - our_pos) + play.n_frames_processed as i32 + output_offset as i32;
                 // `event` is an owned copy, so its payload can be passed straight
                 // through without copying it again.
                 self.send(out, buffer_time.max(0) as u32, event.data());
@@ -1020,6 +1418,14 @@ mod tests {
 
     fn channel() -> MidiChannel {
         MidiChannel::with_capacity_elems(64, C::Direct)
+    }
+
+    fn playback_mode_for_test(role: ChannelMode) -> LoopMode {
+        if role == C::Dry {
+            L::PlayingDryThroughWet
+        } else {
+            L::Playing
+        }
     }
 
     fn ev(time: u32, data: &[u8]) -> MidiStorageElem {
@@ -1075,6 +1481,140 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn legacy_media_layout_offset_is_independent_of_midi_latency_bounds() {
+        let mut ch = channel();
+        let media_offset = i32::MIN + 1;
+        ch.restore_take_latency_mapping(media_offset, 7).unwrap();
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
+        assert!(ch
+            .restore_take_latency_mapping(
+                media_offset,
+                shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1,
+            )
+            .is_err());
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn prepared_midi_latency_postroll_retains_final_events() {
+        let mut ch = channel();
+        ch.prepare_latency_retention(2, 3).unwrap();
+        cycle(
+            &mut ch,
+            L::Recording,
+            4,
+            0,
+            0,
+            &[ev(1, &midi::note_on(0, 60, 100))],
+        );
+        cycle(
+            &mut ch,
+            L::Stopped,
+            2,
+            0,
+            4,
+            &[ev(1, &midi::note_on(0, 61, 100))],
+        );
+        check!(ch.is_finalizing_latency_postroll());
+        cycle(
+            &mut ch,
+            L::Stopped,
+            2,
+            0,
+            4,
+            &[ev(0, &midi::note_on(0, 62, 100))],
+        );
+        check!(!ch.is_finalizing_latency_postroll());
+        check!(ch.length() == 7);
+        check!(times(&ch.contents()) == vec![1, 5, 6]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn armed_midi_latency_record_and_postroll_allocate_nothing() {
+        let mut ch = channel();
+        ch.prepare_latency_retention(0, 3).unwrap();
+        let recording = [ev(1, &midi::note_on(0, 60, 100))];
+        let postroll = [ev(0, &midi::note_off(0, 60, 0))];
+        let mut output = Vec::with_capacity(16);
+
+        ch.set_recording_buffer(4);
+        ch.set_playback_buffer(4);
+        assert_no_alloc::assert_no_alloc(|| {
+            ch.process(
+                L::Recording,
+                L::Unknown,
+                None,
+                None,
+                4,
+                0,
+                4,
+                0,
+                &recording,
+                &mut output,
+            )
+            .unwrap();
+        });
+        ch.set_recording_buffer(3);
+        ch.set_playback_buffer(3);
+        output.clear();
+        assert_no_alloc::assert_no_alloc(|| {
+            ch.process(
+                L::Stopped,
+                L::Unknown,
+                None,
+                None,
+                3,
+                0,
+                0,
+                4,
+                &postroll,
+                &mut output,
+            )
+            .unwrap();
+        });
+        check!(ch.length() == 7);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compensated_midi_record_then_play_maps_postroll_across_callbacks_and_wrap() {
+        let mut ch = channel();
+        ch.prepare_latency_retention(0, 2).unwrap();
+        ch.set_capture_alignment_frames(2).unwrap();
+        cycle(&mut ch, L::Recording, 4, 0, 0, &[]);
+        cycle(
+            &mut ch,
+            L::Stopped,
+            2,
+            0,
+            4,
+            &[ev(1, &midi::note_on(0, 67, 100))],
+        );
+        check!(ch.length() == 6);
+
+        let first_half = cycle(&mut ch, L::Playing, 2, 0, 4, &[]);
+        check!(!first_half.iter().any(|event| {
+            event.data().len() >= 3
+                && event.data()[0] & 0xf0 == 0x90
+                && event.data()[1] == 67
+                && event.data()[2] > 0
+        }));
+        let out = cycle(&mut ch, L::Playing, 2, 2, 4, &[]);
+        check!(out
+            .iter()
+            .any(|event| event.time == 1 && event.data()[1] == 67));
+        let wrap_cleanup = cycle(&mut ch, L::Playing, 2, 0, 4, &[]);
+        check!(wrap_cleanup
+            .iter()
+            .all(|event| !(event.data()[0] & 0xf0 == 0x90 && event.data()[2] > 0)));
+        let out = cycle(&mut ch, L::Playing, 2, 2, 4, &[]);
+        check!(out
+            .iter()
+            .any(|event| event.time == 1 && event.data()[1] == 67));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_across_two_calls_offsets_times() {
         let mut ch = channel();
         ch.set_recording_buffer(8);
@@ -1116,6 +1656,44 @@ mod tests {
         // The second message lands at its absolute recorded position.
         check!(times(&ch.contents()) == vec![1, 6]);
         check!(ch.length() == 8);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_into_wet_midi_replacement_writes_canonical_logical_frames() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Wet);
+        ch.set_contents(&[ev(3, &midi::note_on(0, 70, 100))], 4, Some(&[]));
+        ch.set_capture_alignment_frames(2).unwrap();
+        let input = [ev(1, &midi::note_on(0, 60, 100))];
+        cycle(&mut ch, L::RecordingDryIntoWet, 4, 0, 4, &input);
+        check!(ch.contents().iter().any(|event| {
+            event.time == 1 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+        check!(!ch.contents().iter().any(|event| event.data()[1] == 70));
+
+        ch.set_capture_alignment_frames(0).unwrap();
+        let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(out.iter().any(|event| {
+            event.time == 1 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_compatible_midi_replacement_writes_raw_timeline_once() {
+        for role in [C::Direct, C::Dry, C::Wet] {
+            let mut ch = MidiChannel::with_capacity_elems(64, role);
+            ch.set_contents(&[], 8, Some(&[]));
+            ch.set_capture_alignment_frames(3).unwrap();
+            let replacement = [ev(0, &midi::note_on(0, 60, 100))];
+            cycle(&mut ch, L::Replacing, 1, 5, 8, &replacement);
+            check!(ch
+                .contents()
+                .iter()
+                .any(|event| event.time == 5 && midi::is_note_on(event.data())));
+            let playback = cycle(&mut ch, playback_mode_for_test(role), 1, 2, 8, &[]);
+            check!(playback
+                .iter()
+                .any(|event| event.time == 0 && midi::is_note_on(event.data())));
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1429,6 +2007,112 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn media_layout_capture_alignment_and_render_advance_map_midi_together() {
+        let state = Arc::new(MidiChannelStateMirror::default());
+        let mut ch = MidiChannel::with_capacity_elems_and_state(64, C::Direct, Arc::clone(&state));
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 50, 100)),
+                ev(7, &midi::note_on(0, 57, 100)),
+            ],
+            12,
+            None,
+        );
+        ch.set_start_offset(2);
+        ch.set_capture_alignment_frames(3).unwrap();
+        ch.set_render_advance_frames(2).unwrap();
+        check!(ch.raw_position_for_logical(0) == Some(5));
+        check!(ch.dispatch_raw_position_for_logical(0) == Some(7));
+        let out = cycle(&mut ch, L::PlayingDryThroughWet, 2, 0, 8, &[]);
+        check!(out
+            .iter()
+            .any(|event| event.time == 0 && event.data()[1] == 57));
+        check!(!out.iter().any(|event| event.data()[1] == 50));
+        let published = state.read(ch.data_seq_nr() as u64);
+        check!(published.capture_alignment_frames == 3);
+        check!(published.render_advance_frames == 2);
+
+        let ordinary = cycle(&mut ch, L::Playing, 2, 0, 8, &[]);
+        check!(!ordinary
+            .iter()
+            .any(|event| midi::is_note_on(event.data()) && event.data()[1] == 57));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn planned_midi_render_preroll_restores_state_at_dispatch_start() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Dry);
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(0, &midi::note_off(0, 60, 0)),
+            ],
+            8,
+            Some(&[midi::cc(0, 7, 99).to_vec()]),
+        );
+        ch.set_render_advance_frames(3).unwrap();
+        ch.set_playback_buffer(3);
+        ch.set_recording_buffer(3);
+        let mut out = Vec::with_capacity(16);
+        ch.process(
+            L::Stopped,
+            L::PlayingDryThroughWet,
+            Some(0),
+            Some(3),
+            3,
+            0,
+            0,
+            8,
+            &[],
+            &mut out,
+        )
+        .unwrap();
+
+        check!(out
+            .iter()
+            .any(|event| { event.time == 0 && event.data() == midi::cc(0, 7, 99).as_slice() }));
+        check!(out.iter().any(|event| {
+            event.time == 0 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_render_advance_cycles_inside_selected_midi_take() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Dry);
+        let mut events = Vec::new();
+        for (raw_frame, note) in [(3, 60), (4, 61), (5, 62), (6, 63)] {
+            events.push(ev(raw_frame, &midi::note_on(0, note, 100)));
+            events.push(ev(raw_frame, &midi::note_off(0, note, 0)));
+        }
+        ch.set_contents(&events, 8, Some(&[]));
+        ch.set_start_offset(2);
+        ch.set_capture_alignment_frames(1).unwrap();
+        ch.set_render_advance_frames(11).unwrap();
+
+        let out = cycle(&mut ch, L::PlayingDryThroughWet, 4, 0, 4, &[]);
+        let notes = out
+            .iter()
+            .filter(|event| midi::is_note_on(event.data()))
+            .map(|event| (event.time, event.data()[1]))
+            .collect::<Vec<_>>();
+        check!(notes == vec![(0, 63), (1, 60), (2, 61), (3, 62)]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_render_wrap_cleans_up_held_notes_at_callback_boundary() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Dry);
+        ch.set_contents(&[ev(3, &midi::note_on(0, 60, 100))], 4, Some(&[]));
+        ch.set_render_advance_frames(3).unwrap();
+
+        let first = cycle(&mut ch, L::PlayingDryThroughWet, 1, 0, 4, &[]);
+        check!(first.iter().any(|event| midi::is_note_on(event.data())));
+        let wrapped = cycle(&mut ch, L::PlayingDryThroughWet, 1, 1, 4, &[]);
+        check!(wrapped
+            .iter()
+            .any(|event| event.time == 0 && midi::is_note_off(event.data())));
+        check!(ch.n_notes_active() == 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_only_emits_messages_inside_the_window() {
         let mut ch = channel();
         cycle(
@@ -1447,6 +2131,44 @@ mod tests {
         // Play only the first half.
         let out = cycle(&mut ch, L::Playing, 4, 0, 8, &[]);
         check!(times(&out) == vec![1, 2]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compensated_window_restores_midi_start_state_and_equal_frame_order() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &[0xb0, 7, 99]),
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(3, &[0xb0, 10, 1]),
+                ev(3, &[0xb0, 11, 2]),
+            ],
+            6,
+            Some(&[]),
+        );
+        ch.set_capture_alignment_frames(2).unwrap();
+        let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+
+        check!(out.iter().any(|event| {
+            event.time == 0 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+        check!(out
+            .iter()
+            .any(|event| event.time == 0 && event.data() == [0xb0, 7, 99]));
+        let at_one = out
+            .iter()
+            .filter(|event| event.time == 1)
+            .map(|event| event.data().to_vec())
+            .collect::<Vec<_>>();
+        check!(
+            at_one
+                == vec![
+                    midi::note_off(0, 60, 0).to_vec(),
+                    vec![0xb0, 10, 1],
+                    vec![0xb0, 11, 2],
+                ]
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1633,10 +2355,18 @@ mod tests {
             0,
             &[ev(0, &midi::note_on(0, 60, 1))],
         );
+        let played = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(played
+            .iter()
+            .any(|event| event.data() == midi::note_on(0, 60, 1).as_slice()));
         ch.clear();
         check!(ch.n_events() == 0);
         check!(ch.length() == 0);
         check!(ch.recording_start_state_messages().is_empty());
+        let stopped = cycle(&mut ch, L::Stopped, 1, 0, 0, &[]);
+        check!(stopped
+            .iter()
+            .any(|event| event.data() == midi::note_off(0, 60, 0).as_slice()));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1807,6 +2537,54 @@ mod tests {
         check!(recorded.contains(&midi::note_on(0, 60, 1).to_vec()));
         check!(recorded.contains(&midi::note_on(0, 61, 1).to_vec()));
         check!(ch.start_offset() == 4);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn negative_midi_take_alignment_selects_retained_prerecord_material() {
+        let mut ch = channel();
+        ch.set_recording_buffer(2);
+        ch.set_playback_buffer(2);
+        let prerecord = [
+            ev(0, &midi::note_on(0, 60, 100)),
+            ev(0, &midi::note_off(0, 60, 0)),
+        ];
+        let mut out = Vec::with_capacity(16);
+        ch.process(
+            L::Stopped,
+            L::Recording,
+            Some(0),
+            Some(2),
+            2,
+            0,
+            0,
+            0,
+            &prerecord,
+            &mut out,
+        )
+        .unwrap();
+
+        ch.set_recording_buffer(4);
+        ch.set_playback_buffer(4);
+        out.clear();
+        ch.process(
+            L::Recording,
+            L::Unknown,
+            None,
+            None,
+            4,
+            0,
+            4,
+            0,
+            &[],
+            &mut out,
+        )
+        .unwrap();
+        check!(ch.start_offset() == 2);
+        ch.set_capture_alignment_frames(-2).unwrap();
+        let playback = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(playback.iter().any(|event| {
+            event.time == 0 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -4,6 +4,7 @@ use rubato::{
     audioadapter_buffers::direct::SequentialSliceOfVecs, Async, FixedAsync, Resampler,
     SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
+use std::collections::BTreeMap;
 
 const MIN_RATIO: f64 = 1.0 / 16.0;
 const MAX_RATIO: f64 = 64.0;
@@ -31,8 +32,16 @@ pub fn resample_session(
         }
     }
     converted.document.sample_rate = target_sample_rate;
+    let mut compensated_media_lengths = BTreeMap::<String, u64>::new();
     for group in &mut converted.document.track_groups {
         for track in &mut group.tracks {
+            track.latency.manual_frames =
+                scale_signed_nearest(track.latency.manual_frames, source, target_sample_rate)?;
+            track.latency.processor_manual_frames = scale_signed_nearest(
+                track.latency.processor_manual_frames,
+                source,
+                target_sample_rate,
+            )?;
             for port in &mut track.ports {
                 port.ringbuffer_frames =
                     scale_duration(port.ringbuffer_frames, source, target_sample_rate)?;
@@ -47,6 +56,7 @@ pub fn resample_session(
                 loop_.length_frames =
                     scale_duration(loop_.length_frames, source, target_sample_rate)?;
                 for channel in &mut loop_.channels {
+                    let compensated = channel.capture_alignment_frames != 0;
                     channel.data_length_frames =
                         scale_duration(channel.data_length_frames, source, target_sample_rate)?;
                     channel.start_offset_frames = scale_signed_nearest(
@@ -54,8 +64,73 @@ pub fn resample_session(
                         source,
                         target_sample_rate,
                     )?;
+                    channel.capture_alignment_frames = scale_signed_nearest(
+                        channel.capture_alignment_frames,
+                        source,
+                        target_sample_rate,
+                    )?;
                     channel.preplay_frames =
                         scale_duration(channel.preplay_frames, source, target_sample_rate)?;
+                    if compensated {
+                        let required = i128::from(channel.start_offset_frames)
+                            .checked_add(i128::from(channel.capture_alignment_frames))
+                            .and_then(|value| value.checked_add(i128::from(loop_.length_frames)))
+                            .and_then(|value| u64::try_from(value).ok())
+                            .ok_or_else(|| {
+                                SessionError::Validation(
+                                    "resampled compensated media window is out of range".to_owned(),
+                                )
+                            })?;
+                        if let Some(media_id) = &channel.media_id {
+                            compensated_media_lengths
+                                .entry(media_id.clone())
+                                .and_modify(|length| *length = (*length).max(required))
+                                .or_insert(required);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (media_id, required) in compensated_media_lengths {
+        let payload =
+            converted
+                .media
+                .get_mut(&media_id)
+                .ok_or_else(|| SessionError::MissingMedia {
+                    id: media_id.clone(),
+                })?;
+        match payload {
+            MediaPayload::Audio(audio) if (audio.samples.len() as u64) < required => {
+                let required = usize::try_from(required).map_err(|_| {
+                    SessionError::Validation(
+                        "resampled compensated media length exceeds the platform range".to_owned(),
+                    )
+                })?;
+                let pad = audio.samples.last().copied().unwrap_or(0.0);
+                audio.samples.resize(required, pad);
+            }
+            MediaPayload::Midi(midi) if midi.length_frames < required => {
+                midi.length_frames = required;
+            }
+            _ => {}
+        }
+    }
+    for group in &mut converted.document.track_groups {
+        for track in &mut group.tracks {
+            for loop_ in &mut track.loops {
+                for channel in &mut loop_.channels {
+                    if let Some(media_id) = &channel.media_id {
+                        channel.data_length_frames = match converted.media.get(media_id) {
+                            Some(MediaPayload::Audio(audio)) => audio.samples.len() as u64,
+                            Some(MediaPayload::Midi(midi)) => midi.length_frames,
+                            None => {
+                                return Err(SessionError::MissingMedia {
+                                    id: media_id.clone(),
+                                });
+                            }
+                        };
+                    }
                 }
             }
         }

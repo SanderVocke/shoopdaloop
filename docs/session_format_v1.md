@@ -9,7 +9,7 @@ This document defines the first application persistence format. Predecessor `.sh
 - All Shoop-native files (`.shoop`, `.shoop-audio`, and `.shoop-midi`) are ZIP64 containers and use Deflate lossless compression. Standard `.wav` and `.mid` exports retain their standard container formats.
 - The root entry is `manifest.json`, UTF-8 JSON with deterministic object fields and sorted collections.
 - Every manifest has `format`, `format_version: { major, minor }`, and `document_version`.
-- Format-major 1 readers require session `document_version: 6` exactly. Older and newer document versions are rejected before session mutation; no pre-release migration contract is retained.
+- Format-major 1 readers write session `document_version: 8`. Version 6 is accepted through an explicit migration that assigns zero capture alignment to every channel, and versions 6 and 7 migrate the former processor advance to Manual processor-latency mode. Older and newer document versions are rejected before session mutation.
 - Archive paths are relative, normalized ASCII paths. Duplicate names, traversal, undeclared payloads, mismatched lengths/hashes, and configured resource-limit violations are errors.
 - Payload records contain an uncompressed byte length and lowercase SHA-256. ZIP CRC remains an independent transport check.
 - Counts and indices are unsigned 32-bit values unless otherwise stated. The format imposes no lower channel-count ceiling; readers may apply explicit byte/resource budgets.
@@ -29,6 +29,8 @@ This document defines the first application persistence format. Predecessor `.sh
 - FX chain descriptors and exact processor-state strings for Carla and Built-in Synth;
 - a Built-in Synth topology, OxiSynth chain identity, selected preset, additive sends, and MIDI assignments;
 - captured FX-state records referenced by recorded channels;
+- each track's independent recording-alignment and processor-latency adjustment modes plus their signed manual/trim inputs; automatic observations are transient;
+- one signed capture alignment per channel (introduced in document version 7), allowing Dry and Wet annotations to differ;
 - a sorted media index.
 
 Transient loop mode/position, queued transitions, meters, driver/device handles, permissions, xruns, task state, dialogs, and machine-wide settings are not session data. Loaded loops start stopped.
@@ -49,7 +51,7 @@ When a filesystem script is included in a session, the application keeps the cur
 
 ### MIDI payload
 
-Each MIDI channel has a `media/midi/<content-id>.json` entry containing a `shoop-midi` document. Session channel metadata independently records loop length, start offset, preplay, mode, gain, and connected ports.
+Each MIDI channel has a `media/midi/<content-id>.json` entry containing a `shoop-midi` document. Session channel metadata independently records loop length, start offset, signed capture alignment, preplay, mode, gain, and connected ports.
 
 ## Exact loop MIDI (`.shoop-midi`)
 
@@ -62,19 +64,19 @@ The exact format is also a ZIP64 container. Its manifest uses `format: "shoop-mi
 
 Events are relative to loop/channel time. Equal-frame event ordering is determined by `order`. Negative engine sentinel timestamps are never serialized. At the same sample rate, timestamps, duration, start state, ordering, and bytes are exact.
 
-Standard `.mid` is an interoperability format, not canonical session storage. Import resolves tempo maps to absolute time, merges tracks in stable source order, and preserves MIDI and SysEx bytes. Export uses SMPTE 30 fps with 255 subframes (7,650 ticks/second), includes duration/end-of-track information, and reports the measured maximum frame quantization. Select exact `.shoop-midi` when integer-frame identity is required.
+Standard `.mid` is an interoperability format, not canonical session storage. Import resolves tempo maps to absolute time, merges tracks in stable source order, and preserves MIDI and SysEx bytes. Normal export applies the channel's capture alignment and emits the logical loop window. Export uses SMPTE 30 fps with 255 subframes (7,650 ticks/second), includes duration/end-of-track information, and reports the measured maximum frame quantization. Select exact `.shoop-midi` when integer-frame identity is required.
 
 ## Exact loop audio (`.shoop-audio`)
 
 The exact audio format is a ZIP64 container with `format: "shoop-audio"`, version `{ major: 1, minor: 0 }`, sample rate, ordered channel labels/roles, and one exact `f32le` payload per channel. It supports any channel count representable by `u32` and available resources.
 
-Float WAV is the baseline standard cross-target audio format. The current native and browser adapter reads/writes float WAV and the exact Shoop format; no additional native sound-file adapter is selected in v1. Export presents an ordered channel selection, and import requires an explicit source-to-destination mapping (duplication is permitted). Direct channels are labeled `Direct N`; processed tracks expose ordered `Dry N` then `Wet N` audio destinations, and dry MIDI remains the only MIDI role. Dry-only, wet-only, and mixed/reordered exports are supported. Use `.shoop-audio` when exact arbitrary-channel output is required.
+Float WAV is the baseline standard cross-target audio format. Normal WAV and exact Shoop audio export apply the channel's capture alignment and emit the logical loop window. The current native and browser adapter reads/writes float WAV and the exact Shoop format; no additional native sound-file adapter is selected in v1. Export presents an ordered channel selection, and import requires an explicit source-to-destination mapping (duplication is permitted). Direct channels are labeled `Direct N`; processed tracks expose ordered `Dry N` then `Wet N` audio destinations, and dry MIDI remains the only MIDI role. Dry-only, wet-only, and mixed/reordered exports are supported. Use `.shoop-audio` when exact arbitrary-channel output is required.
 
 ### Dry/wet processor topology
 
 `DryWetExternal` stores independent `dry_audio_channels`, `wet_audio_channels`, and `dry_midi`. Public ports preserve Audio input/send/return/output and MIDI input/send roles plus exact confirmed host IDs. `Carla` stores its chain type and legacy equal-count `audio_channels`/`midi` fields; optional `dry_audio_channels` and `wet_audio_channels` preserve new unequal shapes. When those optional fields are absent, readers interpret both counts as the legacy `audio_channels` value.
 
-`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document version 6 is the only accepted pre-release document schema.
+`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document version 8 is current; version 6 receives the explicit zero-alignment migration and versions 6 and 7 migrate their processor advance to Manual mode.
 
 `global_ports` contains either no global FX control port in legacy version-1 documents or exactly one canonical **Global FX Control MIDI In** port. Its shape is MIDI input, external input/internal output connectability, unity gain, unmuted, passthrough-muted, no internal links, and zero capture frames. New saves include it with exact external endpoint identities. A legacy omission migrates to a disconnected canonical port; conflicting IDs, multiple ports, or another shape are rejected before backend mutation. Runtime pending controller values are transient and are not serialized.
 
@@ -91,9 +93,9 @@ Native and browser runtimes instantiate Built-in Synth transactionally before pu
 A source-rate mismatch always requires confirmation before mutation.
 
 - Enclosing durations and loop/data lengths use checked rational ceiling.
-- Event positions and signed offsets use checked nearest conversion with ties away from zero.
+- Event positions, signed start/capture offsets, recording and processor manual/trim values use checked nearest conversion with ties away from zero.
 - MIDI events that collide retain original `order`; converted events are clamped below a non-zero converted duration only when required.
-- Audio channels are independently high-quality resampled to their declared converted frame count.
+- Audio channels are independently high-quality resampled to their declared converted frame count; compensated audio/MIDI payloads are padded when rounding would otherwise leave the converted logical window incomplete.
 - Preplay, ringbuffer sizes, composite delays, and every other sample-domain value use the documented category rule.
 - Conversion must not infer duration from media tails or introduce a spurious additional sync cycle.
 
@@ -101,7 +103,7 @@ A source-rate mismatch always requires confirmation before mutation.
 
 Decode, decompression, hashes, versions, schema/references, capabilities, and optional resampling finish before commit. Backend loading uses begin/chunk/finalize/commit/abort generations. Failure or cancellation leaves the previous session usable.
 
-Saving captures scalar state and all settled channel content from one validated generation. Playing is not a content mutation and must continue. Recording, replacement, loading, clearing, or grab adoption yields an explicit wait/retry/cancel or rejection rather than a mixed-generation save.
+Saving captures alignment state and all settled channel content from one validated generation. Playing is not a content mutation and must continue. Recording, replacement, loading, clearing, or grab adoption yields an explicit wait/retry/cancel or rejection rather than a mixed-generation save.
 
 Native output uses a temporary sibling, flushes it, and atomically renames it; reads and writes run outside the GUI/application actor after picker selection. Browser upload/download uses asynchronous `rfd` file handles and Blob/download fallback according to browser capability. Picker handles, paths, and browser objects never enter `AppSnapshot` or a session document. Platform failures are reported back as typed task errors.
 

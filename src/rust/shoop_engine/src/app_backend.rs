@@ -4265,6 +4265,133 @@ impl Loop {
         }
     }
 
+    pub fn has_planned_recording_transition(&self) -> Result<bool> {
+        let control = Arc::clone(&self.control);
+        let outcome = Arc::new(Mutex::new(None));
+        let command_outcome = Arc::clone(&outcome);
+        let sequence = self
+            .shared
+            .send_control(move |session: &mut engine::Session| {
+                let result = control
+                    .ready_id()
+                    .map(ObjectIdentity::index)
+                    .and_then(|index| session.loop_(index))
+                    .map(engine::AudioMidiLoop::has_planned_recording_transition);
+                *command_outcome
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = result;
+            })?;
+        self.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)?;
+        let result = outcome
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+            .ok_or_else(|| anyhow!("loop is unavailable"));
+        result
+    }
+
+    pub fn has_planned_latency_transition(&self) -> Result<bool> {
+        let control = Arc::clone(&self.control);
+        let outcome = Arc::new(Mutex::new(None));
+        let command_outcome = Arc::clone(&outcome);
+        let sequence = self
+            .shared
+            .send_control(move |session: &mut engine::Session| {
+                let result = control
+                    .ready_id()
+                    .map(ObjectIdentity::index)
+                    .and_then(|index| session.loop_(index))
+                    .map(engine::AudioMidiLoop::has_planned_latency_transition);
+                *command_outcome
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = result;
+            })?;
+        self.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)?;
+        let result = outcome
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+            .ok_or_else(|| anyhow!("loop is unavailable"));
+        result
+    }
+
+    pub fn has_unsettled_latency_postroll(&self) -> Result<bool> {
+        let control = Arc::clone(&self.control);
+        let outcome = Arc::new(Mutex::new(None));
+        let command_outcome = Arc::clone(&outcome);
+        let sequence = self
+            .shared
+            .send_control(move |session: &mut engine::Session| {
+                let result = control
+                    .ready_id()
+                    .map(ObjectIdentity::index)
+                    .and_then(|index| session.loop_(index))
+                    .map(engine::AudioMidiLoop::has_unsettled_latency_postroll);
+                *command_outcome
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = result;
+            })?;
+        self.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)?;
+        let result = outcome
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+            .ok_or_else(|| anyhow!("loop is unavailable"));
+        result
+    }
+
+    pub fn set_pending_latency(
+        &self,
+        values: engine::PreparedLatency,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        let control = Arc::clone(&self.control);
+        self.shared.send_control(move |s: &mut engine::Session| {
+            if let Some(loop_) = control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .and_then(|idx| s.loop_mut(idx))
+            {
+                loop_.set_pending_latency(values);
+            }
+        })
+    }
+
+    pub fn prepare_latency(
+        &self,
+        values: engine::PreparedLatency,
+        logical_capacity: usize,
+    ) -> Result<()> {
+        let control = Arc::clone(&self.control);
+        let outcome = Arc::new(Mutex::new(None));
+        let command_outcome = Arc::clone(&outcome);
+        let sequence = self.shared.send_control(move |s: &mut engine::Session| {
+            let result = control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .and_then(|idx| s.loop_mut(idx))
+                .ok_or_else(|| "loop is unavailable".to_owned())
+                .and_then(|loop_| {
+                    loop_
+                        .prepare_latency(values, logical_capacity)
+                        .map_err(|error| error.to_string())
+                });
+            *command_outcome
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some(result);
+        })?;
+        self.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)?;
+        let result = outcome
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+            .ok_or_else(|| anyhow!("latency preparation did not complete"))?;
+        result.map_err(|error| anyhow!(error))
+    }
+
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
         let sequence = self.shared.send_control(move |s: &mut engine::Session| {
@@ -4636,6 +4763,17 @@ impl AudioChannel {
             self.control.mirror.set_start_offset(offset);
         }
         result
+    }
+
+    pub fn set_capture_alignment_frames(&self, frames: i32) -> Result<CommandSequence> {
+        shoop_latency::RecordingOffset::new(frames)?;
+        let result = self.with_mut(move |channel| {
+            channel
+                .set_capture_alignment_frames(frames)
+                .expect("capture alignment was validated");
+        })?;
+        self.control.mirror.set_capture_alignment_frames(frames);
+        Ok(result)
     }
 
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
@@ -5043,6 +5181,17 @@ impl MidiChannel {
         result
     }
 
+    pub fn set_capture_alignment_frames(&self, frames: i32) -> Result<CommandSequence> {
+        shoop_latency::RecordingOffset::new(frames)?;
+        let result = self.with_mut(move |channel| {
+            channel
+                .set_capture_alignment_frames(frames)
+                .expect("capture alignment was validated");
+        })?;
+        self.control.mirror.set_capture_alignment_frames(frames);
+        Ok(result)
+    }
+
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
         let result = self.with_mut(move |channel| channel.set_pre_play_samples(n));
         if result.is_ok() {
@@ -5079,6 +5228,7 @@ pub struct LoopAudioContentUpdate<'a> {
     pub channel: &'a AudioChannel,
     pub samples: &'a [f32],
     pub start_offset: Option<i32>,
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -5087,6 +5237,7 @@ pub struct LoopMidiContentUpdate<'a> {
     pub messages: &'a [MidiEvent],
     pub length: u32,
     pub start_offset: Option<i32>,
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -5148,6 +5299,13 @@ pub fn replace_loop_content(
     {
         return Err(anyhow!("loop content update contains a duplicate channel"));
     }
+    for alignment in audio
+        .iter()
+        .filter_map(|item| item.capture_alignment_frames)
+        .chain(midi.iter().filter_map(|item| item.capture_alignment_frames))
+    {
+        shoop_latency::RecordingOffset::new(alignment)?;
+    }
 
     let mut prepared_audio = Vec::with_capacity(audio.len());
     let mut prepared_midi = Vec::with_capacity(midi.len());
@@ -5176,6 +5334,7 @@ pub fn replace_loop_content(
             prepared,
             snapshot,
             item.start_offset,
+            item.capture_alignment_frames,
             item.preplay,
         ));
     }
@@ -5230,6 +5389,7 @@ pub fn replace_loop_content(
             ),
             snapshot,
             item.start_offset,
+            item.capture_alignment_frames,
             item.preplay,
         ));
     }
@@ -5262,25 +5422,32 @@ pub fn replace_loop_content(
             let Some(mut midi) = prepared_midi.take() else {
                 return;
             };
-            for (channel_id, prepared, snapshot, offset, preplay) in &mut audio {
+            for (channel_id, prepared, snapshot, offset, alignment, preplay) in &mut audio {
                 let channel = session
                     .audio_channel_mut(*channel_id)
                     .expect("loop content channels were preflighted");
                 let retained_offset = channel.start_offset();
+                let retained_alignment = channel.capture_alignment_frames();
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
                 channel.set_start_offset(offset.unwrap_or(retained_offset));
+                channel
+                    .set_capture_alignment_frames(alignment.unwrap_or(retained_alignment))
+                    .expect("capture alignment was preflighted");
                 if let Some(preplay) = preplay {
                     channel.set_pre_play_samples(*preplay);
                 }
             }
-            for (channel_id, prepared, snapshot, offset, preplay) in &mut midi {
+            for (channel_id, prepared, snapshot, offset, alignment, preplay) in &mut midi {
                 let channel = session
                     .midi_channel_mut(*channel_id)
                     .expect("loop content channels were preflighted");
+                let retained_offset = channel.start_offset();
+                let retained_alignment = channel.capture_alignment_frames();
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
-                if let Some(offset) = offset {
-                    channel.set_start_offset(*offset);
-                }
+                channel.set_start_offset(offset.unwrap_or(retained_offset));
+                channel
+                    .set_capture_alignment_frames(alignment.unwrap_or(retained_alignment))
+                    .expect("capture alignment was preflighted");
                 if let Some(preplay) = preplay {
                     channel.set_pre_play_samples(*preplay);
                 }
@@ -5322,6 +5489,12 @@ pub fn replace_loop_content(
         if let Some(offset) = item.start_offset {
             item.channel.control.mirror.set_start_offset(offset);
         }
+        if let Some(alignment) = item.capture_alignment_frames {
+            item.channel
+                .control
+                .mirror
+                .set_capture_alignment_frames(alignment);
+        }
         if let Some(preplay) = item.preplay {
             item.channel.control.mirror.set_n_preplay_samples(preplay);
         }
@@ -5332,6 +5505,12 @@ pub fn replace_loop_content(
             .store(Arc::new(item.messages.to_vec()));
         if let Some(offset) = item.start_offset {
             item.channel.control.mirror.set_start_offset(offset);
+        }
+        if let Some(alignment) = item.capture_alignment_frames {
+            item.channel
+                .control
+                .mirror
+                .set_capture_alignment_frames(alignment);
         }
         if let Some(preplay) = item.preplay {
             item.channel.control.mirror.set_n_preplay_samples(preplay);
@@ -5406,6 +5585,30 @@ impl AudioPort {
             direction: *direction,
             name: name.to_string(),
         })
+    }
+
+    pub fn automatic_recording_offset_frames(&self) -> Option<i32> {
+        let jack = self.shared.jack()?;
+        let backend = jack.lock().unwrap_or_else(|error| error.into_inner());
+        unsafe {
+            jack_sys::jack_recompute_total_latencies(backend.client().raw());
+        }
+        let result = backend
+            .ports
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .find_map(|port| match port {
+                JackRegisteredPort::AudioIn { control, jack }
+                    if Arc::ptr_eq(control, &self.control)
+                        && !jack.get_connections().is_empty() =>
+                {
+                    let (min, max) = jack.get_latency_range(jack::LatencyType::Capture);
+                    (min == max).then(|| i32::try_from(max).ok()).flatten()
+                }
+                _ => None,
+            });
+        result
     }
 
     pub fn lifecycle(&self) -> ObjectLifecycle {
@@ -5735,6 +5938,31 @@ impl MidiPort {
             name: name.to_string(),
         })
     }
+
+    pub fn automatic_recording_offset_frames(&self) -> Option<i32> {
+        let jack = self.shared.jack()?;
+        let backend = jack.lock().unwrap_or_else(|error| error.into_inner());
+        unsafe {
+            jack_sys::jack_recompute_total_latencies(backend.client().raw());
+        }
+        let result = backend
+            .ports
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .find_map(|port| match port {
+                JackRegisteredPort::MidiIn { control, jack }
+                    if Arc::ptr_eq(control, &self.control)
+                        && !jack.get_connections().is_empty() =>
+                {
+                    let (min, max) = jack.get_latency_range(jack::LatencyType::Capture);
+                    (min == max).then(|| i32::try_from(max).ok()).flatten()
+                }
+                _ => None,
+            });
+        result
+    }
+
     pub fn input_connectability(&self) -> PortConnectability {
         match self.direction {
             PortDirection::Input => PortConnectability::EXTERNAL,
@@ -6769,7 +6997,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn scalar_control_commands_do_not_arm_graph_rebuilds() {
+    fn value_and_latency_control_commands_do_not_arm_graph_rebuilds() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
         sess.shared.flush_graph_changes();
@@ -6780,6 +7008,15 @@ mod tests {
         sess.shared
             .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .expect("command fence");
+        let latency = engine::PreparedLatency::new(
+            shoop_latency::RecordingOffset::new(7).unwrap(),
+            shoop_latency::ProcessorRenderAdvance::new(11).unwrap(),
+        )
+        .unwrap();
+        let sequence = loop_.set_pending_latency(latency).expect("queue latency");
+        sess.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("latency command fence");
 
         assert_eq!(scheduler.n_arms(), before);
     }
@@ -6822,12 +7059,14 @@ mod tests {
                     channel: &left,
                     samples: &[10.0, 11.0, 12.0],
                     start_offset: Some(-1),
+                    capture_alignment_frames: None,
                     preplay: Some(5),
                 },
                 LoopAudioContentUpdate {
                     channel: &right,
                     samples: &[20.0, 21.0, 22.0],
                     start_offset: Some(-2),
+                    capture_alignment_frames: None,
                     preplay: Some(6),
                 },
             ],
@@ -6839,6 +7078,7 @@ mod tests {
                 ],
                 length: 3,
                 start_offset: Some(-3),
+                capture_alignment_frames: None,
                 preplay: Some(7),
             }],
             Some(3),

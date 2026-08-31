@@ -27,10 +27,10 @@ use shoop_audio_protocol::{
     WireApplicationPortOwner, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
     WireCompositeKind, WireCompositeTarget, WireGrabRequest, WireHostPort, WireLoopMode,
     WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl, WireTrackFxControl,
-    WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
-    WAVEFORM_CHUNK_SAMPLES,
+    WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
+    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
@@ -52,7 +52,7 @@ use crate::transport::{transport_pair, TransportCore};
 struct WaveformAssembly {
     revision: u64,
     channels: Vec<Vec<f32>>,
-    timing: Vec<(i32, u32)>,
+    timing: Vec<(i32, i32, u32)>,
     request_channel: usize,
     request_offset: usize,
     channel_total: Option<usize>,
@@ -354,13 +354,17 @@ impl RemoteWorkletBackend {
         assembly.channel_total = Some(chunk.total_samples);
         if assembly.channels.len() < chunk.channel_count {
             assembly.channels.resize_with(chunk.channel_count, Vec::new);
-            assembly.timing.resize(chunk.channel_count, (0, 0));
+            assembly.timing.resize(chunk.channel_count, (0, 0, 0));
         }
         if let Some(channel) = assembly.channels.get_mut(chunk.channel) {
             channel.extend_from_slice(&chunk.samples);
         }
         if let Some(timing) = assembly.timing.get_mut(chunk.channel) {
-            *timing = (chunk.start_offset, chunk.preplay);
+            *timing = (
+                chunk.start_offset,
+                chunk.capture_alignment_frames,
+                chunk.preplay,
+            );
         }
         if chunk.final_chunk {
             assembly.request_channel += 1;
@@ -453,6 +457,7 @@ impl RemoteWorkletBackend {
                 length: chunk.length,
                 events: Vec::with_capacity(chunk.total_events),
                 start_offset: chunk.start_offset,
+                capture_alignment_frames: chunk.capture_alignment_frames,
                 preplay: chunk.preplay,
             });
         }
@@ -464,6 +469,7 @@ impl RemoteWorkletBackend {
         }
         if channel.length != chunk.length
             || channel.start_offset != chunk.start_offset
+            || channel.capture_alignment_frames != chunk.capture_alignment_frames
             || channel.preplay != chunk.preplay
             || channel.events.len() != chunk.offset
         {
@@ -853,6 +859,45 @@ impl RemoteWorkletBackend {
                         input_gain_db: track.input_gain_db,
                         input_balance: track.input_balance,
                         input_monitoring: track.input_monitoring,
+                        latency: shoop_backend::BackendTrackLatencyState {
+                            automatic_offset_frames: track.latency.automatic_offset_frames,
+                            adjustment: match track.latency.adjustment {
+                                WireRecordingOffsetAdjustment::Automatic => {
+                                    shoop_backend::BackendRecordingOffsetAdjustment::Automatic
+                                }
+                                WireRecordingOffsetAdjustment::ManualOverride => {
+                                    shoop_backend::BackendRecordingOffsetAdjustment::ManualOverride(
+                                        track.latency.manual_frames,
+                                    )
+                                }
+                                WireRecordingOffsetAdjustment::AutomaticPlusTrim => {
+                                    shoop_backend::BackendRecordingOffsetAdjustment::AutomaticPlusTrim(
+                                        track.latency.manual_frames,
+                                    )
+                                }
+                            },
+                            effective_offset_frames: track.latency.effective_offset_frames,
+                            automatic_processor_advance_frames: track
+                                .latency
+                                .automatic_processor_advance_frames,
+                            processor_adjustment: match track.latency.processor_adjustment {
+                                WireProcessorLatencyAdjustment::Automatic => {
+                                    shoop_backend::BackendProcessorLatencyAdjustment::Automatic
+                                }
+                                WireProcessorLatencyAdjustment::ManualOverride => {
+                                    shoop_backend::BackendProcessorLatencyAdjustment::ManualOverride
+                                }
+                                WireProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                                    shoop_backend::BackendProcessorLatencyAdjustment::AutomaticPlusTrim
+                                }
+                            },
+                            processor_manual_frames: track.latency.processor_manual_frames,
+                            effective_processor_advance_frames: track
+                                .latency
+                                .effective_processor_advance_frames,
+                            pending: track.latency.pending,
+                            error: track.latency.error,
+                        },
                         input_peaks: track.input_peaks,
                         output_peaks: track.output_peaks,
                         latest_input_midi_message: track.latest_input_midi_message.map(|message| {
@@ -883,6 +928,8 @@ impl RemoteWorkletBackend {
                         balance: loop_.balance,
                         audio_peaks: loop_.audio_peaks,
                         midi_activity: loop_.midi_activity,
+                        capture_alignment_frames: loop_.capture_alignment_frames,
+                        processor_alignment_frames: loop_.processor_alignment_frames,
                     },
                 )
             })
@@ -1112,7 +1159,7 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
             BackendMutationKind::CompositeStructure,
             Some(*expected_composite_id),
         ),
-        Command::SetTrackControl { track_id, .. } => {
+        Command::SetTrackControl { track_id, .. } | Command::SetTrackLatency { track_id, .. } => {
             (BackendMutationKind::TrackControl, Some(*track_id))
         }
         Command::SetTrackFxControl { track_id, .. } => {
@@ -1128,7 +1175,9 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::TransitionLoop { loop_id, .. }
         | Command::ClearLoop { loop_id }
         | Command::SetLoopLength { loop_id, .. }
-        | Command::SetLoopTiming { loop_id, .. } => {
+        | Command::SetLoopTiming { loop_id, .. }
+        | Command::SetTakeAlignment { loop_id, .. }
+        | Command::SetTakeProcessorAlignment { loop_id, .. } => {
             (BackendMutationKind::LoopControl, Some(*loop_id))
         }
         Command::GrabLoops { requests } => (
@@ -1224,6 +1273,13 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
         Command::SetLoopGain { gain, .. } => Some(BackendMutationDetail::LoopGain(*gain)),
         Command::SetLoopBalance { balance, .. } => {
             Some(BackendMutationDetail::LoopBalance(*balance))
+        }
+        Command::SetLoopLength { .. } | Command::SetLoopTiming { .. } => {
+            Some(BackendMutationDetail::LoopTiming)
+        }
+        Command::SetTakeAlignment { .. } => Some(BackendMutationDetail::TakeAlignment),
+        Command::SetTakeProcessorAlignment { .. } => {
+            Some(BackendMutationDetail::TakeProcessorAlignment)
         }
         _ => None,
     }
@@ -1498,6 +1554,81 @@ impl Backend for RemoteWorkletBackend {
         })
     }
 
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: shoop_backend::BackendRecordingOffsetAdjustment,
+        processor_adjustment: shoop_backend::BackendProcessorLatencyAdjustment,
+        processor_manual_frames: i32,
+    ) -> Result<()> {
+        if !self.track_resources.contains_key(&track_id) {
+            return Err(anyhow!("unknown remote backend track {track_id:?}"));
+        }
+        let (adjustment, manual_frames) = match adjustment {
+            shoop_backend::BackendRecordingOffsetAdjustment::Automatic => {
+                (WireRecordingOffsetAdjustment::Automatic, 0)
+            }
+            shoop_backend::BackendRecordingOffsetAdjustment::ManualOverride(frames) => {
+                (WireRecordingOffsetAdjustment::ManualOverride, frames)
+            }
+            shoop_backend::BackendRecordingOffsetAdjustment::AutomaticPlusTrim(frames) => {
+                (WireRecordingOffsetAdjustment::AutomaticPlusTrim, frames)
+            }
+        };
+        let processor_adjustment = match processor_adjustment {
+            shoop_backend::BackendProcessorLatencyAdjustment::Automatic => {
+                WireProcessorLatencyAdjustment::Automatic
+            }
+            shoop_backend::BackendProcessorLatencyAdjustment::ManualOverride => {
+                WireProcessorLatencyAdjustment::ManualOverride
+            }
+            shoop_backend::BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                WireProcessorLatencyAdjustment::AutomaticPlusTrim
+            }
+        };
+        self.submit(Command::SetTrackLatency {
+            track_id: track_id.raw(),
+            adjustment,
+            manual_frames,
+            processor_adjustment,
+            processor_manual_frames,
+        })
+    }
+
+    fn set_take_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        if !self.has_loop(loop_id) {
+            return Err(anyhow!("unknown remote backend loop {loop_id:?}"));
+        }
+        self.submit(Command::SetTakeAlignment {
+            loop_id: loop_id.raw(),
+            capture_alignment_frames,
+        })?;
+        self.waveforms.remove(&loop_id);
+        self.midi_data.remove(&loop_id);
+        Ok(())
+    }
+
+    fn set_take_processor_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        processor_alignment_frames: u32,
+    ) -> Result<()> {
+        if !self.has_loop(loop_id) {
+            return Err(anyhow!("unknown remote backend loop {loop_id:?}"));
+        }
+        self.submit(Command::SetTakeProcessorAlignment {
+            loop_id: loop_id.raw(),
+            processor_alignment_frames,
+        })?;
+        self.waveforms.remove(&loop_id);
+        self.midi_data.remove(&loop_id);
+        Ok(())
+    }
+
     fn set_track_fx_control(
         &mut self,
         track_id: BackendTrackId,
@@ -1669,6 +1800,7 @@ impl Backend for RemoteWorkletBackend {
                         .collect(),
                 ));
             }
+            self.request_waveform_chunk(loop_id)?;
             return Ok(None);
         }
         let revision = self
@@ -1710,10 +1842,12 @@ impl Backend for RemoteWorkletBackend {
                 .into_iter()
                 .enumerate()
                 .map(|(index, samples)| {
-                    let (start_offset, preplay) = timing.get(index).copied().unwrap_or_default();
+                    let (start_offset, capture_alignment_frames, preplay) =
+                        timing.get(index).copied().unwrap_or_default();
                     BackendAudioChannelData {
                         samples,
                         start_offset,
+                        capture_alignment_frames,
                         preplay,
                     }
                 })
@@ -1726,9 +1860,13 @@ impl Backend for RemoteWorkletBackend {
             return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
         }
         if let Some(assembly) = self.midi_data.get(&loop_id) {
-            return Ok(assembly.complete.then(|| BackendMidiData {
-                channels: assembly.channels.clone(),
-            }));
+            if assembly.complete {
+                return Ok(Some(BackendMidiData {
+                    channels: assembly.channels.clone(),
+                }));
+            }
+            self.request_midi_data_chunk(loop_id)?;
+            return Ok(None);
         }
         self.restart_midi_data(loop_id)?;
         Ok(None)
@@ -1874,7 +2012,7 @@ impl Backend for RemoteWorkletBackend {
                     timing.0 = offset;
                 }
                 if let Some(samples) = preplay {
-                    timing.1 = samples;
+                    timing.2 = samples;
                 }
             }
         }
@@ -2095,6 +2233,43 @@ impl Backend for RemoteWorkletBackend {
             match received.envelope.event {
                 Event::Ack | Event::Stopped => {}
                 Event::Error { message } => {
+                    let retry_media_read = match &received.command {
+                        Command::RequestWaveform {
+                            loop_id,
+                            revision,
+                            channel,
+                            offset,
+                            ..
+                        } if message.contains("postroll is still finalizing") => {
+                            if let Some(assembly) =
+                                self.waveforms.get_mut(&BackendLoopId::from_raw(*loop_id))
+                            {
+                                if assembly.revision == *revision
+                                    && assembly.expected.front().copied()
+                                        == Some((*channel, *offset))
+                                {
+                                    assembly.expected.clear();
+                                    assembly.request_channel = *channel;
+                                    assembly.request_offset = *offset;
+                                }
+                            }
+                            true
+                        }
+                        Command::RequestMidiData { loop_id, .. }
+                            if message == "MIDI detail data is not ready" =>
+                        {
+                            if let Some(assembly) =
+                                self.midi_data.get_mut(&BackendLoopId::from_raw(*loop_id))
+                            {
+                                assembly.in_flight = false;
+                            }
+                            true
+                        }
+                        _ => false,
+                    };
+                    if retry_media_read {
+                        continue;
+                    }
                     self.transport
                         .borrow_mut()
                         .reject_journaled(&received.command);
@@ -2133,6 +2308,15 @@ impl Backend for RemoteWorkletBackend {
                         Command::RemoveComposite { composite_id } => {
                             self.reserved_composites
                                 .insert(BackendCompositeId::from_raw(*composite_id));
+                        }
+                        _ => {}
+                    }
+                    match &received.command {
+                        Command::SetLoopLength { loop_id, .. }
+                        | Command::SetLoopTiming { loop_id, .. } => {
+                            let loop_id = BackendLoopId::from_raw(*loop_id);
+                            self.waveforms.remove(&loop_id);
+                            self.midi_data.remove(&loop_id);
                         }
                         _ => {}
                     }
@@ -2611,6 +2795,22 @@ mod tests {
             &control,
             1,
             3,
+            Event::Error {
+                message: "loop alignment postroll is still finalizing; retry after it settles"
+                    .to_owned(),
+            },
+        );
+        backend.poll().unwrap();
+        assert!(backend.waveforms[&loop_id].expected.is_empty());
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_none());
+        assert_eq!(backend.waveforms[&loop_id].expected.front(), Some(&(0, 0)));
+        deliver(
+            &control,
+            1,
+            4,
             Event::Waveform(WaveformChunk {
                 loop_id: loop_id.raw(),
                 revision: 1,
@@ -2619,6 +2819,7 @@ mod tests {
                 offset: 0,
                 total_samples: 3,
                 start_offset: -4,
+                capture_alignment_frames: 3,
                 preplay: 6,
                 final_chunk: true,
                 samples: vec![0.25, -0.5, 0.75],
@@ -2631,6 +2832,7 @@ mod tests {
             .unwrap();
         assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
         assert_eq!(audio.channels[0].start_offset, -4);
+        assert_eq!(audio.channels[0].capture_alignment_frames, 3);
         assert_eq!(audio.channels[0].preplay, 6);
 
         backend.midi_data.insert(
@@ -2643,6 +2845,7 @@ mod tests {
                     length: 16,
                     events: Vec::new(),
                     start_offset: -4,
+                    capture_alignment_frames: 0,
                     preplay: 6,
                 }],
                 next_channel: 1,
@@ -2668,6 +2871,64 @@ mod tests {
         assert_eq!(audio.channels[0].preplay, 12);
         let midi = &backend.midi_data[&loop_id].channels[0];
         assert_eq!((midi.start_offset, midi.preplay, midi.length), (-8, 12, 32));
+        deliver(&control, 1, 5, Event::Ack);
+        deliver(&control, 1, 6, Event::Ack);
+        deliver(
+            &control,
+            1,
+            7,
+            Event::Error {
+                message: "timeline exceeds retained window".to_owned(),
+            },
+        );
+        let rejected = backend.poll().unwrap();
+        assert_eq!(
+            rejected.mutation_failures[0].detail,
+            Some(BackendMutationDetail::LoopTiming)
+        );
+        assert!(!backend.waveforms.contains_key(&loop_id));
+        assert!(!backend.midi_data.contains_key(&loop_id));
+
+        backend.set_take_alignment(loop_id, 5).unwrap();
+        assert!(!backend.waveforms.contains_key(&loop_id));
+        assert!(!backend.midi_data.contains_key(&loop_id));
+        assert!(sent.borrow().iter().any(|message| {
+            matches!(
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command,
+                Command::SetTakeAlignment {
+                    loop_id: raw,
+                    capture_alignment_frames: 5,
+                } if raw == loop_id.raw()
+            )
+        }));
+        backend.set_take_processor_alignment(loop_id, 7).unwrap();
+        assert!(sent.borrow().iter().any(|message| {
+            matches!(
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command,
+                Command::SetTakeProcessorAlignment {
+                    loop_id: raw,
+                    processor_alignment_frames: 7,
+                } if raw == loop_id.raw()
+            )
+        }));
+        deliver(&control, 1, 8, Event::Ack);
+        deliver(
+            &control,
+            1,
+            9,
+            Event::Error {
+                message: "processor alignment exceeds retained window".to_owned(),
+            },
+        );
+        let rejected = backend.poll().unwrap();
+        assert_eq!(
+            rejected.mutation_failures.last().unwrap().detail,
+            Some(BackendMutationDetail::TakeProcessorAlignment)
+        );
 
         let commands_before_restart = sent.borrow().len();
         control.detach(false);
@@ -2689,8 +2950,15 @@ mod tests {
                 .iter()
                 .filter(|command| matches!(command, Command::SetLoopTiming { .. }))
                 .count(),
-            3
+            2
         );
+        assert!(!commands.iter().any(|command| matches!(
+            command,
+            Command::SetLoopTiming {
+                length: Some(32),
+                ..
+            }
+        )));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2726,6 +2994,7 @@ mod tests {
             input_gain_db: -4.0,
             input_balance: -0.25,
             input_monitoring: true,
+            latency: Default::default(),
             input_peaks: vec![0.1, 0.2],
             output_peaks: vec![0.3, 0.4],
             latest_input_midi_message: Some(WireLatestMidiMessage {
@@ -2810,6 +3079,8 @@ mod tests {
                         balance: -0.1,
                         audio_peaks: vec![0.2, 0.3],
                         midi_activity: true,
+                        capture_alignment_frames: 0,
+                        processor_alignment_frames: None,
                     })
                     .collect(),
                 composites: vec![WireCompositeState {
@@ -3263,6 +3534,7 @@ mod tests {
                 channel: 0,
                 samples: vec![0.25; 128],
                 start_offset: None,
+                capture_alignment_frames: None,
                 preplay: None,
             }],
             length: Some(128),

@@ -1,7 +1,9 @@
 [package]
-name = "shoop_session"
+name = "shoop_latency"
 version.workspace = true
 edition = "2021"
+
+[lib]
 
 [package.metadata.shoop-wasm-test]
 enabled = true
@@ -12,21 +14,10 @@ default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-hound = { workspace = true }
-midly = { workspace = true }
-rubato = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-shoop_latency = { path = "../shoop_latency" }
-shoop_script_resources = { path = "../shoop_script_resources" }
-sha2 = { workspace = true }
 thiserror = { workspace = true }
-zip = { workspace = true }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

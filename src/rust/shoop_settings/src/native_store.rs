@@ -27,10 +27,7 @@ pub fn load_settings_file(path: &Path) -> Result<Option<String>> {
 
 pub fn save_settings_file(path: &Path, contents: &str) -> Result<()> {
     save_settings_file_with(path, contents, |temporary, target| {
-        temporary
-            .persist(target)
-            .map(|file| file)
-            .map_err(|error| error.error)
+        temporary.persist(target).map_err(|error| error.error)
     })
 }
 

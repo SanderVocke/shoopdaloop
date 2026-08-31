@@ -11,8 +11,10 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::chunked_samples::ChunkedSamples;
 use crate::content_snapshot::AudioProcessSnapshotWriter;
+use crate::latency_runtime::{cyclic_render_dispatch_position, LatchedLatency, PreparedLatency};
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
+use shoop_latency::{CaptureFrameMapping, LatencyDomainError, MAX_COMPENSATION_FRAMES};
 
 /// At most two copy commands (record and playback) per session sub-block.
 /// The session processes no more than 16 sub-blocks in one callback.
@@ -107,6 +109,14 @@ pub enum ChannelError {
     ReplaceOutOfBounds { position: usize, length: usize },
     #[error("playing {n_samples} samples exceeds the {available} available in the output buffer")]
     PlaybackOutOfBounds { n_samples: usize, available: usize },
+    #[error("latency mapping exceeds the supported signed media position")]
+    LatencyPositionOverflow,
+    #[error("retained latency margin {frames} exceeds the supported maximum")]
+    RetentionExceedsMaximum { frames: u32 },
+    #[error(
+        "retained latency window needs {required} samples but prepared capacity is {capacity}"
+    )]
+    RetentionCapacity { required: usize, capacity: usize },
     #[error("recording storage is exhausted at its prepared capacity of {capacity} samples")]
     StorageExhausted { capacity: usize },
 }
@@ -218,7 +228,12 @@ pub struct AudioChannel {
     prerecord_buffers: ChunkedSamples<f32>,
     prerecord_data_length: usize,
 
+    /// Raw media layout offset retained for legacy lead-in/preplay semantics.
     start_offset: i32,
+    /// Frozen raw-take to logical-timeline mapping. Positive values select later raw media.
+    capture_alignment_frames: i32,
+    /// Ephemeral early dispatch for current processor rendering; never persisted into the take.
+    render_advance_frames: u32,
     pre_play_samples: u32,
     output_peak: f32,
     gain: f32,
@@ -235,6 +250,13 @@ pub struct AudioChannel {
     publish_snapshot_updates: bool,
     storage_capacity: Option<usize>,
     storage_exhaustions: u32,
+    retained_before_frames: u32,
+    retained_after_frames: u32,
+    postroll_remaining_frames: u32,
+    finish_recording_after_finalize: bool,
+    latency_retention_incomplete: bool,
+    pending_latency: Option<PreparedLatency>,
+    latched_latency: Option<LatchedLatency>,
     playback_smoother: PlaybackSmoother,
 }
 
@@ -291,6 +313,8 @@ impl AudioChannel {
             prerecord_buffers: ChunkedSamples::with_chunk_size(chunk_size),
             prerecord_data_length: 0,
             start_offset: 0,
+            capture_alignment_frames: 0,
+            render_advance_frames: 0,
             pre_play_samples: 0,
             output_peak: 0.0,
             gain: 1.0,
@@ -306,6 +330,13 @@ impl AudioChannel {
             publish_snapshot_updates: true,
             storage_capacity: None,
             storage_exhaustions: 0,
+            retained_before_frames: 0,
+            retained_after_frames: 0,
+            postroll_remaining_frames: 0,
+            finish_recording_after_finalize: false,
+            latency_retention_incomplete: false,
+            pending_latency: None,
+            latched_latency: None,
             playback_smoother: PlaybackSmoother::default(),
         };
         channel.publish_state();
@@ -318,6 +349,9 @@ impl AudioChannel {
             self.gain,
             self.data_length,
             self.start_offset,
+            self.capture_alignment_frames,
+            self.postroll_remaining_frames,
+            self.render_advance_frames,
             self.last_played_back_sample,
             self.pre_play_samples,
             self.data_seq_nr as u64,
@@ -371,6 +405,71 @@ impl AudioChannel {
     pub fn mode(&self) -> ChannelMode {
         self.mode
     }
+    pub const fn pending_latency(&self) -> Option<PreparedLatency> {
+        self.pending_latency
+    }
+
+    pub const fn latched_latency(&self) -> Option<LatchedLatency> {
+        self.latched_latency
+    }
+
+    pub fn set_pending_latency(&mut self, values: PreparedLatency) {
+        self.pending_latency = Some(values);
+    }
+
+    pub fn latch_recording_latency(
+        &mut self,
+        operation_frame: u64,
+        require_captured_prerecord: bool,
+        recording_offset: shoop_latency::RecordingOffset,
+    ) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        let frames = recording_offset.frames();
+        self.capture_alignment_frames = frames;
+        self.latency_retention_incomplete = if frames >= 0 {
+            frames as u32 > self.retained_after_frames
+        } else {
+            let required = frames.unsigned_abs();
+            required > self.retained_before_frames
+                || (require_captured_prerecord && required as usize > self.prerecord_data_length)
+        };
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
+    pub fn latch_render_latency(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.render_advance_frames = values.processor_advance().frames();
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
+    pub fn latch_canonical_render_destination(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
         self.publish_state();
@@ -384,6 +483,130 @@ impl AudioChannel {
     }
     pub fn start_offset(&self) -> i32 {
         self.start_offset
+    }
+    pub fn media_layout_offset(&self) -> i32 {
+        self.start_offset
+    }
+    pub fn capture_alignment_frames(&self) -> i32 {
+        self.capture_alignment_frames
+    }
+    pub fn set_capture_alignment_frames(&mut self, frames: i32) -> Result<(), LatencyDomainError> {
+        if frames.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(
+                frames.unsigned_abs(),
+            ));
+        }
+        self.capture_alignment_frames = frames;
+        self.publish_state();
+        Ok(())
+    }
+    pub fn render_advance_frames(&self) -> u32 {
+        self.render_advance_frames
+    }
+    pub fn retained_before_frames(&self) -> u32 {
+        self.retained_before_frames
+    }
+    pub fn retained_after_frames(&self) -> u32 {
+        self.retained_after_frames
+    }
+    pub fn restore_retained_margin_metadata(
+        &mut self,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<(), ChannelError> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(ChannelError::RetentionExceedsMaximum { frames });
+            }
+        }
+        self.retained_before_frames = retained_before_frames;
+        self.retained_after_frames = retained_after_frames;
+        Ok(())
+    }
+    pub fn is_finalizing_latency_postroll(&self) -> bool {
+        self.postroll_remaining_frames > 0 || self.finish_recording_after_finalize
+    }
+    pub fn has_unsettled_latency_postroll(&self) -> bool {
+        self.is_finalizing_latency_postroll()
+            || (self.retained_after_frames > 0
+                && self.prev_process_flags.contains(ProcessFlags::RECORD))
+    }
+    pub fn latency_postroll_remaining_frames(&self) -> u32 {
+        self.postroll_remaining_frames
+    }
+    pub fn latency_retention_incomplete(&self) -> bool {
+        self.latency_retention_incomplete
+    }
+    pub fn compensated_take_ready(&self, logical_length: u32) -> bool {
+        let Some(raw_start) = self.raw_position_for_logical(0) else {
+            return false;
+        };
+        if self.capture_alignment_frames <= 0
+            || (self.capture_alignment_frames as u32) < logical_length
+        {
+            return raw_start >= 0;
+        }
+        let Some(raw_end) = raw_start.checked_add(logical_length.min(i32::MAX as u32) as i32)
+        else {
+            return false;
+        };
+        raw_start >= 0 && raw_end >= 0 && raw_end as usize <= self.data_length
+    }
+    pub fn prepare_latency_retention(
+        &mut self,
+        logical_capacity: usize,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<(), ChannelError> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(ChannelError::RetentionExceedsMaximum { frames });
+            }
+        }
+        let required = logical_capacity
+            .checked_add(retained_before_frames as usize)
+            .and_then(|value| value.checked_add(retained_after_frames as usize))
+            .ok_or(ChannelError::RetentionCapacity {
+                required: usize::MAX,
+                capacity: self.storage_capacity.unwrap_or(usize::MAX),
+            })?;
+        if let Some(capacity) = self.storage_capacity {
+            if required > capacity {
+                return Err(ChannelError::RetentionCapacity { required, capacity });
+            }
+            self.prepare_bounded_capacity();
+        } else if required > 0 {
+            self.buffers.ensure_available(required - 1);
+            if retained_before_frames > 0 {
+                self.prerecord_buffers
+                    .ensure_available(retained_before_frames as usize - 1);
+            }
+        }
+        self.retained_before_frames = retained_before_frames;
+        self.retained_after_frames = retained_after_frames;
+        self.latency_retention_incomplete = false;
+        Ok(())
+    }
+    pub fn set_render_advance_frames(&mut self, frames: u32) -> Result<(), LatencyDomainError> {
+        if frames > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(frames));
+        }
+        self.render_advance_frames = frames;
+        self.publish_state();
+        Ok(())
+    }
+    pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
+        let mapping = CaptureFrameMapping::new(self.capture_alignment_frames).ok()?;
+        i32::try_from(
+            mapping
+                .raw_media_frame(i64::from(logical_position), i64::from(self.start_offset))
+                .ok()?,
+        )
+        .ok()
+    }
+    pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
+        self.raw_position_for_logical(logical_position)?
+            .checked_add(i32::try_from(self.render_advance_frames).ok()?)
     }
     pub fn set_start_offset(&mut self, offset: i32) {
         self.start_offset = offset;
@@ -450,6 +673,8 @@ impl AudioChannel {
         self.buffers.set_contents(samples);
         self.data_length = samples.len();
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
@@ -489,6 +714,7 @@ impl AudioChannel {
     }
 
     pub(crate) fn finish_bounded_load(&mut self) {
+        self.publish_all_data();
         self.data_changed();
     }
 
@@ -496,6 +722,8 @@ impl AudioChannel {
         std::mem::swap(&mut self.buffers, &mut prepared.buffers);
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.publish_all_data();
         self.data_changed();
     }
@@ -508,6 +736,8 @@ impl AudioChannel {
         std::mem::swap(&mut self.buffers, &mut prepared.buffers);
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.install_prepared(snapshot);
         }
@@ -521,14 +751,43 @@ impl AudioChannel {
     pub fn clear(&mut self, length: usize) {
         self.buffers.ensure_available(length);
         self.data_length = length;
+        self.prerecord_buffers.reset();
+        self.prerecord_data_length = 0;
+        self.queue.clear();
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.prev_process_flags = ProcessFlags::NONE;
+        self.retained_before_frames = 0;
+        self.retained_after_frames = 0;
+        self.postroll_remaining_frames = 0;
+        self.finish_recording_after_finalize = false;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.clear_prerecord();
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
             snapshots.publish_range(0, &[], length, true);
             snapshots.finish_mutation(false);
         }
         self.data_changed();
+    }
+
+    pub(crate) fn abort_latency_take(&mut self) {
+        self.clear(0);
+        self.prerecord_buffers.reset();
+        self.prerecord_data_length = 0;
+        self.queue.clear();
+        self.prev_process_flags = ProcessFlags::NONE;
+        self.postroll_remaining_frames = 0;
+        self.finish_recording_after_finalize = false;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.clear_prerecord();
+        }
+        self.publish_state();
     }
 
     /// Replaces `length` samples with silence.
@@ -539,6 +798,8 @@ impl AudioChannel {
         self.buffers.fill(length, 0.0);
         self.data_length = length;
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
@@ -650,8 +911,23 @@ impl AudioChannel {
             flags = ProcessFlags(flags.0 & !ProcessFlags::PLAYBACK.0);
         }
 
+        if self.prev_process_flags.contains(ProcessFlags::RECORD)
+            && !flags.contains(ProcessFlags::RECORD)
+            && self.postroll_remaining_frames == 0
+        {
+            self.postroll_remaining_frames = self.retained_after_frames;
+        }
+        let postroll_samples = if !flags.contains(ProcessFlags::RECORD) && self.recording.is_some()
+        {
+            n_samples.min(self.postroll_remaining_frames as usize)
+        } else {
+            0
+        };
+
         let previous_mutation = snapshot_mutation(self.prev_process_flags);
-        let current_mutation = snapshot_mutation(flags);
+        let current_mutation = snapshot_mutation(flags).or_else(|| {
+            (postroll_samples > 0).then_some(crate::content_snapshot::ContentMutation::Recording)
+        });
         if previous_mutation != current_mutation {
             if let Some(previous) = previous_mutation {
                 if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -696,9 +972,55 @@ impl AudioChannel {
             self.prerecord_data_length = 0;
         }
 
+        if postroll_samples > 0 {
+            self.process_record(postroll_samples, self.data_length, false)?;
+            self.postroll_remaining_frames = self
+                .postroll_remaining_frames
+                .saturating_sub(postroll_samples as u32);
+            self.finish_recording_after_finalize = self.postroll_remaining_frames == 0;
+        }
+
         if flags.contains(ProcessFlags::PLAYBACK) {
             self.last_played_back_sample = Some(params.position);
-            self.process_playback(params.position, n_samples)?;
+            let mapping = CaptureFrameMapping::new(self.capture_alignment_frames)
+                .map_err(|_| ChannelError::LatencyPositionOverflow)?;
+            let render_advance_frames = if matches!(
+                mode,
+                LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+            ) || (params.flags.contains(ProcessFlags::PLAYBACK)
+                && matches!(
+                    next_mode,
+                    LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+                )) {
+                self.render_advance_frames
+            } else {
+                0
+            };
+            let dispatch_position = cyclic_render_dispatch_position(
+                params.position,
+                self.start_offset,
+                self.capture_alignment_frames,
+                render_advance_frames,
+                length_before.min(u32::MAX as usize) as u32,
+            )
+            .ok_or(ChannelError::LatencyPositionOverflow)?;
+            let cyclic_window = (render_advance_frames > 0 && length_before > 0)
+                .then(|| {
+                    let start = i32::try_from(
+                        mapping
+                            .raw_frame(i64::from(self.start_offset))
+                            .map_err(|_| ChannelError::LatencyPositionOverflow)?,
+                    )
+                    .map_err(|_| ChannelError::LatencyPositionOverflow)?;
+                    let length = i32::try_from(length_before)
+                        .map_err(|_| ChannelError::LatencyPositionOverflow)?;
+                    let end = start
+                        .checked_add(length)
+                        .ok_or(ChannelError::LatencyPositionOverflow)?;
+                    Ok::<_, ChannelError>((start, end))
+                })
+                .transpose()?;
+            self.process_playback(dispatch_position, n_samples, cyclic_window)?;
         } else {
             self.last_played_back_sample = None;
         }
@@ -707,14 +1029,22 @@ impl AudioChannel {
             self.process_record(n_samples, from, false)?;
         }
         if flags.contains(ProcessFlags::REPLACE) {
+            // Live replacement input already arrives on the raw capture timeline.
+            // Adding the take's playback alignment here would apply it twice.
             self.process_replace(params.position, n_samples)?;
         }
         if flags.contains(ProcessFlags::PRE_RECORD) {
             let from = self.prerecord_data_length;
             self.process_record(n_samples, from, true)?;
         }
-
-        self.prev_process_flags = flags;
+        if self.prev_process_flags.contains(ProcessFlags::REPLACE)
+            && !flags.contains(ProcessFlags::REPLACE)
+        {}
+        self.prev_process_flags = if self.postroll_remaining_frames > 0 {
+            flags.with(ProcessFlags::RECORD)
+        } else {
+            flags
+        };
 
         if let Some(b) = self.recording.as_mut() {
             b.cursor += n_samples;
@@ -862,6 +1192,7 @@ impl AudioChannel {
         &mut self,
         data_position: i32,
         n_samples: usize,
+        cyclic_window: Option<(i32, i32)>,
     ) -> Result<(), ChannelError> {
         let buf = self.playback.unwrap_or_default();
         if buf.remaining < n_samples {
@@ -875,19 +1206,37 @@ impl AudioChannel {
         let mut left = n_samples;
         let mut dst = buf.cursor;
 
-        // Playback may not start before the pre-play window opens.
-        let starting = (self.start_offset - self.pre_play_samples as i32).max(0);
-        let skip = (starting - pos).max(0);
-        if skip > 0 {
-            let skip = skip as usize;
-            pos += skip as i32;
-            left = left.saturating_sub(skip);
-            dst += skip.min(buf.remaining);
+        if cyclic_window.is_none() {
+            // Playback may not start before the pre-play window opens.
+            let starting = self
+                .start_offset
+                .saturating_add(self.capture_alignment_frames)
+                .saturating_sub(self.pre_play_samples as i32)
+                .max(0);
+            let skip = (starting - pos).max(0);
+            if skip > 0 {
+                let skip = skip as usize;
+                pos += skip as i32;
+                left = left.saturating_sub(skip);
+                dst += skip.min(buf.remaining);
+            }
         }
 
-        while left > 0 && (pos as usize) < self.data_length {
+        while left > 0 && pos >= 0 && (pos as usize) < self.data_length {
             let p = pos as usize;
-            let n = left.min(self.buffers.space_for_sample(p));
+            let until_wrap = cyclic_window
+                .map(|(_, end)| (end - pos).max(0) as usize)
+                .unwrap_or(usize::MAX);
+            let available = cyclic_window
+                .map(|_| self.data_length - p)
+                .unwrap_or(usize::MAX);
+            let n = left
+                .min(self.buffers.space_for_sample(p))
+                .min(available)
+                .min(until_wrap);
+            if n == 0 {
+                break;
+            }
             self.queue.push(CopyCmd::OutOfMain {
                 src: p,
                 dst,
@@ -897,6 +1246,11 @@ impl AudioChannel {
             pos += n as i32;
             dst += n;
             left -= n;
+            if let Some((start, end)) = cyclic_window {
+                if pos == end {
+                    pos = start;
+                }
+            }
         }
         Ok(())
     }
@@ -971,6 +1325,7 @@ impl AudioChannel {
         }
         self.output_peak = peak;
         self.state.publish_output_peak(published_peak);
+        self.finish_latency_recording_mutation();
         self.publish_state();
     }
 
@@ -1044,7 +1399,17 @@ impl AudioChannel {
         }
         self.output_peak = peak;
         self.state.publish_output_peak(published_peak);
+        self.finish_latency_recording_mutation();
         self.publish_state();
+    }
+
+    fn finish_latency_recording_mutation(&mut self) {
+        if self.finish_recording_after_finalize {
+            if let Some(snapshots) = self.content_snapshots.as_mut() {
+                snapshots.finish_mutation(false);
+            }
+            self.finish_recording_after_finalize = false;
+        }
     }
 }
 
@@ -1068,6 +1433,14 @@ mod tests {
 
     fn channel() -> AudioChannel {
         AudioChannel::with_chunk_size(4, C::Direct)
+    }
+
+    fn playback_mode_for_test(role: ChannelMode) -> LoopMode {
+        if role == C::Dry {
+            L::PlayingDryThroughWet
+        } else {
+            L::Playing
+        }
     }
 
     /// Runs one cycle: sizes the port buffers, processes, finalizes.
@@ -1177,6 +1550,44 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn media_layout_capture_alignment_and_render_advance_are_independent() {
+        let state = Arc::new(AudioChannelStateMirror::default());
+        let mut ch = AudioChannel::with_chunk_size_and_state(4, C::Direct, Arc::clone(&state));
+        ch.load_data(&(0..12).map(|sample| sample as f32).collect::<Vec<_>>());
+        ch.set_start_offset(2);
+        ch.set_capture_alignment_frames(3).unwrap();
+        ch.set_render_advance_frames(2).unwrap();
+        check!(ch.media_layout_offset() == 2);
+        check!(ch.raw_position_for_logical(0) == Some(5));
+        check!(ch.dispatch_raw_position_for_logical(0) == Some(7));
+        check!(cycle(&mut ch, L::PlayingDryThroughWet, 2, 0, 8, &[]) == vec![7.0, 8.0]);
+        let published = state.read(ch.data_seq_nr() as u64);
+        check!(published.capture_alignment_frames == 3);
+        check!(published.render_advance_frames == 2);
+
+        check!(cycle(&mut ch, L::Playing, 2, 0, 8, &[]) == vec![5.0, 6.0]);
+
+        ch.set_capture_alignment_frames(-2).unwrap();
+        ch.set_render_advance_frames(0).unwrap();
+        check!(cycle(&mut ch, L::Playing, 2, 0, 2, &[]) == vec![0.0, 1.0]);
+        check!(ch
+            .set_capture_alignment_frames(-(MAX_COMPENSATION_FRAMES as i32) - 1)
+            .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_render_advance_cycles_inside_selected_take() {
+        let mut ch = AudioChannel::with_chunk_size(2, C::Dry);
+        ch.load_data(&[100.0, 101.0, 102.0, 10.0, 11.0, 12.0, 13.0, 103.0]);
+        ch.set_start_offset(2);
+        ch.set_capture_alignment_frames(1).unwrap();
+        ch.set_render_advance_frames(11).unwrap();
+
+        let out = cycle(&mut ch, L::PlayingDryThroughWet, 4, 0, 4, &[]);
+        check!(out == vec![13.0, 10.0, 11.0, 12.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_honours_start_offset() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1208,6 +1619,37 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn dry_into_wet_replacement_writes_canonical_logical_frames() {
+        let mut ch = AudioChannel::with_chunk_size(4, C::Wet);
+        ch.load_data(&[9.0, 9.0, 9.0, 9.0]);
+        ch.set_capture_alignment_frames(2).unwrap();
+        cycle(
+            &mut ch,
+            L::RecordingDryIntoWet,
+            4,
+            0,
+            4,
+            &[1.0, 2.0, 3.0, 4.0],
+        );
+        check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0]);
+
+        ch.set_capture_alignment_frames(0).unwrap();
+        check!(cycle(&mut ch, L::Playing, 4, 0, 4, &[]) == vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_compatible_replacement_writes_raw_timeline_once() {
+        for role in [C::Direct, C::Dry, C::Wet] {
+            let mut ch = AudioChannel::with_chunk_size(4, role);
+            ch.load_data(&[0.0; 8]);
+            ch.set_capture_alignment_frames(3).unwrap();
+            cycle(&mut ch, L::Replacing, 1, 5, 8, &[1.0]);
+            check!(ch.data()[5] == 1.0);
+            check!(cycle(&mut ch, playback_mode_for_test(role), 1, 2, 8, &[]) == vec![1.0]);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn replace_overwrites_in_place_without_growing() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1235,6 +1677,168 @@ mod tests {
         assert2::assert!(let Err(ChannelError::ReplaceOutOfBounds { position, length }) = r);
         check!(position == 2);
         check!(length == 2);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn prepared_latency_postroll_finishes_after_logical_recording_without_growth() {
+        let mut ch = AudioChannel::with_bounded_capacity(4, 9, C::Direct);
+        ch.prepare_latency_retention(4, 2, 3).unwrap();
+        check!(ch.retained_before_frames() == 2);
+        check!(ch.retained_after_frames() == 3);
+
+        check!(cycle(&mut ch, L::Recording, 4, 0, 0, &[1.0, 2.0, 3.0, 4.0]) == vec![0.0; 4]);
+        check!(cycle(&mut ch, L::Stopped, 2, 0, 4, &[5.0, 6.0]) == vec![0.0; 2]);
+        check!(ch.is_finalizing_latency_postroll());
+        check!(cycle(&mut ch, L::Stopped, 2, 0, 4, &[7.0, 8.0]) == vec![0.0; 2]);
+        check!(!ch.is_finalizing_latency_postroll());
+        check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compensated_record_then_play_maps_postroll_across_callbacks_and_wrap() {
+        let mut ch = AudioChannel::with_bounded_capacity(4, 6, C::Direct);
+        ch.prepare_latency_retention(4, 0, 2).unwrap();
+        ch.set_capture_alignment_frames(2).unwrap();
+        cycle(&mut ch, L::Recording, 4, 0, 0, &[0.0; 4]);
+        cycle(&mut ch, L::Stopped, 2, 0, 4, &[0.0, 1.0]);
+        check!(ch.length() == 6);
+
+        check!(cycle(&mut ch, L::Playing, 2, 0, 4, &[]) == vec![0.0, 0.0]);
+        check!(cycle(&mut ch, L::Playing, 2, 2, 4, &[]) == vec![0.0, 1.0]);
+        check!(cycle(&mut ch, L::Playing, 2, 0, 4, &[]) == vec![0.0, 0.0]);
+        check!(cycle(&mut ch, L::Playing, 2, 2, 4, &[]) == vec![0.0, 1.0]);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn snapshot_stays_unsettled_through_latency_postroll_then_publishes_complete_take() {
+        use crate::content_snapshot::{ContentSnapshotRuntime, CurrentDataError};
+        use std::time::{Duration, Instant};
+
+        let runtime = ContentSnapshotRuntime::new();
+        let (writer, _control, reader) = runtime.create_audio_channel(4, 8);
+        let mut ch = AudioChannel::with_chunk_size_state_and_snapshots(
+            4,
+            C::Direct,
+            Arc::new(AudioChannelStateMirror::default()),
+            Some(writer),
+        );
+        ch.prepare_latency_retention(4, 0, 3).unwrap();
+        ch.set_loop_smoothing_frames(2);
+
+        cycle(&mut ch, L::Recording, 4, 0, 0, &[1.0, 2.0, 3.0, 4.0]);
+        check!(matches!(
+            reader.try_current(),
+            Err(CurrentDataError::MutationActive(_))
+        ));
+        cycle(&mut ch, L::Stopped, 2, 0, 4, &[5.0, 6.0]);
+        check!(matches!(
+            reader.try_current(),
+            Err(CurrentDataError::MutationActive(_))
+        ));
+        cycle(&mut ch, L::Stopped, 1, 0, 4, &[7.0]);
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            if let Ok(snapshot) = reader.try_current() {
+                break snapshot;
+            }
+            assert!(Instant::now() < deadline, "snapshot publication timed out");
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        check!(snapshot.metadata.length == 7);
+        check!(snapshot.contiguous() == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn bounded_grab_load_publishes_a_complete_new_snapshot_generation() {
+        use crate::content_snapshot::ContentSnapshotRuntime;
+        use std::time::{Duration, Instant};
+
+        let runtime = ContentSnapshotRuntime::new();
+        let (writer, _control, reader) = runtime.create_audio_channel(4, 8);
+        let mut ch = AudioChannel::with_chunk_size_state_and_snapshots(
+            4,
+            C::Direct,
+            Arc::new(AudioChannelStateMirror::default()),
+            Some(writer),
+        );
+        ch.load_data(&[9.0]);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let previous_revision = loop {
+            if let Ok(snapshot) = reader.try_current() {
+                break snapshot.revision;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "initial snapshot publication timed out"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+
+        ch.begin_bounded_load(4);
+        ch.write_bounded_load(0, &[1.0, 2.0, 3.0, 4.0]);
+        ch.finish_bounded_load();
+        ch.set_start_offset(0);
+        ch.set_capture_alignment_frames(1).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            if let Ok(snapshot) = reader.try_current() {
+                if snapshot.revision > previous_revision {
+                    break snapshot;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "grab snapshot publication timed out"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        check!(snapshot.metadata.length == 4);
+        check!(snapshot.contiguous() == vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn legacy_media_layout_offset_is_independent_of_latency_bounds() {
+        let mut ch = channel();
+        let media_offset = i32::MAX - 1;
+        ch.set_start_offset(media_offset);
+        ch.set_capture_alignment_frames(7).unwrap();
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
+        assert!(ch
+            .set_capture_alignment_frames(shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1)
+            .is_err());
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn armed_latency_record_and_postroll_allocate_nothing() {
+        let mut ch = AudioChannel::with_bounded_capacity(4, 9, C::Direct);
+        ch.prepare_latency_retention(4, 2, 3).unwrap();
+        let recording = [1.0, 2.0, 3.0, 4.0];
+        let postroll = [5.0, 6.0, 7.0, 8.0];
+        let mut output = [0.0; 4];
+
+        ch.set_recording_buffer_size(4);
+        ch.set_playback_buffer_size(4);
+        assert_no_alloc::assert_no_alloc(|| {
+            ch.process(L::Recording, L::Unknown, None, None, 4, 0, 0)
+                .unwrap();
+            ch.finalize_process(&recording, &mut output);
+        });
+        ch.set_recording_buffer_size(4);
+        ch.set_playback_buffer_size(4);
+        output.fill(0.0);
+        assert_no_alloc::assert_no_alloc(|| {
+            ch.process(L::Stopped, L::Unknown, None, None, 4, 0, 4)
+                .unwrap();
+            ch.finalize_process(&postroll, &mut output);
+        });
+        check!(ch.length() == 7);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1315,6 +1919,25 @@ mod tests {
         ch.finalize_process(&[7.0, 8.0], &mut [0.0, 0.0]);
         check!(ch.start_offset() == 2);
         check!(ch.data() == vec![5.0, 6.0, 7.0, 8.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn negative_take_alignment_selects_retained_prerecord_material() {
+        let mut ch = channel();
+        ch.set_recording_buffer_size(2);
+        ch.set_playback_buffer_size(2);
+        ch.process(L::Stopped, L::Recording, Some(0), Some(2), 2, 0, 0)
+            .unwrap();
+        ch.finalize_process(&[1.0, 0.0], &mut [0.0; 2]);
+
+        ch.set_recording_buffer_size(4);
+        ch.set_playback_buffer_size(4);
+        ch.process(L::Recording, L::Unknown, None, None, 4, 0, 0)
+            .unwrap();
+        ch.finalize_process(&[0.0; 4], &mut [0.0; 4]);
+        check!(ch.start_offset() == 2);
+        ch.set_capture_alignment_frames(-2).unwrap();
+        check!(cycle(&mut ch, L::Playing, 4, 0, 4, &[]) == vec![1.0, 0.0, 0.0, 0.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

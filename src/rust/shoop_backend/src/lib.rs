@@ -31,6 +31,7 @@ use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId}
 use shoop_engine::external_audio_port::ExternalAudioPort;
 use shoop_engine::external_midi_port::ExternalMidiPort;
 use shoop_engine::internal_audio_port::InternalAudioPort;
+use shoop_engine::midi_state::{MidiStateTracker, TrackWhat};
 use shoop_engine::session::{Port, Session};
 use shoop_engine::{
     ChannelMode, LoopMode, MidiStorage, PortDataType as EnginePortDataType, PortDirection,
@@ -215,6 +216,18 @@ impl BackendTrackTopology {
         }
     }
 
+    pub const fn has_wet_channels(&self) -> bool {
+        match self {
+            Self::Direct { .. } => false,
+            Self::DryWetExternal {
+                wet_audio_channels, ..
+            }
+            | Self::DryWetProcessor {
+                wet_audio_channels, ..
+            } => *wet_audio_channels > 0,
+        }
+    }
+
     pub const fn has_midi(&self) -> bool {
         match self {
             Self::Direct { midi, .. } => *midi,
@@ -270,6 +283,53 @@ pub enum BackendTrackControl {
     InputMonitoring(bool),
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendRecordingOffsetAdjustment {
+    #[default]
+    Automatic,
+    ManualOverride(i32),
+    AutomaticPlusTrim(i32),
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendProcessorLatencyAdjustment {
+    Automatic,
+    #[default]
+    ManualOverride,
+    AutomaticPlusTrim,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendTrackLatencyState {
+    pub automatic_offset_frames: Option<i32>,
+    pub adjustment: BackendRecordingOffsetAdjustment,
+    pub effective_offset_frames: Option<i32>,
+    pub automatic_processor_advance_frames: Option<u32>,
+    pub processor_adjustment: BackendProcessorLatencyAdjustment,
+    pub processor_manual_frames: i32,
+    pub effective_processor_advance_frames: Option<u32>,
+    #[serde(skip)]
+    pub pending: bool,
+    #[serde(skip)]
+    pub error: Option<String>,
+}
+
+impl Default for BackendTrackLatencyState {
+    fn default() -> Self {
+        Self {
+            automatic_offset_frames: None,
+            adjustment: BackendRecordingOffsetAdjustment::ManualOverride(0),
+            effective_offset_frames: Some(0),
+            automatic_processor_advance_frames: Some(0),
+            processor_adjustment: BackendProcessorLatencyAdjustment::ManualOverride,
+            processor_manual_frames: 0,
+            effective_processor_advance_frames: Some(0),
+            pending: false,
+            error: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum BackendTrackFxControl {
     SetActive(bool),
@@ -293,6 +353,8 @@ pub struct BackendTrackState {
     pub input_gain_db: f32,
     pub input_balance: f32,
     pub input_monitoring: bool,
+    #[serde(default)]
+    pub latency: BackendTrackLatencyState,
     pub input_peaks: Vec<f32>,
     pub output_peaks: Vec<f32>,
     pub input_midi_activity: bool,
@@ -431,6 +493,8 @@ pub struct BackendLoopState {
     pub balance: f32,
     pub audio_peaks: Vec<f32>,
     pub midi_activity: bool,
+    pub capture_alignment_frames: i32,
+    pub processor_alignment_frames: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -503,6 +567,8 @@ pub struct BackendAudioContent {
     pub samples: Vec<f32>,
     pub gain: f32,
     pub start_offset: i32,
+    #[serde(default)]
+    pub capture_alignment_frames: i32,
     pub preplay: u32,
 }
 
@@ -510,6 +576,7 @@ pub struct BackendAudioContent {
 pub struct BackendAudioChannelData {
     pub samples: Arc<[f32]>,
     pub start_offset: i32,
+    pub capture_alignment_frames: i32,
     pub preplay: u32,
 }
 
@@ -559,6 +626,8 @@ pub struct BackendMidiContent {
     pub start_state: Vec<Vec<u8>>,
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: i32,
+    #[serde(default)]
+    pub capture_alignment_frames: i32,
     pub preplay: u32,
 }
 
@@ -569,6 +638,7 @@ pub struct BackendMidiChannelData {
     pub length: u32,
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: i32,
+    pub capture_alignment_frames: i32,
     pub preplay: u32,
 }
 
@@ -592,6 +662,8 @@ pub struct BackendAudioChannelUpdate {
     pub channel: usize,
     pub samples: Vec<f32>,
     pub start_offset: Option<i32>,
+    #[serde(default)]
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -602,6 +674,8 @@ pub struct BackendMidiChannelUpdate {
     pub start_state: Vec<Vec<u8>>,
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: Option<i32>,
+    #[serde(default)]
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -658,6 +732,7 @@ pub struct BackendAudioDataChunk {
     pub offset: usize,
     pub total_samples: usize,
     pub start_offset: i32,
+    pub capture_alignment_frames: i32,
     pub preplay: u32,
     pub samples: Vec<f32>,
 }
@@ -707,6 +782,9 @@ pub enum BackendMutationDetail {
     TrackFxControl(BackendTrackFxControl),
     LoopGain(f32),
     LoopBalance(f32),
+    LoopTiming,
+    TakeAlignment,
+    TakeProcessorAlignment,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -820,6 +898,29 @@ pub trait Backend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()>;
+    fn set_track_latency(
+        &mut self,
+        _track_id: BackendTrackId,
+        _adjustment: BackendRecordingOffsetAdjustment,
+        _processor_adjustment: BackendProcessorLatencyAdjustment,
+        _processor_manual_frames: i32,
+    ) -> Result<()> {
+        Err(anyhow!("latency control is unavailable"))
+    }
+    fn set_take_alignment(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _capture_alignment_frames: i32,
+    ) -> Result<()> {
+        Err(anyhow!("take alignment control is unavailable"))
+    }
+    fn set_take_processor_alignment(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _processor_alignment_frames: u32,
+    ) -> Result<()> {
+        Err(anyhow!("take processor alignment control is unavailable"))
+    }
     fn inject_midi_input(
         &mut self,
         _track_id: BackendTrackId,
@@ -874,6 +975,8 @@ pub trait Backend {
             .map(|channel| Arc::clone(&channel.samples))
             .unwrap_or_else(|| Arc::from([]));
         let start_offset = channel_data.map_or(0, |channel| channel.start_offset);
+        let capture_alignment_frames =
+            channel_data.map_or(0, |channel| channel.capture_alignment_frames);
         let preplay = channel_data.map_or(0, |channel| channel.preplay);
         let end = offset.saturating_add(max_samples).min(samples.len());
         Ok(BackendAudioDataChunk {
@@ -883,6 +986,7 @@ pub trait Backend {
             offset,
             total_samples: samples.len(),
             start_offset,
+            capture_alignment_frames,
             preplay,
             samples: if offset < end {
                 samples[offset..end].to_vec()
@@ -1275,6 +1379,7 @@ struct EngineComposite {
     play_after_record: bool,
 }
 
+#[derive(Clone)]
 struct EngineLoopChannels {
     audio: Vec<usize>,
     audio_modes: Vec<BackendChannelMode>,
@@ -1308,6 +1413,7 @@ struct EngineTrack {
     input_gain_db: f32,
     input_balance: f32,
     input_monitoring: bool,
+    latency: BackendTrackLatencyState,
     oxisynth: Option<EngineOxiFx>,
 }
 
@@ -2169,13 +2275,20 @@ impl EngineBackend {
             .ok_or_else(|| anyhow!("unknown backend loop {id:?}"))
     }
 
+    fn loop_has_unsettled_latency_postroll(&self, loop_id: BackendLoopId) -> Result<bool> {
+        self.session
+            .loop_(self.engine_loop_index(loop_id)?)
+            .map(shoop_engine::AudioMidiLoop::has_unsettled_latency_postroll)
+            .ok_or_else(|| anyhow!("missing engine loop"))
+    }
+
     fn create_track_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
-        let (audio_routes, midi_route) = {
+        let (audio_routes, midi_route, latency, has_wet_channels) = {
             let track = self
                 .tracks
                 .get(&track_id)
                 .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
-            match track.topology {
+            let (audio_routes, midi_route) = match track.topology {
                 BackendTrackTopology::Direct { .. } => (
                     track
                         .audio_inputs
@@ -2215,7 +2328,13 @@ impl EngineBackend {
                         "External topology is unavailable in the engine backend"
                     ));
                 }
-            }
+            };
+            (
+                audio_routes,
+                midi_route,
+                track.latency.clone(),
+                track.topology.has_wet_channels(),
+            )
         };
         let loop_id = self.create_loop()?;
         let engine_loop = self.engine_loop_index(loop_id)?;
@@ -2276,6 +2395,12 @@ impl EngineBackend {
             .expect("track was validated before loop construction")
             .loops
             .push(loop_id);
+        if let Ok(values) = callback_backend_latency(&latency, has_wet_channels) {
+            self.session
+                .loop_mut(engine_loop)
+                .expect("engine loop was created above")
+                .set_pending_latency(values);
+        }
         Ok(loop_id)
     }
 
@@ -2467,6 +2592,7 @@ impl EngineBackend {
                 input_gain_db: 0.0,
                 input_balance: 0.0,
                 input_monitoring: false,
+                latency: BackendTrackLatencyState::default(),
                 oxisynth: Some(EngineOxiFx {
                     control,
                     active: false,
@@ -2581,6 +2707,7 @@ impl EngineBackend {
                 input_gain_db: track.input_gain_db,
                 input_balance: track.input_balance,
                 input_monitoring: track.input_monitoring,
+                latency: track.latency.clone(),
                 ..Default::default()
             };
             let mut loops = Vec::with_capacity(track.loops.len());
@@ -2598,6 +2725,11 @@ impl EngineBackend {
                     LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
                 ) {
                     return Err(anyhow!("loop content is changing"));
+                }
+                if loop_state.has_unsettled_latency_postroll() {
+                    return Err(anyhow!(
+                        "loop alignment postroll is still finalizing; retry after it settles"
+                    ));
                 }
                 let channels = self
                     .loop_channels
@@ -2617,6 +2749,7 @@ impl EngineBackend {
                             samples: channel.data(),
                             gain: channel.gain(),
                             start_offset: channel.start_offset(),
+                            capture_alignment_frames: channel.capture_alignment_frames(),
                             preplay: channel.pre_play_samples(),
                         })
                     })
@@ -2643,6 +2776,7 @@ impl EngineBackend {
                                 })
                                 .collect(),
                             start_offset: channel.start_offset(),
+                            capture_alignment_frames: channel.capture_alignment_frames(),
                             preplay: channel.pre_play_samples(),
                         })
                     })
@@ -2837,6 +2971,28 @@ impl EngineBackend {
             ] {
                 staged.set_track_control(created.track_id, control)?;
             }
+            if let Err(error) = staged.set_track_latency(
+                created.track_id,
+                source_track.state.latency.adjustment,
+                source_track.state.latency.processor_adjustment,
+                source_track.state.latency.processor_manual_frames,
+            ) {
+                if source_track.state.latency.effective_offset_frames.is_some()
+                    && source_track
+                        .state
+                        .latency
+                        .effective_processor_advance_frames
+                        .is_some()
+                {
+                    return Err(error);
+                }
+                staged
+                    .tracks
+                    .get_mut(&created.track_id)
+                    .expect("created track exists")
+                    .latency
+                    .clone_from(&source_track.state.latency);
+            }
             if created.loops.len() != source_track.loops.len()
                 || created.ports.len() != source_track.ports.len()
             {
@@ -2863,6 +3019,7 @@ impl EngineBackend {
                     channel.load_data(&content.samples);
                     channel.set_gain(content.gain);
                     channel.set_start_offset(content.start_offset);
+                    channel.set_capture_alignment_frames(content.capture_alignment_frames)?;
                     channel.set_pre_play_samples(content.preplay);
                 }
                 for (index, content) in midi_indices.iter().zip(&source_loop.midi) {
@@ -2880,6 +3037,7 @@ impl EngineBackend {
                         .ok_or_else(|| anyhow!("missing staged MIDI channel"))?;
                     channel.set_contents(&events, content.length, Some(&content.start_state));
                     channel.set_start_offset(content.start_offset);
+                    channel.set_capture_alignment_frames(content.capture_alignment_frames)?;
                     channel.set_pre_play_samples(content.preplay);
                 }
                 staged
@@ -2933,29 +3091,285 @@ impl EngineBackend {
         Ok((staged, replacement))
     }
 
-    fn prepare_recording_storage(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        if self.port_model != EnginePortModel::Physical {
-            return Ok(());
+    fn prepare_recording_storage(
+        &mut self,
+        loop_id: BackendLoopId,
+        require_existing_alignment: bool,
+    ) -> Result<()> {
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        if self
+            .session
+            .loop_(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .has_unsettled_latency_postroll()
+        {
+            return Err(anyhow!(
+                "loop alignment postroll is still finalizing; retry after it settles"
+            ));
         }
-        let channels = self
+        let audio_channels = self
             .loop_channels
             .get(&loop_id)
-            .ok_or_else(|| anyhow!("missing loop channels"))?
-            .audio
-            .clone();
-        for channel in channels {
-            self.session
-                .audio_channel_mut(channel)
-                .ok_or_else(|| anyhow!("missing audio loop channel"))?
-                .prepare_bounded_capacity();
+            .map(|channels| channels.audio.clone())
+            .unwrap_or_default();
+        if self.port_model == EnginePortModel::Physical {
+            for channel in audio_channels {
+                self.session
+                    .audio_channel_mut(channel)
+                    .ok_or_else(|| anyhow!("missing audio loop channel"))?
+                    .prepare_bounded_capacity();
+            }
         }
-        Ok(())
+        let (latency, has_wet_channels) = self
+            .tracks
+            .values()
+            .find(|track| track.loops.contains(&loop_id))
+            .map(|track| (track.latency.clone(), track.topology.has_wet_channels()))
+            .unwrap_or_default();
+        let values = prepared_backend_latency(&latency, has_wet_channels)?;
+        if require_existing_alignment {
+            let expected = values.recording_offset().frames();
+            let wet_expected = values.wet_recording_offset().frames();
+            let channel_set = self.loop_channels.get(&loop_id);
+            let has_wet = channel_set.is_some_and(|set| {
+                set.audio_modes
+                    .iter()
+                    .chain(&set.midi_modes)
+                    .any(|mode| *mode == BackendChannelMode::Wet)
+            });
+            if expected != 0 || (has_wet && wet_expected != 0) {
+                return Err(anyhow!(
+                    "replacement with a nonzero recording offset is unsupported; record a new take instead"
+                ));
+            }
+            let audio_matches = channel_set
+                .into_iter()
+                .flat_map(|set| &set.audio)
+                .all(|channel| {
+                    self.session.audio_channel(*channel).is_some_and(|channel| {
+                        let expected = if channel.mode() == ChannelMode::Wet {
+                            wet_expected
+                        } else {
+                            expected
+                        };
+                        channel.capture_alignment_frames() == expected
+                    })
+                });
+            let midi_matches = channel_set
+                .into_iter()
+                .flat_map(|set| &set.midi)
+                .all(|channel| {
+                    self.session.midi_channel(*channel).is_some_and(|channel| {
+                        let expected = if channel.mode() == ChannelMode::Wet {
+                            wet_expected
+                        } else {
+                            expected
+                        };
+                        channel.capture_alignment_frames() == expected
+                    })
+                });
+            if !audio_matches || !midi_matches {
+                return Err(anyhow!(
+                    "replacement offset differs from the take; match the take alignment first"
+                ));
+            }
+        }
+        let logical_capacity = self
+            .session
+            .loop_(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .length() as usize;
+        self.session
+            .loop_mut(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .prepare_latency(values, logical_capacity)
+            .map_err(|error| anyhow!("could not prepare latency retention: {error}"))
     }
 
     fn apply_graph_changes(&mut self) -> Result<()> {
         self.session
             .apply_graph_changes()
             .map_err(|error| anyhow!("could not apply dummy engine graph: {error}"))
+    }
+}
+
+fn processor_alignment_from_values(
+    values: impl IntoIterator<Item = (BackendChannelMode, i32)>,
+) -> Option<u32> {
+    let mut dry = None;
+    let mut wet = None;
+    for (mode, alignment) in values {
+        match mode {
+            BackendChannelMode::Dry if dry.is_none() => dry = Some(alignment),
+            BackendChannelMode::Wet if wet.is_none() => wet = Some(alignment),
+            _ => {}
+        }
+    }
+    u32::try_from(wet?.checked_sub(dry?)?).ok()
+}
+
+fn validate_take_alignment_window(
+    capture_alignment_frames: i32,
+    media_layout_offset: i32,
+    raw_length: u64,
+    logical_length: u32,
+    channel_kind: &str,
+    channel_index: usize,
+) -> Result<()> {
+    let mapping = shoop_latency::CaptureFrameMapping::new(capture_alignment_frames)?;
+    let raw_start = mapping.raw_media_frame(0, i64::from(media_layout_offset))?;
+    let raw_end =
+        mapping.raw_media_frame(i64::from(logical_length), i64::from(media_layout_offset))?;
+    let complete = raw_start >= 0
+        && raw_end >= raw_start
+        && u64::try_from(raw_end).is_ok_and(|raw_end| raw_end <= raw_length);
+    if !complete {
+        return Err(anyhow!(
+            "take alignment {capture_alignment_frames} requires {channel_kind} channel {channel_index} media outside its retained raw window"
+        ));
+    }
+    Ok(())
+}
+
+pub fn canonical_midi_start_state<'a>(
+    start_state: &[Vec<u8>],
+    preceding_events: impl IntoIterator<Item = &'a [u8]>,
+) -> Vec<Vec<u8>> {
+    let mut state = MidiStateTracker::new(TrackWhat::ALL);
+    for message in start_state {
+        state.process(message);
+    }
+    for message in preceding_events {
+        state.process(message);
+    }
+    state.state_as_messages()
+}
+
+fn resolved_processor_advance(
+    state: &BackendTrackLatencyState,
+) -> Result<shoop_latency::ProcessorRenderAdvance> {
+    let automatic = state
+        .automatic_processor_advance_frames
+        .map(shoop_latency::ProcessorRenderAdvance::new)
+        .transpose()?;
+    let adjustment = match state.processor_adjustment {
+        BackendProcessorLatencyAdjustment::Automatic => {
+            shoop_latency::ProcessorLatencyAdjustment::Automatic
+        }
+        BackendProcessorLatencyAdjustment::ManualOverride => {
+            shoop_latency::ProcessorLatencyAdjustment::ManualOverride
+        }
+        BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+            shoop_latency::ProcessorLatencyAdjustment::AutomaticPlusTrim
+        }
+    };
+    Ok(shoop_latency::resolve_processor_advance(
+        automatic,
+        adjustment,
+        state.processor_manual_frames,
+    )?)
+}
+
+fn resolved_recording_offset(
+    state: &BackendTrackLatencyState,
+) -> Result<shoop_latency::RecordingOffset> {
+    let automatic = state
+        .automatic_offset_frames
+        .map(shoop_latency::RecordingOffset::new)
+        .transpose()?;
+    let adjustment = match state.adjustment {
+        BackendRecordingOffsetAdjustment::Automatic => {
+            shoop_latency::RecordingOffsetAdjustment::Automatic
+        }
+        BackendRecordingOffsetAdjustment::ManualOverride(frames) => {
+            shoop_latency::RecordingOffsetAdjustment::ManualOverride(frames)
+        }
+        BackendRecordingOffsetAdjustment::AutomaticPlusTrim(frames) => {
+            shoop_latency::RecordingOffsetAdjustment::AutomaticPlusTrim(frames)
+        }
+    };
+    Ok(shoop_latency::resolve_recording_offset(
+        automatic, adjustment,
+    )?)
+}
+
+fn prepared_backend_latency(
+    state: &BackendTrackLatencyState,
+    has_wet_channels: bool,
+) -> Result<shoop_engine::PreparedLatency> {
+    Ok(shoop_engine::PreparedLatency::new_for_track(
+        resolved_recording_offset(state)?,
+        resolved_processor_advance(state)?,
+        has_wet_channels,
+    )?)
+}
+
+fn callback_backend_latency(
+    state: &BackendTrackLatencyState,
+    has_wet_channels: bool,
+) -> Result<shoop_engine::PreparedLatency> {
+    match prepared_backend_latency(state, has_wet_channels) {
+        Ok(values) => Ok(values),
+        Err(_) => Ok(shoop_engine::PreparedLatency::new_for_track(
+            shoop_latency::RecordingOffset::default(),
+            resolved_processor_advance(state)?,
+            has_wet_channels,
+        )?),
+    }
+}
+
+fn update_backend_latency(
+    state: &mut BackendTrackLatencyState,
+    adjustment: BackendRecordingOffsetAdjustment,
+    processor_adjustment: BackendProcessorLatencyAdjustment,
+    processor_manual_frames: i32,
+    has_wet_channels: bool,
+) -> Result<()> {
+    let mut candidate = state.clone();
+    candidate.adjustment = adjustment;
+    candidate.processor_adjustment = processor_adjustment;
+    candidate.processor_manual_frames = processor_manual_frames;
+    let recording = resolved_recording_offset(&candidate);
+    let processor = resolved_processor_advance(&candidate);
+    candidate.effective_offset_frames = recording.as_ref().ok().map(|value| value.frames());
+    candidate.effective_processor_advance_frames =
+        processor.as_ref().ok().map(|value| value.frames());
+    match prepared_backend_latency(&candidate, has_wet_channels) {
+        Ok(_) => {
+            candidate.pending = false;
+            candidate.error = None;
+            *state = candidate;
+            Ok(())
+        }
+        Err(error) => {
+            // The two settings are independent unless both resolve and only their
+            // checked Wet sum is invalid. Apply a valid side of a partially
+            // rejected edit, but never retain an invalid or non-serializable value.
+            if recording.is_ok() && processor.is_err() {
+                let mut partial = state.clone();
+                partial.adjustment = candidate.adjustment;
+                partial.effective_offset_frames = candidate.effective_offset_frames;
+                if prepared_backend_latency(&partial, has_wet_channels).is_ok() {
+                    state.adjustment = partial.adjustment;
+                    state.effective_offset_frames = partial.effective_offset_frames;
+                }
+            } else if processor.is_ok() && recording.is_err() {
+                let mut partial = state.clone();
+                partial.processor_adjustment = candidate.processor_adjustment;
+                partial.processor_manual_frames = candidate.processor_manual_frames;
+                partial.effective_processor_advance_frames =
+                    candidate.effective_processor_advance_frames;
+                if prepared_backend_latency(&partial, has_wet_channels).is_ok() {
+                    state.processor_adjustment = partial.processor_adjustment;
+                    state.processor_manual_frames = partial.processor_manual_frames;
+                    state.effective_processor_advance_frames =
+                        partial.effective_processor_advance_frames;
+                }
+            }
+            state.pending = false;
+            state.error = Some(error.to_string());
+            Err(error)
+        }
     }
 }
 
@@ -3311,7 +3725,7 @@ impl Backend for EngineBackend {
             let mut targets = BTreeSet::new();
             self.composite_primitive_targets(composite_id, &mut BTreeSet::new(), &mut targets)?;
             for target in targets {
-                self.prepare_recording_storage(target)?;
+                self.prepare_recording_storage(target, mode == BackendLoopMode::Replacing)?;
             }
         }
         if mode != BackendLoopMode::Stopped && empty {
@@ -3568,6 +3982,7 @@ impl Backend for EngineBackend {
                 input_gain_db: 0.0,
                 input_balance: 0.0,
                 input_monitoring: false,
+                latency: BackendTrackLatencyState::default(),
                 oxisynth: None,
             },
         );
@@ -3726,6 +4141,298 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        processor_adjustment: BackendProcessorLatencyAdjustment,
+        processor_manual_frames: i32,
+    ) -> Result<()> {
+        let loops = self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?
+            .loops
+            .clone();
+        for loop_id in &loops {
+            let loop_ = self
+                .session
+                .loop_(self.engine_loop_index(*loop_id)?)
+                .ok_or_else(|| anyhow!("missing engine loop"))?;
+            if loop_.has_planned_latency_transition() {
+                return Err(anyhow!(
+                    "cannot change track latency while an operation is armed; cancel it first"
+                ));
+            }
+        }
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .expect("backend track was checked above");
+        let has_wet_channels = track.topology.has_wet_channels();
+        let resolution = update_backend_latency(
+            &mut track.latency,
+            adjustment,
+            processor_adjustment,
+            processor_manual_frames,
+            has_wet_channels,
+        );
+        let values = callback_backend_latency(&track.latency, has_wet_channels)?;
+        for loop_id in loops {
+            let engine_loop = self.engine_loop_index(loop_id)?;
+            self.session
+                .loop_mut(engine_loop)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .set_pending_latency(values);
+        }
+        resolution
+    }
+
+    fn set_take_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        shoop_latency::RecordingOffset::new(capture_alignment_frames)?;
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop {loop_id:?}"))?;
+        let engine_loop = self
+            .session
+            .loop_(self.engine_loop_index(loop_id)?)
+            .ok_or_else(|| anyhow!("missing engine loop"))?;
+        if matches!(
+            engine_loop.mode(),
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+        ) {
+            return Err(anyhow!(
+                "cannot edit take alignment while loop content is changing"
+            ));
+        }
+        if engine_loop.has_planned_recording_transition() {
+            return Err(anyhow!(
+                "cannot edit take alignment while a recording operation is armed"
+            ));
+        }
+        if engine_loop.mode().is_playing_mode() {
+            return Err(anyhow!("stop loop playback before editing take alignment"));
+        }
+        if engine_loop.has_unsettled_latency_postroll() {
+            return Err(anyhow!(
+                "cannot edit take alignment while latency postroll is finalizing"
+            ));
+        }
+        let logical_length = engine_loop.length();
+        let reference = channels
+            .audio
+            .first()
+            .and_then(|channel| self.session.audio_channel(*channel))
+            .map(shoop_engine::AudioChannel::capture_alignment_frames)
+            .or_else(|| {
+                channels
+                    .midi
+                    .first()
+                    .and_then(|channel| self.session.midi_channel(*channel))
+                    .map(shoop_engine::MidiChannel::capture_alignment_frames)
+            })
+            .unwrap_or(0);
+        let delta = capture_alignment_frames
+            .checked_sub(reference)
+            .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+        let mut audio_candidates = Vec::with_capacity(channels.audio.len());
+        for (index, channel_index) in channels.audio.iter().enumerate() {
+            let channel = self
+                .session
+                .audio_channel(*channel_index)
+                .ok_or_else(|| anyhow!("missing audio channel"))?;
+            let candidate = channel
+                .capture_alignment_frames()
+                .checked_add(delta)
+                .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+            shoop_latency::RecordingOffset::new(candidate)?;
+            validate_take_alignment_window(
+                candidate,
+                channel.start_offset(),
+                channel.length() as u64,
+                logical_length,
+                "audio",
+                index,
+            )?;
+            audio_candidates.push((*channel_index, candidate));
+        }
+        let mut midi_candidates = Vec::with_capacity(channels.midi.len());
+        for (index, channel_index) in channels.midi.iter().enumerate() {
+            let channel = self
+                .session
+                .midi_channel(*channel_index)
+                .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            let candidate = channel
+                .capture_alignment_frames()
+                .checked_add(delta)
+                .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+            shoop_latency::RecordingOffset::new(candidate)?;
+            validate_take_alignment_window(
+                candidate,
+                channel.start_offset(),
+                u64::from(channel.length()),
+                logical_length,
+                "MIDI",
+                index,
+            )?;
+            midi_candidates.push((*channel_index, candidate));
+        }
+        for (channel, candidate) in audio_candidates {
+            self.session
+                .audio_channel_mut(channel)
+                .ok_or_else(|| anyhow!("missing audio channel"))?
+                .set_capture_alignment_frames(candidate)
+                .expect("take alignment was validated");
+        }
+        for (channel, candidate) in midi_candidates {
+            self.session
+                .midi_channel_mut(channel)
+                .ok_or_else(|| anyhow!("missing MIDI channel"))?
+                .set_capture_alignment_frames(candidate)
+                .expect("take alignment was validated");
+        }
+        Ok(())
+    }
+
+    fn set_take_processor_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        processor_alignment_frames: u32,
+    ) -> Result<()> {
+        shoop_latency::ProcessorRenderAdvance::new(processor_alignment_frames)?;
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("unknown backend loop {loop_id:?}"))?;
+        let engine_loop = self
+            .session
+            .loop_(self.engine_loop_index(loop_id)?)
+            .ok_or_else(|| anyhow!("missing engine loop"))?;
+        if matches!(
+            engine_loop.mode(),
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+        ) || engine_loop.has_unsettled_latency_postroll()
+        {
+            return Err(anyhow!(
+                "cannot edit take processor alignment while loop content is changing"
+            ));
+        }
+        if engine_loop.has_planned_recording_transition() {
+            return Err(anyhow!(
+                "cannot edit take processor alignment while a recording operation is armed"
+            ));
+        }
+        if engine_loop.mode().is_playing_mode() {
+            return Err(anyhow!(
+                "stop loop playback before editing take processor alignment"
+            ));
+        }
+        let logical_length = engine_loop.length();
+        let dry_reference = channels
+            .audio
+            .iter()
+            .filter_map(|index| self.session.audio_channel(*index))
+            .find(|channel| channel.mode() == ChannelMode::Dry)
+            .map(shoop_engine::AudioChannel::capture_alignment_frames)
+            .or_else(|| {
+                channels
+                    .midi
+                    .iter()
+                    .filter_map(|index| self.session.midi_channel(*index))
+                    .find(|channel| channel.mode() == ChannelMode::Dry)
+                    .map(shoop_engine::MidiChannel::capture_alignment_frames)
+            })
+            .ok_or_else(|| anyhow!("take has no dry channel"))?;
+        let wet_reference = channels
+            .audio
+            .iter()
+            .filter_map(|index| self.session.audio_channel(*index))
+            .find(|channel| channel.mode() == ChannelMode::Wet)
+            .map(shoop_engine::AudioChannel::capture_alignment_frames)
+            .or_else(|| {
+                channels
+                    .midi
+                    .iter()
+                    .filter_map(|index| self.session.midi_channel(*index))
+                    .find(|channel| channel.mode() == ChannelMode::Wet)
+                    .map(shoop_engine::MidiChannel::capture_alignment_frames)
+            })
+            .ok_or_else(|| anyhow!("take has no wet channel"))?;
+        let current = i64::from(wet_reference) - i64::from(dry_reference);
+        let delta = i64::from(processor_alignment_frames) - current;
+        let delta = i32::try_from(delta)
+            .map_err(|_| anyhow!("take processor alignment adjustment overflowed"))?;
+        let mut audio_candidates = Vec::new();
+        for (index, channel_index) in channels.audio.iter().enumerate() {
+            let channel = self
+                .session
+                .audio_channel(*channel_index)
+                .ok_or_else(|| anyhow!("missing audio channel"))?;
+            if channel.mode() != ChannelMode::Wet {
+                continue;
+            }
+            let candidate = channel
+                .capture_alignment_frames()
+                .checked_add(delta)
+                .ok_or_else(|| anyhow!("take processor alignment adjustment overflowed"))?;
+            shoop_latency::RecordingOffset::new(candidate)?;
+            validate_take_alignment_window(
+                candidate,
+                channel.start_offset(),
+                channel.length() as u64,
+                logical_length,
+                "audio",
+                index,
+            )?;
+            audio_candidates.push((*channel_index, candidate));
+        }
+        let mut midi_candidates = Vec::new();
+        for (index, channel_index) in channels.midi.iter().enumerate() {
+            let channel = self
+                .session
+                .midi_channel(*channel_index)
+                .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            if channel.mode() != ChannelMode::Wet {
+                continue;
+            }
+            let candidate = channel
+                .capture_alignment_frames()
+                .checked_add(delta)
+                .ok_or_else(|| anyhow!("take processor alignment adjustment overflowed"))?;
+            shoop_latency::RecordingOffset::new(candidate)?;
+            validate_take_alignment_window(
+                candidate,
+                channel.start_offset(),
+                u64::from(channel.length()),
+                logical_length,
+                "MIDI",
+                index,
+            )?;
+            midi_candidates.push((*channel_index, candidate));
+        }
+        for (channel, candidate) in audio_candidates {
+            self.session
+                .audio_channel_mut(channel)
+                .ok_or_else(|| anyhow!("missing audio channel"))?
+                .set_capture_alignment_frames(candidate)
+                .expect("take processor alignment was validated");
+        }
+        for (channel, candidate) in midi_candidates {
+            self.session
+                .midi_channel_mut(channel)
+                .ok_or_else(|| anyhow!("missing MIDI channel"))?
+                .set_capture_alignment_frames(candidate)
+                .expect("take processor alignment was validated");
+        }
+        Ok(())
+    }
+
     fn inject_midi_input(
         &mut self,
         track_id: BackendTrackId,
@@ -3876,10 +4583,27 @@ impl Backend for EngineBackend {
     }
 
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        for request in requests {
+            let track = self
+                .tracks
+                .values()
+                .find(|track| track.loops.contains(&request.loop_id))
+                .ok_or_else(|| anyhow!("loop has no owning track"))?;
+            let values =
+                prepared_backend_latency(&track.latency, track.topology.has_wet_channels())?;
+            let has_wet = !matches!(track.topology, BackendTrackTopology::Direct { .. });
+            if values.recording_offset().frames() != 0
+                || (has_wet && values.wet_recording_offset().frames() != 0)
+            {
+                return Err(anyhow!(
+                    "grab with a nonzero recording offset is unsupported; record the loop instead"
+                ));
+            }
+        }
         let mut audio_requests = Vec::with_capacity(requests.len());
         let mut midi_captures = Vec::new();
         for request in requests {
-            self.prepare_recording_storage(request.loop_id)?;
+            self.prepare_recording_storage(request.loop_id, false)?;
             let engine_loop = self.engine_loop_index(request.loop_id)?;
             audio_requests.push(shoop_engine::session::AudioRingbufferAdoption {
                 loop_idx: engine_loop,
@@ -3941,6 +4665,9 @@ impl Backend for EngineBackend {
     }
 
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Ok(None);
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -3962,6 +4689,9 @@ impl Backend for EngineBackend {
         &mut self,
         loop_id: BackendLoopId,
     ) -> Result<Option<BackendAudioData>> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Ok(None);
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -3977,6 +4707,7 @@ impl Backend for EngineBackend {
                 Ok(BackendAudioChannelData {
                     samples: Arc::from(channel.data()),
                     start_offset: channel.start_offset(),
+                    capture_alignment_frames: channel.capture_alignment_frames(),
                     preplay: channel.pre_play_samples(),
                 })
             })
@@ -3985,6 +4716,9 @@ impl Backend for EngineBackend {
     }
 
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Ok(None);
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -4011,6 +4745,7 @@ impl Backend for EngineBackend {
                         })
                         .collect(),
                     start_offset: channel.start_offset(),
+                    capture_alignment_frames: channel.capture_alignment_frames(),
                     preplay: channel.pre_play_samples(),
                 })
             })
@@ -4025,6 +4760,11 @@ impl Backend for EngineBackend {
         offset: usize,
         max_samples: usize,
     ) -> Result<BackendAudioDataChunk> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Err(anyhow!(
+                "loop alignment postroll is still finalizing; retry after it settles"
+            ));
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -4055,6 +4795,7 @@ impl Backend for EngineBackend {
             offset,
             total_samples,
             start_offset: channel_ref.start_offset(),
+            capture_alignment_frames: channel_ref.capture_alignment_frames(),
             preplay: channel_ref.pre_play_samples(),
             samples,
         })
@@ -4084,7 +4825,7 @@ impl Backend for EngineBackend {
                 | BackendLoopMode::Replacing
                 | BackendLoopMode::RecordingDryIntoWet
         ) {
-            self.prepare_recording_storage(loop_id)?;
+            self.prepare_recording_storage(loop_id, mode == BackendLoopMode::Replacing)?;
         }
         if let Some(delay) = cycles_delay {
             self.session
@@ -4112,7 +4853,7 @@ impl Backend for EngineBackend {
                 | BackendLoopMode::Replacing
                 | BackendLoopMode::RecordingDryIntoWet
         ) {
-            self.prepare_recording_storage(loop_id)?;
+            self.prepare_recording_storage(loop_id, mode == BackendLoopMode::Replacing)?;
         }
         self.session
             .loop_mut(engine_loop)
@@ -4180,6 +4921,19 @@ impl Backend for EngineBackend {
         {
             return Err(anyhow!("loop content update contains a duplicate channel"));
         }
+        for alignment in update
+            .audio
+            .iter()
+            .filter_map(|item| item.capture_alignment_frames)
+            .chain(
+                update
+                    .midi
+                    .iter()
+                    .filter_map(|item| item.capture_alignment_frames),
+            )
+        {
+            shoop_latency::RecordingOffset::new(alignment)?;
+        }
         let midi_events = update
             .midi
             .iter()
@@ -4193,6 +4947,57 @@ impl Backend for EngineBackend {
                     .collect::<Result<Vec<_>>>()
             })
             .collect::<Result<Vec<_>>>()?;
+        let logical_length = update.length.unwrap_or(state.length());
+        for (channel_index, index) in channels.audio.iter().enumerate() {
+            let channel = self
+                .session
+                .audio_channel(*index)
+                .ok_or_else(|| anyhow!("missing audio loop channel"))?;
+            let replacement = update
+                .audio
+                .iter()
+                .find(|item| item.channel == channel_index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames());
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset()),
+                    replacement.map_or(channel.length() as u64, |item| item.samples.len() as u64),
+                    logical_length,
+                    "audio",
+                    channel_index,
+                )?;
+            }
+        }
+        for (channel_index, index) in channels.midi.iter().enumerate() {
+            let channel = self
+                .session
+                .midi_channel(*index)
+                .ok_or_else(|| anyhow!("missing MIDI loop channel"))?;
+            let replacement = update
+                .midi
+                .iter()
+                .find(|item| item.channel == channel_index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames());
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset()),
+                    replacement.map_or(u64::from(channel.length()), |item| u64::from(item.length)),
+                    logical_length,
+                    "MIDI",
+                    channel_index,
+                )?;
+            }
+        }
 
         for (item, index) in update.audio.iter().zip(audio_indices) {
             let channel = self
@@ -4200,8 +5005,12 @@ impl Backend for EngineBackend {
                 .audio_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
             let retained_offset = channel.start_offset();
+            let retained_alignment = channel.capture_alignment_frames();
             channel.load_data(&item.samples);
             channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
+            channel.set_capture_alignment_frames(
+                item.capture_alignment_frames.unwrap_or(retained_alignment),
+            )?;
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
@@ -4211,10 +5020,13 @@ impl Backend for EngineBackend {
                 .session
                 .midi_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            let retained_offset = channel.start_offset();
+            let retained_alignment = channel.capture_alignment_frames();
             channel.set_contents(&events, item.length, Some(&item.start_state));
-            if let Some(offset) = item.start_offset {
-                channel.set_start_offset(offset);
-            }
+            channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
+            channel.set_capture_alignment_frames(
+                item.capture_alignment_frames.unwrap_or(retained_alignment),
+            )?;
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
@@ -4232,12 +5044,16 @@ impl Backend for EngineBackend {
     }
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
-        let engine_loop = self.engine_loop_index(loop_id)?;
-        self.session
-            .loop_mut(engine_loop)
-            .ok_or_else(|| anyhow!("missing engine loop"))?
-            .set_length(length);
-        Ok(())
+        if self.loop_channels.contains_key(&loop_id) {
+            self.set_loop_timing(loop_id, None, None, Some(length))
+        } else {
+            let engine_loop = self.engine_loop_index(loop_id)?;
+            self.session
+                .loop_mut(engine_loop)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .set_length(length);
+            Ok(())
+        }
     }
 
     fn set_loop_timing(
@@ -4247,10 +5063,58 @@ impl Backend for EngineBackend {
         preplay: Option<u32>,
         length: Option<u32>,
     ) -> Result<()> {
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        let loop_ = self
+            .session
+            .loop_(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?;
+        if length.is_some()
+            && (matches!(
+                loop_.mode(),
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            ) || loop_.has_planned_recording_transition())
+        {
+            return Err(anyhow!(
+                "cannot change loop length while a recording operation is armed"
+            ));
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        let logical_length = length.unwrap_or(loop_.length());
+        for (channel_index, index) in channels.audio.iter().enumerate() {
+            let channel = self
+                .session
+                .audio_channel(*index)
+                .ok_or_else(|| anyhow!("missing audio loop channel"))?;
+            if channel.capture_alignment_frames() != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames(),
+                    start_offset.unwrap_or(channel.start_offset()),
+                    channel.length() as u64,
+                    logical_length,
+                    "audio",
+                    channel_index,
+                )?;
+            }
+        }
+        for (channel_index, index) in channels.midi.iter().enumerate() {
+            let channel = self
+                .session
+                .midi_channel(*index)
+                .ok_or_else(|| anyhow!("missing MIDI loop channel"))?;
+            if channel.capture_alignment_frames() != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames(),
+                    start_offset.unwrap_or(channel.start_offset()),
+                    u64::from(channel.length()),
+                    logical_length,
+                    "MIDI",
+                    channel_index,
+                )?;
+            }
+        }
         for index in &channels.audio {
             let channel = self
                 .session
@@ -4276,7 +5140,10 @@ impl Backend for EngineBackend {
             }
         }
         if let Some(length) = length {
-            self.set_loop_length(loop_id, length)?;
+            self.session
+                .loop_mut(engine_loop)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .set_length(length);
         }
         Ok(())
     }
@@ -4433,6 +5300,7 @@ impl Backend for EngineBackend {
                     input_gain_db: track.input_gain_db,
                     input_balance: track.input_balance,
                     input_monitoring: track.input_monitoring,
+                    latency: track.latency.clone(),
                     input_peaks,
                     output_peaks,
                     input_midi_activity,
@@ -4501,6 +5369,42 @@ impl Backend for EngineBackend {
                     balance: channels.map(|channels| channels.balance).unwrap_or(0.0),
                     audio_peaks,
                     midi_activity,
+                    capture_alignment_frames: channels
+                        .and_then(|channels| {
+                            channels
+                                .audio
+                                .first()
+                                .and_then(|channel| self.session.audio_channel(*channel))
+                                .map(|channel| channel.capture_alignment_frames())
+                                .or_else(|| {
+                                    channels
+                                        .midi
+                                        .first()
+                                        .and_then(|channel| self.session.midi_channel(*channel))
+                                        .map(|channel| channel.capture_alignment_frames())
+                                })
+                        })
+                        .unwrap_or(0),
+                    processor_alignment_frames: channels.and_then(|channels| {
+                        processor_alignment_from_values(
+                            channels
+                                .audio
+                                .iter()
+                                .zip(&channels.audio_modes)
+                                .filter_map(|(channel, mode)| {
+                                    self.session
+                                        .audio_channel(*channel)
+                                        .map(|channel| (*mode, channel.capture_alignment_frames()))
+                                })
+                                .chain(channels.midi.iter().zip(&channels.midi_modes).filter_map(
+                                    |(channel, mode)| {
+                                        self.session.midi_channel(*channel).map(|channel| {
+                                            (*mode, channel.capture_alignment_frames())
+                                        })
+                                    },
+                                )),
+                        )
+                    }),
                 },
             );
         }
@@ -4695,6 +5599,39 @@ impl Backend for LocalDummyBackend {
         control: BackendTrackControl,
     ) -> Result<()> {
         self.runtime.set_track_control(track_id, control)
+    }
+
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        processor_adjustment: BackendProcessorLatencyAdjustment,
+        processor_manual_frames: i32,
+    ) -> Result<()> {
+        self.runtime.set_track_latency(
+            track_id,
+            adjustment,
+            processor_adjustment,
+            processor_manual_frames,
+        )
+    }
+
+    fn set_take_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        self.runtime
+            .set_take_alignment(loop_id, capture_alignment_frames)
+    }
+
+    fn set_take_processor_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        processor_alignment_frames: u32,
+    ) -> Result<()> {
+        self.runtime
+            .set_take_processor_alignment(loop_id, processor_alignment_frames)
     }
 
     fn inject_midi_input(
@@ -5036,6 +5973,7 @@ fn empty_audio_content(mode: BackendChannelMode) -> BackendAudioContent {
         samples: Vec::new(),
         gain: 1.0,
         start_offset: 0,
+        capture_alignment_frames: 0,
         preplay: 0,
     }
 }
@@ -5047,6 +5985,7 @@ fn empty_midi_content(mode: BackendChannelMode) -> BackendMidiContent {
         start_state: Vec::new(),
         events: Vec::new(),
         start_offset: 0,
+        capture_alignment_frames: 0,
         preplay: 0,
     }
 }
@@ -6039,8 +6978,11 @@ impl Backend for FakeBackend {
                 (0..audio_channels)
                     .map(|_| empty_audio_content(BackendChannelMode::Direct))
                     .collect::<Vec<_>>(),
-                midi.then(|| vec![empty_midi_content(BackendChannelMode::Direct)])
-                    .unwrap_or_default(),
+                if midi {
+                    vec![empty_midi_content(BackendChannelMode::Direct)]
+                } else {
+                    Vec::new()
+                },
                 audio_channels,
             ),
             BackendTrackTopology::DryWetExternal {
@@ -6061,9 +7003,11 @@ impl Backend for FakeBackend {
                             .map(|_| empty_audio_content(BackendChannelMode::Wet)),
                     )
                     .collect::<Vec<_>>(),
-                dry_midi
-                    .then(|| vec![empty_midi_content(BackendChannelMode::Dry)])
-                    .unwrap_or_default(),
+                if dry_midi {
+                    vec![empty_midi_content(BackendChannelMode::Dry)]
+                } else {
+                    Vec::new()
+                },
                 wet_audio_channels,
             ),
         };
@@ -6100,6 +7044,302 @@ impl Backend for FakeBackend {
         }
         self.operations
             .push(FakeOperation::SetTrackControl(track_id, control));
+        Ok(())
+    }
+
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        processor_adjustment: BackendProcessorLatencyAdjustment,
+        processor_manual_frames: i32,
+    ) -> Result<()> {
+        let loops = self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?
+            .loops
+            .clone();
+        if loops.iter().any(|loop_id| {
+            self.loops.get(loop_id).is_some_and(|state| {
+                state.next_mode.is_some_and(|mode| {
+                    matches!(
+                        mode,
+                        BackendLoopMode::Recording
+                            | BackendLoopMode::Replacing
+                            | BackendLoopMode::PlayingDryThroughWet
+                            | BackendLoopMode::RecordingDryIntoWet
+                    )
+                })
+            })
+        }) {
+            return Err(anyhow!(
+                "cannot change track latency while an operation is armed; cancel it first"
+            ));
+        }
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .expect("fake track was checked above");
+        let has_wet_channels = track.state.topology.has_wet_channels();
+        update_backend_latency(
+            &mut track.state.latency,
+            adjustment,
+            processor_adjustment,
+            processor_manual_frames,
+            has_wet_channels,
+        )
+    }
+
+    fn set_take_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        shoop_latency::RecordingOffset::new(capture_alignment_frames)?;
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            matches!(
+                state.mode,
+                BackendLoopMode::Recording
+                    | BackendLoopMode::Replacing
+                    | BackendLoopMode::RecordingDryIntoWet
+            )
+        }) {
+            return Err(anyhow!(
+                "cannot edit take alignment while loop content is changing"
+            ));
+        }
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            state.next_mode.is_some_and(|mode| {
+                matches!(
+                    mode,
+                    BackendLoopMode::Recording
+                        | BackendLoopMode::Replacing
+                        | BackendLoopMode::RecordingDryIntoWet
+                )
+            })
+        }) {
+            return Err(anyhow!(
+                "cannot edit take alignment while a recording operation is armed"
+            ));
+        }
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            matches!(
+                state.mode,
+                BackendLoopMode::Playing | BackendLoopMode::PlayingDryThroughWet
+            )
+        }) {
+            return Err(anyhow!("stop loop playback before editing take alignment"));
+        }
+        let content = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        let reference = content
+            .audio
+            .first()
+            .map(|channel| channel.capture_alignment_frames)
+            .or_else(|| {
+                content
+                    .midi
+                    .first()
+                    .map(|channel| channel.capture_alignment_frames)
+            })
+            .unwrap_or(0);
+        let delta = capture_alignment_frames
+            .checked_sub(reference)
+            .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+        let audio_candidates = content
+            .audio
+            .iter()
+            .enumerate()
+            .map(|(index, channel)| {
+                let candidate = channel
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    channel.start_offset,
+                    channel.samples.len() as u64,
+                    content.length,
+                    "audio",
+                    index,
+                )?;
+                Ok(candidate)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_candidates = content
+            .midi
+            .iter()
+            .enumerate()
+            .map(|(index, channel)| {
+                let candidate = channel
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    channel.start_offset,
+                    u64::from(channel.length),
+                    content.length,
+                    "MIDI",
+                    index,
+                )?;
+                Ok(candidate)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let content = self
+            .loop_content
+            .get_mut(&loop_id)
+            .expect("fake loop was checked above");
+        for (channel, candidate) in content.audio.iter_mut().zip(audio_candidates) {
+            channel.capture_alignment_frames = candidate;
+        }
+        for (channel, candidate) in content.midi.iter_mut().zip(midi_candidates) {
+            channel.capture_alignment_frames = candidate;
+        }
+        if let Some(state) = self.loops.get_mut(&loop_id) {
+            state.capture_alignment_frames = capture_alignment_frames;
+        }
+        Ok(())
+    }
+
+    fn set_take_processor_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        processor_alignment_frames: u32,
+    ) -> Result<()> {
+        shoop_latency::ProcessorRenderAdvance::new(processor_alignment_frames)?;
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            matches!(
+                state.mode,
+                BackendLoopMode::Recording
+                    | BackendLoopMode::Replacing
+                    | BackendLoopMode::RecordingDryIntoWet
+            )
+        }) {
+            return Err(anyhow!(
+                "cannot edit take processor alignment while loop content is changing"
+            ));
+        }
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            state.next_mode.is_some_and(|mode| {
+                matches!(
+                    mode,
+                    BackendLoopMode::Recording
+                        | BackendLoopMode::Replacing
+                        | BackendLoopMode::RecordingDryIntoWet
+                )
+            })
+        }) {
+            return Err(anyhow!(
+                "cannot edit take processor alignment while a recording operation is armed"
+            ));
+        }
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            matches!(
+                state.mode,
+                BackendLoopMode::Playing | BackendLoopMode::PlayingDryThroughWet
+            )
+        }) {
+            return Err(anyhow!(
+                "stop loop playback before editing take processor alignment"
+            ));
+        }
+        let content = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        let dry_reference = content
+            .audio
+            .iter()
+            .find(|channel| channel.mode == BackendChannelMode::Dry)
+            .map(|channel| channel.capture_alignment_frames)
+            .or_else(|| {
+                content
+                    .midi
+                    .iter()
+                    .find(|channel| channel.mode == BackendChannelMode::Dry)
+                    .map(|channel| channel.capture_alignment_frames)
+            })
+            .ok_or_else(|| anyhow!("take has no dry channel"))?;
+        let wet_reference = content
+            .audio
+            .iter()
+            .find(|channel| channel.mode == BackendChannelMode::Wet)
+            .map(|channel| channel.capture_alignment_frames)
+            .or_else(|| {
+                content
+                    .midi
+                    .iter()
+                    .find(|channel| channel.mode == BackendChannelMode::Wet)
+                    .map(|channel| channel.capture_alignment_frames)
+            })
+            .ok_or_else(|| anyhow!("take has no wet channel"))?;
+        let current = i64::from(wet_reference) - i64::from(dry_reference);
+        let delta = i64::from(processor_alignment_frames) - current;
+        let delta = i32::try_from(delta)
+            .map_err(|_| anyhow!("take processor alignment adjustment overflowed"))?;
+        let audio_candidates = content
+            .audio
+            .iter()
+            .enumerate()
+            .filter(|(_, channel)| channel.mode == BackendChannelMode::Wet)
+            .map(|(index, channel)| {
+                let candidate = channel
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take processor alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    channel.start_offset,
+                    channel.samples.len() as u64,
+                    content.length,
+                    "audio",
+                    index,
+                )?;
+                Ok((index, candidate))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_candidates = content
+            .midi
+            .iter()
+            .enumerate()
+            .filter(|(_, channel)| channel.mode == BackendChannelMode::Wet)
+            .map(|(index, channel)| {
+                let candidate = channel
+                    .capture_alignment_frames
+                    .checked_add(delta)
+                    .ok_or_else(|| anyhow!("take processor alignment adjustment overflowed"))?;
+                shoop_latency::RecordingOffset::new(candidate)?;
+                validate_take_alignment_window(
+                    candidate,
+                    channel.start_offset,
+                    u64::from(channel.length),
+                    content.length,
+                    "MIDI",
+                    index,
+                )?;
+                Ok((index, candidate))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let content = self
+            .loop_content
+            .get_mut(&loop_id)
+            .expect("fake loop was checked above");
+        for (index, candidate) in audio_candidates {
+            content.audio[index].capture_alignment_frames = candidate;
+        }
+        for (index, candidate) in midi_candidates {
+            content.midi[index].capture_alignment_frames = candidate;
+        }
+        if let Some(state) = self.loops.get_mut(&loop_id) {
+            state.processor_alignment_frames = Some(processor_alignment_frames);
+        }
         Ok(())
     }
 
@@ -6234,6 +7474,23 @@ impl Backend for FakeBackend {
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
         for request in requests {
             self.require_loop(request.loop_id)?;
+            let track = self
+                .tracks
+                .values()
+                .find(|track| track.loops.contains(&request.loop_id))
+                .ok_or_else(|| anyhow!("loop has no owning track"))?;
+            let values = prepared_backend_latency(
+                &track.state.latency,
+                track.state.topology.has_wet_channels(),
+            )?;
+            let has_wet = !matches!(track.state.topology, BackendTrackTopology::Direct { .. });
+            if values.recording_offset().frames() != 0
+                || (has_wet && values.wet_recording_offset().frames() != 0)
+            {
+                return Err(anyhow!(
+                    "grab with a nonzero recording offset is unsupported; record the loop instead"
+                ));
+            }
         }
         for request in requests {
             let state = self.loops.get_mut(&request.loop_id).expect("loop checked");
@@ -6277,6 +7534,7 @@ impl Backend for FakeBackend {
             .map(|channel| BackendAudioChannelData {
                 samples: Arc::from(channel.samples.clone()),
                 start_offset: channel.start_offset,
+                capture_alignment_frames: channel.capture_alignment_frames,
                 preplay: channel.preplay,
             })
             .collect();
@@ -6297,6 +7555,7 @@ impl Backend for FakeBackend {
                 length: channel.length,
                 events: channel.events.clone(),
                 start_offset: channel.start_offset,
+                capture_alignment_frames: channel.capture_alignment_frames,
                 preplay: channel.preplay,
             })
             .collect();
@@ -6324,11 +7583,152 @@ impl Backend for FakeBackend {
         mode: BackendLoopMode,
         cycles_delay: Option<u32>,
     ) -> Result<()> {
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            let latency = self
+                .tracks
+                .values()
+                .find(|track| track.loops.contains(&loop_id))
+                .map(|track| &track.state.latency);
+            let alignment = latency
+                .map(|latency| {
+                    latency.effective_offset_frames.ok_or_else(|| {
+                        anyhow!("recording offset is unavailable; enter a manual value")
+                    })
+                })
+                .transpose()?
+                .unwrap_or(0);
+            let has_wet = self.loop_content.get(&loop_id).is_some_and(|content| {
+                content
+                    .audio
+                    .iter()
+                    .any(|channel| channel.mode == BackendChannelMode::Wet)
+                    || content
+                        .midi
+                        .iter()
+                        .any(|channel| channel.mode == BackendChannelMode::Wet)
+            });
+            let wet_alignment = if has_wet {
+                let processor_advance = latency
+                    .map(|latency| {
+                        latency.effective_processor_advance_frames.ok_or_else(|| {
+                            anyhow!(
+                                "processor latency is unavailable; enter a non-negative manual value"
+                            )
+                        })
+                    })
+                    .transpose()?
+                    .unwrap_or(0);
+                shoop_latency::wet_recording_offset(
+                    shoop_latency::RecordingOffset::new(alignment)?,
+                    shoop_latency::ProcessorRenderAdvance::new(processor_advance)?,
+                )?
+                .frames()
+            } else {
+                alignment
+            };
+            if mode == BackendLoopMode::Replacing {
+                if alignment != 0 || (has_wet && wet_alignment != 0) {
+                    return Err(anyhow!(
+                        "replacement with a nonzero recording offset is unsupported; record a new take instead"
+                    ));
+                }
+                let alignment_matches = self.loop_content.get(&loop_id).is_none_or(|content| {
+                    content
+                        .audio
+                        .iter()
+                        .map(|channel| (channel.mode, channel.capture_alignment_frames))
+                        .chain(
+                            content
+                                .midi
+                                .iter()
+                                .map(|channel| (channel.mode, channel.capture_alignment_frames)),
+                        )
+                        .all(|(mode, actual)| {
+                            let expected = if mode == BackendChannelMode::Wet {
+                                wet_alignment
+                            } else {
+                                alignment
+                            };
+                            actual == expected
+                        })
+                });
+                if !alignment_matches {
+                    return Err(anyhow!(
+                        "replacement offset differs from the take; match the take alignment first"
+                    ));
+                }
+            }
+            if let Some(content) = self.loop_content.get_mut(&loop_id) {
+                for channel in &mut content.audio {
+                    if mode == BackendLoopMode::RecordingDryIntoWet {
+                        if channel.mode != BackendChannelMode::Dry {
+                            channel.capture_alignment_frames = 0;
+                        }
+                    } else {
+                        channel.capture_alignment_frames =
+                            if channel.mode == BackendChannelMode::Wet {
+                                wet_alignment
+                            } else {
+                                alignment
+                            };
+                    }
+                }
+                for channel in &mut content.midi {
+                    if mode == BackendLoopMode::RecordingDryIntoWet {
+                        if channel.mode != BackendChannelMode::Dry {
+                            channel.capture_alignment_frames = 0;
+                        }
+                    } else {
+                        channel.capture_alignment_frames =
+                            if channel.mode == BackendChannelMode::Wet {
+                                wet_alignment
+                            } else {
+                                alignment
+                            };
+                    }
+                }
+            }
+        }
         let state = self
             .loops
             .get_mut(&loop_id)
             .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
         state.mode = mode;
+        state.capture_alignment_frames = self
+            .loop_content
+            .get(&loop_id)
+            .and_then(|content| {
+                content
+                    .audio
+                    .first()
+                    .map(|channel| channel.capture_alignment_frames)
+                    .or_else(|| {
+                        content
+                            .midi
+                            .first()
+                            .map(|channel| channel.capture_alignment_frames)
+                    })
+            })
+            .unwrap_or(0);
+        state.processor_alignment_frames = self.loop_content.get(&loop_id).and_then(|content| {
+            processor_alignment_from_values(
+                content
+                    .audio
+                    .iter()
+                    .map(|channel| (channel.mode, channel.capture_alignment_frames))
+                    .chain(
+                        content
+                            .midi
+                            .iter()
+                            .map(|channel| (channel.mode, channel.capture_alignment_frames)),
+                    ),
+            )
+        });
         state.next_mode = None;
         state.next_transition_delay = None;
         self.operations
@@ -6359,11 +7759,13 @@ impl Backend for FakeBackend {
             content.length = 0;
             for channel in &mut content.audio {
                 channel.samples.clear();
+                channel.capture_alignment_frames = 0;
             }
             for channel in &mut content.midi {
                 channel.length = 0;
                 channel.start_state.clear();
                 channel.events.clear();
+                channel.capture_alignment_frames = 0;
             }
         }
         self.operations.push(FakeOperation::Clear(loop_id));
@@ -6424,6 +7826,19 @@ impl Backend for FakeBackend {
         {
             return Err(anyhow!("loop content update contains a duplicate channel"));
         }
+        for alignment in update
+            .audio
+            .iter()
+            .filter_map(|item| item.capture_alignment_frames)
+            .chain(
+                update
+                    .midi
+                    .iter()
+                    .filter_map(|item| item.capture_alignment_frames),
+            )
+        {
+            shoop_latency::RecordingOffset::new(alignment)?;
+        }
         if update
             .midi
             .iter()
@@ -6431,6 +7846,45 @@ impl Backend for FakeBackend {
             .any(|event| shoop_engine::MidiStorageElem::new(event.time, &event.data).is_none())
         {
             return Err(anyhow!("invalid MIDI event"));
+        }
+        let logical_length = update.length.unwrap_or(content.length);
+        for (index, channel) in content.audio.iter().enumerate() {
+            let replacement = update.audio.iter().find(|item| item.channel == index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames);
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset),
+                    replacement.map_or(channel.samples.len() as u64, |item| {
+                        item.samples.len() as u64
+                    }),
+                    logical_length,
+                    "audio",
+                    index,
+                )?;
+            }
+        }
+        for (index, channel) in content.midi.iter().enumerate() {
+            let replacement = update.midi.iter().find(|item| item.channel == index);
+            let alignment = replacement
+                .and_then(|item| item.capture_alignment_frames)
+                .unwrap_or(channel.capture_alignment_frames);
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    replacement
+                        .and_then(|item| item.start_offset)
+                        .unwrap_or(channel.start_offset),
+                    replacement.map_or(u64::from(channel.length), |item| u64::from(item.length)),
+                    logical_length,
+                    "MIDI",
+                    index,
+                )?;
+            }
         }
 
         let content = self
@@ -6440,6 +7894,9 @@ impl Backend for FakeBackend {
         for item in &update.audio {
             let channel = &mut content.audio[item.channel];
             channel.samples.clone_from(&item.samples);
+            if let Some(alignment) = item.capture_alignment_frames {
+                channel.capture_alignment_frames = alignment;
+            }
             if let Some(offset) = item.start_offset {
                 channel.start_offset = offset;
             }
@@ -6452,6 +7909,9 @@ impl Backend for FakeBackend {
             channel.length = item.length;
             channel.start_state.clone_from(&item.start_state);
             channel.events.clone_from(&item.events);
+            if let Some(alignment) = item.capture_alignment_frames {
+                channel.capture_alignment_frames = alignment;
+            }
             if let Some(offset) = item.start_offset {
                 channel.start_offset = offset;
             }
@@ -6464,6 +7924,29 @@ impl Backend for FakeBackend {
         }
         let state = self.loops.get_mut(&loop_id).expect("loop was validated");
         state.mode = BackendLoopMode::Stopped;
+        state.capture_alignment_frames = content
+            .audio
+            .first()
+            .map(|channel| channel.capture_alignment_frames)
+            .or_else(|| {
+                content
+                    .midi
+                    .first()
+                    .map(|channel| channel.capture_alignment_frames)
+            })
+            .unwrap_or(0);
+        state.processor_alignment_frames = processor_alignment_from_values(
+            content
+                .audio
+                .iter()
+                .map(|channel| (channel.mode, channel.capture_alignment_frames))
+                .chain(
+                    content
+                        .midi
+                        .iter()
+                        .map(|channel| (channel.mode, channel.capture_alignment_frames)),
+                ),
+        );
         state.next_mode = None;
         state.next_transition_delay = None;
         if let Some(length) = update.length {
@@ -6500,25 +7983,7 @@ impl Backend for FakeBackend {
     }
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
-        let state = self
-            .loops
-            .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
-        state.length = length;
-        if state.position >= length {
-            state.position = if length == 0 {
-                0
-            } else {
-                state.position % length
-            };
-        }
-        self.loop_content
-            .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("missing fake loop content"))?
-            .length = length;
-        self.operations
-            .push(FakeOperation::SetLoopLength(loop_id, length));
-        Ok(())
+        self.set_loop_timing(loop_id, None, None, Some(length))
     }
 
     fn set_loop_timing(
@@ -6529,10 +7994,62 @@ impl Backend for FakeBackend {
         length: Option<u32>,
     ) -> Result<()> {
         self.require_loop(loop_id)?;
+        let state = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        if length.is_some()
+            && (matches!(
+                state.mode,
+                BackendLoopMode::Recording
+                    | BackendLoopMode::Replacing
+                    | BackendLoopMode::RecordingDryIntoWet
+            ) || state.next_mode.is_some_and(|mode| {
+                matches!(
+                    mode,
+                    BackendLoopMode::Recording
+                        | BackendLoopMode::Replacing
+                        | BackendLoopMode::RecordingDryIntoWet
+                )
+            }))
+        {
+            return Err(anyhow!(
+                "cannot change loop length while a recording operation is armed"
+            ));
+        }
+        let content = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?;
+        let logical_length = length.unwrap_or(content.length);
+        for (index, channel) in content.audio.iter().enumerate() {
+            if channel.capture_alignment_frames != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames,
+                    start_offset.unwrap_or(channel.start_offset),
+                    channel.samples.len() as u64,
+                    logical_length,
+                    "audio",
+                    index,
+                )?;
+            }
+        }
+        for (index, channel) in content.midi.iter().enumerate() {
+            if channel.capture_alignment_frames != 0 {
+                validate_take_alignment_window(
+                    channel.capture_alignment_frames,
+                    start_offset.unwrap_or(channel.start_offset),
+                    u64::from(channel.length),
+                    logical_length,
+                    "MIDI",
+                    index,
+                )?;
+            }
+        }
         let content = self
             .loop_content
             .get_mut(&loop_id)
-            .ok_or_else(|| anyhow!("missing fake loop content"))?;
+            .expect("fake loop content was checked above");
         for channel in &mut content.audio {
             if let Some(offset) = start_offset {
                 channel.start_offset = offset;
@@ -6550,7 +8067,21 @@ impl Backend for FakeBackend {
             }
         }
         if let Some(length) = length {
-            self.set_loop_length(loop_id, length)?;
+            content.length = length;
+            let state = self
+                .loops
+                .get_mut(&loop_id)
+                .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+            state.length = length;
+            if state.position >= length {
+                state.position = if length == 0 {
+                    0
+                } else {
+                    state.position % length
+                };
+            }
+            self.operations
+                .push(FakeOperation::SetLoopLength(loop_id, length));
         }
         Ok(())
     }
@@ -6754,6 +8285,43 @@ impl Backend for FakeBackend {
                 BackendTrackControl::InputMonitoring(source_track.state.input_monitoring),
             ] {
                 staged.set_track_control(created.track_id, control)?;
+            }
+            {
+                let target_latency = &mut staged
+                    .tracks
+                    .get_mut(&created.track_id)
+                    .expect("created track exists")
+                    .state
+                    .latency;
+                target_latency.automatic_offset_frames =
+                    source_track.state.latency.automatic_offset_frames;
+                target_latency.automatic_processor_advance_frames = source_track
+                    .state
+                    .latency
+                    .automatic_processor_advance_frames;
+            }
+            if let Err(error) = staged.set_track_latency(
+                created.track_id,
+                source_track.state.latency.adjustment,
+                source_track.state.latency.processor_adjustment,
+                source_track.state.latency.processor_manual_frames,
+            ) {
+                if source_track.state.latency.effective_offset_frames.is_some()
+                    && source_track
+                        .state
+                        .latency
+                        .effective_processor_advance_frames
+                        .is_some()
+                {
+                    return Err(error);
+                }
+                staged
+                    .tracks
+                    .get_mut(&created.track_id)
+                    .expect("created track exists")
+                    .state
+                    .latency
+                    .clone_from(&source_track.state.latency);
             }
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
                 let target_loop = staged
@@ -7283,6 +8851,96 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn fake_session_replacement_restores_latency_and_future_alignment() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "restored-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(5),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                7,
+            )
+            .unwrap();
+        let captured = backend.capture_session().unwrap();
+        let replacement = backend.replace_session(&captured).unwrap();
+        let restored_track = replacement.tracks[&created.track_id.raw()].track_id;
+        let restored_loop = replacement.loops[&created.loops[0].raw()];
+        let latency = &backend.poll().unwrap().tracks[&restored_track].latency;
+        assert_eq!(latency.effective_offset_frames, Some(5));
+        assert_eq!(latency.effective_processor_advance_frames, Some(7));
+
+        backend
+            .transition_loop(restored_loop, BackendLoopMode::Recording, None)
+            .unwrap();
+        let content = &backend.loop_content[&restored_loop];
+        assert_eq!(
+            content
+                .audio
+                .iter()
+                .map(|channel| channel.capture_alignment_frames)
+                .collect::<Vec<_>>(),
+            [5, 12]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_clear_resets_channel_alignment_with_media() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "clear-alignment".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![0.0; 6],
+                        start_offset: None,
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 6,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: None,
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend.clear_loop(loop_id).unwrap();
+        let captured = backend.capture_session().unwrap();
+        let loop_ = &captured.tracks[0].loops[0];
+        assert_eq!(loop_.length, 0);
+        assert!(loop_.audio[0].samples.is_empty());
+        assert_eq!(loop_.audio[0].capture_alignment_frames, 0);
+        assert_eq!(loop_.midi[0].length, 0);
+        assert_eq!(loop_.midi[0].capture_alignment_frames, 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_creates_and_round_trips_external_dry_wet_tracks() {
         let mut backend = FakeBackend::default();
         let created = backend
@@ -7441,12 +9099,14 @@ mod tests {
                             channel: 0,
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: Some(-1),
+                            capture_alignment_frames: None,
                             preplay: Some(4),
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: Some(-2),
+                            capture_alignment_frames: None,
                             preplay: Some(5),
                         },
                     ],
@@ -7459,6 +9119,7 @@ mod tests {
                             data: vec![0x90, 64, 127],
                         }],
                         start_offset: Some(-3),
+                        capture_alignment_frames: None,
                         preplay: Some(6),
                     }],
                     length: Some(3),
@@ -7498,12 +9159,14 @@ mod tests {
                             channel: 0,
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                     ],
@@ -7560,6 +9223,7 @@ mod tests {
                         channel: 0,
                         samples: vec![99.0],
                         start_offset: None,
+                        capture_alignment_frames: None,
                         preplay: None,
                     }],
                     ..Default::default()
@@ -7602,12 +9266,14 @@ mod tests {
                             channel: 0,
                             samples: vec![99.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 0,
                             samples: vec![100.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                     ],
@@ -7616,6 +9282,350 @@ mod tests {
             )
             .is_err());
         assert_eq!(backend.capture_session().unwrap(), before_invalid);
+    }
+
+    fn armed_recording_offset_update_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "armed-latency".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend.set_loop_length(created.loops[0], 4).unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(1),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, Some(2))
+            .unwrap();
+        let error = backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(4),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("operation is armed"));
+        assert_eq!(
+            backend.poll().unwrap().tracks[&created.track_id]
+                .latency
+                .effective_offset_frames,
+            Some(1)
+        );
+    }
+
+    fn armed_dry_wet_playback_latency_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "armed-dry-wet-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                5,
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, Some(2))
+            .unwrap();
+
+        let error = backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                9,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("operation is armed"));
+        assert_eq!(
+            backend.poll().unwrap().tracks[&created.track_id]
+                .latency
+                .effective_processor_advance_frames,
+            Some(5)
+        );
+    }
+
+    fn armed_recording_length_edit_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "armed-length".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, Some(2))
+            .unwrap();
+
+        let timing_error = backend
+            .set_loop_timing(loop_id, None, None, Some(8))
+            .unwrap_err();
+        assert!(timing_error
+            .to_string()
+            .contains("recording operation is armed"));
+        let length_error = backend.set_loop_length(loop_id, 8).unwrap_err();
+        assert!(length_error
+            .to_string()
+            .contains("recording operation is armed"));
+        assert_eq!(backend.poll().unwrap().loops[&loop_id].length, 4);
+    }
+
+    fn armed_take_correction_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "armed-take-correction".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..4)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![0.0; 8],
+                            start_offset: Some(0),
+                            capture_alignment_frames: Some(0),
+                            preplay: None,
+                        })
+                        .collect(),
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 8,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: Some(0),
+                        capture_alignment_frames: Some(0),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, Some(2))
+            .unwrap();
+
+        let alignment_error = backend.set_take_alignment(loop_id, 1).unwrap_err();
+        assert!(alignment_error
+            .to_string()
+            .contains("recording operation is armed"));
+        let processor_error = backend
+            .set_take_processor_alignment(loop_id, 1)
+            .unwrap_err();
+        assert!(processor_error
+            .to_string()
+            .contains("recording operation is armed"));
+    }
+
+    fn take_alignment_window_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "alignment-window".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: vec![
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![0.0; 6],
+                            start_offset: Some(1),
+                            capture_alignment_frames: None,
+                            preplay: None,
+                        },
+                        BackendAudioChannelUpdate {
+                            channel: 1,
+                            samples: vec![0.0; 6],
+                            start_offset: Some(1),
+                            capture_alignment_frames: None,
+                            preplay: None,
+                        },
+                    ],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 6,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: Some(1),
+                        capture_alignment_frames: None,
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        let playing_error = backend.set_take_alignment(loop_id, -1).unwrap_err();
+        assert!(playing_error.to_string().contains("stop loop playback"));
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, None)
+            .unwrap();
+        assert!(backend
+            .set_take_processor_alignment(loop_id, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("no dry channel"));
+        backend.set_take_alignment(loop_id, -1).unwrap();
+        let aligned = backend.capture_session().unwrap();
+        let content = aligned
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+        assert!(content
+            .midi
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+
+        let offset_error = backend
+            .set_loop_timing(loop_id, Some(0), None, None)
+            .unwrap_err();
+        assert!(offset_error.to_string().contains("retained raw window"));
+        let length_error = backend
+            .set_loop_timing(loop_id, None, None, Some(7))
+            .unwrap_err();
+        assert!(length_error.to_string().contains("retained raw window"));
+        let direct_length_error = backend.set_loop_length(loop_id, 7).unwrap_err();
+        assert!(direct_length_error
+            .to_string()
+            .contains("retained raw window"));
+        let replacement_error = backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..2)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![0.0; 8],
+                            start_offset: None,
+                            capture_alignment_frames: None,
+                            preplay: None,
+                        })
+                        .collect(),
+                    length: Some(7),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(replacement_error
+            .to_string()
+            .contains("retained raw window"));
+        let after_rejected_lengths = backend.capture_session().unwrap();
+        let content = after_rejected_lengths
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert_eq!(content.length, 4);
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.samples.len() == 6));
+        assert_eq!(content.midi[0].length, 6);
+
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(-1),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        let replacement_error = backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, None)
+            .unwrap_err();
+        assert!(replacement_error
+            .to_string()
+            .contains("replacement with a nonzero recording offset"));
+
+        let error = backend.set_take_alignment(loop_id, 2).unwrap_err();
+        assert!(error.to_string().contains("retained raw window"));
+        let rejected = backend.capture_session().unwrap();
+        let content = rejected
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
+        assert!(content
+            .midi
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == -1));
     }
 
     fn session_io_contract(backend: &mut dyn Backend) {
@@ -7665,6 +9675,7 @@ mod tests {
                 data: vec![0x90, 60, 100],
             }],
             start_offset: -1,
+            capture_alignment_frames: 0,
             preplay: 2,
         };
         track
@@ -7836,6 +9847,572 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn engine_track_latency_applies_to_future_operations_only() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "latency".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let automatic = backend.set_track_latency(
+            track.track_id,
+            BackendRecordingOffsetAdjustment::Automatic,
+            BackendProcessorLatencyAdjustment::ManualOverride,
+            0,
+        );
+        assert!(automatic.is_err());
+        assert!(backend.tracks[&track.track_id]
+            .latency
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("manual")));
+        backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(3),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let channel = backend.loop_channels[&track.loops[0]].audio[0];
+        assert_eq!(
+            backend
+                .session
+                .audio_channel(channel)
+                .unwrap()
+                .capture_alignment_frames(),
+            3
+        );
+
+        backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(7),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        assert_eq!(
+            backend
+                .session
+                .audio_channel(channel)
+                .unwrap()
+                .capture_alignment_frames(),
+            3
+        );
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        assert_eq!(
+            backend
+                .session
+                .audio_channel(channel)
+                .unwrap()
+                .capture_alignment_frames(),
+            7
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_new_loop_inherits_configured_processor_advance() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "future-loop-latency".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let unavailable = backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::Automatic,
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                19,
+            )
+            .unwrap_err();
+        assert!(unavailable.to_string().contains("manual"));
+        let added_loop = backend.add_loop_to_track(track.track_id).unwrap();
+        for loop_id in [track.loops[0], added_loop] {
+            backend
+                .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
+                .unwrap();
+            let channel = backend.loop_channels[&loop_id].audio[0];
+            assert_eq!(
+                backend
+                    .session
+                    .audio_channel(channel)
+                    .unwrap()
+                    .render_advance_frames(),
+                19
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_rejected_processor_edit_preserves_dry_through_wet_advance() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_track(TrackRequest {
+                port_name_base: "retained-processor-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                17,
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                -1,
+            )
+            .is_err());
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::PlayingDryThroughWet, None)
+            .unwrap();
+        let channels = &backend.loop_channels[&track.loops[0]];
+        for (channel, mode) in channels.audio.iter().zip(&channels.audio_modes) {
+            assert_eq!(
+                backend
+                    .session
+                    .audio_channel(*channel)
+                    .unwrap()
+                    .render_advance_frames(),
+                if *mode == BackendChannelMode::Wet {
+                    0
+                } else {
+                    17
+                }
+            );
+        }
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].state.latency.processor_manual_frames, 17);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compensated_grab_is_rejected_before_target_mutation() {
+        let mut backend = FakeBackend::default();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "grab-latency".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(3),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        let before = backend.loop_content[&track.loops[0]].clone();
+        let result = backend.grab_loops(&[BackendGrabRequest {
+            loop_id: track.loops[0],
+            reverse_start_cycle: None,
+            cycles_length: None,
+            go_to_cycle: None,
+            go_to_mode: BackendLoopMode::Stopped,
+        }]);
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("record the loop instead"));
+        assert_eq!(backend.loop_content[&track.loops[0]], before);
+    }
+
+    fn dry_wet_alignment_contract(backend: &mut dyn Backend, topology: BackendTrackTopology) {
+        let (dry_audio_channels, wet_audio_channels, dry_midi) = match &topology {
+            BackendTrackTopology::DryWetExternal {
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+            }
+            | BackendTrackTopology::DryWetProcessor {
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+                ..
+            } => (*dry_audio_channels, *wet_audio_channels, *dry_midi),
+            BackendTrackTopology::Direct { .. } => panic!("expected dry/wet topology"),
+        };
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "dry-wet-alignment".to_owned(),
+                topology,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(3),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                5,
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        let recorded = backend.poll().unwrap().loops[&loop_id].clone();
+        assert_eq!(recorded.capture_alignment_frames, 3);
+        assert_eq!(recorded.processor_alignment_frames, Some(5));
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, None)
+            .unwrap();
+
+        let dry_audio_channels = usize::try_from(dry_audio_channels).unwrap();
+        let wet_audio_channels = usize::try_from(wet_audio_channels).unwrap();
+        let audio = (0..dry_audio_channels + wet_audio_channels)
+            .map(|channel| BackendAudioChannelUpdate {
+                channel,
+                samples: vec![0.0; 24],
+                start_offset: Some(0),
+                capture_alignment_frames: Some(if channel < dry_audio_channels {
+                    2
+                } else {
+                    7 + i32::try_from(channel - dry_audio_channels).unwrap()
+                }),
+                preplay: None,
+            })
+            .collect();
+        let midi = dry_midi
+            .then(|| BackendMidiChannelUpdate {
+                channel: 0,
+                length: 24,
+                start_state: Vec::new(),
+                events: Vec::new(),
+                start_offset: Some(0),
+                capture_alignment_frames: Some(2),
+                preplay: None,
+            })
+            .into_iter()
+            .collect();
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio,
+                    midi,
+                    length: Some(10),
+                },
+            )
+            .unwrap();
+        backend.set_take_processor_alignment(loop_id, 8).unwrap();
+        assert_eq!(
+            backend.poll().unwrap().loops[&loop_id].processor_alignment_frames,
+            Some(8)
+        );
+        let session = backend.capture_session().unwrap();
+        let content = session
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|content| content.source_id == loop_id.raw())
+            .unwrap();
+        let mut wet_index = 0;
+        for channel in &content.audio {
+            let expected = if channel.mode == BackendChannelMode::Wet {
+                let expected = 10 + wet_index;
+                wet_index += 1;
+                expected
+            } else {
+                2
+            };
+            assert_eq!(channel.capture_alignment_frames, expected);
+        }
+        assert!(content
+            .midi
+            .iter()
+            .all(|channel| channel.capture_alignment_frames == 2));
+
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        assert!(backend
+            .set_take_processor_alignment(loop_id, 9)
+            .unwrap_err()
+            .to_string()
+            .contains("stop loop playback"));
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, None)
+            .unwrap();
+        let before_rejection = backend.capture_session().unwrap();
+        assert!(backend
+            .set_take_processor_alignment(loop_id, shoop_latency::MAX_COMPENSATION_FRAMES)
+            .is_err());
+        assert_eq!(backend.capture_session().unwrap(), before_rejection);
+
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::AutomaticPlusTrim,
+                5,
+            )
+            .unwrap();
+        let latency = &backend.poll().unwrap().tracks[&created.track_id].latency;
+        assert_eq!(latency.automatic_processor_advance_frames, Some(0));
+        assert_eq!(latency.effective_processor_advance_frames, Some(5));
+        let before_grab = backend.capture_session().unwrap();
+        let grab = backend
+            .grab_loops(&[BackendGrabRequest {
+                loop_id,
+                reverse_start_cycle: None,
+                cycles_length: None,
+                go_to_cycle: None,
+                go_to_mode: BackendLoopMode::Stopped,
+            }])
+            .unwrap_err();
+        assert!(grab.to_string().contains("record the loop instead"));
+        assert_eq!(backend.capture_session().unwrap(), before_grab);
+        let replacement = backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, None)
+            .unwrap_err();
+        assert!(replacement
+            .to_string()
+            .contains("replacement with a nonzero recording offset"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_and_engine_backends_align_ordinary_dry_wet_recording_and_take_correction() {
+        dry_wet_alignment_contract(
+            &mut FakeBackend::default(),
+            BackendTrackTopology::DryWetExternal {
+                dry_audio_channels: 1,
+                wet_audio_channels: 1,
+                dry_midi: true,
+            },
+        );
+        dry_wet_alignment_contract(
+            &mut EngineBackend::new_dummy(48_000, 64).unwrap(),
+            BackendTrackTopology::DryWetProcessor {
+                processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+            },
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_processed_track_retains_valid_processor_after_rejected_edit() {
+        let mut backend = FakeBackend::default();
+        let processed = backend
+            .create_track(TrackRequest {
+                port_name_base: "invalid-processor-recording".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                17,
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                -1,
+            )
+            .is_err());
+        let latency = &backend.poll().unwrap().tracks[&processed.track_id].latency;
+        assert_eq!(latency.processor_manual_frames, 17);
+        assert_eq!(latency.effective_processor_advance_frames, Some(17));
+        assert!(latency.error.is_some());
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].state.latency.processor_manual_frames, 17);
+
+        backend
+            .transition_loop(processed.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        assert_eq!(
+            backend.poll().unwrap().loops[&processed.loops[0]].processor_alignment_frames,
+            Some(17)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn rejected_partial_latency_edit_cannot_invalidate_retained_wet_sum() {
+        let mut backend = FakeBackend::default();
+        let processed = backend
+            .create_track(TrackRequest {
+                port_name_base: "partial-wet-sum".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                700_000,
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(100_000),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                -1,
+            )
+            .is_err());
+        let latency = &backend.poll().unwrap().tracks[&processed.track_id].latency;
+        assert_eq!(latency.effective_offset_frames, Some(0));
+        assert_eq!(latency.effective_processor_advance_frames, Some(700_000));
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].state.latency.effective_offset_frames,
+            Some(0)
+        );
+        assert_eq!(
+            captured.tracks[0]
+                .state
+                .latency
+                .effective_processor_advance_frames,
+            Some(700_000)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn direct_tracks_do_not_validate_an_unused_wet_sum() {
+        let mut backend = FakeBackend::default();
+        let direct = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "direct-large-independent-latencies".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                direct.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(700_000),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                100_000,
+            )
+            .unwrap();
+        backend
+            .transition_loop(direct.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        assert_eq!(
+            backend.poll().unwrap().loops[&direct.loops[0]].capture_alignment_frames,
+            700_000
+        );
+
+        let processed = backend
+            .create_track(TrackRequest {
+                port_name_base: "processed-large-combined-latency".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        assert!(backend
+            .set_track_latency(
+                processed.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(700_000),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                100_000,
+            )
+            .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn carla_uses_zero_processor_automatic_baseline_and_trim() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "carla-zero-baseline".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: "carla_rack".to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::Automatic,
+                99,
+            )
+            .unwrap();
+        let automatic = &backend.poll().unwrap().tracks[&created.track_id].latency;
+        assert_eq!(automatic.automatic_processor_advance_frames, Some(0));
+        assert_eq!(automatic.effective_processor_advance_frames, Some(0));
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::AutomaticPlusTrim,
+                13,
+            )
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.tracks[&created.track_id]
+                .latency
+                .effective_processor_advance_frames,
+            Some(13)
+        );
+        assert_eq!(
+            snapshot.loops[&created.loops[0]].processor_alignment_frames,
+            Some(13)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_and_engine_backends_satisfy_transactional_session_io_contract() {
         session_io_contract(&mut FakeBackend::default());
         session_io_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
@@ -7845,6 +10422,237 @@ mod tests {
     fn fake_and_engine_backends_update_loop_content_without_session_replacement() {
         loop_content_contract(&mut FakeBackend::default());
         loop_content_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_rejects_armed_recording_offset_updates() {
+        armed_recording_offset_update_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_freezes_latency_while_dry_wet_playback_is_armed() {
+        armed_dry_wet_playback_latency_contract(
+            &mut EngineBackend::new_dummy(48_000, 256).unwrap(),
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_and_engine_backends_reject_length_edits_while_recording_is_armed() {
+        armed_recording_length_edit_contract(&mut FakeBackend::default());
+        armed_recording_length_edit_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_rejects_take_corrections_while_recording_is_armed() {
+        armed_take_correction_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_and_engine_backends_reject_take_alignment_outside_retained_media_atomically() {
+        take_alignment_window_contract(&mut FakeBackend::default());
+        take_alignment_window_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_replacement_rejects_mismatched_retained_take_alignment() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "replacement-alignment".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![0.0; 8],
+                        start_offset: Some(0),
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 8,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: Some(0),
+                        capture_alignment_frames: Some(2),
+                        preplay: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        let before = backend.loop_content[&loop_id].clone();
+
+        let error = backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, None)
+            .unwrap_err();
+        assert!(error.to_string().contains("offset differs from the take"));
+        assert_eq!(backend.loop_content[&loop_id], before);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_take_corrections_reject_planned_recording_state() {
+        let mut backend = FakeBackend::default();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "fake-armed-take-correction".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.loops.get_mut(&loop_id).unwrap().next_mode =
+            Some(BackendLoopMode::RecordingDryIntoWet);
+
+        assert!(backend
+            .set_take_alignment(loop_id, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("recording operation is armed"));
+        assert!(backend
+            .set_take_processor_alignment(loop_id, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("recording operation is armed"));
+
+        backend.loops.get_mut(&loop_id).unwrap().next_mode =
+            Some(BackendLoopMode::PlayingDryThroughWet);
+        assert!(backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                1,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("operation is armed"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_aborts_negative_recording_without_captured_preroll() {
+        let mut backend = EngineBackend::new_dummy(48_000, 4).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "preroll-guard".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(-3),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.advance_frames(1);
+
+        assert_eq!(
+            backend.poll().unwrap().loops[&loop_id].mode,
+            BackendLoopMode::Stopped
+        );
+        let captured = backend.capture_session().unwrap();
+        let content = captured
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert_eq!(content.length, 0);
+        assert!(content
+            .audio
+            .iter()
+            .all(|channel| channel.samples.is_empty()));
+        assert!(content
+            .midi
+            .iter()
+            .all(|channel| channel.length == 0 && channel.events.is_empty()));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_rejects_new_recording_until_postroll_settles() {
+        let mut backend = EngineBackend::new_dummy(48_000, 4).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "postroll-guard".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend.set_loop_length(loop_id, 4).unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(3),
+                BackendProcessorLatencyAdjustment::ManualOverride,
+                0,
+            )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.advance_frames(4);
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, None)
+            .unwrap();
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_none());
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
+        assert!(backend
+            .capture_session()
+            .unwrap_err()
+            .to_string()
+            .contains("postroll is still finalizing"));
+        let immediate_error = backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap_err();
+        assert!(immediate_error
+            .to_string()
+            .contains("postroll is still finalizing"));
+        backend.advance_frames(1);
+
+        let error = backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap_err();
+        assert!(error.to_string().contains("postroll is still finalizing"));
+        assert_eq!(
+            backend.poll().unwrap().loops[&loop_id].mode,
+            BackendLoopMode::Stopped
+        );
+
+        backend.advance_frames(2);
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_some());
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_some());
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -8769,6 +11577,7 @@ mod tests {
                         start_state: vec![vec![0xbf, 0, 3], vec![0xcf, 42]],
                         events: preserved_midi.clone(),
                         start_offset: None,
+                        capture_alignment_frames: None,
                         preplay: None,
                     }],
                     length: Some(128),
@@ -9251,6 +12060,7 @@ mod tests {
                             },
                         ],
                         start_offset: Some(-4),
+                        capture_alignment_frames: None,
                         preplay: Some(7),
                     }],
                     length: Some(32),

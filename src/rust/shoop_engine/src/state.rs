@@ -1,6 +1,6 @@
 //! The state shapes the application-facing backend interface reports.
 //!
-//! Scalar fields are published through per-object mirrors. Port names remain handle-owned
+//! Atomic fields are published through per-object mirrors. Port names remain handle-owned
 //! strings and are supplied when a mirror is read, so the process thread never clones them.
 
 use crate::channel_mode::ChannelMode;
@@ -40,6 +40,9 @@ pub struct AudioChannelState {
     pub output_peak: f32,
     pub length: u32,
     pub start_offset: i32,
+    pub capture_alignment_frames: i32,
+    pub postroll_remaining_frames: u32,
+    pub render_advance_frames: u32,
     pub played_back_sample: Option<i32>,
     pub n_preplay_samples: u32,
     pub data_dirty: bool,
@@ -53,6 +56,9 @@ pub struct MidiChannelState {
     pub n_notes_active: u32,
     pub length: u32,
     pub start_offset: i32,
+    pub capture_alignment_frames: i32,
+    pub postroll_remaining_frames: u32,
+    pub render_advance_frames: u32,
     pub played_back_sample: Option<i32>,
     pub n_preplay_samples: u32,
     pub data_dirty: bool,

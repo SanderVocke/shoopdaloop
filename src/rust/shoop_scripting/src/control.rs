@@ -1025,7 +1025,7 @@ fn install_loop_mutations(
     set_loop_ids_op(lua, module, "loop_record_with_targeted", bridge, |loops| {
         ControlOperation::RecordWithTargeted { loops }
     })?;
-    set_loop_scalar(
+    set_loop_value(
         lua,
         module,
         "loop_set_gain",
@@ -1038,7 +1038,7 @@ fn install_loop_mutations(
             ControlOperation::SetLoopGain { loops: ids, gain }
         },
     )?;
-    set_loop_scalar(
+    set_loop_value(
         lua,
         module,
         "loop_set_gain_fader",
@@ -1051,7 +1051,7 @@ fn install_loop_mutations(
             ControlOperation::SetLoopGain { loops: ids, gain }
         },
     )?;
-    set_loop_scalar(
+    set_loop_value(
         lua,
         module,
         "loop_set_balance",
@@ -1692,7 +1692,7 @@ fn set_loop_ids_op(
     Ok(())
 }
 
-fn set_loop_scalar(
+fn set_loop_value(
     lua: &Lua,
     module: &Table,
     name: &str,

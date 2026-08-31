@@ -17,3 +17,11 @@ Carla is GPL-2.0-or-later. The exact corresponding source archive is identified
 by URL and SHA-256 in the lock file. Runtime component generation copies this
 lock and Carla's license into the component so every application archive carries
 the license and corresponding-source information.
+
+## Latency support
+
+ShoopDaLoop does not query, parse, measure, or infer latency from Carla plugins
+or graphs. Carla processor latency therefore has an automatic baseline of zero;
+users enter the known delay with Manual or Automatic + trim. Recording-input
+alignment remains independently configurable. Carla processing remains
+available without latency introspection.

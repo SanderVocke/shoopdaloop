@@ -3189,6 +3189,7 @@ fn browser_unsupported_session_bytes(
             width: None,
             topology,
             controls: TrackControlsDocument::default(),
+            latency: Default::default(),
             loops: Vec::new(),
             ports: Vec::new(),
             fx_chain,

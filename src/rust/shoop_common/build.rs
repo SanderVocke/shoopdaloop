@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use toml;
 
 const SRC_DIR: &str = env!("CARGO_MANIFEST_DIR");
 

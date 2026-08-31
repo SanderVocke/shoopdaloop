@@ -44,6 +44,7 @@
         liblo
         libpulseaudio
         libsndfile
+        rubberband
         libxcb
         libxkbcommon
         wayland
@@ -82,7 +83,6 @@
 
         SHOOP_CARLA_NATIVE_LIBRARY = "${pkgs.carla}/lib/carla/libcarla_native-plugin.so";
         SHOOP_CARLA_RESOURCE_DIR = "${pkgs.carla}/share/carla/resources";
-
         shellHook = ''
           jack_provider="''${SHOOP_JACK_PROVIDER_OVERRIDE:-auto}"
 

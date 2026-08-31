@@ -8,8 +8,9 @@
 
 use crate::audio_channel::{AudioChannel, ChannelError};
 use crate::basic_loop::{BasicLoop, SyncSourceState};
-use crate::channel_mode::ChannelMode;
+use crate::channel_mode::{loop_mode_to_channel_process_flags, ChannelMode, ProcessFlags};
 use crate::content_snapshot::{AudioProcessSnapshotWriter, MidiProcessSnapshotWriter};
+use crate::latency_runtime::{LatchedLatency, PreparedLatency};
 use crate::loop_mode::LoopMode;
 use crate::midi_channel::{MidiChannel, MidiChannelError};
 use crate::midi_storage::MidiStorageElem;
@@ -25,6 +26,10 @@ pub enum LoopError {
     Audio(#[from] ChannelError),
     #[error("midi channel: {0}")]
     Midi(#[from] MidiChannelError),
+    #[error("recording started before the required latency preroll was captured")]
+    LatencyPrerecordIncomplete,
+    #[error("playback was deferred until latency postroll settles")]
+    PlaybackDeferredForPostroll,
 }
 
 #[derive(Debug, Default)]
@@ -32,6 +37,10 @@ pub struct AudioMidiLoop {
     loop_: BasicLoop,
     audio_channels: Vec<AudioChannel>,
     midi_channels: Vec<MidiChannel>,
+    pending_latency: Option<PreparedLatency>,
+    latched_latency: Option<LatchedLatency>,
+    active_latency_mode: LoopMode,
+    processed_frames: u64,
 }
 
 impl AudioMidiLoop {
@@ -215,11 +224,116 @@ impl AudioMidiLoop {
         self.loop_.n_planned_transitions()
     }
 
+    pub fn has_unsettled_latency_postroll(&self) -> bool {
+        self.audio_channels
+            .iter()
+            .any(AudioChannel::has_unsettled_latency_postroll)
+            || self
+                .midi_channels
+                .iter()
+                .any(MidiChannel::has_unsettled_latency_postroll)
+    }
+
+    pub fn has_planned_recording_transition(&self) -> bool {
+        (0..self.loop_.n_planned_transitions()).any(|index| {
+            self.loop_
+                .planned_transition_mode(index)
+                .is_some_and(|mode| {
+                    matches!(
+                        mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    )
+                })
+        })
+    }
+
+    pub fn has_planned_latency_transition(&self) -> bool {
+        (0..self.loop_.n_planned_transitions()).any(|index| {
+            self.loop_
+                .planned_transition_mode(index)
+                .is_some_and(|mode| {
+                    matches!(
+                        mode,
+                        LoopMode::Recording
+                            | LoopMode::Replacing
+                            | LoopMode::PlayingDryThroughWet
+                            | LoopMode::RecordingDryIntoWet
+                    )
+                })
+        })
+    }
+
+    pub const fn pending_latency(&self) -> Option<PreparedLatency> {
+        self.pending_latency
+    }
+
+    pub const fn latched_latency(&self) -> Option<LatchedLatency> {
+        self.latched_latency
+    }
+
+    pub fn prepare_latency(
+        &mut self,
+        values: PreparedLatency,
+        logical_capacity: usize,
+    ) -> Result<(), LoopError> {
+        for channel in &mut self.audio_channels {
+            let retention = shoop_latency::RetentionWindow::for_offset(
+                recording_offset_for_channel(values, channel.mode()),
+            );
+            channel.prepare_latency_retention(
+                logical_capacity,
+                retention.before_frames(),
+                retention.after_frames(),
+            )?;
+        }
+        for channel in &mut self.midi_channels {
+            let retention = shoop_latency::RetentionWindow::for_offset(
+                recording_offset_for_channel(values, channel.mode()),
+            );
+            channel
+                .prepare_latency_retention(retention.before_frames(), retention.after_frames())?;
+        }
+        self.set_pending_latency(values);
+        Ok(())
+    }
+
+    pub fn set_pending_latency(&mut self, values: PreparedLatency) {
+        self.pending_latency = Some(values);
+        for channel in &mut self.audio_channels {
+            channel.set_pending_latency(values);
+        }
+        for channel in &mut self.midi_channels {
+            channel.set_pending_latency(values);
+        }
+    }
+
+    fn latch_latency_for_mode(&mut self, mode: LoopMode) {
+        let Some(values) = self.pending_latency else {
+            self.active_latency_mode = mode;
+            return;
+        };
+        let operation_frame = self.processed_frames;
+        latch_channel_latency(
+            mode,
+            operation_frame,
+            &mut self.audio_channels,
+            &mut self.midi_channels,
+        );
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.active_latency_mode = mode;
+    }
+
     pub fn set_sync_source(&mut self, src: Option<SyncSourceState>) {
         self.loop_.set_sync_source(src);
         self.resync_poi();
     }
     pub fn set_mode(&mut self, mode: LoopMode) {
+        if mode != self.active_latency_mode {
+            self.latch_latency_for_mode(mode);
+        }
         self.loop_.set_mode(mode);
         self.resync_poi();
     }
@@ -337,11 +451,51 @@ impl AudioMidiLoop {
     ) -> Result<(), LoopError> {
         let audio = &mut self.audio_channels;
         let midi = &mut self.midi_channels;
+        let pending_latency = self.pending_latency;
+        let latched_latency = &mut self.latched_latency;
+        let active_latency_mode = &mut self.active_latency_mode;
+        let processed_frames = &mut self.processed_frames;
         let mut err: Option<LoopError> = None;
+        let mut deferred_playback = false;
         self.loop_.process_with(n_samples, |params| {
+            if params.mode != *active_latency_mode {
+                if let Some(values) = pending_latency {
+                    latch_channel_latency(params.mode, *processed_frames, audio, midi);
+                    *latched_latency = Some(LatchedLatency {
+                        values,
+                        operation_frame: *processed_frames,
+                    });
+                }
+                *active_latency_mode = params.mode;
+            }
+            if params.mode == LoopMode::Recording
+                && (audio.iter().any(AudioChannel::latency_retention_incomplete)
+                    || midi.iter().any(MidiChannel::latency_retention_incomplete))
+            {
+                err = Some(LoopError::LatencyPrerecordIncomplete);
+                *processed_frames = processed_frames.saturating_add(u64::from(params.n_samples));
+                return;
+            }
+            deferred_playback = deferred_playback
+                || (params.mode.is_playing_mode()
+                    && (audio.iter().any(|channel| {
+                        channel.capture_alignment_frames() > 0
+                            && !channel.compensated_take_ready(params.length_before)
+                    }) || midi.iter().any(|channel| {
+                        channel.capture_alignment_frames() > 0
+                            && !channel.compensated_take_ready(params.length_before)
+                    })));
+            let process_mode = if deferred_playback {
+                if err.is_none() {
+                    err = Some(LoopError::PlaybackDeferredForPostroll);
+                }
+                LoopMode::Stopped
+            } else {
+                params.mode
+            };
             for c in audio.iter_mut() {
                 let r = c.process(
-                    params.mode,
+                    process_mode,
                     params.next_planned_mode,
                     params.next_planned_delay_cycles,
                     params.next_planned_eta,
@@ -358,7 +512,7 @@ impl AudioMidiLoop {
             }
             for ((c, input), out) in midi.iter_mut().zip(midi_in.iter()).zip(midi_out.iter_mut()) {
                 let r = c.process(
-                    params.mode,
+                    process_mode,
                     params.next_planned_mode,
                     params.next_planned_delay_cycles,
                     params.next_planned_eta,
@@ -373,21 +527,30 @@ impl AudioMidiLoop {
                     err = Some(e.into());
                 }
             }
+            *processed_frames = processed_frames.saturating_add(u64::from(params.n_samples));
         });
+        if deferred_playback {
+            self.loop_.set_position(0);
+            self.loop_.set_mode(LoopMode::Stopped);
+            self.active_latency_mode = LoopMode::Stopped;
+        }
         if matches!(
             err,
             Some(LoopError::Audio(ChannelError::StorageExhausted { .. }))
+                | Some(LoopError::Midi(MidiChannelError::StorageExhausted { .. }))
+                | Some(LoopError::LatencyPrerecordIncomplete)
         ) {
-            let retained = self
-                .audio_channels
-                .iter()
-                .map(AudioChannel::length)
-                .min()
-                .unwrap_or(0)
-                .min(u32::MAX as usize) as u32;
-            self.loop_.set_length(retained);
+            for channel in &mut self.audio_channels {
+                channel.abort_latency_take();
+            }
+            for channel in &mut self.midi_channels {
+                channel.abort_latency_take();
+            }
+            self.loop_.set_length(0);
             self.loop_.set_position(0);
             self.loop_.set_mode(LoopMode::Stopped);
+            self.latched_latency = None;
+            self.active_latency_mode = LoopMode::Stopped;
         }
         self.resync_poi();
         match err {
@@ -403,6 +566,71 @@ impl AudioMidiLoop {
     pub fn finalize_process(&mut self, buffers: &mut [(&[f32], &mut [f32])]) {
         for (c, (input, output)) in self.audio_channels.iter_mut().zip(buffers.iter_mut()) {
             c.finalize_process(input, output);
+        }
+    }
+}
+
+fn recording_offset_for_channel(
+    values: PreparedLatency,
+    mode: ChannelMode,
+) -> shoop_latency::RecordingOffset {
+    if mode == ChannelMode::Wet {
+        values.wet_recording_offset()
+    } else {
+        values.recording_offset()
+    }
+}
+
+fn latch_channel_latency(
+    mode: LoopMode,
+    operation_frame: u64,
+    audio: &mut [AudioChannel],
+    midi: &mut [MidiChannel],
+) {
+    for channel in audio {
+        let flags = loop_mode_to_channel_process_flags(mode, channel.mode());
+        if mode == LoopMode::RecordingDryIntoWet && flags.contains(ProcessFlags::REPLACE) {
+            channel.latch_canonical_render_destination(operation_frame);
+        } else if matches!(
+            mode,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) && flags.contains(ProcessFlags::PLAYBACK)
+        {
+            channel.latch_render_latency(operation_frame);
+        } else if matches!(mode, LoopMode::Recording | LoopMode::Replacing)
+            && (flags.contains(ProcessFlags::RECORD) || flags.contains(ProcessFlags::REPLACE))
+        {
+            let values = channel
+                .pending_latency()
+                .expect("recording latency is pending before latching");
+            channel.latch_recording_latency(
+                operation_frame,
+                mode == LoopMode::Recording,
+                recording_offset_for_channel(values, channel.mode()),
+            );
+        }
+    }
+    for channel in midi {
+        let flags = loop_mode_to_channel_process_flags(mode, channel.mode());
+        if mode == LoopMode::RecordingDryIntoWet && flags.contains(ProcessFlags::REPLACE) {
+            channel.latch_canonical_render_destination(operation_frame);
+        } else if matches!(
+            mode,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) && flags.contains(ProcessFlags::PLAYBACK)
+        {
+            channel.latch_render_latency(operation_frame);
+        } else if matches!(mode, LoopMode::Recording | LoopMode::Replacing)
+            && (flags.contains(ProcessFlags::RECORD) || flags.contains(ProcessFlags::REPLACE))
+        {
+            let values = channel
+                .pending_latency()
+                .expect("recording latency is pending before latching");
+            channel.latch_recording_latency(
+                operation_frame,
+                mode == LoopMode::Recording,
+                recording_offset_for_channel(values, channel.mode()),
+            );
         }
     }
 }
@@ -436,6 +664,284 @@ mod tests {
         assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(n as u32, &[], &mut []));
         l.finalize_process(&mut [(&src, &mut out)]);
         out
+    }
+
+    fn cycle_channels(l: &mut AudioMidiLoop, inputs: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        let frames = inputs.first().map(Vec::len).unwrap_or(0);
+        assert!(inputs.iter().all(|input| input.len() == frames));
+        for index in 0..l.n_audio_channels() {
+            let channel = l.audio_channel_mut(index).unwrap();
+            channel.set_recording_buffer_size(frames);
+            channel.set_playback_buffer_size(frames);
+        }
+        l.resync_poi();
+        let mut outputs = vec![vec![0.0; frames]; inputs.len()];
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(
+            frames as u32,
+            &[],
+            &mut []
+        ));
+        let mut pairs = inputs
+            .iter()
+            .zip(outputs.iter_mut())
+            .map(|(input, output)| (input.as_slice(), output.as_mut_slice()))
+            .collect::<Vec<_>>();
+        l.finalize_process(&mut pairs);
+        outputs
+    }
+
+    fn prepared_latency(offset: i32, advance: u32) -> PreparedLatency {
+        PreparedLatency::new(
+            shoop_latency::RecordingOffset::new(offset).unwrap(),
+            shoop_latency::ProcessorRenderAdvance::new(advance).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn recording_offset_latches_at_each_operation_boundary() {
+        let mut l = loop_with_channel();
+        l.prepare_latency(prepared_latency(3, 0), 4).unwrap();
+        l.set_mode(L::Recording);
+        check!(l.audio_channel(0).unwrap().capture_alignment_frames() == 3);
+
+        l.prepare_latency(prepared_latency(7, 0), 4).unwrap();
+        check!(l.audio_channel(0).unwrap().capture_alignment_frames() == 3);
+        check!(l.latched_latency().unwrap().values == prepared_latency(3, 0));
+
+        l.set_mode(L::Stopped);
+        l.set_mode(L::Recording);
+        check!(l.audio_channel(0).unwrap().capture_alignment_frames() == 7);
+        check!(l.latched_latency().unwrap().values == prepared_latency(7, 0));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn ordinary_recording_prepares_and_latches_role_specific_alignment() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(16, C::Dry);
+        l.add_audio_channel(16, C::Wet);
+        l.add_midi_channel(32, C::Dry);
+        l.add_midi_channel(32, C::Wet);
+        l.prepare_latency(prepared_latency(-5, 7), 8).unwrap();
+
+        let dry = l.audio_channel(0).unwrap();
+        check!(dry.retained_before_frames() == 5);
+        check!(dry.retained_after_frames() == 0);
+        let wet = l.audio_channel(1).unwrap();
+        check!(wet.retained_before_frames() == 0);
+        check!(wet.retained_after_frames() == 2);
+
+        l.set_mode(L::Recording);
+        check!(l.audio_channel(0).unwrap().capture_alignment_frames() == -5);
+        check!(l.audio_channel(1).unwrap().capture_alignment_frames() == 2);
+        check!(l.midi_channel(0).unwrap().capture_alignment_frames() == -5);
+        check!(l.midi_channel(1).unwrap().capture_alignment_frames() == 2);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn ordinary_dry_wet_impulses_share_logical_zero_through_distinct_annotations() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(16, C::Dry);
+        l.add_audio_channel(16, C::Wet);
+        l.prepare_latency(prepared_latency(2, 3), 4).unwrap();
+        l.set_mode(L::Recording);
+        cycle_channels(&mut l, &[vec![0.0, 0.0, 1.0, 0.0], vec![0.0; 4]]);
+        l.set_mode(L::Stopped);
+        cycle_channels(&mut l, &[vec![0.0; 5], vec![0.0, 1.0, 0.0, 0.0, 0.0]]);
+
+        let dry = l.audio_channel(0).unwrap();
+        let wet = l.audio_channel(1).unwrap();
+        check!(dry.capture_alignment_frames() == 2);
+        check!(wet.capture_alignment_frames() == 5);
+        check!(dry.data()[2] == 1.0);
+        check!(wet.data()[5] == 1.0);
+
+        l.set_mode(L::Playing);
+        let output = cycle_channels(&mut l, &[vec![0.0; 4], vec![0.0; 4]]);
+        check!(output[0] == vec![0.0; 4]);
+        check!(output[1] == vec![1.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn processor_advance_is_latched_separately_for_dry_wet_rendering() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(4, C::Dry);
+        l.add_audio_channel(4, C::Wet);
+        l.prepare_latency(prepared_latency(-5, 7), 8).unwrap();
+        l.set_mode(L::RecordingDryIntoWet);
+
+        let dry = l.audio_channel(0).unwrap();
+        check!(dry.capture_alignment_frames() == 0);
+        check!(dry.render_advance_frames() == 7);
+        let wet = l.audio_channel(1).unwrap();
+        check!(wet.capture_alignment_frames() == 0);
+        check!(wet.render_advance_frames() == 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compensated_audio_is_deterministic_across_callback_partitions() {
+        let run = |partitions: &[usize]| {
+            let mut l = loop_with_channel();
+            l.prepare_latency(prepared_latency(2, 0), 128).unwrap();
+            let source = (0..130).map(|frame| frame as f32).collect::<Vec<_>>();
+            l.set_mode(L::Recording);
+            let mut cursor = 0;
+            for &frames in partitions {
+                cycle(&mut l, frames, &source[cursor..cursor + frames]);
+                cursor += frames;
+            }
+            check!(cursor == 128);
+            l.set_mode(L::Stopped);
+            cycle(&mut l, 2, &source[128..]);
+            l.set_mode(L::Playing);
+            let mut output = Vec::new();
+            for &frames in partitions {
+                output.extend(cycle(&mut l, frames, &[]));
+            }
+            output
+        };
+        let expected = (2..130).map(|frame| frame as f32).collect::<Vec<_>>();
+        for partitions in [&[64, 64][..], &[127, 1], &[31, 17, 80]] {
+            check!(run(partitions) == expected);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn playback_waits_when_positive_postroll_exceeds_loop_length() {
+        let mut l = loop_with_channel();
+        l.prepare_latency(prepared_latency(5, 0), 4).unwrap();
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[1.0, 2.0, 3.0, 4.0]);
+        check!(l.length() == 4);
+
+        l.set_mode(L::Playing);
+        let channel = l.audio_channel_mut(0).unwrap();
+        channel.set_recording_buffer_size(1);
+        channel.set_playback_buffer_size(1);
+        l.resync_poi();
+        let mut midi_out: [Vec<MidiStorageElem>; 0] = [];
+        let error = assert_no_alloc::assert_no_alloc(|| {
+            l.process::<Vec<MidiStorageElem>>(1, &[], &mut midi_out)
+        })
+        .unwrap_err();
+        check!(error == LoopError::PlaybackDeferredForPostroll);
+        let mut output = [0.0];
+        l.finalize_process(&mut [(&[5.0], &mut output)]);
+        check!(output == [0.0]);
+        check!(l.mode() == L::Stopped);
+        check!(
+            l.audio_channel(0)
+                .unwrap()
+                .latency_postroll_remaining_frames()
+                == 4
+        );
+
+        cycle(&mut l, 4, &[6.0, 7.0, 8.0, 9.0]);
+        check!(!l.audio_channel(0).unwrap().is_finalizing_latency_postroll());
+        l.set_mode(L::Playing);
+        check!(cycle(&mut l, 4, &[]) == vec![6.0, 7.0, 8.0, 9.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn clearing_during_postroll_cancels_finalization_and_keeps_content_empty() {
+        let mut l = loop_with_channel();
+        l.prepare_latency(prepared_latency(3, 0), 4).unwrap();
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[1.0, 2.0, 3.0, 4.0]);
+        l.set_mode(L::Stopped);
+        cycle(&mut l, 1, &[5.0]);
+        check!(l.audio_channel(0).unwrap().is_finalizing_latency_postroll());
+
+        l.clear(0);
+        check!(!l.audio_channel(0).unwrap().has_unsettled_latency_postroll());
+        cycle(&mut l, 1, &[9.0]);
+        check!(l.audio_channel(0).unwrap().length() == 0);
+        check!(!l.audio_channel(0).unwrap().has_unsettled_latency_postroll());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn prepared_latency_latching_allocates_nothing() {
+        let mut l = loop_with_channel();
+        l.prepare_latency(prepared_latency(3, 0), 4).unwrap();
+        assert_no_alloc::assert_no_alloc(|| l.set_mode(L::Recording));
+        assert_no_alloc::assert_no_alloc(|| {
+            l.set_mode(L::Stopped);
+            l.set_mode(L::Recording);
+        });
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn insufficient_retention_fails_before_the_operation_is_latched() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel_with_bounded_capacity(4, 8, C::Direct);
+        let result = l.prepare_latency(prepared_latency(2, 0), 8);
+        check!(matches!(
+            result,
+            Err(LoopError::Audio(ChannelError::RetentionCapacity {
+                required: 10,
+                capacity: 8,
+            }))
+        ));
+        check!(l.pending_latency().is_none());
+        check!(l.latched_latency().is_none());
+        check!(l.mode() == L::Stopped);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn immediate_negative_recording_aborts_before_publishing_incomplete_media() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(4, C::Direct);
+        l.add_midi_channel(16, C::Direct);
+        l.prepare_latency(prepared_latency(-3, 0), 4).unwrap();
+        l.audio_channel_mut(0).unwrap().set_recording_buffer_size(1);
+        l.midi_channel_mut(0).unwrap().set_recording_buffer(1);
+        l.set_mode(L::Recording);
+        l.resync_poi();
+
+        let input = [Vec::<MidiStorageElem>::new()];
+        let mut output = [Vec::<MidiStorageElem>::new()];
+        let error =
+            assert_no_alloc::assert_no_alloc(|| l.process(1, &input, &mut output)).unwrap_err();
+        check!(error == LoopError::LatencyPrerecordIncomplete);
+        check!(l.mode() == L::Stopped);
+        check!(l.length() == 0);
+        check!(l.audio_channel(0).unwrap().length() == 0);
+        check!(l.audio_channel(0).unwrap().capture_alignment_frames() == 0);
+        check!(l.midi_channel(0).unwrap().length() == 0);
+        check!(l.midi_channel(0).unwrap().capture_alignment_frames() == 0);
+        check!(l.latched_latency().is_none());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn imminent_negative_recording_aborts_when_preroll_is_short() {
+        let mut l = loop_with_channel();
+        l.set_length(4);
+        l.set_mode(L::Playing);
+        l.set_position(3);
+        l.prepare_latency(prepared_latency(-3, 0), 4).unwrap();
+        l.plan_transition(L::Recording, Some(0), None);
+        if l.next_poi() == Some(0) {
+            l.handle_poi();
+        }
+
+        let channel = l.audio_channel_mut(0).unwrap();
+        channel.set_recording_buffer_size(2);
+        channel.set_playback_buffer_size(2);
+        l.resync_poi();
+        let mut midi_out: [Vec<MidiStorageElem>; 0] = [];
+        let first = l.process::<Vec<MidiStorageElem>>(1, &[], &mut midi_out);
+        check!(first.is_ok());
+        l.finalize_process(&mut [(&[1.0], &mut [0.0])]);
+        check!(l.mode() == L::Recording);
+
+        l.audio_channel_mut(0).unwrap().set_recording_buffer_size(1);
+        l.resync_poi();
+        let error = l
+            .process::<Vec<MidiStorageElem>>(1, &[], &mut midi_out)
+            .unwrap_err();
+        check!(error == LoopError::LatencyPrerecordIncomplete);
+        check!(l.mode() == L::Stopped);
+        check!(l.audio_channel(0).unwrap().length() == 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -562,6 +1068,47 @@ mod tests {
         assert_eq!(loop_.mode(), L::Stopped);
         assert_eq!(loop_.length(), 0);
         assert_eq!(loop_.audio_channel(0).unwrap().length(), 0);
+
+        let mut incremental = AudioMidiLoop::default();
+        incremental.add_audio_channel_with_bounded_capacity(4, 4, C::Direct);
+        incremental.set_mode(L::Recording);
+        cycle(&mut incremental, 4, &[1.0, 2.0, 3.0, 4.0]);
+        let channel = incremental.audio_channel_mut(0).unwrap();
+        channel.set_recording_buffer_size(1);
+        channel.set_playback_buffer_size(1);
+        incremental.resync_poi();
+        assert!(matches!(
+            incremental.process(1, &[] as &[&[MidiStorageElem]], &mut []),
+            Err(LoopError::Audio(ChannelError::StorageExhausted { .. }))
+        ));
+        assert_eq!(incremental.mode(), L::Stopped);
+        assert_eq!(incremental.length(), 0);
+        assert_eq!(incremental.audio_channel(0).unwrap().length(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_storage_exhaustion_clears_the_partial_take() {
+        let mut loop_ = AudioMidiLoop::default();
+        loop_.add_midi_channel(1, C::Direct);
+        loop_.set_mode(L::Recording);
+        let channel = loop_.midi_channel_mut(0).unwrap();
+        channel.set_recording_buffer(4);
+        channel.set_playback_buffer(4);
+        loop_.resync_poi();
+        let input = vec![
+            MidiStorageElem::new(0, &[0x90, 60, 100]).unwrap(),
+            MidiStorageElem::new(1, &[0x80, 60, 0]).unwrap(),
+        ];
+        let mut output = vec![Vec::new()];
+        assert_eq!(
+            loop_.process(4, &[input], &mut output),
+            Err(LoopError::Midi(MidiChannelError::StorageExhausted {
+                capacity: 1,
+            }))
+        );
+        assert_eq!(loop_.mode(), L::Stopped);
+        assert_eq!(loop_.length(), 0);
+        assert_eq!(loop_.midi_channel(0).unwrap().n_events(), 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

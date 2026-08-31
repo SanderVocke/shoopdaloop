@@ -4157,6 +4157,7 @@ dependencies = [
  "midir",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_latency",
  "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",
@@ -4210,6 +4211,7 @@ dependencies = [
  "serde_json",
  "shoop_app_api",
  "shoop_engine",
+ "shoop_latency",
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_wasm_test_support",
@@ -4265,6 +4267,7 @@ dependencies = [
  "cpal 0.17.1",
  "enum-iterator",
  "jack",
+ "jack-sys",
  "libc",
  "libloading 0.9.0",
  "log",
@@ -4279,6 +4282,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shoop_common",
+ "shoop_latency",
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_tracing",
@@ -4288,6 +4292,15 @@ dependencies = [
  "thiserror 2.0.20",
  "tracing",
  "uuid",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_latency"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+ "thiserror 2.0.20",
  "wasm-bindgen-test",
 ]
 
@@ -4338,6 +4351,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shoop_latency",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "thiserror 2.0.20",
