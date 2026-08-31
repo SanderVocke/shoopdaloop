@@ -6495,10 +6495,7 @@ impl ApplicationModel {
         };
         let Some(source) = self.connection_ports.get(&source_port_id) else {
             let message = format!("stale mixer source port {source_port_id}");
-            self.mixer_route_errors.push(MixerRouteErrorState {
-                route,
-                message: message.clone(),
-            });
+            self.push_mixer_route_error(route, message.clone());
             return Err(message);
         };
         if !matches!(source.owner, ApplicationPortOwner::Track { .. })
@@ -6507,10 +6504,7 @@ impl ApplicationModel {
             || source.role != PortRole::AudioOutput
         {
             let message = "mixer source is not a track audio output".to_owned();
-            self.mixer_route_errors.push(MixerRouteErrorState {
-                route,
-                message: message.clone(),
-            });
+            self.push_mixer_route_error(route, message.clone());
             return Err(message);
         }
         let Some(destination) = self
@@ -6520,10 +6514,7 @@ impl ApplicationModel {
             .find(|channel| channel.id == destination_channel_id)
         else {
             let message = format!("stale mixer destination channel {destination_channel_id}");
-            self.mixer_route_errors.push(MixerRouteErrorState {
-                route,
-                message: message.clone(),
-            });
+            self.push_mixer_route_error(route, message.clone());
             return Err(message);
         };
         let confirmed = self.confirmed_mixer_routes.contains(&route);
@@ -6539,10 +6530,7 @@ impl ApplicationModel {
             backend.set_mixer_route(source.backend_id, destination.backend_id, connected)
         {
             let message = format!("mixer route request rejected: {error}");
-            self.mixer_route_errors.push(MixerRouteErrorState {
-                route,
-                message: message.clone(),
-            });
+            self.push_mixer_route_error(route, message.clone());
             return Err(message);
         }
         self.mixer_route_errors.retain(|error| error.route != route);
@@ -6585,10 +6573,7 @@ impl ApplicationModel {
             .collect::<Vec<_>>();
         for route in mixer_timed_out {
             self.pending_mixer_routes.remove(&route);
-            self.mixer_route_errors.push(MixerRouteErrorState {
-                route,
-                message: "mixer route request timed out".to_owned(),
-            });
+            self.push_mixer_route_error(route, "mixer route request timed out".to_owned());
         }
     }
 
@@ -7288,10 +7273,7 @@ impl ApplicationModel {
                 destination_channel_id,
             };
             self.pending_mixer_routes.remove(&route);
-            self.mixer_route_errors.push(MixerRouteErrorState {
-                route,
-                message: failure.message,
-            });
+            self.push_mixer_route_error(route, failure.message);
         }
         let pending = self
             .pending_mixer_routes
@@ -7627,10 +7609,18 @@ impl ApplicationModel {
 
     fn report_mixer_saturation(&mut self, route: MixerRouteState) {
         self.pending_mixer_routes.remove(&route);
-        self.mixer_route_errors.push(MixerRouteErrorState {
-            route,
-            message: "mixer route command queue is full".to_owned(),
-        });
+        self.push_mixer_route_error(route, "mixer route command queue is full".to_owned());
+    }
+
+    fn push_mixer_route_error(&mut self, route: MixerRouteState, message: String) {
+        self.mixer_route_errors.retain(|error| error.route != route);
+        self.mixer_route_errors
+            .push(MixerRouteErrorState { route, message });
+        const MAX_MIXER_ROUTE_ERRORS: usize = 16;
+        if self.mixer_route_errors.len() > MAX_MIXER_ROUTE_ERRORS {
+            self.mixer_route_errors
+                .drain(..self.mixer_route_errors.len() - MAX_MIXER_ROUTE_ERRORS);
+        }
     }
 
     fn push_connection_error(&mut self, error: ConnectionErrorState) {
@@ -9782,6 +9772,20 @@ fn backend_document_latency(
     })
 }
 
+fn valid_master_output_port_document(port: &PortDocument, index: usize) -> bool {
+    port.name == format!("master_out_{}", index + 1)
+        && port.data_type == DataTypeDocument::Audio
+        && port.direction == PortDirectionDocument::Output
+        && port.role == PortRoleDocument::AudioOutput
+        && port.input_connectability == [ConnectabilityDocument::Internal]
+        && port.output_connectability == [ConnectabilityDocument::External]
+        && port.gain == 1.0
+        && !port.muted
+        && !port.passthrough_muted
+        && port.internal_connections.is_empty()
+        && port.ringbuffer_frames == 0
+}
+
 fn valid_global_fx_port_document(port: &PortDocument) -> bool {
     port.name == "Global FX Control MIDI In"
         && port.data_type == DataTypeDocument::Midi
@@ -10103,10 +10107,22 @@ fn session_bundle_to_backend(
         let [bus] = bundle.document.buses.as_slice() else {
             return Err("session must contain exactly one Master bus".to_owned());
         };
+        let channel_output_ids = bus
+            .channels
+            .iter()
+            .map(|channel| channel.output_port_id)
+            .collect::<BTreeSet<_>>();
+        let port_ids = bus
+            .ports
+            .iter()
+            .map(|port| port.id)
+            .collect::<BTreeSet<_>>();
         if bus.name != "Master"
             || bus.channels.len() != 2
             || bus.ports.len() != 2
             || bus.fx_chain.is_some()
+            || channel_output_ids.len() != 2
+            || channel_output_ids != port_ids
         {
             return Err("session Master bus shape is invalid".to_owned());
         }
@@ -10119,9 +10135,7 @@ fn session_bundle_to_backend(
                 .find(|port| port.id == channel.output_port_id)
                 .ok_or_else(|| "Master channel output port is stale".to_owned())?;
             if channel.label != ["Left", "Right"][index]
-                || port.data_type != DataTypeDocument::Audio
-                || port.direction != PortDirectionDocument::Output
-                || port.role != PortRoleDocument::AudioOutput
+                || !valid_master_output_port_document(port, index)
             {
                 return Err("session Master channel shape is invalid".to_owned());
             }
@@ -16192,6 +16206,33 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(model
             .set_mixer_route_connected(&mut backend, PortId::INVALID, destination_channel_id, true,)
             .is_err());
+
+        model.mixer_route_errors.clear();
+        for raw in 1..=20 {
+            model.push_mixer_route_error(
+                MixerRouteState {
+                    source_port_id: PortId::from_raw(raw),
+                    destination_channel_id,
+                },
+                format!("failure {raw}"),
+            );
+        }
+        assert_eq!(model.mixer_route_errors.len(), 16);
+        let repeated = MixerRouteState {
+            source_port_id: PortId::from_raw(20),
+            destination_channel_id,
+        };
+        model.push_mixer_route_error(repeated, "replacement".to_owned());
+        assert_eq!(model.mixer_route_errors.len(), 16);
+        assert_eq!(
+            model
+                .mixer_route_errors
+                .iter()
+                .find(|error| error.route == repeated)
+                .unwrap()
+                .message,
+            "replacement"
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -17541,6 +17582,17 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(saved.document.buses[0].ports[0]
             .external_connections
             .contains(&"system:playback_1".to_owned()));
+        let mut aliased_master = saved.clone();
+        aliased_master.document.buses[0].channels[1].output_port_id =
+            aliased_master.document.buses[0].channels[0].output_port_id;
+        assert!(session_bundle_to_backend(&aliased_master, &[])
+            .unwrap_err()
+            .contains("Master bus shape"));
+        let mut noncanonical_master = saved.clone();
+        noncanonical_master.document.buses[0].ports[0].gain = 0.5;
+        assert!(session_bundle_to_backend(&noncanonical_master, &[])
+            .unwrap_err()
+            .contains("Master channel shape"));
 
         let resampled = resample_session(&saved, 32_000).unwrap();
         let bytes = encode_session(&resampled, "test").unwrap();
