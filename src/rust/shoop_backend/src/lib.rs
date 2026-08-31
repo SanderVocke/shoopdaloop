@@ -1670,6 +1670,7 @@ impl EngineBackend {
         backend.external_connections.remove_all_mock_ports();
         let global = ExternalMidiPort::new("global_fx_control_midi_in", PortDirection::Input);
         backend.session.remove_port(backend.global_fx_midi)?;
+        let global_registry_id = backend.next_port_id();
         backend.global_fx_midi = backend.session.add_port(Port::ExternalMidi(global));
         backend
             .session
@@ -1678,7 +1679,7 @@ impl EngineBackend {
             .connection_ports
             .get_mut(&backend.global_fx_port)
             .unwrap()
-            .registry_id = PortId(backend.global_fx_midi as u64);
+            .registry_id = global_registry_id;
         backend
             .connection_ports
             .get_mut(&backend.global_fx_port)
@@ -11703,6 +11704,12 @@ mod tests {
                 .map(|active| active.configured.kind()),
             Some(AudioDriverKind::WebAudio)
         );
+        let registry_ids = backend
+            .connection_ports
+            .values()
+            .map(|port| port.registry_id)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(registry_ids.len(), backend.connection_ports.len());
         let connections = snapshot.connections;
         assert!(connections.available);
         assert!(connections.host_ports.is_empty());
