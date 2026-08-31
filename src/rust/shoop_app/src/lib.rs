@@ -909,6 +909,8 @@ struct LoopModel {
     composite: Option<CompositeDocument>,
     backend_composite: Option<BackendCompositeId>,
     backend_composite_signature: Vec<(LoopId, u32)>,
+    auto_arm_active_composite: Option<CompositeDocument>,
+    auto_arm_active_plan_version: Option<u64>,
     active_composite_children: Vec<ActiveCompositeChildModel>,
     repeat_sync: bool,
     recorded_fx_state: Option<RecordedFxState>,
@@ -1227,6 +1229,8 @@ impl ApplicationModel {
             composite: None,
             backend_composite: None,
             backend_composite_signature: Vec::new(),
+            auto_arm_active_composite: None,
+            auto_arm_active_plan_version: None,
             active_composite_children: Vec::new(),
             repeat_sync: false,
             recorded_fx_state: None,
@@ -2427,6 +2431,9 @@ impl ApplicationModel {
                     model.composite = None;
                     model.backend_composite = None;
                     model.backend_composite_signature.clear();
+                    model.auto_arm_active_composite = None;
+                    model.auto_arm_active_plan_version = None;
+                    model.active_composite_children.clear();
                 }
                 Ok(())
             }
@@ -4613,6 +4620,8 @@ impl ApplicationModel {
                 composite: None,
                 backend_composite: None,
                 backend_composite_signature: Vec::new(),
+                auto_arm_active_composite: None,
+                auto_arm_active_plan_version: None,
                 active_composite_children: Vec::new(),
                 repeat_sync: self.global.sync,
                 recorded_fx_state: None,
@@ -5027,6 +5036,9 @@ impl ApplicationModel {
         model.composite = None;
         model.backend_composite = None;
         model.backend_composite_signature.clear();
+        model.auto_arm_active_composite = None;
+        model.auto_arm_active_plan_version = None;
+        model.active_composite_children.clear();
         model.repeat_sync = source.repeat_sync;
         model.recorded_fx_state = source.recorded_fx_state;
         Ok(())
@@ -5213,6 +5225,14 @@ impl ApplicationModel {
         }))
     }
 
+    fn auto_arm_composite_document(&self, id: LoopId) -> Option<&CompositeDocument> {
+        let model = self.loops.get(&id)?;
+        model
+            .auto_arm_active_composite
+            .as_ref()
+            .or(model.composite.as_ref())
+    }
+
     fn scheduled_composite_occurrences(
         &self,
         composite: &CompositeDocument,
@@ -5271,7 +5291,7 @@ impl ApplicationModel {
         composite_mode: LoopMode,
         iteration: u32,
     ) -> Option<(BTreeMap<LoopId, LoopMode>, u32)> {
-        let composite = self.loops.get(&composite_id)?.composite.as_ref()?;
+        let composite = self.auto_arm_composite_document(composite_id)?;
         let (occurrences, length) = self.scheduled_composite_occurrences(composite)?;
         let first_occurrences_only = composite.kind == CompositeKindDocument::Regular
             && matches!(
@@ -5317,20 +5337,12 @@ impl ApplicationModel {
         if let Some((desired, _)) = self.composite_desired_at(composite_id, mode, 0) {
             for (target, child_mode) in desired {
                 if external_capture_mode(child_mode) {
-                    if self
-                        .loops
-                        .get(&target)
-                        .is_some_and(|child| child.composite.is_none())
-                    {
+                    if self.auto_arm_composite_document(target).is_none() {
                         self.insert_capture_track(target, demanded);
                     } else {
                         self.collect_composite_start_capture(target, child_mode, demanded, stack);
                     }
-                } else if self
-                    .loops
-                    .get(&target)
-                    .is_some_and(|child| child.composite.is_some())
-                {
+                } else if self.auto_arm_composite_document(target).is_some() {
                     self.collect_composite_start_capture(target, child_mode, demanded, stack);
                 }
             }
@@ -5356,7 +5368,7 @@ impl ApplicationModel {
             let Some(model) = self.loops.get(&child.id) else {
                 continue;
             };
-            if model.composite.is_some() {
+            if self.auto_arm_composite_document(child.id).is_some() {
                 if runnable_composite_mode(model.state.mode) {
                     self.collect_current_composite_capture(child.id, demanded, stack);
                 }
@@ -5389,9 +5401,8 @@ impl ApplicationModel {
         let advanced = iteration.checked_add(1);
         let (next_iteration, restarting) = match advanced {
             Some(next) if next < length => (Some(next), false),
-            _ if model
-                .composite
-                .as_ref()
+            _ if self
+                .auto_arm_composite_document(composite_id)
                 .is_some_and(|composite| composite.kind == CompositeKindDocument::Regular)
                 && !matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
                 && length > 0 =>
@@ -5413,7 +5424,7 @@ impl ApplicationModel {
             let Some(child) = self.loops.get(&target) else {
                 continue;
             };
-            if child.composite.is_none() {
+            if self.auto_arm_composite_document(target).is_none() {
                 if external_capture_mode(child_mode) {
                     self.insert_capture_track(target, demanded);
                 }
@@ -5438,9 +5449,7 @@ impl ApplicationModel {
     fn auto_arm_demanded_tracks(&self) -> BTreeSet<TrackId> {
         let mut demanded = BTreeSet::new();
         for model in self.loops.values().filter(|model| {
-            model
-                .composite
-                .as_ref()
+            self.auto_arm_composite_document(model.id)
                 .is_some_and(|composite| composite.kind == CompositeKindDocument::Script)
         }) {
             let mut stack = BTreeSet::new();
@@ -5566,6 +5575,8 @@ impl ApplicationModel {
             let model = self.loops.get_mut(&id).unwrap();
             model.backend_composite = backend_composite;
             model.backend_composite_signature = signature;
+            model.auto_arm_active_composite = None;
+            model.auto_arm_active_plan_version = None;
             pending.remove(&id);
         }
         Ok(())
@@ -7199,6 +7210,10 @@ impl ApplicationModel {
             let Some(state) = snapshot.composites.get(&composite_id) else {
                 continue;
             };
+            if model.auto_arm_active_plan_version != Some(state.active_plan_version) {
+                model.auto_arm_active_plan_version = Some(state.active_plan_version);
+                model.auto_arm_active_composite.clone_from(&model.composite);
+            }
             model.state.mode = app_loop_mode(state.mode);
             model.state.next_mode = state
                 .next_mode
@@ -8180,6 +8195,8 @@ impl ApplicationModel {
                         composite,
                         backend_composite: None,
                         backend_composite_signature: Vec::new(),
+                        auto_arm_active_composite: None,
+                        auto_arm_active_plan_version: None,
                         active_composite_children: Vec::new(),
                         repeat_sync: bundle.document.global.sync,
                         recorded_fx_state,
@@ -10696,6 +10713,29 @@ mod tests {
         );
         assert!(model.auto_arm_owned_tracks.contains(&first_track));
         assert!(!model.auto_arm_owned_tracks.contains(&second_track));
+
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances[0]
+            .mode = Some("playing".to_owned());
+        model.reconcile_auto_arm(&mut backend).unwrap();
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        assert!(model.auto_arm_owned_tracks.contains(&first_track));
+        model
+            .loops
+            .get_mut(&root)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances[0]
+            .mode = Some("recording".to_owned());
 
         update_application(&mut model, &mut backend, Duration::from_millis(11), |_| {});
         assert_eq!(model.loops[&root].state.composite_iteration, Some(1));
