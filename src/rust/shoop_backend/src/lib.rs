@@ -8924,7 +8924,21 @@ impl Backend for FakeBackend {
                     staged_channel.output_port_id,
                 );
                 for external in &source_channel.output_port.external_connections {
-                    staged.set_port_connected(staged_channel.output_port_id, external, true)?;
+                    if let Err(error) =
+                        staged.set_port_connected(staged_channel.output_port_id, external, true)
+                    {
+                        staged.connections.with_state(|state| {
+                            state.failures.push(BackendConnectionFailure {
+                                port_id: staged_channel.output_port_id,
+                                external_port: external.clone(),
+                                desired_connected: true,
+                                message: format!(
+                                    "could not restore external endpoint {external}: {error}"
+                                ),
+                            });
+                            state.revision = state.revision.wrapping_add(1);
+                        });
+                    }
                 }
             }
         }
@@ -9405,6 +9419,22 @@ mod tests {
             .confirmed_links
             .iter()
             .all(|link| { link.source_port_id != restored_first_output }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_replacement_retains_master_when_saved_sink_is_unavailable() {
+        let mut backend = FakeBackend::default();
+        let mut captured = backend.capture_session().unwrap();
+        captured.buses[0].channels[0]
+            .output_port
+            .external_connections = vec!["missing:playback".to_owned()];
+        let replacement = backend.replace_session(&captured).unwrap();
+        assert_eq!(replacement.buses.len(), 1);
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.mixer.buses.len(), 1);
+        assert!(snapshot.connections.failures.iter().any(|failure| {
+            failure.external_port == "missing:playback" && failure.desired_connected
+        }));
     }
 
     fn backend_composite_lifecycle_contract(backend: &mut dyn Backend) {
