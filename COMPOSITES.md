@@ -77,15 +77,15 @@ Immediate transitions and seeks use authoritative reconciliation. Delayed transi
 
 ### Stage 3: Verify Nested Propagation and Conflict Resolution
 
-- [ ] Add a boundary-timeline test where starting a root composite starts a nested composite and stops a deep primitive that is referenced but not desired at iteration zero.
-- [ ] Add or extend a conflict test where an authoritative composite stop conflicts with a higher-priority direct start, proving the direct intent still wins and the losing conflict is traced.
-- [ ] Add a regression test proving natural advancement does not emit redundant stops for referenced targets that remain locally inactive.
-- [ ] Confirm same-sample propagation remains topology-ordered and transactional for all affected nested operations.
+- [x] Add a boundary-timeline test where starting a root composite starts a nested composite and stops a deep primitive that is referenced but not desired at iteration zero.
+- [x] Add or extend a conflict test where an authoritative composite stop conflicts with a higher-priority direct start, proving the direct intent still wins and the losing conflict is traced.
+- [x] Add a regression test proving natural advancement does not emit redundant stops for referenced targets that remain locally inactive.
+- [x] Confirm same-sample propagation remains topology-ordered and transactional for all affected nested operations.
 
 **Verification**
 
-- [ ] Run targeted composite timeline, state-machine, timing, control, and app-backend tests.
-- [ ] Inspect boundary traces in the new cases for the expected origin, action, winner, and losing-conflict count.
+- [x] Run targeted composite timeline, state-machine, timing, control, and app-backend tests.
+- [x] Inspect boundary traces in the new cases for the expected origin, action, winner, and losing-conflict count.
 
 ### Stage 4: Document and Audit the Contract
 

@@ -522,7 +522,7 @@ fn timestamped_script_modes_commit_before_post_boundary_samples() {
             .iter()
             .filter(|entry| entry.at_sample == 3)
             .count(),
-        4
+        5
     );
 }
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]

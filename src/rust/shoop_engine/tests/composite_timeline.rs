@@ -245,6 +245,143 @@ fn nested_iteration_zero_propagates_through_several_levels_at_one_sample() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn authoritative_nested_start_stops_deep_targets_not_desired_at_iteration_zero() {
+    let active = basic(1);
+    let delayed = basic(2);
+    let sync = basic(3);
+    let nested = composite(10);
+    let root = composite(20);
+    let targets = catalog(&[active, delayed, sync, nested, root]);
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![
+            CompositeTimelineNode {
+                plan: plan(
+                    nested,
+                    4,
+                    &[(active, 0, None), (delayed, 1, None)],
+                    &targets,
+                ),
+                sync_source: sync,
+            },
+            CompositeTimelineNode {
+                plan: plan(root, 4, &[(nested, 0, None)], &targets),
+                sync_source: sync,
+            },
+        ],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline
+        .queue_control(start(0, 1, root, LoopMode::Playing))
+        .unwrap();
+
+    let trace = timeline.resolve_boundary(&[], &[], |_| true).unwrap();
+
+    assert!(trace.iter().any(|entry| {
+        entry.target == active
+            && matches!(
+                entry.action,
+                BoundaryTargetAction::SetMode {
+                    mode: LoopMode::Playing,
+                    ..
+                }
+            )
+    }));
+    assert!(trace
+        .iter()
+        .any(|entry| entry.target == delayed && entry.action == BoundaryTargetAction::Stop));
+    assert_eq!(timeline.runtime(root).unwrap().mode(), LoopMode::Playing);
+    assert_eq!(timeline.runtime(nested).unwrap().mode(), LoopMode::Playing);
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn direct_control_wins_over_an_authoritative_nested_stop() {
+    let active = basic(1);
+    let delayed = basic(2);
+    let sync = basic(3);
+    let nested = composite(10);
+    let root = composite(20);
+    let targets = catalog(&[active, delayed, sync, nested, root]);
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![
+            CompositeTimelineNode {
+                plan: plan(
+                    nested,
+                    4,
+                    &[(active, 0, None), (delayed, 1, None)],
+                    &targets,
+                ),
+                sync_source: sync,
+            },
+            CompositeTimelineNode {
+                plan: plan(root, 4, &[(nested, 0, None)], &targets),
+                sync_source: sync,
+            },
+        ],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline
+        .queue_control(start(0, 1, root, LoopMode::Playing))
+        .unwrap();
+    timeline
+        .queue_control(start(0, 2, delayed, LoopMode::Playing))
+        .unwrap();
+
+    let trace = timeline.resolve_boundary(&[], &[], |_| true).unwrap();
+    let resolved = trace.iter().find(|entry| entry.target == delayed).unwrap();
+
+    assert!(matches!(
+        resolved.action,
+        BoundaryTargetAction::SetMode {
+            mode: LoopMode::Playing,
+            ..
+        }
+    ));
+    assert_eq!(
+        resolved.winner,
+        BoundaryIntentOrigin::Direct {
+            acceptance_sequence: 2
+        }
+    );
+    assert_eq!(resolved.n_losing_conflicts, 1);
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn natural_advancement_does_not_repeat_authoritative_stops() {
+    let active = basic(1);
+    let delayed = basic(2);
+    let sync = basic(3);
+    let source = composite(10);
+    let targets = catalog(&[active, delayed, sync, source]);
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: plan(
+                source,
+                4,
+                &[(active, 0, None), (delayed, 2, None)],
+                &targets,
+            ),
+            sync_source: sync,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline
+        .queue_control(start(0, 1, source, LoopMode::Playing))
+        .unwrap();
+    timeline.resolve_boundary(&[], &[], |_| true).unwrap();
+    timeline.advance_clock(4);
+
+    let trace = timeline.resolve_boundary(&[sync], &[], |_| true).unwrap();
+
+    assert!(trace
+        .iter()
+        .any(|entry| entry.target == active && entry.action == BoundaryTargetAction::Stop));
+    assert!(!trace.iter().any(|entry| entry.target == delayed));
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn a_source_trigger_advances_the_schedule_at_the_exact_sample() {
     let child = basic(1);
     let source = basic(2);
@@ -261,11 +398,11 @@ fn a_source_trigger_advances_the_schedule_at_the_exact_sample() {
     timeline
         .queue_control(start(0, 1, composite, LoopMode::Playing))
         .unwrap();
-    assert!(!timeline
+    assert!(timeline
         .resolve_boundary(&[], &[], |identity| identity == child || identity == source)
         .unwrap()
         .iter()
-        .any(|entry| entry.target == child));
+        .any(|entry| { entry.target == child && entry.action == BoundaryTargetAction::Stop }));
 
     timeline.advance_clock(4);
     let trace = timeline
