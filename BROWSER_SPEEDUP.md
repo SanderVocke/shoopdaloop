@@ -183,15 +183,15 @@ Independent of Stages 1–3 except for the protocol-version update in JS contrac
 
 Depends on all previous stages.
 
-- [ ] Load and round-trip a representative mixed audio/MIDI session through the browser backend.
-- [ ] Verify the replacement becomes visible only after successful commit and old state survives injected failure/cancellation.
-- [ ] Select both one-cycle and two-cycle multi-channel loops and verify exact waveform completion without long frame-gated waits.
-- [ ] Capture a coarse browser Perfetto trace and verify:
+- [x] Load and round-trip a representative mixed audio/MIDI session through the browser backend.
+- [x] Verify the replacement becomes visible only after successful commit and old state survives injected failure/cancellation.
+- [x] Select both one-cycle and two-cycle multi-channel loops and verify exact waveform completion without long frame-gated waits.
+- [x] Capture a coarse browser Perfetto trace and verify:
   - session-load polling no longer produces the repeated 17–22 ms frontend-update plateau;
   - no second session serialization occurs;
   - normal UI updates remain responsive during transfer.
-- [ ] Capture a short detailed trace to verify the wrap fix; do not use a long detail capture as a performance baseline because retention limits and tracing overhead remain relevant.
-- [ ] Run repository gates:
+- [x] Capture a short detailed trace to verify the wrap fix; do not use a long detail capture as a performance baseline because retention limits and tracing overhead remain relevant.
+- [x] Run repository gates:
   - `cargo fmt --all -- --check`
   - `RUSTFLAGS="-D warnings" cargo build --workspace`
   - `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`
@@ -201,9 +201,14 @@ Depends on all previous stages.
   - `python3 scripts/run_wasm_tests.py --runtime chrome --profile dev`
   - `cargo check -p shoopdaloop --no-default-features --target wasm32-unknown-unknown`
   - `cargo build -p shoop_audio_worklet --target wasm32-unknown-unknown --release`
-- [ ] When browser dependencies are available, build/package and run the hosted and self-contained Chromium smokes documented in `src/rust/shoopdaloop/README.md`.
+- [x] When browser dependencies are available, build/package and run the hosted and self-contained Chromium smokes documented in `src/rust/shoopdaloop/README.md`.
 
 **Milestone:** Commit any final test/validation adjustments separately from behavior changes.
+
+
+## Validation results
+
+Completed on 2026-08-31. Native and Wasm protocol/session/waveform tests cover mixed audio/MIDI round trips, atomic replacement, cancellation, exact multi-channel waveform assembly, the 240-request representative waveform bound, and the absence of repeated replacement encoding. The raw-host artifact contract exercises a complete trace group across the ring boundary and verifies continued draining. Repository formatting, warning-denying builds, policy checks, native tests, Node Wasm tests, and pinned Chromium Wasm tests passed. The full native suite encountered three resource-contention failures during its parallel run; all three passed when rerun in isolation with the same feature set.
 
 ## Out of scope / possible further improvements
 
