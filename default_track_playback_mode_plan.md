@@ -205,10 +205,14 @@ Criterion 14 is intentionally still open: the final rebase, push, PR, CI, and au
 
 ### Stage 8: Push and Open the Pull Request
 
-- [ ] Fetch and rebase onto the latest `origin/master` again, resolve any new conflicts, and rerun affected targeted tests plus formatting and warning-denying build.
+- [x] Fetch and rebase onto the latest `origin/master` again, resolve any new conflicts, and rerun affected targeted tests plus formatting and warning-denying build.
 - [ ] Push `shoopdaloop-playdrydefault` to `origin` with upstream tracking; use `--force-with-lease` only if the reviewed rebase requires it.
 - [ ] Open a non-draft GitHub pull request against `master` with a concise behavior summary, design explanation, migration notes, test evidence, and `Closes #294`.
 - [ ] Explicitly call out that regular plans store only symbolic default playback, track edits do not reconfigure plans, and script-composite modes remain explicit.
+
+**Post-rebase verification**
+
+- Rebased cleanly onto `origin/master` at `5cabe0fa`. Formatting, warning-denying workspace build, all 1,648 native tests, warning-denying Wasm builds, complete Node and Chromium Wasm suites, raw host contract, `trunk build`, and both hosted/self-contained Chrome AudioWorklet smokes passed again against the rebased dependency set.
 
 **Verification**
 
