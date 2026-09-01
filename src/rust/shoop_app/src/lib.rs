@@ -8404,12 +8404,11 @@ impl ApplicationModel {
                 .next()
                 .ok_or_else(|| "backend omitted migrated Master bus".to_owned())?;
             let bus_id = BusId::from_raw(*source_bus_id);
-            let mut next_generated_port_id = connection_ports
+            let mut used_port_ids = connection_ports
                 .keys()
                 .map(|id| id.raw())
-                .max()
-                .unwrap_or(0)
-                .saturating_add(1);
+                .collect::<BTreeSet<_>>();
+            let mut next_generated_port_id = 1_u64;
             let channels = replacement
                 .bus_channels
                 .iter()
@@ -8419,8 +8418,8 @@ impl ApplicationModel {
                         .get(source_channel_id)
                         .copied()
                         .ok_or_else(|| "backend omitted migrated Master output".to_owned())?;
-                    let output_port_id = PortId::from_raw(next_generated_port_id);
-                    next_generated_port_id = next_generated_port_id.saturating_add(1);
+                    let output_port_id =
+                        allocate_unused_port_id(&mut used_port_ids, &mut next_generated_port_id)?;
                     let index = *source_channel_id as usize;
                     connection_ports.insert(
                         output_port_id,
@@ -10316,6 +10315,25 @@ fn script_midi_host_id(direction: PortDirection, endpoint: &str) -> HostPortId {
         PortDirection::Output => shoop_scripting::MidiEndpointDirection::Output,
     };
     HostPortId::new(shoop_scripting::midi_endpoint_host_id(direction, endpoint))
+}
+
+fn allocate_unused_port_id(used: &mut BTreeSet<u64>, next: &mut u64) -> Result<PortId, String> {
+    if *next == 0 {
+        *next = 1;
+    }
+    let start = *next;
+    loop {
+        if !used.contains(next) {
+            let id = *next;
+            used.insert(id);
+            *next = next.checked_add(1).unwrap_or(1);
+            return Ok(PortId::from_raw(id));
+        }
+        *next = next.checked_add(1).unwrap_or(1);
+        if *next == start {
+            return Err("no application port identities remain".to_owned());
+        }
+    }
 }
 
 fn map_port_data_type(value: BackendPortDataType) -> PortDataType {
@@ -16255,6 +16273,17 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .unwrap()
                 .message,
             "replacement"
+        );
+
+        let mut used = BTreeSet::from([1, u64::MAX - 1, u64::MAX]);
+        let mut next = 1;
+        assert_eq!(
+            allocate_unused_port_id(&mut used, &mut next).unwrap(),
+            PortId::from_raw(2)
+        );
+        assert_eq!(
+            allocate_unused_port_id(&mut used, &mut next).unwrap(),
+            PortId::from_raw(3)
         );
     }
 
