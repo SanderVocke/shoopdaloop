@@ -88,16 +88,32 @@
 
 ## Stage 0 — Baseline, branch, and DSP/control contract
 
-- [ ] Ensure the completed Built-in FX MVP is present on the intended base branch. Prefer updated `master` after PR #844 merges; do not create a stacked implementation PR without explicit approval.
-- [ ] Record base SHA, clean worktree, existing Built-in FX/OxiSynth focused test results, complete native/Node baselines, and current session/protocol versions in this plan.
-- [ ] Create and publish a dedicated branch such as `builtin-fx-expanded-rack` from that base.
-- [ ] Inventory the current Built-in FX control/state path through `shoop_engine`, `shoop_app_api`, `shoop_backend`, `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, `shoop_app`, `shoop_session`, and `shoop_egui`; record every fixed-stereo/no-MIDI assumption that must change.
-- [ ] Prototype the proposed compressor, four Drive shapes, shelves/bell, chorus, modulation modes, and three reverb families for native and `wasm32-unknown-unknown`; verify channel I/O, sample-rate setup, reset, allocation, and mutable-control strategy without integrating behavior.
-- [ ] Measure/inspect 2x Drive oversampling latency and bounded CPU on native and Wasm, then record the supported choice and any latency-reporting requirement.
-- [ ] Record exact validated ranges, defaults, CC curves, smoothing constants, fixed EQ frequencies/Q, stereo modulation behavior, and FunDSP reverb mappings in this plan before production implementation.
-- [ ] Decide the narrow reusable MIDI assignment/UI seams after comparing Built-in Synth engine and editor code; document why each extraction is beneficial or why concrete duplication is safer.
-- [ ] Verify baseline formatting, warning-denying build, focused native/Node tests, locked Wasm checks, and worklet dependency/import contracts.
-- [ ] Commit the baseline/prototype plan milestone without committing generated prototype artifacts.
+Baseline/branch evidence (2026-09-01): expanded-rack work starts from the fully validated MVP head `364f667980361bf1a81df4310d4ed8d7da71c98f`; plan commit `9a29f605` created and published `builtin-fx-expanded-rack`. PR #844 is still open rather than merged, so no expanded-rack PR may be opened until #844 is merged and this branch is updated onto current `master`, unless the user explicitly approves a stacked PR. Baseline native nextest passed 1,658/1,658 with four policy skips, and all 17 Node Wasm packages passed 1,377/1,377. Formatting, warning-denying workspace build, locked Wasm app/worklet builds, dependency isolation, zero-import worklet (`imports=0`), and raw-host contract passed. Current versions are processor state 1, session document 9, and browser protocol 20.
+
+Fixed-assumption inventory: `shoop_engine::builtin_fx` owns a two-channel array, one reverb graph, and one boolean codec/control; `Session` routes Built-in FX audio but passes no MIDI; API/backend descriptors and creation validation require 2-in/2-out and `Unsupported` MIDI; protocol topology is a unit `BuiltInFx` variant with one reverb command/state; Worker/worklet/client reserve/translate fixed stereo ports; session topology is a unit variant whose validator requires two dry/two wet audio and zero MIDI and whose assignment field is OxiSynth-specific; application capture/restore, optimistic controls, smoke tests, editor fixtures, Add Track capability tests, and documentation all encode the same fixed shape. The implementation stages below cover every layer in that inventory.
+
+DSP/control contract established by disposable native/Wasm probes:
+
+- Compressor ranges/defaults: Threshold `-48..0 dB`/`-18`, Ratio `1..20`/`4`, Attack `0.5..100 ms`/`10`, Release `20..1000 ms`/`150`, Makeup `0..18 dB`/`0`. CC uses linear dB, squared ratio skew, and logarithmic time mappings.
+- Drive defaults to Saturation while disabled: Drive `0..36 dB`/`12`, Tone `0..1`/`0.5`, Mix `0..1`/`1`, Output `-18..6 dB`/`0`; CC is linear in dB or normalized space. FunDSP 2x oversampling introduced a 40-frame impulse peak delay and took about `161 ms` versus `17 ms` for two million release-mode ticks, so it is rejected for this rack: no dynamic latency/parallel dry-path compensation is needed.
+- EQ uses low shelf `120 Hz, Q 0.707`, bell `1 kHz, Q 0.8`, and high shelf `8 kHz, Q 0.707`; each gain is `-12..12 dB`, default `0`, with linear-dB CC mapping.
+- Chorus defaults while disabled: Rate `0.05..5 Hz`/`0.3`, Depth `0..1`/`0.5`, Mix `0..1`/`0.3`, Width `0..1`/`1`; rate CC is logarithmic and the rest linear.
+- Modulation defaults to Tremolo while disabled: Rate `0.05..5 Hz`/`0.5`, Depth `0..1`/`0.5`, Mix `0..1`/`0.5`, Feedback `-0.95..0.95`/`0.25`, Spread `0..1`/`1`; rate CC is logarithmic and the rest linear.
+- Reverb defaults enabled: Room, Amount `0..1`/`0.2`, Tone `0..1`/`0.5`; Tone is a neutral-centered wet tilt. Room is the current `reverb_stereo(10, 2.5, 0.5)`, Hall is `reverb2_stereo(20, 4, 0.8, 0.4, lowpole_hz(8000))`, and Plate is `reverb3_stereo(2.5, 0.8, lowpole_hz(10000))`.
+- Parameter targets use allocation-free per-sample ramps: 10 ms for gain/filter/dynamics targets and 20 ms for delay/modulation targets. LFOs retain phase while Rate changes. Toggles and type changes apply at block boundaries and reset displaced state.
+- Exactly-stereo compression uses one detector driven by the larger channel magnitude; stereo Chorus uses deterministic decorrelated seeds and Width blends toward that decorrelation; stereo Modulation offsets right LFO phase by up to half a cycle via Spread; stereo Reverb uses the native stereo graph. Mono and N > 2 use isolated mono instances with deterministic channel-index seeds.
+- Reuse is intentionally narrow: share private source-table operations for assignment uniqueness/matching and small CC parsing/mapping helpers; retain concrete OxiSynth/Built-in FX state, API, wire, document, and editor types. A generic MIDI Learn window would complicate action typing and test geometry more than it removes, so the Built-in FX editor will mirror behavior concretely while OxiSynth remains unchanged.
+
+- [x] Ensure the completed Built-in FX MVP is present on the intended base branch. Prefer updated `master` after PR #844 merges; do not create a stacked implementation PR without explicit approval.
+- [x] Record base SHA, clean worktree, existing Built-in FX/OxiSynth focused test results, complete native/Node baselines, and current session/protocol versions in this plan.
+- [x] Create and publish a dedicated branch such as `builtin-fx-expanded-rack` from that base.
+- [x] Inventory the current Built-in FX control/state path through `shoop_engine`, `shoop_app_api`, `shoop_backend`, `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, `shoop_app`, `shoop_session`, and `shoop_egui`; record every fixed-stereo/no-MIDI assumption that must change.
+- [x] Prototype the proposed compressor, four Drive shapes, shelves/bell, chorus, modulation modes, and three reverb families for native and `wasm32-unknown-unknown`; verify channel I/O, sample-rate setup, reset, allocation, and mutable-control strategy without integrating behavior.
+- [x] Measure/inspect 2x Drive oversampling latency and bounded CPU on native and Wasm, then record the supported choice and any latency-reporting requirement.
+- [x] Record exact validated ranges, defaults, CC curves, smoothing constants, fixed EQ frequencies/Q, stereo modulation behavior, and FunDSP reverb mappings in this plan before production implementation.
+- [x] Decide the narrow reusable MIDI assignment/UI seams after comparing Built-in Synth engine and editor code; document why each extraction is beneficial or why concrete duplication is safer.
+- [x] Verify baseline formatting, warning-denying build, focused native/Node tests, locked Wasm checks, and worklet dependency/import contracts.
+- [x] Commit the baseline/prototype plan milestone without committing generated prototype artifacts.
 
 ## Stage 1 — Versioned state, parameters, and variable-channel rack foundation
 
