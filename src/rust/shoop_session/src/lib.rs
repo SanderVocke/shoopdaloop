@@ -1316,5 +1316,11 @@ mod tests {
             encode_session(&bundle, "test"),
             Err(SessionError::Validation(message)) if message.contains("stale endpoint")
         ));
+        bundle.document.mixer_routes[0].destination_channel_id = 8_001;
+        bundle.document.global_ports = vec![bundle.document.buses[0].ports[0].clone()];
+        assert!(matches!(
+            encode_session(&bundle, "test"),
+            Err(SessionError::Validation(message)) if message.contains("duplicate port ID")
+        ));
     }
 }

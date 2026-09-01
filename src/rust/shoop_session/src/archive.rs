@@ -903,6 +903,16 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             }
         }
     }
+    for port in &bundle.document.global_ports {
+        require_id(port.id, "global port")?;
+        if !port_ids.insert(port.id) {
+            return Err(SessionError::Validation(format!(
+                "duplicate port ID {}",
+                port.id
+            )));
+        }
+        validate_finite(port.gain, "global port gain")?;
+    }
     let mut bus_ids = BTreeSet::new();
     let mut bus_channel_ids = BTreeSet::new();
     for bus in &bundle.document.buses {
