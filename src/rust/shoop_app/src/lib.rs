@@ -5642,7 +5642,9 @@ impl ApplicationModel {
                 if runnable_composite_mode(model.state.mode) {
                     self.collect_current_composite_capture(child.id, demanded, stack);
                 }
-            } else if external_capture_mode(child.mode) && external_capture_mode(model.state.mode) {
+            } else if external_capture_mode(child.mode)
+                && (model.backend_composite.is_some() || external_capture_mode(model.state.mode))
+            {
                 self.insert_capture_track(child.id, demanded);
             }
         }
@@ -5735,7 +5737,11 @@ impl ApplicationModel {
             .values()
             .filter(|model| runnable_composite_mode(model.state.mode))
         {
-            for child in &parent.active_composite_children {
+            for child in parent
+                .active_composite_children
+                .iter()
+                .filter(|child| child.is_composite)
+            {
                 controlling_parents
                     .entry(child.id)
                     .or_default()
@@ -10960,7 +10966,13 @@ mod tests {
         model.remember_auto_arm_composite_plan(root, primitive_target_version, &plan_a);
         model.loops.get_mut(&first).unwrap().composite = Some(CompositeDocument {
             kind: CompositeKindDocument::Script,
-            instances: Vec::new(),
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: second.raw(),
+                mode: Some("recording".to_owned()),
+                n_cycles: Some(1),
+            }],
         });
         model.loops.get_mut(&first).unwrap().backend_composite =
             Some(backend.create_composite_loop().unwrap());
@@ -10986,7 +10998,18 @@ mod tests {
         model.apply_backend_snapshot(primitive_target_active);
         assert!(!model.auto_arm_target_is_composite(root, first));
         assert!(!model.loops[&root].active_composite_children[0].is_composite);
-        model.loops.get_mut(&first).unwrap().state.mode = LoopMode::Recording;
+        {
+            let first_model = model.loops.get_mut(&first).unwrap();
+            first_model.state.mode = LoopMode::Playing;
+            first_model.state.composite_iteration = Some(0);
+            first_model.active_composite_children = vec![ActiveCompositeChildModel {
+                id: second,
+                mode: LoopMode::Recording,
+                cycle_offset: 0,
+                is_composite: false,
+            }];
+        }
+        model.loops.get_mut(&second).unwrap().state.mode = LoopMode::Recording;
         {
             let root_model = model.loops.get_mut(&root).unwrap();
             root_model.state.mode = LoopMode::Playing;
@@ -10994,7 +11017,7 @@ mod tests {
         }
         assert_eq!(
             model.auto_arm_demanded_tracks(),
-            BTreeSet::from([first_track])
+            BTreeSet::from([first_track, second_track])
         );
     }
 
