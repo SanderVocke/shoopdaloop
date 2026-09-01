@@ -722,6 +722,33 @@ impl RemoteWorkletBackend {
         Ok(())
     }
 
+    fn pump_session_replace_or_abort(&mut self) -> Result<()> {
+        let Err(error) = self.pump_session_replace() else {
+            return Ok(());
+        };
+        let message = format!("session replacement submission failed: {error}");
+        if let Some(generation) = self
+            .session_replace
+            .as_ref()
+            .map(|replace| replace.generation)
+        {
+            let abort_result = self
+                .transport
+                .borrow_mut()
+                .ephemeral(Command::AbortSessionTransfer { generation });
+            if let Err(abort_error) = abort_result {
+                self.transport.borrow_mut().fail(format!(
+                    "{message}; abort submission also failed: {abort_error}"
+                ));
+            }
+        }
+        self.session_replace = None;
+        self.transport
+            .borrow_mut()
+            .cancel_reserved_session_connection_journal();
+        Err(anyhow!(message))
+    }
+
     fn pump_loop_content_replace(&mut self) -> Result<()> {
         let Some(replace) = self.loop_content_replace.as_mut() else {
             return Ok(());
@@ -2443,7 +2470,7 @@ impl Backend for RemoteWorkletBackend {
                 completed: replace.next_offset,
                 total: Some(replace.bytes.len()),
             };
-            self.pump_session_replace()?;
+            self.pump_session_replace_or_abort()?;
             return Ok(BackendAsyncResult::Pending(progress));
         }
         let bytes = encode_binary(session)?;
@@ -2481,7 +2508,7 @@ impl Backend for RemoteWorkletBackend {
             commit_sent: false,
             complete: false,
         });
-        self.pump_session_replace()?;
+        self.pump_session_replace_or_abort()?;
         Ok(BackendAsyncResult::Pending(BackendOperationProgress {
             key: generation,
             kind: BackendOperationKind::SessionReplacement,
@@ -2933,7 +2960,7 @@ impl Backend for RemoteWorkletBackend {
                 }
             }
         }
-        self.pump_session_replace()?;
+        self.pump_session_replace_or_abort()?;
         self.pump_loop_content_replace()?;
         if let Some(error) = self.transport.borrow_mut().take_error() {
             return Err(anyhow!(error));
@@ -3063,7 +3090,7 @@ fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
 }
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
     use shoop_audio_protocol::{CommandEnvelope, EventEnvelope, PROTOCOL_VERSION};
@@ -3109,6 +3136,21 @@ mod tests {
     impl MessageEndpoint for MemoryEndpoint {
         fn post_message(&self, message: &str) -> Result<()> {
             self.sent.borrow_mut().push(message.to_owned());
+            Ok(())
+        }
+    }
+
+    struct FailAfterEndpoint {
+        successful_posts_remaining: Rc<Cell<usize>>,
+    }
+
+    impl MessageEndpoint for FailAfterEndpoint {
+        fn post_message(&self, _message: &str) -> Result<()> {
+            let remaining = self.successful_posts_remaining.get();
+            if remaining == 0 {
+                return Err(anyhow!("injected transfer submission failure"));
+            }
+            self.successful_posts_remaining.set(remaining - 1);
             Ok(())
         }
     }
@@ -4158,6 +4200,45 @@ mod tests {
             .borrow()
             .has_reserved_session_connections());
         assert_eq!(backend.transport.borrow().pending_len(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_session_transfer_submission_releases_state_and_reservation() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(
+                Box::new(FailAfterEndpoint {
+                    successful_posts_remaining: Rc::new(Cell::new(2)),
+                }),
+                1,
+                0,
+                2,
+            )
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: Vec::new(),
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+
+        let error = backend.replace_session_async(&session).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("session replacement submission failed"));
+        assert!(backend.session_replace.is_none());
+        assert!(!backend
+            .transport
+            .borrow()
+            .has_reserved_session_connections());
+        assert_eq!(
+            backend.transport.borrow().readiness().connection,
+            ConnectionState::Failed
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

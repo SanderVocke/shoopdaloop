@@ -416,7 +416,7 @@ impl TransportCore {
         self.readiness.engine = RemoteEngineState::Unknown;
     }
 
-    fn fail(&mut self, message: String) {
+    pub(crate) fn fail(&mut self, message: String) {
         if self.error.is_none() {
             self.error = Some(message);
         }
