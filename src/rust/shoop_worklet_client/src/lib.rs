@@ -3902,6 +3902,14 @@ mod tests {
             ))
         );
         assert_eq!(failure.message, "bus gain rejected");
+        assert!(!backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::GainDb(-3.0),
+            }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
