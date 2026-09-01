@@ -8590,8 +8590,17 @@ impl ApplicationModel {
             .copied()
             .collect::<Vec<_>>();
         for route in pending {
+            let source_exists = self.connection_ports.contains_key(&route.source_port_id);
+            let destination_exists = self
+                .buses
+                .values()
+                .flat_map(|bus| &bus.channels)
+                .any(|channel| channel.id == route.destination_channel_id);
             let confirmed = self.confirmed_mixer_routes.contains(&route);
-            if self.pending_mixer_routes[&route].desired_connected == confirmed {
+            if !source_exists
+                || !destination_exists
+                || self.pending_mixer_routes[&route].desired_connected == confirmed
+            {
                 self.pending_mixer_routes.remove(&route);
             }
         }
@@ -19170,6 +19179,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .mixer_route_errors
             .iter()
             .any(|error| error.route == route && error.message.contains("timed out")));
+        model
+            .set_mixer_route_connected(&mut backend, source_port_id, destination_channel_id, true)
+            .unwrap();
+        assert!(model.pending_mixer_routes.contains_key(&route));
+        model.connection_ports.remove(&source_port_id);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert!(!model.pending_mixer_routes.contains_key(&route));
         assert!(model
             .set_mixer_route_connected(&mut backend, PortId::INVALID, destination_channel_id, true,)
             .is_err());
