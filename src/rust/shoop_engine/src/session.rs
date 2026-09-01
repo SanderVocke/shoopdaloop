@@ -2613,22 +2613,27 @@ impl Session {
                 }
             }
             ProcessorBackend::BuiltInFx(processor) => {
-                if n_frames <= processor.max_frames() {
+                let mut start = 0;
+                while start < n_frames {
+                    let chunk = (n_frames - start).min(processor.max_frames());
+                    let end = start + chunk;
                     for (input_index, &port_index) in route.audio_inputs.iter().enumerate() {
-                        if let Some(destination) = processor.input_mut(input_index, n_frames) {
-                            destination.copy_from_slice(self.ports[port_index].buffer(n_frames));
+                        if let Some(destination) = processor.input_mut(input_index, chunk) {
+                            destination.copy_from_slice(
+                                &self.ports[port_index].buffer(n_frames)[start..end],
+                            );
                         }
                     }
-                    processor.process(n_frames);
+                    processor.process(chunk);
                     for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
-                        if let Some(source) = processor.output(output_index, n_frames) {
-                            self.ports[port_index]
-                                .buffer(n_frames)
-                                .copy_from_slice(source);
+                        let destination = &mut self.ports[port_index].buffer(n_frames)[start..end];
+                        if let Some(source) = processor.output(output_index, chunk) {
+                            destination.copy_from_slice(source);
                         } else {
-                            self.ports[port_index].buffer(n_frames).fill(0.0);
+                            destination.fill(0.0);
                         }
                     }
+                    start = end;
                 }
             }
             ProcessorBackend::OxiSynth(processor) => {
@@ -3761,13 +3766,48 @@ mod tests {
         }
         session.set_builtin_fx_processor(
             "builtin",
-            BuiltInFxProcessor::new(48_000.0, frames, BuiltInFxState::default()),
+            BuiltInFxProcessor::new(48_000.0, frames / 2, BuiltInFxState::default()),
         );
         session.set_builtin_fx_active("builtin", true);
         session
             .set_processor_ports("builtin", sends, returns, vec![])
             .unwrap();
         session.apply_graph_changes().unwrap();
+
+        for (channel, &input) in inputs.iter().enumerate() {
+            let mut impulse = vec![0.0; frames];
+            impulse[0] = 1.0 - channel as f32 * 0.5;
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&impulse);
+            session
+                .port_mut(outputs[channel])
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for (channel, &output) in outputs.iter().enumerate() {
+            let actual = session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap();
+            assert!(actual[0] > 0.4 * (2 - channel) as f32);
+        }
+        assert_eq!(
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .reverb_process_calls(),
+            2
+        );
 
         session
             .builtin_fx_processor_mut("builtin")
@@ -3841,7 +3881,7 @@ mod tests {
                 .builtin_fx_processor_mut("builtin")
                 .unwrap()
                 .reverb_process_calls(),
-            0
+            2
         );
     }
 
