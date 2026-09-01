@@ -21,6 +21,7 @@ shoop_engine = { path = "../shoop_engine" }
 shoop_latency = { path = "../shoop_latency" }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol", optional = true }
 shoop_settings = { path = "../shoop_settings" }
+shoop_tracing = { workspace = true, default-features = false }
 
 [dev-dependencies]
 assert_no_alloc = { workspace = true }

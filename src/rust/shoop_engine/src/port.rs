@@ -206,8 +206,7 @@ impl AudioPort {
 
     /// Applies gain or muting in place, updates meters, and captures the result.
     ///
-    /// Peaks accumulate until explicitly reset, and `output_peak` is derived from
-    /// the accumulated `input_peak` rather than this cycle's alone — faithful to
+    /// Input and output peaks accumulate independently until explicitly reset.
     pub fn process(&mut self, buf: &mut [f32]) {
         // The insert runs before gain and muting, so the fader is post-effect and muting silences
         // the effect's output too rather than leaving a tail audible.
@@ -243,7 +242,7 @@ impl AudioPort {
         let candidate = if self.muted {
             0.0
         } else {
-            input_peak * self.gain
+            cycle_input_peak * self.gain
         };
         self.output_peak = self.output_peak.max(candidate);
         let cycle_output_peak = if self.muted {
@@ -452,6 +451,8 @@ mod tests {
         check!(p.output_peak() == 1.0);
 
         p.reset_output_peak();
+        p.process(&mut [0.0, 0.0, 0.0, 0.0]);
+        check!(p.output_peak() == 0.0);
         p.process(&mut [0.5, 0.0, 0.0, 0.0]);
         check!(p.output_peak() < 1.0);
     }
