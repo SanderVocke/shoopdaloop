@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
     DummyAudioDriverConfig, FxLifecycle, ResolvedAudioDriverConfig, TrackFxState,
-    TrackProcessorDescriptor,
+    TrackProcessorDescriptor, MAX_BUS_GAIN_DB, MIN_BUS_GAIN_DB,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
@@ -197,11 +197,45 @@ pub struct BackendBusChannelState {
     pub output_port_id: BackendPortId,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub enum BackendBusControl {
+    GainDb(f32),
+    Balance(f32),
+    Mute(bool),
+}
+
+impl BackendBusControl {
+    pub fn normalized(self, channel_count: usize) -> Result<Self> {
+        match self {
+            Self::GainDb(value) if value.is_finite() => {
+                Ok(Self::GainDb(value.clamp(MIN_BUS_GAIN_DB, MAX_BUS_GAIN_DB)))
+            }
+            Self::Balance(value) if value.is_finite() && channel_count == 2 => {
+                Ok(Self::Balance(value.clamp(-1.0, 1.0)))
+            }
+            Self::Mute(value) => Ok(Self::Mute(value)),
+            Self::GainDb(_) => Err(anyhow!("bus gain must be finite")),
+            Self::Balance(_) if channel_count != 2 => {
+                Err(anyhow!("balance is available only for stereo buses"))
+            }
+            Self::Balance(_) => Err(anyhow!("bus balance must be finite")),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendBusState {
     pub id: BackendBusId,
     pub name: String,
     pub channels: Vec<BackendBusChannelState>,
+    #[serde(default)]
+    pub gain_db: f32,
+    #[serde(default)]
+    pub balance: f32,
+    #[serde(default)]
+    pub muted: bool,
+    #[serde(default)]
+    pub output_peaks_db: Vec<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -217,7 +251,7 @@ pub struct BackendMixerFailure {
     pub message: String,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendMixerSnapshot {
     pub revision: u64,
     pub buses: BTreeMap<BackendBusId, BackendBusState>,
@@ -879,6 +913,7 @@ pub enum BackendMutationKind {
     TrackStructure,
     CompositeStructure,
     TrackControl,
+    BusControl,
     TrackFxControl,
     MidiInput,
     LoopControl,
@@ -895,6 +930,7 @@ pub enum BackendMutationDetail {
     LoopCreation { loop_id: BackendLoopId },
     CompositeConfiguration { plan_version: u64 },
     TrackControl(BackendTrackControl),
+    BusControl(BackendBusControl),
     TrackFxControl(BackendTrackFxControl),
     LoopGain(f32),
     LoopBalance(f32),
@@ -1209,6 +1245,10 @@ pub trait Backend {
     ) -> Result<()> {
         let _ = (source_port_id, destination_channel_id, connected);
         Err(anyhow!("mixer routing is unavailable"))
+    }
+    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        let _ = (bus_id, control);
+        Err(anyhow!("bus control is unavailable"))
     }
     fn advance(&mut self, elapsed: Duration);
     fn poll(&mut self) -> Result<BackendSnapshot>;
@@ -2482,7 +2522,7 @@ impl EngineBackend {
                 label: channel.label.clone(),
                 output_port_id: channel.output_port_id,
             })
-            .collect();
+            .collect::<Vec<_>>();
         BackendMixerSnapshot {
             revision: self.mixer_revision,
             buses: BTreeMap::from([(
@@ -2490,7 +2530,11 @@ impl EngineBackend {
                 BackendBusState {
                     id: self.master_bus.id,
                     name: self.master_bus.name.clone(),
+                    output_peaks_db: vec![-200.0; channels.len()],
                     channels,
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
                 },
             )]),
             confirmed_links: self.mixer_routes.clone(),
@@ -6651,6 +6695,7 @@ pub enum FakeOperation {
     RemoveTrack(BackendTrackId),
     AddTrackLoop(BackendTrackId, BackendLoopId),
     SetTrackControl(BackendTrackId, BackendTrackControl),
+    SetBusControl(BackendBusId, BackendBusControl),
     SetLoopGain(BackendLoopId, f32),
     SetLoopBalance(BackendLoopId, f32),
     GrabLoops(Vec<BackendGrabRequest>),
@@ -6722,6 +6767,10 @@ impl Default for FakeBackend {
                             output_port_id,
                         })
                         .collect(),
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
+                    output_peaks_db: vec![-200.0; 2],
                 },
             )]),
             ..Default::default()
@@ -9209,6 +9258,24 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
+    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        let bus = self
+            .mixer
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| anyhow!("unknown fake bus {bus_id:?}"))?;
+        let control = control.normalized(bus.channels.len())?;
+        match control {
+            BackendBusControl::GainDb(value) => bus.gain_db = value,
+            BackendBusControl::Balance(value) => bus.balance = value,
+            BackendBusControl::Mute(value) => bus.muted = value,
+        }
+        self.mixer.revision = self.mixer.revision.wrapping_add(1);
+        self.operations
+            .push(FakeOperation::SetBusControl(bus_id, control));
+        Ok(())
+    }
+
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -9250,6 +9317,56 @@ mod tests {
             .session
             .set_loop_mode(engine_loop, LoopMode::Playing)
             .unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_control_contract_normalizes_and_fake_backend_tracks_exact_identity() {
+        assert_eq!(
+            BackendBusControl::GainDb(-100.0).normalized(2).unwrap(),
+            BackendBusControl::GainDb(MIN_BUS_GAIN_DB)
+        );
+        assert_eq!(
+            BackendBusControl::GainDb(100.0).normalized(1).unwrap(),
+            BackendBusControl::GainDb(MAX_BUS_GAIN_DB)
+        );
+        assert_eq!(
+            BackendBusControl::Balance(2.0).normalized(2).unwrap(),
+            BackendBusControl::Balance(1.0)
+        );
+        assert!(BackendBusControl::GainDb(f32::NAN).normalized(2).is_err());
+        assert!(BackendBusControl::Balance(f32::INFINITY)
+            .normalized(2)
+            .is_err());
+        assert!(BackendBusControl::Balance(0.5).normalized(1).is_err());
+
+        let mut backend = FakeBackend::default();
+        let bus_id = MASTER_BUS_ID;
+        backend
+            .set_bus_control(bus_id, BackendBusControl::GainDb(-6.0))
+            .unwrap();
+        backend
+            .set_bus_control(bus_id, BackendBusControl::Balance(0.25))
+            .unwrap();
+        backend
+            .set_bus_control(bus_id, BackendBusControl::Mute(true))
+            .unwrap();
+        assert!(backend
+            .set_bus_control(BackendBusId::from_raw(99), BackendBusControl::Mute(false))
+            .is_err());
+        assert_eq!(
+            &backend.operations()[backend.operations().len() - 3..],
+            &[
+                FakeOperation::SetBusControl(bus_id, BackendBusControl::GainDb(-6.0)),
+                FakeOperation::SetBusControl(bus_id, BackendBusControl::Balance(0.25)),
+                FakeOperation::SetBusControl(bus_id, BackendBusControl::Mute(true)),
+            ]
+        );
+        let snapshot = backend.poll().unwrap();
+        let bus = &snapshot.mixer.buses[&bus_id];
+        assert_eq!(bus.gain_db, -6.0);
+        assert_eq!(bus.balance, 0.25);
+        assert!(bus.muted);
+        assert_eq!(bus.output_peaks_db, vec![-200.0, -200.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

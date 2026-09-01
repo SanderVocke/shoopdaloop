@@ -1628,6 +1628,10 @@ mod tests {
                 label: "Left".to_owned(),
                 output_port_id: PortId::from_raw(14),
             }]),
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
+            output_peaks_db: Arc::from([-200.0]),
         }]);
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();

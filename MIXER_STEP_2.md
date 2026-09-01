@@ -90,16 +90,16 @@ Verification:
 
 ### Stage 1 — Add normalized bus control and meter contracts
 
-- [ ] Add typed backend bus control values for gain in dB, balance, and mute, plus bus-wide confirmed control state and ordered per-channel output peaks in `BackendBusState`.
-- [ ] Extend the backend trait with a typed `set_bus_control` operation and normalized mutation kind/detail data so stale IDs, invalid values, unsupported balance, and backend rejection are observable and bounded.
-- [ ] Add corresponding application `BusState` control/meter fields, a typed `BusAction`/`AppIntent`, control capability derived from channel count, and shared gain limits/validation.
-- [ ] Extend fake backend state and operation capture so application and scripting tests can prove exact bus identity and control values.
-- [ ] Define matching helpers for desired-versus-authoritative bus controls without conflating transient peaks with persistent control state.
+- [x] Add typed backend bus control values for gain in dB, balance, and mute, plus bus-wide confirmed control state and ordered per-channel output peaks in `BackendBusState`.
+- [x] Extend the backend trait with a typed `set_bus_control` operation and normalized mutation kind/detail data so stale IDs, invalid values, unsupported balance, and backend rejection are observable and bounded.
+- [x] Add corresponding application `BusState` control/meter fields, a typed `BusAction`/`AppIntent`, control capability derived from channel count, and shared gain limits/validation.
+- [x] Extend fake backend state and operation capture so application and scripting tests can prove exact bus identity and control values.
+- [x] Define matching helpers for desired-versus-authoritative bus controls without conflating transient peaks with persistent control state.
 
 Verification:
 
-- [ ] Add contract tests for defaults, finite/clamped gain and balance, mute retention, stale bus rejection, non-stereo balance rejection, ordered peak shape, and fake operation identity.
-- [ ] Run focused `shoop_backend`, `shoop_app_api`, and fake-backend tests.
+- [x] Add contract tests for defaults, finite/clamped gain and balance, mute retention, stale bus rejection, non-stereo balance rejection, ordered peak shape, and fake operation identity.
+- [x] Run focused `shoop_backend`, `shoop_app_api`, and fake-backend tests.
 
 ### Stage 2 — Implement native and engine realtime bus processing
 

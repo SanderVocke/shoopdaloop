@@ -742,7 +742,11 @@ impl RemoteWorkletBackend {
                 BackendBusState {
                     id: bus_id,
                     name: source_bus.name.clone(),
+                    output_peaks_db: vec![-200.0; channels.len()],
                     channels,
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
                 },
             );
         }
@@ -885,20 +889,25 @@ impl RemoteWorkletBackend {
             .into_iter()
             .map(|bus| {
                 let id = BackendBusId::from_raw(bus.id);
+                let channels = bus
+                    .channels
+                    .into_iter()
+                    .map(|channel| BackendBusChannelState {
+                        id: BackendBusChannelId::from_raw(channel.id),
+                        label: channel.label,
+                        output_port_id: BackendPortId::from_raw(channel.output_port_id),
+                    })
+                    .collect::<Vec<_>>();
                 (
                     id,
                     BackendBusState {
                         id,
                         name: bus.name,
-                        channels: bus
-                            .channels
-                            .into_iter()
-                            .map(|channel| BackendBusChannelState {
-                                id: BackendBusChannelId::from_raw(channel.id),
-                                label: channel.label,
-                                output_port_id: BackendPortId::from_raw(channel.output_port_id),
-                            })
-                            .collect(),
+                        output_peaks_db: vec![-200.0; channels.len()],
+                        channels,
+                        gain_db: 0.0,
+                        balance: 0.0,
+                        muted: false,
                     },
                 )
             })

@@ -264,6 +264,8 @@ pub struct TrackFxState {
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
+pub const MIN_BUS_GAIN_DB: f32 = MIN_TRACK_GAIN_DB;
+pub const MAX_BUS_GAIN_DB: f32 = MAX_TRACK_GAIN_DB;
 pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
@@ -816,11 +818,21 @@ pub struct BusChannelState {
     pub output_port_id: PortId,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BusState {
     pub id: BusId,
     pub name: String,
     pub channels: Arc<[BusChannelState]>,
+    pub gain_db: f32,
+    pub balance: f32,
+    pub muted: bool,
+    pub output_peaks_db: Arc<[f32]>,
+}
+
+impl BusState {
+    pub fn stereo(&self) -> bool {
+        self.channels.len() == 2
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1659,6 +1671,13 @@ pub enum TrackAction {
 pub type TrackWidgetAction = TrackAction;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BusAction {
+    GainChanged(f32),
+    BalanceChanged(f32),
+    MuteChanged(bool),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GlobalControlAction {
     StopAll,
     MidiPanic,
@@ -1715,6 +1734,10 @@ pub enum AppIntent {
     Track {
         track_id: TrackId,
         action: TrackAction,
+    },
+    Bus {
+        bus_id: BusId,
+        action: BusAction,
     },
     SetTrackLatency {
         track_id: TrackId,
@@ -1987,6 +2010,16 @@ impl TrackAction {
     }
 }
 
+impl BusAction {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::GainChanged(_) => "bus.gain",
+            Self::BalanceChanged(_) => "bus.balance",
+            Self::MuteChanged(_) => "bus.mute",
+        }
+    }
+}
+
 impl GlobalControlAction {
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -2023,6 +2056,7 @@ impl AppIntent {
             Self::SetLoopTimeline { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),
+            Self::Bus { action, .. } => action.kind(),
             Self::SetTrackLatency { .. } => "track.latency",
             Self::SetTakeAlignment { .. } => "loop.capture_alignment",
             Self::SetTakeProcessorAlignment { .. } => "loop.processor_alignment",
@@ -2090,6 +2124,30 @@ pub type AppAction = AppIntent;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_state_derives_stereo_capability_from_ordered_channel_count() {
+        let channel = |id| BusChannelState {
+            id: BusChannelId::from_raw(id),
+            label: id.to_string(),
+            output_port_id: PortId::from_raw(id),
+        };
+        let mut state = BusState {
+            id: BusId::from_raw(1),
+            name: "Master".to_owned(),
+            channels: Arc::from([channel(1)]),
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
+            output_peaks_db: Arc::from([-200.0]),
+        };
+        assert!(!state.stereo());
+        state.channels = Arc::from([channel(1), channel(2)]);
+        state.output_peaks_db = Arc::from([-12.0, -6.0]);
+        assert!(state.stereo());
+        state.channels = Arc::from([channel(1), channel(2), channel(3)]);
+        assert!(!state.stereo());
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn ephemeral_script_names_track_source_versions_without_colliding() {

@@ -683,7 +683,7 @@ impl NativeRuntime {
                 label: channel.label.clone(),
                 output_port_id: channel.output_port_id,
             })
-            .collect();
+            .collect::<Vec<_>>();
         BackendMixerSnapshot {
             revision: self.mixer_revision,
             buses: BTreeMap::from([(
@@ -691,7 +691,11 @@ impl NativeRuntime {
                 BackendBusState {
                     id: self.master_bus.id,
                     name: self.master_bus.name.clone(),
+                    output_peaks_db: vec![-200.0; channels.len()],
                     channels,
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
                 },
             )]),
             confirmed_links: self.mixer_routes.clone(),

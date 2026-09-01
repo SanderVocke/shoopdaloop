@@ -17,8 +17,8 @@ use shoop_app_api::TrackLatencySpec;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, AudioChannelMappingState,
     AudioChannelSelectionState, AudioDriverConfig, AudioDriverRuntimeState, AudioDriverState,
-    AudioDriverSwitchState, AudioDriverSwitchStatus, BusChannelId, BusChannelState, BusId,
-    BusState, ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus,
+    AudioDriverSwitchState, AudioDriverSwitchStatus, BusAction, BusChannelId, BusChannelState,
+    BusId, BusState, ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus,
     ClickTrackRequest, ClickTrackState, CompositeDetailsState, CompositeEventDetailsState,
     CompositeEventId, CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
     ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
@@ -35,18 +35,19 @@ use shoop_app_api::{
 };
 use shoop_backend::{
     canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
-    BackendAudioContent, BackendAudioData, BackendBusChannelId, BackendBusId, BackendChannelMode,
-    BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId, BackendCompositeKind,
-    BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate,
-    BackendMidiContent, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
-    BackendMutationDetail, BackendOperationProgress, BackendOxiSynthMidiCcAssignment,
-    BackendOxiSynthParameter, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendProcessorLatencyAdjustment,
-    BackendRecordingOffsetAdjustment, BackendSessionBus, BackendSessionBusChannel,
-    BackendSessionData, BackendSessionMixerRoute, BackendSessionPort, BackendSessionReplacement,
-    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    BackendAudioContent, BackendAudioData, BackendBusChannelId, BackendBusControl, BackendBusId,
+    BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest,
+    BackendLoopContent, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData, BackendMidiEvent,
+    BackendMixerSnapshot, BackendMutationDetail, BackendOperationProgress,
+    BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionBus,
+    BackendSessionBusChannel, BackendSessionData, BackendSessionMixerRoute, BackendSessionPort,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -629,6 +630,7 @@ struct ApplicationModel {
     confirmed_mixer_routes: BTreeSet<MixerRouteState>,
     pending_mixer_routes: BTreeMap<MixerRouteState, PendingConnection>,
     mixer_route_errors: Vec<MixerRouteErrorState>,
+    desired_bus_controls: BTreeMap<(BackendBusId, BusControlKey), BackendBusControl>,
     desired_track_controls: BTreeMap<(BackendTrackId, TrackControlKey), BackendTrackControl>,
     desired_fx_controls: BTreeMap<(BackendTrackId, FxControlKey), BackendTrackFxControl>,
     desired_loop_controls: BTreeMap<(BackendLoopId, LoopControlKey), f32>,
@@ -681,6 +683,41 @@ struct BusModel {
     backend_id: BackendBusId,
     name: String,
     channels: Vec<BusChannelModel>,
+    gain_db: f32,
+    balance: f32,
+    muted: bool,
+    output_peaks_db: Vec<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum BusControlKey {
+    Gain,
+    Balance,
+    Mute,
+}
+
+fn bus_control_key(control: BackendBusControl) -> BusControlKey {
+    match control {
+        BackendBusControl::GainDb(_) => BusControlKey::Gain,
+        BackendBusControl::Balance(_) => BusControlKey::Balance,
+        BackendBusControl::Mute(_) => BusControlKey::Mute,
+    }
+}
+
+fn bus_control_matches(bus: &shoop_backend::BackendBusState, control: BackendBusControl) -> bool {
+    match control {
+        BackendBusControl::GainDb(value) => (bus.gain_db - value).abs() <= f32::EPSILON,
+        BackendBusControl::Balance(value) => (bus.balance - value).abs() <= f32::EPSILON,
+        BackendBusControl::Mute(value) => bus.muted == value,
+    }
+}
+
+fn apply_bus_control(bus: &mut BusModel, control: BackendBusControl) {
+    match control {
+        BackendBusControl::GainDb(value) => bus.gain_db = value,
+        BackendBusControl::Balance(value) => bus.balance = value,
+        BackendBusControl::Mute(value) => bus.muted = value,
+    }
 }
 
 struct BusChannelModel {
@@ -1356,6 +1393,10 @@ impl ApplicationModel {
                     backend_id: backend_bus.id,
                     name: backend_bus.name.clone(),
                     channels,
+                    gain_db: backend_bus.gain_db,
+                    balance: backend_bus.balance,
+                    muted: backend_bus.muted,
+                    output_peaks_db: backend_bus.output_peaks_db.clone(),
                 },
             );
         }
@@ -1430,6 +1471,7 @@ impl ApplicationModel {
             confirmed_mixer_routes: BTreeSet::new(),
             pending_mixer_routes: BTreeMap::new(),
             mixer_route_errors: Vec::new(),
+            desired_bus_controls: BTreeMap::new(),
             desired_track_controls: BTreeMap::new(),
             desired_fx_controls: BTreeMap::new(),
             desired_loop_controls: BTreeMap::new(),
@@ -1553,6 +1595,7 @@ impl ApplicationModel {
             AppIntent::Track { track_id, action } => {
                 self.handle_track_action(backend, track_id, action)
             }
+            AppIntent::Bus { bus_id, action } => self.handle_bus_action(backend, bus_id, action),
             AppIntent::SetTrackLatency {
                 track_id,
                 adjustment,
@@ -4747,6 +4790,32 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn handle_bus_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        bus_id: BusId,
+        action: BusAction,
+    ) -> Result<(), String> {
+        let bus = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        let control = match action {
+            BusAction::GainChanged(value) => BackendBusControl::GainDb(value),
+            BusAction::BalanceChanged(value) => BackendBusControl::Balance(value),
+            BusAction::MuteChanged(value) => BackendBusControl::Mute(value),
+        }
+        .normalized(bus.channels.len())
+        .map_err(|error| error.to_string())?;
+        backend
+            .set_bus_control(bus.backend_id, control)
+            .map_err(|error| format!("could not update bus {bus_id}: {error}"))?;
+        self.desired_bus_controls
+            .insert((bus.backend_id, bus_control_key(control)), control);
+        apply_bus_control(bus, control);
+        Ok(())
+    }
+
     fn handle_track_action(
         &mut self,
         backend: &mut dyn Backend,
@@ -7925,6 +7994,14 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::BusControl(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let key = (BackendBusId::from_raw(entity), bus_control_key(*rejected));
+                        if self.desired_bus_controls.get(&key) == Some(rejected) {
+                            self.desired_bus_controls.remove(&key);
+                        }
+                    }
+                }
                 Some(BackendMutationDetail::LoopGain(rejected)) => {
                     if let Some(entity) = failure.entity {
                         let key = (BackendLoopId::from_raw(entity), LoopControlKey::Gain);
@@ -8501,12 +8578,20 @@ impl ApplicationModel {
                             backend_id: backend_bus.id,
                             name: backend_bus.name.clone(),
                             channels: Vec::new(),
+                            gain_db: backend_bus.gain_db,
+                            balance: backend_bus.balance,
+                            muted: backend_bus.muted,
+                            output_peaks_db: backend_bus.output_peaks_db.clone(),
                         },
                     );
                     id
                 });
             let bus = self.buses.get_mut(&bus_id).expect("bus was inserted");
             bus.name.clone_from(&backend_bus.name);
+            bus.gain_db = backend_bus.gain_db;
+            bus.balance = backend_bus.balance;
+            bus.muted = backend_bus.muted;
+            bus.output_peaks_db.clone_from(&backend_bus.output_peaks_db);
             for backend_channel in &backend_bus.channels {
                 if let Some(channel) = bus
                     .channels
@@ -8536,6 +8621,22 @@ impl ApplicationModel {
         }
         self.buses
             .retain(|_, bus| snapshot.buses.contains_key(&bus.backend_id));
+        self.desired_bus_controls
+            .retain(|(backend_id, _), desired| {
+                snapshot
+                    .buses
+                    .get(backend_id)
+                    .is_some_and(|bus| !bus_control_matches(bus, *desired))
+            });
+        for ((backend_id, _), desired) in &self.desired_bus_controls {
+            if let Some(bus) = self
+                .buses
+                .values_mut()
+                .find(|bus| bus.backend_id == *backend_id)
+            {
+                apply_bus_control(bus, *desired);
+            }
+        }
 
         self.confirmed_mixer_routes = snapshot
             .confirmed_links
@@ -9770,7 +9871,11 @@ impl ApplicationModel {
                     id: bus_id,
                     backend_id: *backend_bus_id,
                     name: "Master".to_owned(),
+                    output_peaks_db: vec![-200.0; channels.len()],
                     channels,
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
                 },
             );
         } else {
@@ -9826,7 +9931,11 @@ impl ApplicationModel {
                         id: bus_id,
                         backend_id: backend_bus_id,
                         name: bus_document.name.clone(),
+                        output_peaks_db: vec![-200.0; channels.len()],
                         channels,
+                        gain_db: 0.0,
+                        balance: 0.0,
+                        muted: false,
                     },
                 );
             }
@@ -9858,6 +9967,7 @@ impl ApplicationModel {
         self.confirmed_mixer_routes.clear();
         self.pending_mixer_routes.clear();
         self.mixer_route_errors.clear();
+        self.desired_bus_controls.clear();
         self.desired_track_controls.clear();
         self.desired_fx_controls.clear();
         self.desired_loop_controls.clear();
@@ -9951,6 +10061,10 @@ impl ApplicationModel {
                         })
                         .collect::<Vec<_>>()
                         .into(),
+                    gain_db: bus.gain_db,
+                    balance: bus.balance,
+                    muted: bus.muted,
+                    output_peaks_db: bus.output_peaks_db.clone().into(),
                 })
                 .collect::<Vec<_>>()
                 .into(),
