@@ -772,6 +772,7 @@ fn apply_track_control(state: &mut TrackControlState, control: BackendTrackContr
 enum FxControlKey {
     Active,
     Visible,
+    BuiltInFxReverbEnabled,
     OxiPreset,
     OxiReverbSend,
     OxiChorusSend,
@@ -782,6 +783,16 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
     match control {
         BackendTrackFxControl::SetActive(value) => fx.active = *value,
         BackendTrackFxControl::SetVisible(value) => fx.visible = *value,
+        BackendTrackFxControl::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(
+            enabled,
+        )) => {
+            let Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(editor)) =
+                fx.editor.as_mut()
+            else {
+                return;
+            };
+            editor.reverb_enabled = *enabled;
+        }
         BackendTrackFxControl::OxiSynth(control) => {
             let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) =
                 fx.editor.as_mut()
@@ -846,6 +857,9 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
     Some(match control {
         BackendTrackFxControl::SetActive(_) => FxControlKey::Active,
         BackendTrackFxControl::SetVisible(_) => FxControlKey::Visible,
+        BackendTrackFxControl::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(_)) => {
+            FxControlKey::BuiltInFxReverbEnabled
+        }
         BackendTrackFxControl::OxiSynth(control) => match control {
             shoop_app_api::OxiSynthControl::SelectPreset(_) => FxControlKey::OxiPreset,
             shoop_app_api::OxiSynthControl::SetReverbSend(_) => FxControlKey::OxiReverbSend,
@@ -4527,6 +4541,22 @@ impl ApplicationModel {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::BuiltInFx(builtin_fx) => {
+                let control = BackendTrackFxControl::BuiltInFx(builtin_fx);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| {
+                        format!("could not update Built-in FX track {track_id}: {error}")
+                    })?;
+                if let Some(key) = fx_control_key(&control) {
+                    self.desired_fx_controls
+                        .insert((track.backend_id, key), control.clone());
+                    if let Some(fx) = track.fx.as_mut() {
+                        apply_fx_control(fx, &control);
+                    }
+                }
+                return Ok(());
             }
             TrackAction::OxiSynth(oxisynth) => {
                 let control = BackendTrackFxControl::OxiSynth(oxisynth);

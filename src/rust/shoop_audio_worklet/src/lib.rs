@@ -4,15 +4,15 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk,
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
-    WireChannelMode, WireCompositeConfig, WireCompositeKind, WireCompositeState,
-    WireCompositeTarget, WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode,
-    WireLoopState, WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
-    WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
-    WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl,
-    WireTrackFxControl, WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology,
-    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
-    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireBuiltInFxState, WireChannelMode, WireCompositeConfig, WireCompositeKind,
+    WireCompositeState, WireCompositeTarget, WireConfirmedLink, WireHostPort,
+    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState, WirePortDataType,
+    WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
+    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyState,
+    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
@@ -20,9 +20,9 @@ use shoop_backend::{
     BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
     BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
     BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest,
-    MAX_WEB_AUDIO_QUANTUM,
+    BackendTrackId, BackendTrackTopology, BuiltInFxControl, BuiltInFxState, EngineBackend,
+    OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter, TrackProcessorEditorState,
+    TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -941,6 +941,12 @@ fn from_wire_track_topology(topology: WireTrackTopology) -> BackendTrackTopology
             audio_channels,
             midi,
         },
+        WireTrackTopology::BuiltInFx => BackendTrackTopology::DryWetProcessor {
+            processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+            dry_audio_channels: 2,
+            wet_audio_channels: 2,
+            dry_midi: false,
+        },
         WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
             dry_audio_channels: 2,
@@ -971,6 +977,9 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         WireTrackFxControl::ToggleOrRecover => BackendTrackFxControl::ToggleOrRecover,
         WireTrackFxControl::RestoreState(value) => BackendTrackFxControl::RestoreState(value),
         WireTrackFxControl::ClearLogs => BackendTrackFxControl::ClearLogs,
+        WireTrackFxControl::BuiltInSetReverbEnabled(value) => {
+            BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(value))
+        }
         WireTrackFxControl::OxiSelectPreset(value) => {
             BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(value))
         }
@@ -1057,6 +1066,12 @@ fn to_wire_track_topology(topology: &BackendTrackTopology) -> WireTrackTopology 
             audio_channels: *audio_channels,
             midi: *midi,
         },
+        BackendTrackTopology::DryWetProcessor {
+            processor_type,
+            dry_audio_channels: 2,
+            wet_audio_channels: 2,
+            dry_midi: false,
+        } if processor_type == TrackProcessorTypeId::BUILTIN_FX => WireTrackTopology::BuiltInFx,
         BackendTrackTopology::DryWetProcessor {
             processor_type,
             dry_audio_channels: 2,
@@ -1181,10 +1196,20 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 id: id.raw(),
                 topology: to_wire_track_topology(&track.topology),
                 fx: track.fx.and_then(|fx| match fx.editor? {
+                    TrackProcessorEditorState::BuiltInFx(BuiltInFxState { reverb_enabled }) => {
+                        Some(WireTrackFxState {
+                            processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                            active: fx.active,
+                            visible: fx.visible,
+                            builtin_fx: Some(WireBuiltInFxState { reverb_enabled }),
+                            oxisynth: None,
+                        })
+                    }
                     TrackProcessorEditorState::OxiSynth(editor) => Some(WireTrackFxState {
                         processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                         active: fx.active,
                         visible: fx.visible,
+                        builtin_fx: None,
                         oxisynth: Some(WireOxiSynthState {
                             selected_preset_id: editor.selected_preset_id,
                             reverb_send: editor.reverb_send,
@@ -2031,6 +2056,126 @@ mod tests {
         assert_eq!(last.events.len(), 8);
         assert!(last.final_chunk);
         assert!(host.capture_bytes.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_processes_and_bypasses_stereo_audio_in_the_worklet() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 2,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "builtin-fx".to_owned(),
+                    topology: WireTrackTopology::BuiltInFx,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 3, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        let input_ports = snapshot
+            .application_ports
+            .iter()
+            .filter(|port| port.owner == WireApplicationPortOwner::Track)
+            .filter(|port| port.role == WirePortRole::AudioInput)
+            .map(|port| port.id)
+            .collect::<Vec<_>>();
+        assert_eq!(input_ports.len(), 2);
+        for (index, application_port_id) in input_ports.into_iter().enumerate() {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    4 + index as u64,
+                    Command::SetPortConnected {
+                        application_port_id,
+                        host_port_id: format!("webaudio:capture_{}", index + 1),
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::SetTrackControl {
+                    track_id: 1,
+                    control: WireTrackControl::InputMonitoring(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 7, Command::Poll).event,
+            Event::Snapshot(_)
+        ));
+
+        host.input()[..256].fill(0.0);
+        host.input()[0] = 1.0;
+        host.input()[128] = 0.5;
+        assert!(host.process(2, 2, 128));
+        let mut tail_peak = 0.0_f32;
+        for _ in 0..400 {
+            host.input()[..256].fill(0.0);
+            assert!(host.process(2, 2, 128));
+            tail_peak = host
+                .output()
+                .iter()
+                .fold(tail_peak, |peak, sample| peak.max(sample.abs()));
+        }
+        assert!(tail_peak > 1.0e-6, "tail peak {tail_peak}");
+
+        assert!(matches!(
+            command(
+                &mut host,
+                8,
+                Command::SetTrackFxControl {
+                    track_id: 1,
+                    control: WireTrackFxControl::BuiltInSetReverbEnabled(false),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (index, sample) in host.input()[..256].iter_mut().enumerate() {
+            *sample = index as f32 / 512.0;
+        }
+        let expected = host.input()[..256].to_vec();
+        assert!(host.process(2, 2, 128));
+        assert_eq!(&host.output()[..256], expected.as_slice());
+        let Event::Snapshot(snapshot) = command(&mut host, 9, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.tracks[0].topology, WireTrackTopology::BuiltInFx);
+        let fx = snapshot.tracks[0].fx.as_ref().unwrap();
+        assert_eq!(fx.processor_type, TrackProcessorTypeId::BUILTIN_FX);
+        assert_eq!(
+            fx.builtin_fx,
+            Some(WireBuiltInFxState {
+                reverb_enabled: false,
+            })
+        );
+        assert!(fx.oxisynth.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -96,26 +96,26 @@ Depends on Stage 0.
 
 Depends on Stage 1.
 
-- [ ] Add `builtin_fx` processor constants, descriptor/editor state, typed reverb control, action intent kind, and snapshot representation to `shoop_app_api`.
-- [ ] Advertise the fixed stereo/no-MIDI descriptor from both the in-process and native processor catalogs.
-- [ ] Extend in-process `EngineBackend` track creation, controls, optimistic state, snapshot capture, processor-state capture, staged session replacement, and sample-rate recreation.
-- [ ] Extend `NativeBackend` and its engine/app-backend facade with the same shape validation, controls, state capture, transactional restoration, and snapshots.
-- [ ] Reject Built-in FX controls on other processor types and reject invalid channel shapes before mutation.
-- [ ] Test both backend implementations for fixed ports, input-to-output rendering, enabled tail, disabled passthrough/no DSP, state capture/restore, failed replacement rollback, and sample-rate/backend switching.
-- [ ] Verify with focused `shoop_app_api`, `shoop_engine`, and `shoop_backend` native and Node Wasm tests plus the per-commit gates.
-- [ ] Commit the backend/API milestone.
+- [x] Add `builtin_fx` processor constants, descriptor/editor state, typed reverb control, action intent kind, and snapshot representation to `shoop_app_api`.
+- [x] Advertise the fixed stereo/no-MIDI descriptor from both the in-process and native processor catalogs.
+- [x] Extend in-process `EngineBackend` track creation, controls, optimistic state, snapshot capture, processor-state capture, staged session replacement, and sample-rate recreation.
+- [x] Extend `NativeBackend` and its engine/app-backend facade with the same shape validation, controls, state capture, transactional restoration, and snapshots.
+- [x] Reject Built-in FX controls on other processor types and reject invalid channel shapes before mutation.
+- [x] Test both backend implementations for fixed ports, input-to-output rendering, enabled tail, disabled passthrough/no DSP, state capture/restore, failed replacement rollback, and sample-rate/backend switching.
+- [x] Verify with focused `shoop_app_api`, `shoop_engine`, and `shoop_backend` native and Node Wasm tests plus the per-commit gates.
+- [x] Commit the backend/API milestone.
 
 ## Stage 3 — Browser protocol, Worker, and AudioWorklet
 
 Depends on Stage 2.
 
-- [ ] Add Built-in FX topology, reverb control, and editor/snapshot state to `shoop_audio_protocol`, including serialization and command-journal supersession tests.
-- [ ] Translate the new topology, state, and controls in both `shoop_audio_worklet` and `shoop_worklet_client`.
-- [ ] Advertise Built-in FX in the browser catalog and reserve/register its fixed stereo ports in deterministic order.
-- [ ] Exercise real input audio through the import-free worklet engine and verify enabled tail, disabled passthrough, state snapshots, and command application.
-- [ ] Cover Worker/client round trips and confirm unavailable native-only processors retain their current browser behavior.
-- [ ] Verify focused protocol/worklet/client native tests, Node Wasm tests, Chromium Wasm tests for affected packages, worklet import/dependency checks, and the per-commit gates.
-- [ ] Commit the browser transport milestone.
+- [x] Add Built-in FX topology, reverb control, and editor/snapshot state to `shoop_audio_protocol`, including serialization and command-journal supersession tests.
+- [x] Translate the new topology, state, and controls in both `shoop_audio_worklet` and `shoop_worklet_client`.
+- [x] Advertise Built-in FX in the browser catalog and reserve/register its fixed stereo ports in deterministic order.
+- [x] Exercise real input audio through the import-free worklet engine and verify enabled tail, disabled passthrough, state snapshots, and command application.
+- [x] Cover Worker/client round trips and confirm unavailable native-only processors retain their current browser behavior.
+- [x] Verify focused protocol/worklet/client native tests, Node Wasm tests, worklet import/dependency checks, and the per-commit gates. Targeted local Chromium execution was attempted but `chromedriver` is absent from the development shell; the policy-triggered PR Chromium job remains mandatory in Stage 9.
+- [x] Commit the browser transport milestone.
 
 ## Stage 4 — Session and application persistence
 
@@ -163,7 +163,7 @@ Depends on all implementation stages. Run in the environment selected by `.agent
 - [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
 - [ ] Run `python3 scripts/check_shoop_test_usage.py`.
 - [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `cargo check --locked -p shoopdaloop --target wasm32-unknown-unknown` and `cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown`.
+- [ ] Run `cargo check --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown` and `cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown` (the UI's default native-driver features are intentionally disabled for the browser target).
 - [ ] Run `python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown`, inspect the relevant `cargo tree`, and verify the generated worklet remains import-free through the existing contract check.
 - [ ] Run `python3 scripts/run_wasm_tests.py --runtime node --profile dev`.
 - [ ] Run `python3 scripts/run_wasm_tests.py --runtime chrome --profile dev` when Chrome is available; otherwise record the local limitation and require the corresponding PR matrix job to pass.

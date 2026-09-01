@@ -372,6 +372,7 @@ pub enum WireTrackControl {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WireTrackTopology {
     Direct { audio_channels: u32, midi: bool },
+    BuiltInFx,
     OxiSynth,
 }
 
@@ -383,6 +384,7 @@ pub enum WireTrackFxControl {
     ToggleOrRecover,
     RestoreState(String),
     ClearLogs,
+    BuiltInSetReverbEnabled(bool),
     OxiSelectPreset(String),
     OxiSetReverbSend(f32),
     OxiSetChorusSend(f32),
@@ -396,6 +398,7 @@ impl WireTrackFxControl {
     fn supersedable_parameter(&self) -> Option<u8> {
         Some(match self {
             Self::SetActive(_) => 0,
+            Self::BuiltInSetReverbEnabled(_) => 7,
             Self::OxiSelectPreset(_) => 8,
             Self::OxiSetReverbSend(_) => 9,
             Self::OxiSetChorusSend(_) => 10,
@@ -697,7 +700,14 @@ pub struct WireTrackFxState {
     pub active: bool,
     pub visible: bool,
     #[serde(default)]
+    pub builtin_fx: Option<WireBuiltInFxState>,
+    #[serde(default)]
     pub oxisynth: Option<WireOxiSynthState>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WireBuiltInFxState {
+    pub reverb_enabled: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -860,6 +870,20 @@ mod tests {
             input_channels: 0,
             output_channels: 1,
         }));
+        let builtin_reverb = Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetReverbEnabled(true),
+        };
+        assert!(Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetReverbEnabled(false),
+        }
+        .supersedes_in_journal(&builtin_reverb));
+        assert!(!Command::SetTrackFxControl {
+            track_id: 5,
+            control: WireTrackFxControl::BuiltInSetReverbEnabled(false),
+        }
+        .supersedes_in_journal(&builtin_reverb));
         let send = Command::SetTrackFxControl {
             track_id: 4,
             control: WireTrackFxControl::OxiSetReverbSend(0.25),
@@ -1188,6 +1212,19 @@ mod tests {
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, piano);
 
+        let builtin_fx_topology = CommandEnvelope::new(
+            46,
+            Command::CreateTrack {
+                expected_track_id: 10,
+                expected_loop_ids: vec![11],
+                port_name_base: "builtin-fx".to_owned(),
+                topology: WireTrackTopology::BuiltInFx,
+            },
+        );
+        let encoded = serde_json::to_string(&builtin_fx_topology).unwrap();
+        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, builtin_fx_topology);
+
         let oxisynth_topology = CommandEnvelope::new(
             47,
             Command::CreateTrack {
@@ -1205,6 +1242,7 @@ mod tests {
             WireTrackFxControl::SetActive(false),
             WireTrackFxControl::SetVisible(true),
             WireTrackFxControl::RestoreState("state".to_owned()),
+            WireTrackFxControl::BuiltInSetReverbEnabled(false),
             WireTrackFxControl::OxiSelectPreset("0:40".to_owned()),
             WireTrackFxControl::OxiSetReverbSend(0.25),
             WireTrackFxControl::OxiSetChorusSend(0.5),

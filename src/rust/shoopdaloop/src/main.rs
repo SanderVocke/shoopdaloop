@@ -4417,6 +4417,7 @@ impl BrowserSelfTest {
                         return None;
                     }
                     match fx.editor.as_ref()? {
+                        shoop_egui::TrackProcessorEditorState::BuiltInFx(_) => None,
                         shoop_egui::TrackProcessorEditorState::OxiSynth(editor) => {
                             Some((fx.visible, editor))
                         }

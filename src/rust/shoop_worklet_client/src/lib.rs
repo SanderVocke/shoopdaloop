@@ -19,7 +19,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
+    BuiltInFxState, FxLifecycle, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
     ResolvedAudioDriverConfig, TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
@@ -33,18 +33,19 @@ use shoop_audio_protocol::{
     SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
-    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
-    BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
-    BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
-    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
-    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
+    builtin_fx_descriptor, encode_builtin_fx_state, encode_oxisynth_state, oxisynth_descriptor,
+    Backend, BackendActiveCompositeChild, BackendAsyncResult, BackendAudioChannelData,
+    BackendAudioData, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink,
+    BackendConnectionFailure, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
+    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
+    BackendMutationFailure, BackendMutationKind, BackendOperationKind, BackendOperationProgress,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
+    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    BuiltInFxControl, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -813,6 +814,14 @@ impl RemoteWorkletBackend {
                                 audio_channels,
                                 midi,
                             },
+                            WireTrackTopology::BuiltInFx => {
+                                BackendTrackTopology::DryWetProcessor {
+                                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                                    dry_audio_channels: 2,
+                                    wet_audio_channels: 2,
+                                    dry_midi: false,
+                                }
+                            }
                             WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
                                 processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                                 dry_audio_channels: 2,
@@ -821,6 +830,11 @@ impl RemoteWorkletBackend {
                             },
                         },
                         fx: track.fx.map(|fx| {
+                            let builtin_fx = fx.builtin_fx.map(|builtin_fx| {
+                                TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+                                    reverb_enabled: builtin_fx.reverb_enabled,
+                                })
+                            });
                             let oxisynth = fx.oxisynth.map(|oxisynth| {
                                 TrackProcessorEditorState::OxiSynth(OxiSynthState {
                                     selected_preset_id: oxisynth.selected_preset_id,
@@ -848,7 +862,7 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
-                                editor: oxisynth,
+                                editor: builtin_fx.or(oxisynth),
                             }
                         }),
                         audio_channels: track.audio_channels,
@@ -1077,6 +1091,38 @@ fn browser_port_descriptors(
     ports
 }
 
+fn browser_builtin_fx_port_descriptors(
+    base: &str,
+    next_port_id: &mut u64,
+) -> Vec<BackendPortDescriptor> {
+    let mut ports = Vec::with_capacity(4);
+    for index in 0..2 {
+        let id = BackendPortId::from_raw(*next_port_id);
+        *next_port_id = next_port_id.saturating_add(1);
+        ports.push(BackendPortDescriptor {
+            id,
+            owner: BackendPortOwner::Track,
+            name: format!("{base}_audio_dry_in_{}", index + 1),
+            data_type: BackendPortDataType::Audio,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::AudioInput,
+        });
+    }
+    for index in 0..2 {
+        let id = BackendPortId::from_raw(*next_port_id);
+        *next_port_id = next_port_id.saturating_add(1);
+        ports.push(BackendPortDescriptor {
+            id,
+            owner: BackendPortOwner::Track,
+            name: format!("{base}_audio_wet_out_{}", index + 1),
+            data_type: BackendPortDataType::Audio,
+            direction: BackendPortDirection::Output,
+            role: BackendPortRole::AudioOutput,
+        });
+    }
+    ports
+}
+
 fn browser_oxisynth_port_descriptors(
     base: &str,
     next_port_id: &mut u64,
@@ -1218,6 +1264,9 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
             BackendTrackFxControl::RestoreState(value.clone())
         }
         WireTrackFxControl::ClearLogs => BackendTrackFxControl::ClearLogs,
+        WireTrackFxControl::BuiltInSetReverbEnabled(value) => {
+            BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(*value))
+        }
         WireTrackFxControl::OxiSelectPreset(value) => {
             BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(value.clone()))
         }
@@ -1318,7 +1367,7 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
-        Ok(vec![oxisynth_descriptor()].into())
+        Ok(vec![builtin_fx_descriptor(), oxisynth_descriptor()].into())
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -1332,6 +1381,41 @@ impl Backend for RemoteWorkletBackend {
                 midi: *midi,
                 initial_loops: request.initial_loops,
             }),
+            BackendTrackTopology::DryWetProcessor {
+                processor_type,
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: false,
+            } if processor_type == TrackProcessorTypeId::BUILTIN_FX => {
+                let track_id = BackendTrackId::from_raw(self.next_track_id);
+                let ports = browser_builtin_fx_port_descriptors(
+                    &request.port_name_base,
+                    &mut self.next_port_id,
+                );
+                let loops: Vec<_> = (0..request.initial_loops)
+                    .map(|offset| BackendLoopId::from_raw(self.next_loop_id + offset as u64))
+                    .collect();
+                self.submit(Command::CreateTrack {
+                    expected_track_id: track_id.raw(),
+                    expected_loop_ids: loops.iter().map(|id| id.raw()).collect(),
+                    port_name_base: request.port_name_base,
+                    topology: WireTrackTopology::BuiltInFx,
+                })?;
+                self.next_track_id = self.next_track_id.saturating_add(1);
+                self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
+                self.track_resources.insert(
+                    track_id,
+                    BrowserTrackResources {
+                        topology: request.topology.clone(),
+                        loops: loops.clone(),
+                    },
+                );
+                Ok(BackendTrackCreation {
+                    track_id,
+                    loops,
+                    ports,
+                })
+            }
             BackendTrackTopology::DryWetProcessor {
                 processor_type,
                 dry_audio_channels: 2,
@@ -1642,6 +1726,14 @@ impl Backend for RemoteWorkletBackend {
             .fx
             .as_ref()
             .ok_or_else(|| anyhow!("track has no processor"))?;
+        if let BackendTrackFxControl::BuiltInFx(_) = &control {
+            if !matches!(
+                fx.editor.as_ref(),
+                Some(TrackProcessorEditorState::BuiltInFx(_))
+            ) {
+                return Err(anyhow!("track has no Built-in FX editor state"));
+            }
+        }
         if let BackendTrackFxControl::OxiSynth(oxisynth) = &control {
             if !matches!(
                 fx.editor.as_ref(),
@@ -1698,6 +1790,9 @@ impl Backend for RemoteWorkletBackend {
             return Ok(None);
         };
         match &fx.editor {
+            Some(TrackProcessorEditorState::BuiltInFx(editor)) => {
+                Ok(Some(encode_builtin_fx_state(editor)))
+            }
             Some(TrackProcessorEditorState::OxiSynth(editor)) => {
                 Ok(Some(encode_oxisynth_state(editor)?))
             }
@@ -2552,6 +2647,9 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
         BackendTrackFxControl::ToggleOrRecover => WireTrackFxControl::ToggleOrRecover,
         BackendTrackFxControl::RestoreState(value) => WireTrackFxControl::RestoreState(value),
         BackendTrackFxControl::ClearLogs => WireTrackFxControl::ClearLogs,
+        BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(value)) => {
+            WireTrackFxControl::BuiltInSetReverbEnabled(value)
+        }
         BackendTrackFxControl::OxiSynth(control) => match control {
             OxiSynthControl::SelectPreset(value) => WireTrackFxControl::OxiSelectPreset(value),
             OxiSynthControl::SetReverbSend(value) => WireTrackFxControl::OxiSetReverbSend(value),
@@ -2610,6 +2708,33 @@ mod tests {
     shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
     #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_port_reservations_match_worklet_registration_order() {
+        let mut next_port_id = 10;
+        let ports = browser_builtin_fx_port_descriptors("fx", &mut next_port_id);
+        assert_eq!(next_port_id, 14);
+        assert_eq!(
+            ports
+                .iter()
+                .map(|port| (port.id.raw(), port.role, port.direction))
+                .collect::<Vec<_>>(),
+            vec![
+                (10, BackendPortRole::AudioInput, BackendPortDirection::Input),
+                (11, BackendPortRole::AudioInput, BackendPortDirection::Input),
+                (
+                    12,
+                    BackendPortRole::AudioOutput,
+                    BackendPortDirection::Output
+                ),
+                (
+                    13,
+                    BackendPortRole::AudioOutput,
+                    BackendPortDirection::Output
+                ),
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn oxisynth_port_reservations_match_worklet_registration_order() {
         let mut next_port_id = 10;
         let ports = browser_oxisynth_port_descriptors("synth", &mut next_port_id);
@@ -2635,6 +2760,59 @@ mod tests {
                 (14, BackendPortRole::MidiInput, BackendPortDirection::Input,),
             ]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn browser_catalog_and_creation_expose_builtin_fx_contract() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        let catalog = backend.track_processor_catalog().unwrap();
+        assert_eq!(
+            catalog
+                .iter()
+                .map(|descriptor| descriptor.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                TrackProcessorTypeId::BUILTIN_FX,
+                TrackProcessorTypeId::OXISYNTH
+            ]
+        );
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "fx".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        assert_eq!(created.ports.len(), 4);
+        assert!(created
+            .ports
+            .iter()
+            .all(|port| port.data_type == BackendPortDataType::Audio));
+
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert!(commands.iter().any(|command| matches!(
+            command,
+            Command::CreateTrack {
+                topology: WireTrackTopology::BuiltInFx,
+                ..
+            }
+        )));
     }
 
     #[derive(Default)]
@@ -2965,8 +3143,9 @@ mod tests {
     fn rich_wire_snapshot_converts_every_remote_domain_shape() {
         use shoop_audio_protocol::{
             WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
-            WireCompositeState, WireConfirmedLink, WireHostPort, WireLatestMidiMessage,
-            WireLoopState, WireOxiSynthState, WireTrackFxState, WireTrackState,
+            WireBuiltInFxState, WireCompositeState, WireConfirmedLink, WireHostPort,
+            WireLatestMidiMessage, WireLoopState, WireOxiSynthState, WireTrackFxState,
+            WireTrackState,
         };
 
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
@@ -2982,12 +3161,12 @@ mod tests {
             .ephemeral(Command::Poll)
             .unwrap();
 
-        let track = |id, topology, fx| WireTrackState {
+        let track = |id, topology, fx, midi| WireTrackState {
             id,
             topology,
             fx,
             audio_channels: 2,
-            midi: true,
+            midi,
             output_gain_db: -3.0,
             output_balance: 0.25,
             output_muted: true,
@@ -3047,6 +3226,21 @@ mod tests {
                             midi: true,
                         },
                         None,
+                        true,
+                    ),
+                    track(
+                        2,
+                        WireTrackTopology::BuiltInFx,
+                        Some(WireTrackFxState {
+                            processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                            active: true,
+                            visible: true,
+                            builtin_fx: Some(WireBuiltInFxState {
+                                reverb_enabled: false,
+                            }),
+                            oxisynth: None,
+                        }),
+                        false,
                     ),
                     track(
                         3,
@@ -3055,6 +3249,7 @@ mod tests {
                             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                             active: true,
                             visible: false,
+                            builtin_fx: None,
                             oxisynth: Some(WireOxiSynthState {
                                 selected_preset_id: "0:40".to_owned(),
                                 reverb_send: 0.25,
@@ -3062,6 +3257,7 @@ mod tests {
                                 midi_cc_assignments: Vec::new(),
                             }),
                         }),
+                        true,
                     ),
                 ],
                 loops: modes
@@ -3162,7 +3358,36 @@ mod tests {
             }),
         );
         let snapshot = backend.poll().unwrap();
-        assert_eq!(snapshot.tracks.len(), 2);
+        assert_eq!(snapshot.tracks.len(), 3);
+        let builtin_fx_track = BackendTrackId::from_raw(2);
+        assert_eq!(
+            snapshot.tracks[&builtin_fx_track]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+                reverb_enabled: false,
+            }))
+        );
+        assert_eq!(
+            backend
+                .track_fx_state_string(builtin_fx_track)
+                .unwrap()
+                .as_deref(),
+            Some("shoop-builtin-fx:1:0")
+        );
+        backend
+            .set_track_fx_control(
+                builtin_fx_track,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(true)),
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_fx_control(
+                builtin_fx_track,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
+            )
+            .is_err());
         let oxisynth_track = BackendTrackId::from_raw(3);
         let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot.tracks[&oxisynth_track]
             .fx
