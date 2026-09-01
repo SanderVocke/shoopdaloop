@@ -33,6 +33,8 @@ This document defines the first application persistence format. Predecessor `.sh
 - one signed capture alignment per channel (introduced in document version 7), allowing Dry and Wet annotations to differ;
 - a sorted media index.
 
+Global performance controls include the script-composite track-input auto-arm policy. It is saved as `auto_arm_track_inputs`; documents without the field default it on. Auto-arm's transient per-track demand and ownership are not persisted.
+
 Transient loop mode/position, queued transitions, meters, driver/device handles, permissions, xruns, task state, dialogs, and machine-wide settings are not session data. Loaded loops start stopped.
 
 ### Audio payload

@@ -465,7 +465,7 @@ impl NativeRuntime {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let composite = self
             .composites
             .get(&composite_id)
@@ -527,7 +527,7 @@ impl NativeRuntime {
             });
         }
         let primitive_sync_sources = self.session.primitive_sync_sources();
-        self.session.configure_composite_loop(
+        let version = self.session.configure_composite_loop(
             &composite.handle,
             descriptor,
             sync_identity,
@@ -535,7 +535,7 @@ impl NativeRuntime {
             &primitive_sync_sources,
         )?;
         self.composites.get_mut(&composite_id).unwrap().config = Some(config.clone());
-        Ok(())
+        Ok(version)
     }
 
     fn next_port(
@@ -2508,7 +2508,7 @@ impl Backend for NativeBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         self.runtime_mut()?
             .configure_composite(composite_id, config)
     }
@@ -2556,21 +2556,24 @@ impl Backend for NativeBackend {
         Ok(())
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
         let runtime = self.runtime_mut()?;
         let Some(composite) = runtime.composites.remove(&composite_id) else {
-            return Ok(());
+            return Ok(None);
         };
         let primitive_sync_sources = runtime.session.primitive_sync_sources();
-        if let Err(error) = runtime
+        let version = match runtime
             .session
             .remove_composite_loop(&composite.handle, &primitive_sync_sources)
         {
-            runtime.composites.insert(composite_id, composite);
-            return Err(error);
-        }
+            Ok(version) => version,
+            Err(error) => {
+                runtime.composites.insert(composite_id, composite);
+                return Err(error);
+            }
+        };
         runtime.wait();
-        Ok(())
+        Ok((version > 0).then_some(version))
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
@@ -3513,6 +3516,7 @@ impl Backend for NativeBackend {
             tracks,
             loops,
             composites,
+            removed_composites: Vec::new(),
             connections: runtime.take_connection_snapshot(),
             mutation_failures: Vec::new(),
         })
