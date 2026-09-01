@@ -4277,6 +4277,7 @@ dependencies = [
  "shoop_latency",
  "shoop_plugin_protocol",
  "shoop_settings",
+ "shoop_tracing",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]

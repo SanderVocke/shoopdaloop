@@ -3488,6 +3488,7 @@ impl Backend for NativeBackend {
                 },
             );
         }
+        trace_peak_counters(&tracks, &loops);
         let composites = runtime
             .composites
             .iter()

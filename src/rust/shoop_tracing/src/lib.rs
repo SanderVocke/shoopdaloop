@@ -71,6 +71,9 @@ pub(crate) const COUNTER_NAMES: &[StaticName] = &[
     StaticName::new("engine.fx.global_midi.pending_overwrites"),
     StaticName::new("engine.fx.global_midi.pending_drained"),
     StaticName::new("engine.fx.global_midi.capacity_deferrals"),
+    StaticName::new("engine.meter.loop_output_peak_max_db"),
+    StaticName::new("engine.meter.track_input_peak_max_db"),
+    StaticName::new("engine.meter.track_output_peak_max_db"),
 ];
 
 /// Enable or disable all application tracing.
