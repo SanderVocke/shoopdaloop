@@ -158,29 +158,31 @@ Depends on Stages 1–5.
 
 Depends on all implementation stages. Run in the environment selected by `.agents/info/build.md`; on Nix/NixOS, run all payloads inside `nix develop`.
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `cargo check --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown` and `cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown` (the UI's default native-driver features are intentionally disabled for the browser target).
-- [ ] Run `python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown`, inspect the relevant `cargo tree`, and verify the generated worklet remains import-free through the existing contract check.
-- [ ] Run `python3 scripts/run_wasm_tests.py --runtime node --profile dev`.
-- [ ] Run `python3 scripts/run_wasm_tests.py --runtime chrome --profile dev` when Chrome is available; otherwise record the local limitation and require the corresponding PR matrix job to pass.
-- [ ] Run `python3 -m unittest scripts.tests.test_wasm_test_report` and `python3 scripts/check_wasm_smoke_budget.py`.
-- [ ] Run `trunk build` from `src/rust/shoopdaloop` and execute the applicable browser smoke commands documented there when a browser is available.
-- [ ] Run `sphinx-build -W --keep-going docs/source _build`.
-- [ ] Recheck every immutable acceptance criterion against test output and inspect `git diff --check` and `git status`.
-- [ ] Commit any final validation-only corrections, rerun affected gates, and leave the implementation worktree clean.
+Final local validation evidence on implementation head `9873eee0a` (2026-09-01): the bounded native suite passed 1,658/1,658 tests with four policy skips; the complete Node Wasm suite passed all 17 packages (1,377 tests); warning-denying native/Wasm builds, dependency policies, tracing/test policies, Trunk, import-free worklet/raw-host contract, Wasm harness checks, and Sphinx all passed. No Chrome/Chromium, `chromedriver`, or `geckodriver` is installed locally, so packaged browser and Chromium harness execution is delegated to the required PR web-debug matrix job.
+
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `cargo check --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown` and `cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown` (the UI's default native-driver features are intentionally disabled for the browser target).
+- [x] Run `python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown`, inspect the relevant `cargo tree`, and verify the generated worklet remains import-free through the existing contract check.
+- [x] Run `python3 scripts/run_wasm_tests.py --runtime node --profile dev`.
+- [x] Run `python3 scripts/run_wasm_tests.py --runtime chrome --profile dev` when Chrome is available; otherwise record the local limitation and require the corresponding PR matrix job to pass.
+- [x] Run `python3 -m unittest scripts.tests.test_wasm_test_report` and `python3 scripts/check_wasm_smoke_budget.py`.
+- [x] Run `trunk build` from `src/rust/shoopdaloop` and execute the applicable browser smoke commands documented there when a browser is available.
+- [x] Run `sphinx-build -W --keep-going docs/source _build`.
+- [x] Recheck every immutable acceptance criterion against test output and inspect `git diff --check` and `git status`.
+- [x] Commit any final validation-only corrections, rerun affected gates, and leave the implementation worktree clean.
 
 ## Stage 8 — Push and open the pull request
 
 Depends on a clean Stage 7.
 
-- [ ] Review the commit series for meaningful stage boundaries and ensure no generated `dist`, worklet, `_build`, trace, credential, or unrelated files are committed.
-- [ ] Push the branch with `git push -u origin shoopdaloop-fundsp`.
-- [ ] Open a PR against `master` using `gh pr create`, with a concise summary, immutable behavior contract, session-format note, FunDSP attribution/dependency details, and exact local validation evidence.
-- [ ] Record the PR URL and final pushed head SHA in this plan.
+- [x] Review the commit series for meaningful stage boundaries and ensure no generated `dist`, worklet, `_build`, trace, credential, or unrelated files are committed.
+- [x] Push the branch with `git push -u origin shoopdaloop-fundsp`.
+- [x] Open a PR against `master` using `gh pr create`, with a concise summary, immutable behavior contract, session-format note, FunDSP attribution/dependency details, and exact local validation evidence.
+- [x] Record the PR URL and validated implementation head in this plan: https://github.com/SanderVocke/shoopdaloop/pull/844 at `9873eee0a` before this validation-record-only commit.
 
 ## Stage 9 — CI and automated review closure
 
