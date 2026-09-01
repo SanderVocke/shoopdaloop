@@ -131,6 +131,7 @@ mod tests {
             recording_started_at: None,
             recording_fx_state_id: None,
         });
+        let buses = SessionDocument::empty(sample_rate).buses;
         let document = SessionDocument {
             sample_rate,
             connection_model_version: CONNECTION_MODEL_VERSION,
@@ -187,7 +188,7 @@ mod tests {
             }],
             selected_loop_ids: vec![10],
             targeted_loop_id: Some(10),
-            buses: Vec::new(),
+            buses,
             mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             fx_states: vec![FxStateDocument {
@@ -660,6 +661,14 @@ mod tests {
     fn version_nine_buses_migrate_default_controls_and_invalid_controls_are_rejected() {
         let bundle = deferred_feature_bundle();
         let encoded = encode_session(&bundle, "bus-control-migration").unwrap();
+        for count in [0, 2] {
+            let mut malformed = SessionBundle::new(SessionDocument::empty(48_000));
+            malformed.document.buses = vec![malformed.document.buses[0].clone(); count];
+            assert!(matches!(
+                encode_session(&malformed, "invalid-bus-count"),
+                Err(SessionError::Validation(_))
+            ));
+        }
         let version_nine = rewrite_manifest(encoded.clone(), |manifest| {
             manifest["document_version"] = serde_json::json!(9);
             let bus = &mut manifest["document"]["buses"][0];

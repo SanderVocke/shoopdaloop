@@ -131,6 +131,12 @@ pub fn encode_session(
     bundle: &SessionBundle,
     writer_app_version: &str,
 ) -> Result<Vec<u8>, SessionError> {
+    if bundle.document.buses.len() != 1 {
+        return Err(SessionError::Validation(format!(
+            "session must contain exactly one bus, found {}",
+            bundle.document.buses.len()
+        )));
+    }
     validate_bundle(bundle)?;
     let mut payloads = BTreeMap::<String, Vec<u8>>::new();
     let mut records = Vec::with_capacity(bundle.media.len());

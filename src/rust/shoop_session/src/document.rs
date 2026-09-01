@@ -75,7 +75,47 @@ impl SessionDocument {
             track_groups: Vec::new(),
             selected_loop_ids: Vec::new(),
             targeted_loop_id: None,
-            buses: Vec::new(),
+            buses: vec![BusDocument {
+                id: 1,
+                name: "Master".to_owned(),
+                channels: vec![
+                    BusChannelDocument {
+                        id: 1,
+                        label: "Left".to_owned(),
+                        output_port_id: 9_007_199_254_740_989,
+                    },
+                    BusChannelDocument {
+                        id: 2,
+                        label: "Right".to_owned(),
+                        output_port_id: 9_007_199_254_740_990,
+                    },
+                ],
+                ports: [
+                    (9_007_199_254_740_989, "master_out_1"),
+                    (9_007_199_254_740_990, "master_out_2"),
+                ]
+                .into_iter()
+                .map(|(id, name)| PortDocument {
+                    id,
+                    name: name.to_owned(),
+                    data_type: DataTypeDocument::Audio,
+                    direction: PortDirectionDocument::Output,
+                    role: PortRoleDocument::AudioOutput,
+                    input_connectability: vec![ConnectabilityDocument::Internal],
+                    output_connectability: vec![ConnectabilityDocument::External],
+                    gain: 1.0,
+                    muted: false,
+                    passthrough_muted: false,
+                    internal_connections: Vec::new(),
+                    external_connections: Vec::new(),
+                    ringbuffer_frames: 0,
+                })
+                .collect(),
+                fx_chain: None,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+            }],
             mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             fx_states: Vec::new(),
