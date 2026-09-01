@@ -5431,10 +5431,21 @@ mod tests {
         }))
         .unwrap();
         let catalog = backend.track_processor_catalog().unwrap();
-        assert_eq!(catalog.len(), 5);
-        assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::OXISYNTH);
+        assert!(catalog
+            .iter()
+            .any(|descriptor| descriptor.id.as_str() == TrackProcessorTypeId::OXISYNTH));
+        assert!(catalog.iter().any(|descriptor| {
+            descriptor.id.as_str() == TrackProcessorTypeId::BUILTIN_FX
+                && descriptor.available
+                && descriptor.constraints.accepts(2, 2, false)
+        }));
+        let carla = catalog
+            .iter()
+            .filter(|descriptor| descriptor.id.as_str().starts_with("carla_"))
+            .collect::<Vec<_>>();
+        assert_eq!(carla.len(), 3);
         let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
-        for descriptor in &catalog[2..] {
+        for descriptor in carla {
             assert_eq!(descriptor.available, runtime_available);
             assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
@@ -5469,12 +5480,16 @@ mod tests {
                     buffer_size: 128,
                 }))?;
             let catalog = backend.track_processor_catalog()?;
-            assert!(catalog[..2].iter().all(|descriptor| {
-                descriptor.available && !descriptor.id.as_str().starts_with("carla_")
-            }));
-            assert!(catalog[2..].iter().all(|descriptor| {
-                !descriptor.available && descriptor.unavailable_reason.is_some()
-            }));
+            assert!(catalog
+                .iter()
+                .filter(|descriptor| !descriptor.id.as_str().starts_with("carla_"))
+                .all(|descriptor| descriptor.available));
+            assert!(catalog
+                .iter()
+                .filter(|descriptor| descriptor.id.as_str().starts_with("carla_"))
+                .all(|descriptor| {
+                    !descriptor.available && descriptor.unavailable_reason.is_some()
+                }));
             Ok::<_, anyhow::Error>(())
         })();
         unsafe {
