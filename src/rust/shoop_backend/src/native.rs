@@ -3516,6 +3516,7 @@ impl Backend for NativeBackend {
             tracks,
             loops,
             composites,
+            removed_composites: Vec::new(),
             connections: runtime.take_connection_snapshot(),
             mutation_failures: Vec::new(),
         })
