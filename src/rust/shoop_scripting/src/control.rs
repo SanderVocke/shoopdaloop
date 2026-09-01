@@ -35,6 +35,7 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
     "loop_get_by_track",
     "loop_transition",
     "loop_trigger",
+    "loop_trigger_default_playback",
     "loop_trigger_grab",
     "loop_get_gain",
     "loop_get_gain_fader",
@@ -94,6 +95,7 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
 pub struct ControlLoop {
     pub id: LoopId,
     pub coords: [i64; 2],
+    pub default_playback_mode: LoopMode,
     pub mode: LoopMode,
     pub next_mode: Option<LoopMode>,
     pub next_mode_delay: Option<u32>,
@@ -154,6 +156,9 @@ pub enum ControlOperation {
     Trigger {
         loops: Vec<LoopId>,
         mode: LoopMode,
+    },
+    TriggerDefaultPlayback {
+        loops: Vec<LoopId>,
     },
     Grab {
         loops: Vec<LoopId>,
@@ -1000,6 +1005,23 @@ fn install_loop_mutations(
             bridge
                 .operations
                 .push(ControlOperation::Trigger { loops: ids, mode });
+            Ok(())
+        })?,
+    )?;
+    let bridge_ = Rc::clone(bridge);
+    module.set(
+        "loop_trigger_default_playback",
+        lua.create_function(move |_, selector: Value| {
+            let mut bridge = bridge_.borrow_mut();
+            let ids = selected_loop_ids(&bridge.snapshot, &selector)?;
+            for loop_ in loops_mut(&mut bridge.snapshot, &ids) {
+                loop_.mode = loop_.default_playback_mode;
+                loop_.next_mode = Some(loop_.default_playback_mode);
+                loop_.next_mode_delay = None;
+            }
+            bridge
+                .operations
+                .push(ControlOperation::TriggerDefaultPlayback { loops: ids });
             Ok(())
         })?,
     )?;

@@ -155,6 +155,7 @@ mod tests {
                         audio_channels: channels as u32,
                         midi: true,
                     },
+                    default_playback_mode: DefaultPlaybackModeDocument::Regular,
                     controls: TrackControlsDocument {
                         output_gain_db: -3.0,
                         output_balance: 0.25,
@@ -319,6 +320,7 @@ mod tests {
                     wet_audio_channels: 1,
                     dry_midi: true,
                 },
+                default_playback_mode: DefaultPlaybackModeDocument::DryThroughWet,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
@@ -384,6 +386,7 @@ mod tests {
                 is_sync: false,
                 width: None,
                 topology: TrackTopologyDocument::Trigger,
+                default_playback_mode: DefaultPlaybackModeDocument::Regular,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
@@ -421,6 +424,7 @@ mod tests {
                     dry_audio_channels: None,
                     wet_audio_channels: None,
                 },
+                default_playback_mode: DefaultPlaybackModeDocument::Regular,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: Vec::new(),
@@ -1022,6 +1026,23 @@ mod tests {
         let encoded = encode_session(&bundle, "deferred-fixture").unwrap();
         let decoded = decode_session(&encoded).unwrap();
         assert_eq!(decoded, bundle);
+        let version_eight = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(8);
+            for track in manifest["document"]["track_groups"][0]["tracks"]
+                .as_array_mut()
+                .unwrap()
+            {
+                track
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("default_playback_mode");
+            }
+        });
+        let migrated = decode_session(&version_eight).unwrap();
+        assert!(migrated.document.track_groups[0]
+            .tracks
+            .iter()
+            .all(|track| { track.default_playback_mode == DefaultPlaybackModeDocument::Regular }));
         assert_eq!(
             decoded.document.track_groups[0].tracks[3]
                 .fx_chain
@@ -1084,6 +1105,30 @@ mod tests {
         assert!(matches!(
             validate_bundle(&invalid),
             Err(SessionError::Validation(message)) if message.contains("explicit instance mode")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let mut nested_regular = invalid.document.track_groups[0].tracks[2].loops[0].clone();
+        nested_regular.id = 31;
+        nested_regular.name = "Nested regular".to_owned();
+        let nested_document = nested_regular.composite.as_mut().unwrap();
+        nested_document.kind = CompositeKindDocument::Regular;
+        for instance in &mut nested_document.instances {
+            instance.mode = None;
+        }
+        invalid.document.track_groups[0].tracks[2]
+            .loops
+            .push(nested_regular);
+        let script = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        script.instances[0].loop_id = 31;
+        script.instances[0].mode = Some("recording".to_owned());
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message))
+                if message.contains("unsupported mode from nested regular composite")
         ));
 
         let mut invalid = deferred_feature_bundle();
@@ -1549,6 +1594,42 @@ mod tests {
             validate_bundle(&wrong_state_type),
             Err(SessionError::Validation(message))
                 if message.contains("does not match")
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_through_wet_default_requires_dry_wet_topology() {
+        let mut invalid = deferred_feature_bundle();
+        invalid.document.track_groups[0].tracks[2].default_playback_mode =
+            DefaultPlaybackModeDocument::DryThroughWet;
+        assert!(matches!(
+            encode_session(&invalid, "invalid-default"),
+            Err(SessionError::Validation(message))
+                if message.contains("dry-through-wet default playback")
+        ));
+
+        let mut invalid_sync = deferred_feature_bundle();
+        invalid_sync.document.track_groups[0].tracks[3].is_sync = true;
+        invalid_sync.document.track_groups[0].tracks[3].default_playback_mode =
+            DefaultPlaybackModeDocument::DryThroughWet;
+        assert!(matches!(
+            encode_session(&invalid_sync, "invalid-sync-default"),
+            Err(SessionError::Validation(message))
+                if message.contains("dry-through-wet default playback")
+        ));
+
+        let mut invalid_no_wet = deferred_feature_bundle();
+        let TrackTopologyDocument::DryWetExternal {
+            wet_audio_channels, ..
+        } = &mut invalid_no_wet.document.track_groups[0].tracks[1].topology
+        else {
+            panic!("fixture dry/wet track changed topology");
+        };
+        *wet_audio_channels = 0;
+        assert!(matches!(
+            encode_session(&invalid_no_wet, "invalid-no-wet-default"),
+            Err(SessionError::Validation(message))
+                if message.contains("dry-through-wet default playback")
         ));
     }
 

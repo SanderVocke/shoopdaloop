@@ -346,6 +346,8 @@ pub enum BackendTrackFxControl {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct BackendTrackState {
     pub topology: BackendTrackTopology,
+    #[serde(default)]
+    pub default_playback_mode: BackendDefaultPlaybackMode,
     #[serde(skip)]
     pub fx: Option<TrackFxState>,
     pub audio_channels: u32,
@@ -398,6 +400,22 @@ pub struct BackendStatus {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendDefaultPlaybackMode {
+    #[default]
+    Regular,
+    DryThroughWet,
+}
+
+impl BackendDefaultPlaybackMode {
+    fn engine_mode(self) -> shoop_engine::DefaultPlaybackMode {
+        match self {
+            Self::Regular => shoop_engine::DefaultPlaybackMode::Regular,
+            Self::DryThroughWet => shoop_engine::DefaultPlaybackMode::DryThroughWet,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -819,6 +837,7 @@ pub enum BackendMutationDetail {
     LoopCreation { loop_id: BackendLoopId },
     CompositeConfiguration { plan_version: u64 },
     TrackControl(BackendTrackControl),
+    TrackDefaultPlaybackMode(BackendDefaultPlaybackMode),
     TrackFxControl(BackendTrackFxControl),
     LoopGain(f32),
     LoopBalance(f32),
@@ -944,6 +963,13 @@ pub trait Backend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()>;
+    fn set_track_default_playback_mode(
+        &mut self,
+        _track_id: BackendTrackId,
+        _mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        Err(anyhow!("track default playback control is unavailable"))
+    }
     fn set_track_latency(
         &mut self,
         _track_id: BackendTrackId,
@@ -1922,6 +1948,7 @@ struct EngineConnectionPort {
 struct EngineTrack {
     port_name_base: String,
     topology: BackendTrackTopology,
+    default_playback_mode: BackendDefaultPlaybackMode,
     audio_inputs: Vec<usize>,
     audio_outputs: Vec<usize>,
     audio_sends: Vec<usize>,
@@ -2815,7 +2842,7 @@ impl EngineBackend {
     }
 
     fn create_track_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
-        let (audio_routes, midi_route, latency, has_wet_channels) = {
+        let (audio_routes, midi_route, latency, has_wet_channels, default_playback_mode) = {
             let track = self
                 .tracks
                 .get(&track_id)
@@ -2866,10 +2893,15 @@ impl EngineBackend {
                 midi_route,
                 track.latency.clone(),
                 track.topology.has_wet_channels(),
+                track.default_playback_mode,
             )
         };
         let loop_id = self.create_loop()?;
         let engine_loop = self.engine_loop_index(loop_id)?;
+        self.session
+            .loop_mut(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .set_default_playback_mode(default_playback_mode.engine_mode());
         let mut audio = Vec::with_capacity(audio_routes.len());
         let mut audio_modes = Vec::with_capacity(audio_routes.len());
         for (input, output, mode) in audio_routes {
@@ -3119,6 +3151,7 @@ impl EngineBackend {
             EngineTrack {
                 port_name_base: request.port_name_base,
                 topology: request.topology,
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 audio_inputs,
                 audio_outputs,
                 audio_sends,
@@ -3328,6 +3361,7 @@ impl EngineBackend {
             EngineTrack {
                 port_name_base: request.port_name_base,
                 topology: request.topology,
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 audio_inputs,
                 audio_outputs,
                 audio_sends,
@@ -3456,6 +3490,7 @@ impl EngineBackend {
         for (track_id, track) in &mut self.tracks {
             let state = BackendTrackState {
                 topology: track.topology.clone(),
+                default_playback_mode: track.default_playback_mode,
                 fx: track
                     .builtin_fx
                     .as_ref()
@@ -3749,6 +3784,10 @@ impl EngineBackend {
                     )),
                 )?;
             }
+            staged.set_track_default_playback_mode(
+                created.track_id,
+                source_track.state.default_playback_mode,
+            )?;
             for control in [
                 BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
                 BackendTrackControl::OutputBalance(source_track.state.output_balance),
@@ -4809,6 +4848,7 @@ impl Backend for EngineBackend {
                     audio_channels: request.audio_channels,
                     midi: request.midi,
                 },
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 audio_inputs,
                 audio_outputs,
                 audio_sends: Vec::new(),
@@ -4889,6 +4929,30 @@ impl Backend for EngineBackend {
         let loop_id = self.create_track_loop(track_id)?;
         self.apply_graph_changes()?;
         Ok(loop_id)
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
+        if mode == BackendDefaultPlaybackMode::DryThroughWet && !track.topology.has_wet_channels() {
+            return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
+        }
+        track.default_playback_mode = mode;
+        let loop_ids = track.loops.clone();
+        for loop_id in loop_ids {
+            let loop_index = self.engine_loop_index(loop_id)?;
+            self.session
+                .loop_mut(loop_index)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .set_default_playback_mode(mode.engine_mode());
+        }
+        Ok(())
     }
 
     fn set_track_control(
@@ -6220,6 +6284,7 @@ impl Backend for EngineBackend {
                 *id,
                 BackendTrackState {
                     topology: track.topology.clone(),
+                    default_playback_mode: track.default_playback_mode,
                     fx: track
                         .builtin_fx
                         .as_ref()
@@ -6534,6 +6599,14 @@ impl Backend for LocalDummyBackend {
         control: BackendTrackControl,
     ) -> Result<()> {
         self.runtime.set_track_control(track_id, control)
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        self.runtime.set_track_default_playback_mode(track_id, mode)
     }
 
     fn set_track_latency(
@@ -7018,6 +7091,7 @@ pub struct FakeBackend {
 struct FakeTrack {
     port_name_base: String,
     state: BackendTrackState,
+    default_playback_mode: BackendDefaultPlaybackMode,
     loops: Vec<BackendLoopId>,
     ports: Vec<BackendPortId>,
     fx_state_string: Option<String>,
@@ -7039,6 +7113,7 @@ pub enum FakeOperation {
     RemoveTrack(BackendTrackId),
     AddTrackLoop(BackendTrackId, BackendLoopId),
     SetTrackControl(BackendTrackId, BackendTrackControl),
+    SetTrackDefaultPlaybackMode(BackendTrackId, BackendDefaultPlaybackMode),
     SetLoopGain(BackendLoopId, f32),
     SetLoopBalance(BackendLoopId, f32),
     GrabLoops(Vec<BackendGrabRequest>),
@@ -7336,6 +7411,7 @@ impl FakeBackend {
                     midi: dry_midi,
                     ..Default::default()
                 },
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 loops: Vec::new(),
                 ports: ports.iter().map(|port| port.id).collect(),
                 fx_state_string: None,
@@ -7417,6 +7493,7 @@ impl FakeBackend {
                     midi: dry_midi,
                     ..Default::default()
                 },
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 loops: Vec::new(),
                 ports: ports.iter().map(|port| port.id).collect(),
                 fx_state_string: Some(self.default_fx_state_string.clone()),
@@ -7864,6 +7941,7 @@ impl Backend for FakeBackend {
                     midi: request.midi,
                     ..Default::default()
                 },
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 loops: Vec::new(),
                 ports: ports.iter().map(|port| port.id).collect(),
                 fx_state_string: None,
@@ -8001,6 +8079,30 @@ impl Backend for FakeBackend {
         }
         self.operations
             .push(FakeOperation::SetTrackControl(track_id, control));
+        Ok(())
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        if let Some(message) = self.fail_next_track_control.take() {
+            return Err(anyhow!(message));
+        }
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?;
+        if mode == BackendDefaultPlaybackMode::DryThroughWet
+            && !track.state.topology.has_wet_channels()
+        {
+            return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
+        }
+        track.default_playback_mode = mode;
+        track.state.default_playback_mode = mode;
+        self.operations
+            .push(FakeOperation::SetTrackDefaultPlaybackMode(track_id, mode));
         Ok(())
     }
 
@@ -9240,6 +9342,10 @@ impl Backend for FakeBackend {
                 }
                 _ => {}
             }
+            staged.set_track_default_playback_mode(
+                created.track_id,
+                source_track.state.default_playback_mode,
+            )?;
             for control in [
                 BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
                 BackendTrackControl::OutputBalance(source_track.state.output_balance),
@@ -9830,6 +9936,12 @@ mod tests {
             })
             .unwrap();
         backend
+            .set_track_default_playback_mode(
+                created.track_id,
+                BackendDefaultPlaybackMode::DryThroughWet,
+            )
+            .unwrap();
+        backend
             .set_track_latency(
                 created.track_id,
                 BackendRecordingOffsetAdjustment::ManualOverride(5),
@@ -9841,9 +9953,16 @@ mod tests {
         let replacement = backend.replace_session(&captured).unwrap();
         let restored_track = replacement.tracks[&created.track_id.raw()].track_id;
         let restored_loop = replacement.loops[&created.loops[0].raw()];
-        let latency = &backend.poll().unwrap().tracks[&restored_track].latency;
-        assert_eq!(latency.effective_offset_frames, Some(5));
-        assert_eq!(latency.effective_processor_advance_frames, Some(7));
+        let restored_state = &backend.poll().unwrap().tracks[&restored_track];
+        assert_eq!(
+            restored_state.default_playback_mode,
+            BackendDefaultPlaybackMode::DryThroughWet
+        );
+        assert_eq!(restored_state.latency.effective_offset_frames, Some(5));
+        assert_eq!(
+            restored_state.latency.effective_processor_advance_frames,
+            Some(7)
+        );
 
         backend
             .transition_loop(restored_loop, BackendLoopMode::Recording, None)
@@ -13413,5 +13532,101 @@ mod tests {
             backend.processed_frames(),
             u64::from(256 * MAX_CYCLES_PER_ADVANCE + 48)
         );
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_track_default_playback_is_dynamic_and_inherited_by_added_loops() {
+        let mut backend = EngineBackend::new_dummy(48_000, 1).unwrap();
+        let sync = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "sync".to_owned(),
+                audio_channels: 0,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend.set_loop_length(sync.loops[0], 1).unwrap();
+        let track = backend
+            .create_track(TrackRequest {
+                port_name_base: "processed".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_default_playback_mode(
+                track.track_id,
+                BackendDefaultPlaybackMode::DryThroughWet,
+            )
+            .unwrap();
+        let added = backend.add_loop_to_track(track.track_id).unwrap();
+        for child in [track.loops[0], added] {
+            backend.set_loop_length(child, 1).unwrap();
+        }
+        let composite = backend.create_composite_loop().unwrap();
+        let config = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync.loops[0],
+            timelines: vec![vec![vec![
+                BackendCompositeEntry {
+                    target: BackendCompositeTarget::Loop(track.loops[0]),
+                    delay: 0,
+                    n_cycles: Some(1),
+                    mode: None,
+                },
+                BackendCompositeEntry {
+                    target: BackendCompositeTarget::Loop(added),
+                    delay: 0,
+                    n_cycles: Some(1),
+                    mode: None,
+                },
+            ]]],
+        };
+        backend
+            .configure_composite_loop(composite, &config)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let started = backend.poll().unwrap();
+        assert_eq!(
+            started.loops[&track.loops[0]].mode,
+            BackendLoopMode::PlayingDryThroughWet
+        );
+        assert_eq!(
+            started.loops[&added].mode,
+            BackendLoopMode::PlayingDryThroughWet
+        );
+
+        backend
+            .set_track_default_playback_mode(track.track_id, BackendDefaultPlaybackMode::Regular)
+            .unwrap();
+        assert_eq!(
+            backend.poll().unwrap().loops[&track.loops[0]].mode,
+            BackendLoopMode::PlayingDryThroughWet
+        );
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Stopped, None, None)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let restarted = backend.poll().unwrap();
+        assert_eq!(
+            restarted.loops[&track.loops[0]].mode,
+            BackendLoopMode::Playing
+        );
+        assert_eq!(restarted.loops[&added].mode, BackendLoopMode::Playing);
+
+        assert!(backend
+            .set_track_default_playback_mode(
+                sync.track_id,
+                BackendDefaultPlaybackMode::DryThroughWet,
+            )
+            .is_err());
     }
 }

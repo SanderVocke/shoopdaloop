@@ -4,10 +4,11 @@ use crate::{
     click_track_dialog::ClickTrackDialog, colors, ephemeral_script_display_name,
     is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
     AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
-    DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
-    ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState, SettingsAction,
-    SettingsDialog, TracingStatus, TracingStopped, TrackLatencySpec, TrackProcessorDescriptor,
-    TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
+    DefaultPlaybackMode, DetailsPane, DummyAudioDriverConfig, GlobalControls,
+    JackAudioDriverConfig, PianoPane, ProcessorLatencyAdjustmentState,
+    RecordingOffsetAdjustmentState, SettingsAction, SettingsDialog, TracingStatus, TracingStopped,
+    TrackLatencySpec, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
+    TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsDraftError,
@@ -29,6 +30,8 @@ pub const DEFAULT_NEW_TRACK_DRY_MIDI: SettingKey<bool> =
     SettingKey::new("tracks.new.default_dry_midi");
 pub const DEFAULT_NEW_TRACK_PROCESSOR: SettingKey<String> =
     SettingKey::new("tracks.new.default_processor");
+pub const DEFAULT_NEW_TRACK_PLAYBACK_MODE: SettingKey<String> =
+    SettingKey::new("tracks.new.default_playback_mode");
 pub const DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT: SettingKey<String> =
     SettingKey::new("tracks.new.default_recording_adjustment");
 pub const DEFAULT_NEW_TRACK_RECORDING_FRAMES: SettingKey<i32> =
@@ -71,6 +74,11 @@ const TRACK_MODE_CHOICES: &[(&str, &str)] = &[
     ("regular", "Regular"),
     ("trigger", "Trigger"),
     ("dry_wet", "Dry + Wet"),
+];
+
+const DEFAULT_PLAYBACK_MODE_CHOICES: &[(&str, &str)] = &[
+    ("regular", "Regular"),
+    ("dry_through_wet", "Dry through wet"),
 ];
 
 const LATENCY_ADJUSTMENT_CHOICES: &[(&str, &str)] = &[
@@ -187,6 +195,21 @@ pub fn register_settings_with_appearance_defaults(
         .category_order(10)
         .setting_order(27)
         .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_PLAYBACK_MODE,
+            "regular".to_owned(),
+            "Track defaults",
+            "Default playback",
+            "Playback mode used by default actions on new dry/wet tracks.",
+        )
+        .category_order(10)
+        .setting_order(28)
+        .effect(SettingEffect::NextUse)
+        .editor(SettingEditor::StringChoice {
+            choices: DEFAULT_PLAYBACK_MODE_CHOICES,
+        }),
     )?;
     builder.register(
         SettingDefinition::new(
@@ -805,6 +828,7 @@ pub(crate) struct NewTrackConfiguration {
     pub midi: bool,
     pub dry_midi: bool,
     pub processor: Option<TrackProcessorTypeId>,
+    pub default_playback_mode: DefaultPlaybackMode,
     pub recording_adjustment: RecordingOffsetAdjustmentState,
     pub recording_frames: i32,
     pub processor_adjustment: ProcessorLatencyAdjustmentState,
@@ -821,6 +845,11 @@ impl NewTrackConfiguration {
             processor: match draft.get(DEFAULT_NEW_TRACK_PROCESSOR).ok()? {
                 value if value.is_empty() => None,
                 value => Some(TrackProcessorTypeId::new(value)),
+            },
+            default_playback_mode: match draft.get(DEFAULT_NEW_TRACK_PLAYBACK_MODE).ok()?.as_str() {
+                "regular" => DefaultPlaybackMode::Regular,
+                "dry_through_wet" => DefaultPlaybackMode::DryThroughWet,
+                _ => return None,
             },
             recording_adjustment: recording_adjustment_from_value(
                 &draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).ok()?,
@@ -846,6 +875,14 @@ impl NewTrackConfiguration {
             self.processor
                 .as_ref()
                 .map_or_else(String::new, |processor| processor.as_str().to_owned()),
+        );
+        draft.set(
+            DEFAULT_NEW_TRACK_PLAYBACK_MODE,
+            match self.default_playback_mode {
+                DefaultPlaybackMode::Regular => "regular",
+                DefaultPlaybackMode::DryThroughWet => "dry_through_wet",
+            }
+            .to_owned(),
         );
         draft.set(
             DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
@@ -920,6 +957,7 @@ pub struct AppWidget {
     add_track_midi: bool,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
+    add_track_default_playback_mode: DefaultPlaybackMode,
     add_track_recording_adjustment: RecordingOffsetAdjustmentState,
     add_track_recording_frames: i32,
     add_track_processor_adjustment: ProcessorLatencyAdjustmentState,
@@ -1000,6 +1038,7 @@ impl AppWidget {
             add_track_midi: false,
             add_track_dry_midi: false,
             add_track_processor: None,
+            add_track_default_playback_mode: DefaultPlaybackMode::Regular,
             add_track_recording_adjustment: RecordingOffsetAdjustmentState::default(),
             add_track_recording_frames: 0,
             add_track_processor_adjustment: ProcessorLatencyAdjustmentState::default(),
@@ -1518,6 +1557,7 @@ impl AppWidget {
         self.add_track_midi = configuration.midi;
         self.add_track_dry_midi = configuration.dry_midi;
         self.add_track_processor = configuration.processor;
+        self.add_track_default_playback_mode = configuration.default_playback_mode;
         self.add_track_recording_adjustment = configuration.recording_adjustment;
         self.add_track_recording_frames = configuration.recording_frames;
         self.add_track_processor_adjustment = configuration.processor_adjustment;
@@ -1856,6 +1896,7 @@ impl AppWidget {
                     midi: self.add_track_midi,
                     dry_midi: self.add_track_dry_midi,
                     processor: self.add_track_processor.clone(),
+                    default_playback_mode: self.add_track_default_playback_mode,
                     recording_adjustment: self.add_track_recording_adjustment,
                     recording_frames: self.add_track_recording_frames,
                     processor_adjustment: self.add_track_processor_adjustment,
@@ -1872,6 +1913,7 @@ impl AppWidget {
                 self.add_track_midi = configuration.midi;
                 self.add_track_dry_midi = configuration.dry_midi;
                 self.add_track_processor = configuration.processor;
+                self.add_track_default_playback_mode = configuration.default_playback_mode;
                 self.add_track_recording_adjustment = configuration.recording_adjustment;
                 self.add_track_recording_frames = configuration.recording_frames;
                 self.add_track_processor_adjustment = configuration.processor_adjustment;
@@ -1961,6 +2003,7 @@ impl AppWidget {
                 wet_audio_channels: self.add_track_audio_channels,
                 dry_midi: self.add_track_dry_midi,
                 processor_type: self.add_track_processor.clone()?,
+                default_playback_mode: self.add_track_default_playback_mode,
             },
         };
         Some(TrackSpec {
@@ -1984,6 +2027,7 @@ impl AppWidget {
             midi: self.add_track_midi,
             dry_midi: self.add_track_dry_midi,
             processor: self.add_track_processor.clone(),
+            default_playback_mode: self.add_track_default_playback_mode,
             recording_adjustment: self.add_track_recording_adjustment,
             recording_frames: self.add_track_recording_frames,
             processor_adjustment: self.add_track_processor_adjustment,
@@ -2454,6 +2498,37 @@ pub(crate) fn show_new_track_configuration(
                     ui.selectable_value(&mut configuration.mode, AddTrackMode::Trigger, "Trigger");
                     ui.selectable_value(&mut configuration.mode, AddTrackMode::DryWet, "Dry + Wet");
                 });
+                ui.end_row();
+
+                let playback_enabled = configuration.mode == AddTrackMode::DryWet;
+                ui.add_enabled(playback_enabled, egui::Label::new("Default playback:"));
+                let mut displayed_playback = if playback_enabled {
+                    configuration.default_playback_mode
+                } else {
+                    DefaultPlaybackMode::Regular
+                };
+                ui.add_enabled_ui(playback_enabled, |ui| {
+                    egui::ComboBox::from_id_salt("default_playback_mode")
+                        .selected_text(match displayed_playback {
+                            DefaultPlaybackMode::Regular => "Regular",
+                            DefaultPlaybackMode::DryThroughWet => "Dry through wet",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut displayed_playback,
+                                DefaultPlaybackMode::Regular,
+                                "Regular",
+                            );
+                            ui.selectable_value(
+                                &mut displayed_playback,
+                                DefaultPlaybackMode::DryThroughWet,
+                                "Dry through wet",
+                            );
+                        });
+                });
+                if playback_enabled {
+                    configuration.default_playback_mode = displayed_playback;
+                }
                 ui.end_row();
 
                 let audio_enabled = configuration.mode != AddTrackMode::Trigger;
@@ -3445,6 +3520,7 @@ mod tests {
                     wet_audio_channels: 2,
                     dry_midi: true,
                     processor_type: processor.id,
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -3497,6 +3573,7 @@ mod tests {
                     wet_audio_channels: 6,
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -3775,6 +3852,10 @@ mod tests {
         draft.set(DEFAULT_NEW_TRACK_DRY_MIDI, true);
         draft.set(DEFAULT_NEW_TRACK_PROCESSOR, "processor".to_owned());
         draft.set(
+            DEFAULT_NEW_TRACK_PLAYBACK_MODE,
+            "dry_through_wet".to_owned(),
+        );
+        draft.set(
             DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
             "automatic_plus_trim".to_owned(),
         );
@@ -3817,6 +3898,10 @@ mod tests {
             widget.add_track_recording_adjustment,
             RecordingOffsetAdjustmentState::AutomaticPlusTrim
         );
+        assert_eq!(
+            widget.add_track_default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
         assert_eq!(widget.add_track_recording_frames, -24);
         assert_eq!(
             widget.add_track_processor_adjustment,
@@ -3846,6 +3931,7 @@ mod tests {
         widget.add_track_audio_channels = 3;
         widget.add_track_dry_midi = true;
         widget.add_track_processor = Some(TrackProcessorTypeId::new("processor"));
+        widget.add_track_default_playback_mode = DefaultPlaybackMode::DryThroughWet;
         widget.add_track_recording_adjustment = RecordingOffsetAdjustmentState::Automatic;
         widget.add_track_recording_frames = -9;
         widget.add_track_processor_adjustment = ProcessorLatencyAdjustmentState::AutomaticPlusTrim;
@@ -3916,6 +4002,10 @@ mod tests {
         assert!(draft.get(DEFAULT_NEW_TRACK_DRY_MIDI).unwrap());
         assert_eq!(draft.get(DEFAULT_NEW_TRACK_PROCESSOR).unwrap(), "processor");
         assert_eq!(
+            draft.get(DEFAULT_NEW_TRACK_PLAYBACK_MODE).unwrap(),
+            "dry_through_wet"
+        );
+        assert_eq!(
             draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).unwrap(),
             "automatic"
         );
@@ -3954,6 +4044,10 @@ mod tests {
         assert_eq!(widget.add_track_mode, AddTrackMode::DryWet);
         assert_eq!(widget.add_track_audio_channels, 3);
         assert!(widget.add_track_dry_midi);
+        assert_eq!(
+            widget.add_track_default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
         assert_eq!(
             widget
                 .add_track_processor

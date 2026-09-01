@@ -75,7 +75,7 @@
 -- 4. Press several grid pads together to insert the additional loops in parallel.
 
 if shoop_announce_api_version then
-    shoop_announce_api_version(1, 4)
+    shoop_announce_api_version(1, 5)
 end
 
 print_debug("Init akai_apc_mini_mk2.lua")

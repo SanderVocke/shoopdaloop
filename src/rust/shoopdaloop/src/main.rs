@@ -3208,8 +3208,9 @@ fn browser_unsupported_session_bytes(
     carla: bool,
 ) -> Result<std::sync::Arc<[u8]>, String> {
     use shoop_session::{
-        encode_session, FxChainDocument, FxChainTypeDocument, SessionBundle, SessionDocument,
-        TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackTopologyDocument,
+        encode_session, DefaultPlaybackModeDocument, FxChainDocument, FxChainTypeDocument,
+        SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument, TrackGroupDocument,
+        TrackTopologyDocument,
     };
 
     let mut document = SessionDocument::empty(sample_rate);
@@ -3255,6 +3256,7 @@ fn browser_unsupported_session_bytes(
             is_sync: false,
             width: None,
             topology,
+            default_playback_mode: DefaultPlaybackModeDocument::Regular,
             controls: TrackControlsDocument::default(),
             latency: Default::default(),
             loops: Vec::new(),
@@ -3566,6 +3568,7 @@ impl BrowserSelfTest {
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
+                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
                         creation_request_id: None,
@@ -4048,6 +4051,7 @@ impl BrowserSelfTest {
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
                                 shoop_egui::TrackProcessorTypeId::BUILTIN_FX,
                             ),
+                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
                         creation_request_id: None,
@@ -4063,6 +4067,7 @@ impl BrowserSelfTest {
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
+                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
                         creation_request_id: None,
@@ -5166,7 +5171,7 @@ impl BrowserSelfTest {
                     [
                         (
                             "lua-api-higher-minor.lua",
-                            "shoop_announce_api_version(1, 5); require('shoop_control').set_solo(true)",
+                            "shoop_announce_api_version(1, 6); require('shoop_control').set_solo(true)",
                         ),
                         (
                             "lua-api-lower-major.lua",
@@ -5704,6 +5709,7 @@ mod tests {
                     wet_audio_channels: 3,
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+                    default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                 },
                 latency: shoop_egui::TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -6665,7 +6671,7 @@ mod tests {
         for (name, source) in [
             (
                 "lua-api-higher-minor.lua",
-                "shoop_announce_api_version(1, 5); require('shoop_control').set_solo(true)",
+                "shoop_announce_api_version(1, 6); require('shoop_control').set_solo(true)",
             ),
             (
                 "lua-api-lower-major.lua",
