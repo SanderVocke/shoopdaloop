@@ -8,10 +8,10 @@ use std::time::Duration;
 use js_sys::{Array, Function, Promise};
 use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
-    AppIntent, AppSnapshot, ClickTrackRequest, DirectTrackSpec, GlobalControlAction, IoTaskKind,
-    IoTaskStatus, LoopAction, LoopMode, OxiSynthControl, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, TrackAction, TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec,
-    TrackSpecTopology,
+    AppIntent, AppSnapshot, BusAction, ClickTrackRequest, DirectTrackSpec, GlobalControlAction,
+    IoTaskKind, IoTaskStatus, LoopAction, LoopMode, OxiSynthControl, OxiSynthMidiCcAssignment,
+    OxiSynthParameter, ScriptKind, TrackAction, TrackProcessorEditorState, TrackProcessorTypeId,
+    TrackSpec, TrackSpecTopology,
 };
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
@@ -484,10 +484,26 @@ async fn remote_session_round_trips_track_controls() {
         track_id: track.id,
         action: TrackAction::OutputGainChanged(-7.0),
     });
+    let master_id = harness.snapshot().buses[0].id;
+    harness.dispatch(AppIntent::Bus {
+        bus_id: master_id,
+        action: BusAction::GainChanged(-5.0),
+    });
+    harness.dispatch(AppIntent::AddScriptSource {
+        name: "remote-bus-control.lua".to_owned(),
+        source: Arc::from(
+            "shoop_announce_api_version(1, 5)\nlocal c=require('shoop_control')\nc.bus_set_balance(0, 0.25)\nc.bus_set_muted(0, true)",
+        ),
+        kind: ScriptKind::Ephemeral,
+        enabled: true,
+    });
     harness
         .drive_until("published session controls", |snapshot| {
             snapshot.tracks[1].name == "Saved remote track"
                 && (snapshot.tracks[1].controls.output_gain_db + 7.0).abs() < f32::EPSILON
+                && (snapshot.buses[0].gain_db + 5.0).abs() < f32::EPSILON
+                && (snapshot.buses[0].balance - 0.25).abs() < f32::EPSILON
+                && snapshot.buses[0].muted
         })
         .await;
     let saved = save_session(&mut harness).await;
@@ -499,10 +515,23 @@ async fn remote_session_round_trips_track_controls() {
         track_id: track.id,
         action: TrackAction::OutputGainChanged(3.0),
     });
+    for action in [
+        BusAction::GainChanged(0.0),
+        BusAction::BalanceChanged(0.0),
+        BusAction::MuteChanged(false),
+    ] {
+        harness.dispatch(AppIntent::Bus {
+            bus_id: master_id,
+            action,
+        });
+    }
     load_session(&mut harness, saved).await;
     let loaded = harness.snapshot();
     assert_eq!(loaded.tracks[1].name, "Saved remote track");
     assert!((loaded.tracks[1].controls.output_gain_db + 7.0).abs() < f32::EPSILON);
+    assert!((loaded.buses[0].gain_db + 5.0).abs() < f32::EPSILON);
+    assert!((loaded.buses[0].balance - 0.25).abs() < f32::EPSILON);
+    assert!(loaded.buses[0].muted);
     harness.shutdown().await;
 }
 

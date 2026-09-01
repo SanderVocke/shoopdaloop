@@ -149,7 +149,7 @@ Verification:
 
 - [x] Add application tests for pending-to-confirmed, rejection, saturation, timeout, stale bus, backend recreation, structural sharing, and meter updates without topology changes.
 - [x] Round-trip default and non-default controls through deterministic archives, migration, same-rate/resampled replacement, failed-load rollback, driver switching, and browser session transfer.
-- [ ] Run focused `shoop_session`, `shoop_app`, fake-backend, native replacement, and remote-application tests.
+- [x] Run focused `shoop_session`, `shoop_app`, fake-backend, native replacement, and remote-application tests.
 
 ### Stage 5 — Add the right-sidebar bus block column
 
@@ -182,8 +182,8 @@ Depends on Stage 4 and may proceed alongside Stage 5.
 Verification:
 
 - [x] Add Lua shape, selector-order, getter, setter, clamping/conversion, mute, non-stereo rejection, invalid argument, optimistic shadow, and control-operation dispatch tests.
-- [ ] Add native and browser scripting integration tests proving Lua changes the same Master state/audio as the UI and that backend rejection reconciles the published state.
-- [ ] Run focused `shoop_scripting`, `shoop_app`, script-resource, native runtime, and Wasm scripting suites.
+- [x] Add native and browser scripting integration tests proving Lua changes the same Master state/audio as the UI and that backend rejection reconciles the published state.
+- [x] Run focused `shoop_scripting`, `shoop_app`, script-resource, native runtime, and Wasm scripting suites.
 
 ### Stage 7 — Documentation and end-to-end validation
 

@@ -123,3 +123,11 @@ The first implementation creates exactly one stereo bus named **Master**. It sta
 Users may independently route either track output channel to either Master channel, keep or remove direct track-to-system routes, and route either Master output channel to compatible system sinks. The Master bus has no user controls, processors, add/remove operation, or implicit routing in this stage.
 
 This sandbox validates the durable mixer boundary, identities, route authority, realtime installation, backend parity, persistence, and Connections-dialog model before adding general bus management, mixer controls, recording sinks, or post-processing.
+
+## Bus-control increment
+
+The second implementation increment retains the fixed stereo Master and adds one built-in post-sum processing stage. Master has bus-wide gain, stereo balance, and mute parameters. Gain applies uniformly to all channels; balance is valid only for exactly two ordered channels and attenuates the opposite side without boosting; mute silences all outputs while retaining gain, balance, and routes. These controls update realtime audio-port parameters without rebuilding the prepared topology.
+
+Each bus output channel publishes a post-gain, post-balance, post-mute peak. Meter values are transient telemetry; gain, balance, and mute are session state and survive replacement, resampling, and compatible driver switching. Native, dummy, Worker, and AudioWorklet snapshots use the same normalized control and meter contract.
+
+The main UI presents one vertically ordered bus block per bus in the right sidebar above the logo. A block contains the bus name, channel-aware peak meter, mute, volume fader, and a balance dial only for stereo buses. Lua exposes the same control state and mutations through the application intent/backend authority path. This increment still adds no bus management, bus-to-bus routing, route levels, solos, or editable insert processors.
