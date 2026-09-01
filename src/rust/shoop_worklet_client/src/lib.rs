@@ -139,6 +139,83 @@ pub struct RemoteWorkletBackend {
     midi_revision: u64,
 }
 
+fn replacement_connection_journal(
+    session: &BackendSessionData,
+    replacement: &BackendSessionReplacement,
+) -> Vec<Command> {
+    let mut commands = Vec::new();
+    for source_track in &session.tracks {
+        for source_port in &source_track.ports {
+            let Some(&application_port_id) = replacement.ports.get(&source_port.source_id) else {
+                continue;
+            };
+            for host_port_id in &source_port.external_connections {
+                commands.push(Command::SetPortConnected {
+                    application_port_id: application_port_id.raw(),
+                    host_port_id: host_port_id.clone(),
+                    connected: true,
+                });
+            }
+        }
+    }
+    for source_port in &session.global_ports {
+        let Some(&application_port_id) = replacement.global_ports.get(&source_port.source_id)
+        else {
+            continue;
+        };
+        for host_port_id in &source_port.external_connections {
+            commands.push(Command::SetPortConnected {
+                application_port_id: application_port_id.raw(),
+                host_port_id: host_port_id.clone(),
+                connected: true,
+            });
+        }
+    }
+    for source_bus in &session.buses {
+        let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
+            continue;
+        };
+        for source_channel in &source_bus.channels {
+            let Some(&application_port_id) =
+                replacement.bus_output_ports.get(&source_channel.source_id)
+            else {
+                continue;
+            };
+            for host_port_id in &source_channel.output_port.external_connections {
+                commands.push(Command::SetPortConnected {
+                    application_port_id: application_port_id.raw(),
+                    host_port_id: host_port_id.clone(),
+                    connected: true,
+                });
+            }
+        }
+        for control in [
+            BackendBusControl::GainDb(source_bus.gain_db),
+            BackendBusControl::Balance(source_bus.balance),
+            BackendBusControl::Mute(source_bus.muted),
+        ] {
+            commands.push(Command::SetBusControl {
+                bus_id: bus_id.raw(),
+                control: to_wire_bus_control(control),
+            });
+        }
+    }
+    for route in &session.mixer_routes {
+        let (Some(&source_port_id), Some(&destination_channel_id)) = (
+            replacement.ports.get(&route.source_port_id),
+            replacement.bus_channels.get(&route.destination_channel_id),
+        ) else {
+            continue;
+        };
+        commands.push(Command::SetMixerRoute {
+            source_port_id: source_port_id.raw(),
+            destination_channel_id: destination_channel_id.raw(),
+            connected: true,
+        });
+    }
+    commands
+}
+
 impl RemoteWorkletBackend {
     pub fn new(midi: impl HostMidiBridge + 'static) -> (Self, RemoteBackendControl) {
         let (transport, control) = transport_pair();
@@ -220,6 +297,9 @@ impl RemoteWorkletBackend {
     }
 
     fn cancel_transfers(&mut self, reason: &str) {
+        self.transport
+            .borrow_mut()
+            .cancel_reserved_session_connection_journal();
         if let Some(capture) = self.session_capture.take() {
             self.session_capture_error = Some(format!(
                 "session capture operation {} was cancelled: {reason}",
@@ -644,81 +724,10 @@ impl RemoteWorkletBackend {
         &mut self,
         session: &BackendSessionData,
         replacement: &BackendSessionReplacement,
-    ) -> Result<()> {
-        let mut connection_journal = Vec::new();
-        for source_track in &session.tracks {
-            for source_port in &source_track.ports {
-                let Some(&application_port_id) = replacement.ports.get(&source_port.source_id)
-                else {
-                    continue;
-                };
-                for host_port_id in &source_port.external_connections {
-                    connection_journal.push(Command::SetPortConnected {
-                        application_port_id: application_port_id.raw(),
-                        host_port_id: host_port_id.clone(),
-                        connected: true,
-                    });
-                }
-            }
-        }
-        for source_port in &session.global_ports {
-            let Some(&application_port_id) = replacement.global_ports.get(&source_port.source_id)
-            else {
-                continue;
-            };
-            for host_port_id in &source_port.external_connections {
-                connection_journal.push(Command::SetPortConnected {
-                    application_port_id: application_port_id.raw(),
-                    host_port_id: host_port_id.clone(),
-                    connected: true,
-                });
-            }
-        }
-        for source_bus in &session.buses {
-            let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
-                continue;
-            };
-            for source_channel in &source_bus.channels {
-                let Some(&application_port_id) =
-                    replacement.bus_output_ports.get(&source_channel.source_id)
-                else {
-                    continue;
-                };
-                for host_port_id in &source_channel.output_port.external_connections {
-                    connection_journal.push(Command::SetPortConnected {
-                        application_port_id: application_port_id.raw(),
-                        host_port_id: host_port_id.clone(),
-                        connected: true,
-                    });
-                }
-            }
-            for control in [
-                BackendBusControl::GainDb(source_bus.gain_db),
-                BackendBusControl::Balance(source_bus.balance),
-                BackendBusControl::Mute(source_bus.muted),
-            ] {
-                connection_journal.push(Command::SetBusControl {
-                    bus_id: bus_id.raw(),
-                    control: to_wire_bus_control(control),
-                });
-            }
-        }
-        for route in &session.mixer_routes {
-            let (Some(&source_port_id), Some(&destination_channel_id)) = (
-                replacement.ports.get(&route.source_port_id),
-                replacement.bus_channels.get(&route.destination_channel_id),
-            ) else {
-                continue;
-            };
-            connection_journal.push(Command::SetMixerRoute {
-                source_port_id: source_port_id.raw(),
-                destination_channel_id: destination_channel_id.raw(),
-                connected: true,
-            });
-        }
+    ) {
         self.transport
             .borrow_mut()
-            .replace_session_connection_journal(connection_journal)?;
+            .commit_reserved_session_connection_journal();
 
         self.snapshot.tracks.clear();
         self.snapshot.loops.clear();
@@ -862,7 +871,6 @@ impl RemoteWorkletBackend {
             .unwrap_or(0)
             .saturating_add(1);
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
-        Ok(())
     }
 
     fn apply_wire_snapshot(&mut self, wire: WireSnapshot) {
@@ -2386,7 +2394,7 @@ impl Backend for RemoteWorkletBackend {
         if let Some(replace) = &self.session_replace {
             if replace.complete {
                 let replacement = browser_replacement_mapping(session);
-                self.apply_replaced_session(session, &replacement)?;
+                self.apply_replaced_session(session, &replacement);
                 self.session_replace = None;
                 return Ok(BackendAsyncResult::Ready(replacement));
             }
@@ -2403,15 +2411,29 @@ impl Backend for RemoteWorkletBackend {
         if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
             return Err(anyhow!("prepared session exceeds browser transfer limit"));
         }
+        let replacement = browser_replacement_mapping(session);
+        self.transport
+            .borrow_mut()
+            .reserve_session_connection_journal(replacement_connection_journal(
+                session,
+                &replacement,
+            ))?;
         let generation = self.next_session_generation;
         self.next_session_generation = self.next_session_generation.saturating_add(1);
         self.transport_generation = self.transport.borrow().diagnostics().generation;
-        self.transport
+        if let Err(error) = self
+            .transport
             .borrow_mut()
             .ephemeral(Command::BeginSessionReplace {
                 generation,
                 total_bytes: bytes.len(),
-            })?;
+            })
+        {
+            self.transport
+                .borrow_mut()
+                .cancel_reserved_session_connection_journal();
+            return Err(error);
+        }
         let total = bytes.len();
         self.session_replace = Some(SessionReplaceAssembly {
             generation,
@@ -2517,10 +2539,12 @@ impl Backend for RemoteWorkletBackend {
         let connection = self.transport.borrow().readiness().connection;
         if self.transport_generation != 0 && transport.generation != self.transport_generation {
             self.cancel_transfers("driver generation changed");
-        } else if connection == ConnectionState::Detached
-            && (self.session_capture.is_some()
-                || self.session_replace.is_some()
-                || self.loop_content_replace.is_some())
+        } else if matches!(
+            connection,
+            ConnectionState::Detached | ConnectionState::Failed
+        ) && (self.session_capture.is_some()
+            || self.session_replace.is_some()
+            || self.loop_content_replace.is_some())
         {
             self.cancel_transfers("transport detached");
         }
@@ -2663,6 +2687,9 @@ impl Backend for RemoteWorkletBackend {
                             }
                             BackendOperationKind::SessionReplacement => {
                                 self.session_replace = None;
+                                self.transport
+                                    .borrow_mut()
+                                    .cancel_reserved_session_connection_journal();
                                 self.session_replace_error = Some(message.clone());
                             }
                             BackendOperationKind::LoopContentReplacement => {
@@ -2816,6 +2843,9 @@ impl Backend for RemoteWorkletBackend {
                         .is_some_and(|replace| replace.generation == generation)
                     {
                         self.session_replace = None;
+                        self.transport
+                            .borrow_mut()
+                            .cancel_reserved_session_connection_journal();
                         self.session_replace_error = Some(format!(
                             "session replacement operation {generation} was cancelled"
                         ));
@@ -4099,8 +4129,14 @@ mod tests {
                 destination_channel_id: BackendBusChannelId::from_raw(99),
             });
         backend
-            .apply_replaced_session(&session, &replacement)
+            .transport
+            .borrow_mut()
+            .reserve_session_connection_journal(replacement_connection_journal(
+                &session,
+                &replacement,
+            ))
             .unwrap();
+        backend.apply_replaced_session(&session, &replacement);
         assert_eq!(backend.next_port_id, 1);
         assert_eq!(backend.snapshot.mixer.buses.len(), 1);
         let master = &backend.snapshot.mixer.buses[&MASTER_BUS_ID];

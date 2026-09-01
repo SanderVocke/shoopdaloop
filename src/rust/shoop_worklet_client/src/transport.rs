@@ -86,6 +86,15 @@ struct PendingCommand {
     replay: bool,
 }
 
+fn is_session_connection_command(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::SetPortConnected { .. }
+            | Command::SetBusControl { .. }
+            | Command::SetMixerRoute { .. }
+    )
+}
+
 pub(crate) struct ReceivedEvent {
     pub envelope: EventEnvelope,
     pub command: Command,
@@ -98,6 +107,7 @@ pub(crate) struct TransportCore {
     error: Option<String>,
     endpoint: Option<Box<dyn MessageEndpoint>>,
     journal: Vec<Command>,
+    reserved_session_connections: Option<Vec<Command>>,
     inbound: VecDeque<ReceivedEvent>,
     next_sequence: u64,
     next_response_sequence: u64,
@@ -117,6 +127,7 @@ impl Default for TransportCore {
             error: None,
             endpoint: None,
             journal: Vec::new(),
+            reserved_session_connections: None,
             inbound: VecDeque::new(),
             next_sequence: 1,
             next_response_sequence: 1,
@@ -132,6 +143,11 @@ impl Default for TransportCore {
 
 impl TransportCore {
     pub(crate) fn journal(&mut self, command: Command) -> Result<()> {
+        if self.reserved_session_connections.is_some() && is_session_connection_command(&command) {
+            return Err(anyhow!(
+                "session connection mutation is unavailable during session replacement"
+            ));
+        }
         if let Some(existing) = self
             .journal
             .iter_mut()
@@ -140,7 +156,18 @@ impl TransportCore {
         {
             *existing = command.clone();
         } else {
-            if self.journal.len() >= COMMAND_CAPACITY {
+            let reserved = self
+                .reserved_session_connections
+                .as_ref()
+                .map_or(0, Vec::len);
+            let retained = self
+                .journal
+                .iter()
+                .filter(|command| !is_session_connection_command(command))
+                .count();
+            if self.journal.len() >= COMMAND_CAPACITY
+                || retained.saturating_add(reserved).saturating_add(1) > COMMAND_CAPACITY
+            {
                 self.overflows = self.overflows.saturating_add(1);
                 return Err(anyhow!("remote worklet command journal is full"));
             }
@@ -156,18 +183,17 @@ impl TransportCore {
         self.journal.retain(|candidate| candidate != command);
     }
 
-    pub(crate) fn replace_session_connection_journal(
+    pub(crate) fn reserve_session_connection_journal(
         &mut self,
         commands: Vec<Command>,
     ) -> Result<()> {
-        if commands.iter().any(|command| {
-            !matches!(
-                command,
-                Command::SetPortConnected { .. }
-                    | Command::SetBusControl { .. }
-                    | Command::SetMixerRoute { .. }
-            )
-        }) {
+        if self.reserved_session_connections.is_some() {
+            return Err(anyhow!("session connection journal is already reserved"));
+        }
+        if commands
+            .iter()
+            .any(|command| !is_session_connection_command(command))
+        {
             return Err(anyhow!(
                 "replacement connection journal contains an unrelated command"
             ));
@@ -175,29 +201,28 @@ impl TransportCore {
         let retained = self
             .journal
             .iter()
-            .filter(|command| {
-                !matches!(
-                    command,
-                    Command::SetPortConnected { .. }
-                        | Command::SetBusControl { .. }
-                        | Command::SetMixerRoute { .. }
-                )
-            })
+            .filter(|command| !is_session_connection_command(command))
             .count();
         if retained.saturating_add(commands.len()) > COMMAND_CAPACITY {
             self.overflows = self.overflows.saturating_add(1);
             return Err(anyhow!("replacement connection command journal is full"));
         }
-        self.journal.retain(|command| {
-            !matches!(
-                command,
-                Command::SetPortConnected { .. }
-                    | Command::SetBusControl { .. }
-                    | Command::SetMixerRoute { .. }
-            )
-        });
-        self.journal.extend(commands);
+        self.reserved_session_connections = Some(commands);
         Ok(())
+    }
+
+    pub(crate) fn commit_reserved_session_connection_journal(&mut self) {
+        let Some(commands) = self.reserved_session_connections.take() else {
+            return;
+        };
+        self.journal
+            .retain(|command| !is_session_connection_command(command));
+        debug_assert!(self.journal.len().saturating_add(commands.len()) <= COMMAND_CAPACITY);
+        self.journal.extend(commands);
+    }
+
+    pub(crate) fn cancel_reserved_session_connection_journal(&mut self) {
+        self.reserved_session_connections = None;
     }
 
     pub(crate) fn ephemeral(&mut self, command: Command) -> Result<()> {
@@ -697,8 +722,19 @@ mod tests {
         ];
         transport
             .borrow_mut()
-            .replace_session_connection_journal(replacement.clone())
+            .reserve_session_connection_journal(replacement.clone())
             .unwrap();
+        assert!(transport
+            .borrow_mut()
+            .journal(Command::SetMixerRoute {
+                source_port_id: 33,
+                destination_channel_id: 3,
+                connected: true,
+            })
+            .is_err());
+        transport
+            .borrow_mut()
+            .commit_reserved_session_connection_journal();
 
         let endpoint = MemoryEndpoint::default();
         let sent = endpoint.sent.clone();
@@ -724,6 +760,36 @@ mod tests {
             ]
             .concat()
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_replacement_reservation_preserves_capacity_until_commit_or_cancel() {
+        let (transport, _) = transport_pair();
+        for loop_id in 0..COMMAND_CAPACITY as u64 - 1 {
+            transport
+                .borrow_mut()
+                .journal(Command::SetLoopGain { loop_id, gain: 0.5 })
+                .unwrap();
+        }
+        transport
+            .borrow_mut()
+            .reserve_session_connection_journal(vec![Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::Mute(false),
+            }])
+            .unwrap();
+        let final_command = Command::SetLoopGain {
+            loop_id: u64::MAX,
+            gain: 0.25,
+        };
+        assert!(transport
+            .borrow_mut()
+            .journal(final_command.clone())
+            .is_err());
+        transport
+            .borrow_mut()
+            .cancel_reserved_session_connection_journal();
+        transport.borrow_mut().journal(final_command).unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]
