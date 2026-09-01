@@ -1,9 +1,9 @@
 use crate::document::{
     AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
-    FxChainTypeDocument, MediaPayload, ProcessorLatencyAdjustmentDocument,
-    RecordingOffsetAdjustmentDocument, SessionBundle, SessionDocument, TrackDocument,
-    TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
-    SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
+    FxChainTypeDocument, MediaPayload, PortDirectionDocument, PortRoleDocument,
+    ProcessorLatencyAdjustmentDocument, RecordingOffsetAdjustmentDocument, SessionBundle,
+    SessionDocument, TrackDocument, TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION,
+    FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -692,6 +692,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     let mut loop_lengths = BTreeMap::new();
     let mut sync_length = 1_u64;
     let mut port_ids = BTreeSet::new();
+    let mut mixer_source_port_ids = BTreeSet::new();
     let mut channel_ids = BTreeSet::new();
     let mut fx_chain_ids = BTreeSet::new();
     let mut fx_state_types = BTreeMap::new();
@@ -792,6 +793,12 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         "duplicate port ID {}",
                         port.id
                     )));
+                }
+                if port.data_type == DataTypeDocument::Audio
+                    && port.direction == PortDirectionDocument::Output
+                    && port.role == PortRoleDocument::AudioOutput
+                {
+                    mixer_source_port_ids.insert(port.id);
                 }
                 validate_finite(port.gain, "port gain")?;
             }
@@ -964,9 +971,12 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
         if !mixer_routes.insert((route.source_port_id, route.destination_channel_id)) {
             return Err(SessionError::Validation("duplicate mixer route".to_owned()));
         }
-        if !port_ids.contains(&route.source_port_id)
-            || !bus_channel_ids.contains(&route.destination_channel_id)
-        {
+        if !mixer_source_port_ids.contains(&route.source_port_id) {
+            return Err(SessionError::Validation(
+                "mixer route source is not a track audio output".to_owned(),
+            ));
+        }
+        if !bus_channel_ids.contains(&route.destination_channel_id) {
             return Err(SessionError::Validation(
                 "mixer route references a stale endpoint".to_owned(),
             ));

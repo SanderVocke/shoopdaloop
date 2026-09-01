@@ -1332,6 +1332,12 @@ mod tests {
             Err(SessionError::Validation(message)) if message.contains("stale endpoint")
         ));
         bundle.document.mixer_routes[0].destination_channel_id = 8_001;
+        bundle.document.mixer_routes[0].source_port_id = 8_002;
+        assert!(matches!(
+            encode_session(&bundle, "test"),
+            Err(SessionError::Validation(message)) if message.contains("not a track audio output")
+        ));
+        bundle.document.mixer_routes[0].source_port_id = source_port_id;
         bundle.document.global_ports = vec![bundle.document.buses[0].ports[0].clone()];
         assert!(matches!(
             encode_session(&bundle, "test"),
