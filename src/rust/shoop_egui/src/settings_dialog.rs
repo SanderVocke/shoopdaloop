@@ -17,9 +17,11 @@ use shoop_settings::{
 };
 
 use crate::{
+    app_widget::{show_new_track_configuration, NewTrackConfiguration},
     audio_driver_config_from_draft, colors, AppAction, AudioDriverKind, AudioDriverRuntimeState,
     ScriptId, ScriptKind, ScriptLifecycle, ScriptLogLevel, ScriptState, ScriptingState,
-    BUILTINS_LOCATION, BUILTIN_SCRIPTS, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
+    TrackProcessorDescriptor, BUILTINS_LOCATION, BUILTIN_SCRIPTS, TOUCH_MODE, UI_SCALE_FACTOR,
+    USER_SCRIPTS,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -187,6 +189,15 @@ impl SettingsDialog {
         self.open
     }
 
+    pub(crate) fn apply_track_defaults(&mut self, defaults: &SettingsDraft) {
+        let Some(configuration) = NewTrackConfiguration::from_settings_draft(defaults) else {
+            return;
+        };
+        if let Some(draft) = &mut self.draft {
+            configuration.write_to_settings_draft(draft);
+        }
+    }
+
     pub fn set_tracing_status(&mut self, status: TracingStatus) {
         self.tracing_status = status;
     }
@@ -245,6 +256,7 @@ impl SettingsDialog {
         state: &SettingsViewState,
         scripting: &ScriptingState,
         audio_drivers: &AudioDriverRuntimeState,
+        track_processors: &[TrackProcessorDescriptor],
         script_paths: Option<&BTreeMap<ScriptId, String>>,
     ) -> SettingsDialogResponse {
         if !self.open {
@@ -326,6 +338,13 @@ impl SettingsDialog {
                                                 );
                                             } else if active_category == "Developer" {
                                                 self.show_developer(ui, &mut response);
+                                            } else if active_category == "Track defaults"
+                                                && self
+                                                    .registry
+                                                    .definition(crate::DEFAULT_NEW_TRACK_MODE.id())
+                                                    .is_some()
+                                            {
+                                                self.show_track_defaults(ui, track_processors);
                                             } else {
                                                 self.show_definitions(ui, &active_category);
                                             }
@@ -355,8 +374,14 @@ impl SettingsDialog {
                         } else {
                             "Save"
                         };
+                        let valid = self
+                            .draft
+                            .as_ref()
+                            .is_some_and(|draft| self.registry.validate_draft(draft).is_ok());
                         let save = ui.add_enabled(
-                            state.persistence != SettingsPersistenceState::Saving && !stale,
+                            state.persistence != SettingsPersistenceState::Saving
+                                && !stale
+                                && valid,
                             egui::Button::new(save_label),
                         );
                         if save.clicked() {
@@ -370,6 +395,8 @@ impl SettingsDialog {
                                 colors::WARNING,
                                 "Settings changed elsewhere; close and reopen this dialog.",
                             );
+                        } else if !valid {
+                            ui.colored_label(colors::WARNING, "Correct invalid settings to save.");
                         }
                     });
                 });
@@ -803,6 +830,29 @@ impl SettingsDialog {
                     }
                 });
             });
+    }
+
+    fn show_track_defaults(&mut self, ui: &mut egui::Ui, processors: &[TrackProcessorDescriptor]) {
+        ui.heading("New track defaults");
+        ui.label(
+            "These fields match the Add Track dialog. Track names remain generated from their position.",
+        );
+        ui.add_space(6.0);
+        let Some(draft) = &mut self.draft else {
+            ui.colored_label(colors::ERROR, "Missing settings draft");
+            return;
+        };
+        let Some(mut configuration) = NewTrackConfiguration::from_settings_draft(draft) else {
+            ui.colored_label(colors::ERROR, "Invalid new-track settings");
+            return;
+        };
+        show_new_track_configuration(
+            ui,
+            "settings_track_defaults",
+            &mut configuration,
+            processors,
+        );
+        configuration.write_to_settings_draft(draft);
     }
 
     fn show_definition_cards(
@@ -1660,6 +1710,7 @@ mod tests {
                         &state,
                         &ScriptingState::default(),
                         &AudioDriverRuntimeState::default(),
+                        &[],
                         None,
                     );
                 },
@@ -1761,6 +1812,7 @@ mod tests {
                         &state,
                         &ScriptingState::default(),
                         &AudioDriverRuntimeState::default(),
+                        &[],
                         None,
                     );
                 },
@@ -1859,7 +1911,14 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    dialog.show(ui.ctx(), &state, &ScriptingState::default(), &audio, None);
+                    dialog.show(
+                        ui.ctx(),
+                        &state,
+                        &ScriptingState::default(),
+                        &audio,
+                        &[],
+                        None,
+                    );
                 },
             );
             output.textures_delta.clear();
@@ -2471,6 +2530,7 @@ mod tests {
                 &state,
                 &ScriptingState::default(),
                 &AudioDriverRuntimeState::default(),
+                &[],
                 None,
             );
         });

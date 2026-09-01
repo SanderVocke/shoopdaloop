@@ -21,9 +21,14 @@ const LOGO_AREA_HEIGHT: f32 = 112.0;
 const SYNC_TRACK_HEIGHT: f32 = 118.0;
 const SIDEBAR_SECTION_GAP: f32 = 8.0;
 
+pub const DEFAULT_NEW_TRACK_MODE: SettingKey<String> = SettingKey::new("tracks.new.default_mode");
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
 pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+pub const DEFAULT_NEW_TRACK_DRY_MIDI: SettingKey<bool> =
+    SettingKey::new("tracks.new.default_dry_midi");
+pub const DEFAULT_NEW_TRACK_PROCESSOR: SettingKey<String> =
+    SettingKey::new("tracks.new.default_processor");
 pub const DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT: SettingKey<String> =
     SettingKey::new("tracks.new.default_recording_adjustment");
 pub const DEFAULT_NEW_TRACK_RECORDING_FRAMES: SettingKey<i32> =
@@ -62,6 +67,12 @@ pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
 pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 
+const TRACK_MODE_CHOICES: &[(&str, &str)] = &[
+    ("regular", "Regular"),
+    ("trigger", "Trigger"),
+    ("dry_wet", "Dry + Wet"),
+];
+
 const LATENCY_ADJUSTMENT_CHOICES: &[(&str, &str)] = &[
     ("automatic", "Automatic"),
     ("manual", "Manual"),
@@ -80,6 +91,17 @@ fn validate_track_default_latency(draft: &SettingsDraft) -> Result<(), SettingsD
     if adjustment == "manual" && frames < 0 {
         return Err(SettingsDraftError::InvalidValue(
             DEFAULT_NEW_TRACK_PROCESSOR_FRAMES.id().to_owned(),
+        ));
+    }
+    let mode = draft
+        .get(DEFAULT_NEW_TRACK_MODE)
+        .map_err(|_| SettingsDraftError::MissingValue(DEFAULT_NEW_TRACK_MODE.id().to_owned()))?;
+    let processor = draft.get(DEFAULT_NEW_TRACK_PROCESSOR).map_err(|_| {
+        SettingsDraftError::MissingValue(DEFAULT_NEW_TRACK_PROCESSOR.id().to_owned())
+    })?;
+    if mode == "dry_wet" && processor.is_empty() {
+        return Err(SettingsDraftError::InvalidValue(
+            DEFAULT_NEW_TRACK_PROCESSOR.id().to_owned(),
         ));
     }
     Ok(())
@@ -105,6 +127,21 @@ pub fn register_settings_with_appearance_defaults(
 ) -> Result<(), SettingsRegistryError> {
     builder.register(
         SettingDefinition::new(
+            DEFAULT_NEW_TRACK_MODE,
+            "regular".to_owned(),
+            "Track defaults",
+            "Track type",
+            "Topology used when a new Add Track dialog is opened.",
+        )
+        .category_order(10)
+        .setting_order(5)
+        .effect(SettingEffect::NextUse)
+        .editor(SettingEditor::StringChoice {
+            choices: TRACK_MODE_CHOICES,
+        }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
             DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
             2,
             "Track defaults",
@@ -125,6 +162,30 @@ pub fn register_settings_with_appearance_defaults(
         )
         .category_order(10)
         .setting_order(20)
+        .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_DRY_MIDI,
+            false,
+            "Track defaults",
+            "Enable MIDI on new dry/wet tracks",
+            "Dry MIDI state used when a new dry/wet Add Track dialog is opened.",
+        )
+        .category_order(10)
+        .setting_order(25)
+        .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_PROCESSOR,
+            String::new(),
+            "Track defaults",
+            "Processor",
+            "Processor used when a new dry/wet Add Track dialog is opened.",
+        )
+        .category_order(10)
+        .setting_order(27)
         .effect(SettingEffect::NextUse),
     )?;
     builder.register(
@@ -679,11 +740,28 @@ pub fn register_script_settings(
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum AddTrackMode {
+pub(crate) enum AddTrackMode {
     #[default]
     Regular,
     Trigger,
     DryWet,
+}
+
+fn track_mode_value(value: AddTrackMode) -> &'static str {
+    match value {
+        AddTrackMode::Regular => "regular",
+        AddTrackMode::Trigger => "trigger",
+        AddTrackMode::DryWet => "dry_wet",
+    }
+}
+
+fn track_mode_from_value(value: &str) -> Option<AddTrackMode> {
+    match value {
+        "regular" => Some(AddTrackMode::Regular),
+        "trigger" => Some(AddTrackMode::Trigger),
+        "dry_wet" => Some(AddTrackMode::DryWet),
+        _ => None,
+    }
 }
 
 fn recording_adjustment_value(value: RecordingOffsetAdjustmentState) -> &'static str {
@@ -720,6 +798,68 @@ fn processor_adjustment_from_value(value: &str) -> Option<ProcessorLatencyAdjust
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NewTrackConfiguration {
+    pub mode: AddTrackMode,
+    pub audio_channels: u32,
+    pub midi: bool,
+    pub dry_midi: bool,
+    pub processor: Option<TrackProcessorTypeId>,
+    pub recording_adjustment: RecordingOffsetAdjustmentState,
+    pub recording_frames: i32,
+    pub processor_adjustment: ProcessorLatencyAdjustmentState,
+    pub processor_frames: i32,
+}
+
+impl NewTrackConfiguration {
+    pub(crate) fn from_settings_draft(draft: &SettingsDraft) -> Option<Self> {
+        Some(Self {
+            mode: track_mode_from_value(&draft.get(DEFAULT_NEW_TRACK_MODE).ok()?)?,
+            audio_channels: draft.get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS).ok()?,
+            midi: draft.get(DEFAULT_NEW_TRACK_MIDI).ok()?,
+            dry_midi: draft.get(DEFAULT_NEW_TRACK_DRY_MIDI).ok()?,
+            processor: match draft.get(DEFAULT_NEW_TRACK_PROCESSOR).ok()? {
+                value if value.is_empty() => None,
+                value => Some(TrackProcessorTypeId::new(value)),
+            },
+            recording_adjustment: recording_adjustment_from_value(
+                &draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).ok()?,
+            )?,
+            recording_frames: draft.get(DEFAULT_NEW_TRACK_RECORDING_FRAMES).ok()?,
+            processor_adjustment: processor_adjustment_from_value(
+                &draft.get(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT).ok()?,
+            )?,
+            processor_frames: draft.get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES).ok()?,
+        })
+    }
+
+    pub(crate) fn write_to_settings_draft(&self, draft: &mut SettingsDraft) {
+        draft.set(
+            DEFAULT_NEW_TRACK_MODE,
+            track_mode_value(self.mode).to_owned(),
+        );
+        draft.set(DEFAULT_NEW_TRACK_AUDIO_CHANNELS, self.audio_channels);
+        draft.set(DEFAULT_NEW_TRACK_MIDI, self.midi);
+        draft.set(DEFAULT_NEW_TRACK_DRY_MIDI, self.dry_midi);
+        draft.set(
+            DEFAULT_NEW_TRACK_PROCESSOR,
+            self.processor
+                .as_ref()
+                .map_or_else(String::new, |processor| processor.as_str().to_owned()),
+        );
+        draft.set(
+            DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
+            recording_adjustment_value(self.recording_adjustment).to_owned(),
+        );
+        draft.set(DEFAULT_NEW_TRACK_RECORDING_FRAMES, self.recording_frames);
+        draft.set(
+            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
+            processor_adjustment_value(self.processor_adjustment).to_owned(),
+        );
+        draft.set(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES, self.processor_frames);
+    }
+}
+
 fn recording_adjustment_label(value: RecordingOffsetAdjustmentState) -> &'static str {
     match value {
         RecordingOffsetAdjustmentState::Automatic => "Automatic",
@@ -746,6 +886,13 @@ pub struct AppWidgetResponse {
     pub app_actions: Vec<AppAction>,
     pub settings_actions: Vec<SettingsAction>,
     pub about_requested: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrackDefaultSaveResult {
+    Accepted,
+    Retry,
+    Failed,
 }
 
 #[derive(Clone)]
@@ -781,6 +928,7 @@ pub struct AppWidget {
     next_add_track_request_id: u64,
     pending_track_defaults: BTreeMap<u64, SettingsDraft>,
     confirmed_track_defaults: BTreeSet<u64>,
+    accepted_track_defaults: BTreeMap<u64, SettingsDraft>,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
@@ -860,6 +1008,7 @@ impl AppWidget {
             next_add_track_request_id: 1,
             pending_track_defaults: BTreeMap::new(),
             confirmed_track_defaults: BTreeSet::new(),
+            accepted_track_defaults: BTreeMap::new(),
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
@@ -983,6 +1132,7 @@ impl AppWidget {
         .map(AppAction::KeyEvent)
         .collect::<Vec<_>>();
         let mut settings_actions = Vec::new();
+        self.reconcile_accepted_track_defaults(settings_state);
         self.resolve_track_default_saves(state, settings_state, &mut settings_actions);
         let mut about_requested = false;
         let touch_mode = settings_state.active.get(TOUCH_MODE).unwrap_or(false);
@@ -1022,7 +1172,9 @@ impl AppWidget {
                                 actions.push(AppAction::RequestLoadSessionUrl);
                             }
                             if self.global_controls.take_settings_requested() {
+                                let defaults = self.effective_track_defaults(settings_state);
                                 self.settings.open(settings_state);
+                                self.settings.apply_track_defaults(&defaults);
                             }
                             about_requested |= self.global_controls.take_about_requested();
                             ui.separator();
@@ -1170,7 +1322,8 @@ impl AppWidget {
                     &state.global_controls,
                 );
                 if response.add_track_requested {
-                    self.open_add_track_dialog(main_tracks.len(), settings_state);
+                    let defaults = self.effective_track_defaults(settings_state);
+                    self.open_add_track_dialog(main_tracks.len(), &defaults);
                 }
                 if let Some(track_id) = response.connection_track_requested {
                     self.connections.open(ConnectionScope::Track(track_id));
@@ -1207,6 +1360,7 @@ impl AppWidget {
             settings_state,
             &state.scripting,
             &state.audio_drivers,
+            &state.track_processors,
             script_paths,
         );
         actions.extend(settings_response.app_actions);
@@ -1355,45 +1509,19 @@ impl AppWidget {
             })
     }
 
-    fn open_add_track_dialog(
-        &mut self,
-        main_track_count: usize,
-        settings_state: &SettingsViewState,
-    ) {
+    fn open_add_track_dialog(&mut self, main_track_count: usize, defaults: &SettingsDraft) {
         self.add_track_name = format!("Track {}", main_track_count + 1);
-        self.add_track_mode = AddTrackMode::Regular;
-        self.add_track_audio_channels = settings_state
-            .active
-            .get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
-            .expect("registered audio-channel setting must retain its type");
-        self.add_track_midi = settings_state
-            .active
-            .get(DEFAULT_NEW_TRACK_MIDI)
-            .expect("registered MIDI setting must retain its type");
-        self.add_track_dry_midi = self.add_track_midi;
-        self.add_track_processor = None;
-        self.add_track_recording_adjustment = recording_adjustment_from_value(
-            &settings_state
-                .active
-                .get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT)
-                .expect("registered recording-adjustment setting must retain its type"),
-        )
-        .expect("registered recording-adjustment setting must retain a valid choice");
-        self.add_track_recording_frames = settings_state
-            .active
-            .get(DEFAULT_NEW_TRACK_RECORDING_FRAMES)
-            .expect("registered recording-frame setting must retain its type");
-        self.add_track_processor_adjustment = processor_adjustment_from_value(
-            &settings_state
-                .active
-                .get(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT)
-                .expect("registered processor-adjustment setting must retain its type"),
-        )
-        .expect("registered processor-adjustment setting must retain a valid choice");
-        self.add_track_processor_frames = settings_state
-            .active
-            .get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES)
-            .expect("registered processor-frame setting must retain its type");
+        let configuration = NewTrackConfiguration::from_settings_draft(defaults)
+            .expect("registered new-track settings must retain valid types and choices");
+        self.add_track_mode = configuration.mode;
+        self.add_track_audio_channels = configuration.audio_channels;
+        self.add_track_midi = configuration.midi;
+        self.add_track_dry_midi = configuration.dry_midi;
+        self.add_track_processor = configuration.processor;
+        self.add_track_recording_adjustment = configuration.recording_adjustment;
+        self.add_track_recording_frames = configuration.recording_frames;
+        self.add_track_processor_adjustment = configuration.processor_adjustment;
+        self.add_track_processor_frames = configuration.processor_frames;
         self.add_track_make_default = false;
         self.add_track_open = true;
     }
@@ -1404,7 +1532,8 @@ impl AppWidget {
         &mut self,
         settings_state: &SettingsViewState,
     ) -> (u32, bool) {
-        self.open_add_track_dialog(0, settings_state);
+        let defaults = self.effective_track_defaults(settings_state);
+        self.open_add_track_dialog(0, &defaults);
         (self.add_track_audio_channels, self.add_track_midi)
     }
 
@@ -1704,18 +1833,6 @@ impl AppWidget {
         if !self.add_track_open {
             return;
         }
-        if self.add_track_mode == AddTrackMode::DryWet
-            && self.add_track_processor.as_ref().is_none_or(|selected| {
-                !processors
-                    .iter()
-                    .any(|processor| processor.available && processor.id == *selected)
-            })
-        {
-            self.add_track_processor = processors
-                .iter()
-                .find(|processor| processor.available)
-                .map(|processor| processor.id.clone());
-        }
         let mut open = self.add_track_open;
         let mut accepted = false;
         let mut cancelled = false;
@@ -1725,222 +1842,46 @@ impl AppWidget {
             .resizable(false)
             .open(&mut open)
             .show(context, |ui| {
-                egui::Grid::new("add_track_fields")
+                egui::Grid::new("add_track_name")
                     .num_columns(2)
                     .spacing([10.0, 6.0])
                     .show(ui, |ui| {
                         ui.label("Name:");
                         ui.text_edit_singleline(&mut self.add_track_name);
                         ui.end_row();
-                        ui.label("Track type:");
-                        ui.horizontal(|ui| {
-                            ui.selectable_value(
-                                &mut self.add_track_mode,
-                                AddTrackMode::Regular,
-                                "Regular",
-                            );
-                            ui.selectable_value(
-                                &mut self.add_track_mode,
-                                AddTrackMode::Trigger,
-                                "Trigger",
-                            );
-                            ui.selectable_value(
-                                &mut self.add_track_mode,
-                                AddTrackMode::DryWet,
-                                "Dry + Wet",
-                            );
-                        });
-                        ui.end_row();
-                        let selected_processor =
-                            self.add_track_processor.as_ref().and_then(|selected| {
-                                processors
-                                    .iter()
-                                    .find(|processor| processor.id == *selected)
-                            });
-                        let midi_policy = selected_processor
-                            .map(|processor| processor.constraints.midi)
-                            .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
-                        if self.add_track_mode == AddTrackMode::DryWet
-                            && selected_processor.is_some()
-                        {
-                            match midi_policy {
-                                crate::TrackProcessorMidiPolicy::Required => {
-                                    self.add_track_dry_midi = true;
-                                }
-                                crate::TrackProcessorMidiPolicy::Unsupported => {
-                                    self.add_track_dry_midi = false;
-                                }
-                                crate::TrackProcessorMidiPolicy::Optional => {}
-                            }
-                        }
-
-                        let audio_enabled = self.add_track_mode != AddTrackMode::Trigger;
-                        ui.add_enabled(audio_enabled, egui::Label::new("Audio:"));
-                        ui.add_enabled_ui(audio_enabled, |ui| {
-                            show_audio_channel_count(
-                                ui,
-                                "add_track_audio",
-                                &mut self.add_track_audio_channels,
-                            );
-                        });
-                        ui.end_row();
-
-                        let midi_applicable = match self.add_track_mode {
-                            AddTrackMode::Regular => true,
-                            AddTrackMode::Trigger => false,
-                            AddTrackMode::DryWet => {
-                                midi_policy != crate::TrackProcessorMidiPolicy::Unsupported
-                            }
-                        };
-                        ui.add_enabled(midi_applicable, egui::Label::new("MIDI:"));
-                        let (mut displayed_midi, midi_editable) = match self.add_track_mode {
-                            AddTrackMode::Regular => (self.add_track_midi, true),
-                            AddTrackMode::Trigger => (false, false),
-                            AddTrackMode::DryWet => (
-                                self.add_track_dry_midi,
-                                midi_policy == crate::TrackProcessorMidiPolicy::Optional,
-                            ),
-                        };
-                        let midi = ui
-                            .push_id("add_track_midi", |ui| {
-                                ui.add_enabled(
-                                    midi_editable,
-                                    egui::Checkbox::new(&mut displayed_midi, "Enabled"),
-                                )
-                            })
-                            .inner;
-                        #[cfg(test)]
-                        {
-                            self.add_track_midi_id = Some(midi.id);
-                        }
-                        if midi.changed() {
-                            match self.add_track_mode {
-                                AddTrackMode::Regular => self.add_track_midi = displayed_midi,
-                                AddTrackMode::DryWet => self.add_track_dry_midi = displayed_midi,
-                                AddTrackMode::Trigger => {}
-                            }
-                        }
-                        ui.end_row();
-
-                        let processing_enabled = self.add_track_mode == AddTrackMode::DryWet;
-                        ui.add_enabled(processing_enabled, egui::Label::new("Processing:"));
-                        let selected = if processing_enabled {
-                            selected_processor
-                                .map(|processor| processor.label.as_str())
-                                .unwrap_or("No processors available")
-                        } else {
-                            "Not applicable"
-                        };
-                        ui.add_enabled_ui(processing_enabled, |ui| {
-                            egui::ComboBox::from_id_salt("add_track_processor")
-                                .selected_text(selected)
-                                .show_ui(ui, |ui| {
-                                    for processor in processors {
-                                        ui.add_enabled_ui(processor.available, |ui| {
-                                            ui.selectable_value(
-                                                &mut self.add_track_processor,
-                                                Some(processor.id.clone()),
-                                                &processor.label,
-                                            );
-                                        });
-                                        if let Some(reason) = &processor.unavailable_reason {
-                                            ui.small(reason);
-                                        }
-                                    }
-                                });
-                        });
-                        ui.end_row();
-
-                        ui.label("Recording alignment:");
-                        egui::ComboBox::from_id_salt("add_track_recording_adjustment")
-                            .selected_text(recording_adjustment_label(
-                                self.add_track_recording_adjustment,
-                            ))
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.add_track_recording_adjustment,
-                                    RecordingOffsetAdjustmentState::Automatic,
-                                    "Automatic",
-                                );
-                                ui.selectable_value(
-                                    &mut self.add_track_recording_adjustment,
-                                    RecordingOffsetAdjustmentState::ManualOverride,
-                                    "Manual",
-                                );
-                                ui.selectable_value(
-                                    &mut self.add_track_recording_adjustment,
-                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim,
-                                    "Automatic + trim",
-                                );
-                            });
-                        ui.end_row();
-
-                        ui.label(
-                            if self.add_track_recording_adjustment
-                                == RecordingOffsetAdjustmentState::AutomaticPlusTrim
-                            {
-                                "Recording trim:"
-                            } else {
-                                "Recording offset:"
-                            },
-                        );
-                        let _recording_frames = ui.add_enabled(
-                            self.add_track_recording_adjustment
-                                != RecordingOffsetAdjustmentState::Automatic,
-                            egui::DragValue::new(&mut self.add_track_recording_frames)
-                                .suffix(" frames"),
-                        );
-                        #[cfg(test)]
-                        {
-                            self.add_track_recording_frames_rect = Some(_recording_frames.rect);
-                        }
-                        ui.end_row();
-
-                        ui.label("Processor latency:");
-                        egui::ComboBox::from_id_salt("add_track_processor_adjustment")
-                            .selected_text(processor_adjustment_label(
-                                self.add_track_processor_adjustment,
-                            ))
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.add_track_processor_adjustment,
-                                    ProcessorLatencyAdjustmentState::Automatic,
-                                    "Automatic",
-                                );
-                                ui.selectable_value(
-                                    &mut self.add_track_processor_adjustment,
-                                    ProcessorLatencyAdjustmentState::ManualOverride,
-                                    "Manual",
-                                );
-                                ui.selectable_value(
-                                    &mut self.add_track_processor_adjustment,
-                                    ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
-                                    "Automatic + trim",
-                                );
-                            });
-                        ui.end_row();
-
-                        ui.label(
-                            if self.add_track_processor_adjustment
-                                == ProcessorLatencyAdjustmentState::AutomaticPlusTrim
-                            {
-                                "Processor trim:"
-                            } else {
-                                "Processor latency value:"
-                            },
-                        );
-                        let _processor_frames = ui.add_enabled(
-                            self.add_track_processor_adjustment
-                                != ProcessorLatencyAdjustmentState::Automatic,
-                            egui::DragValue::new(&mut self.add_track_processor_frames)
-                                .suffix(" frames"),
-                        );
-                        #[cfg(test)]
-                        {
-                            self.add_track_processor_frames_rect = Some(_processor_frames.rect);
-                        }
-                        ui.end_row();
                     });
+                let mut configuration = NewTrackConfiguration {
+                    mode: self.add_track_mode,
+                    audio_channels: self.add_track_audio_channels,
+                    midi: self.add_track_midi,
+                    dry_midi: self.add_track_dry_midi,
+                    processor: self.add_track_processor.clone(),
+                    recording_adjustment: self.add_track_recording_adjustment,
+                    recording_frames: self.add_track_recording_frames,
+                    processor_adjustment: self.add_track_processor_adjustment,
+                    processor_frames: self.add_track_processor_frames,
+                };
+                let _configuration_ui = show_new_track_configuration(
+                    ui,
+                    "add_track_configuration",
+                    &mut configuration,
+                    processors,
+                );
+                self.add_track_mode = configuration.mode;
+                self.add_track_audio_channels = configuration.audio_channels;
+                self.add_track_midi = configuration.midi;
+                self.add_track_dry_midi = configuration.dry_midi;
+                self.add_track_processor = configuration.processor;
+                self.add_track_recording_adjustment = configuration.recording_adjustment;
+                self.add_track_recording_frames = configuration.recording_frames;
+                self.add_track_processor_adjustment = configuration.processor_adjustment;
+                self.add_track_processor_frames = configuration.processor_frames;
+                #[cfg(test)]
+                {
+                    self.add_track_midi_id = _configuration_ui.midi_id;
+                    self.add_track_recording_frames_rect = _configuration_ui.recording_frames_rect;
+                    self.add_track_processor_frames_rect = _configuration_ui.processor_frames_rect;
+                }
                 let _make_default = ui.checkbox(&mut self.add_track_make_default, "make default");
                 #[cfg(test)]
                 {
@@ -2037,32 +1978,18 @@ impl AppWidget {
 
     fn add_track_defaults_draft(&self, settings_state: &SettingsViewState) -> SettingsDraft {
         let mut draft = SettingsDraft::from_snapshot(&settings_state.active);
-        draft.set(
-            DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
-            self.add_track_audio_channels,
-        );
-        let midi = match self.add_track_mode {
-            AddTrackMode::Regular => self.add_track_midi,
-            AddTrackMode::Trigger => false,
-            AddTrackMode::DryWet => self.add_track_dry_midi,
-        };
-        draft.set(DEFAULT_NEW_TRACK_MIDI, midi);
-        draft.set(
-            DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
-            recording_adjustment_value(self.add_track_recording_adjustment).to_owned(),
-        );
-        draft.set(
-            DEFAULT_NEW_TRACK_RECORDING_FRAMES,
-            self.add_track_recording_frames,
-        );
-        draft.set(
-            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
-            processor_adjustment_value(self.add_track_processor_adjustment).to_owned(),
-        );
-        draft.set(
-            DEFAULT_NEW_TRACK_PROCESSOR_FRAMES,
-            self.add_track_processor_frames,
-        );
+        NewTrackConfiguration {
+            mode: self.add_track_mode,
+            audio_channels: self.add_track_audio_channels,
+            midi: self.add_track_midi,
+            dry_midi: self.add_track_dry_midi,
+            processor: self.add_track_processor.clone(),
+            recording_adjustment: self.add_track_recording_adjustment,
+            recording_frames: self.add_track_recording_frames,
+            processor_adjustment: self.add_track_processor_adjustment,
+            processor_frames: self.add_track_processor_frames,
+        }
+        .write_to_settings_draft(&mut draft);
         draft
     }
 
@@ -2107,44 +2034,36 @@ impl AppWidget {
         draft: &SettingsDraft,
         settings_state: &SettingsViewState,
     ) -> SettingsDraft {
+        let configuration = NewTrackConfiguration::from_settings_draft(draft)
+            .expect("pending new-track defaults must remain complete and valid");
         let mut rebased = SettingsDraft::from_snapshot(&settings_state.active);
-        rebased.set(
-            DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
-            draft
-                .get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
-                .expect("pending track defaults have an audio channel count"),
-        );
-        rebased.set(
-            DEFAULT_NEW_TRACK_MIDI,
-            draft
-                .get(DEFAULT_NEW_TRACK_MIDI)
-                .expect("pending track defaults have a MIDI value"),
-        );
-        rebased.set(
-            DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
-            draft
-                .get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT)
-                .expect("pending track defaults have a recording adjustment"),
-        );
-        rebased.set(
-            DEFAULT_NEW_TRACK_RECORDING_FRAMES,
-            draft
-                .get(DEFAULT_NEW_TRACK_RECORDING_FRAMES)
-                .expect("pending track defaults have recording frames"),
-        );
-        rebased.set(
-            DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
-            draft
-                .get(DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT)
-                .expect("pending track defaults have a processor adjustment"),
-        );
-        rebased.set(
-            DEFAULT_NEW_TRACK_PROCESSOR_FRAMES,
-            draft
-                .get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES)
-                .expect("pending track defaults have processor frames"),
-        );
+        configuration.write_to_settings_draft(&mut rebased);
         rebased
+    }
+
+    fn effective_track_defaults(&self, settings_state: &SettingsViewState) -> SettingsDraft {
+        let mut selected = self
+            .accepted_track_defaults
+            .iter()
+            .next_back()
+            .map(|(request_id, draft)| (*request_id, draft));
+        for request_id in self.confirmed_track_defaults.iter().copied() {
+            let Some(draft) = self.pending_track_defaults.get(&request_id) else {
+                continue;
+            };
+            if selected.is_none_or(|(selected_id, _)| request_id > selected_id) {
+                selected = Some((request_id, draft));
+            }
+        }
+        selected.map_or_else(
+            || SettingsDraft::from_snapshot(&settings_state.active),
+            |(_, draft)| Self::rebased_track_defaults(draft, settings_state),
+        )
+    }
+
+    fn reconcile_accepted_track_defaults(&mut self, settings_state: &SettingsViewState) {
+        self.accepted_track_defaults
+            .retain(|_, draft| draft.base_revision() == settings_state.active.revision());
     }
 
     fn resolve_track_default_saves(
@@ -2173,17 +2092,34 @@ impl AppWidget {
             let Some(draft) = self.pending_track_defaults.get(&request_id) else {
                 continue;
             };
+            let rebased = Self::rebased_track_defaults(draft, settings_state);
+            self.pending_track_defaults
+                .insert(request_id, rebased.clone());
             settings_actions.push(SettingsAction::SaveTrackDefaults {
                 request_id,
-                draft: Self::rebased_track_defaults(draft, settings_state),
+                draft: rebased,
             });
         }
     }
 
-    pub fn notify_track_default_save_result(&mut self, request_id: u64, complete: bool) {
-        if complete {
-            self.pending_track_defaults.remove(&request_id);
-            self.confirmed_track_defaults.remove(&request_id);
+    pub fn notify_track_default_save_result(
+        &mut self,
+        request_id: u64,
+        result: TrackDefaultSaveResult,
+    ) {
+        match result {
+            TrackDefaultSaveResult::Accepted => {
+                if let Some(draft) = self.pending_track_defaults.remove(&request_id) {
+                    self.accepted_track_defaults.insert(request_id, draft);
+                }
+                self.confirmed_track_defaults.remove(&request_id);
+            }
+            TrackDefaultSaveResult::Retry => {}
+            TrackDefaultSaveResult::Failed => {
+                self.pending_track_defaults.remove(&request_id);
+                self.confirmed_track_defaults.remove(&request_id);
+                self.accepted_track_defaults.remove(&request_id);
+            }
         }
     }
 
@@ -2465,6 +2401,223 @@ fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> A
     }
 }
 
+#[derive(Default)]
+pub(crate) struct NewTrackConfigurationUi {
+    pub midi_id: Option<egui::Id>,
+    pub recording_frames_rect: Option<egui::Rect>,
+    pub processor_frames_rect: Option<egui::Rect>,
+}
+
+pub(crate) fn show_new_track_configuration(
+    ui: &mut egui::Ui,
+    id: &str,
+    configuration: &mut NewTrackConfiguration,
+    processors: &[TrackProcessorDescriptor],
+) -> NewTrackConfigurationUi {
+    if configuration.mode == AddTrackMode::DryWet
+        && configuration.processor.as_ref().is_none_or(|selected| {
+            !processors
+                .iter()
+                .any(|processor| processor.available && processor.id == *selected)
+        })
+    {
+        configuration.processor = processors
+            .iter()
+            .find(|processor| processor.available)
+            .map(|processor| processor.id.clone());
+    }
+    let selected_processor = configuration.processor.as_ref().and_then(|selected| {
+        processors
+            .iter()
+            .find(|processor| processor.id == *selected)
+    });
+    let midi_policy = selected_processor
+        .map(|processor| processor.constraints.midi)
+        .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
+    if configuration.mode == AddTrackMode::DryWet && selected_processor.is_some() {
+        match midi_policy {
+            crate::TrackProcessorMidiPolicy::Required => configuration.dry_midi = true,
+            crate::TrackProcessorMidiPolicy::Unsupported => configuration.dry_midi = false,
+            crate::TrackProcessorMidiPolicy::Optional => {}
+        }
+    }
+
+    let mut response = NewTrackConfigurationUi::default();
+    ui.push_id(id, |ui| {
+        egui::Grid::new("fields")
+            .num_columns(2)
+            .spacing([10.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("Track type:");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut configuration.mode, AddTrackMode::Regular, "Regular");
+                    ui.selectable_value(&mut configuration.mode, AddTrackMode::Trigger, "Trigger");
+                    ui.selectable_value(&mut configuration.mode, AddTrackMode::DryWet, "Dry + Wet");
+                });
+                ui.end_row();
+
+                let audio_enabled = configuration.mode != AddTrackMode::Trigger;
+                ui.add_enabled(audio_enabled, egui::Label::new("Audio:"));
+                ui.add_enabled_ui(audio_enabled, |ui| {
+                    show_audio_channel_count(ui, "audio", &mut configuration.audio_channels);
+                });
+                ui.end_row();
+
+                let midi_applicable = match configuration.mode {
+                    AddTrackMode::Regular => true,
+                    AddTrackMode::Trigger => false,
+                    AddTrackMode::DryWet => {
+                        midi_policy != crate::TrackProcessorMidiPolicy::Unsupported
+                    }
+                };
+                ui.add_enabled(midi_applicable, egui::Label::new("MIDI:"));
+                let (mut displayed_midi, midi_editable) = match configuration.mode {
+                    AddTrackMode::Regular => (configuration.midi, true),
+                    AddTrackMode::Trigger => (false, false),
+                    AddTrackMode::DryWet => (
+                        configuration.dry_midi,
+                        midi_policy == crate::TrackProcessorMidiPolicy::Optional,
+                    ),
+                };
+                let midi = ui.add_enabled(
+                    midi_editable,
+                    egui::Checkbox::new(&mut displayed_midi, "Enabled"),
+                );
+                response.midi_id = Some(midi.id);
+                if midi.changed() {
+                    match configuration.mode {
+                        AddTrackMode::Regular => configuration.midi = displayed_midi,
+                        AddTrackMode::DryWet => configuration.dry_midi = displayed_midi,
+                        AddTrackMode::Trigger => {}
+                    }
+                }
+                ui.end_row();
+
+                let processing_enabled = configuration.mode == AddTrackMode::DryWet;
+                ui.add_enabled(processing_enabled, egui::Label::new("Processing:"));
+                let selected = if processing_enabled {
+                    selected_processor
+                        .map(|processor| processor.label.as_str())
+                        .unwrap_or("No processors available")
+                } else {
+                    "Not applicable"
+                };
+                ui.add_enabled_ui(processing_enabled, |ui| {
+                    egui::ComboBox::from_id_salt("processor")
+                        .selected_text(selected)
+                        .show_ui(ui, |ui| {
+                            for processor in processors {
+                                ui.add_enabled_ui(processor.available, |ui| {
+                                    ui.selectable_value(
+                                        &mut configuration.processor,
+                                        Some(processor.id.clone()),
+                                        &processor.label,
+                                    );
+                                });
+                                if let Some(reason) = &processor.unavailable_reason {
+                                    ui.small(reason);
+                                }
+                            }
+                        });
+                });
+                ui.end_row();
+
+                ui.label("Recording alignment:");
+                egui::ComboBox::from_id_salt("recording_adjustment")
+                    .selected_text(recording_adjustment_label(
+                        configuration.recording_adjustment,
+                    ))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut configuration.recording_adjustment,
+                            RecordingOffsetAdjustmentState::Automatic,
+                            "Automatic",
+                        );
+                        ui.selectable_value(
+                            &mut configuration.recording_adjustment,
+                            RecordingOffsetAdjustmentState::ManualOverride,
+                            "Manual",
+                        );
+                        ui.selectable_value(
+                            &mut configuration.recording_adjustment,
+                            RecordingOffsetAdjustmentState::AutomaticPlusTrim,
+                            "Automatic + trim",
+                        );
+                    });
+                ui.end_row();
+
+                ui.label(
+                    if configuration.recording_adjustment
+                        == RecordingOffsetAdjustmentState::AutomaticPlusTrim
+                    {
+                        "Recording trim:"
+                    } else {
+                        "Recording offset:"
+                    },
+                );
+                let recording_frames = ui.add_enabled(
+                    configuration.recording_adjustment != RecordingOffsetAdjustmentState::Automatic,
+                    egui::DragValue::new(&mut configuration.recording_frames)
+                        .range(-crate::MAX_TRACK_LATENCY_FRAMES..=crate::MAX_TRACK_LATENCY_FRAMES)
+                        .suffix(" frames"),
+                );
+                response.recording_frames_rect = Some(recording_frames.rect);
+                ui.end_row();
+
+                ui.label("Processor latency:");
+                egui::ComboBox::from_id_salt("processor_adjustment")
+                    .selected_text(processor_adjustment_label(
+                        configuration.processor_adjustment,
+                    ))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut configuration.processor_adjustment,
+                            ProcessorLatencyAdjustmentState::Automatic,
+                            "Automatic",
+                        );
+                        ui.selectable_value(
+                            &mut configuration.processor_adjustment,
+                            ProcessorLatencyAdjustmentState::ManualOverride,
+                            "Manual",
+                        );
+                        ui.selectable_value(
+                            &mut configuration.processor_adjustment,
+                            ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
+                            "Automatic + trim",
+                        );
+                    });
+                ui.end_row();
+
+                ui.label(
+                    if configuration.processor_adjustment
+                        == ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+                    {
+                        "Processor trim:"
+                    } else {
+                        "Processor latency value:"
+                    },
+                );
+                let processor_min = if configuration.processor_adjustment
+                    == ProcessorLatencyAdjustmentState::ManualOverride
+                {
+                    0
+                } else {
+                    -crate::MAX_TRACK_LATENCY_FRAMES
+                };
+                let processor_frames = ui.add_enabled(
+                    configuration.processor_adjustment
+                        != ProcessorLatencyAdjustmentState::Automatic,
+                    egui::DragValue::new(&mut configuration.processor_frames)
+                        .range(processor_min..=crate::MAX_TRACK_LATENCY_FRAMES)
+                        .suffix(" frames"),
+                );
+                response.processor_frames_rect = Some(processor_frames.rect);
+                ui.end_row();
+            });
+    });
+    response
+}
+
 fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
     ui.push_id(id, |ui| {
         ui.horizontal(|ui| {
@@ -2647,6 +2800,16 @@ mod tests {
             DEFAULT_NEW_TRACK_PROCESSOR_ADJUSTMENT,
             "automatic_plus_trim".to_owned(),
         );
+        assert_eq!(registry.validate_draft(&draft), Ok(()));
+
+        draft.set(DEFAULT_NEW_TRACK_MODE, "dry_wet".to_owned());
+        assert_eq!(
+            registry.validate_draft(&draft),
+            Err(SettingsDraftError::InvalidValue(
+                DEFAULT_NEW_TRACK_PROCESSOR.id().to_owned()
+            ))
+        );
+        draft.set(DEFAULT_NEW_TRACK_PROCESSOR, "processor".to_owned());
         assert_eq!(registry.validate_draft(&draft), Ok(()));
     }
 
@@ -3548,14 +3711,17 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn add_track_defaults_are_registered_and_read_only_when_a_new_draft_opens() {
+    fn complete_track_defaults_round_trip_into_a_new_dialog_draft() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let initial = registry.defaults(4);
         let mut draft = SettingsDraft::from_snapshot(&initial);
+        draft.set(DEFAULT_NEW_TRACK_MODE, "dry_wet".to_owned());
         draft.set(DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
         draft.set(DEFAULT_NEW_TRACK_MIDI, true);
+        draft.set(DEFAULT_NEW_TRACK_DRY_MIDI, true);
+        draft.set(DEFAULT_NEW_TRACK_PROCESSOR, "processor".to_owned());
         draft.set(
             DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
             "automatic_plus_trim".to_owned(),
@@ -3581,10 +3747,20 @@ mod tests {
             persistence: SettingsPersistenceState::Saved,
         };
         let mut widget = AppWidget::default();
-        widget.open_add_track_dialog(2, &state);
+        let active_defaults = SettingsDraft::from_snapshot(&state.active);
+        widget.open_add_track_dialog(2, &active_defaults);
         assert_eq!(widget.add_track_name, "Track 3");
+        assert_eq!(widget.add_track_mode, AddTrackMode::DryWet);
         assert_eq!(widget.add_track_audio_channels, 6);
         assert!(widget.add_track_midi);
+        assert!(widget.add_track_dry_midi);
+        assert_eq!(
+            widget
+                .add_track_processor
+                .as_ref()
+                .map(|value| value.as_str()),
+            Some("processor")
+        );
         assert_eq!(
             widget.add_track_recording_adjustment,
             RecordingOffsetAdjustmentState::AutomaticPlusTrim
@@ -3682,8 +3858,11 @@ mod tests {
         };
         assert_eq!(*saved_request_id, request_id);
         assert_eq!(draft.base_revision(), 2);
+        assert_eq!(draft.get(DEFAULT_NEW_TRACK_MODE).unwrap(), "dry_wet");
         assert_eq!(draft.get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS).unwrap(), 3);
-        assert!(draft.get(DEFAULT_NEW_TRACK_MIDI).unwrap());
+        assert!(!draft.get(DEFAULT_NEW_TRACK_MIDI).unwrap());
+        assert!(draft.get(DEFAULT_NEW_TRACK_DRY_MIDI).unwrap());
+        assert_eq!(draft.get(DEFAULT_NEW_TRACK_PROCESSOR).unwrap(), "processor");
         assert_eq!(
             draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).unwrap(),
             "automatic"
@@ -3694,8 +3873,9 @@ mod tests {
             "automatic_plus_trim"
         );
         assert_eq!(draft.get(DEFAULT_NEW_TRACK_PROCESSOR_FRAMES).unwrap(), 128);
+        let desired = draft.clone();
 
-        widget.notify_track_default_save_result(request_id, false);
+        widget.notify_track_default_save_result(request_id, TrackDefaultSaveResult::Retry);
         assert!(widget.pending_track_defaults.contains_key(&request_id));
         settings_actions.clear();
         let latest_settings = SettingsViewState {
@@ -3712,9 +3892,47 @@ mod tests {
         };
         assert_eq!(draft.base_revision(), 3);
 
-        widget.notify_track_default_save_result(request_id, true);
+        widget.notify_track_default_save_result(request_id, TrackDefaultSaveResult::Accepted);
         assert!(widget.pending_track_defaults.is_empty());
         assert!(widget.confirmed_track_defaults.is_empty());
+        assert!(widget.accepted_track_defaults.contains_key(&request_id));
+
+        let effective = widget.effective_track_defaults(&latest_settings);
+        widget.open_add_track_dialog(1, &effective);
+        assert_eq!(widget.add_track_mode, AddTrackMode::DryWet);
+        assert_eq!(widget.add_track_audio_channels, 3);
+        assert!(widget.add_track_dry_midi);
+        assert_eq!(
+            widget
+                .add_track_processor
+                .as_ref()
+                .map(|value| value.as_str()),
+            Some("processor")
+        );
+        assert_eq!(
+            widget.add_track_recording_adjustment,
+            RecordingOffsetAdjustmentState::Automatic
+        );
+        assert_eq!(
+            widget.add_track_processor_adjustment,
+            ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+        );
+        assert_eq!(widget.add_track_processor_frames, 128);
+
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &desired,
+                "test",
+            )
+            .unwrap();
+        let persisted_settings = SettingsViewState {
+            active: Arc::new(registry.resolve(&document, 4).snapshot),
+            persistence: SettingsPersistenceState::Saved,
+            ..latest_settings
+        };
+        widget.reconcile_accepted_track_defaults(&persisted_settings);
+        assert!(widget.accepted_track_defaults.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -90,8 +90,11 @@ Version 1 registers the cross-target appearance scale, track defaults, and dynam
 | Key | Type | Default | Effect |
 |---|---|---:|---|
 | `appearance.ui_scale_factor` | number | `1.0`, or `1.25` when the detected screen's shortest side is at most 800 UI points | Explicit Apply and save; allowed range is 0.75–2.0 |
+| `tracks.new.default_mode` | string choice | `"regular"` | Next Add Track dialog opened; allowed values are `"regular"`, `"trigger"`, and `"dry_wet"` |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
-| `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
+| `tracks.new.default_midi` | boolean | `false` | MIDI state for the next regular Add Track dialog opened |
+| `tracks.new.default_dry_midi` | boolean | `false` | Dry MIDI state for the next dry/wet Add Track dialog opened; processor requirements take precedence |
+| `tracks.new.default_processor` | string | `""` | Processor type for the next dry/wet Add Track dialog opened; a dry/wet default requires an available processor |
 | `tracks.new.default_processor_adjustment` | string choice | `"manual"` | Next Add Track dialog opened; allowed values are `"automatic"`, `"manual"`, and `"automatic_plus_trim"` |
 | `tracks.new.default_processor_frames` | `i32` | `0` | Next Add Track dialog opened; allowed range is -768000–768000 frames, with negative values valid only as automatic trim |
 | `tracks.new.default_recording_adjustment` | string choice | `"manual"` | Next Add Track dialog opened; allowed values are `"automatic"`, `"manual"`, and `"automatic_plus_trim"` |

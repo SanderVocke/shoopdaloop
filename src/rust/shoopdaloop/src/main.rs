@@ -43,7 +43,8 @@ use shoop_egui::register_settings;
 use shoop_egui::AudioDriverConfig;
 use shoop_egui::{
     register_audio_settings, register_settings_with_appearance_defaults, AppIntent, AppSnapshot,
-    AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
+    AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, TrackDefaultSaveResult,
+    UI_SCALE_FACTOR,
 };
 use shoop_egui::{TracingStatus, TracingStopped};
 
@@ -827,27 +828,35 @@ impl UnifiedApp {
             SettingsAction::SaveTrackDefaults { request_id, draft } => {
                 match validate_script_draft(&draft) {
                     Err(error) => {
-                        self.widget
-                            .notify_track_default_save_result(request_id, true);
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Failed,
+                        );
                         Err(error)
                     }
                     Ok(()) => match self.settings.request_save(draft) {
                         Ok(()) => {
-                            self.widget
-                                .notify_track_default_save_result(request_id, true);
+                            self.widget.notify_track_default_save_result(
+                                request_id,
+                                TrackDefaultSaveResult::Accepted,
+                            );
                             Ok(())
                         }
                         Err(
                             settings::SettingsManagerError::Saving
                             | settings::SettingsManagerError::StaleRevision { .. },
                         ) => {
-                            self.widget
-                                .notify_track_default_save_result(request_id, false);
+                            self.widget.notify_track_default_save_result(
+                                request_id,
+                                TrackDefaultSaveResult::Retry,
+                            );
                             Ok(())
                         }
                         Err(error) => {
-                            self.widget
-                                .notify_track_default_save_result(request_id, true);
+                            self.widget.notify_track_default_save_result(
+                                request_id,
+                                TrackDefaultSaveResult::Failed,
+                            );
                             Err(error.into())
                         }
                     },
@@ -949,21 +958,27 @@ impl UnifiedApp {
             SettingsAction::SaveTrackDefaults { request_id, draft } => {
                 match self.settings.request_save(draft) {
                     Ok(()) => {
-                        self.widget
-                            .notify_track_default_save_result(request_id, true);
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Accepted,
+                        );
                         Ok(())
                     }
                     Err(
                         settings::SettingsManagerError::Saving
                         | settings::SettingsManagerError::StaleRevision { .. },
                     ) => {
-                        self.widget
-                            .notify_track_default_save_result(request_id, false);
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Retry,
+                        );
                         Ok(())
                     }
                     Err(error) => {
-                        self.widget
-                            .notify_track_default_save_result(request_id, true);
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Failed,
+                        );
                         Err(error)
                     }
                 }
