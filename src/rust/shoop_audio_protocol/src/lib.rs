@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 19;
+pub const PROTOCOL_VERSION: u16 = 20;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -1098,7 +1098,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":19,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":20,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1109,7 +1109,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":19,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":20,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

@@ -574,6 +574,17 @@ mod tests {
         );
         assert_eq!(decode_session(&previous).unwrap(), previous_bundle);
 
+        let mut with_recorded_state = bundle.clone();
+        with_recorded_state
+            .document
+            .fx_states
+            .push(FxStateDocument {
+                id: 99,
+                chain_type: FxChainTypeDocument::BuiltInFx,
+                internal_state: "shoop-builtin-fx:1:1".to_owned(),
+            });
+        validate_bundle(&with_recorded_state).unwrap();
+
         for invalid_state in [
             "",
             "shoop-builtin-fx:1:false",
@@ -588,6 +599,13 @@ mod tests {
                 .unwrap()
                 .internal_state = invalid_state.to_owned();
             assert!(validate_bundle(&invalid).is_err(), "{invalid_state}");
+
+            let mut invalid_recorded_state = with_recorded_state.clone();
+            invalid_recorded_state.document.fx_states[0].internal_state = invalid_state.to_owned();
+            assert!(
+                validate_bundle(&invalid_recorded_state).is_err(),
+                "recorded {invalid_state}"
+            );
         }
 
         let mut mismatched = bundle.clone();

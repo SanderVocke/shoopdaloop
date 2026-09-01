@@ -703,6 +703,14 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                 state.id
             )));
         }
+        if state.chain_type == FxChainTypeDocument::BuiltInFx
+            && !is_canonical_builtin_fx_state(&state.internal_state)
+        {
+            return Err(SessionError::Validation(format!(
+                "Built-in FX state {} contains an invalid processor state",
+                state.id
+            )));
+        }
     }
     for group in &bundle.document.track_groups {
         for track in &group.tracks {
@@ -1005,6 +1013,10 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     Ok(())
 }
 
+fn is_canonical_builtin_fx_state(state: &str) -> bool {
+    matches!(state, "shoop-builtin-fx:1:0" | "shoop-builtin-fx:1:1")
+}
+
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
     if let Some(chain) = &track.fx_chain {
         if chain.chain_type != FxChainTypeDocument::OxiSynth
@@ -1051,10 +1063,7 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
         ))),
         (TrackTopologyDocument::BuiltInFx, Some(chain))
             if chain.chain_type != FxChainTypeDocument::BuiltInFx
-                || !matches!(
-                    chain.internal_state.as_str(),
-                    "shoop-builtin-fx:1:0" | "shoop-builtin-fx:1:1"
-                ) =>
+                || !is_canonical_builtin_fx_state(&chain.internal_state) =>
         {
             Err(SessionError::Validation(format!(
                 "Built-in FX track {} contains mismatched or invalid processor state",
