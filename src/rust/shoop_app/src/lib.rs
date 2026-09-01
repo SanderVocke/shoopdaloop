@@ -7860,11 +7860,31 @@ impl ApplicationModel {
         for (port_id, external_port) in timed_out {
             self.pending_connections
                 .remove(&(port_id, external_port.clone()));
+            let rollback = self
+                .confirmed_connections
+                .contains(&(port_id, external_port.clone()));
+            let message = match self.connection_ports.get(&port_id) {
+                Some(port) => match backend.set_port_connected(
+                    port.backend_id,
+                    &external_port,
+                    rollback,
+                ) {
+                    Ok(()) => format!(
+                        "connection request timed out and was cancelled: {external_port}"
+                    ),
+                    Err(error) => format!(
+                        "connection request timed out; cancellation could not be dispatched for {external_port}: {error}"
+                    ),
+                },
+                None => format!(
+                    "connection request timed out; cancellation target became stale: {external_port}"
+                ),
+            };
             self.push_connection_error(ConnectionErrorState {
                 port_id: Some(port_id),
                 external_port: Some(external_port.clone()),
                 kind: ConnectionErrorKind::TimedOut,
-                message: format!("connection request timed out: {external_port}"),
+                message,
             });
         }
         let mixer_timed_out = self
@@ -7877,7 +7897,27 @@ impl ApplicationModel {
             .collect::<Vec<_>>();
         for route in mixer_timed_out {
             self.pending_mixer_routes.remove(&route);
-            self.push_mixer_route_error(route, "mixer route request timed out".to_owned());
+            let rollback = self.confirmed_mixer_routes.contains(&route);
+            let source = self.connection_ports.get(&route.source_port_id);
+            let destination = self
+                .buses
+                .values()
+                .flat_map(|bus| &bus.channels)
+                .find(|channel| channel.id == route.destination_channel_id);
+            let message = match (source, destination) {
+                (Some(source), Some(destination)) => match backend.set_mixer_route(
+                    source.backend_id,
+                    destination.backend_id,
+                    rollback,
+                ) {
+                    Ok(()) => "mixer route request timed out and was cancelled".to_owned(),
+                    Err(error) => format!(
+                        "mixer route request timed out; cancellation could not be dispatched: {error}"
+                    ),
+                },
+                _ => "mixer route request timed out; cancellation target became stale".to_owned(),
+            };
+            self.push_mixer_route_error(route, message);
         }
     }
 
@@ -19572,7 +19612,15 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(model
             .mixer_route_errors
             .iter()
-            .any(|error| error.route == route && error.message.contains("timed out")));
+            .any(|error| error.route == route
+                && error.message == "mixer route request timed out and was cancelled"));
+        assert!(matches!(
+            backend.operations().last(),
+            Some(shoop_backend::FakeOperation::SetMixerRoute(link, false))
+                if link.source_port_id == model.connection_ports[&source_port_id].backend_id
+                    && link.destination_channel_id
+                        == model.buses.values().next().unwrap().channels[0].backend_id
+        ));
         model
             .set_mixer_route_connected(&mut backend, source_port_id, destination_channel_id, true)
             .unwrap();

@@ -156,15 +156,20 @@ impl TransportCore {
         self.journal.retain(|candidate| candidate != command);
     }
 
-    pub(crate) fn replace_mixer_journal(&mut self, commands: Vec<Command>) -> Result<()> {
+    pub(crate) fn replace_session_connection_journal(
+        &mut self,
+        commands: Vec<Command>,
+    ) -> Result<()> {
         if commands.iter().any(|command| {
             !matches!(
                 command,
-                Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+                Command::SetPortConnected { .. }
+                    | Command::SetBusControl { .. }
+                    | Command::SetMixerRoute { .. }
             )
         }) {
             return Err(anyhow!(
-                "replacement mixer journal contains a non-mixer command"
+                "replacement connection journal contains an unrelated command"
             ));
         }
         let retained = self
@@ -173,18 +178,22 @@ impl TransportCore {
             .filter(|command| {
                 !matches!(
                     command,
-                    Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+                    Command::SetPortConnected { .. }
+                        | Command::SetBusControl { .. }
+                        | Command::SetMixerRoute { .. }
                 )
             })
             .count();
         if retained.saturating_add(commands.len()) > COMMAND_CAPACITY {
             self.overflows = self.overflows.saturating_add(1);
-            return Err(anyhow!("replacement mixer command journal is full"));
+            return Err(anyhow!("replacement connection command journal is full"));
         }
         self.journal.retain(|command| {
             !matches!(
                 command,
-                Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+                Command::SetPortConnected { .. }
+                    | Command::SetBusControl { .. }
+                    | Command::SetMixerRoute { .. }
             )
         });
         self.journal.extend(commands);
@@ -642,8 +651,16 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn session_replacement_atomically_replaces_only_mixer_replay_state() {
+    fn session_replacement_atomically_replaces_connection_replay_state() {
         let (transport, control) = transport_pair();
+        transport
+            .borrow_mut()
+            .journal(Command::SetPortConnected {
+                application_port_id: 90,
+                host_port_id: "old:playback".to_owned(),
+                connected: true,
+            })
+            .unwrap();
         let old_route = Command::SetMixerRoute {
             source_port_id: 11,
             destination_channel_id: 1,
@@ -663,6 +680,11 @@ mod tests {
         };
         transport.borrow_mut().journal(retained.clone()).unwrap();
         let replacement = vec![
+            Command::SetPortConnected {
+                application_port_id: 91,
+                host_port_id: "new:playback".to_owned(),
+                connected: true,
+            },
             Command::SetBusControl {
                 bus_id: 1,
                 control: shoop_audio_protocol::WireBusControl::Mute(false),
@@ -675,7 +697,7 @@ mod tests {
         ];
         transport
             .borrow_mut()
-            .replace_mixer_journal(replacement.clone())
+            .replace_session_connection_journal(replacement.clone())
             .unwrap();
 
         let endpoint = MemoryEndpoint::default();

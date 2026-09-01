@@ -645,17 +645,59 @@ impl RemoteWorkletBackend {
         session: &BackendSessionData,
         replacement: &BackendSessionReplacement,
     ) -> Result<()> {
-        let mut mixer_journal = Vec::new();
+        let mut connection_journal = Vec::new();
+        for source_track in &session.tracks {
+            for source_port in &source_track.ports {
+                let Some(&application_port_id) = replacement.ports.get(&source_port.source_id)
+                else {
+                    continue;
+                };
+                for host_port_id in &source_port.external_connections {
+                    connection_journal.push(Command::SetPortConnected {
+                        application_port_id: application_port_id.raw(),
+                        host_port_id: host_port_id.clone(),
+                        connected: true,
+                    });
+                }
+            }
+        }
+        for source_port in &session.global_ports {
+            let Some(&application_port_id) = replacement.global_ports.get(&source_port.source_id)
+            else {
+                continue;
+            };
+            for host_port_id in &source_port.external_connections {
+                connection_journal.push(Command::SetPortConnected {
+                    application_port_id: application_port_id.raw(),
+                    host_port_id: host_port_id.clone(),
+                    connected: true,
+                });
+            }
+        }
         for source_bus in &session.buses {
             let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
                 continue;
             };
+            for source_channel in &source_bus.channels {
+                let Some(&application_port_id) =
+                    replacement.bus_output_ports.get(&source_channel.source_id)
+                else {
+                    continue;
+                };
+                for host_port_id in &source_channel.output_port.external_connections {
+                    connection_journal.push(Command::SetPortConnected {
+                        application_port_id: application_port_id.raw(),
+                        host_port_id: host_port_id.clone(),
+                        connected: true,
+                    });
+                }
+            }
             for control in [
                 BackendBusControl::GainDb(source_bus.gain_db),
                 BackendBusControl::Balance(source_bus.balance),
                 BackendBusControl::Mute(source_bus.muted),
             ] {
-                mixer_journal.push(Command::SetBusControl {
+                connection_journal.push(Command::SetBusControl {
                     bus_id: bus_id.raw(),
                     control: to_wire_bus_control(control),
                 });
@@ -668,7 +710,7 @@ impl RemoteWorkletBackend {
             ) else {
                 continue;
             };
-            mixer_journal.push(Command::SetMixerRoute {
+            connection_journal.push(Command::SetMixerRoute {
                 source_port_id: source_port_id.raw(),
                 destination_channel_id: destination_channel_id.raw(),
                 connected: true,
@@ -676,7 +718,7 @@ impl RemoteWorkletBackend {
         }
         self.transport
             .borrow_mut()
-            .replace_mixer_journal(mixer_journal)?;
+            .replace_session_connection_journal(connection_journal)?;
 
         self.snapshot.tracks.clear();
         self.snapshot.loops.clear();
@@ -3993,7 +4035,7 @@ mod tests {
                             direction: BackendPortDirection::Output,
                             role: BackendPortRole::AudioOutput,
                         },
-                        external_connections: Vec::new(),
+                        external_connections: vec!["system:playback_1".to_owned()],
                     },
                 }],
                 gain_db: -3.0,
@@ -4022,6 +4064,15 @@ mod tests {
         );
         assert_eq!(replacement.global_ports[&44], GLOBAL_FX_PORT_ID);
         let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetPortConnected {
+                application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+                host_port_id: "old:playback".to_owned(),
+                connected: true,
+            })
+            .unwrap();
         backend
             .transport
             .borrow_mut()
@@ -4058,7 +4109,7 @@ mod tests {
         assert!(master.muted);
         assert_eq!(master.output_peaks_db, [-200.0]);
         assert!(backend.snapshot.mixer.confirmed_links.is_empty());
-        let mixer_journal = backend
+        let connection_journal = backend
             .transport
             .borrow()
             .journal_commands()
@@ -4066,13 +4117,20 @@ mod tests {
             .filter(|command| {
                 matches!(
                     command,
-                    Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+                    Command::SetPortConnected { .. }
+                        | Command::SetBusControl { .. }
+                        | Command::SetMixerRoute { .. }
                 )
             })
             .collect::<Vec<_>>();
         assert_eq!(
-            mixer_journal,
+            connection_journal,
             vec![
+                Command::SetPortConnected {
+                    application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+                    host_port_id: "system:playback_1".to_owned(),
+                    connected: true,
+                },
                 Command::SetBusControl {
                     bus_id: MASTER_BUS_ID.raw(),
                     control: WireBusControl::GainDb(-3.0),
