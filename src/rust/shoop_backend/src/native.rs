@@ -423,6 +423,20 @@ impl NativeRuntime {
         self.driver.wait_process();
     }
 
+    fn wait_for_graph(&self) -> Result<bool> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            self.wait();
+            if self.session.graph_up_to_date()? {
+                return Ok(true);
+            }
+            if std::time::Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::yield_now();
+        }
+    }
+
     fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
         let Some(track) = self.tracks.remove(&track_id) else {
             return Ok(());
@@ -671,8 +685,7 @@ impl NativeRuntime {
                 output_port_id: descriptor.id,
             });
         }
-        self.wait();
-        if !self.session.graph_up_to_date()? {
+        if !self.wait_for_graph()? {
             return Err(anyhow!("Master bus graph did not become active"));
         }
         self.mixer_revision = self.mixer_revision.wrapping_add(1);
@@ -811,14 +824,13 @@ impl NativeRuntime {
         } else {
             source.disconnect_internal(&destination)?;
         }
-        self.wait();
-        if !self.session.graph_up_to_date()? {
+        if !self.wait_for_graph()? {
             if connected {
                 let _ = source.disconnect_internal(&destination);
             } else {
                 let _ = source.connect_internal(&destination);
             }
-            self.wait();
+            let _ = self.wait_for_graph();
             let message = "mixer route graph could not be activated".to_owned();
             self.mixer_failures.push(BackendMixerFailure {
                 link,
