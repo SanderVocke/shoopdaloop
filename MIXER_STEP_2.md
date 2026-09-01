@@ -189,16 +189,16 @@ Verification:
 
 Depends on all implementation stages.
 
-- [ ] Update `MIXER_ARCHITECTURE.md` to document this completed post-sum control increment while retaining the first sandbox section as historical scope.
-- [ ] Update `docs/port_model.md`, `docs/session_format_v1.md`, `docs/lua_compatibility_contract.md`, `docs/lua_dialog_api.md`, and relevant developer/user-facing UI documentation with processing order, defaults, meter point, persistence/version migration, Lua signatures, sidebar placement, and target parity.
-- [ ] Run an end-to-end dummy/native scenario: route two deterministic tracks to Master, retain one direct route, apply gain and balance, observe post-processing peaks, mute/unmute, modify controls from Lua and UI, save/reload, switch drivers, and verify exact controls, routing, direct audio, and Master audio after every transition.
-- [ ] Run the equivalent Worker/AudioWorklet scenario and verify authoritative snapshots and audio before/after every command and session replacement.
-- [ ] Verify new, version-9-migrated, disconnected, resampled, and malformed sessions; verify controls never create routes and direct routing remains unchanged.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace` in the environment selected by `.agents/info/build.md`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests will change.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Update `MIXER_ARCHITECTURE.md` to document this completed post-sum control increment while retaining the first sandbox section as historical scope.
+- [x] Update `docs/port_model.md`, `docs/session_format_v1.md`, `docs/lua_compatibility_contract.md`, `docs/lua_dialog_api.md`, and relevant developer/user-facing UI documentation with processing order, defaults, meter point, persistence/version migration, Lua signatures, sidebar placement, and target parity.
+- [x] Run an end-to-end dummy/native scenario: route two deterministic tracks to Master, retain one direct route, apply gain and balance, observe post-processing peaks, mute/unmute, modify controls from Lua and UI, save/reload, switch drivers, and verify exact controls, routing, direct audio, and Master audio after every transition.
+- [x] Run the equivalent Worker/AudioWorklet scenario and verify authoritative snapshots and audio before/after every command and session replacement.
+- [x] Verify new, version-9-migrated, disconnected, resampled, and malformed sessions; verify controls never create routes and direct routing remains unchanged.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace` in the environment selected by `.agents/info/build.md`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests will change.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
 - [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`, run the complete Node Wasm suite, and run packaged-browser smokes when browser executables are available.
 - [ ] Audit every immutable acceptance criterion against concrete code, test, audio fixture, document, and command evidence; leave no unchecked item or unsupported inference.
 
