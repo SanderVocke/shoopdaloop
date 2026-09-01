@@ -148,13 +148,12 @@ impl TransportCore {
                 "session connection mutation is unavailable during session replacement"
             ));
         }
-        if let Some(existing) = self
+        let existing_index = self
             .journal
-            .iter_mut()
-            .rev()
-            .find(|existing| command.supersedes_in_journal(existing))
-        {
-            *existing = command.clone();
+            .iter()
+            .rposition(|existing| command.supersedes_in_journal(existing));
+        let previous = if let Some(index) = existing_index {
+            Some(std::mem::replace(&mut self.journal[index], command.clone()))
         } else {
             let reserved = self
                 .reserved_session_connections
@@ -172,9 +171,18 @@ impl TransportCore {
                 return Err(anyhow!("remote worklet command journal is full"));
             }
             self.journal.push(command.clone());
-        }
+            None
+        };
         if self.endpoint.is_some() {
-            self.send(command, false)?;
+            if let Err(error) = self.send(command.clone(), false) {
+                if let (Some(index), Some(previous)) = (existing_index, previous) {
+                    self.journal[index] = previous;
+                } else {
+                    debug_assert_eq!(self.journal.last(), Some(&command));
+                    self.journal.pop();
+                }
+                return Err(error);
+            }
         }
         Ok(())
     }
@@ -564,7 +572,7 @@ pub(crate) fn transport_pair() -> (Rc<RefCell<TransportCore>>, RemoteBackendCont
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
     use super::*;
@@ -576,6 +584,22 @@ mod tests {
 
     impl MessageEndpoint for MemoryEndpoint {
         fn post_message(&self, message: &str) -> Result<()> {
+            self.sent.borrow_mut().push(message.to_owned());
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct SwitchableEndpoint {
+        sent: Rc<RefCell<Vec<String>>>,
+        fail: Rc<Cell<bool>>,
+    }
+
+    impl MessageEndpoint for SwitchableEndpoint {
+        fn post_message(&self, message: &str) -> Result<()> {
+            if self.fail.get() {
+                return Err(anyhow!("injected endpoint failure"));
+            }
             self.sent.borrow_mut().push(message.to_owned());
             Ok(())
         }
@@ -1001,6 +1025,44 @@ mod tests {
             })
             .unwrap();
         assert!(control.is_quiescent());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_submission_restores_new_and_superseded_journal_entries() {
+        let (transport, control) = transport_pair();
+        let old_route = Command::SetMixerRoute {
+            source_port_id: 2,
+            destination_channel_id: 1,
+            connected: false,
+        };
+        transport.borrow_mut().journal(old_route.clone()).unwrap();
+        let endpoint = SwitchableEndpoint::default();
+        let switch = endpoint.fail.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        control.receive(1, &response(1, Event::Ack)).unwrap();
+        control.receive(1, &response(2, Event::Ack)).unwrap();
+        switch.set(true);
+
+        assert!(transport
+            .borrow_mut()
+            .journal(Command::SetMixerRoute {
+                source_port_id: 2,
+                destination_channel_id: 1,
+                connected: true,
+            })
+            .is_err());
+        assert_eq!(transport.borrow().journal, [old_route.clone()]);
+
+        transport.borrow_mut().reject_journaled(&old_route);
+        assert!(transport
+            .borrow_mut()
+            .journal(Command::SetPortConnected {
+                application_port_id: 9,
+                host_port_id: "system:playback_1".to_owned(),
+                connected: true,
+            })
+            .is_err());
+        assert!(transport.borrow().journal.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
