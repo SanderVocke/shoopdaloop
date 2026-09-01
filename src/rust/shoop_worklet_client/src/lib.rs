@@ -46,7 +46,7 @@ use shoop_backend::{
     BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
     BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
     BackendTrackState, BackendTrackTopology, DirectTrackRequest, OxiSynthControl,
-    TrackProcessorTypeId, TrackRequest, MASTER_BUS_CHANNEL_IDS, MASTER_BUS_ID,
+    TrackProcessorTypeId, TrackRequest, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS, MASTER_BUS_ID,
     MASTER_BUS_OUTPUT_PORT_IDS,
 };
 
@@ -1077,7 +1077,7 @@ fn browser_replacement_mapping(session: &BackendSessionData) -> BackendSessionRe
     for global in &session.global_ports {
         replacement
             .global_ports
-            .insert(global.source_id, global.descriptor.id);
+            .insert(global.source_id, GLOBAL_FX_PORT_ID);
     }
     for source_bus in &session.buses {
         replacement
@@ -3788,7 +3788,18 @@ mod tests {
                 }],
             }],
             mixer_routes: Vec::new(),
-            global_ports: Vec::new(),
+            global_ports: vec![shoop_backend::BackendSessionPort {
+                source_id: 44,
+                descriptor: BackendPortDescriptor {
+                    id: BackendPortId::from_raw(44),
+                    owner: BackendPortOwner::GlobalFxControl,
+                    name: "Global FX Control MIDI In".to_owned(),
+                    data_type: BackendPortDataType::Midi,
+                    direction: BackendPortDirection::Input,
+                    role: BackendPortRole::MidiInput,
+                },
+                external_connections: Vec::new(),
+            }],
             use_legacy_browser_default_routes: false,
         };
         let replacement = browser_replacement_mapping(&session);
@@ -3796,6 +3807,7 @@ mod tests {
             replacement.bus_output_ports[&42],
             MASTER_BUS_OUTPUT_PORT_IDS[0]
         );
+        assert_eq!(replacement.global_ports[&44], GLOBAL_FX_PORT_ID);
         let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend
             .snapshot

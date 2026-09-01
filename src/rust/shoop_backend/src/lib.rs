@@ -225,6 +225,7 @@ pub struct BackendMixerSnapshot {
     pub failures: Vec<BackendMixerFailure>,
 }
 
+pub const GLOBAL_FX_PORT_ID: BackendPortId = BackendPortId::from_raw(9_007_199_254_740_991);
 pub const MASTER_BUS_NAME: &str = "Master";
 pub const MASTER_BUS_ID: BackendBusId = BackendBusId::from_raw(1);
 pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
