@@ -95,6 +95,7 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
 pub struct ControlLoop {
     pub id: LoopId,
     pub coords: [i64; 2],
+    pub default_playback_mode: LoopMode,
     pub mode: LoopMode,
     pub next_mode: Option<LoopMode>,
     pub next_mode_delay: Option<u32>,
@@ -1007,12 +1008,22 @@ fn install_loop_mutations(
             Ok(())
         })?,
     )?;
-    set_loop_ids_op(
-        lua,
-        module,
+    let bridge_ = Rc::clone(bridge);
+    module.set(
         "loop_trigger_default_playback",
-        bridge,
-        |loops| ControlOperation::TriggerDefaultPlayback { loops },
+        lua.create_function(move |_, selector: Value| {
+            let mut bridge = bridge_.borrow_mut();
+            let ids = selected_loop_ids(&bridge.snapshot, &selector)?;
+            for loop_ in loops_mut(&mut bridge.snapshot, &ids) {
+                loop_.mode = loop_.default_playback_mode;
+                loop_.next_mode = Some(loop_.default_playback_mode);
+                loop_.next_mode_delay = None;
+            }
+            bridge
+                .operations
+                .push(ControlOperation::TriggerDefaultPlayback { loops: ids });
+            Ok(())
+        })?,
     )?;
     set_loop_ids_op(lua, module, "loop_trigger_grab", bridge, |loops| {
         ControlOperation::Grab { loops }

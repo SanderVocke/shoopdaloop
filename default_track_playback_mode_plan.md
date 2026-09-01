@@ -237,6 +237,7 @@ PR: https://github.com/SanderVocke/shoopdaloop/pull/845
 - Added loops rely on the backend's existing owning-track inheritance instead of issuing a redundant post-creation default update that could leak an unmodeled loop on failure. Generic native/engine/fake session replacement now preserves the confirmed track default directly.
 - Anticipated-transition publication uses an active default-playback child's latched concrete mode, so changing the track preference no longer advertises a transition that runtime reconciliation intentionally suppresses.
 - Native backend updates now enqueue every loop mirror change as one atomic session command and publish the track snapshot only after that command is accepted; a batch/cross-session regression test proves the command boundary.
+- `loop_trigger_default_playback` now carries each loop's resolved requested mode in the scripting control snapshot and shadows it when queued, so same-turn mode and mode-filter queries have read-your-writes behavior.
 - Review-driven validation passed: warning-denying workspace build; 1,651/1,651 native tests; complete Node and Chromium Wasm suites; raw host contract; hosted and self-contained browser smokes; formatting, test-attribute, and tracing policy checks.
 
 **Verification**

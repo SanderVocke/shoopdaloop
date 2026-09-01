@@ -30,7 +30,7 @@ The auto-mute-other-track-inputs policy defaults off, and changing the policy do
 | Loop query | `loop_get_by_track(track)` | Coordinates in the selected track. |
 | Loop transition | `loop_transition(selector, mode, cycles_delay, align_to_sync_at)` | Explicit transition. `Loop_DontWaitForSync` makes a primitive playing transition immediate and its playback repeat independently; a later primitive playing transition or `loop_set_repeat_sync` call supersedes that repeat policy. `Loop_DontAlignToSyncImmediately` disables immediate alignment. |
 | Loop transition | `loop_trigger(selector, mode)` | Applies the same sync, solo, fixed-cycle, target, and play-after-record policy as the GUI trigger; the supplied mode is always explicit. |
-| Loop transition | `loop_trigger_default_playback(selector)` | Triggers primitive loops in their owning track's current default mode and composites in ordinary playback mode. |
+| Loop transition | `loop_trigger_default_playback(selector)` | Triggers primitive loops in their owning track's current default mode and composites in ordinary playback mode; same-turn mode queries observe the resolved requested mode. |
 | Loop transition | `loop_trigger_grab(selector)` | Applies the same ringbuffer-grab policy as the GUI grab action. |
 | Loop query | `loop_get_gain(selector)` | Sequence of linear output gains. |
 | Loop query | `loop_get_gain_fader(selector)` | Sequence of fader positions. |

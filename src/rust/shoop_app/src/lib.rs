@@ -2304,6 +2304,14 @@ impl ApplicationModel {
                 loops.push(ControlLoop {
                     id: model.id,
                     coords: [index, row as i64],
+                    default_playback_mode: if model.composite.is_some() {
+                        LoopMode::Playing
+                    } else {
+                        match track.default_playback_mode {
+                            DefaultPlaybackMode::Regular => LoopMode::Playing,
+                            DefaultPlaybackMode::DryThroughWet => LoopMode::PlayingDryThroughWet,
+                        }
+                    },
                     mode: model.state.mode,
                     next_mode: model.state.next_transition_delay.and_then(|_| {
                         (model.state.next_mode != LoopMode::Unknown)
