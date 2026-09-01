@@ -4045,6 +4045,44 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn saturated_replacement_journal_fails_before_session_transfer_begins() {
+        let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        for loop_id in 0..COMMAND_CAPACITY as u64 {
+            backend
+                .transport
+                .borrow_mut()
+                .journal(Command::SetLoopGain { loop_id, gain: 0.5 })
+                .unwrap();
+        }
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: Vec::new(),
+            buses: vec![shoop_backend::BackendSessionBus {
+                source_id: 41,
+                name: "Master".to_owned(),
+                channels: Vec::new(),
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+            }],
+            mixer_routes: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+
+        let error = backend.replace_session_async(&session).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("replacement connection command journal is full"));
+        assert!(backend.session_replace.is_none());
+        assert!(!backend
+            .transport
+            .borrow()
+            .has_reserved_session_connections());
+        assert_eq!(backend.transport.borrow().pending_len(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn fixed_bus_mappings_do_not_advance_the_next_track_port_identity() {
         let session = BackendSessionData {
             sample_rate: 48_000,

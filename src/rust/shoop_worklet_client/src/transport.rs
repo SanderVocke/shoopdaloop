@@ -429,6 +429,11 @@ impl TransportCore {
         self.journal.clone()
     }
 
+    #[cfg(test)]
+    pub(crate) fn has_reserved_session_connections(&self) -> bool {
+        self.reserved_session_connections.is_some()
+    }
+
     pub(crate) fn readiness(&self) -> RemoteReadiness {
         self.readiness
     }
