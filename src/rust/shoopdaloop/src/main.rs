@@ -43,7 +43,8 @@ use shoop_egui::register_settings;
 use shoop_egui::AudioDriverConfig;
 use shoop_egui::{
     register_audio_settings, register_settings_with_appearance_defaults, AppIntent, AppSnapshot,
-    AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
+    AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, TrackDefaultSaveResult,
+    UI_SCALE_FACTOR,
 };
 use shoop_egui::{TracingStatus, TracingStopped};
 
@@ -824,6 +825,43 @@ impl UnifiedApp {
         let result = match action {
             SettingsAction::Save(draft) => validate_script_draft(&draft)
                 .and_then(|()| self.settings.request_save(draft).map_err(Into::into)),
+            SettingsAction::SaveTrackDefaults { request_id, draft } => {
+                match validate_script_draft(&draft) {
+                    Err(error) => {
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Failed,
+                        );
+                        Err(error)
+                    }
+                    Ok(()) => match self.settings.request_save(draft) {
+                        Ok(()) => {
+                            self.widget.notify_track_default_save_result(
+                                request_id,
+                                TrackDefaultSaveResult::Accepted,
+                            );
+                            Ok(())
+                        }
+                        Err(
+                            settings::SettingsManagerError::Saving
+                            | settings::SettingsManagerError::StaleRevision { .. },
+                        ) => {
+                            self.widget.notify_track_default_save_result(
+                                request_id,
+                                TrackDefaultSaveResult::Retry,
+                            );
+                            Ok(())
+                        }
+                        Err(error) => {
+                            self.widget.notify_track_default_save_result(
+                                request_id,
+                                TrackDefaultSaveResult::Failed,
+                            );
+                            Err(error.into())
+                        }
+                    },
+                }
+            }
             SettingsAction::RequestAudioDriverSwitch { config, draft } => {
                 validate_script_draft(&draft).and_then(|()| {
                     self.runtime
@@ -917,6 +955,34 @@ impl UnifiedApp {
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let result = match action {
             SettingsAction::Save(draft) => self.settings.request_save(draft),
+            SettingsAction::SaveTrackDefaults { request_id, draft } => {
+                match self.settings.request_save(draft) {
+                    Ok(()) => {
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Accepted,
+                        );
+                        Ok(())
+                    }
+                    Err(
+                        settings::SettingsManagerError::Saving
+                        | settings::SettingsManagerError::StaleRevision { .. },
+                    ) => {
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Retry,
+                        );
+                        Ok(())
+                    }
+                    Err(error) => {
+                        self.widget.notify_track_default_save_result(
+                            request_id,
+                            TrackDefaultSaveResult::Failed,
+                        );
+                        Err(error)
+                    }
+                }
+            }
             SettingsAction::RequestAudioDriverSwitch { .. }
             | SettingsAction::RetryAudioDriverPersistence { .. } => {
                 self.settings.report_action_error(
@@ -3486,6 +3552,8 @@ impl BrowserSelfTest {
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
                         },
+                        latency: shoop_egui::TrackLatencySpec::default(),
+                        creation_request_id: None,
                     }))
                 })
                 .map(|()| Self::WaitForWebMidiTrack),
@@ -3966,6 +4034,8 @@ impl BrowserSelfTest {
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
                         },
+                        latency: shoop_egui::TrackLatencySpec::default(),
+                        creation_request_id: None,
                     }))
                 })
                 .map(|()| Self::WaitForTrack),
