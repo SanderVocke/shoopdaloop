@@ -20757,10 +20757,24 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .map(|track| track.id)
             .collect::<Vec<_>>();
         let mut malformed = bundle;
-        malformed
+        let mut second_global = malformed.document.global_ports[0].clone();
+        second_global.id = malformed
             .document
-            .global_ports
-            .push(malformed.document.global_ports[0].clone());
+            .buses
+            .iter()
+            .flat_map(|bus| bus.ports.iter().map(|port| port.id))
+            .chain(
+                malformed
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|group| &group.tracks)
+                    .flat_map(|track| track.ports.iter().map(|port| port.id)),
+            )
+            .max()
+            .unwrap_or(second_global.id)
+            .saturating_add(1);
+        malformed.document.global_ports.push(second_global);
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "malformed.shoop".to_owned(),
