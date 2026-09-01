@@ -5439,6 +5439,118 @@ impl ApplicationModel {
         resolved
     }
 
+    fn recompute_auto_arm_version_lengths(&mut self, version: u64) {
+        fn resolve(
+            id: LoopId,
+            sync_length: u32,
+            primitive_lengths: &BTreeMap<LoopId, u32>,
+            composites: &BTreeMap<LoopId, (CompositeDocument, BTreeMap<LoopId, bool>)>,
+            visiting: &mut BTreeSet<LoopId>,
+            resolved: &mut BTreeMap<LoopId, u32>,
+        ) -> u32 {
+            if let Some(length) = resolved.get(&id) {
+                return *length;
+            }
+            if !visiting.insert(id) {
+                return primitive_lengths.get(&id).copied().unwrap_or(0);
+            }
+            let length = if let Some((composite, target_kinds)) = composites.get(&id) {
+                let cycles = composite
+                    .instances
+                    .iter()
+                    .map(|event| {
+                        let target = LoopId::from_raw(event.loop_id);
+                        let child_length = if target_kinds.get(&target) == Some(&true) {
+                            resolve(
+                                target,
+                                sync_length,
+                                primitive_lengths,
+                                composites,
+                                visiting,
+                                resolved,
+                            )
+                        } else {
+                            primitive_lengths.get(&target).copied().unwrap_or(0)
+                        };
+                        let duration = event
+                            .n_cycles
+                            .unwrap_or_else(|| child_length.div_ceil(sync_length).max(1));
+                        event.start_cycle.saturating_add(u64::from(duration))
+                    })
+                    .max()
+                    .unwrap_or(0);
+                u32::try_from(cycles.saturating_mul(u64::from(sync_length))).unwrap_or(u32::MAX)
+            } else {
+                primitive_lengths.get(&id).copied().unwrap_or(0)
+            };
+            visiting.remove(&id);
+            resolved.insert(id, length);
+            length
+        }
+
+        let plans = self
+            .loops
+            .iter()
+            .filter_map(|(id, model)| {
+                model
+                    .auto_arm_configured_plans
+                    .get(&version)
+                    .cloned()
+                    .map(|plan| (*id, plan))
+            })
+            .collect::<BTreeMap<_, _>>();
+        if plans.is_empty() {
+            return;
+        }
+        let sync_length = plans
+            .values()
+            .next()
+            .map(|plan| plan.sync_length.max(1))
+            .unwrap_or(1);
+        let mut primitive_lengths = self
+            .loops
+            .iter()
+            .map(|(id, model)| (*id, model.length))
+            .collect::<BTreeMap<_, _>>();
+        for plan in plans.values() {
+            for (id, length) in &plan.source_lengths {
+                primitive_lengths.insert(*id, *length);
+            }
+        }
+        let composites = plans
+            .iter()
+            .map(|(id, plan)| (*id, (plan.composite.clone(), plan.target_kinds.clone())))
+            .collect::<BTreeMap<_, _>>();
+        let mut resolved = BTreeMap::new();
+        for id in self.loops.keys().copied() {
+            resolve(
+                id,
+                sync_length,
+                &primitive_lengths,
+                &composites,
+                &mut BTreeSet::new(),
+                &mut resolved,
+            );
+        }
+        for model in self.loops.values_mut() {
+            let Some(plan) = model.auto_arm_configured_plans.get_mut(&version) else {
+                continue;
+            };
+            plan.source_lengths = plan
+                .composite
+                .instances
+                .iter()
+                .filter_map(|event| {
+                    let target = LoopId::from_raw(event.loop_id);
+                    resolved
+                        .get(&target)
+                        .copied()
+                        .map(|length| (target, length))
+                })
+                .collect();
+        }
+    }
+
     fn remember_auto_arm_composite_plan(
         &mut self,
         id: LoopId,
@@ -5957,11 +6069,11 @@ impl ApplicationModel {
 
     fn auto_arm_demanded_tracks(&self) -> BTreeSet<TrackId> {
         let mut controlling_parents = BTreeMap::<LoopId, BTreeSet<LoopId>>::new();
-        for parent in self
-            .loops
-            .values()
-            .filter(|model| runnable_composite_mode(model.state.mode))
-        {
+        for parent in self.loops.values().filter(|model| {
+            runnable_composite_mode(model.state.mode)
+                || model.state.next_transition_delay == Some(0)
+                    && runnable_composite_mode(model.state.next_mode)
+        }) {
             for child in parent
                 .active_composite_children
                 .iter()
@@ -7478,6 +7590,7 @@ impl ApplicationModel {
                     for model in self.loops.values_mut() {
                         model.auto_arm_configured_plans.remove(plan_version);
                     }
+                    let mut repair_versions = Vec::new();
                     if let Some(id) = rejected {
                         let model = self.loops.get_mut(&id).unwrap();
                         let later_direct = model
@@ -7500,6 +7613,15 @@ impl ApplicationModel {
                             }
                         }
                         model.auto_arm_latest_configured_plan = later_direct.or(previous);
+                        repair_versions.extend(
+                            model
+                                .auto_arm_configured_plans
+                                .range(plan_version.saturating_add(1)..)
+                                .map(|(version, _)| *version),
+                        );
+                    }
+                    for version in repair_versions {
+                        self.recompute_auto_arm_version_lengths(version);
                     }
                 }
                 _ => {}
@@ -11162,6 +11284,30 @@ mod tests {
             model.loops[&root].auto_arm_configured_plans[&contaminated_version].composite,
             rejected_plan
         );
+        let dependent = model.tracks[4].loops[0];
+        let dependent_document = CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: root.raw(),
+                mode: Some("playing".to_owned()),
+                n_cycles: None,
+            }],
+        };
+        model.loops.get_mut(&dependent).unwrap().composite = Some(dependent_document.clone());
+        model.loops.get_mut(&dependent).unwrap().backend_composite =
+            Some(backend.create_composite_loop().unwrap());
+        let mut dependent_plan = model.auto_arm_composite_plan(&dependent_document);
+        dependent_plan.target_kinds.insert(root, true);
+        dependent_plan.source_lengths.insert(root, u32::MAX);
+        model
+            .loops
+            .get_mut(&dependent)
+            .unwrap()
+            .auto_arm_configured_plans
+            .insert(contaminated_version, dependent_plan);
+        let accepted_root_length = 20;
         let later_direct_version = contaminated_version + 1;
         let mut later_direct_plan = plan_b.clone();
         later_direct_plan.instances[0].mode = Some("stopped".to_owned());
@@ -11200,6 +11346,11 @@ mod tests {
             plan_b
         );
         assert_eq!(
+            model.loops[&dependent].auto_arm_configured_plans[&contaminated_version].source_lengths
+                [&root],
+            accepted_root_length
+        );
+        assert_eq!(
             model.loops[&root].auto_arm_configured_plans[&later_direct_version].composite,
             later_direct_plan
         );
@@ -11220,8 +11371,6 @@ mod tests {
             }],
         };
         model.loops.get_mut(&peer).unwrap().composite = Some(peer_document.clone());
-        model.loops.get_mut(&peer).unwrap().backend_composite =
-            Some(backend.create_composite_loop().unwrap());
         let global_version = later_copied_version + 1;
         model.remember_auto_arm_composite_plan(peer, global_version, &peer_document);
         assert_eq!(
@@ -11659,6 +11808,17 @@ mod tests {
             nested_model.state.mode = LoopMode::Stopped;
             nested_model.state.next_transition_delay = None;
             nested_model.active_composite_children.clear();
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([second_track])
+        );
+        {
+            let root_model = model.loops.get_mut(&root).unwrap();
+            root_model.state.mode = LoopMode::Stopped;
+            root_model.state.next_mode = LoopMode::Playing;
+            root_model.state.next_transition_delay = Some(0);
+            root_model.composite_play_after_record = false;
         }
         assert_eq!(
             model.auto_arm_demanded_tracks(),
