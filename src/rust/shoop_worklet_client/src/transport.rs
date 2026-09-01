@@ -114,6 +114,7 @@ fn is_session_replay_command(command: &Command) -> bool {
 pub(crate) struct ReceivedEvent {
     pub envelope: EventEnvelope,
     pub command: Command,
+    pub replay: bool,
     pub journal_mutation: Option<JournalMutation>,
     pub generation: u64,
 }
@@ -452,6 +453,7 @@ impl TransportCore {
         self.inbound.push_back(ReceivedEvent {
             envelope: event,
             command: pending.command,
+            replay: pending.replay,
             journal_mutation: pending.journal_mutation,
             generation,
         });

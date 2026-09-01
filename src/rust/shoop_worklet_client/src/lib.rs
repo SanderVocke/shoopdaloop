@@ -2622,6 +2622,18 @@ impl Backend for RemoteWorkletBackend {
                 }
                 Event::Stopped => {}
                 Event::Error { message } => {
+                    if received.replay
+                        && matches!(
+                            &received.command,
+                            Command::BeginSessionReplace { .. }
+                                | Command::WriteSessionReplace { .. }
+                                | Command::CommitSessionReplace { .. }
+                        )
+                    {
+                        let message = format!("session replay failed: {message}");
+                        self.transport.borrow_mut().fail(message.clone());
+                        return Err(anyhow!(message));
+                    }
                     let retry_media_read = match &received.command {
                         Command::RequestWaveform {
                             loop_id,
@@ -4338,6 +4350,64 @@ mod tests {
         assert_eq!(
             decode_binary::<BackendSessionData>(&replayed_bytes).unwrap(),
             session
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_session_replay_retains_the_complete_transaction() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let replay = replacement_session_journal(7, &[1, 2]);
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_journal(replay.clone())
+            .unwrap();
+        backend
+            .transport
+            .borrow_mut()
+            .commit_reserved_session_journal();
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        deliver(
+            &control,
+            1,
+            2,
+            Event::Error {
+                message: "injected replay failure".to_owned(),
+            },
+        );
+        assert!(backend.poll().is_err());
+        assert_eq!(backend.transport.borrow().journal_commands(), replay);
+        assert_eq!(
+            backend.transport.borrow().readiness().connection,
+            ConnectionState::Failed
+        );
+
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 2, 0, 2).unwrap();
+        let replayed = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            replayed,
+            [
+                vec![Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                }],
+                replay,
+            ]
+            .concat()
         );
     }
 

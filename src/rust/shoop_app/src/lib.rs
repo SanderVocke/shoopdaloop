@@ -9195,7 +9195,9 @@ impl ApplicationModel {
             if host_present && connected == pending.desired_connected && cancellation_confirmed {
                 self.pending_connections.remove(&key);
             } else if !host_present {
-                self.pending_connections.remove(&key);
+                if !pending.cancelling {
+                    self.pending_connections.remove(&key);
+                }
                 self.push_connection_error(ConnectionErrorState {
                     port_id: Some(port_id),
                     external_port: Some(host_port_id.clone()),
@@ -20136,8 +20138,26 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 && link.host_port_id.as_str() == "system:capture_1"
                 && !link.desired_connected
         }));
-        control.complete_pending(true);
+        control.complete_pending(false);
+        control.remove_external_port("system:capture_1");
         runtime.tick(Duration::ZERO);
+        assert!(runtime
+            .snapshot()
+            .connections
+            .pending_links
+            .iter()
+            .any(|link| {
+                link.application_port_id == port_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+                    && !link.desired_connected
+            }));
+        control.add_external_port(
+            "system:capture_1",
+            BackendPortDirection::Output,
+            BackendPortDataType::Audio,
+        );
+        control.defer_mutations(false);
+        runtime.tick(CONNECTION_TIMEOUT);
         assert!(!runtime
             .snapshot()
             .connections
