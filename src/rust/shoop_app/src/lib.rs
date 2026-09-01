@@ -7861,13 +7861,15 @@ impl ApplicationModel {
                 model.position as f32 / model.length as f32
             };
         }
-        for model in self.loops.values_mut().filter(|model| {
-            model
-                .backend_composite
-                .is_some_and(|id| !snapshot.composites.contains_key(&id))
-        }) {
-            clear_composite_runtime_state(model);
-            model.backend_composite_signature.clear();
+        if !snapshot.removed_composites.is_empty() {
+            for model in self.loops.values_mut().filter(|model| {
+                model
+                    .backend_composite
+                    .is_some_and(|id| !snapshot.composites.contains_key(&id))
+            }) {
+                clear_composite_runtime_state(model);
+                model.backend_composite_signature.clear();
+            }
         }
         let composites = self
             .loops
@@ -11646,6 +11648,7 @@ mod tests {
             parent_model.backend_composite_signature = vec![(primitive, 1)];
         }
         let mut missing_dependent = backend.poll().unwrap();
+        missing_dependent.removed_composites.push(child_backend);
         missing_dependent.composites.remove(&parent_backend);
         model.apply_backend_snapshot(missing_dependent);
         assert_eq!(model.loops[&parent].state.mode, LoopMode::Stopped);

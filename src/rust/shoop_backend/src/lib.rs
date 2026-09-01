@@ -806,6 +806,7 @@ pub struct BackendSnapshot {
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
     pub composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
+    pub removed_composites: Vec<BackendCompositeId>,
     pub connections: BackendConnectionSnapshot,
     pub mutation_failures: Vec<BackendMutationFailure>,
 }
@@ -5496,6 +5497,7 @@ impl Backend for EngineBackend {
             tracks,
             loops,
             composites,
+            removed_composites: Vec::new(),
             connections: self.connection_snapshot(),
             mutation_failures: Vec::new(),
         })
@@ -8486,6 +8488,7 @@ impl Backend for FakeBackend {
                 .collect(),
             loops: self.loops.clone(),
             composites: self.composites.clone(),
+            removed_composites: Vec::new(),
             connections: self.connection_snapshot(),
             mutation_failures: Vec::new(),
         })

@@ -111,6 +111,7 @@ pub struct RemoteWorkletBackend {
     track_resources: BTreeMap<BackendTrackId, BrowserTrackResources>,
     pending_removed_tracks: BTreeMap<BackendTrackId, BrowserTrackResources>,
     reserved_composites: BTreeSet<BackendCompositeId>,
+    acknowledged_composite_removals: BTreeSet<BackendCompositeId>,
     next_track_id: u64,
     next_loop_id: u64,
     next_composite_id: u64,
@@ -166,6 +167,7 @@ impl RemoteWorkletBackend {
                 track_resources: BTreeMap::new(),
                 pending_removed_tracks: BTreeMap::new(),
                 reserved_composites: BTreeSet::new(),
+                acknowledged_composite_removals: BTreeSet::new(),
                 next_track_id: 1,
                 next_loop_id: 1,
                 next_composite_id: 1,
@@ -649,6 +651,7 @@ impl RemoteWorkletBackend {
         self.track_resources.clear();
         self.pending_removed_tracks.clear();
         self.reserved_composites.clear();
+        self.acknowledged_composite_removals.clear();
         self.waveforms.clear();
         self.midi_data.clear();
         for source_track in &session.tracks {
@@ -2255,7 +2258,13 @@ impl Backend for RemoteWorkletBackend {
             let sequence = received.envelope.sequence;
             let generation = received.generation;
             match received.envelope.event {
-                Event::Ack | Event::Stopped => {}
+                Event::Ack => {
+                    if let Command::RemoveComposite { composite_id, .. } = received.command {
+                        self.acknowledged_composite_removals
+                            .insert(BackendCompositeId::from_raw(composite_id));
+                    }
+                }
+                Event::Stopped => {}
                 Event::Error { message } => {
                     let retry_media_read = match &received.command {
                         Command::RequestWaveform {
@@ -2436,7 +2445,12 @@ impl Backend for RemoteWorkletBackend {
                         }
                     }
                 }
-                Event::Snapshot(snapshot) => self.apply_wire_snapshot(snapshot),
+                Event::Snapshot(snapshot) => {
+                    self.apply_wire_snapshot(snapshot);
+                    self.snapshot
+                        .removed_composites
+                        .extend(std::mem::take(&mut self.acknowledged_composite_removals));
+                }
                 Event::Waveform(chunk) => self.apply_waveform_chunk(chunk)?,
                 Event::MidiData(chunk) => self.apply_midi_data_chunk(chunk)?,
                 Event::SessionCaptureReady {
@@ -2512,6 +2526,7 @@ impl Backend for RemoteWorkletBackend {
         let snapshot = self.snapshot.clone();
         self.snapshot.status.xruns = 0;
         self.snapshot.mutation_failures.clear();
+        self.snapshot.removed_composites.clear();
         Ok(snapshot)
     }
 
