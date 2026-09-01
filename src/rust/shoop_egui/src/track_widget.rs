@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    colors, composite_loop_widget::LoopDragPayload, AppIntent, FxLifecycle, GlobalControlState,
-    LoopId, LoopWidget, LoopWidgetAction, ProcessorLatencyAdjustmentState,
+    colors, composite_loop_widget::LoopDragPayload, AppIntent, DefaultPlaybackMode, FxLifecycle,
+    GlobalControlState, LoopId, LoopWidget, LoopWidgetAction, ProcessorLatencyAdjustmentState,
     RecordingOffsetAdjustmentState, TrackControls, TrackProcessorDescriptor, TrackState,
     TrackWidgetAction,
 };
@@ -71,6 +71,10 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_connections_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_default_playback_menu_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_default_playback_rects: Vec<(DefaultPlaybackMode, egui::Rect)>,
+    #[cfg(test)]
     test_delete_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_fx_rect: Option<egui::Rect>,
@@ -133,6 +137,10 @@ impl Default for TrackWidget {
             test_take_processor_rect: None,
             #[cfg(test)]
             test_connections_rect: None,
+            #[cfg(test)]
+            test_default_playback_menu_rect: None,
+            #[cfg(test)]
+            test_default_playback_rects: Vec::new(),
             #[cfg(test)]
             test_delete_rect: None,
             #[cfg(test)]
@@ -772,6 +780,32 @@ impl TrackWidget {
                     if latency.clicked() {
                         self.latency_dialog_open = true;
                         ui.close();
+                    }
+                    if matches!(state.topology, crate::TrackTopology::DryWet { .. }) {
+                        #[cfg(test)]
+                        self.test_default_playback_rects.clear();
+                        let _playback_menu = ui.menu_button("Default playback", |ui| {
+                            for (mode, label) in [
+                                (DefaultPlaybackMode::Regular, "Regular"),
+                                (DefaultPlaybackMode::DryThroughWet, "Dry through wet"),
+                            ] {
+                                let choice =
+                                    ui.selectable_label(state.default_playback_mode == mode, label);
+                                #[cfg(test)]
+                                self.test_default_playback_rects.push((mode, choice.rect));
+                                if choice.clicked() {
+                                    result
+                                        .actions
+                                        .push(TrackWidgetAction::DefaultPlaybackModeChanged(mode));
+                                    ui.close();
+                                }
+                            }
+                        });
+                        #[cfg(test)]
+                        {
+                            self.test_default_playback_menu_rect =
+                                Some(_playback_menu.response.rect);
+                        }
                     }
                     ui.separator();
                     if !state.is_sync {
@@ -2255,5 +2289,55 @@ mod tests {
             assert!((pair[0].left() - pair[1].left()).abs() < f32::EPSILON);
             assert!(pair[1].top() >= pair[0].bottom());
         }
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_wet_track_options_change_default_playback_mode() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackState {
+            id: TrackId::from_raw(2),
+            name: "Processed".to_owned(),
+            topology: crate::TrackTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 1,
+                dry_midi: false,
+                processor_type: crate::TrackProcessorTypeId::new("processor"),
+            },
+            default_playback_mode: DefaultPlaybackMode::Regular,
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let options = widget.test_options_rect.unwrap().center();
+        let _ = click(&context, &mut widget, &state, options);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let playback_menu = widget.test_default_playback_menu_rect.unwrap().center();
+        let _ = click(&context, &mut widget, &state, playback_menu);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let dry = widget
+            .test_default_playback_rects
+            .iter()
+            .find(|(mode, _)| *mode == DefaultPlaybackMode::DryThroughWet)
+            .unwrap()
+            .1
+            .center();
+        assert_eq!(
+            click(&context, &mut widget, &state, dry).actions,
+            [TrackWidgetAction::DefaultPlaybackModeChanged(
+                DefaultPlaybackMode::DryThroughWet,
+            )]
+        );
+
+        let direct = TrackState {
+            id: TrackId::from_raw(3),
+            name: "Direct".to_owned(),
+            ..Default::default()
+        };
+        let mut direct_widget = TrackWidget::default();
+        let _ = frame(&context, &mut direct_widget, &direct, Vec::new());
+        let options = direct_widget.test_options_rect.unwrap().center();
+        let _ = click(&context, &mut direct_widget, &direct, options);
+        let _ = frame(&context, &mut direct_widget, &direct, Vec::new());
+        assert!(direct_widget.test_default_playback_menu_rect.is_none());
     }
 }

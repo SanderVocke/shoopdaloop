@@ -155,6 +155,7 @@ mod tests {
                         audio_channels: channels as u32,
                         midi: true,
                     },
+                    default_playback_mode: DefaultPlaybackModeDocument::Regular,
                     controls: TrackControlsDocument {
                         output_gain_db: -3.0,
                         output_balance: 0.25,
@@ -279,6 +280,7 @@ mod tests {
                     wet_audio_channels: 1,
                     dry_midi: true,
                 },
+                default_playback_mode: DefaultPlaybackModeDocument::DryThroughWet,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
@@ -344,6 +346,7 @@ mod tests {
                 is_sync: false,
                 width: None,
                 topology: TrackTopologyDocument::Trigger,
+                default_playback_mode: DefaultPlaybackModeDocument::Regular,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
@@ -381,6 +384,7 @@ mod tests {
                     dry_audio_channels: None,
                     wet_audio_channels: None,
                 },
+                default_playback_mode: DefaultPlaybackModeDocument::Regular,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: Vec::new(),
@@ -489,7 +493,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 9] {
+        for unsupported in [5, 10] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -735,6 +739,23 @@ mod tests {
         let encoded = encode_session(&bundle, "deferred-fixture").unwrap();
         let decoded = decode_session(&encoded).unwrap();
         assert_eq!(decoded, bundle);
+        let version_eight = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(8);
+            for track in manifest["document"]["track_groups"][0]["tracks"]
+                .as_array_mut()
+                .unwrap()
+            {
+                track
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("default_playback_mode");
+            }
+        });
+        let migrated = decode_session(&version_eight).unwrap();
+        assert!(migrated.document.track_groups[0]
+            .tracks
+            .iter()
+            .all(|track| { track.default_playback_mode == DefaultPlaybackModeDocument::Regular }));
         assert_eq!(
             decoded.document.track_groups[0].tracks[3]
                 .fx_chain
@@ -1262,6 +1283,18 @@ mod tests {
             validate_bundle(&wrong_state_type),
             Err(SessionError::Validation(message))
                 if message.contains("does not match")
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_through_wet_default_requires_dry_wet_topology() {
+        let mut invalid = deferred_feature_bundle();
+        invalid.document.track_groups[0].tracks[2].default_playback_mode =
+            DefaultPlaybackModeDocument::DryThroughWet;
+        assert!(matches!(
+            encode_session(&invalid, "invalid-default"),
+            Err(SessionError::Validation(message))
+                if message.contains("dry-through-wet default playback")
         ));
     }
 

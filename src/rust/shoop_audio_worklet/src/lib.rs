@@ -5,24 +5,24 @@ use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk,
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
     WireChannelMode, WireCompositeConfig, WireCompositeKind, WireCompositeState,
-    WireCompositeTarget, WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode,
-    WireLoopState, WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
-    WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
-    WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl,
-    WireTrackFxControl, WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology,
-    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
-    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireCompositeTarget, WireConfirmedLink, WireDefaultPlaybackMode, WireHostPort,
+    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState, WirePortDataType,
+    WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
+    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyState,
+    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
-    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest,
-    MAX_WEB_AUDIO_QUANTUM,
+    BackendCompositeKind, BackendCompositeTarget, BackendDefaultPlaybackMode, BackendGrabRequest,
+    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
+    BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl,
+    OxiSynthMidiCcAssignment, OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId,
+    TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -483,6 +483,20 @@ impl WorkletHost {
                     .set_track_control(
                         BackendTrackId::from_raw(track_id),
                         from_wire_track_control(control),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetTrackDefaultPlaybackMode { track_id, mode } => {
+                self.backend
+                    .set_track_default_playback_mode(
+                        BackendTrackId::from_raw(track_id),
+                        match mode {
+                            WireDefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+                            WireDefaultPlaybackMode::DryThroughWet => {
+                                BackendDefaultPlaybackMode::DryThroughWet
+                            }
+                        },
                     )
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
@@ -3263,6 +3277,65 @@ mod tests {
         ));
         assert!(matches!(
             command(&mut host, 1, Command::Poll).event,
+            Event::Error { .. }
+        ));
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_applies_and_validates_track_default_playback_commands() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "processed".to_owned(),
+                    topology: WireTrackTopology::OxiSynth,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::SetTrackDefaultPlaybackMode {
+                    track_id: 1,
+                    mode: WireDefaultPlaybackMode::DryThroughWet,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                3,
+                Command::CreateTrack {
+                    expected_track_id: 2,
+                    expected_loop_ids: vec![2],
+                    port_name_base: "direct".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::SetTrackDefaultPlaybackMode {
+                    track_id: 2,
+                    mode: WireDefaultPlaybackMode::DryThroughWet,
+                },
+            )
+            .event,
             Event::Error { .. }
         ));
     }

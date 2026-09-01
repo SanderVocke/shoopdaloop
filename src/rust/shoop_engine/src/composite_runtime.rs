@@ -15,6 +15,10 @@ const EMPTY_IDENTITY: LoopIdentity = LoopIdentity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompositeTargetAction {
     Stop,
+    DefaultPlayback {
+        cycle_offset: u32,
+        retrigger: bool,
+    },
     SetMode {
         mode: LoopMode,
         cycle_offset: u32,
@@ -97,6 +101,8 @@ pub enum CompositeRuntimeFault {
 pub enum CompositeRuntimeError {
     #[error("the plan does not match this runtime")]
     PlanMismatch,
+    #[error("regular composites support only playback and stop")]
+    UnsupportedRegularMode,
     #[error("unknown is not a runnable composite mode")]
     UnknownMode,
     #[error("the requested seek iteration is outside the plan")]
@@ -127,6 +133,7 @@ pub struct PendingCompositeTransition {
 struct ActiveTarget {
     active: bool,
     mode: LoopMode,
+    default_playback: bool,
     cycle_offset: u32,
 }
 
@@ -139,6 +146,7 @@ enum ReconcileScope {
 const INACTIVE_TARGET: ActiveTarget = ActiveTarget {
     active: false,
     mode: LoopMode::Stopped,
+    default_playback: false,
     cycle_offset: 0,
 };
 
@@ -152,6 +160,7 @@ pub struct ActiveCompositeChild {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompositeRuntime {
     source: LoopIdentity,
+    kind: CompiledCompositeKind,
     installed_targets: [LoopIdentity; MAX_COMPOSITE_TARGETS],
     target_count: usize,
     active: [ActiveTarget; MAX_COMPOSITE_TARGETS],
@@ -169,6 +178,7 @@ impl CompositeRuntime {
     pub fn new(plan: &CompiledCompositePlan) -> Self {
         let mut runtime = Self {
             source: plan.source(),
+            kind: plan.kind(),
             installed_targets: [EMPTY_IDENTITY; MAX_COMPOSITE_TARGETS],
             target_count: 0,
             active: [INACTIVE_TARGET; MAX_COMPOSITE_TARGETS],
@@ -265,6 +275,12 @@ impl CompositeRuntime {
             self.counters.rejected_modes = self.counters.rejected_modes.saturating_add(1);
             return Err(CompositeRuntimeError::UnknownMode);
         }
+        if self.kind == CompiledCompositeKind::Regular
+            && !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
+        {
+            self.counters.rejected_modes = self.counters.rejected_modes.saturating_add(1);
+            return Err(CompositeRuntimeError::UnsupportedRegularMode);
+        }
         self.pending = Some(PendingCompositeTransition {
             mode,
             boundaries_to_skip: delay,
@@ -325,6 +341,12 @@ impl CompositeRuntime {
         if mode == LoopMode::Unknown {
             self.counters.rejected_modes = self.counters.rejected_modes.saturating_add(1);
             return Err(CompositeRuntimeError::UnknownMode);
+        }
+        if plan.kind() == CompiledCompositeKind::Regular
+            && !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
+        {
+            self.counters.rejected_modes = self.counters.rejected_modes.saturating_add(1);
+            return Err(CompositeRuntimeError::UnsupportedRegularMode);
         }
         if mode == LoopMode::Stopped {
             return self.stop_inner(target_is_current);
@@ -648,6 +670,14 @@ impl CompositeRuntime {
         Ok(batch)
     }
 
+    pub(crate) fn latch_default_playback_mode(&mut self, target: LoopIdentity, mode: LoopMode) {
+        if let Ok(index) = self.installed_targets[..self.target_count].binary_search(&target) {
+            if self.active[index].active && self.active[index].default_playback {
+                self.active[index].mode = mode;
+            }
+        }
+    }
+
     pub fn active_children(&self) -> impl Iterator<Item = ActiveCompositeChild> + '_ {
         self.active[..self.target_count]
             .iter()
@@ -831,19 +861,34 @@ impl CompositeRuntime {
             let retrigger_composite = current.active
                 && self.iteration == 0
                 && self.installed_targets[index].kind == LoopTargetKind::Composite;
+            let desired_is_default = desired.mode == EffectiveTargetMode::DefaultPlayback;
+            let desired_mode = match desired.mode {
+                EffectiveTargetMode::DefaultPlayback => LoopMode::Playing,
+                EffectiveTargetMode::Explicit(mode) => mode,
+            };
             let must_emit = !current.active
-                || current.mode != desired.mode
+                || current.default_playback != desired_is_default
+                || !desired_is_default && current.mode != desired_mode
                 || force_seek
                 || retrigger_composite;
             let applied = if must_emit {
-                self.emit(
-                    &mut batch,
-                    index,
-                    CompositeTargetAction::SetMode {
-                        mode: desired.mode,
+                let action = match desired.mode {
+                    EffectiveTargetMode::DefaultPlayback => {
+                        CompositeTargetAction::DefaultPlayback {
+                            cycle_offset: desired.cycle_offset,
+                            retrigger: force_seek || !current.active || retrigger_composite,
+                        }
+                    }
+                    EffectiveTargetMode::Explicit(mode) => CompositeTargetAction::SetMode {
+                        mode,
                         cycle_offset: desired.cycle_offset,
                         retrigger: force_seek || !current.active || retrigger_composite,
                     },
+                };
+                self.emit(
+                    &mut batch,
+                    index,
+                    action,
                     scope == ReconcileScope::Authoritative,
                     target_is_current,
                 )?
@@ -853,7 +898,12 @@ impl CompositeRuntime {
             self.active[index] = if applied {
                 ActiveTarget {
                     active: true,
-                    mode: desired.mode,
+                    mode: if desired_is_default && current.active {
+                        current.mode
+                    } else {
+                        desired_mode
+                    },
+                    default_playback: desired_is_default,
                     cycle_offset: desired.cycle_offset,
                 }
             } else {
@@ -917,6 +967,7 @@ impl CompositeRuntime {
     }
 
     fn install_target_table(&mut self, plan: &CompiledCompositePlan) {
+        self.kind = plan.kind();
         self.target_count = plan.targets().len();
         self.installed_targets.fill(EMPTY_IDENTITY);
         self.installed_targets[..self.target_count].copy_from_slice(plan.targets());
@@ -977,30 +1028,44 @@ fn target_matches_at(
         })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EffectiveTargetMode {
+    DefaultPlayback,
+    Explicit(LoopMode),
+}
+
 #[derive(Debug, Clone, Copy)]
 struct EffectiveTarget {
-    mode: LoopMode,
+    mode: EffectiveTargetMode,
     cycle_offset: u32,
 }
 
 fn effective_target(
     desired: CompiledDesiredState,
-    composite_mode: LoopMode,
+    _composite_mode: LoopMode,
     iteration: u32,
 ) -> Option<EffectiveTarget> {
     let mode = match desired.mode {
-        CompiledChildMode::Inherit => composite_mode,
-        CompiledChildMode::Explicit(mode) => mode,
+        CompiledChildMode::DefaultPlayback => EffectiveTargetMode::DefaultPlayback,
+        CompiledChildMode::Explicit(mode) => EffectiveTargetMode::Explicit(mode),
     };
-    if mode == LoopMode::Stopped || mode == LoopMode::Unknown {
+    let concrete_mode = match mode {
+        EffectiveTargetMode::DefaultPlayback => LoopMode::Playing,
+        EffectiveTargetMode::Explicit(mode) => mode,
+    };
+    if concrete_mode == LoopMode::Stopped || concrete_mode == LoopMode::Unknown {
         return None;
     }
-    if desired.child_is_empty && matches!(mode, LoopMode::Playing | LoopMode::PlayingDryThroughWet)
+    if desired.child_is_empty
+        && matches!(
+            concrete_mode,
+            LoopMode::Playing | LoopMode::PlayingDryThroughWet
+        )
     {
         return None;
     }
     let elapsed = iteration.saturating_sub(desired.start_iteration);
-    let cycle_offset = if is_recording_mode(mode) {
+    let cycle_offset = if is_recording_mode(concrete_mode) {
         elapsed
     } else {
         elapsed % desired.duration.max(1)

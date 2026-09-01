@@ -680,7 +680,7 @@ impl LoopWidget {
             egui::vec2(button_width, button_height),
         );
         let record_rect = play_rect.translate(egui::vec2(button_width + gap, 0.0));
-        let stop_rect = if state.composite_kind == CompositeKind::Script {
+        let stop_rect = if state.composite_kind != CompositeKind::None {
             record_rect
         } else {
             record_rect.translate(egui::vec2(button_width + gap, 0.0))
@@ -702,23 +702,23 @@ impl LoopWidget {
             self.test_balance_rect = balance_rect;
         }
         let pointer = ui.input(|input| input.pointer.hover_pos());
-        let non_script = state.composite_kind != CompositeKind::Script;
+        let primitive = state.composite_kind == CompositeKind::None;
         let play_hovered = hovered && pointer.is_some_and(|pointer| play_rect.contains(pointer));
         let record_hovered =
             hovered && pointer.is_some_and(|pointer| record_rect.contains(pointer));
-        if non_script && play_hovered {
+        if primitive && play_hovered {
             self.play_popup_until = now + 0.08;
         }
-        if non_script && record_hovered {
+        if primitive && record_hovered {
             self.record_popup_until = now + 0.08;
         }
         let show_play_popup = loop_visible
             && hover_allowed
-            && non_script
+            && primitive
             && (play_hovered || now < self.play_popup_until);
         let show_record_popup = loop_visible
             && hover_allowed
-            && non_script
+            && primitive
             && (record_hovered || now < self.record_popup_until);
         let controls_visible = touch_mode || hovered || show_play_popup || show_record_popup;
         let icon_size = button_width.min(button_height) * 0.95;
@@ -736,7 +736,7 @@ impl LoopWidget {
                 "play",
                 ICON_PLAY_ARROW,
                 icon_size,
-                if non_script {
+                if primitive {
                     colors::PLAY_ACTION
                 } else {
                     colors::FOREGROUND
@@ -747,7 +747,7 @@ impl LoopWidget {
             if play_response.clicked() {
                 result.actions.push(LoopWidgetAction::PlayClicked);
             }
-            if non_script {
+            if primitive {
                 let record_response =
                     ui.interact(record_rect, ui.id().with("record"), egui::Sense::click());
                 paint_loop_button_background(ui, &record_response, record_rect);
@@ -1697,24 +1697,42 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn script_composites_do_not_open_record_or_dry_variants() {
+    fn composites_do_not_open_record_or_dry_variants() {
         let context = egui::Context::default();
         crate::initialize(&context);
-        let state = LoopState {
-            id: LoopId::from_raw(2),
-            composite_kind: CompositeKind::Script,
-            ..Default::default()
-        };
-        let mut widget = LoopWidget::default();
-        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
-        let play = widget.test_play_rect.unwrap().center();
-        let record = widget.test_record_rect.unwrap().center();
-        let _ = frame(&context, &mut widget, &state, 1.1, vec![pointer(play)]);
-        let _ = frame(&context, &mut widget, &state, 1.2, vec![pointer(record)]);
-        assert_eq!(widget.play_popup_until, 0.0);
-        assert_eq!(widget.record_popup_until, 0.0);
-        assert!(widget.test_play_popup_button_rect.is_none());
-        assert!(widget.test_gain_rect.is_none());
+        for (index, composite_kind) in [CompositeKind::Regular, CompositeKind::Script]
+            .into_iter()
+            .enumerate()
+        {
+            let base_time = 1.0 + index as f64;
+            let state = LoopState {
+                id: LoopId::from_raw(2),
+                composite_kind,
+                ..Default::default()
+            };
+            let mut widget = LoopWidget::default();
+            let _ = frame(&context, &mut widget, &state, base_time, Vec::new());
+            let play = widget.test_play_rect.unwrap().center();
+            let record = widget.test_record_rect.unwrap().center();
+            let _ = frame(
+                &context,
+                &mut widget,
+                &state,
+                base_time + 0.1,
+                vec![pointer(play)],
+            );
+            let _ = frame(
+                &context,
+                &mut widget,
+                &state,
+                base_time + 0.2,
+                vec![pointer(record)],
+            );
+            assert_eq!(widget.play_popup_until, 0.0);
+            assert_eq!(widget.record_popup_until, 0.0);
+            assert!(widget.test_play_popup_button_rect.is_none());
+            assert!(widget.test_gain_rect.is_none());
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

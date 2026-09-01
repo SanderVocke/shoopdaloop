@@ -2,6 +2,14 @@
 
 Composite schedules may reference primitive loops or other composites. References must form an acyclic graph, but different composites may share a target.
 
+## Child playback modes
+
+A regular-composite event has one symbolic mode, `DefaultPlayback`. It does not inherit a concrete mode from the composite and does not store a track preference in its schedule. When an inactive primitive child is activated or actually retriggered, the engine resolves `DefaultPlayback` from that child's owning track. The resolved mode stays latched for that active occurrence; changing the track preference affects the next activation without replacing or reconfiguring the composite plan.
+
+A nested composite resolves `DefaultPlayback` as ordinary composite playback and recursively applies its own schedule at the same sample. Regular composites expose only ordinary playback and stop at their outer boundary.
+
+Every script-composite event stores an explicit concrete mode. Explicit script modes bypass primitive track defaults. Explicit playback of a nested regular composite starts that composite normally, after which the nested regular schedule resolves its own `DefaultPlayback` events.
+
 ## Explicit control
 
 Starting a composite or seeking it to an iteration establishes an authoritative snapshot at that boundary. Every referenced target desired at the selected iteration receives its scheduled mode and offset. Every other referenced target receives a stop, even if the composite did not previously start it.

@@ -136,6 +136,7 @@ struct NativeRuntime {
 
 struct NativeTrack {
     port_name_base: String,
+    default_playback_mode: BackendDefaultPlaybackMode,
     audio_inputs: Vec<AudioPort>,
     audio_outputs: Vec<AudioPort>,
     audio_sends: Vec<Option<AudioPort>>,
@@ -576,6 +577,7 @@ impl NativeRuntime {
             midi_input,
             midi_output,
             latency,
+            default_playback_mode,
         ) = {
             let track = self
                 .tracks
@@ -590,9 +592,11 @@ impl NativeRuntime {
                 track.midi_input.clone(),
                 track.midi_output.clone(),
                 track.state.latency.clone(),
+                track.default_playback_mode,
             )
         };
         let handle = self.session.create_loop()?;
+        handle.set_default_playback_mode(default_playback_mode.engine_mode())?;
         let mut audio = Vec::new();
         let mut audio_modes = Vec::new();
         let mut midi = Vec::new();
@@ -1223,6 +1227,7 @@ impl NativeRuntime {
             track_id,
             NativeTrack {
                 port_name_base: request.port_name_base,
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 audio_inputs,
                 audio_outputs,
                 audio_sends: Vec::new(),
@@ -1419,6 +1424,7 @@ impl NativeRuntime {
                 },
                 dry_passthrough_muted: Some(true),
                 wet_passthrough_muted: Some(true),
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 fx: None,
             },
         );
@@ -1569,6 +1575,7 @@ impl NativeRuntime {
                 },
                 dry_passthrough_muted: Some(true),
                 wet_passthrough_muted: Some(true),
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 fx: Some(NativeFx {
                     processor_type: TrackProcessorTypeId::new(processor_type),
                     chain,
@@ -1628,6 +1635,32 @@ impl NativeRuntime {
             .expect("native loop was checked above")
             .handle
             .prepare_latency(values, logical_capacity)
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
+        if mode == BackendDefaultPlaybackMode::DryThroughWet
+            && !track.state.topology.has_wet_channels()
+        {
+            return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
+        }
+        track.default_playback_mode = mode;
+        let loops = track.loops.clone();
+        for loop_id in loops {
+            self.loops
+                .get(&loop_id)
+                .ok_or_else(|| anyhow!("missing native loop {loop_id:?}"))?
+                .handle
+                .set_default_playback_mode(mode.engine_mode())?;
+        }
+        Ok(())
     }
 
     fn set_track_control(
@@ -2675,6 +2708,15 @@ impl Backend for NativeBackend {
         control: BackendTrackControl,
     ) -> Result<()> {
         self.runtime_mut()?.set_track_control(track_id, control)
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        self.runtime_mut()?
+            .set_track_default_playback_mode(track_id, mode)
     }
 
     fn set_track_latency(

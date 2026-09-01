@@ -35,6 +35,7 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
     "loop_get_by_track",
     "loop_transition",
     "loop_trigger",
+    "loop_trigger_default_playback",
     "loop_trigger_grab",
     "loop_get_gain",
     "loop_get_gain_fader",
@@ -154,6 +155,9 @@ pub enum ControlOperation {
     Trigger {
         loops: Vec<LoopId>,
         mode: LoopMode,
+    },
+    TriggerDefaultPlayback {
+        loops: Vec<LoopId>,
     },
     Grab {
         loops: Vec<LoopId>,
@@ -1002,6 +1006,13 @@ fn install_loop_mutations(
                 .push(ControlOperation::Trigger { loops: ids, mode });
             Ok(())
         })?,
+    )?;
+    set_loop_ids_op(
+        lua,
+        module,
+        "loop_trigger_default_playback",
+        bridge,
+        |loops| ControlOperation::TriggerDefaultPlayback { loops },
     )?;
     set_loop_ids_op(lua, module, "loop_trigger_grab", bridge, |loops| {
         ControlOperation::Grab { loops }

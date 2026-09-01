@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 8;
+pub const SESSION_DOCUMENT_VERSION: u16 = 9;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -136,6 +136,8 @@ pub struct TrackDocument {
     pub is_sync: bool,
     pub width: Option<f32>,
     pub topology: TrackTopologyDocument,
+    #[serde(default)]
+    pub default_playback_mode: DefaultPlaybackModeDocument,
     pub controls: TrackControlsDocument,
     #[serde(default)]
     pub latency: TrackLatencyDocument,
@@ -168,6 +170,14 @@ pub enum TrackTopologyDocument {
     },
     OxiSynth,
     Trigger,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DefaultPlaybackModeDocument {
+    #[default]
+    Regular,
+    DryThroughWet,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]

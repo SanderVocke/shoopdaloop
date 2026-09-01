@@ -9,7 +9,7 @@ This document defines the first application persistence format. Predecessor `.sh
 - All Shoop-native files (`.shoop`, `.shoop-audio`, and `.shoop-midi`) are ZIP64 containers and use Deflate lossless compression. Standard `.wav` and `.mid` exports retain their standard container formats.
 - The root entry is `manifest.json`, UTF-8 JSON with deterministic object fields and sorted collections.
 - Every manifest has `format`, `format_version: { major, minor }`, and `document_version`.
-- Format-major 1 readers write session `document_version: 8`. Version 6 is accepted through an explicit migration that assigns zero capture alignment to every channel, and versions 6 and 7 migrate the former processor advance to Manual processor-latency mode. Older and newer document versions are rejected before session mutation.
+- Format-major 1 readers write session `document_version: 9`. Version 6 is accepted through an explicit migration that assigns zero capture alignment to every channel, versions 6 and 7 migrate the former processor advance to Manual processor-latency mode, and versions 6–8 assign regular default playback to every track. Older and newer document versions are rejected before session mutation.
 - Archive paths are relative, normalized ASCII paths. Duplicate names, traversal, undeclared payloads, mismatched lengths/hashes, and configured resource-limit violations are errors.
 - Payload records contain an uncompressed byte length and lowercase SHA-256. ZIP CRC remains an independent transport check.
 - Counts and indices are unsigned 32-bit values unless otherwise stated. The format imposes no lower channel-count ceiling; readers may apply explicit byte/resource budgets.
@@ -29,7 +29,7 @@ This document defines the first application persistence format. Predecessor `.sh
 - FX chain descriptors and exact processor-state strings for Carla and Built-in Synth;
 - a Built-in Synth topology, OxiSynth chain identity, selected preset, additive sends, and MIDI assignments;
 - captured FX-state records referenced by recorded channels;
-- each track's independent recording-alignment and processor-latency adjustment modes plus their signed manual/trim inputs; automatic observations are transient;
+- each track's default playback mode plus independent recording-alignment and processor-latency adjustment modes and their signed manual/trim inputs; automatic observations are transient;
 - one signed capture alignment per channel (introduced in document version 7), allowing Dry and Wet annotations to differ;
 - a sorted media index.
 
@@ -78,7 +78,9 @@ Float WAV is the baseline standard cross-target audio format. Normal WAV and exa
 
 `DryWetExternal` stores independent `dry_audio_channels`, `wet_audio_channels`, and `dry_midi`. Public ports preserve Audio input/send/return/output and MIDI input/send roles plus exact confirmed host IDs. `Carla` stores its chain type and legacy equal-count `audio_channels`/`midi` fields; optional `dry_audio_channels` and `wet_audio_channels` preserve new unequal shapes. When those optional fields are absent, readers interpret both counts as the legacy `audio_channels` value.
 
-`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document version 8 is current; version 6 receives the explicit zero-alignment migration and versions 6 and 7 migrate their processor advance to Manual mode.
+Each track stores `default_playback_mode` as `regular` or `dry_through_wet`. Dry-through-wet is valid only for `DryWetExternal`, `Carla`, and `OxiSynth` topologies; direct, trigger, and sync tracks must use regular playback. The value belongs to the track rather than its loops or composite events. Mode-less regular-composite events mean dynamic default playback, while script-composite event modes remain explicit.
+
+`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document version 9 is current; version 6 receives the explicit zero-alignment migration, versions 6 and 7 migrate their processor advance to Manual mode, and versions 6–8 receive regular track default playback.
 
 `global_ports` contains either no global FX control port in legacy version-1 documents or exactly one canonical **Global FX Control MIDI In** port. Its shape is MIDI input, external input/internal output connectability, unity gain, unmuted, passthrough-muted, no internal links, and zero capture frames. New saves include it with exact external endpoint identities. A legacy omission migrates to a disconnected canonical port; conflicting IDs, multiple ports, or another shape are rejected before backend mutation. Runtime pending controller values are transient and are not serialized.
 

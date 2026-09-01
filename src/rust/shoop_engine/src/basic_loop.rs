@@ -4,6 +4,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use crate::default_playback_mode::DefaultPlaybackMode;
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::LoopStateMirror;
 
@@ -79,6 +80,7 @@ pub struct BasicLoop {
     planned_modes: VecDeque<LoopMode>,
     planned_countdowns: VecDeque<i32>,
     mode: LoopMode,
+    default_playback_mode: DefaultPlaybackMode,
     triggering_now: bool,
     already_triggered: bool,
     repeat_unsynced: bool,
@@ -118,6 +120,9 @@ impl BasicLoop {
 
     pub fn mode(&self) -> LoopMode {
         self.mode
+    }
+    pub fn default_playback_mode(&self) -> DefaultPlaybackMode {
+        self.default_playback_mode
     }
     pub fn length(&self) -> u32 {
         self.length
@@ -540,6 +545,10 @@ impl BasicLoop {
 
     pub fn set_mode(&mut self, mode: LoopMode) {
         self.handle_transition(mode);
+    }
+
+    pub fn set_default_playback_mode(&mut self, mode: DefaultPlaybackMode) {
+        self.default_playback_mode = mode;
     }
 
     pub fn set_repeat_sync(&mut self, active: bool) {

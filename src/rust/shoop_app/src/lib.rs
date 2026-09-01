@@ -21,30 +21,32 @@ use shoop_app_api::{
     ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest, ClickTrackState,
     CompositeDetailsState, CompositeEventDetailsState, CompositeEventId,
     CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
-    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
-    DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
-    IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
-    LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, PendingConnectionState,
-    PianoAction, PortDataType, PortDirection, PortId, PortRole, ProcessorLatencyAdjustmentState,
-    RecordingOffsetAdjustmentState, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
-    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
-    TaskId, TrackAction, TrackControlState, TrackCreationResult, TrackId, TrackLatencyState,
-    TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
-    TrackTopology, WaveformChannelState,
+    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultPlaybackMode,
+    DefaultRecordingAction, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
+    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
+    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
+    MidiSequenceChannelState, PendingConnectionState, PianoAction, PortDataType, PortDirection,
+    PortId, PortRole, ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState,
+    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
+    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
+    TrackControlState, TrackCreationResult, TrackId, TrackLatencyState, TrackPortOwnerKind,
+    TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState, TrackTopology,
+    WaveformChannelState,
 };
 use shoop_backend::{
     canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
     BackendAudioContent, BackendAudioData, BackendChannelMode, BackendCompositeConfig,
     BackendCompositeEntry, BackendCompositeId, BackendCompositeKind, BackendCompositeTarget,
-    BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
-    BackendMidiEvent, BackendMutationDetail, BackendOperationProgress,
-    BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionData,
-    BackendSessionPort, BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
-    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    BackendConnectionSnapshot, BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate,
+    BackendMidiContent, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
+    BackendOperationProgress, BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortOwner, BackendPortRole, BackendProcessorLatencyAdjustment,
+    BackendRecordingOffsetAdjustment, BackendSessionData, BackendSessionPort,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -59,9 +61,9 @@ use shoop_session::{
     resample_exact_midi, resample_loop_audio, resample_session, AudioClickTrackSpec, AudioPayload,
     ChannelDocument, ChannelModeDocument, ClickTrackTimingSpec, CompositeDocument,
     CompositeKindDocument, CompositeLoopInstanceDocument, ConnectabilityDocument, DataTypeDocument,
-    ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument, FxStateDocument,
-    GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
-    MidiClickTrackSpec, MidiControlDocument, OxiSynthMidiCcAssignmentDocument,
+    DefaultPlaybackModeDocument, ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument,
+    FxStateDocument, GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument,
+    MediaPayload, MidiClickTrackSpec, MidiControlDocument, OxiSynthMidiCcAssignmentDocument,
     OxiSynthParameterDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
     ProcessorLatencyAdjustmentDocument, RecordingActionDocument, RecordingOffsetAdjustmentDocument,
     ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument,
@@ -647,6 +649,7 @@ struct TrackModel {
     is_sync: bool,
     audio_channels: u32,
     topology: TrackTopology,
+    default_playback_mode: DefaultPlaybackMode,
     fx: Option<shoop_app_api::TrackFxState>,
     loops: Vec<LoopId>,
     port_ids: Arc<[PortId]>,
@@ -1089,10 +1092,16 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
         .collect()
 }
 
+#[derive(Clone, Copy)]
+enum ScriptTriggerMode {
+    Explicit(LoopMode),
+    DefaultPlayback,
+}
+
 struct ScriptCompositionPlayback {
     section: usize,
     remaining_frames: u64,
-    mode: LoopMode,
+    mode: ScriptTriggerMode,
 }
 
 struct PendingAudioSwitch {
@@ -1310,6 +1319,7 @@ impl ApplicationModel {
                 is_sync: true,
                 audio_channels: 1,
                 topology: TrackTopology::Direct,
+                default_playback_mode: DefaultPlaybackMode::Regular,
                 fx: None,
                 loops: vec![loop_id],
                 port_ids,
@@ -2376,7 +2386,10 @@ impl ApplicationModel {
                 Ok(())
             }
             ControlOperation::Trigger { loops, mode } => {
-                self.script_trigger_loops(backend, &loops, mode)
+                self.script_trigger_loops(backend, &loops, ScriptTriggerMode::Explicit(mode))
+            }
+            ControlOperation::TriggerDefaultPlayback { loops } => {
+                self.script_trigger_loops(backend, &loops, ScriptTriggerMode::DefaultPlayback)
             }
             ControlOperation::Grab { loops } => {
                 for id in loops {
@@ -2803,18 +2816,51 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn script_trigger_mode_for_loop(
+        &self,
+        loop_id: LoopId,
+        requested: ScriptTriggerMode,
+    ) -> Result<Option<LoopMode>, String> {
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?;
+        if model.composite.is_some() {
+            return Ok(match requested {
+                ScriptTriggerMode::DefaultPlayback
+                | ScriptTriggerMode::Explicit(LoopMode::Playing) => Some(LoopMode::Playing),
+                ScriptTriggerMode::Explicit(LoopMode::Stopped) => Some(LoopMode::Stopped),
+                ScriptTriggerMode::Explicit(_) => None,
+            });
+        }
+        Ok(Some(match requested {
+            ScriptTriggerMode::Explicit(mode) => mode,
+            ScriptTriggerMode::DefaultPlayback => self
+                .tracks
+                .iter()
+                .find(|track| track.id == model.track_id)
+                .map(|track| match track.default_playback_mode {
+                    DefaultPlaybackMode::Regular => LoopMode::Playing,
+                    DefaultPlaybackMode::DryThroughWet => LoopMode::PlayingDryThroughWet,
+                })
+                .unwrap_or(LoopMode::Playing),
+        }))
+    }
+
     fn script_trigger_loops(
         &mut self,
         backend: &mut dyn Backend,
         loops: &[LoopId],
-        mode: LoopMode,
+        requested: ScriptTriggerMode,
     ) -> Result<(), String> {
         let delay = self.global.sync.then_some(self.target_delay());
-        let backend_mode = backend_loop_mode(mode);
         let sync_length = self.sync_length().max(1);
         let mut expanded = Vec::new();
         let mut backend_composite_targets = Vec::new();
         for id in loops {
+            let Some(mode) = self.script_trigger_mode_for_loop(*id, requested)? else {
+                continue;
+            };
             let model = self
                 .loops
                 .get(id)
@@ -2824,22 +2870,22 @@ impl ApplicationModel {
                     .set_composite_play_after_record(composite_id, self.global.play_after_record)
                     .map_err(|error| format!("could not set composite option: {error}"))?;
                 backend
-                    .transition_composite_loop(composite_id, backend_mode, delay, None)
+                    .transition_composite_loop(composite_id, backend_loop_mode(mode), delay, None)
                     .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
                 self.loops.get_mut(id).unwrap().composite_play_after_record =
                     self.global.play_after_record;
-                backend_composite_targets.push(*id);
+                backend_composite_targets.push((*id, mode));
                 continue;
             }
             let composition = model.script_composition.clone();
             if composition.is_empty() {
-                expanded.push((*id, delay));
+                expanded.push((*id, delay, mode));
                 continue;
             }
             if mode == LoopMode::Stopped {
                 self.script_composition_playback.remove(id);
                 for source in composition.iter().flatten() {
-                    expanded.push((*source, None));
+                    expanded.push((*source, None, LoopMode::Stopped));
                 }
                 continue;
             }
@@ -2851,11 +2897,8 @@ impl ApplicationModel {
                     .iter()
                     .flatten()
                     .copied()
-                    .collect::<std::collections::BTreeSet<_>>();
-                let first_sources = composition[0]
-                    .iter()
-                    .copied()
-                    .collect::<std::collections::BTreeSet<_>>();
+                    .collect::<BTreeSet<_>>();
+                let first_sources = composition[0].iter().copied().collect::<BTreeSet<_>>();
                 for source in all_sources.difference(&first_sources) {
                     let backend_id = self
                         .loops
@@ -2869,7 +2912,11 @@ impl ApplicationModel {
                         })?;
                 }
                 for source in &composition[0] {
-                    expanded.push((*source, None));
+                    if let Some(source_mode) =
+                        self.script_trigger_mode_for_loop(*source, requested)?
+                    {
+                        expanded.push((*source, None, source_mode));
+                    }
                 }
                 if composition.len() > 1 {
                     self.script_composition_playback.insert(
@@ -2879,7 +2926,7 @@ impl ApplicationModel {
                             remaining_frames: self
                                 .script_composition_section_length(&composition[0])
                                 .max(1),
-                            mode,
+                            mode: requested,
                         },
                     );
                 }
@@ -2888,7 +2935,15 @@ impl ApplicationModel {
             let mut section_delay = delay.unwrap_or(0);
             for section in &composition {
                 for source in section {
-                    expanded.push((*source, self.global.sync.then_some(section_delay)));
+                    if let Some(source_mode) =
+                        self.script_trigger_mode_for_loop(*source, requested)?
+                    {
+                        expanded.push((
+                            *source,
+                            self.global.sync.then_some(section_delay),
+                            source_mode,
+                        ));
+                    }
                 }
                 let section_length = self
                     .script_composition_section_length(section)
@@ -2898,13 +2953,13 @@ impl ApplicationModel {
                     section_delay.saturating_add(section_length.max(1).div_ceil(sync_length));
             }
         }
-        for (id, loop_delay) in expanded.iter().copied() {
+        for (id, loop_delay, mode) in expanded.iter().copied() {
             let model = self
                 .loops
                 .get(&id)
                 .ok_or_else(|| format!("stale or unknown loop {id}"))?;
             backend
-                .transition_loop(model.backend_id, backend_mode, loop_delay)
+                .transition_loop(model.backend_id, backend_loop_mode(mode), loop_delay)
                 .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
             if mode == LoopMode::Recording && self.global.apply_n_cycles > 0 {
                 let finish = if self.global.play_after_record {
@@ -2927,14 +2982,20 @@ impl ApplicationModel {
                     })?;
             }
         }
-        if self.global.solo
-            && matches!(
+        let solo_active = expanded.iter().any(|(_, _, mode)| {
+            matches!(
                 mode,
                 LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
             )
-        {
-            let mut expanded_ids = expanded.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-            expanded_ids.extend(backend_composite_targets);
+        }) || backend_composite_targets.iter().any(|(_, mode)| {
+            matches!(
+                mode,
+                LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
+            )
+        });
+        if self.global.solo && solo_active {
+            let mut expanded_ids = expanded.iter().map(|(id, _, _)| *id).collect::<Vec<_>>();
+            expanded_ids.extend(backend_composite_targets.iter().map(|(id, _)| *id));
             let target_tracks: Vec<_> = expanded_ids
                 .iter()
                 .filter_map(|id| self.loops.get(id).map(|model| model.track_id))
@@ -3042,8 +3103,11 @@ impl ApplicationModel {
                     .get(source)
                     .ok_or_else(|| format!("stale composition source {source}"))?
                     .backend_id;
+                let Some(source_mode) = self.script_trigger_mode_for_loop(*source, mode)? else {
+                    continue;
+                };
                 backend
-                    .transition_loop(backend_id, backend_loop_mode(mode), None)
+                    .transition_loop(backend_id, backend_loop_mode(source_mode), None)
                     .map_err(|error| {
                         format!("could not start composition source {source}: {error}")
                     })?;
@@ -4322,7 +4386,9 @@ impl ApplicationModel {
     fn add_track_spec(&mut self, backend: &mut dyn Backend, spec: TrackSpec) -> Result<(), String> {
         spec.validate(&self.track_processors)
             .map_err(|error| format!("invalid track: {error:?}"))?;
-        let (backend_topology, topology, loop_audio_channels) = match &spec.topology {
+        let (backend_topology, topology, loop_audio_channels, default_playback_mode) = match &spec
+            .topology
+        {
             TrackSpecTopology::Direct {
                 audio_channels,
                 midi,
@@ -4333,12 +4399,14 @@ impl ApplicationModel {
                 },
                 TrackTopology::Direct,
                 *audio_channels,
+                DefaultPlaybackMode::Regular,
             ),
             TrackSpecTopology::DryWet {
                 dry_audio_channels,
                 wet_audio_channels,
                 dry_midi,
                 processor_type,
+                default_playback_mode,
             } => {
                 let backend_topology =
                     if processor_type.as_str() == shoop_app_api::TrackProcessorTypeId::EXTERNAL {
@@ -4364,6 +4432,7 @@ impl ApplicationModel {
                         processor_type: processor_type.clone(),
                     },
                     dry_audio_channels.saturating_add(*wet_audio_channels),
+                    *default_playback_mode,
                 )
             }
         };
@@ -4384,6 +4453,17 @@ impl ApplicationModel {
                 initial_loops: slot_count,
             })
             .map_err(|error| format!("could not create track: {error}"))?;
+        if let Err(error) = backend.set_track_default_playback_mode(
+            created.track_id,
+            backend_default_playback_mode(default_playback_mode),
+        ) {
+            return match backend.remove_track(created.track_id) {
+                Ok(()) => Err(format!("could not set initial track playback mode: {error}")),
+                Err(rollback) => Err(format!(
+                    "could not set initial track playback mode: {error}; could not remove the new track: {rollback}"
+                )),
+            };
+        }
         let latency_pending = spec.latency != Default::default();
         if latency_pending {
             let backend_adjustment = match spec.latency.adjustment {
@@ -4454,6 +4534,7 @@ impl ApplicationModel {
             is_sync: false,
             audio_channels: loop_audio_channels,
             topology,
+            default_playback_mode,
             fx: None,
             loops: loop_ids,
             port_ids,
@@ -4513,6 +4594,14 @@ impl ApplicationModel {
             let backend_loop = backend
                 .add_loop_to_track(backend_track)
                 .map_err(|error| format!("could not add aligned loop: {error}"))?;
+            backend
+                .set_track_default_playback_mode(
+                    backend_track,
+                    backend_default_playback_mode(self.tracks[index].default_playback_mode),
+                )
+                .map_err(|error| {
+                    format!("could not initialize added loop playback mode: {error}")
+                })?;
             if let Some(sync) = self.global.sync.then(|| self.sync_backend_loop()).flatten() {
                 backend
                     .set_loop_sync_source(backend_loop, Some(sync))
@@ -4666,6 +4755,23 @@ impl ApplicationModel {
             TrackAction::Remove | TrackAction::MoveBefore(_) => unreachable!(),
             TrackAction::NameChanged(name) => {
                 track.name = name;
+                return Ok(());
+            }
+            TrackAction::DefaultPlaybackModeChanged(mode) => {
+                if !matches!(track.topology, TrackTopology::DryWet { .. }) {
+                    return Err(format!(
+                        "track {track_id} does not support dry-through-wet default playback"
+                    ));
+                }
+                backend
+                    .set_track_default_playback_mode(
+                        track.backend_id,
+                        backend_default_playback_mode(mode),
+                    )
+                    .map_err(|error| {
+                        format!("could not update track default playback mode: {error}")
+                    })?;
+                track.default_playback_mode = mode;
                 return Ok(());
             }
             TrackAction::OutputGainChanged(value) => BackendTrackControl::OutputGainDb(value),
@@ -7063,19 +7169,32 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?;
+        let default_playback_mode =
+            if model.state.composite_kind != shoop_app_api::CompositeKind::None {
+                BackendLoopMode::Playing
+            } else {
+                self.tracks
+                    .iter()
+                    .find(|track| track.id == model.track_id)
+                    .map(|track| match track.default_playback_mode {
+                        DefaultPlaybackMode::Regular => BackendLoopMode::Playing,
+                        DefaultPlaybackMode::DryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+                    })
+                    .unwrap_or(BackendLoopMode::Playing)
+            };
         let has_planned_transition = model.state.next_transition_delay.is_some()
             && !matches!(model.state.next_mode, LoopMode::Unknown | LoopMode::Stopped);
         let mode = if has_planned_transition {
             BackendLoopMode::Stopped
         } else if model.state.mode == LoopMode::Recording {
-            BackendLoopMode::Playing
+            default_playback_mode
         } else if model.length == 0 && model.state.mode == LoopMode::Stopped {
             if self.global.default_recording_action == DefaultRecordingAction::Grab {
                 return self.grab_single_target(backend, loop_id);
             }
             BackendLoopMode::Recording
         } else if model.length > 0 && model.state.mode == LoopMode::Stopped {
-            BackendLoopMode::Playing
+            default_playback_mode
         } else {
             BackendLoopMode::Stopped
         };
@@ -7273,6 +7392,13 @@ impl ApplicationModel {
                 )
             })
             .collect();
+        if targets
+            .iter()
+            .any(|(_, _, _, composite_id)| composite_id.is_some())
+            && !matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Stopped)
+        {
+            return Err("composite loops support only playback and stop".to_owned());
+        }
         let delay = self.global.sync.then_some(self.target_delay());
         if matches!(
             mode,
@@ -8858,6 +8984,12 @@ impl ApplicationModel {
                 is_sync: track.is_sync,
                 width: None,
                 topology,
+                default_playback_mode: match track.default_playback_mode {
+                    DefaultPlaybackMode::Regular => DefaultPlaybackModeDocument::Regular,
+                    DefaultPlaybackMode::DryThroughWet => {
+                        DefaultPlaybackModeDocument::DryThroughWet
+                    }
+                },
                 controls: TrackControlsDocument {
                     output_gain_db: captured.state.output_gain_db,
                     output_balance: captured.state.output_balance,
@@ -9165,6 +9297,21 @@ impl ApplicationModel {
                     },
                 );
             }
+            let default_playback_mode = match track_document.default_playback_mode {
+                DefaultPlaybackModeDocument::Regular => DefaultPlaybackMode::Regular,
+                DefaultPlaybackModeDocument::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
+            };
+            backend
+                .set_track_default_playback_mode(
+                    created.track_id,
+                    backend_default_playback_mode(default_playback_mode),
+                )
+                .map_err(|error| {
+                    format!(
+                        "could not restore default playback mode for track {}: {error}",
+                        track_document.id
+                    )
+                })?;
             tracks.push(TrackModel {
                 id: TrackId::from_raw(track_document.id),
                 backend_id: created.track_id,
@@ -9174,6 +9321,7 @@ impl ApplicationModel {
                 is_sync: track_document.is_sync,
                 audio_channels,
                 topology,
+                default_playback_mode,
                 fx: None,
                 loops: loop_ids,
                 port_ids: Arc::from(port_ids),
@@ -9311,6 +9459,7 @@ impl ApplicationModel {
                     structural_state: track.structural_state,
                     is_sync: track.is_sync,
                     topology: track.topology.clone(),
+                    default_playback_mode: track.default_playback_mode,
                     fx: track.fx.clone(),
                     loops: track
                         .loops
@@ -10087,6 +10236,7 @@ fn new_session_document(sample_rate: u32) -> SessionDocument {
                 audio_channels: 1,
                 midi: false,
             },
+            default_playback_mode: DefaultPlaybackModeDocument::Regular,
             controls: TrackControlsDocument::default(),
             latency: TrackLatencyDocument::default(),
             loops: vec![LoopDocument {
@@ -10946,6 +11096,13 @@ fn external_capture_mode(mode: LoopMode) -> bool {
 
 fn runnable_composite_mode(mode: LoopMode) -> bool {
     !matches!(mode, LoopMode::Unknown | LoopMode::Stopped)
+}
+
+fn backend_default_playback_mode(mode: DefaultPlaybackMode) -> BackendDefaultPlaybackMode {
+    match mode {
+        DefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+        DefaultPlaybackMode::DryThroughWet => BackendDefaultPlaybackMode::DryThroughWet,
+    }
 }
 
 fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
@@ -12977,6 +13134,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec {
                     adjustment: RecordingOffsetAdjustmentState::ManualOverride,
@@ -13093,6 +13251,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::OXISYNTH,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -13351,6 +13510,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -13416,6 +13576,10 @@ mod tests {
             .unwrap()
             .recording_fx_state_id
             .unwrap();
+        assert_eq!(
+            saved_track.default_playback_mode,
+            DefaultPlaybackModeDocument::DryThroughWet
+        );
         assert_eq!(saved.document.fx_states.len(), 1);
         assert_eq!(saved.document.fx_states[0].id, take_id);
         assert_eq!(saved.document.fx_states[0].internal_state, exact_state);
@@ -13435,6 +13599,10 @@ mod tests {
         let loaded = runtime.snapshot();
         assert_eq!(loaded.tracks.len(), 2);
         assert_eq!(loaded.tracks[1].topology, track.topology);
+        assert_eq!(
+            loaded.tracks[1].default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
         assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
         runtime
             .dispatch(AppIntent::Loop {
@@ -13488,6 +13656,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -13959,7 +14128,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 5); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 6); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -13977,7 +14146,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.5, host supports 1.4"));
+        assert!(error.contains("script requests 1.6, host supports 1.5"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -16317,7 +16486,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         let before = backend.operations().len();
         model
-            .script_trigger_loops(&mut backend, &[target], LoopMode::Playing)
+            .script_trigger_loops(
+                &mut backend,
+                &[target],
+                ScriptTriggerMode::Explicit(LoopMode::Playing),
+            )
             .unwrap();
         let source_a_backend = model.loops[&source_a].backend_id;
         let source_b_backend = model.loops[&source_b].backend_id;
@@ -16366,7 +16539,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             ),
         ]));
         model
-            .script_trigger_loops(&mut backend, &[target], LoopMode::Stopped)
+            .script_trigger_loops(
+                &mut backend,
+                &[target],
+                ScriptTriggerMode::Explicit(LoopMode::Stopped),
+            )
             .unwrap();
         assert!(!model.script_composition_playback.contains_key(&target));
     }
@@ -16964,10 +17141,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .is_none());
         send_note(&mut runtime, &midi_control, 56, true);
         let composition_play = runtime.snapshot();
-        assert_eq!(
-            composition_play.tracks[2].loops[0].mode,
-            LoopMode::Recording
-        );
+        assert_eq!(composition_play.tracks[2].loops[0].mode, LoopMode::Stopped);
 
         assert!(!midi_control.take_sent().is_empty());
         midi_control.set_endpoints(Vec::new());
@@ -17673,6 +17847,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -19465,7 +19640,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn scripts_export_exact_source_and_convert_session_ownership() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let source = "shoop_announce_api_version(1, 5)\nprint('future')";
+        let source = "shoop_announce_api_version(1, 6)\nprint('future')";
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
@@ -19854,6 +20029,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 is_sync: false,
                 width: None,
                 topology: TrackTopologyDocument::Trigger,
+                default_playback_mode: DefaultPlaybackModeDocument::Regular,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: Vec::new(),
@@ -20381,6 +20557,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -21402,5 +21579,252 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.tick(Duration::ZERO);
         }
         assert!(!runtime.has_pending_commands());
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit() {
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            ),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
+                ..Default::default()
+            },
+            features: Default::default(),
+            editor: None,
+        }]);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Processed".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                    ),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                },
+                latency: TrackLatencySpec::default(),
+                creation_request_id: None,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track_id = runtime.model.tracks[1].id;
+        let loop_id = runtime.model.tracks[1].loops[0];
+        let backend_id = runtime.model.loops[&loop_id].backend_id;
+        runtime.backend.set_loop_length(backend_id, 64).unwrap();
+        runtime.tick(Duration::ZERO);
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .model
+            .apply_script_operation(
+                &mut *runtime.backend,
+                ControlOperation::TriggerDefaultPlayback {
+                    loops: vec![loop_id],
+                },
+            )
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Direct".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let direct_loop_id = runtime.model.tracks[2].loops[0];
+        let direct_backend_id = runtime.model.loops[&direct_loop_id].backend_id;
+        runtime
+            .backend
+            .set_loop_length(direct_backend_id, 64)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .model
+            .apply_script_operation(
+                &mut *runtime.backend,
+                ControlOperation::TriggerDefaultPlayback {
+                    loops: vec![loop_id, direct_loop_id],
+                },
+            )
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+        assert_eq!(
+            runtime.snapshot().tracks[2].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .backend
+            .transition_loop(backend_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id,
+                action: TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::Regular),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_track_default_playback_update_keeps_application_state_unchanged() {
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            ),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
+                ..Default::default()
+            },
+            features: Default::default(),
+            editor: None,
+        }]);
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track_spec(
+                &mut backend,
+                TrackSpec {
+                    name: "Processed".to_owned(),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: 1,
+                        wet_audio_channels: 1,
+                        dry_midi: false,
+                        processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                            shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                        ),
+                        default_playback_mode: DefaultPlaybackMode::Regular,
+                    },
+                    latency: TrackLatencySpec::default(),
+                    creation_request_id: None,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        backend.fail_next_track_control("injected default playback failure");
+        assert!(model
+            .handle_track_action(
+                &mut backend,
+                track_id,
+                TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::DryThroughWet),
+            )
+            .is_err());
+        assert_eq!(
+            model.tracks[1].default_playback_mode,
+            DefaultPlaybackMode::Regular
+        );
     }
 }

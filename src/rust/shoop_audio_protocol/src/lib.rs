@@ -119,6 +119,10 @@ pub enum Command {
         track_id: u64,
         control: WireTrackControl,
     },
+    SetTrackDefaultPlaybackMode {
+        track_id: u64,
+        mode: WireDefaultPlaybackMode,
+    },
     SetTrackLatency {
         track_id: u64,
         adjustment: WireRecordingOffsetAdjustment,
@@ -413,6 +417,14 @@ impl WireTrackFxControl {
             | Self::OxiPanic => return None,
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireDefaultPlaybackMode {
+    #[default]
+    Regular,
+    DryThroughWet,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
@@ -790,6 +802,22 @@ mod tests {
 
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
     shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn track_default_playback_mode_round_trips() {
+        let command = CommandEnvelope::new(
+            40,
+            Command::SetTrackDefaultPlaybackMode {
+                track_id: 7,
+                mode: WireDefaultPlaybackMode::DryThroughWet,
+            },
+        );
+        let json = serde_json::to_vec(&command).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&json).unwrap(),
+            command
+        );
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn composite_configuration_round_trips_without_losing_targets_or_modes() {

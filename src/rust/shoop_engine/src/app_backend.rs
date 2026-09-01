@@ -4387,6 +4387,22 @@ impl Loop {
         result.map_err(|error| anyhow!(error))
     }
 
+    pub fn set_default_playback_mode(
+        &self,
+        mode: engine::DefaultPlaybackMode,
+    ) -> Result<CommandSequence> {
+        let control = Arc::clone(&self.control);
+        Ok(self.shared.send_control(move |s: &mut engine::Session| {
+            if let Some(loop_) = control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .and_then(|idx| s.loop_mut(idx))
+            {
+                loop_.set_default_playback_mode(mode);
+            }
+        })?)
+    }
+
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
         let sequence = self.shared.send_control(move |s: &mut engine::Session| {

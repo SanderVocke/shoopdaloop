@@ -59,110 +59,110 @@ It does not change explicit Play, Play Dry Through Wet, or explicit Lua/script-c
 
 ### Stage 0: Establish the Current Baseline
 
-- [ ] Commit this plan as the planning milestone if it is not already committed.
-- [ ] Fetch `origin`, rebase `shoopdaloop-playdrydefault` onto current `origin/master`, and resolve conflicts by preserving the current unified Track Defaults, latency, auto-arm, and browser behavior.
-- [ ] Re-read affected APIs after the rebase and update only implementation details in this plan if paths or names changed.
-- [ ] Confirm the worktree is clean and record the baseline commit.
+- [x] Commit this plan as the planning milestone if it is not already committed.
+- [x] Fetch `origin`, rebase `shoopdaloop-playdrydefault` onto current `origin/master`, and resolve conflicts by preserving the current unified Track Defaults, latency, auto-arm, and browser behavior.
+- [x] Re-read affected APIs after the rebase and update only implementation details in this plan if paths or names changed.
+- [x] Confirm the worktree is clean and record the baseline commit.
 
 **Verification**
 
-- [ ] Run formatting and a warning-denying workspace build on the rebased baseline.
-- [ ] Run focused existing application, settings, session, scripting, composite-plan, composite-runtime, timeline, backend, protocol, and worklet tests before behavior changes.
+- [x] Run formatting and a warning-denying workspace build on the rebased baseline.
+- [x] Run focused existing application, settings, session, scripting, composite-plan, composite-runtime, timeline, backend, protocol, and worklet tests before behavior changes.
 
 ### Stage 1: Define the Track Preference and Persistence Contract
 
-- [ ] Add the shared `DefaultPlaybackMode` enum and conversion helpers between application, backend, engine, wire, settings, and session representations without coupling it to transient `LoopMode` state.
-- [ ] Add the preference to `TrackSpec`, `TrackModel`, `TrackState`, backend track state/request data, and every track creation/replacement path. Force `Regular` for non-dry+wet and sync tracks.
-- [ ] Add a track action/backend operation for changing the preference with capability validation and transactional application-model publication.
-- [ ] Add the field to `TrackDocument`, update session validation, migration/defaulting, fixtures, round-trip capture/load, and the session format version/documentation as required.
+- [x] Add the shared `DefaultPlaybackMode` enum and conversion helpers between application, backend, engine, wire, settings, and session representations without coupling it to transient `LoopMode` state.
+- [x] Add the preference to `TrackSpec`, `TrackModel`, `TrackState`, backend track state/request data, and every track creation/replacement path. Force `Regular` for non-dry+wet and sync tracks.
+- [x] Add a track action/backend operation for changing the preference with capability validation and transactional application-model publication.
+- [x] Add the field to `TrackDocument`, update session validation, migration/defaulting, fixtures, round-trip capture/load, and the session format version/documentation as required.
 
 **Verification**
 
-- [ ] Add API validation tests for valid dry+wet and invalid non-dry+wet combinations.
-- [ ] Add session encode/decode, old-version migration, invalid-document transaction, native replacement, and browser replacement tests.
-- [ ] Run targeted `shoop_app_api`, `shoop_session`, `shoop_app`, and remote application tests.
+- [x] Add API validation tests for valid dry+wet and invalid non-dry+wet combinations.
+- [x] Add session encode/decode, old-version migration, invalid-document transaction, native replacement, and browser replacement tests.
+- [x] Run targeted `shoop_app_api`, `shoop_session`, `shoop_app`, and remote application tests.
 
 ### Stage 2: Carry the Preference Through Native and Browser Runtimes
 
-- [ ] Store the current preference in backend track ownership state and make newly added track loops inherit access to that track-owned value.
-- [ ] Add the bounded engine/runtime metadata needed to resolve a primitive target's owning-track default without consulting or modifying a composite plan.
-- [ ] Carry track creation and live preference changes through native, local engine, fake backend, audio protocol, worklet client, and AudioWorklet command paths.
-- [ ] Ensure track deletion, session replacement, driver switching, rollback, and stale command handling remove or restore the associated runtime metadata safely.
+- [x] Store the current preference in backend track ownership state and make newly added track loops inherit access to that track-owned value.
+- [x] Add the bounded engine/runtime metadata needed to resolve a primitive target's owning-track default without consulting or modifying a composite plan.
+- [x] Carry track creation and live preference changes through native, local engine, fake backend, audio protocol, worklet client, and AudioWorklet command paths.
+- [x] Ensure track deletion, session replacement, driver switching, rollback, and stale command handling remove or restore the associated runtime metadata safely.
 
 **Verification**
 
-- [ ] Add backend tests proving every loop in a track observes the current track value, newly added loops observe it, and another track remains independent.
-- [ ] Add wire encode/decode and worklet command tests for creation, mutation, stale IDs, and replacement.
-- [ ] Confirm a failed backend mutation leaves the application and runtime preference unchanged.
+- [x] Add backend tests proving every loop in a track observes the current track value, newly added loops observe it, and another track remains independent.
+- [x] Add wire encode/decode and worklet command tests for creation, mutation, stale IDs, and replacement.
+- [x] Confirm a failed backend mutation leaves the application and runtime preference unchanged.
 
 ### Stage 3: Replace Regular Composite Inheritance with Dynamic Default Playback
 
-- [ ] Replace `CompiledChildMode::Inherit` with `CompiledChildMode::DefaultPlayback`; do not retain both semantics.
-- [ ] Compile every mode-less regular-composite entry to `DefaultPlayback` and continue compiling every script-composite entry to `Explicit(LoopMode)`.
-- [ ] Carry the symbolic regular action through reconciliation until an actual child activation/retrigger, then resolve primitive targets from current runtime track metadata and composite targets as ordinary playback.
-- [ ] Latch the concrete primitive mode for the active occurrence so changing a track default does not alter an already active child.
-- [ ] Preserve regular looping, explicit start/seek snapshots, nested same-sample propagation, conflict priority, natural advancement, offsets, empty-child behavior, and plan replacement rules.
-- [ ] Reject unsupported outer regular-composite playback variants rather than treating dry-through-wet as another inherited/default mode.
-- [ ] Keep composite configuration/signatures independent of track default values so a live preference change queues no plan compile, configure, replacement, or restart operation.
+- [x] Replace `CompiledChildMode::Inherit` with `CompiledChildMode::DefaultPlayback`; do not retain both semantics.
+- [x] Compile every mode-less regular-composite entry to `DefaultPlayback` and continue compiling every script-composite entry to `Explicit(LoopMode)`.
+- [x] Carry the symbolic regular action through reconciliation until an actual child activation/retrigger, then resolve primitive targets from current runtime track metadata and composite targets as ordinary playback.
+- [x] Latch the concrete primitive mode for the active occurrence so changing a track default does not alter an already active child.
+- [x] Preserve regular looping, explicit start/seek snapshots, nested same-sample propagation, conflict priority, natural advancement, offsets, empty-child behavior, and plan replacement rules.
+- [x] Reject unsupported outer regular-composite playback variants rather than treating dry-through-wet as another inherited/default mode.
+- [x] Keep composite configuration/signatures independent of track default values so a live preference change queues no plan compile, configure, replacement, or restart operation.
 
 **Verification**
 
-- [ ] Add compiler tests proving regular plans contain only `DefaultPlayback`, script plans contain only explicit modes, and mixed/unknown script data remains invalid.
-- [ ] Add state-machine and timeline tests for regular and dry defaults, different defaults in one composite, nested regular composites, explicit script events, start/seek, wraparound, and conflicts.
-- [ ] Add a regression test that changes a default while a child is active, observes no immediate mode change or plan replacement, stops/retriggers it, and observes the new mode.
-- [ ] Extend no-allocation tests across compilation-independent live preference changes and default-playback boundaries.
-- [ ] Run targeted composite plan, semantics, state-machine, control, timing, timeline, app-backend, and no-allocation tests on native and Wasm-capable test paths.
+- [x] Add compiler tests proving regular plans contain only `DefaultPlayback`, script plans contain only explicit modes, and mixed/unknown script data remains invalid.
+- [x] Add state-machine and timeline tests for regular and dry defaults, different defaults in one composite, nested regular composites, explicit script events, start/seek, wraparound, and conflicts.
+- [x] Add a regression test that changes a default while a child is active, observes no immediate mode change or plan replacement, stops/retriggers it, and observes the new mode.
+- [x] Extend no-allocation tests across compilation-independent live preference changes and default-playback boundaries.
+- [x] Run targeted composite plan, semantics, state-machine, control, timing, timeline, app-backend, and no-allocation tests on native and Wasm-capable test paths.
 
 ### Stage 4: Apply Defaults to GUI and Scripted Default Actions
 
-- [ ] Update the application default-action playback branches so stopped non-empty primitive loops and recording primitive loops request track-default playback.
-- [ ] Make default actions on regular and script composites request ordinary composite playback; do not apply the carrier track's dry preference to the composite itself.
-- [ ] Add a mode-less/default-playback scripting control operation for `shoop_helpers.default_loop_action` and keep existing mode-taking scripting APIs explicit.
-- [ ] Update the helper and bundled keyboard/controller scripts so only their default-action playback branch uses the new operation; explicit dry modifiers and explicit mode shortcuts retain their current concrete modes.
-- [ ] Handle mixed selected primitive/composite targets deterministically without crashing or disabling a bundled script when an operation is inapplicable.
-- [ ] Update the Lua API minor version, function inventory, helper documentation, and bundled script announcements if the public scripting surface changes.
+- [x] Update the application default-action playback branches so stopped non-empty primitive loops and recording primitive loops request track-default playback.
+- [x] Make default actions on regular and script composites request ordinary composite playback; do not apply the carrier track's dry preference to the composite itself.
+- [x] Add a mode-less/default-playback scripting control operation for `shoop_helpers.default_loop_action` and keep existing mode-taking scripting APIs explicit.
+- [x] Update the helper and bundled keyboard/controller scripts so only their default-action playback branch uses the new operation; explicit dry modifiers and explicit mode shortcuts retain their current concrete modes.
+- [x] Handle mixed selected primitive/composite targets deterministically without crashing or disabling a bundled script when an operation is inapplicable.
+- [x] Update the Lua API minor version, function inventory, helper documentation, and bundled script announcements if the public scripting surface changes.
 
 **Verification**
 
-- [ ] Add application tests for stopped-to-play, recording-to-play, empty recording/grab, cancellation, stop, mixed track defaults, selected groups, and composite targets.
-- [ ] Add scripting bridge/helper tests proving default playback is dynamic while explicit `Playing` and `PlayingDryThroughWet` bypass it.
-- [ ] Run production keyboard and APC script tests on native and Wasm paths.
+- [x] Add application tests for stopped-to-play, recording-to-play, empty recording/grab, cancellation, stop, mixed track defaults, selected groups, and composite targets.
+- [x] Add scripting bridge/helper tests proving default playback is dynamic while explicit `Playing` and `PlayingDryThroughWet` bypass it.
+- [x] Run production keyboard and APC script tests on native and Wasm paths.
 
 ### Stage 5: Implement Settings, Creation, and Track Context UI
 
-- [ ] Register `tracks.new.default_playback_mode` as a stable string-choice setting with `regular` as its default and document its effect timing.
-- [ ] Integrate the field into the unified `NewTrackConfiguration`, Track Defaults custom editor, Add Track draft, validation, and **make default** persistence/retry flow.
-- [ ] Show an applicable playback-mode selector in the Add Track form and force/display regular playback when the selected topology is not dry+wet.
-- [ ] Add a track context submenu/radio choice for dry+wet tracks and route changes through the new track action. Do not offer an inapplicable dry choice on other tracks.
-- [ ] Publish the current mode in `TrackState` so widgets remain snapshot-driven and deterministic.
+- [x] Register `tracks.new.default_playback_mode` as a stable string-choice setting with `regular` as its default and document its effect timing.
+- [x] Integrate the field into the unified `NewTrackConfiguration`, Track Defaults custom editor, Add Track draft, validation, and **make default** persistence/retry flow.
+- [x] Show an applicable playback-mode selector in the Add Track form and force/display regular playback when the selected topology is not dry+wet.
+- [x] Add a track context submenu/radio choice for dry+wet tracks and route changes through the new track action. Do not offer an inapplicable dry choice on other tracks.
+- [x] Publish the current mode in `TrackState` so widgets remain snapshot-driven and deterministic.
 
 **Verification**
 
-- [ ] Add settings registry/default/invalid-value/unknown-key tests and Add Track draft/make-default retry tests.
-- [ ] Add egui interaction tests for creation overrides, topology changes, context-menu visibility, selected value, emitted action, and backend failure reconciliation.
-- [ ] Add browser settings persistence coverage for the new optional key.
+- [x] Add settings registry/default/invalid-value/unknown-key tests and Add Track draft/make-default retry tests.
+- [x] Add egui interaction tests for creation overrides, topology changes, context-menu visibility, selected value, emitted action, and backend failure reconciliation.
+- [x] Add browser settings persistence coverage for the new optional key.
 
 ### Stage 6: Audit Semantics and Documentation
 
-- [ ] Update user documentation for track defaults, creation, context-menu changes, default action behavior, and regular versus script composite playback.
-- [ ] Update composite semantic documentation to state that regular entries are symbolic `DefaultPlayback`, resolved at child trigger time without plan mutation, while script entries are explicit.
-- [ ] Update session/settings format documentation and Lua compatibility documentation, including compatibility/version boundaries.
-- [ ] Audit all `Playing` and `PlayingDryThroughWet` call sites that represent default actions, regular-composite child actions, explicit actions, and post-record policy; classify each intentionally and add missing tests rather than broad substitutions.
-- [ ] Audit native and browser backend parity and confirm no track default is serialized into a composite entry/configuration/signature.
+- [x] Update user documentation for track defaults, creation, context-menu changes, default action behavior, and regular versus script composite playback.
+- [x] Update composite semantic documentation to state that regular entries are symbolic `DefaultPlayback`, resolved at child trigger time without plan mutation, while script entries are explicit.
+- [x] Update session/settings format documentation and Lua compatibility documentation, including compatibility/version boundaries.
+- [x] Audit all `Playing` and `PlayingDryThroughWet` call sites that represent default actions, regular-composite child actions, explicit actions, and post-record policy; classify each intentionally and add missing tests rather than broad substitutions.
+- [x] Audit native and browser backend parity and confirm no track default is serialized into a composite entry/configuration/signature.
 
 **Verification**
 
-- [ ] Search for the removed regular `Inherit` variant and confirm no production or test reference remains.
-- [ ] Inspect encoded regular-composite/session fixtures and backend configurations to confirm their child mode remains symbolic/absent rather than a concrete track preference.
-- [ ] Review terminology consistently for `default playback`, `regular playback`, `dry through wet`, `explicit`, `trigger time`, and `active occurrence`.
+- [x] Search for the removed regular `Inherit` variant and confirm no production or test reference remains.
+- [x] Inspect encoded regular-composite/session fixtures and backend configurations to confirm their child mode remains symbolic/absent rather than a concrete track preference.
+- [x] Review terminology consistently for `default playback`, `regular playback`, `dry through wet`, `explicit`, `trigger time`, and `active occurrence`.
 
 ### Stage 7: Full Local Validation
 
-- [ ] Run `cargo fmt --all` and verify with `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `cargo fmt --all` and verify with `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
 - [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests changed.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests changed.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
 - [ ] Build/check `shoopdaloop` and build `shoop_audio_worklet` for `wasm32-unknown-unknown`.
 - [ ] Run `python3 scripts/run_wasm_tests.py --profile dev --runtime node` and the policy-relevant Chrome suite when a browser is available.
 - [ ] Run the documented raw Wasm host/worklet dependency and smoke checks affected by protocol changes.

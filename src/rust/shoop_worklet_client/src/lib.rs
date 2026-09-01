@@ -25,26 +25,28 @@ use shoop_app_api::{
 use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, Event, MidiDataChunk, WaveformChunk,
     WireApplicationPortOwner, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
-    WireCompositeKind, WireCompositeTarget, WireGrabRequest, WireHostPort, WireLoopMode,
-    WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
-    WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
-    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireCompositeKind, WireCompositeTarget, WireDefaultPlaybackMode, WireGrabRequest, WireHostPort,
+    WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
+    WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
+    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
     BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
     BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
-    BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
-    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
-    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
+    BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure,
+    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
+    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
+    BackendMutationFailure, BackendMutationKind, BackendOperationKind, BackendOperationProgress,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
+    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -1166,7 +1168,9 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
             BackendMutationKind::CompositeStructure,
             Some(*expected_composite_id),
         ),
-        Command::SetTrackControl { track_id, .. } | Command::SetTrackLatency { track_id, .. } => {
+        Command::SetTrackControl { track_id, .. }
+        | Command::SetTrackDefaultPlaybackMode { track_id, .. }
+        | Command::SetTrackLatency { track_id, .. } => {
             (BackendMutationKind::TrackControl, Some(*track_id))
         }
         Command::SetTrackFxControl { track_id, .. } => {
@@ -1578,6 +1582,33 @@ impl Backend for RemoteWorkletBackend {
         self.submit(Command::SetTrackControl {
             track_id: track_id.raw(),
             control: to_wire_track_control(control),
+        })
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        let resources = self
+            .track_resources
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown remote backend track {track_id:?}"))?;
+        if mode == BackendDefaultPlaybackMode::DryThroughWet
+            && !matches!(
+                resources.topology,
+                BackendTrackTopology::DryWetExternal { .. }
+                    | BackendTrackTopology::DryWetProcessor { .. }
+            )
+        {
+            return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
+        }
+        self.submit(Command::SetTrackDefaultPlaybackMode {
+            track_id: track_id.raw(),
+            mode: match mode {
+                BackendDefaultPlaybackMode::Regular => WireDefaultPlaybackMode::Regular,
+                BackendDefaultPlaybackMode::DryThroughWet => WireDefaultPlaybackMode::DryThroughWet,
+            },
         })
     }
 
@@ -3260,6 +3291,9 @@ mod tests {
         deliver(&control, 1, 1, Event::Ack);
         deliver(&control, 1, 2, Event::Ack);
         backend
+            .set_track_default_playback_mode(creation.track_id, BackendDefaultPlaybackMode::Regular)
+            .unwrap();
+        backend
             .inject_midi_input(
                 creation.track_id,
                 &[BackendMidiEvent {
@@ -3294,12 +3328,19 @@ mod tests {
                     .command
             })
             .collect::<Vec<_>>();
-        assert_eq!(commands.len(), 2);
+        assert_eq!(commands.len(), 3);
         assert!(matches!(
             commands[0],
             Command::ConfigureDeviceChannels { .. }
         ));
         assert!(matches!(commands[1], Command::CreateTrack { .. }));
+        assert!(matches!(
+            commands[2],
+            Command::SetTrackDefaultPlaybackMode {
+                mode: WireDefaultPlaybackMode::Regular,
+                ..
+            }
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]

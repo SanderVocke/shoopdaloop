@@ -1,9 +1,9 @@
 use crate::document::{
-    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
-    FxChainTypeDocument, MediaPayload, ProcessorLatencyAdjustmentDocument,
-    RecordingOffsetAdjustmentDocument, SessionBundle, SessionDocument, TrackDocument,
-    TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
-    SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
+    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument,
+    DefaultPlaybackModeDocument, FormatVersion, FxChainTypeDocument, MediaPayload,
+    ProcessorLatencyAdjustmentDocument, RecordingOffsetAdjustmentDocument, SessionBundle,
+    SessionDocument, TrackDocument, TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION,
+    FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -20,6 +20,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
+const PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION: u16 = 8;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -220,6 +221,7 @@ pub fn decode_session_with_limits(
             header.document_version,
             PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
                 | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
+                | PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -236,6 +238,9 @@ pub fn decode_session_with_limits(
     }
     if manifest.document_version <= PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION {
         migrate_pre_processor_adjustment_document(&mut manifest.document)?;
+    }
+    if manifest.document_version <= PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION {
+        migrate_pre_default_playback_document(&mut manifest.document);
     }
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -317,6 +322,14 @@ fn migrate_pre_alignment_document(document: &mut SessionDocument) {
                     channel.capture_alignment_frames = 0;
                 }
             }
+        }
+    }
+}
+
+fn migrate_pre_default_playback_document(document: &mut SessionDocument) {
+    for group in &mut document.track_groups {
+        for track in &mut group.tracks {
+            track.default_playback_mode = DefaultPlaybackModeDocument::Regular;
         }
     }
 }
@@ -711,6 +724,19 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     track.id
                 )));
             }
+            if track.default_playback_mode == DefaultPlaybackModeDocument::DryThroughWet
+                && !matches!(
+                    track.topology,
+                    TrackTopologyDocument::DryWetExternal { .. }
+                        | TrackTopologyDocument::Carla { .. }
+                        | TrackTopologyDocument::OxiSynth
+                )
+            {
+                return Err(SessionError::Validation(format!(
+                    "track {} has dry-through-wet default playback without dry/wet topology",
+                    track.id
+                )));
+            }
             validate_finite(track.controls.output_gain_db, "track output gain")?;
             validate_finite(track.controls.output_balance, "track output balance")?;
             validate_finite(track.controls.input_gain_db, "track input gain")?;
@@ -973,6 +999,12 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         {
                             return Err(SessionError::Validation(format!(
                                 "regular composite loop {} has an explicit instance mode",
+                                loop_.id
+                            )));
+                        }
+                        if composite.kind == CompositeKindDocument::Script && event.mode.is_none() {
+                            return Err(SessionError::Validation(format!(
+                                "script composite loop {} has an implicit instance mode",
                                 loop_.id
                             )));
                         }

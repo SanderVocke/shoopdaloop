@@ -3,8 +3,8 @@ use shoop_engine::{
     BoundaryTargetAction, CompiledCompositePlan, CompositeBoundaryTimeline, CompositeEntry,
     CompositePlanDescriptor, CompositePlanLimits, CompositeSection, CompositeTimeline,
     CompositeTimelineBuildError, CompositeTimelineControlError, CompositeTimelineFault,
-    CompositeTimelineLimits, CompositeTimelineNode, LoopIdentity, LoopMode, LoopTargetCatalog,
-    LoopTargetKind, LoopTargetMetadata,
+    CompositeTimelineLimits, CompositeTimelineNode, DefaultPlaybackMode, LoopIdentity, LoopMode,
+    LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata,
 };
 
 fn basic(slot: u32) -> LoopIdentity {
@@ -103,7 +103,7 @@ fn script_regular_natural_and_direct_conflicts_use_total_precedence() {
     .unwrap();
 
     timeline
-        .queue_control(start(0, 1, regular, LoopMode::Recording))
+        .queue_control(start(0, 1, regular, LoopMode::Playing))
         .unwrap();
     timeline
         .queue_control(start(0, 2, script, LoopMode::Playing))
@@ -114,7 +114,12 @@ fn script_regular_natural_and_direct_conflicts_use_total_precedence() {
         origin: BoundaryIntentOrigin::Natural { source: child },
     };
     let trace = timeline
-        .resolve_boundary(&[], &[natural], |identity| identity == child)
+        .resolve_boundary_with_default_playback(
+            &[],
+            &[natural],
+            |identity| identity == child,
+            |_| DefaultPlaybackMode::DryThroughWet,
+        )
         .unwrap();
     let child_action = trace.iter().find(|entry| entry.target == child).unwrap();
     assert!(matches!(
@@ -179,10 +184,17 @@ fn same_class_conflicts_use_lower_source_identity_not_install_order() {
     for reverse in [false, true] {
         let mut timeline = make(reverse);
         timeline
-            .queue_control(start(0, 1, higher, LoopMode::Recording))
+            .queue_control(start(0, 1, higher, LoopMode::Playing))
             .unwrap();
         timeline
-            .queue_control(start(0, 2, lower, LoopMode::Playing))
+            .resolve_boundary(&[], &[], |identity| identity == child)
+            .unwrap();
+        timeline.advance_clock(1);
+        timeline
+            .queue_control(start(1, 2, higher, LoopMode::Stopped))
+            .unwrap();
+        timeline
+            .queue_control(start(1, 3, lower, LoopMode::Playing))
             .unwrap();
         let trace = timeline
             .resolve_boundary(&[], &[], |identity| identity == child)
@@ -738,3 +750,173 @@ fn event_overflow_latches_before_runtime_or_target_commit() {
 }
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+#[shoop_wasm_test_support::shoop_test]
+fn regular_default_playback_resolves_on_activation_and_latches_while_active() {
+    let child = basic(1);
+    let source = composite(10);
+    let sync = basic(2);
+    let targets = catalog(&[child, source]);
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: plan(source, 1, &[(child, 0, None)], &targets),
+            sync_source: sync,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+
+    timeline
+        .queue_control(start(0, 1, source, LoopMode::Playing))
+        .unwrap();
+    let trace = timeline
+        .resolve_boundary_with_default_playback(
+            &[],
+            &[],
+            |identity| identity == child,
+            |_| DefaultPlaybackMode::DryThroughWet,
+        )
+        .unwrap();
+    assert!(trace.iter().any(|entry| {
+        entry.target == child
+            && matches!(
+                entry.action,
+                BoundaryTargetAction::SetMode {
+                    mode: LoopMode::PlayingDryThroughWet,
+                    ..
+                }
+            )
+    }));
+
+    timeline.advance_clock(1);
+    let trace = timeline
+        .resolve_boundary_with_default_playback(
+            &[sync],
+            &[],
+            |identity| identity == child,
+            |_| DefaultPlaybackMode::Regular,
+        )
+        .unwrap();
+    assert!(!trace.iter().any(|entry| entry.target == child));
+    assert_eq!(
+        timeline
+            .runtime(source)
+            .unwrap()
+            .active_children()
+            .next()
+            .unwrap()
+            .mode,
+        LoopMode::PlayingDryThroughWet
+    );
+
+    timeline.advance_clock(1);
+    timeline
+        .queue_control(start(2, 2, source, LoopMode::Stopped))
+        .unwrap();
+    timeline
+        .resolve_boundary(&[], &[], |identity| identity == child)
+        .unwrap();
+    timeline.advance_clock(1);
+    timeline
+        .queue_control(start(3, 3, source, LoopMode::Playing))
+        .unwrap();
+    let trace = timeline
+        .resolve_boundary_with_default_playback(
+            &[],
+            &[],
+            |identity| identity == child,
+            |_| DefaultPlaybackMode::Regular,
+        )
+        .unwrap();
+    assert!(trace.iter().any(|entry| {
+        entry.target == child
+            && matches!(
+                entry.action,
+                BoundaryTargetAction::SetMode {
+                    mode: LoopMode::Playing,
+                    ..
+                }
+            )
+    }));
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn script_explicit_playback_bypasses_the_track_default() {
+    let child = basic(1);
+    let source = composite(10);
+    let targets = catalog(&[child, source]);
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: plan(source, 1, &[(child, 0, Some(LoopMode::Playing))], &targets),
+            sync_source: basic(2),
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline
+        .queue_control(start(0, 1, source, LoopMode::Playing))
+        .unwrap();
+
+    let trace = timeline
+        .resolve_boundary_with_default_playback(
+            &[],
+            &[],
+            |identity| identity == child,
+            |_| DefaultPlaybackMode::DryThroughWet,
+        )
+        .unwrap();
+    assert!(trace.iter().any(|entry| {
+        entry.target == child
+            && matches!(
+                entry.action,
+                BoundaryTargetAction::SetMode {
+                    mode: LoopMode::Playing,
+                    ..
+                }
+            )
+    }));
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn explicit_script_play_of_nested_regular_composite_uses_descendant_track_default() {
+    let child = basic(1);
+    let nested = composite(10);
+    let script = composite(20);
+    let targets = catalog(&[child, nested, script]);
+    let timeline_nodes = vec![
+        CompositeTimelineNode {
+            plan: plan(nested, 1, &[(child, 0, None)], &targets),
+            sync_source: basic(2),
+        },
+        CompositeTimelineNode {
+            plan: plan(script, 1, &[(nested, 0, Some(LoopMode::Playing))], &targets),
+            sync_source: basic(2),
+        },
+    ];
+    let mut timeline =
+        CompositeBoundaryTimeline::new(timeline_nodes, CompositeTimelineLimits::default()).unwrap();
+    timeline
+        .queue_control(start(0, 1, script, LoopMode::Playing))
+        .unwrap();
+
+    let trace = timeline
+        .resolve_boundary_with_default_playback(
+            &[],
+            &[],
+            |identity| identity == child,
+            |_| DefaultPlaybackMode::DryThroughWet,
+        )
+        .unwrap();
+    let child_action = trace.iter().find(|entry| entry.target == child).unwrap();
+    assert!(matches!(
+        child_action.action,
+        BoundaryTargetAction::SetMode {
+            mode: LoopMode::PlayingDryThroughWet,
+            ..
+        }
+    ));
+    assert!(matches!(
+        child_action.winner,
+        BoundaryIntentOrigin::RegularComposite { source, .. } if source == nested
+    ));
+}
