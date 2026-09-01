@@ -68,6 +68,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 shoop_tracing = { path = "src/rust/shoop_tracing", default-features = false }
 oxisynth = { version = "=0.1.0", default-features = false }
 soundfont = "=0.1.0"
+fundsp = { version = "=0.23.0", default-features = false, features = ["std"] }
 
 [profile.release-with-debug]
 inherits = "release"
