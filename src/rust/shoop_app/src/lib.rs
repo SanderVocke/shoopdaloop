@@ -5344,13 +5344,119 @@ impl ApplicationModel {
         }
     }
 
+    fn auto_arm_registry_lengths(
+        &self,
+        edited_id: LoopId,
+        edited_composite: &CompositeDocument,
+    ) -> BTreeMap<LoopId, u32> {
+        fn resolve(
+            id: LoopId,
+            sync_length: u32,
+            primitive_lengths: &BTreeMap<LoopId, u32>,
+            composites: &BTreeMap<LoopId, (CompositeDocument, BTreeMap<LoopId, bool>)>,
+            visiting: &mut BTreeSet<LoopId>,
+            resolved: &mut BTreeMap<LoopId, u32>,
+        ) -> u32 {
+            if let Some(length) = resolved.get(&id) {
+                return *length;
+            }
+            if !visiting.insert(id) {
+                return primitive_lengths.get(&id).copied().unwrap_or(0);
+            }
+            let length = if let Some((composite, target_kinds)) = composites.get(&id) {
+                let cycles = composite
+                    .instances
+                    .iter()
+                    .map(|event| {
+                        let target = LoopId::from_raw(event.loop_id);
+                        let child_length = if target_kinds.get(&target) == Some(&true) {
+                            resolve(
+                                target,
+                                sync_length,
+                                primitive_lengths,
+                                composites,
+                                visiting,
+                                resolved,
+                            )
+                        } else {
+                            primitive_lengths.get(&target).copied().unwrap_or(0)
+                        };
+                        let duration = event
+                            .n_cycles
+                            .unwrap_or_else(|| child_length.div_ceil(sync_length).max(1));
+                        event.start_cycle.saturating_add(u64::from(duration))
+                    })
+                    .max()
+                    .unwrap_or(0);
+                u32::try_from(cycles.saturating_mul(u64::from(sync_length))).unwrap_or(u32::MAX)
+            } else {
+                primitive_lengths.get(&id).copied().unwrap_or(0)
+            };
+            visiting.remove(&id);
+            resolved.insert(id, length);
+            length
+        }
+
+        let sync_length = self.sync_length().max(1);
+        let primitive_lengths = self
+            .loops
+            .iter()
+            .map(|(id, model)| (*id, model.length))
+            .collect::<BTreeMap<_, _>>();
+        let composites = self
+            .loops
+            .values()
+            .filter_map(|model| {
+                let plan = model.auto_arm_latest_configured_plan.as_ref();
+                let document = if model.id == edited_id {
+                    Some(edited_composite.clone())
+                } else if model.backend_composite.is_some() {
+                    plan.map(|plan| plan.composite.clone())
+                        .or_else(|| model.composite.clone())
+                } else {
+                    None
+                }?;
+                let target_kinds = if model.id == edited_id {
+                    self.auto_arm_composite_plan(edited_composite).target_kinds
+                } else {
+                    plan.map(|plan| plan.target_kinds.clone())
+                        .unwrap_or_else(|| self.auto_arm_composite_plan(&document).target_kinds)
+                };
+                Some((model.id, (document, target_kinds)))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut resolved = BTreeMap::new();
+        for id in self.loops.keys().copied() {
+            resolve(
+                id,
+                sync_length,
+                &primitive_lengths,
+                &composites,
+                &mut BTreeSet::new(),
+                &mut resolved,
+            );
+        }
+        resolved
+    }
+
     fn remember_auto_arm_composite_plan(
         &mut self,
         id: LoopId,
         version: u64,
         composite: &CompositeDocument,
     ) {
+        let registry_lengths = self.auto_arm_registry_lengths(id, composite);
         let mut edited_plan = self.auto_arm_composite_plan(composite);
+        edited_plan.source_lengths = edited_plan
+            .source_lengths
+            .keys()
+            .filter_map(|id| {
+                registry_lengths
+                    .get(id)
+                    .copied()
+                    .map(|length| (*id, length))
+            })
+            .collect();
         edited_plan.direct_configuration = true;
         let plans = self
             .loops
@@ -5367,6 +5473,16 @@ impl ApplicationModel {
                     .map(|plan| &plan.composite)
                     .or(model.composite.as_ref())?;
                 let mut plan = self.auto_arm_composite_plan(document);
+                plan.source_lengths = plan
+                    .source_lengths
+                    .keys()
+                    .filter_map(|id| {
+                        registry_lengths
+                            .get(id)
+                            .copied()
+                            .map(|length| (*id, length))
+                    })
+                    .collect();
                 if let Some(latest) = latest {
                     plan.target_kinds.clone_from(&latest.target_kinds);
                 }
@@ -11614,12 +11730,26 @@ mod tests {
                 start_cycle: 0,
                 loop_id: child.raw(),
                 mode: Some("playing".to_owned()),
-                n_cycles: Some(1),
+                n_cycles: None,
             }],
         };
         model
             .commit_composite_editor_change(&mut backend, parent, parent_document)
             .unwrap();
+        let mut longer_child = model.loops[&child].composite.clone().unwrap();
+        longer_child.instances[0].n_cycles = Some(3);
+        model
+            .commit_composite_editor_change(&mut backend, child, longer_child)
+            .unwrap();
+        let child_version = *model.loops[&child]
+            .auto_arm_configured_plans
+            .keys()
+            .next_back()
+            .unwrap();
+        assert_eq!(
+            model.loops[&parent].auto_arm_configured_plans[&child_version].source_lengths[&child],
+            30
+        );
         {
             let parent_model = model.loops.get_mut(&parent).unwrap();
             parent_model.state.mode = LoopMode::Playing;
