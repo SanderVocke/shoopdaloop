@@ -5574,7 +5574,8 @@ impl ApplicationModel {
                     .get(&target)
                     .is_some_and(|model| runnable_composite_mode(model.state.mode))
                     && !controlling_parents.contains_key(&target);
-                if independently_running {
+                let winning_mode = self.anticipated_composite_target_mode(target, child.mode);
+                if independently_running || !runnable_composite_mode(winning_mode) {
                     continue;
                 }
                 controlling_parents
@@ -5583,7 +5584,7 @@ impl ApplicationModel {
                     .insert(composite_id);
                 self.collect_starting_composite_parents(
                     target,
-                    child.mode,
+                    winning_mode,
                     controlling_parents,
                     stack,
                 );
@@ -5774,7 +5775,8 @@ impl ApplicationModel {
                     .get(&target)
                     .is_some_and(|model| runnable_composite_mode(model.state.mode))
                     && !controlling_parents.contains_key(&target);
-                if independently_running {
+                let winning_mode = self.anticipated_composite_target_mode(target, child.mode);
+                if independently_running || !runnable_composite_mode(winning_mode) {
                     continue;
                 }
                 controlling_parents
@@ -5783,7 +5785,7 @@ impl ApplicationModel {
                     .insert(parent.id);
                 self.collect_starting_composite_parents(
                     target,
-                    child.mode,
+                    winning_mode,
                     &mut controlling_parents,
                     &mut BTreeSet::new(),
                 );
@@ -11282,6 +11284,18 @@ mod tests {
             first_model
                 .auto_arm_active_target_kinds
                 .insert(nested, true);
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([second_track])
+        );
+        {
+            let first_model = model.loops.get_mut(&first).unwrap();
+            first_model.state.next_mode = LoopMode::Stopped;
+            first_model.state.next_transition_delay = Some(0);
+            let nested_model = model.loops.get_mut(&nested).unwrap();
+            nested_model.state.next_mode = LoopMode::Recording;
+            nested_model.state.next_transition_delay = Some(0);
         }
         assert_eq!(
             model.auto_arm_demanded_tracks(),
