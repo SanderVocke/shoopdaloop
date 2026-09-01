@@ -206,9 +206,9 @@ Criterion 14 is intentionally still open: the final rebase, push, PR, CI, and au
 ### Stage 8: Push and Open the Pull Request
 
 - [x] Fetch and rebase onto the latest `origin/master` again, resolve any new conflicts, and rerun affected targeted tests plus formatting and warning-denying build.
-- [ ] Push `shoopdaloop-playdrydefault` to `origin` with upstream tracking; use `--force-with-lease` only if the reviewed rebase requires it.
-- [ ] Open a non-draft GitHub pull request against `master` with a concise behavior summary, design explanation, migration notes, test evidence, and `Closes #294`.
-- [ ] Explicitly call out that regular plans store only symbolic default playback, track edits do not reconfigure plans, and script-composite modes remain explicit.
+- [x] Push `shoopdaloop-playdrydefault` to `origin` with upstream tracking; use `--force-with-lease` only if the reviewed rebase requires it.
+- [x] Open a non-draft GitHub pull request against `master` with a concise behavior summary, design explanation, migration notes, test evidence, and `Closes #294`.
+- [x] Explicitly call out that regular plans store only symbolic default playback, track edits do not reconfigure plans, and script-composite modes remain explicit.
 
 **Post-rebase verification**
 
@@ -216,7 +216,9 @@ Criterion 14 is intentionally still open: the final rebase, push, PR, CI, and au
 
 **Verification**
 
-- [ ] Confirm the PR head SHA matches the pushed local head, the base is `master`, issue #294 is linked, and no unrelated commits/files appear in the PR.
+- [x] Confirm the PR head SHA matches the pushed local head, the base is `master`, issue #294 is linked, and no unrelated commits/files appear in the PR.
+
+PR: https://github.com/SanderVocke/shoopdaloop/pull/845
 
 ### Stage 9: CI and Automated Codex Review Closure
 
