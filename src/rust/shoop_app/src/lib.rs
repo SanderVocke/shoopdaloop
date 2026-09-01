@@ -7243,10 +7243,16 @@ impl ApplicationModel {
                         model.auto_arm_configured_plans.remove(plan_version);
                     }
                     if let Some(id) = rejected {
-                        self.loops
-                            .get_mut(&id)
-                            .unwrap()
-                            .auto_arm_latest_configured_plan = previous;
+                        let model = self.loops.get_mut(&id).unwrap();
+                        if let Some(previous) = previous.as_ref() {
+                            for (_, plan) in model
+                                .auto_arm_configured_plans
+                                .range_mut(plan_version.saturating_add(1)..)
+                            {
+                                plan.clone_from(previous);
+                            }
+                        }
+                        model.auto_arm_latest_configured_plan = previous;
                     }
                 }
                 _ => {}
@@ -10873,7 +10879,7 @@ mod tests {
         let mut rejected_plan = plan_b.clone();
         rejected_plan.instances[0].mode = Some("replacing".to_owned());
         model
-            .commit_composite_editor_change(&mut backend, root, rejected_plan)
+            .commit_composite_editor_change(&mut backend, root, rejected_plan.clone())
             .unwrap();
         let rejected_version = *model.loops[&root]
             .auto_arm_configured_plans
@@ -10887,6 +10893,15 @@ mod tests {
             .unwrap();
         state.active_plan_version = version_b;
         state.pending_plan_version = None;
+        let contaminated_version = rejected_version + 1;
+        model.remember_auto_arm_registry_plan(
+            contaminated_version,
+            BackendCompositeId::from_raw(u64::MAX),
+        );
+        assert_eq!(
+            model.loops[&root].auto_arm_configured_plans[&contaminated_version].composite,
+            rejected_plan
+        );
         rejected_snapshot
             .mutation_failures
             .push(shoop_backend::BackendMutationFailure {
@@ -10911,6 +10926,10 @@ mod tests {
                 .map(|plan| &plan.composite),
             Some(&plan_b)
         );
+        assert_eq!(
+            model.loops[&root].auto_arm_configured_plans[&contaminated_version].composite,
+            plan_b
+        );
 
         let peer = model.tracks[4].loops[0];
         let peer_document = CompositeDocument {
@@ -10926,7 +10945,7 @@ mod tests {
         model.loops.get_mut(&peer).unwrap().composite = Some(peer_document.clone());
         model.loops.get_mut(&peer).unwrap().backend_composite =
             Some(backend.create_composite_loop().unwrap());
-        let global_version = rejected_version + 1;
+        let global_version = contaminated_version + 1;
         model.remember_auto_arm_composite_plan(peer, global_version, &peer_document);
         assert_eq!(
             model.loops[&peer].auto_arm_configured_plans[&global_version].composite,
