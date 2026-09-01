@@ -927,6 +927,7 @@ struct AutoArmCompositePlan {
     sync_length: u32,
     source_lengths: BTreeMap<LoopId, u32>,
     target_kinds: BTreeMap<LoopId, bool>,
+    direct_configuration: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5325,6 +5326,7 @@ impl ApplicationModel {
                         .map(|source| (id, source.backend_composite.is_some()))
                 })
                 .collect(),
+            direct_configuration: false,
         }
     }
 
@@ -5334,7 +5336,8 @@ impl ApplicationModel {
         version: u64,
         composite: &CompositeDocument,
     ) {
-        let edited_plan = self.auto_arm_composite_plan(composite);
+        let mut edited_plan = self.auto_arm_composite_plan(composite);
+        edited_plan.direct_configuration = true;
         let plans = self
             .loops
             .values()
@@ -7247,6 +7250,7 @@ impl ApplicationModel {
                                             .auto_arm_active_source_lengths
                                             .clone(),
                                         target_kinds: model.auto_arm_active_target_kinds.clone(),
+                                        direct_configuration: true,
                                     }
                                 })
                             })
@@ -7256,15 +7260,24 @@ impl ApplicationModel {
                     }
                     if let Some(id) = rejected {
                         let model = self.loops.get_mut(&id).unwrap();
+                        let later_direct = model
+                            .auto_arm_configured_plans
+                            .range(plan_version.saturating_add(1)..)
+                            .rev()
+                            .find(|(_, plan)| plan.direct_configuration)
+                            .map(|(_, plan)| plan.clone());
                         if let Some(previous) = previous.as_ref() {
                             for (_, plan) in model
                                 .auto_arm_configured_plans
                                 .range_mut(plan_version.saturating_add(1)..)
+                                .filter(|(_, plan)| !plan.direct_configuration)
                             {
-                                plan.clone_from(previous);
+                                let mut replacement = previous.clone();
+                                replacement.direct_configuration = false;
+                                *plan = replacement;
                             }
                         }
-                        model.auto_arm_latest_configured_plan = previous;
+                        model.auto_arm_latest_configured_plan = later_direct.or(previous);
                     }
                 }
                 _ => {}
@@ -10914,6 +10927,10 @@ mod tests {
             model.loops[&root].auto_arm_configured_plans[&contaminated_version].composite,
             rejected_plan
         );
+        let later_direct_version = contaminated_version + 1;
+        let mut later_direct_plan = plan_b.clone();
+        later_direct_plan.instances[0].mode = Some("stopped".to_owned());
+        model.remember_auto_arm_composite_plan(root, later_direct_version, &later_direct_plan);
         rejected_snapshot
             .mutation_failures
             .push(shoop_backend::BackendMutationFailure {
@@ -10936,11 +10953,15 @@ mod tests {
                 .auto_arm_latest_configured_plan
                 .as_ref()
                 .map(|plan| &plan.composite),
-            Some(&plan_b)
+            Some(&later_direct_plan)
         );
         assert_eq!(
             model.loops[&root].auto_arm_configured_plans[&contaminated_version].composite,
             plan_b
+        );
+        assert_eq!(
+            model.loops[&root].auto_arm_configured_plans[&later_direct_version].composite,
+            later_direct_plan
         );
 
         let peer = model.tracks[4].loops[0];
@@ -10957,7 +10978,7 @@ mod tests {
         model.loops.get_mut(&peer).unwrap().composite = Some(peer_document.clone());
         model.loops.get_mut(&peer).unwrap().backend_composite =
             Some(backend.create_composite_loop().unwrap());
-        let global_version = contaminated_version + 1;
+        let global_version = later_direct_version + 1;
         model.remember_auto_arm_composite_plan(peer, global_version, &peer_document);
         assert_eq!(
             model.loops[&peer].auto_arm_configured_plans[&global_version].composite,
@@ -10965,7 +10986,7 @@ mod tests {
         );
         assert_eq!(
             model.loops[&root].auto_arm_configured_plans[&global_version].composite,
-            plan_b
+            later_direct_plan
         );
 
         let primitive_target_version = global_version + 1;
