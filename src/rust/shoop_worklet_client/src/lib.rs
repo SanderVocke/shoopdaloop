@@ -47,8 +47,8 @@ use shoop_backend::{
     BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
     BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
     BackendTrackState, BackendTrackTopology, DirectTrackRequest, OxiSynthControl,
-    TrackProcessorTypeId, TrackRequest, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS, MASTER_BUS_ID,
-    MASTER_BUS_OUTPUT_PORT_IDS,
+    TrackProcessorTypeId, TrackRequest, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
+    MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID, MASTER_BUS_OUTPUT_PORT_IDS,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -220,31 +220,70 @@ impl RemoteWorkletBackend {
     pub fn new(midi: impl HostMidiBridge + 'static) -> (Self, RemoteBackendControl) {
         let (transport, control) = transport_pair();
         control.set_driver_state(BackendDriverState::AwaitingGesture);
+        let mut snapshot = BackendSnapshot {
+            status: BackendStatus {
+                driver_state: BackendDriverState::AwaitingGesture,
+                ..Default::default()
+            },
+            audio_drivers: AudioDriverRuntimeState {
+                supported: false,
+                catalog: Arc::from([AudioDriverDescriptor {
+                    kind: AudioDriverKind::WebAudio,
+                    available: true,
+                    ..Default::default()
+                }]),
+                active: Some(ResolvedAudioDriverConfig {
+                    configured: AudioDriverConfig::WebAudio,
+                    sample_rate: 0,
+                    buffer_size: 0,
+                    instance_name: "Web Audio".to_owned(),
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let channels = MASTER_BUS_CHANNEL_IDS
+            .into_iter()
+            .zip(MASTER_BUS_OUTPUT_PORT_IDS)
+            .zip(MASTER_BUS_CHANNEL_LABELS)
+            .enumerate()
+            .map(|(index, ((id, output_port_id), label))| {
+                snapshot.connections.application_ports.insert(
+                    output_port_id,
+                    BackendPortDescriptor {
+                        id: output_port_id,
+                        owner: BackendPortOwner::Bus(MASTER_BUS_ID),
+                        name: format!("master_out_{}", index + 1),
+                        data_type: BackendPortDataType::Audio,
+                        direction: BackendPortDirection::Output,
+                        role: BackendPortRole::AudioOutput,
+                    },
+                );
+                BackendBusChannelState {
+                    id,
+                    label: label.to_owned(),
+                    output_port_id,
+                }
+            })
+            .collect::<Vec<_>>();
+        snapshot.connections.revision = 1;
+        snapshot.mixer.revision = 1;
+        snapshot.mixer.buses.insert(
+            MASTER_BUS_ID,
+            BackendBusState {
+                id: MASTER_BUS_ID,
+                name: "Master".to_owned(),
+                output_peaks_db: vec![-200.0; channels.len()],
+                channels,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+            },
+        );
         (
             Self {
                 transport: transport.clone(),
-                snapshot: BackendSnapshot {
-                    status: BackendStatus {
-                        driver_state: BackendDriverState::AwaitingGesture,
-                        ..Default::default()
-                    },
-                    audio_drivers: AudioDriverRuntimeState {
-                        supported: false,
-                        catalog: Arc::from([AudioDriverDescriptor {
-                            kind: AudioDriverKind::WebAudio,
-                            available: true,
-                            ..Default::default()
-                        }]),
-                        active: Some(ResolvedAudioDriverConfig {
-                            configured: AudioDriverConfig::WebAudio,
-                            sample_rate: 0,
-                            buffer_size: 0,
-                            instance_name: "Web Audio".to_owned(),
-                        }),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
+                snapshot,
                 track_resources: BTreeMap::new(),
                 pending_removed_tracks: BTreeMap::new(),
                 reserved_composites: BTreeSet::new(),
@@ -2740,31 +2779,40 @@ impl Backend for RemoteWorkletBackend {
                     host_port_id,
                     desired_connected,
                     message,
-                } => self
-                    .snapshot
-                    .connections
-                    .failures
-                    .push(BackendConnectionFailure {
-                        port_id: BackendPortId::from_raw(application_port_id),
-                        external_port: host_port_id,
-                        desired_connected,
-                        message,
-                    }),
+                } => {
+                    self.transport
+                        .borrow_mut()
+                        .reject_journaled(&received.command);
+                    self.snapshot
+                        .connections
+                        .failures
+                        .push(BackendConnectionFailure {
+                            port_id: BackendPortId::from_raw(application_port_id),
+                            external_port: host_port_id,
+                            desired_connected,
+                            message,
+                        });
+                }
                 Event::MixerMutationFailed {
                     source_port_id,
                     destination_channel_id,
                     desired_connected,
                     message,
-                } => self.snapshot.mixer.failures.push(BackendMixerFailure {
-                    link: BackendMixerLink {
-                        source_port_id: BackendPortId::from_raw(source_port_id),
-                        destination_channel_id: BackendBusChannelId::from_raw(
-                            destination_channel_id,
-                        ),
-                    },
-                    desired_connected,
-                    message,
-                }),
+                } => {
+                    self.transport
+                        .borrow_mut()
+                        .reject_journaled(&received.command);
+                    self.snapshot.mixer.failures.push(BackendMixerFailure {
+                        link: BackendMixerLink {
+                            source_port_id: BackendPortId::from_raw(source_port_id),
+                            destination_channel_id: BackendBusChannelId::from_raw(
+                                destination_channel_id,
+                            ),
+                        },
+                        desired_connected,
+                        message,
+                    });
+                }
                 Event::MidiOutput {
                     events,
                     dropped,
@@ -4227,6 +4275,122 @@ mod tests {
             backend.snapshot.connections.application_ports[&GLOBAL_FX_PORT_ID].owner,
             BackendPortOwner::GlobalFxControl
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn detached_remote_snapshot_seeds_fixed_master_and_replays_early_control() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let snapshot = backend.poll().unwrap();
+        let master = &snapshot.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.name, "Master");
+        assert_eq!(master.channels.len(), 2);
+        assert_eq!(master.output_peaks_db, [-200.0, -200.0]);
+        assert_eq!(
+            (master.gain_db, master.balance, master.muted),
+            (0.0, 0.0, false)
+        );
+        for output_port_id in MASTER_BUS_OUTPUT_PORT_IDS {
+            assert_eq!(
+                snapshot.connections.application_ports[&output_port_id].owner,
+                BackendPortOwner::Bus(MASTER_BUS_ID)
+            );
+        }
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-6.0))
+            .unwrap();
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            vec![
+                Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                },
+                Command::SetBusControl {
+                    bus_id: MASTER_BUS_ID.raw(),
+                    control: WireBusControl::GainDb(-6.0),
+                },
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn rejected_connection_commands_are_removed_from_replay() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+
+        let route = Command::SetMixerRoute {
+            source_port_id: 2,
+            destination_channel_id: 1,
+            connected: true,
+        };
+        backend
+            .transport
+            .borrow_mut()
+            .journal(route.clone())
+            .unwrap();
+        deliver(
+            &control,
+            1,
+            2,
+            Event::MixerMutationFailed {
+                source_port_id: 2,
+                destination_channel_id: 1,
+                desired_connected: true,
+                message: "route rejected".to_owned(),
+            },
+        );
+        assert_eq!(backend.poll().unwrap().mixer.failures.len(), 1);
+        assert!(!backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&route));
+
+        let host_link = Command::SetPortConnected {
+            application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+            host_port_id: "system:playback_1".to_owned(),
+            connected: true,
+        };
+        backend
+            .transport
+            .borrow_mut()
+            .journal(host_link.clone())
+            .unwrap();
+        deliver(
+            &control,
+            1,
+            3,
+            Event::ConnectionMutationFailed {
+                application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+                host_port_id: "system:playback_1".to_owned(),
+                desired_connected: true,
+                message: "link rejected".to_owned(),
+            },
+        );
+        assert_eq!(backend.poll().unwrap().connections.failures.len(), 1);
+        assert!(!backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&host_link));
     }
 
     #[shoop_wasm_test_support::shoop_test]
