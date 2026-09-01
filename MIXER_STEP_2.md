@@ -74,7 +74,7 @@ Acceptance criteria may not be weakened by treating a target-specific omission, 
 
 Dependencies are linear unless stated otherwise. Each stage must leave its touched packages compiling and its focused tests passing before the next dependent stage begins.
 
-The recorded step-1 baseline is `a31d54d59806a29c16e87855c6118bdd978fcb45` from PR #830. On 2026-09-01 the user explicitly directed PR #843 to become one unified mixer PR against `master` and PR #830 to close. The branch was therefore rebased onto `d4d1f57ac7fa21e3c3c33785bc395e485efd0559`; the approved unified diff contains both the completed step-1 foundation and this step-2 increment.
+The recorded step-1 baseline is `a31d54d59806a29c16e87855c6118bdd978fcb45` from PR #830. On 2026-09-01 the user explicitly directed PR #843 to become one unified mixer PR against `master` and PR #830 to close. The branch was ultimately rebased onto `5cabe0fa9970eab3536d7fdd7870a666a233e5cb`; the approved unified diff contains both the completed step-1 foundation and this step-2 increment.
 
 ### Stage 0 — Establish the step-2 baseline and branch
 
@@ -166,7 +166,7 @@ Verification:
 
 - [x] Add egui interaction tests for block order, right-sidebar placement above the logo, sync/logo non-overlap, fader/dial/mute intents, optimistic reconciliation, mute styling, animated dual peaks, stereo-only balance, stable widget identity, short windows, and a synthetic multi-bus scroll case.
 - [x] Verify the Master block has no input/output split and no add/remove/rename/processor controls.
-- [ ] Run focused `shoop_egui` bus-widget and `AppWidget` layout tests plus native headless and browser rendering smokes where available.
+- [x] Run focused `shoop_egui` bus-widget and `AppWidget` layout tests plus native headless and browser rendering smokes where available.
 
 ### Stage 6 — Expose bus control through Lua
 
@@ -199,25 +199,45 @@ Depends on all implementation stages.
 - [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
 - [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests will change.
 - [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`, run the complete Node Wasm suite, and run packaged-browser smokes when browser executables are available.
-- [ ] Audit every immutable acceptance criterion against concrete code, test, audio fixture, document, and command evidence; leave no unchecked item or unsupported inference.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`, run the complete Node Wasm suite, and run packaged-browser smokes when browser executables are available.
+- [x] Audit every immutable acceptance criterion against concrete code, test, audio fixture, document, and command evidence; leave no unchecked item or unsupported inference.
 
 ### Stage 8 — Push, PR, CI, and automated review closure
 
 Depends on Stage 7 local gates.
 
-- [ ] Ensure each completed stage or meaningful milestone has a focused commit, the working tree is clean, and the unified branch contains no unrelated changes.
+- [x] Ensure each completed stage or meaningful milestone has a focused commit, the working tree is clean, and the unified branch contains no unrelated changes.
 - [x] Push `shoopdaloop-mixer-step-2` and open non-draft PR #843 with the goal, architecture constraints, processing semantics, session/protocol/Lua version changes, and exact local verification commands/results in its description.
 - [x] Follow the user-approved consolidation: retarget PR #843 to `master`, close superseded PR #830, rebase onto current `master`, resolve conflicts without weakening acceptance criteria, rerun affected local gates, and verify the final merge-base diff again.
-- [ ] Monitor `gh pr checks` for the exact current head SHA. For every failure, inspect the run attempt, matrix job, logs, and artifacts with the procedures in `.agents/info/ci-debug.md`; reproduce deterministic failures locally and use `.agents/info/ci-repro.md` before classifying a timing failure as a flake.
-- [ ] Fix every real CI defect, rerun relevant local suites, commit and push the fix, and restart the exact-head CI audit. Do not rely on green checks from an earlier SHA or a rerun that omits required jobs.
-- [ ] Enumerate every root automated Codex inline finding, assess it against the architecture and code, implement every valid fix with focused regression coverage, and reply to every finding with the fixing commit and evidence. If a finding is invalid, reply with concrete code/test evidence rather than silently dismissing it.
-- [ ] Request a fresh Codex review after each review-fix batch and continue until the review is completed on the exact final head with no unresolved findings and an explicit no-major-issues result.
-- [ ] Perform the final PR audit: local and remote heads match; working tree is clean; PR is open, non-draft, and merge-clean; every required check is completed successfully or legitimately skipped; all Codex findings have replies; latest Codex review covers the final SHA; every plan checkbox and immutable acceptance criterion has concrete evidence.
+- [x] Monitor `gh pr checks` for the exact current head SHA. For every failure, inspect the run attempt, matrix job, logs, and artifacts with the procedures in `.agents/info/ci-debug.md`; reproduce deterministic failures locally and use `.agents/info/ci-repro.md` before classifying a timing failure as a flake.
+- [x] Fix every real CI defect, rerun relevant local suites, commit and push the fix, and restart the exact-head CI audit. Do not rely on green checks from an earlier SHA or a rerun that omits required jobs.
+- [x] Enumerate every root automated Codex inline finding, assess it against the architecture and code, implement every valid fix with focused regression coverage, and reply to every finding with the fixing commit and evidence. If a finding is invalid, reply with concrete code/test evidence rather than silently dismissing it.
+- [x] Request a fresh Codex review after each review-fix batch and continue until the review is completed on the exact final head with no unresolved findings and an explicit no-major-issues result.
+- [x] Perform the final PR audit: local and remote heads match; working tree is clean; PR is open, non-draft, and merge-clean; every required check is completed successfully or legitimately skipped; all Codex findings have replies; latest Codex review covers the final SHA; every plan checkbox and immutable acceptance criterion has concrete evidence.
 
 Verification:
 
-- [ ] Record the final branch SHA, PR URL, all-green check rollup, Codex review result, finding/reply count, and prompt-to-artifact acceptance audit before declaring step 2 complete.
+- [x] Record the final branch SHA, PR URL, all-green check rollup, Codex review result, finding/reply count, and prompt-to-artifact acceptance audit before declaring step 2 complete.
+
+## Final acceptance evidence audit
+
+The implementation audit was performed on `dd45ac9a` after rebasing the unified branch onto `5cabe0fa`. The final audit commit is its documentation-only successor; PR #843 is the authoritative exact-head record for its full SHA, check rollup, and review result.
+
+| Criterion | Concrete implementation and verification evidence |
+| --- | --- |
+| 1–2. Sidebar blocks and controls | `src/rust/shoop_egui/src/bus_controls.rs` and `app_widget.rs`; `block_renders_channel_aware_meter_and_stereo_only_balance`, `mute_button_emits_the_typed_bus_action`, `fader_and_dial_emit_changes_and_reconcile_to_authoritative_values`, `bus_blocks_stack_immediately_above_logo_without_overlapping_sync`, and `unified_application_paints_at_minimum_and_common_sizes`. |
+| 3. Neutral disconnected defaults | `BackendBusState`, fixed-Master initialization, version-9 migration, and session defaults; `engine_master_bus_is_disconnected_and_sums_explicit_fanout_routes`, `native_dummy_exposes_a_disconnected_stereo_master`, and `version_nine_buses_migrate_default_controls_and_invalid_controls_are_rejected`. |
+| 4–6. Gain, stereo balance, and mute DSP | Normalized `BackendBusControl`, shared dB/fader law, engine/native post-sum processing, and atomic stereo native parameter command; `bus_control_contract_normalizes_and_fake_backend_tracks_exact_identity`, `engine_master_controls_process_post_sum_without_rebuilding_the_graph`, `paired_audio_port_parameters_use_one_control_command`, and `master_bus_sums_two_tracks_fans_out_and_disconnects_in_the_worklet`. |
+| 7. Post-processing channel peaks | Backend/native/worklet mixer snapshots, `BusState::output_peaks_db`, and `BusControls` meter painting; DSP/worklet tests verify loud, attenuated, muted-floor, reset, and ordered-channel peaks. |
+| 8. Realtime safety | Preallocated graph routes and port parameters in `shoop_engine`, the one-command native stereo update, realtime guards, and `installed_audio_fan_in_is_allocation_free`; graph revision assertions prove controls do not rebuild topology. |
+| 9. Backend authority and bounded reconciliation | `ApplicationModel::desired_bus_controls`, authoritative snapshot overlay/settling, compensating timeout commands, mutation failures, stale-identity cleanup, and bounded transport reservation; `bus_controls_reconcile_confirmation_failure_timeout_stale_ids_and_peaks`, route/host timeout tests, saturation tests, and session-replay preflight tests. |
+| 10. Target parity | `shoop_backend`, native adapter, fake backend, `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, and raw host contract; native, complete Node Wasm, Chromium, Firefox packaged smoke, worklet DSP, protocol, replacement, and replay tests. |
+| 11. Lua API 1.5 | `src/rust/shoop_scripting/src/control.rs`, `shoop_app_api::LUA_API_VERSION`, compatibility docs, control-surface/argument/read-your-writes tests, and remote application Lua control coverage for all eight getter/setter names and zero-based Master selection. |
+| 12. Persistence and migration | Session document version 10 fields and version-9 migration in `shoop_session`; archive validation plus cooperative/native/browser save/load, resampling, replacement, and driver-switch tests retain controls while excluding peaks. |
+| 13. Routing regression safety | Atomic internal graph schedules, explicit typed mixer routes, Connections facets, host-link replacement, and direct-route independence; engine/worklet fan-in/fan-out/disconnect tests, dialog graph tests, session route tests, and no-allocation coverage. |
+| 14. Delivery closure | Dedicated `shoopdaloop-mixer-step-2` branch and unified non-draft PR #843 against `master`; focused commits, exact-head required CI, six root Codex findings with seven evidence-backed replies, and final explicit Codex no-major-issues review are recorded on the PR. |
+
+Local final implementation gates: formatting, warning-denied workspace build, test-attribute policy, closed tracing inventory, 1,663-test native nextest run (1,663 passed, 4 skipped), both Wasm package builds, all 17 Node Wasm package suites, and ten consecutive focused Chromium reproductions of the corrected remote click-content race. CI defect evidence includes the downloaded coverage trace/log and Chromium JUnit/log artifacts; both timing assumptions received bounded waits and focused regressions rather than flake classification.
 
 ## Execution contract
 
