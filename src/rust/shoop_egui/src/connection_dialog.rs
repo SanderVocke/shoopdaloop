@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::{
     colors, AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, BusChannelId,
     ConnectionPolicy, ConnectionViewState, HostPortId, HostPortState, MixerRouteState,
-    PortDataType, PortDirection, PortId, ScriptId, TrackId,
+    PortDataType, PortDirection, PortId, PortRole, ScriptId, TrackId,
 };
 #[cfg(test)]
 use crate::{BusChannelState, BusId, BusState};
@@ -121,6 +121,7 @@ struct GraphEndpoint {
     full_name: String,
     data_type: PortDataType,
     policy: ConnectionPolicy,
+    mixer_source: bool,
     source_pending: bool,
     sink_pending: bool,
     source_error: Option<String>,
@@ -242,6 +243,10 @@ impl ConnectionGraph {
                     full_name: port.name.clone(),
                     data_type: port.data_type,
                     policy: port.connection_policy,
+                    mixer_source: matches!(port.owner, ApplicationPortOwner::Track { .. })
+                        && port.data_type == PortDataType::Audio
+                        && port.direction == PortDirection::Output
+                        && port.role == PortRole::AudioOutput,
                     source_pending: port.direction == PortDirection::Output && pending,
                     sink_pending: port.direction == PortDirection::Input && pending,
                     source_error: (port.direction == PortDirection::Output)
@@ -284,6 +289,7 @@ impl ConnectionGraph {
                             full_name: format!("{} {}", bus.name, channel.label),
                             data_type: PortDataType::Audio,
                             policy: ConnectionPolicy::UserManaged,
+                            mixer_source: false,
                             source_pending: state
                                 .pending_links
                                 .iter()
@@ -343,6 +349,7 @@ impl ConnectionGraph {
                     full_name: host.name.clone(),
                     data_type: host.data_type,
                     policy: ConnectionPolicy::UserManaged,
+                    mixer_source: false,
                     source_pending: host.direction == PortDirection::Output && pending,
                     sink_pending: host.direction == PortDirection::Input && pending,
                     source_error: (host.direction == PortDirection::Output)
@@ -511,6 +518,7 @@ impl ConnectionGraph {
             && self.is_sink(sink)
             && source_endpoint.data_type == sink_endpoint.data_type
             && adjacent_columns(source_endpoint.column, sink_endpoint.column)
+            && (sink_endpoint.column != GraphColumn::Buses || source_endpoint.mixer_source)
             && source_endpoint.policy == ConnectionPolicy::UserManaged
             && sink_endpoint.policy == ConnectionPolicy::UserManaged
             && !source_endpoint.source_pending
@@ -1672,6 +1680,24 @@ mod tests {
         assert!(!pending.compatible_drop(&track_output, &bus_input));
         assert!(pending.compatible_drop(&bus_output, &system_sink));
         Arc::make_mut(&mut state.connections).pending_mixer_links = Arc::from([]);
+        let mut ports = state.connections.application_ports.to_vec();
+        ports
+            .iter_mut()
+            .find(|port| port.id == PortId::from_raw(13))
+            .unwrap()
+            .role = PortRole::AudioSend;
+        Arc::make_mut(&mut state.connections).application_ports = ports.clone().into();
+        let send_graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        assert!(!send_graph.compatible_drop(&track_output, &bus_input));
+        ports
+            .iter_mut()
+            .find(|port| port.id == PortId::from_raw(13))
+            .unwrap()
+            .role = PortRole::AudioOutput;
+        Arc::make_mut(&mut state.connections).application_ports = ports.into();
         assert_eq!(
             route_intent(&graph, &bus_output, &system_sink, true),
             Some(AppIntent::SetPortConnected {
