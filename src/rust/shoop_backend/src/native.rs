@@ -1648,23 +1648,31 @@ impl NativeRuntime {
     ) -> Result<()> {
         let track = self
             .tracks
-            .get_mut(&track_id)
+            .get(&track_id)
             .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
         if mode == BackendDefaultPlaybackMode::DryThroughWet
             && !track.state.topology.has_wet_channels()
         {
             return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
         }
+        let loops = track
+            .loops
+            .iter()
+            .map(|loop_id| {
+                self.loops
+                    .get(loop_id)
+                    .map(|loop_| loop_.handle.clone())
+                    .ok_or_else(|| anyhow!("missing native loop {loop_id:?}"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.session
+            .set_default_playback_mode_for_loops(&loops, mode.engine_mode())?;
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("native track disappeared during playback-mode update"))?;
         track.default_playback_mode = mode;
         track.state.default_playback_mode = mode;
-        let loops = track.loops.clone();
-        for loop_id in loops {
-            self.loops
-                .get(&loop_id)
-                .ok_or_else(|| anyhow!("missing native loop {loop_id:?}"))?
-                .handle
-                .set_default_playback_mode(mode.engine_mode())?;
-        }
         Ok(())
     }
 

@@ -236,7 +236,8 @@ PR: https://github.com/SanderVocke/shoopdaloop/pull/845
 - Browser worklet snapshots now publish confirmed track defaults. The application keeps an optimistic desired value only until confirmation, correlates asynchronous rejection detail, and rolls back to the backend snapshot after a rejected latest mutation while ignoring stale rejection detail.
 - Added loops rely on the backend's existing owning-track inheritance instead of issuing a redundant post-creation default update that could leak an unmodeled loop on failure. Generic native/engine/fake session replacement now preserves the confirmed track default directly.
 - Anticipated-transition publication uses an active default-playback child's latched concrete mode, so changing the track preference no longer advertises a transition that runtime reconciliation intentionally suppresses.
-- Review-driven validation passed: warning-denying workspace build; 1,650/1,650 native tests; complete Node and Chromium Wasm suites; raw host contract; hosted and self-contained browser smokes; formatting, test-attribute, and tracing policy checks.
+- Native backend updates now enqueue every loop mirror change as one atomic session command and publish the track snapshot only after that command is accepted; a batch/cross-session regression test proves the command boundary.
+- Review-driven validation passed: warning-denying workspace build; 1,651/1,651 native tests; complete Node and Chromium Wasm suites; raw host contract; hosted and self-contained browser smokes; formatting, test-attribute, and tracing policy checks.
 
 **Verification**
 
