@@ -236,7 +236,7 @@ pub fn decode_session_with_limits(
         });
     }
     if header.document_version >= PRE_BUS_CONTROL_SESSION_DOCUMENT_VERSION {
-        require_mixer_routes_field(&manifest_value)?;
+        require_mixer_document_fields(&manifest_value)?;
     }
     if header.document_version == SESSION_DOCUMENT_VERSION {
         require_current_bus_control_fields(&manifest_value)?;
@@ -1295,7 +1295,7 @@ fn validate_finite(value: f32, field: &str) -> Result<(), SessionError> {
     }
 }
 
-fn require_mixer_routes_field(manifest: &serde_json::Value) -> Result<(), SessionError> {
+fn require_mixer_document_fields(manifest: &serde_json::Value) -> Result<(), SessionError> {
     let document = manifest
         .get("document")
         .and_then(serde_json::Value::as_object)
@@ -1304,6 +1304,20 @@ fn require_mixer_routes_field(manifest: &serde_json::Value) -> Result<(), Sessio
         return Err(SessionError::Manifest(
             "session document is missing required mixer_routes".to_owned(),
         ));
+    }
+    let buses = document
+        .get("buses")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| SessionError::Manifest("session buses must be an array".to_owned()))?;
+    for (index, bus) in buses.iter().enumerate() {
+        let bus = bus.as_object().ok_or_else(|| {
+            SessionError::Manifest(format!("session bus {index} must be an object"))
+        })?;
+        if !bus.contains_key("channels") {
+            return Err(SessionError::Manifest(format!(
+                "session bus {index} is missing required channels"
+            )));
+        }
     }
     Ok(())
 }

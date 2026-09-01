@@ -712,6 +712,30 @@ mod tests {
             .mixer_routes
             .is_empty());
 
+        for version in [9, SESSION_DOCUMENT_VERSION] {
+            let malformed = rewrite_manifest(encoded.clone(), |manifest| {
+                manifest["document_version"] = serde_json::json!(version);
+                manifest["document"]["buses"][0]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("channels");
+            });
+            assert!(matches!(
+                decode_session(&malformed),
+                Err(SessionError::Manifest(_))
+            ));
+        }
+        let version_eight = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(8);
+            manifest["document"]["buses"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("channels");
+        });
+        assert!(decode_session(&version_eight).unwrap().document.buses[0]
+            .channels
+            .is_empty());
+
         for invalid in [f32::NAN, f32::INFINITY, -31.0, 21.0] {
             let mut malformed = deferred_feature_bundle();
             malformed.document.buses[0].gain_db = invalid;
