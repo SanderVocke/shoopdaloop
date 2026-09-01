@@ -918,6 +918,7 @@ struct LoopModel {
     auto_arm_latest_configured_plan: Option<AutoArmCompositePlan>,
     auto_arm_configured_plans: BTreeMap<u64, AutoArmCompositePlan>,
     active_composite_children: Vec<ActiveCompositeChildModel>,
+    composite_play_after_record: bool,
     repeat_sync: bool,
     recorded_fx_state: Option<RecordedFxState>,
 }
@@ -973,6 +974,7 @@ fn clear_composite_runtime_state(model: &mut LoopModel) {
     model.auto_arm_latest_configured_plan = None;
     model.auto_arm_configured_plans.clear();
     model.active_composite_children.clear();
+    model.composite_play_after_record = false;
 }
 
 fn composite_with_appended_sources(
@@ -1282,6 +1284,7 @@ impl ApplicationModel {
             auto_arm_latest_configured_plan: None,
             auto_arm_configured_plans: BTreeMap::new(),
             active_composite_children: Vec::new(),
+            composite_play_after_record: false,
             repeat_sync: false,
             recorded_fx_state: None,
         };
@@ -2492,6 +2495,7 @@ impl ApplicationModel {
                     model.auto_arm_latest_configured_plan = None;
                     model.auto_arm_configured_plans.clear();
                     model.active_composite_children.clear();
+                    model.composite_play_after_record = false;
                 }
                 Ok(())
             }
@@ -2796,6 +2800,8 @@ impl ApplicationModel {
                 backend
                     .transition_composite_loop(composite_id, backend_mode, delay, None)
                     .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
+                self.loops.get_mut(id).unwrap().composite_play_after_record =
+                    self.global.play_after_record;
                 backend_composite_targets.push(*id);
                 continue;
             }
@@ -4693,6 +4699,7 @@ impl ApplicationModel {
                 auto_arm_latest_configured_plan: None,
                 auto_arm_configured_plans: BTreeMap::new(),
                 active_composite_children: Vec::new(),
+                composite_play_after_record: false,
                 repeat_sync: self.global.sync,
                 recorded_fx_state: None,
             },
@@ -5115,6 +5122,7 @@ impl ApplicationModel {
         model.auto_arm_latest_configured_plan = None;
         model.auto_arm_configured_plans.clear();
         model.active_composite_children.clear();
+        model.composite_play_after_record = false;
         model.repeat_sync = source.repeat_sync;
         model.recorded_fx_state = source.recorded_fx_state;
         Ok(())
@@ -5432,7 +5440,7 @@ impl ApplicationModel {
             .values()
             .filter_map(|model| (model.backend_composite == Some(composite_id)).then_some(model.id))
             .collect::<BTreeSet<_>>();
-        loop {
+        while synchronous_plans {
             let dependents = self
                 .loops
                 .values()
@@ -5749,6 +5757,23 @@ impl ApplicationModel {
         let (_, length) = self.composite_desired_at(composite_id, mode, iteration)?;
         match iteration.checked_add(1) {
             Some(next) if next < length => Some((mode, next, false)),
+            _ if self
+                .auto_arm_composite_document(composite_id)
+                .is_some_and(|composite| composite.kind == CompositeKindDocument::Regular)
+                && model.composite_play_after_record
+                && matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
+                && length > 0 =>
+            {
+                Some((
+                    match mode {
+                        LoopMode::Recording => LoopMode::Playing,
+                        LoopMode::RecordingDryIntoWet => LoopMode::PlayingDryThroughWet,
+                        _ => unreachable!(),
+                    },
+                    0,
+                    true,
+                ))
+            }
             _ if self
                 .auto_arm_composite_document(composite_id)
                 .is_some_and(|composite| composite.kind == CompositeKindDocument::Regular)
@@ -6987,6 +7012,8 @@ impl ApplicationModel {
                 backend
                     .transition_composite_loop(composite_id, mode, delay, None)
                     .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                self.loops.get_mut(&id).unwrap().composite_play_after_record =
+                    self.global.play_after_record;
             } else {
                 backend
                     .transition_loop(backend_id, mode, delay)
@@ -7833,6 +7860,14 @@ impl ApplicationModel {
             } else {
                 model.position as f32 / model.length as f32
             };
+        }
+        for model in self.loops.values_mut().filter(|model| {
+            model
+                .backend_composite
+                .is_some_and(|id| !snapshot.composites.contains_key(&id))
+        }) {
+            clear_composite_runtime_state(model);
+            model.backend_composite_signature.clear();
         }
         let composites = self
             .loops
@@ -8783,6 +8818,7 @@ impl ApplicationModel {
                         auto_arm_latest_configured_plan: None,
                         auto_arm_configured_plans: BTreeMap::new(),
                         active_composite_children: Vec::new(),
+                        composite_play_after_record: false,
                         repeat_sync: bundle.document.global.sync,
                         recorded_fx_state,
                     },
@@ -11471,6 +11507,46 @@ mod tests {
             BTreeSet::from([second_track])
         );
 
+        model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: nested.raw(),
+                mode: None,
+                n_cycles: Some(1),
+            }],
+        });
+        {
+            let root_model = model.loops.get_mut(&root).unwrap();
+            root_model.state.mode = LoopMode::Recording;
+            root_model.state.composite_iteration = Some(0);
+            root_model.state.next_transition_delay = None;
+            root_model.composite_play_after_record = true;
+            root_model.active_composite_children.clear();
+            root_model.auto_arm_active_target_kinds = BTreeMap::from([(nested, true)]);
+        }
+        model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: second.raw(),
+                mode: Some("recording".to_owned()),
+                n_cycles: Some(1),
+            }],
+        });
+        {
+            let nested_model = model.loops.get_mut(&nested).unwrap();
+            nested_model.state.mode = LoopMode::Stopped;
+            nested_model.state.next_transition_delay = None;
+            nested_model.active_composite_children.clear();
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([second_track])
+        );
+
         model.loops.get_mut(&first).unwrap().composite = None;
         model.loops.get_mut(&first).unwrap().backend_composite = None;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
@@ -11562,6 +11638,18 @@ mod tests {
         assert_eq!(parent_model.state.mode, LoopMode::Stopped);
         assert!(parent_model.active_composite_children.is_empty());
         assert!(parent_model.backend_composite_signature.is_empty());
+
+        let parent_backend = parent_model.backend_composite.unwrap();
+        {
+            let parent_model = model.loops.get_mut(&parent).unwrap();
+            parent_model.state.mode = LoopMode::Playing;
+            parent_model.backend_composite_signature = vec![(primitive, 1)];
+        }
+        let mut missing_dependent = backend.poll().unwrap();
+        missing_dependent.composites.remove(&parent_backend);
+        model.apply_backend_snapshot(missing_dependent);
+        assert_eq!(model.loops[&parent].state.mode, LoopMode::Stopped);
+        assert!(model.loops[&parent].backend_composite_signature.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
