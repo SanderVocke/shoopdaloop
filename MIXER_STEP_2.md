@@ -47,7 +47,7 @@ This increment extends the completed routing sandbox without changing its bounde
 11. Lua API versioning and compatibility remain explicit. The `shoop_control` module supports `bus_get_gain`, `bus_get_gain_fader`, `bus_get_balance`, `bus_get_muted`, `bus_set_gain`, `bus_set_gain_fader`, `bus_set_balance`, and `bus_set_muted` with zero-based bus selectors; index `0` selects Master in this increment. Existing Lua APIs and scripts remain compatible.
 12. Gain, balance, and mute round-trip exactly through session save/load and backend session replacement and survive compatible audio-driver switches and resampling. Version-9 sessions migrate to the default control values. Peaks are runtime telemetry and are not persisted.
 13. Mixer routing behavior from step 1 remains intact: Master starts disconnected, direct track routes remain independent, track-to-Master routes remain explicit and additive, and Connections-dialog authority and persistence do not regress.
-14. The completed work is committed on a dedicated branch, pushed, and represented by a non-draft PR with only the intended step-2 delta over the completed mixer baseline. Every required CI check is green on the exact final PR head, every automated Codex finding has an evidence-backed fix and reply, and Codex reports no major issues on that same head.
+14. The completed work is committed on a dedicated branch, pushed, and represented by a non-draft unified PR containing the bounded mixer foundation and intended step-2 delta over current `master`, with no unrelated changes. Every required CI check is green on the exact final PR head, every automated Codex finding has an evidence-backed fix and reply, and Codex reports no major issues on that same head.
 
 Acceptance criteria may not be weakened by treating a target-specific omission, unconfirmed optimistic value, non-persisted control, hidden meter, missing Lua operation, or stale CI/review result as an acceptable limitation.
 
@@ -74,13 +74,13 @@ Acceptance criteria may not be weakened by treating a target-specific omission, 
 
 Dependencies are linear unless stated otherwise. Each stage must leave its touched packages compiling and its focused tests passing before the next dependent stage begins.
 
-The recorded step-1 baseline is `a31d54d59806a29c16e87855c6118bdd978fcb45` from PR #830.
+The recorded step-1 baseline is `a31d54d59806a29c16e87855c6118bdd978fcb45` from PR #830. On 2026-09-01 the user explicitly directed PR #843 to become one unified mixer PR against `master` and PR #830 to close. The branch was therefore rebased onto `d4d1f57ac7fa21e3c3c33785bc395e485efd0559`; the approved unified diff contains both the completed step-1 foundation and this step-2 increment.
 
 ### Stage 0 — Establish the step-2 baseline and branch
 
 - [x] Confirm `MIXER_MASTER_GOAL.md` has no unchecked items and record the final step-1 commit used as the baseline.
 - [x] Create `shoopdaloop-mixer-step-2` from the completed step-1 head before making behavior changes; keep the working tree clean and avoid mixing unrelated changes.
-- [ ] If the step-1 PR is still open, keep the new work as a stacked branch over its exact head. Open the step-2 PR against the step-1 branch initially, then rebase/retarget it to `master` after step 1 merges and verify that the final diff contains only step-2 work.
+- [x] Initially open the work as a stacked PR, then follow the user-approved consolidation: retarget PR #843 to current `master`, close superseded PR #830, rebase onto current `master`, and verify the unified diff contains only the bounded mixer foundation and step-2 work.
 - [x] Record the implemented defaults, gain range/fader curve, stereo attenuation law, post-processing meter point, Lua selector rules, and session migration policy in this plan if code investigation reveals any required refinement.
 
 Verification:
@@ -206,9 +206,9 @@ Depends on all implementation stages.
 
 Depends on Stage 7 local gates.
 
-- [ ] Ensure each completed stage or meaningful milestone has a focused commit, the working tree is clean, and the branch contains no unrelated or duplicate step-1 delta.
-- [ ] Push `shoopdaloop-mixer-step-2` and open a non-draft PR with the goal, architecture constraints, processing semantics, session/protocol/Lua version changes, and exact local verification commands/results in its description.
-- [ ] If opened as a stacked PR, retarget/rebase after the step-1 PR merges, resolve conflicts without weakening acceptance criteria, rerun affected local gates, and verify the final merge-base diff again.
+- [ ] Ensure each completed stage or meaningful milestone has a focused commit, the working tree is clean, and the unified branch contains no unrelated changes.
+- [x] Push `shoopdaloop-mixer-step-2` and open non-draft PR #843 with the goal, architecture constraints, processing semantics, session/protocol/Lua version changes, and exact local verification commands/results in its description.
+- [x] Follow the user-approved consolidation: retarget PR #843 to `master`, close superseded PR #830, rebase onto current `master`, resolve conflicts without weakening acceptance criteria, rerun affected local gates, and verify the final merge-base diff again.
 - [ ] Monitor `gh pr checks` for the exact current head SHA. For every failure, inspect the run attempt, matrix job, logs, and artifacts with the procedures in `.agents/info/ci-debug.md`; reproduce deterministic failures locally and use `.agents/info/ci-repro.md` before classifying a timing failure as a flake.
 - [ ] Fix every real CI defect, rerun relevant local suites, commit and push the fix, and restart the exact-head CI audit. Do not rely on green checks from an earlier SHA or a rerun that omits required jobs.
 - [ ] Enumerate every root automated Codex inline finding, assess it against the architecture and code, implement every valid fix with focused regression coverage, and reply to every finding with the fixing commit and evidence. If a finding is invalid, reply with concrete code/test evidence rather than silently dismissing it.
