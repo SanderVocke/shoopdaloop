@@ -718,10 +718,6 @@ impl AudioPortStateMirror {
         self.passthrough_muted.store(muted, Ordering::Relaxed);
     }
 
-    pub fn set_ringbuffer_n_samples(&self, samples: u32) {
-        self.ringbuffer_n_samples.store(samples, Ordering::Relaxed);
-    }
-
     pub fn publish_peaks(&self, input: f32, output: f32) {
         atomic_max_f32(&self.input_peak, input);
         atomic_max_f32(&self.output_peak, output);
