@@ -31,11 +31,16 @@ be played through the shared processor or used to replace the wet recording.
 Processing
 ----------
 
-Native builds support external processing, Built-in FX powered by FunDSP,
-Built-in Synth powered by OxiSynth, and Carla Rack/Patchbay modes when native FX
-support is enabled. Browser builds support both built-ins in the AudioWorklet.
-Available choices are capability-driven, so a session requiring an unavailable
-processor is rejected rather than loaded partially.
+Native builds support external processing, Built-in FX powered by `FunDSP
+<https://github.com/SamiPerttu/fundsp>`_, Built-in Synth powered by OxiSynth,
+and Carla Rack/Patchbay modes when native FX support is enabled. Browser builds
+support both built-ins in the AudioWorklet. Built-in FX is a matching-channel
+mono/stereo/N rack with Compressor, Drive, three-band EQ, Chorus, Modulation,
+and Reverb stages. Its required MIDI input and the global FX-control fan-out can
+apply learned absolute CC mappings to continuous controls; notes are ignored.
+Disabled stages do not run their effect DSP. Available choices are
+capability-driven, so a session requiring an unavailable processor is rejected
+rather than loaded partially.
 
 Connections
 -----------

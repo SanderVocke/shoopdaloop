@@ -11,8 +11,9 @@ processor kind.
 
 Native processor choices are External, **Built-in FX**, **Built-in Synth**, and
 feature-dependent Carla modes. Browser builds offer both built-ins. Built-in FX
-has two dry audio inputs, two wet audio outputs, and no MIDI. Built-in Synth has
-two dry inputs, two wet outputs, and one MIDI input.
+accepts matching mono, stereo, or higher dry/wet audio counts and requires one
+MIDI input. Built-in Synth has two dry inputs, two wet outputs, and one MIDI
+input.
 
 Track controls
 ~~~~~~~~~~~~~~
@@ -65,14 +66,24 @@ unconfirmed and is reported in the matrix.
 Control interpretation remains processor-owned. Configure Carla parameter
 mappings in Carla. External chains respond only to controls they already support.
 Built-in Synth provides MIDI Learn for its reverb-send and chorus-send controls.
+Built-in FX provides the same learn/assign/remove workflow for every continuous
+rack control. It has no default mappings; toggles and type selectors are not
+MIDI targets. Notes and unsupported messages on its MIDI input are ignored.
 
 Processed-track controls show only capabilities advertised by the selected
 processor. Both built-ins use embedded editors. Carla tracks expose lifecycle,
 UI, recovery, state, and bounded process-log controls when available.
 
-Built-in FX is powered by FunDSP. It is a fixed stereo audio rack whose MVP has
-one reverb toggle. Disabling reverb passes audio through without running reverb
-DSP and discards the old tail; the toggle is saved with the session.
+Built-in FX is powered by `FunDSP <https://github.com/SamiPerttu/fundsp>`_. Its
+fixed order is Compressor, Drive, three-band EQ, Chorus, Modulation, then
+Reverb. Drive offers Saturation, Overdrive, Distortion, and Fuzz; Modulation
+offers Tremolo, Flanger, and Phaser; Reverb offers Room, Hall, and Plate. Each
+stage has a toggle and a compact set of continuous controls in the embedded
+editor. Mono is processed as mono, exactly two channels use linked/decorrelated
+stereo behavior, and larger channel counts remain isolated. A disabled stage
+does not run effect DSP; disabling or changing a stateful stage discards its old
+tail. Rack values and learned CC assignments are saved with the session, while
+tails, LFO phase, and editor visibility are transient.
 
 Built-in Synth is powered by OxiSynth and the embedded SoundFont. Its track shape
 is fixed at two dry audio inputs, two wet audio outputs, and one MIDI input; the

@@ -228,15 +228,17 @@ Persistence evidence: session document 10 stores positive Built-in FX `audio_cha
 
 Depends on Stages 5 and 7.
 
-- [ ] Expand `shoop_egui/src/builtin_fx_editor.rs` with visibly ordered stage sections, enable controls, selectors, continuous controls with units/ranges, mode-dependent disabling, and state-driven rendering.
-- [ ] Add a Built-in FX MIDI Learn window matching Built-in Synth: inspect the latest local input message, enable Assign only when it is a valid CC, show one flat continuous-parameter list plus assignment rows, and support Remove/Remove all; do not list toggles or selectors.
-- [ ] If Stage 0 justified reuse, extract and test a narrow generic MIDI Learn UI/assignment helper and migrate OxiSynth without changing its behavior; otherwise keep concrete editors and share only trivial helpers.
-- [ ] Preserve **Powered by FunDSP** and its working project link, editor close/reopen behavior, simultaneous Built-in Synth/FX editors, and transient visibility.
-- [ ] Update Add Track UI and browser capability self-tests for variable matching audio count and required MIDI; ensure mono, stereo, and higher channel requests are representable and invalid shapes cannot be submitted.
-- [ ] Add UI tests for every emitted control type, snapshot reflection, stage/mode enablement, flat learn list membership/exclusion, assignment lifecycle, latest-CC display, attribution, and coexistence with Built-in Synth.
-- [ ] Update `src/rust/shoopdaloop/README.md`, `docs/source/concept.rst`, and `docs/source/usage.trackcontrols.rst` with rack order, controls/types, mono/stereo/N semantics, MIDI/global fan-out, bypass behavior, and FunDSP attribution.
-- [ ] Build Sphinx with warnings denied and verify focused `shoop_egui`/`shoop_app` native and Node tests plus per-commit gates.
-- [ ] Commit the editor/documentation milestone.
+UI/documentation evidence: the resizable editor renders the fixed six-stage order, all enable controls, Drive/Modulation/Reverb selectors, all 23 physical-range sliders, Tremolo-disabled Feedback, state-driven values, and persistent FunDSP attribution/link. Its concrete MIDI Learn window mirrors Built-in Synth without an unhelpful cross-editor abstraction: latest local CC, flat continuous-only list, Assign, assignment rows, Remove, and Remove all. Add Track forces required MIDI and accepts matching mono/stereo/N counts. Focused native UI/application tests passed 8/8; Node Wasm passed 6 UI and 2 application tests, covering rendered order/control membership, typed selectors, stage actions, learn/assign/remove/clear, latest CC, attribution, hidden/wrong editors, and six-channel Add Track. README and Sphinx concept/usage docs cover rack/types/order/channel semantics/MIDI/bypass/attribution; `sphinx-build -W --keep-going` passed.
+
+- [x] Expand `shoop_egui/src/builtin_fx_editor.rs` with visibly ordered stage sections, enable controls, selectors, continuous controls with units/ranges, mode-dependent disabling, and state-driven rendering.
+- [x] Add a Built-in FX MIDI Learn window matching Built-in Synth: inspect the latest local input message, enable Assign only when it is a valid CC, show one flat continuous-parameter list plus assignment rows, and support Remove/Remove all; do not list toggles or selectors.
+- [x] If Stage 0 justified reuse, extract and test a narrow generic MIDI Learn UI/assignment helper and migrate OxiSynth without changing its behavior; otherwise keep concrete editors and share only trivial helpers.
+- [x] Preserve **Powered by FunDSP** and its working project link, editor close/reopen behavior, simultaneous Built-in Synth/FX editors, and transient visibility.
+- [x] Update Add Track UI and browser capability self-tests for variable matching audio count and required MIDI; ensure mono, stereo, and higher channel requests are representable and invalid shapes cannot be submitted.
+- [x] Add UI tests for every emitted control type, snapshot reflection, stage/mode enablement, flat learn list membership/exclusion, assignment lifecycle, latest-CC display, attribution, and coexistence with Built-in Synth.
+- [x] Update `src/rust/shoopdaloop/README.md`, `docs/source/concept.rst`, and `docs/source/usage.trackcontrols.rst` with rack order, controls/types, mono/stereo/N semantics, MIDI/global fan-out, bypass behavior, and FunDSP attribution.
+- [x] Build Sphinx with warnings denied and verify focused `shoop_egui`/`shoop_app` native and Node tests plus per-commit gates.
+- [x] Commit the editor/documentation milestone.
 
 ## Stage 9 — End-to-end and final local validation
 

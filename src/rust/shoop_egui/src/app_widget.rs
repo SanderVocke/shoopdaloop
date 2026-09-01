@@ -3453,7 +3453,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn dry_wet_dialog_exposes_builtin_fx_as_fixed_stereo_without_midi() {
+    fn dry_wet_dialog_exposes_builtin_fx_as_matching_n_channel_with_required_midi() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let processor = TrackProcessorDescriptor {
@@ -3462,12 +3462,12 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: crate::TrackProcessorConstraints {
-                min_dry_audio_channels: Some(2),
-                max_dry_audio_channels: Some(2),
-                min_wet_audio_channels: Some(2),
-                max_wet_audio_channels: Some(2),
+                min_dry_audio_channels: Some(1),
+                max_dry_audio_channels: None,
+                min_wet_audio_channels: Some(1),
+                max_wet_audio_channels: None,
                 matching_audio_channels: true,
-                midi: crate::TrackProcessorMidiPolicy::Unsupported,
+                midi: crate::TrackProcessorMidiPolicy::Required,
             },
             features: crate::TrackProcessorFeatures {
                 state: true,
@@ -3482,20 +3482,20 @@ mod tests {
         };
         let mut widget = AppWidget::default();
         widget.add_track_open = true;
-        widget.add_track_name = "Reverb".to_owned();
+        widget.add_track_name = "Rack".to_owned();
         widget.add_track_mode = AddTrackMode::DryWet;
-        widget.add_track_audio_channels = 2;
-        widget.add_track_dry_midi = true;
+        widget.add_track_audio_channels = 6;
+        widget.add_track_dry_midi = false;
         frame(&context, &mut widget, &state, Vec::new());
-        assert!(!widget.add_track_dry_midi);
+        assert!(widget.add_track_dry_midi);
         assert_eq!(
             widget.accept_add_track(&[processor]),
             Some(AppAction::AddTrackWithTopology(TrackSpec {
-                name: "Reverb".to_owned(),
+                name: "Rack".to_owned(),
                 topology: TrackSpecTopology::DryWet {
-                    dry_audio_channels: 2,
-                    wet_audio_channels: 2,
-                    dry_midi: false,
+                    dry_audio_channels: 6,
+                    wet_audio_channels: 6,
+                    dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                 },
                 latency: TrackLatencySpec::default(),
