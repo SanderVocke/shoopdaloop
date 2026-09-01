@@ -11145,6 +11145,13 @@ fn session_bundle_to_backend(
         .iter()
         .flat_map(|group| &group.tracks)
         .flat_map(|track| track.ports.iter().map(|port| port.id))
+        .chain(
+            bundle
+                .document
+                .buses
+                .iter()
+                .flat_map(|bus| bus.ports.iter().map(|port| port.id)),
+        )
         .collect::<BTreeSet<_>>();
     let global_document = match bundle.document.global_ports.as_slice() {
         [] => None,
@@ -11162,7 +11169,7 @@ fn session_bundle_to_backend(
             id
         });
     if used_ids.contains(&global_id) {
-        return Err("session global FX control port ID conflicts with a track port".to_owned());
+        return Err("session global FX control port ID conflicts with another port".to_owned());
     }
     let global_ports = vec![BackendSessionPort {
         source_id: global_id,
@@ -20553,6 +20560,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(session_bundle_to_backend(&noncanonical_master, &[])
             .unwrap_err()
             .contains("Master channel shape"));
+        let mut colliding_global = saved.clone();
+        colliding_global.document.global_ports[0].id =
+            colliding_global.document.buses[0].ports[0].id;
+        assert!(session_bundle_to_backend(&colliding_global, &[])
+            .unwrap_err()
+            .contains("conflicts with another port"));
 
         let resampled = resample_session(&saved, 32_000).unwrap();
         let bytes = encode_session(&resampled, "test").unwrap();
