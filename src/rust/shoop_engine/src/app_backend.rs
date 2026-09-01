@@ -5751,6 +5751,38 @@ impl AudioPort {
         }
         result
     }
+    pub fn set_pair_gain_and_muted(
+        first: &Self,
+        first_gain: f32,
+        second: &Self,
+        second_gain: f32,
+        muted: bool,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        if first.control.session_id != second.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (first_control, second_control) =
+            (Arc::clone(&first.control), Arc::clone(&second.control));
+        let result = first.shared.send_control(move |session| {
+            for (control, gain) in [(&first_control, first_gain), (&second_control, second_gain)] {
+                if let Some(audio) = control
+                    .ready_id()
+                    .and_then(|id| session.port_mut(id.index()))
+                    .and_then(|port| port.audio_mut())
+                {
+                    audio.set_gain(gain);
+                    audio.set_muted(muted);
+                }
+            }
+        });
+        if result.is_ok() {
+            first.control.mirror.set_gain(first_gain);
+            first.control.mirror.set_muted(muted);
+            second.control.mirror.set_gain(second_gain);
+            second.control.mirror.set_muted(muted);
+        }
+        result
+    }
     pub fn set_passthrough_muted(
         &self,
         muted: bool,
@@ -7353,6 +7385,26 @@ mod tests {
         assert_eq!(loop_.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(loop_.get_state().expect("mirrored state").length, 64);
         assert_eq!(engine.session().n_loops(), 1);
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn paired_audio_port_parameters_use_one_control_command() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let first = AudioPort::new_internal_port(&sess, "first", &PortDirection::Output, 0)
+            .expect("first port");
+        let second = AudioPort::new_internal_port(&sess, "second", &PortDirection::Output, 0)
+            .expect("second port");
+        let sequence = AudioPort::set_pair_gain_and_muted(&first, 0.25, &second, 0.5, true)
+            .expect("paired parameters");
+        assert_eq!(sequence.get(), 3);
+
+        engine.pump();
+        let first_state = first.get_state().expect("first state");
+        let second_state = second.get_state().expect("second state");
+        assert_eq!((first_state.gain, first_state.muted), (0.25, true));
+        assert_eq!((second_state.gain, second_state.muted), (0.5, true));
         sess.shared.return_engine(engine);
     }
 

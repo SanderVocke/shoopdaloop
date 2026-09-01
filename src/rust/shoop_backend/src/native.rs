@@ -746,21 +746,15 @@ impl NativeRuntime {
             return Err(anyhow!("unknown native bus {bus_id:?}"));
         }
         let control = control.normalized(self.master_bus.channels.len())?;
-        let changed = match control {
+        let (gain_db, balance, muted) = match control {
             BackendBusControl::GainDb(value) => {
-                let changed = self.master_bus.gain_db != value;
-                self.master_bus.gain_db = value;
-                changed
+                (value, self.master_bus.balance, self.master_bus.muted)
             }
             BackendBusControl::Balance(value) => {
-                let changed = self.master_bus.balance != value;
-                self.master_bus.balance = value;
-                changed
+                (self.master_bus.gain_db, value, self.master_bus.muted)
             }
             BackendBusControl::Mute(value) => {
-                let changed = self.master_bus.muted != value;
-                self.master_bus.muted = value;
-                changed
+                (self.master_bus.gain_db, self.master_bus.balance, value)
             }
         };
         let outputs = self
@@ -777,13 +771,26 @@ impl NativeRuntime {
                     .ok_or_else(|| anyhow!("missing native bus output port"))
             })
             .collect::<Result<Vec<_>>>()?;
-        let base = db_gain(self.master_bus.gain_db);
-        let (left, right) = balance_factors(self.master_bus.balance);
-        let stereo = outputs.len() == 2;
-        for (index, output) in outputs.iter().enumerate() {
-            output.set_gain(base * stereo_factor(stereo, index, left, right))?;
-            output.set_muted(self.master_bus.muted)?;
-        }
+        let outputs: [AudioPort; 2] = outputs
+            .try_into()
+            .map_err(|_| anyhow!("native Master bus must have exactly two output ports"))?;
+        let base = db_gain(gain_db);
+        let (left, right) = balance_factors(balance);
+        AudioPort::set_pair_gain_and_muted(
+            &outputs[0],
+            base * left,
+            &outputs[1],
+            base * right,
+            muted,
+        )?;
+        let changed = (
+            self.master_bus.gain_db,
+            self.master_bus.balance,
+            self.master_bus.muted,
+        ) != (gain_db, balance, muted);
+        self.master_bus.gain_db = gain_db;
+        self.master_bus.balance = balance;
+        self.master_bus.muted = muted;
         if changed {
             self.mixer_revision = self.mixer_revision.wrapping_add(1);
         }
