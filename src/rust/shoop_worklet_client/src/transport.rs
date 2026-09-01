@@ -529,6 +529,27 @@ mod tests {
                 gain: 0.5,
             })
             .unwrap();
+        transport
+            .borrow_mut()
+            .journal(Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::GainDb(-3.0),
+            })
+            .unwrap();
+        transport
+            .borrow_mut()
+            .journal(Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::GainDb(-6.0),
+            })
+            .unwrap();
+        transport
+            .borrow_mut()
+            .journal(Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::Mute(true),
+            })
+            .unwrap();
         assert!(transport.borrow_mut().ephemeral(Command::Poll).is_err());
         let endpoint = MemoryEndpoint::default();
         let sent = endpoint.sent.clone();
@@ -550,6 +571,14 @@ mod tests {
             Command::SetLoopGain {
                 loop_id: 2,
                 gain: 0.5,
+            },
+            Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::GainDb(-6.0),
+            },
+            Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::Mute(true),
             },
         ];
         assert_eq!(commands, expected);

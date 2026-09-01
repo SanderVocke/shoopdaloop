@@ -11547,6 +11547,9 @@ fn session_bundle_to_backend(
                         },
                     })
                     .collect(),
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
             }],
             Vec::new(),
         )
@@ -11628,6 +11631,9 @@ fn session_bundle_to_backend(
                 source_id: bus.id,
                 name: bus.name.clone(),
                 channels,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
             }],
             mixer_routes,
         )

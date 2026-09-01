@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 19;
+pub const PROTOCOL_VERSION: u16 = 20;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -118,6 +118,10 @@ pub enum Command {
     SetTrackControl {
         track_id: u64,
         control: WireTrackControl,
+    },
+    SetBusControl {
+        bus_id: u64,
+        control: WireBusControl,
     },
     SetTrackLatency {
         track_id: u64,
@@ -251,6 +255,20 @@ impl Command {
                 },
             ) => {
                 existing_track == replacement_track
+                    && std::mem::discriminant(existing_control)
+                        == std::mem::discriminant(replacement_control)
+            }
+            (
+                Self::SetBusControl {
+                    bus_id: existing_bus,
+                    control: existing_control,
+                },
+                Self::SetBusControl {
+                    bus_id: replacement_bus,
+                    control: replacement_control,
+                },
+            ) => {
+                existing_bus == replacement_bus
                     && std::mem::discriminant(existing_control)
                         == std::mem::discriminant(replacement_control)
             }
@@ -390,6 +408,14 @@ pub enum WireTrackControl {
     InputGainDb(f32),
     InputBalance(f32),
     InputMonitoring(bool),
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "control", content = "value", rename_all = "snake_case")]
+pub enum WireBusControl {
+    GainDb(f32),
+    Balance(f32),
+    Mute(bool),
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -647,11 +673,15 @@ pub struct WireConnectionFailure {
     pub message: String,
 }
 
-#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireBus {
     pub id: u64,
     pub name: String,
     pub channels: Vec<WireBusChannel>,
+    pub gain_db: f32,
+    pub balance: f32,
+    pub muted: bool,
+    pub output_peaks_db: Vec<f32>,
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -906,6 +936,26 @@ mod tests {
         assert!(!other_control.supersedes_in_journal(&first));
         assert!(!other_track.supersedes_in_journal(&first));
 
+        let bus_gain = Command::SetBusControl {
+            bus_id: 1,
+            control: WireBusControl::GainDb(-3.0),
+        };
+        let replacement_bus_gain = Command::SetBusControl {
+            bus_id: 1,
+            control: WireBusControl::GainDb(-9.0),
+        };
+        let bus_mute = Command::SetBusControl {
+            bus_id: 1,
+            control: WireBusControl::Mute(true),
+        };
+        let other_bus_gain = Command::SetBusControl {
+            bus_id: 2,
+            control: WireBusControl::GainDb(-9.0),
+        };
+        assert!(replacement_bus_gain.supersedes_in_journal(&bus_gain));
+        assert!(!bus_mute.supersedes_in_journal(&bus_gain));
+        assert!(!other_bus_gain.supersedes_in_journal(&bus_gain));
+
         let route = Command::SetPortConnected {
             application_port_id: 9,
             host_port_id: "webaudio:destination_1".to_owned(),
@@ -1045,6 +1095,28 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn bus_control_commands_round_trip_with_stable_identity_and_values() {
+        for (sequence, control) in [
+            WireBusControl::GainDb(-6.0),
+            WireBusControl::Balance(0.25),
+            WireBusControl::Mute(true),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let envelope = CommandEnvelope::new(
+                sequence as u64 + 1,
+                Command::SetBusControl { bus_id: 7, control },
+            );
+            let encoded = serde_json::to_vec(&envelope).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+                envelope
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn global_application_port_owner_round_trips_explicitly() {
         let port = WireApplicationPort {
             id: 99,
@@ -1157,7 +1229,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":19,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":20,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1168,7 +1240,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":19,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":20,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

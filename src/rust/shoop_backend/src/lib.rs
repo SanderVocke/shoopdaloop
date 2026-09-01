@@ -839,6 +839,12 @@ pub struct BackendSessionBus {
     pub source_id: u64,
     pub name: String,
     pub channels: Vec<BackendSessionBusChannel>,
+    #[serde(default)]
+    pub gain_db: f32,
+    #[serde(default)]
+    pub balance: f32,
+    #[serde(default)]
+    pub muted: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2529,6 +2535,7 @@ impl EngineBackend {
                     .and_then(Port::audio_mut)
                     .map(|port| {
                         let peak = amplitude_db(port.output_peak());
+                        port.reset_input_peak();
                         port.reset_output_peak();
                         peak
                     })
@@ -3387,6 +3394,9 @@ impl EngineBackend {
                     }
                 })
                 .collect(),
+            gain_db: self.master_bus.gain_db,
+            balance: self.master_bus.balance,
+            muted: self.master_bus.muted,
         }];
         let mixer_routes = self
             .mixer_routes
@@ -3517,6 +3527,18 @@ impl EngineBackend {
                     }
                 }
             }
+            staged.apply_bus_control(
+                staged.master_bus.id,
+                BackendBusControl::GainDb(source_bus.gain_db),
+            )?;
+            staged.apply_bus_control(
+                staged.master_bus.id,
+                BackendBusControl::Balance(source_bus.balance),
+            )?;
+            staged.apply_bus_control(
+                staged.master_bus.id,
+                BackendBusControl::Mute(source_bus.muted),
+            )?;
         }
         for external in &source_global.external_connections {
             if let Err(error) = staged.set_port_connected(staged.global_fx_port, external, true) {
@@ -8938,6 +8960,9 @@ impl Backend for FakeBackend {
                         },
                     })
                     .collect(),
+                gain_db: bus.gain_db,
+                balance: bus.balance,
+                muted: bus.muted,
             })
             .collect();
         let mixer_routes = self
@@ -9070,6 +9095,12 @@ impl Backend for FakeBackend {
                     }
                 }
             }
+            staged.set_bus_control(staged_bus.id, BackendBusControl::GainDb(source_bus.gain_db))?;
+            staged.set_bus_control(
+                staged_bus.id,
+                BackendBusControl::Balance(source_bus.balance),
+            )?;
+            staged.set_bus_control(staged_bus.id, BackendBusControl::Mute(source_bus.muted))?;
         }
         for external in &source_global.external_connections {
             if let Err(error) = staged.set_port_connected(staged_global, external, true) {
@@ -9765,8 +9796,20 @@ mod tests {
         backend
             .set_port_connected(master_left_output, "system:playback_1", true)
             .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-4.0))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Balance(-0.25))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Mute(true))
+            .unwrap();
         let captured = backend.capture_session().unwrap();
         assert_eq!(captured.buses.len(), 1);
+        assert_eq!(captured.buses[0].gain_db, -4.0);
+        assert_eq!(captured.buses[0].balance, -0.25);
+        assert!(captured.buses[0].muted);
         assert_eq!(captured.mixer_routes.len(), 3);
         assert_eq!(
             captured.buses[0].channels[0]
@@ -9786,6 +9829,10 @@ mod tests {
         let restored_left = replacement.bus_channels[&source_left];
         let restored = backend.poll().unwrap();
         assert_eq!(restored.mixer.confirmed_links.len(), 3);
+        let restored_master = restored.mixer.buses.values().next().unwrap();
+        assert_eq!(restored_master.gain_db, -4.0);
+        assert_eq!(restored_master.balance, -0.25);
+        assert!(restored_master.muted);
         assert!(restored.connections.confirmed_links.iter().any(|link| {
             link.application_port_id
                 == restored.mixer.buses.values().next().unwrap().channels[0].output_port_id

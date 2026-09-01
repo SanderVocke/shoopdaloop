@@ -1194,6 +1194,9 @@ impl NativeRuntime {
                     },
                 })
                 .collect(),
+            gain_db: self.master_bus.gain_db,
+            balance: self.master_bus.balance,
+            muted: self.master_bus.muted,
         }];
         let mixer_routes = self
             .mixer_routes
@@ -1290,6 +1293,18 @@ impl NativeRuntime {
                     }
                 }
             }
+            self.apply_bus_control(
+                self.master_bus.id,
+                BackendBusControl::GainDb(source_bus.gain_db),
+            )?;
+            self.apply_bus_control(
+                self.master_bus.id,
+                BackendBusControl::Balance(source_bus.balance),
+            )?;
+            self.apply_bus_control(
+                self.master_bus.id,
+                BackendBusControl::Mute(source_bus.muted),
+            )?;
         }
         for external in &source_global.external_connections {
             if let Err(error) = self.set_port_connected(self.global_fx_port, external, true) {

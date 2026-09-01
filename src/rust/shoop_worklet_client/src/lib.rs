@@ -24,18 +24,19 @@ use shoop_app_api::{
 };
 use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, Event, MidiDataChunk, WaveformChunk,
-    WireApplicationPortOwner, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
-    WireCompositeKind, WireCompositeTarget, WireGrabRequest, WireHostPort, WireLoopMode,
-    WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
-    WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
-    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireApplicationPortOwner, WireBusControl, WireChannelMode, WireCompositeConfig,
+    WireCompositeEntry, WireCompositeKind, WireCompositeTarget, WireGrabRequest, WireHostPort,
+    WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
+    WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
+    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
     BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendBusChannelId,
-    BackendBusChannelState, BackendBusId, BackendBusState, BackendChannelMode,
+    BackendBusChannelState, BackendBusControl, BackendBusId, BackendBusState, BackendChannelMode,
     BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
     BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
     BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
@@ -744,9 +745,9 @@ impl RemoteWorkletBackend {
                     name: source_bus.name.clone(),
                     output_peaks_db: vec![-200.0; channels.len()],
                     channels,
-                    gain_db: 0.0,
-                    balance: 0.0,
-                    muted: false,
+                    gain_db: source_bus.gain_db,
+                    balance: source_bus.balance,
+                    muted: source_bus.muted,
                 },
             );
         }
@@ -903,11 +904,11 @@ impl RemoteWorkletBackend {
                     BackendBusState {
                         id,
                         name: bus.name,
-                        output_peaks_db: vec![-200.0; channels.len()],
                         channels,
-                        gain_db: 0.0,
-                        balance: 0.0,
-                        muted: false,
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                        output_peaks_db: bus.output_peaks_db,
                     },
                 )
             })
@@ -1332,6 +1333,7 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         Command::SetTrackControl { track_id, .. } | Command::SetTrackLatency { track_id, .. } => {
             (BackendMutationKind::TrackControl, Some(*track_id))
         }
+        Command::SetBusControl { bus_id, .. } => (BackendMutationKind::BusControl, Some(*bus_id)),
         Command::SetTrackFxControl { track_id, .. } => {
             (BackendMutationKind::TrackFxControl, Some(*track_id))
         }
@@ -1443,6 +1445,13 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
                 WireTrackControl::InputMonitoring(value) => {
                     BackendTrackControl::InputMonitoring(*value)
                 }
+            }))
+        }
+        Command::SetBusControl { control, .. } => {
+            Some(BackendMutationDetail::BusControl(match control {
+                WireBusControl::GainDb(value) => BackendBusControl::GainDb(*value),
+                WireBusControl::Balance(value) => BackendBusControl::Balance(*value),
+                WireBusControl::Mute(value) => BackendBusControl::Mute(*value),
             }))
         }
         Command::SetTrackFxControl { control, .. } => Some(BackendMutationDetail::TrackFxControl(
@@ -2409,6 +2418,20 @@ impl Backend for RemoteWorkletBackend {
         })
     }
 
+    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        let bus = self
+            .snapshot
+            .mixer
+            .buses
+            .get(&bus_id)
+            .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?;
+        let control = control.normalized(bus.channels.len())?;
+        self.submit(Command::SetBusControl {
+            bus_id: bus_id.raw(),
+            control: to_wire_bus_control(control),
+        })
+    }
+
     fn advance(&mut self, elapsed: Duration) {
         self.poll_elapsed = self.poll_elapsed.saturating_add(elapsed);
     }
@@ -2785,6 +2808,14 @@ fn to_wire_track_control(control: BackendTrackControl) -> WireTrackControl {
         BackendTrackControl::InputGainDb(value) => WireTrackControl::InputGainDb(value),
         BackendTrackControl::InputBalance(value) => WireTrackControl::InputBalance(value),
         BackendTrackControl::InputMonitoring(value) => WireTrackControl::InputMonitoring(value),
+    }
+}
+
+fn to_wire_bus_control(control: BackendBusControl) -> WireBusControl {
+    match control {
+        BackendBusControl::GainDb(value) => WireBusControl::GainDb(value),
+        BackendBusControl::Balance(value) => WireBusControl::Balance(value),
+        BackendBusControl::Mute(value) => WireBusControl::Mute(value),
     }
 }
 
@@ -3430,6 +3461,10 @@ mod tests {
                         label: "Left".to_owned(),
                         output_port_id: 2,
                     }],
+                    gain_db: -3.0,
+                    balance: 0.0,
+                    muted: false,
+                    output_peaks_db: vec![-12.0],
                 }],
                 confirmed_mixer_links: vec![shoop_audio_protocol::WireMixerLink {
                     source_port_id: 2,
@@ -3482,7 +3517,18 @@ mod tests {
         assert_eq!(snapshot.connections.failures.len(), 1);
         assert!(backend.poll().unwrap().connections.failures.is_empty());
         assert_eq!(snapshot.mixer.buses.len(), 1);
+        let bus = &snapshot.mixer.buses[&BackendBusId::from_raw(1)];
+        assert_eq!(bus.gain_db, -3.0);
+        assert_eq!(bus.balance, 0.0);
+        assert!(!bus.muted);
+        assert_eq!(bus.output_peaks_db, [-12.0]);
         assert_eq!(snapshot.mixer.confirmed_links.len(), 1);
+        backend
+            .set_bus_control(BackendBusId::from_raw(1), BackendBusControl::GainDb(-6.0))
+            .unwrap();
+        assert!(backend
+            .set_bus_control(BackendBusId::from_raw(1), BackendBusControl::Balance(0.25),)
+            .is_err());
         backend
             .set_mixer_route(
                 BackendPortId::from_raw(2),
@@ -3637,6 +3683,23 @@ mod tests {
                     gain: 1.0,
                     ..Default::default()
                 }],
+                buses: vec![shoop_audio_protocol::WireBus {
+                    id: MASTER_BUS_ID.raw(),
+                    name: "Master".to_owned(),
+                    channels: MASTER_BUS_CHANNEL_IDS
+                        .into_iter()
+                        .zip(MASTER_BUS_OUTPUT_PORT_IDS)
+                        .map(|(channel, output)| shoop_audio_protocol::WireBusChannel {
+                            id: channel.raw(),
+                            label: channel.raw().to_string(),
+                            output_port_id: output.raw(),
+                        })
+                        .collect(),
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
+                    output_peaks_db: vec![-200.0; 2],
+                }],
                 ..Default::default()
             }),
         );
@@ -3662,6 +3725,29 @@ mod tests {
         assert_eq!(failure.entity, Some(creation.loops[0].raw()));
         assert_eq!(failure.message, "gain rejected");
         assert!(backend.poll().unwrap().mutation_failures.is_empty());
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-3.0))
+            .unwrap();
+        deliver(
+            &control,
+            11,
+            5,
+            Event::Error {
+                message: "bus gain rejected".to_owned(),
+            },
+        );
+        let rejected = backend.poll().unwrap();
+        let failure = &rejected.mutation_failures[0];
+        assert_eq!(failure.kind, BackendMutationKind::BusControl);
+        assert_eq!(failure.entity, Some(MASTER_BUS_ID.raw()));
+        assert_eq!(
+            failure.detail,
+            Some(BackendMutationDetail::BusControl(
+                BackendBusControl::GainDb(-3.0)
+            ))
+        );
+        assert_eq!(failure.message, "bus gain rejected");
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3876,6 +3962,9 @@ mod tests {
                         external_connections: Vec::new(),
                     },
                 }],
+                gain_db: -3.0,
+                balance: 0.0,
+                muted: true,
             }],
             mixer_routes: Vec::new(),
             global_ports: vec![shoop_backend::BackendSessionPort {
@@ -3910,6 +3999,11 @@ mod tests {
         backend.apply_replaced_session(&session, &replacement);
         assert_eq!(backend.next_port_id, 1);
         assert_eq!(backend.snapshot.mixer.buses.len(), 1);
+        let master = &backend.snapshot.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.gain_db, -3.0);
+        assert_eq!(master.balance, 0.0);
+        assert!(master.muted);
+        assert_eq!(master.output_peaks_db, [-200.0]);
         assert!(backend.snapshot.mixer.confirmed_links.is_empty());
         assert_eq!(
             backend.snapshot.connections.application_ports[&MASTER_BUS_OUTPUT_PORT_IDS[0]].owner,

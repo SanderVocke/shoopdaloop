@@ -122,17 +122,17 @@ Verification:
 
 Depends on Stages 1–2 and may proceed alongside Stage 4 after normalized types stabilize.
 
-- [ ] Bump `PROTOCOL_VERSION` and add wire bus control state, ordered channel peaks, a typed set-bus-control command, and normalized failure mapping.
-- [ ] Define journal supersession by `(bus identity, control kind)` and preserve independent gain, balance, mute, route, and unrelated bus commands under saturation.
-- [ ] Extend AudioWorklet command dispatch and snapshots to invoke the normalized backend operation and return authoritative bus controls and peaks.
-- [ ] Extend the worklet client to map bus state and failures in both ordinary polling and session replacement, submit controls, and clear stale desired commands across generations.
-- [ ] Update raw Wasm host contracts, serialization fixtures, snapshot fixtures, command capacities, and remote browser mappings.
+- [x] Bump `PROTOCOL_VERSION` and add wire bus control state, ordered channel peaks, a typed set-bus-control command, and normalized failure mapping.
+- [x] Define journal supersession by `(bus identity, control kind)` and preserve independent gain, balance, mute, route, and unrelated bus commands under saturation.
+- [x] Extend AudioWorklet command dispatch and snapshots to invoke the normalized backend operation and return authoritative bus controls and peaks.
+- [x] Extend the worklet client to map bus state and failures in both ordinary polling and session replacement, submit controls, and clear stale desired commands across generations.
+- [x] Update raw Wasm host contracts, serialization fixtures, snapshot fixtures, command capacities, and remote browser mappings.
 
 Verification:
 
-- [ ] Add protocol round-trip and supersession tests for every bus control variant, invalid values, command saturation, and stale generations.
-- [ ] Run a Worker/AudioWorklet audio fixture proving gain, balance, mute, post-processing peaks, summing, direct fan-out independence, and restoration after unmute.
-- [ ] Run focused `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, and Wasm remote-application tests for native harnesses and `wasm32-unknown-unknown`.
+- [x] Add protocol round-trip and supersession tests for every bus control variant, invalid values, command saturation, and stale generations.
+- [x] Run a Worker/AudioWorklet audio fixture proving gain, balance, mute, post-processing peaks, summing, direct fan-out independence, and restoration after unmute.
+- [x] Run focused `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, and Wasm remote-application tests for native harnesses and `wasm32-unknown-unknown`.
 
 ### Stage 4 — Reconcile application state and persist bus controls
 

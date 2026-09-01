@@ -4,11 +4,11 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk,
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
-    WireBus, WireBusChannel, WireChannelMode, WireCompositeConfig, WireCompositeKind,
-    WireCompositeState, WireCompositeTarget, WireConfirmedLink, WireConnectionFailure,
-    WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
-    WireMixerFailure, WireMixerLink, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
-    WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
+    WireBus, WireBusChannel, WireBusControl, WireChannelMode, WireCompositeConfig,
+    WireCompositeKind, WireCompositeState, WireCompositeTarget, WireConfirmedLink,
+    WireConnectionFailure, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
+    WireMidiOutputEvent, WireMixerFailure, WireMixerLink, WireOxiSynthMidiCcAssignment,
+    WireOxiSynthParameter, WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
     WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl,
     WireTrackFxControl, WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology,
     COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
@@ -16,11 +16,11 @@ use shoop_audio_protocol::{
     TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendBusChannelId, BackendCompositeConfig, BackendCompositeEntry,
-    BackendCompositeId, BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest,
-    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
-    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
-    BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
+    Backend, BackendBusChannelId, BackendBusControl, BackendBusId, BackendCompositeConfig,
+    BackendCompositeEntry, BackendCompositeId, BackendCompositeKind, BackendCompositeTarget,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId,
+    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
     BackendTrackFxControl, BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl,
     OxiSynthMidiCcAssignment, OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId,
     TrackRequest, MAX_WEB_AUDIO_QUANTUM,
@@ -484,6 +484,15 @@ impl WorkletHost {
                     .set_track_control(
                         BackendTrackId::from_raw(track_id),
                         from_wire_track_control(control),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetBusControl { bus_id, control } => {
+                self.backend
+                    .set_bus_control(
+                        BackendBusId::from_raw(bus_id),
+                        from_wire_bus_control(control),
                     )
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
@@ -978,6 +987,14 @@ fn from_wire_track_control(control: WireTrackControl) -> BackendTrackControl {
     }
 }
 
+fn from_wire_bus_control(control: WireBusControl) -> BackendBusControl {
+    match control {
+        WireBusControl::GainDb(value) => BackendBusControl::GainDb(value),
+        WireBusControl::Balance(value) => BackendBusControl::Balance(value),
+        WireBusControl::Mute(value) => BackendBusControl::Mute(value),
+    }
+}
+
 fn from_wire_track_topology(topology: WireTrackTopology) -> BackendTrackTopology {
     match topology {
         WireTrackTopology::Direct {
@@ -1235,6 +1252,10 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                     output_port_id: channel.output_port_id.raw(),
                 })
                 .collect(),
+            gain_db: bus.gain_db,
+            balance: bus.balance,
+            muted: bus.muted,
+            output_peaks_db: bus.output_peaks_db,
         })
         .collect();
     let confirmed_mixer_links = snapshot
@@ -2738,6 +2759,83 @@ mod tests {
             panic!("expected snapshot");
         };
         assert_eq!(snapshot.confirmed_mixer_links.len(), 2);
+
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 2,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::GainDb(-6.0),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 3,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::Balance(0.5),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        let base = 10.0_f32.powf(-6.0 / 20.0);
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base * 0.5).abs() < 1.0e-6));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base).abs() < 1.0e-6));
+        let Event::Snapshot(controlled) = command(&mut host, sequence + 4, Command::Poll).event
+        else {
+            panic!("expected snapshot");
+        };
+        let master = &controlled.buses[0];
+        assert_eq!(master.gain_db, -6.0);
+        assert_eq!(master.balance, 0.5);
+        assert!(!master.muted);
+        assert!((master.output_peaks_db[0] - 20.0 * (0.25 * base * 0.5).log10()).abs() < 1.0e-4);
+        assert!((master.output_peaks_db[1] - 20.0 * (0.25 * base).log10()).abs() < 1.0e-4);
+
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 5,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::Mute(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..256].iter().all(|sample| *sample == 0.0));
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 6,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::Mute(false),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base * 0.5).abs() < 1.0e-6));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base).abs() < 1.0e-6));
     }
 
     #[shoop_wasm_test_support::shoop_test]
