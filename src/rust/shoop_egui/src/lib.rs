@@ -4,6 +4,7 @@
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod app_widget;
+mod builtin_fx_editor;
 mod click_track_dialog;
 pub mod colors;
 mod composite_loop_widget;

@@ -134,14 +134,14 @@ Depends on Stages 2 and 3.
 
 Depends on Stage 2; land after Stage 4 so UI tests can exercise persistence.
 
-- [ ] Add a Built-in FX egui editor with a clearly labeled reverb toggle and state-driven rendering.
-- [ ] Add visible **Powered by FunDSP** attribution and a working link to `https://github.com/SamiPerttu/fundsp`, following the Built-in Synth information/editor interaction pattern.
-- [ ] Route the editor through each track widget and ensure closing/reopening affects only transient visibility, not the reverb setting.
-- [ ] Ensure the generic Add Track flow presents Built-in FX from native and browser catalogs with the fixed channel/MIDI constraints.
-- [ ] Add UI tests for opening/closing, toggle action emission and state reflection, attribution visibility/link action, and coexistence with Built-in Synth editors.
-- [ ] Update user documentation and processor descriptions in `src/rust/shoopdaloop/README.md`, `docs/source/concept.rst`, and `docs/source/usage.trackcontrols.rst`; build Sphinx with warnings denied.
-- [ ] Verify focused `shoop_egui` and `shoop_app` native/Node Wasm tests plus the per-commit gates.
-- [ ] Commit the UI/documentation milestone.
+- [x] Add a Built-in FX egui editor with a clearly labeled reverb toggle and state-driven rendering.
+- [x] Add visible **Powered by FunDSP** attribution and a working link to `https://github.com/SamiPerttu/fundsp`, following the Built-in Synth information/editor interaction pattern.
+- [x] Route the editor through each track widget and ensure closing/reopening affects only transient visibility, not the reverb setting.
+- [x] Ensure the generic Add Track flow presents Built-in FX from native and browser catalogs with the fixed channel/MIDI constraints.
+- [x] Add UI tests for opening/closing, toggle action emission and state reflection, attribution visibility/link action, and coexistence with Built-in Synth editors.
+- [x] Update user documentation and processor descriptions in `src/rust/shoopdaloop/README.md`, `docs/source/concept.rst`, and `docs/source/usage.trackcontrols.rst`; build Sphinx with warnings denied.
+- [x] Verify focused `shoop_egui` and `shoop_app` native/Node Wasm tests plus the per-commit gates.
+- [x] Commit the UI/documentation milestone.
 
 ## Stage 6 — End-to-end feature coverage
 
