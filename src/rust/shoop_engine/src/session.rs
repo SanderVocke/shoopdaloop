@@ -3731,7 +3731,7 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn builtin_fx_processor_routes_stereo_and_bypasses_exactly_when_disabled() {
-        use crate::builtin_fx::{BuiltInFxProcessor, BuiltInFxState};
+        use crate::builtin_fx::{BuiltInFxProcessor, BuiltInFxStage, BuiltInFxState};
 
         let frames = 128;
         let mut session = Session::default();
@@ -3845,10 +3845,55 @@ mod tests {
             assert_eq!(actual, expected);
         }
 
-        session
-            .builtin_fx_processor_mut("builtin")
-            .unwrap()
-            .set_reverb_enabled(true);
+        {
+            let processor = session.builtin_fx_processor_mut("builtin").unwrap();
+            processor.set_stage_enabled(BuiltInFxStage::Compressor, true);
+            processor.set_stage_enabled(BuiltInFxStage::Drive, true);
+            processor.set_stage_enabled(BuiltInFxStage::Eq, true);
+        }
+        for (channel, &input) in inputs.iter().enumerate() {
+            let samples = (0..frames)
+                .map(|frame| {
+                    ((frame + channel) as f32 * 0.07).sin() * if channel == 0 { 0.8 } else { 0.2 }
+                })
+                .collect::<Vec<_>>();
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&samples);
+            session
+                .port_mut(outputs[channel])
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for &output in &outputs {
+            assert!(session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap()
+                .iter()
+                .all(|sample| sample.is_finite()));
+        }
+        {
+            let processor = session.builtin_fx_processor_mut("builtin").unwrap();
+            for stage in [
+                BuiltInFxStage::Compressor,
+                BuiltInFxStage::Drive,
+                BuiltInFxStage::Eq,
+            ] {
+                assert_eq!(processor.stage_process_calls(stage), 2);
+                processor.set_stage_enabled(stage, false);
+            }
+            processor.set_reverb_enabled(true);
+        }
         session.set_builtin_fx_active("builtin", false);
         for (channel, &input) in inputs.iter().enumerate() {
             session

@@ -135,14 +135,16 @@ Foundation evidence: `builtin_fx.rs` now defines six stage states, stable type e
 
 Depends on Stage 1.
 
-- [ ] Implement the compressor with peak detection, fixed soft knee, attack/release smoothing, ratio/threshold gain computer, makeup gain, mono/N independent detectors, and exactly-stereo linked detection.
-- [ ] Implement Saturation, Overdrive, Distortion, and Fuzz with shared Drive/Tone/Mix/Output controls, bounded finite output, DC blocking, and the Stage 0 oversampling decision.
-- [ ] Implement the fixed-frequency three-band EQ with low shelf, broad mid bell, and high shelf for every channel.
-- [ ] Ensure each stage and unselected Drive type performs zero DSP work while bypassed and resets bounded internal state on disable/type replacement where required.
-- [ ] Add deterministic signal tests for compressor threshold/ratio/attack/release and stereo linking; Drive type distinction, harmonic/nonlinear response, DC/finite bounds and mix/output; EQ neutral response and per-band boost/cut selectivity.
-- [ ] Cover mono, stereo, and 3/6-channel isolation at 44.1/48/96 kHz and callback sizes including 1, 128, 257, and larger-than-prepared blocks.
-- [ ] Verify focused native/Node tests, allocation tests, tracing inventories, and per-commit gates.
-- [ ] Commit the dynamics/Drive/EQ milestone.
+DSP evidence: focused modules implement a stereo-linked/otherwise-independent peak compressor with fixed 6 dB knee, four FunDSP waveshapers with dynamic FunDSP tone filtering and DC blocking, and per-channel dynamic FunDSP low-shelf/bell/high-shelf filters. The fixed rack pipeline invokes only enabled stages and only the selected Drive unit, resets state on bypass/type changes, and uses the preallocated ping-pong buffers. Native Built-in FX coverage passed 16 tests (plus routed/backend coverage) and Node Wasm passed 15; deterministic tests cover attack/release, threshold/ratio, stereo linking, N-channel isolation, distinct bounded Drive output/type call counters, EQ boost/cut selectivity, 44.1/48/96 kHz, 1/128/257/2048 frames, and allocation-free enabled/bypassed processing. Formatting, warning-denying workspace build, Rust-test policy, and 147-module closed tracing inventory passed.
+
+- [x] Implement the compressor with peak detection, fixed soft knee, attack/release smoothing, ratio/threshold gain computer, makeup gain, mono/N independent detectors, and exactly-stereo linked detection.
+- [x] Implement Saturation, Overdrive, Distortion, and Fuzz with shared Drive/Tone/Mix/Output controls, bounded finite output, DC blocking, and the Stage 0 oversampling decision.
+- [x] Implement the fixed-frequency three-band EQ with low shelf, broad mid bell, and high shelf for every channel.
+- [x] Ensure each stage and unselected Drive type performs zero DSP work while bypassed and resets bounded internal state on disable/type replacement where required.
+- [x] Add deterministic signal tests for compressor threshold/ratio/attack/release and stereo linking; Drive type distinction, harmonic/nonlinear response, DC/finite bounds and mix/output; EQ neutral response and per-band boost/cut selectivity.
+- [x] Cover mono, stereo, and 3/6-channel isolation at 44.1/48/96 kHz and callback sizes including 1, 128, 257, and larger-than-prepared blocks.
+- [x] Verify focused native/Node tests, allocation tests, tracing inventories, and per-commit gates.
+- [x] Commit the dynamics/Drive/EQ milestone.
 
 ## Stage 3 — Chorus, Modulation, and Reverb DSP
 

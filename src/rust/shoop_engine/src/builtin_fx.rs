@@ -1,3 +1,10 @@
+mod compressor;
+mod drive;
+mod eq;
+
+use self::compressor::CompressorProcessor;
+use self::drive::DriveProcessor;
+use self::eq::EqProcessor;
 use crate::midi_cc::MidiCcSources;
 use fundsp::prelude32::{reverb_stereo, AudioUnit, BufferVec};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -132,6 +139,20 @@ pub enum BuiltInFxStage {
     Chorus,
     Modulation,
     Reverb,
+}
+
+impl BuiltInFxStage {
+    #[cfg(test)]
+    const fn index(self) -> usize {
+        match self {
+            Self::Compressor => 0,
+            Self::Drive => 1,
+            Self::Eq => 2,
+            Self::Chorus => 3,
+            Self::Modulation => 4,
+            Self::Reverb => 5,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -902,6 +923,9 @@ impl BuiltInFxControlState {
 }
 
 pub struct BuiltInFxProcessor {
+    compressor: CompressorProcessor,
+    drive: DriveProcessor,
+    eq: EqProcessor,
     stereo_reverb: Option<Box<dyn AudioUnit>>,
     mono_reverbs: Vec<Box<dyn AudioUnit>>,
     state: BuiltInFxState,
@@ -917,7 +941,7 @@ pub struct BuiltInFxProcessor {
     fundsp_input: BufferVec,
     fundsp_output: BufferVec,
     #[cfg(test)]
-    reverb_process_calls: u64,
+    stage_process_calls: [u64; 6],
 }
 
 impl std::fmt::Debug for BuiltInFxProcessor {
@@ -985,6 +1009,9 @@ impl BuiltInFxProcessor {
         };
         let max_frames = max_frames.max(1);
         Ok(Self {
+            compressor: CompressorProcessor::new(sample_rate, audio_channels),
+            drive: DriveProcessor::new(sample_rate, audio_channels),
+            eq: EqProcessor::new(sample_rate, audio_channels),
             stereo_reverb,
             mono_reverbs,
             state,
@@ -1002,7 +1029,7 @@ impl BuiltInFxProcessor {
             fundsp_input: BufferVec::new(AUDIO_CHANNELS),
             fundsp_output: BufferVec::new(AUDIO_CHANNELS),
             #[cfg(test)]
-            reverb_process_calls: 0,
+            stage_process_calls: [0; 6],
         })
     }
 
@@ -1037,8 +1064,14 @@ impl BuiltInFxProcessor {
         if self.state.stage_enabled(stage) == enabled {
             return;
         }
-        if stage == BuiltInFxStage::Reverb && !enabled {
-            self.reset_reverbs();
+        if !enabled {
+            match stage {
+                BuiltInFxStage::Compressor => self.compressor.reset(),
+                BuiltInFxStage::Drive => self.drive.reset(),
+                BuiltInFxStage::Eq => self.eq.reset(),
+                BuiltInFxStage::Reverb => self.reset_reverbs(),
+                BuiltInFxStage::Chorus | BuiltInFxStage::Modulation => {}
+            }
         }
         self.state.set_stage_enabled(stage, enabled);
     }
@@ -1048,7 +1081,10 @@ impl BuiltInFxProcessor {
     }
 
     pub fn set_drive_type(&mut self, drive_type: DriveType) {
-        self.state.drive_type = drive_type;
+        if self.state.drive_type != drive_type {
+            self.drive.reset();
+            self.state.drive_type = drive_type;
+        }
     }
 
     pub fn set_modulation_type(&mut self, modulation_type: ModulationType) {
@@ -1100,6 +1136,9 @@ impl BuiltInFxProcessor {
     }
 
     pub fn reset(&mut self) {
+        self.compressor.reset();
+        self.drive.reset();
+        self.eq.reset();
         self.reset_reverbs();
     }
 
@@ -1115,7 +1154,7 @@ impl BuiltInFxProcessor {
     pub fn process(&mut self, frames: usize) {
         self.synchronize_runtime_values();
         let frames = frames.min(self.max_frames());
-        if !self.state.reverb_enabled {
+        if self.state.all_stages_disabled() {
             for channel in 0..self.audio_channels() {
                 self.outputs[channel][..frames].copy_from_slice(&self.inputs[channel][..frames]);
             }
@@ -1124,13 +1163,99 @@ impl BuiltInFxProcessor {
 
         let _span =
             shoop_tracing::realtime_span_detail!("engine.rt.fx.builtin_fx_process", value = frames);
+        for channel in 0..self.audio_channels() {
+            self.stage_a[channel][..frames].copy_from_slice(&self.inputs[channel][..frames]);
+        }
+        let mut source_is_a = true;
+
+        if self.state.compressor_enabled {
+            self.compressor.process(
+                frames,
+                &self.stage_a,
+                &mut self.stage_b,
+                &mut self.smoothers,
+            );
+            source_is_a = false;
+            #[cfg(test)]
+            {
+                self.stage_process_calls[BuiltInFxStage::Compressor.index()] += 1;
+            }
+        }
+        if self.state.drive_enabled {
+            if source_is_a {
+                self.drive.process(
+                    self.state.drive_type,
+                    frames,
+                    &self.stage_a,
+                    &mut self.stage_b,
+                    &mut self.smoothers,
+                );
+            } else {
+                self.drive.process(
+                    self.state.drive_type,
+                    frames,
+                    &self.stage_b,
+                    &mut self.stage_a,
+                    &mut self.smoothers,
+                );
+            }
+            source_is_a = !source_is_a;
+            #[cfg(test)]
+            {
+                self.stage_process_calls[BuiltInFxStage::Drive.index()] += 1;
+            }
+        }
+        if self.state.eq_enabled {
+            if source_is_a {
+                self.eq.process(
+                    frames,
+                    &self.stage_a,
+                    &mut self.stage_b,
+                    &mut self.smoothers,
+                );
+            } else {
+                self.eq.process(
+                    frames,
+                    &self.stage_b,
+                    &mut self.stage_a,
+                    &mut self.smoothers,
+                );
+            }
+            source_is_a = !source_is_a;
+            #[cfg(test)]
+            {
+                self.stage_process_calls[BuiltInFxStage::Eq.index()] += 1;
+            }
+        }
+
+        if self.state.reverb_enabled {
+            if !source_is_a {
+                for channel in 0..self.audio_channels() {
+                    self.stage_a[channel][..frames]
+                        .copy_from_slice(&self.stage_b[channel][..frames]);
+                }
+            }
+            self.process_reverb(frames);
+        } else {
+            let source = if source_is_a {
+                &self.stage_a
+            } else {
+                &self.stage_b
+            };
+            for channel in 0..self.audio_channels() {
+                self.outputs[channel][..frames].copy_from_slice(&source[channel][..frames]);
+            }
+        }
+    }
+
+    fn process_reverb(&mut self, frames: usize) {
         if let Some(reverb) = &mut self.stereo_reverb {
             let mut start = 0;
             while start < frames {
                 let chunk = (frames - start).min(fundsp::MAX_BUFFER_SIZE);
                 for channel in 0..AUDIO_CHANNELS {
                     self.fundsp_input.channel_f32_mut(channel)[..chunk]
-                        .copy_from_slice(&self.inputs[channel][start..start + chunk]);
+                        .copy_from_slice(&self.stage_a[channel][start..start + chunk]);
                 }
                 reverb.process(
                     chunk,
@@ -1138,13 +1263,13 @@ impl BuiltInFxProcessor {
                     &mut self.fundsp_output.buffer_mut(),
                 );
                 for channel in 0..AUDIO_CHANNELS {
-                    self.stage_a[channel][start..start + chunk]
+                    self.stage_b[channel][start..start + chunk]
                         .copy_from_slice(&self.fundsp_output.channel_f32_mut(channel)[..chunk]);
                 }
                 start += chunk;
                 #[cfg(test)]
                 {
-                    self.reverb_process_calls += 1;
+                    self.stage_process_calls[BuiltInFxStage::Reverb.index()] += 1;
                 }
             }
         } else {
@@ -1155,7 +1280,7 @@ impl BuiltInFxProcessor {
                     let chunk = (frames - start).min(fundsp::MAX_BUFFER_SIZE);
                     for fundsp_channel in 0..AUDIO_CHANNELS {
                         self.fundsp_input.channel_f32_mut(fundsp_channel)[..chunk]
-                            .copy_from_slice(&self.inputs[channel][start..start + chunk]);
+                            .copy_from_slice(&self.stage_a[channel][start..start + chunk]);
                     }
                     reverb.process(
                         chunk,
@@ -1165,12 +1290,12 @@ impl BuiltInFxProcessor {
                     for index in 0..chunk {
                         let left = self.fundsp_output.channel_f32_mut(0)[index];
                         let right = self.fundsp_output.channel_f32_mut(1)[index];
-                        self.stage_a[channel][start + index] = (left + right) * 0.5;
+                        self.stage_b[channel][start + index] = (left + right) * 0.5;
                     }
                     start += chunk;
                     #[cfg(test)]
                     {
-                        self.reverb_process_calls += 1;
+                        self.stage_process_calls[BuiltInFxStage::Reverb.index()] += 1;
                     }
                 }
             }
@@ -1179,7 +1304,7 @@ impl BuiltInFxProcessor {
             let amount = self.smoothers[BuiltInFxParameter::ReverbAmount.index()].next();
             for channel in 0..self.audio_channels() {
                 self.outputs[channel][frame] =
-                    self.inputs[channel][frame] + amount * self.stage_a[channel][frame];
+                    self.stage_a[channel][frame] + amount * self.stage_b[channel][frame];
             }
         }
     }
@@ -1221,8 +1346,13 @@ impl BuiltInFxProcessor {
     }
 
     #[cfg(test)]
+    pub(crate) fn stage_process_calls(&self, stage: BuiltInFxStage) -> u64 {
+        self.stage_process_calls[stage.index()]
+    }
+
+    #[cfg(test)]
     pub(crate) fn reverb_process_calls(&self) -> u64 {
-        self.reverb_process_calls
+        self.stage_process_calls(BuiltInFxStage::Reverb)
     }
 }
 
@@ -1423,6 +1553,258 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn compressor_reduces_peaks_links_stereo_and_keeps_n_channels_independent() {
+        let frames = 4_096;
+        let state = BuiltInFxState {
+            compressor_enabled: true,
+            compressor_threshold_db: -24.0,
+            compressor_ratio: 20.0,
+            compressor_attack_ms: 0.5,
+            compressor_release_ms: 20.0,
+            reverb_enabled: false,
+            ..BuiltInFxState::default()
+        };
+        let mut stereo = BuiltInFxProcessor::new_with_channels(48_000.0, frames, 2, state).unwrap();
+        stereo.input_mut(0, frames).unwrap().fill(1.0);
+        stereo.input_mut(1, frames).unwrap().fill(0.25);
+        stereo.process(frames);
+        let left = stereo.output(0, frames).unwrap()[frames - 1];
+        let right = stereo.output(1, frames).unwrap()[frames - 1];
+        assert!(left < 0.15, "compressed left {left}");
+        assert!((right / left - 0.25).abs() < 1.0e-4);
+        assert_eq!(stereo.stage_process_calls(BuiltInFxStage::Compressor), 1);
+        assert_eq!(stereo.stage_process_calls(BuiltInFxStage::Drive), 0);
+
+        let mut multichannel =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 3, state).unwrap();
+        multichannel.input_mut(0, frames).unwrap().fill(1.0);
+        multichannel.input_mut(1, frames).unwrap().fill(0.01);
+        multichannel.input_mut(2, frames).unwrap().fill(0.0);
+        multichannel.process(frames);
+        assert!(multichannel.output(0, frames).unwrap()[frames - 1] < 0.15);
+        assert!((multichannel.output(1, frames).unwrap()[frames - 1] - 0.01).abs() < 1.0e-4);
+        assert!(multichannel
+            .output(2, frames)
+            .unwrap()
+            .iter()
+            .all(|sample| *sample == 0.0));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compressor_attack_and_release_follow_signal_transitions() {
+        let frames = 4_096;
+        let state = BuiltInFxState {
+            compressor_enabled: true,
+            compressor_threshold_db: -24.0,
+            compressor_ratio: 20.0,
+            compressor_attack_ms: 10.0,
+            compressor_release_ms: 20.0,
+            reverb_enabled: false,
+            ..BuiltInFxState::default()
+        };
+        let mut processor =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+        let input = processor.input_mut(0, frames).unwrap();
+        input[..2_048].fill(1.0);
+        input[2_048..].fill(0.01);
+        processor.process(frames);
+        let output = processor.output(0, frames).unwrap();
+        assert!(output[0] > output[1_500] * 2.0);
+        assert!(output[4_000] > output[2_048] * 2.0);
+        assert!(output[4_000] <= 0.011);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn drive_types_are_distinct_bounded_and_skip_unselected_processing() {
+        let frames = 2_048;
+        let mut rendered = Vec::new();
+        for drive_type in [
+            DriveType::Saturation,
+            DriveType::Overdrive,
+            DriveType::Distortion,
+            DriveType::Fuzz,
+        ] {
+            let state = BuiltInFxState {
+                drive_enabled: true,
+                drive_type,
+                drive_db: 18.0,
+                drive_tone: 1.0,
+                drive_mix: 1.0,
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            };
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+            for (index, sample) in processor
+                .input_mut(0, frames)
+                .unwrap()
+                .iter_mut()
+                .enumerate()
+            {
+                *sample = (std::f32::consts::TAU * 440.0 * index as f32 / 48_000.0).sin() * 0.4;
+            }
+            processor.process(frames);
+            let output = processor.output(0, frames).unwrap();
+            assert!(output.iter().all(|sample| sample.is_finite()));
+            assert!(output.iter().all(|sample| sample.abs() <= 8.1));
+            assert_eq!(processor.stage_process_calls(BuiltInFxStage::Drive), 1);
+            for candidate in [
+                DriveType::Saturation,
+                DriveType::Overdrive,
+                DriveType::Distortion,
+                DriveType::Fuzz,
+            ] {
+                assert_eq!(
+                    processor.drive.type_process_calls(candidate),
+                    u64::from(candidate == drive_type)
+                );
+            }
+            rendered.push(output.to_vec());
+        }
+        for left in 0..rendered.len() {
+            for right in left + 1..rendered.len() {
+                let difference: f32 = rendered[left]
+                    .iter()
+                    .zip(&rendered[right])
+                    .map(|(left, right)| (left - right).abs())
+                    .sum();
+                assert!(difference > 1.0, "types {left} and {right}: {difference}");
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn equalizer_bands_boost_and_cut_their_fixed_regions() {
+        fn render(frequency: f32, parameter: BuiltInFxParameter, gain_db: f32) -> f32 {
+            let frames = 8_192;
+            let mut state = BuiltInFxState {
+                eq_enabled: true,
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            };
+            parameter.set(&mut state, gain_db);
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+            for (index, sample) in processor
+                .input_mut(0, frames)
+                .unwrap()
+                .iter_mut()
+                .enumerate()
+            {
+                *sample = (std::f32::consts::TAU * frequency * index as f32 / 48_000.0).sin() * 0.1;
+            }
+            processor.process(frames);
+            let output = &processor.output(0, frames).unwrap()[frames / 2..];
+            assert_eq!(processor.stage_process_calls(BuiltInFxStage::Eq), 1);
+            (output.iter().map(|sample| sample * sample).sum::<f32>() / output.len() as f32).sqrt()
+        }
+
+        for (frequency, parameter) in [
+            (120.0, BuiltInFxParameter::EqLow),
+            (1_000.0, BuiltInFxParameter::EqMid),
+            (8_000.0, BuiltInFxParameter::EqHigh),
+        ] {
+            let neutral = render(frequency, parameter, 0.0);
+            let boosted = render(frequency, parameter, 12.0);
+            let cut = render(frequency, parameter, -12.0);
+            assert!(boosted > neutral * 1.5, "{frequency}: {boosted} {neutral}");
+            assert!(cut < neutral * 0.8, "{frequency}: {cut} {neutral}");
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dynamics_drive_and_eq_preserve_n_channel_isolation_and_bypass_individually() {
+        let frames = 257;
+        let state = BuiltInFxState {
+            compressor_enabled: true,
+            drive_enabled: true,
+            eq_enabled: true,
+            reverb_enabled: false,
+            ..BuiltInFxState::default()
+        };
+        let mut processor =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 6, state).unwrap();
+        for channel in 0..6 {
+            processor.input_mut(channel, frames).unwrap().fill(0.0);
+        }
+        processor.input_mut(4, frames).unwrap()[0] = 0.5;
+        processor.process(frames);
+        for channel in [0, 1, 2, 3, 5] {
+            assert!(processor
+                .output(channel, frames)
+                .unwrap()
+                .iter()
+                .all(|sample| *sample == 0.0));
+        }
+        for stage in [
+            BuiltInFxStage::Compressor,
+            BuiltInFxStage::Drive,
+            BuiltInFxStage::Eq,
+        ] {
+            assert_eq!(processor.stage_process_calls(stage), 1);
+            processor.set_stage_enabled(stage, false);
+        }
+        for channel in 0..6 {
+            let input = processor.input_mut(channel, frames).unwrap();
+            for (index, sample) in input.iter_mut().enumerate() {
+                *sample = channel as f32 + index as f32 / frames as f32;
+            }
+        }
+        processor.process(frames);
+        for channel in 0..6 {
+            assert_eq!(
+                processor.output(channel, frames).unwrap(),
+                processor.inputs[channel]
+            );
+        }
+        for stage in [
+            BuiltInFxStage::Compressor,
+            BuiltInFxStage::Drive,
+            BuiltInFxStage::Eq,
+        ] {
+            assert_eq!(processor.stage_process_calls(stage), 1);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dynamics_drive_and_eq_support_runtime_rates_and_block_sizes() {
+        let state = BuiltInFxState {
+            compressor_enabled: true,
+            drive_enabled: true,
+            eq_enabled: true,
+            reverb_enabled: false,
+            ..BuiltInFxState::default()
+        };
+        for (sample_rate, frames) in [
+            (44_100.0, 1),
+            (48_000.0, 128),
+            (96_000.0, 257),
+            (48_000.0, 2_048),
+        ] {
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(sample_rate, frames, 3, state).unwrap();
+            for channel in 0..3 {
+                for (index, sample) in processor
+                    .input_mut(channel, frames)
+                    .unwrap()
+                    .iter_mut()
+                    .enumerate()
+                {
+                    *sample = ((index + channel) as f32 * 0.01).sin() * 0.25;
+                }
+            }
+            processor.process(frames);
+            for channel in 0..3 {
+                assert!(processor
+                    .output(channel, frames)
+                    .unwrap()
+                    .iter()
+                    .all(|sample| sample.is_finite()));
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn enabled_reverb_processes_mono_stereo_and_n_channel_tails() {
         let frames = 257;
         for channels in [1, 2, 3, 6] {
@@ -1503,5 +1885,23 @@ mod tests {
         assert_no_alloc::assert_no_alloc(|| processor.process_midi_controls_only(&[event]));
         assert_no_alloc::assert_no_alloc(|| processor.set_reverb_enabled(true));
         assert_no_alloc::assert_no_alloc(|| processor.reset());
+
+        let state = BuiltInFxState {
+            compressor_enabled: true,
+            drive_enabled: true,
+            eq_enabled: true,
+            reverb_enabled: false,
+            ..BuiltInFxState::default()
+        };
+        let mut rack = BuiltInFxProcessor::new_with_channels(48_000.0, frames, 6, state).unwrap();
+        set_impulse(&mut rack, frames);
+        assert_no_alloc::assert_no_alloc(|| rack.process(frames));
+        assert_no_alloc::assert_no_alloc(|| {
+            rack.set_stage_enabled(BuiltInFxStage::Compressor, false)
+        });
+        assert_no_alloc::assert_no_alloc(|| rack.set_stage_enabled(BuiltInFxStage::Drive, false));
+        assert_no_alloc::assert_no_alloc(|| rack.set_stage_enabled(BuiltInFxStage::Eq, false));
+        assert_no_alloc::assert_no_alloc(|| rack.process(frames));
+        assert_no_alloc::assert_no_alloc(|| rack.reset());
     }
 }
