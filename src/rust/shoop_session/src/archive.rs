@@ -1,9 +1,9 @@
 use crate::document::{
-    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
-    FxChainTypeDocument, MediaPayload, ProcessorLatencyAdjustmentDocument,
-    RecordingOffsetAdjustmentDocument, SessionBundle, SessionDocument, TrackDocument,
-    TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
-    SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
+    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument,
+    DefaultPlaybackModeDocument, FormatVersion, FxChainTypeDocument, MediaPayload,
+    ProcessorLatencyAdjustmentDocument, RecordingOffsetAdjustmentDocument, SessionBundle,
+    SessionDocument, TrackDocument, TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION,
+    FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -20,6 +20,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
+const PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION: u16 = 8;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -220,6 +221,7 @@ pub fn decode_session_with_limits(
             header.document_version,
             PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
                 | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
+                | PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -236,6 +238,9 @@ pub fn decode_session_with_limits(
     }
     if manifest.document_version <= PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION {
         migrate_pre_processor_adjustment_document(&mut manifest.document)?;
+    }
+    if manifest.document_version <= PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION {
+        migrate_pre_default_playback_document(&mut manifest.document);
     }
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -317,6 +322,14 @@ fn migrate_pre_alignment_document(document: &mut SessionDocument) {
                     channel.capture_alignment_frames = 0;
                 }
             }
+        }
+    }
+}
+
+fn migrate_pre_default_playback_document(document: &mut SessionDocument) {
+    for group in &mut document.track_groups {
+        for track in &mut group.tracks {
+            track.default_playback_mode = DefaultPlaybackModeDocument::Regular;
         }
     }
 }
@@ -688,6 +701,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     let mut track_ids = BTreeSet::new();
     let mut loop_ids = BTreeSet::new();
     let mut loop_lengths = BTreeMap::new();
+    let mut loop_composite_kinds = BTreeMap::new();
     let mut sync_length = 1_u64;
     let mut port_ids = BTreeSet::new();
     let mut channel_ids = BTreeSet::new();
@@ -708,6 +722,27 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             if !track_ids.insert(track.id) {
                 return Err(SessionError::Validation(format!(
                     "duplicate track ID {}",
+                    track.id
+                )));
+            }
+            let supports_dry_through_wet = !track.is_sync
+                && match &track.topology {
+                    TrackTopologyDocument::DryWetExternal {
+                        wet_audio_channels, ..
+                    } => *wet_audio_channels > 0,
+                    TrackTopologyDocument::Carla {
+                        audio_channels,
+                        wet_audio_channels,
+                        ..
+                    } => wet_audio_channels.unwrap_or(*audio_channels) > 0,
+                    TrackTopologyDocument::OxiSynth => true,
+                    TrackTopologyDocument::Direct { .. } | TrackTopologyDocument::Trigger => false,
+                };
+            if track.default_playback_mode == DefaultPlaybackModeDocument::DryThroughWet
+                && !supports_dry_through_wet
+            {
+                return Err(SessionError::Validation(format!(
+                    "track {} has dry-through-wet default playback without dry/wet topology",
                     track.id
                 )));
             }
@@ -802,6 +837,10 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     )));
                 }
                 loop_lengths.insert(loop_.id, loop_.length_frames);
+                loop_composite_kinds.insert(
+                    loop_.id,
+                    loop_.composite.as_ref().map(|composite| composite.kind),
+                );
                 if loop_.is_sync {
                     sync_length = loop_.length_frames.max(1);
                 }
@@ -976,9 +1015,25 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                                 loop_.id
                             )));
                         }
+                        if composite.kind == CompositeKindDocument::Script && event.mode.is_none() {
+                            return Err(SessionError::Validation(format!(
+                                "script composite loop {} has an implicit instance mode",
+                                loop_.id
+                            )));
+                        }
                         if !loop_ids.contains(&event.loop_id) {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} references stale loop {}",
+                                loop_.id, event.loop_id
+                            )));
+                        }
+                        if composite.kind == CompositeKindDocument::Script
+                            && loop_composite_kinds.get(&event.loop_id)
+                                == Some(&Some(CompositeKindDocument::Regular))
+                            && !matches!(event.mode.as_deref(), Some("playing" | "stopped"))
+                        {
+                            return Err(SessionError::Validation(format!(
+                                "script composite loop {} requests an unsupported mode from nested regular composite {}",
                                 loop_.id, event.loop_id
                             )));
                         }

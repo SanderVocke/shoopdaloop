@@ -1987,6 +1987,39 @@ impl BackendSession {
         self.shared.session_id
     }
 
+    pub fn set_default_playback_mode_for_loops(
+        &self,
+        loops: &[Loop],
+        mode: engine::DefaultPlaybackMode,
+    ) -> Result<CommandSequence> {
+        if loops
+            .iter()
+            .any(|loop_| !Arc::ptr_eq(&self.shared, &loop_.shared))
+        {
+            return Err(anyhow!("loop belongs to another backend session"));
+        }
+        let controls = loops
+            .iter()
+            .map(|loop_| Arc::clone(&loop_.control))
+            .collect::<Vec<_>>();
+        let mut indices = vec![None; controls.len()];
+        Ok(self.shared.send_control(move |session| {
+            for (index, control) in indices.iter_mut().zip(&controls) {
+                *index = control
+                    .ready_id()
+                    .map(ObjectIdentity::index)
+                    .filter(|index| session.loop_(*index).is_some());
+            }
+            if indices.iter().all(Option::is_some) {
+                for index in indices.iter().flatten().copied() {
+                    if let Some(loop_) = session.loop_mut(index) {
+                        loop_.set_default_playback_mode(mode);
+                    }
+                }
+            }
+        })?)
+    }
+
     pub fn new() -> Result<Self> {
         Self::create()
     }
@@ -4385,6 +4418,22 @@ impl Loop {
             .take()
             .ok_or_else(|| anyhow!("latency preparation did not complete"))?;
         result.map_err(|error| anyhow!(error))
+    }
+
+    pub fn set_default_playback_mode(
+        &self,
+        mode: engine::DefaultPlaybackMode,
+    ) -> Result<CommandSequence> {
+        let control = Arc::clone(&self.control);
+        Ok(self.shared.send_control(move |s: &mut engine::Session| {
+            if let Some(loop_) = control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .and_then(|idx| s.loop_mut(idx))
+            {
+                loop_.set_default_playback_mode(mode);
+            }
+        })?)
     }
 
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
@@ -7285,6 +7334,45 @@ mod tests {
                 .load(Ordering::Relaxed),
             2
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn track_default_playback_updates_are_one_atomic_session_command() {
+        let sess = BackendSession::new().expect("session");
+        let first = sess.create_loop().expect("first loop");
+        let second = sess.create_loop().expect("second loop");
+        let before = sess
+            .shared
+            .stats
+            .last_applied_command
+            .load(Ordering::Acquire);
+        let sequence = sess
+            .set_default_playback_mode_for_loops(
+                &[first.clone(), second.clone()],
+                engine::DefaultPlaybackMode::DryThroughWet,
+            )
+            .expect("batch playback-mode update");
+        assert_eq!(sequence.get(), before + 1);
+
+        let engine = sess.shared.take_engine().expect("parked engine");
+        assert_eq!(
+            engine.session().loop_(0).unwrap().default_playback_mode(),
+            engine::DefaultPlaybackMode::DryThroughWet
+        );
+        assert_eq!(
+            engine.session().loop_(1).unwrap().default_playback_mode(),
+            engine::DefaultPlaybackMode::DryThroughWet
+        );
+        sess.shared.return_engine(engine);
+
+        let other = BackendSession::new().expect("other session");
+        let foreign = other.create_loop().expect("foreign loop");
+        assert!(sess
+            .set_default_playback_mode_for_loops(
+                &[first, foreign],
+                engine::DefaultPlaybackMode::Regular,
+            )
+            .is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

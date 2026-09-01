@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 19;
+pub const PROTOCOL_VERSION: u16 = 20;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -119,6 +119,10 @@ pub enum Command {
         track_id: u64,
         control: WireTrackControl,
     },
+    SetTrackDefaultPlaybackMode {
+        track_id: u64,
+        mode: WireDefaultPlaybackMode,
+    },
     SetTrackLatency {
         track_id: u64,
         adjustment: WireRecordingOffsetAdjustment,
@@ -235,6 +239,16 @@ pub enum Command {
 impl Command {
     pub fn supersedes_in_journal(&self, existing: &Self) -> bool {
         match (existing, self) {
+            (
+                Self::SetTrackDefaultPlaybackMode {
+                    track_id: existing_track,
+                    ..
+                },
+                Self::SetTrackDefaultPlaybackMode {
+                    track_id: replacement_track,
+                    ..
+                },
+            ) => existing_track == replacement_track,
             (
                 Self::SetTrackControl {
                     track_id: existing_track,
@@ -413,6 +427,14 @@ impl WireTrackFxControl {
             | Self::OxiPanic => return None,
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireDefaultPlaybackMode {
+    #[default]
+    Regular,
+    DryThroughWet,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
@@ -678,6 +700,8 @@ pub struct WireTrackLatencyState {
 pub struct WireTrackState {
     pub id: u64,
     pub topology: WireTrackTopology,
+    #[serde(default)]
+    pub default_playback_mode: WireDefaultPlaybackMode,
     pub fx: Option<WireTrackFxState>,
     pub audio_channels: u32,
     pub midi: bool,
@@ -790,6 +814,32 @@ mod tests {
 
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
     shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn track_default_playback_mode_round_trips_and_supersedes_only_the_same_track() {
+        let command = CommandEnvelope::new(
+            40,
+            Command::SetTrackDefaultPlaybackMode {
+                track_id: 7,
+                mode: WireDefaultPlaybackMode::DryThroughWet,
+            },
+        );
+        let json = serde_json::to_vec(&command).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&json).unwrap(),
+            command
+        );
+        let replacement = Command::SetTrackDefaultPlaybackMode {
+            track_id: 7,
+            mode: WireDefaultPlaybackMode::Regular,
+        };
+        assert!(replacement.supersedes_in_journal(&command.command));
+        assert!(!Command::SetTrackDefaultPlaybackMode {
+            track_id: 8,
+            mode: WireDefaultPlaybackMode::Regular,
+        }
+        .supersedes_in_journal(&command.command));
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn composite_configuration_round_trips_without_losing_targets_or_modes() {
@@ -1074,7 +1124,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":19,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":20,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1085,7 +1135,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":19,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":20,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

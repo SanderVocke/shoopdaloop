@@ -257,7 +257,7 @@ fn immediate_transition_validates_seek_before_acceptance() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
-fn synchronized_transition_countdown_and_record_option_are_engine_owned() {
+fn synchronized_playback_countdown_and_play_after_record_option_are_engine_owned() {
     let Fixture {
         session,
         timeline,
@@ -277,7 +277,7 @@ fn synchronized_transition_countdown_and_record_option_are_engine_owned() {
             .unwrap(),
     );
     let mut transition = handle
-        .send_composite_transition(source, LoopMode::Recording, 1)
+        .send_composite_transition(source, LoopMode::Playing, 1)
         .unwrap();
     let mut record_option = handle
         .send_composite_play_after_record(source, true)
@@ -287,13 +287,13 @@ fn synchronized_transition_countdown_and_record_option_are_engine_owned() {
     assert_eq!(record_option.pop(), Ok(Ok(1)));
     let first = state.read();
     assert_eq!(first.mode, LoopMode::Stopped);
-    assert_eq!(first.next_mode, Some(LoopMode::Recording));
+    assert_eq!(first.next_mode, Some(LoopMode::Playing));
     assert_eq!(first.next_mode_delay, Some(0));
     assert!(first.play_after_record);
 
     engine.process(4);
     let second = state.read();
-    assert_eq!(second.mode, LoopMode::Recording);
+    assert_eq!(second.mode, LoopMode::Playing);
     assert_eq!(second.next_mode, None);
     assert_eq!(second.iteration, 0);
 }
@@ -764,7 +764,7 @@ fn running_dependency_addition_restarts_retained_sources_and_nested_children() {
     engine.process(1);
     assert!(start.pop().unwrap().is_ok());
     let mut pending = handle
-        .send_composite_transition(source, LoopMode::Recording, 2)
+        .send_composite_transition(source, LoopMode::Playing, 2)
         .unwrap();
     engine.pump();
     assert!(pending.pop().unwrap().is_ok());

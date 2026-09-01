@@ -10,6 +10,7 @@ use crate::audio_channel::{AudioChannel, ChannelError};
 use crate::basic_loop::{BasicLoop, SyncSourceState};
 use crate::channel_mode::{loop_mode_to_channel_process_flags, ChannelMode, ProcessFlags};
 use crate::content_snapshot::{AudioProcessSnapshotWriter, MidiProcessSnapshotWriter};
+use crate::default_playback_mode::DefaultPlaybackMode;
 use crate::latency_runtime::{LatchedLatency, PreparedLatency};
 use crate::loop_mode::LoopMode;
 use crate::midi_channel::{MidiChannel, MidiChannelError};
@@ -193,6 +194,9 @@ impl AudioMidiLoop {
     pub fn mode(&self) -> LoopMode {
         self.loop_.mode()
     }
+    pub fn default_playback_mode(&self) -> DefaultPlaybackMode {
+        self.loop_.default_playback_mode()
+    }
     pub fn length(&self) -> u32 {
         self.loop_.length()
     }
@@ -332,6 +336,9 @@ impl AudioMidiLoop {
     }
     pub fn set_repeat_sync(&mut self, active: bool) {
         self.loop_.set_repeat_sync(active);
+    }
+    pub fn set_default_playback_mode(&mut self, mode: DefaultPlaybackMode) {
+        self.loop_.set_default_playback_mode(mode);
     }
     pub fn set_mode(&mut self, mode: LoopMode) {
         if mode != self.active_latency_mode {

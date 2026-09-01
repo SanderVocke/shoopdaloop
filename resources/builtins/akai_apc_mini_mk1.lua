@@ -66,7 +66,7 @@
 --
 -- This source also serves as an implementation example. Lua executes it from top to bottom when loaded; callbacks registered near the end provide its continuing behavior.
 if shoop_announce_api_version then
-    shoop_announce_api_version(1, 1)
+    shoop_announce_api_version(1, 5)
 end
 
 print_debug("Init akai_apc_mini_mk1.lua")

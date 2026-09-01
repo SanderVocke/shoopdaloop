@@ -7,7 +7,10 @@ Adding a track
 Use **Add Track** to create a **Regular**, **Trigger**, or **Dry + Wet** track.
 Trigger tracks have no audio or MIDI channels. The dialog configures the display
 name, audio-channel counts, optional MIDI, and, for processed tracks, the
-processor kind.
+processor kind and default playback mode. The **make default** option stores the
+complete draft for the next track. Dry + Wet tracks may use regular wet playback
+or replay their dry recording through live effects as their default; other track
+types always use regular playback.
 
 Native processor choices are External, **Built-in Synth**, and feature-dependent
 Carla modes. Browser builds offer Built-in Synth. Its channel shape is fixed at
@@ -34,7 +37,14 @@ expose balance controls. Meters and MIDI activity indicators summarize
 applicable ports.
 
 A track title can be edited after creation. Its stable port-name base does not
-change when the title changes.
+change when the title changes. A Dry + Wet track's options menu can change its
+default playback mode without affecting playback already in progress.
+
+The default loop action resolves that preference whenever it would start a
+primitive loop's playback. Explicit Play, Play Dry Through Wet, and script event
+modes remain explicit. Regular composites have only ordinary playback: each
+scheduled child uses its owning track's current default when triggered. Script
+composites retain an explicit mode on every scheduled event.
 
 Connections and processors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

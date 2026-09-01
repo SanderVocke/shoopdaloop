@@ -30,7 +30,7 @@
 -- Loop-transition actions follow the global **synchronization active** state. Toggle it in the UI, or hold **Ctrl** to invert it momentarily.
 
 if shoop_announce_api_version then
-    shoop_announce_api_version(1, 1)
+    shoop_announce_api_version(1, 5)
 end
 
 print_debug("Init keyboard.lua")
