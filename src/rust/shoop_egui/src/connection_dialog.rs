@@ -521,8 +521,6 @@ impl ConnectionGraph {
             && (sink_endpoint.column != GraphColumn::Buses || source_endpoint.mixer_source)
             && source_endpoint.policy == ConnectionPolicy::UserManaged
             && sink_endpoint.policy == ConnectionPolicy::UserManaged
-            && !source_endpoint.source_pending
-            && !sink_endpoint.sink_pending
             && !self.blocks_pair(source, sink)
     }
 }
@@ -1648,7 +1646,23 @@ mod tests {
             role: crate::PortRole::AudioOutput,
             connection_policy: ConnectionPolicy::UserManaged,
         });
+        ports.push(application_port(
+            15,
+            TrackId::from_raw(1),
+            "one:audio_out",
+            PortDataType::Audio,
+            PortDirection::Output,
+            ConnectionPolicy::UserManaged,
+        ));
         connections.application_ports = ports.into();
+        let mut hosts = connections.host_ports.to_vec();
+        hosts.push(host_port(
+            "headphones:audio_sink",
+            "headphones:audio_sink",
+            PortDataType::Audio,
+            PortDirection::Input,
+        ));
+        connections.host_ports = hosts.into();
 
         let graph = ConnectionGraph::build(
             &state,
@@ -1658,7 +1672,9 @@ mod tests {
         let bus_input = EndpointId::BusInput(BusChannelId::from_raw(1));
         let bus_output = EndpointId::Application(PortId::from_raw(14));
         let track_output = EndpointId::Application(PortId::from_raw(13));
+        let other_track_output = EndpointId::Application(PortId::from_raw(15));
         let system_sink = EndpointId::Host(HostPortId::new("speaker:audio_sink"));
+        let other_system_sink = EndpointId::Host(HostPortId::new("headphones:audio_sink"));
         assert!(graph.is_sink(&bus_input));
         assert!(graph.is_source(&bus_output));
         assert!(graph.compatible_drop(&track_output, &bus_input));
@@ -1684,8 +1700,23 @@ mod tests {
             &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
         );
         assert!(!pending.compatible_drop(&track_output, &bus_input));
+        assert!(pending.compatible_drop(&other_track_output, &bus_input));
         assert!(pending.compatible_drop(&bus_output, &system_sink));
-        Arc::make_mut(&mut state.connections).pending_mixer_links = Arc::from([]);
+        let connections = Arc::make_mut(&mut state.connections);
+        connections.pending_mixer_links = Arc::from([]);
+        connections.pending_links = Arc::from([PendingConnectionState {
+            application_port_id: PortId::from_raw(14),
+            host_port_id: HostPortId::new("speaker:audio_sink"),
+            desired_connected: true,
+        }]);
+        let pending_fanout = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        assert!(!pending_fanout.compatible_drop(&bus_output, &system_sink));
+        assert!(pending_fanout.compatible_drop(&bus_output, &other_system_sink));
+        let connections = Arc::make_mut(&mut state.connections);
+        connections.pending_links = Arc::from([]);
         let mut ports = state.connections.application_ports.to_vec();
         ports
             .iter_mut()
