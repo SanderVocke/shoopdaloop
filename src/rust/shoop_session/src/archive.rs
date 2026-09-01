@@ -235,6 +235,9 @@ pub fn decode_session_with_limits(
             minor: header.format_version.minor,
         });
     }
+    if header.document_version == SESSION_DOCUMENT_VERSION {
+        require_current_bus_control_fields(&manifest_value)?;
+    }
     let mut manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if manifest.document_version == PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION {
@@ -1287,6 +1290,29 @@ fn validate_finite(value: f32, field: &str) -> Result<(), SessionError> {
     } else {
         Err(SessionError::Validation(format!("{field} is not finite")))
     }
+}
+
+fn require_current_bus_control_fields(manifest: &serde_json::Value) -> Result<(), SessionError> {
+    let buses = manifest
+        .get("document")
+        .and_then(|document| document.get("buses"))
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| SessionError::Manifest("session buses must be an array".to_owned()))?;
+    for (index, bus) in buses.iter().enumerate() {
+        let Some(bus) = bus.as_object() else {
+            return Err(SessionError::Manifest(format!(
+                "session bus {index} must be an object"
+            )));
+        };
+        for field in ["gain_db", "balance", "muted"] {
+            if !bus.contains_key(field) {
+                return Err(SessionError::Manifest(format!(
+                    "session bus {index} is missing required {field}"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_media_id(id: &str) -> Result<(), SessionError> {

@@ -660,7 +660,7 @@ mod tests {
     fn version_nine_buses_migrate_default_controls_and_invalid_controls_are_rejected() {
         let bundle = deferred_feature_bundle();
         let encoded = encode_session(&bundle, "bus-control-migration").unwrap();
-        let version_nine = rewrite_manifest(encoded, |manifest| {
+        let version_nine = rewrite_manifest(encoded.clone(), |manifest| {
             manifest["document_version"] = serde_json::json!(9);
             let bus = &mut manifest["document"]["buses"][0];
             bus.as_object_mut().unwrap().remove("gain_db");
@@ -672,6 +672,19 @@ mod tests {
         assert_eq!(bus.gain_db, 0.0);
         assert_eq!(bus.balance, 0.0);
         assert!(!bus.muted);
+
+        for missing in ["gain_db", "balance", "muted"] {
+            let malformed = rewrite_manifest(encoded.clone(), |manifest| {
+                manifest["document"]["buses"][0]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove(missing);
+            });
+            assert!(matches!(
+                decode_session(&malformed),
+                Err(SessionError::Manifest(_))
+            ));
+        }
 
         for invalid in [f32::NAN, f32::INFINITY, -31.0, 21.0] {
             let mut malformed = deferred_feature_bundle();
