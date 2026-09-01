@@ -699,6 +699,19 @@ impl RemoteWorkletBackend {
                 );
             }
         }
+        for source_global in &session.global_ports {
+            let Some(&global_port_id) = replacement.global_ports.get(&source_global.source_id)
+            else {
+                continue;
+            };
+            let mut descriptor = source_global.descriptor.clone();
+            descriptor.id = global_port_id;
+            descriptor.owner = BackendPortOwner::GlobalFxControl;
+            self.snapshot
+                .connections
+                .application_ports
+                .insert(global_port_id, descriptor);
+        }
         for source_bus in &session.buses {
             let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
                 continue;
@@ -3892,6 +3905,10 @@ mod tests {
         assert_eq!(
             backend.snapshot.connections.application_ports[&MASTER_BUS_OUTPUT_PORT_IDS[0]].owner,
             BackendPortOwner::Bus(MASTER_BUS_ID)
+        );
+        assert_eq!(
+            backend.snapshot.connections.application_ports[&GLOBAL_FX_PORT_ID].owner,
+            BackendPortOwner::GlobalFxControl
         );
     }
 
