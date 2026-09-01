@@ -156,6 +156,41 @@ impl TransportCore {
         self.journal.retain(|candidate| candidate != command);
     }
 
+    pub(crate) fn replace_mixer_journal(&mut self, commands: Vec<Command>) -> Result<()> {
+        if commands.iter().any(|command| {
+            !matches!(
+                command,
+                Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+            )
+        }) {
+            return Err(anyhow!(
+                "replacement mixer journal contains a non-mixer command"
+            ));
+        }
+        let retained = self
+            .journal
+            .iter()
+            .filter(|command| {
+                !matches!(
+                    command,
+                    Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+                )
+            })
+            .count();
+        if retained.saturating_add(commands.len()) > COMMAND_CAPACITY {
+            self.overflows = self.overflows.saturating_add(1);
+            return Err(anyhow!("replacement mixer command journal is full"));
+        }
+        self.journal.retain(|command| {
+            !matches!(
+                command,
+                Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+            )
+        });
+        self.journal.extend(commands);
+        Ok(())
+    }
+
     pub(crate) fn ephemeral(&mut self, command: Command) -> Result<()> {
         if self.endpoint.is_none() {
             return Err(anyhow!("remote worklet is not connected"));
@@ -353,6 +388,11 @@ impl TransportCore {
 
     pub(crate) fn pending_len(&self) -> usize {
         self.pending.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn journal_commands(&self) -> Vec<Command> {
+        self.journal.clone()
     }
 
     pub(crate) fn readiness(&self) -> RemoteReadiness {
@@ -599,6 +639,69 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(replayed, expected);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_replacement_atomically_replaces_only_mixer_replay_state() {
+        let (transport, control) = transport_pair();
+        let old_route = Command::SetMixerRoute {
+            source_port_id: 11,
+            destination_channel_id: 1,
+            connected: true,
+        };
+        transport.borrow_mut().journal(old_route).unwrap();
+        transport
+            .borrow_mut()
+            .journal(Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::Mute(true),
+            })
+            .unwrap();
+        let retained = Command::SetLoopGain {
+            loop_id: 2,
+            gain: 0.5,
+        };
+        transport.borrow_mut().journal(retained.clone()).unwrap();
+        let replacement = vec![
+            Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::Mute(false),
+            },
+            Command::SetMixerRoute {
+                source_port_id: 22,
+                destination_channel_id: 2,
+                connected: true,
+            },
+        ];
+        transport
+            .borrow_mut()
+            .replace_mixer_journal(replacement.clone())
+            .unwrap();
+
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|json| {
+                serde_json::from_str::<CommandEnvelope>(json)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            [
+                vec![Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                }],
+                vec![retained],
+                replacement,
+            ]
+            .concat()
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

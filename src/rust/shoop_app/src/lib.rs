@@ -567,7 +567,7 @@ fn update_application(
         let _span = tracing::trace_span!("frontend.app.backend_advance").entered();
         backend.advance(elapsed);
     }
-    model.age_pending_connections(elapsed);
+    model.age_pending_connections(backend, elapsed);
     match backend.poll() {
         Ok(snapshot) => {
             model.clear_periodic_failure("backend.poll");
@@ -702,6 +702,7 @@ enum BusControlKey {
 
 struct PendingBusControl {
     desired: BackendBusControl,
+    rollback: BackendBusControl,
     age: Duration,
 }
 
@@ -710,6 +711,25 @@ fn bus_control_key(control: BackendBusControl) -> BusControlKey {
         BackendBusControl::GainDb(_) => BusControlKey::Gain,
         BackendBusControl::Balance(_) => BusControlKey::Balance,
         BackendBusControl::Mute(_) => BusControlKey::Mute,
+    }
+}
+
+fn backend_bus_control(
+    bus: &shoop_backend::BackendBusState,
+    key: BusControlKey,
+) -> BackendBusControl {
+    match key {
+        BusControlKey::Gain => BackendBusControl::GainDb(bus.gain_db),
+        BusControlKey::Balance => BackendBusControl::Balance(bus.balance),
+        BusControlKey::Mute => BackendBusControl::Mute(bus.muted),
+    }
+}
+
+fn model_bus_control(bus: &BusModel, key: BusControlKey) -> BackendBusControl {
+    match key {
+        BusControlKey::Gain => BackendBusControl::GainDb(bus.gain_db),
+        BusControlKey::Balance => BackendBusControl::Balance(bus.balance),
+        BusControlKey::Mute => BackendBusControl::Mute(bus.muted),
     }
 }
 
@@ -4866,10 +4886,17 @@ impl ApplicationModel {
             bus.control_error = Some(message.clone());
             return Err(message);
         }
+        let key = (bus.backend_id, bus_control_key(control));
+        let rollback = self
+            .desired_bus_controls
+            .get(&key)
+            .map(|pending| pending.rollback)
+            .unwrap_or_else(|| model_bus_control(bus, key.1));
         self.desired_bus_controls.insert(
-            (bus.backend_id, bus_control_key(control)),
+            key,
             PendingBusControl {
                 desired: control,
+                rollback,
                 age: Duration::ZERO,
             },
         );
@@ -7791,18 +7818,23 @@ impl ApplicationModel {
         Ok(())
     }
 
-    fn age_pending_connections(&mut self, elapsed: Duration) {
+    fn age_pending_connections(&mut self, backend: &mut dyn Backend, elapsed: Duration) {
         let bus_timed_out = self
             .desired_bus_controls
             .iter_mut()
             .filter_map(|(key, pending)| {
                 pending.age = pending.age.saturating_add(elapsed);
-                (pending.age >= CONNECTION_TIMEOUT).then_some(*key)
+                (pending.age >= CONNECTION_TIMEOUT).then_some((*key, pending.rollback))
             })
             .collect::<Vec<_>>();
-        for (backend_id, control_key) in bus_timed_out {
+        for ((backend_id, control_key), rollback) in bus_timed_out {
             self.desired_bus_controls.remove(&(backend_id, control_key));
-            let message = "bus control request timed out".to_owned();
+            let message = match backend.set_bus_control(backend_id, rollback) {
+                Ok(()) => "bus control request timed out and was cancelled".to_owned(),
+                Err(error) => format!(
+                    "bus control request timed out; cancellation could not be dispatched: {error}"
+                ),
+            };
             let still_pending = self
                 .desired_bus_controls
                 .keys()
@@ -8728,6 +8760,11 @@ impl ApplicationModel {
         }
         self.buses
             .retain(|_, bus| snapshot.buses.contains_key(&bus.backend_id));
+        for ((backend_id, key), pending) in &mut self.desired_bus_controls {
+            if let Some(bus) = snapshot.buses.get(backend_id) {
+                pending.rollback = backend_bus_control(bus, *key);
+            }
+        }
         self.desired_bus_controls
             .retain(|(backend_id, _), pending| {
                 snapshot
@@ -19483,14 +19520,21 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model
             .handle_bus_action(&mut backend, bus_id, BusAction::MuteChanged(true))
             .unwrap();
-        model.age_pending_connections(CONNECTION_TIMEOUT);
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
         let bus = &model.buses[&bus_id];
         assert!(!bus.control_pending);
         assert_eq!(
             bus.control_error.as_deref(),
-            Some("bus control request timed out")
+            Some("bus control request timed out and was cancelled")
         );
         assert!(model.desired_bus_controls.is_empty());
+        assert!(matches!(
+            backend.operations().last(),
+            Some(shoop_backend::FakeOperation::SetBusControl(
+                candidate,
+                BackendBusControl::Mute(false)
+            )) if *candidate == backend_id
+        ));
 
         model.buses.remove(&bus_id);
         assert!(model
@@ -19523,7 +19567,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             destination_channel_id,
         };
         assert!(model.pending_mixer_routes.contains_key(&route));
-        model.age_pending_connections(CONNECTION_TIMEOUT);
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
         assert!(!model.pending_mixer_routes.contains_key(&route));
         assert!(model
             .mixer_route_errors

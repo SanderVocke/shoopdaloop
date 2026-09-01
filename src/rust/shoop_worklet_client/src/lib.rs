@@ -644,7 +644,40 @@ impl RemoteWorkletBackend {
         &mut self,
         session: &BackendSessionData,
         replacement: &BackendSessionReplacement,
-    ) {
+    ) -> Result<()> {
+        let mut mixer_journal = Vec::new();
+        for source_bus in &session.buses {
+            let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
+                continue;
+            };
+            for control in [
+                BackendBusControl::GainDb(source_bus.gain_db),
+                BackendBusControl::Balance(source_bus.balance),
+                BackendBusControl::Mute(source_bus.muted),
+            ] {
+                mixer_journal.push(Command::SetBusControl {
+                    bus_id: bus_id.raw(),
+                    control: to_wire_bus_control(control),
+                });
+            }
+        }
+        for route in &session.mixer_routes {
+            let (Some(&source_port_id), Some(&destination_channel_id)) = (
+                replacement.ports.get(&route.source_port_id),
+                replacement.bus_channels.get(&route.destination_channel_id),
+            ) else {
+                continue;
+            };
+            mixer_journal.push(Command::SetMixerRoute {
+                source_port_id: source_port_id.raw(),
+                destination_channel_id: destination_channel_id.raw(),
+                connected: true,
+            });
+        }
+        self.transport
+            .borrow_mut()
+            .replace_mixer_journal(mixer_journal)?;
+
         self.snapshot.tracks.clear();
         self.snapshot.loops.clear();
         self.snapshot.composites.clear();
@@ -787,6 +820,7 @@ impl RemoteWorkletBackend {
             .unwrap_or(0)
             .saturating_add(1);
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
+        Ok(())
     }
 
     fn apply_wire_snapshot(&mut self, wire: WireSnapshot) {
@@ -2310,7 +2344,7 @@ impl Backend for RemoteWorkletBackend {
         if let Some(replace) = &self.session_replace {
             if replace.complete {
                 let replacement = browser_replacement_mapping(session);
-                self.apply_replaced_session(session, &replacement);
+                self.apply_replaced_session(session, &replacement)?;
                 self.session_replace = None;
                 return Ok(BackendAsyncResult::Ready(replacement));
             }
@@ -3989,6 +4023,23 @@ mod tests {
         assert_eq!(replacement.global_ports[&44], GLOBAL_FX_PORT_ID);
         let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::Mute(false),
+            })
+            .unwrap();
+        backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetMixerRoute {
+                source_port_id: 99,
+                destination_channel_id: 99,
+                connected: true,
+            })
+            .unwrap();
+        backend
             .snapshot
             .mixer
             .confirmed_links
@@ -3996,7 +4047,9 @@ mod tests {
                 source_port_id: BackendPortId::from_raw(99),
                 destination_channel_id: BackendBusChannelId::from_raw(99),
             });
-        backend.apply_replaced_session(&session, &replacement);
+        backend
+            .apply_replaced_session(&session, &replacement)
+            .unwrap();
         assert_eq!(backend.next_port_id, 1);
         assert_eq!(backend.snapshot.mixer.buses.len(), 1);
         let master = &backend.snapshot.mixer.buses[&MASTER_BUS_ID];
@@ -4005,6 +4058,35 @@ mod tests {
         assert!(master.muted);
         assert_eq!(master.output_peaks_db, [-200.0]);
         assert!(backend.snapshot.mixer.confirmed_links.is_empty());
+        let mixer_journal = backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .into_iter()
+            .filter(|command| {
+                matches!(
+                    command,
+                    Command::SetBusControl { .. } | Command::SetMixerRoute { .. }
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            mixer_journal,
+            vec![
+                Command::SetBusControl {
+                    bus_id: MASTER_BUS_ID.raw(),
+                    control: WireBusControl::GainDb(-3.0),
+                },
+                Command::SetBusControl {
+                    bus_id: MASTER_BUS_ID.raw(),
+                    control: WireBusControl::Balance(0.0),
+                },
+                Command::SetBusControl {
+                    bus_id: MASTER_BUS_ID.raw(),
+                    control: WireBusControl::Mute(true),
+                },
+            ]
+        );
         assert_eq!(
             backend.snapshot.connections.application_ports[&MASTER_BUS_OUTPUT_PORT_IDS[0]].owner,
             BackendPortOwner::Bus(MASTER_BUS_ID)
