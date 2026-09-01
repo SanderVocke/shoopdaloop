@@ -703,19 +703,27 @@ impl RemoteWorkletBackend {
             let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
                 continue;
             };
-            let channels = source_bus
-                .channels
-                .iter()
-                .filter_map(|source_channel| {
-                    Some(BackendBusChannelState {
-                        id: *replacement.bus_channels.get(&source_channel.source_id)?,
-                        label: source_channel.label.clone(),
-                        output_port_id: *replacement
-                            .bus_output_ports
-                            .get(&source_channel.source_id)?,
-                    })
-                })
-                .collect();
+            let mut channels = Vec::with_capacity(source_bus.channels.len());
+            for source_channel in &source_bus.channels {
+                let (Some(&channel_id), Some(&output_port_id)) = (
+                    replacement.bus_channels.get(&source_channel.source_id),
+                    replacement.bus_output_ports.get(&source_channel.source_id),
+                ) else {
+                    continue;
+                };
+                let mut output_descriptor = source_channel.output_port.descriptor.clone();
+                output_descriptor.id = output_port_id;
+                output_descriptor.owner = BackendPortOwner::Bus(bus_id);
+                self.snapshot
+                    .connections
+                    .application_ports
+                    .insert(output_port_id, output_descriptor);
+                channels.push(BackendBusChannelState {
+                    id: channel_id,
+                    label: source_channel.label.clone(),
+                    output_port_id,
+                });
+            }
             self.snapshot.mixer.buses.insert(
                 bus_id,
                 BackendBusState {
@@ -3860,6 +3868,10 @@ mod tests {
         assert_eq!(backend.next_port_id, 1);
         assert_eq!(backend.snapshot.mixer.buses.len(), 1);
         assert!(backend.snapshot.mixer.confirmed_links.is_empty());
+        assert_eq!(
+            backend.snapshot.connections.application_ports[&MASTER_BUS_OUTPUT_PORT_IDS[0]].owner,
+            BackendPortOwner::Bus(MASTER_BUS_ID)
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
