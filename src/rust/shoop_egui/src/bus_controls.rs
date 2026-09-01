@@ -31,6 +31,12 @@ struct TestBusControlRects {
 
 impl BusControls {
     pub fn show(&mut self, ui: &mut egui::Ui, state: &BusState) -> Vec<BusAction> {
+        let _span = tracing::trace_span!(
+            "frontend.egui.bus_controls",
+            bus_id = state.id.raw(),
+            channel_count = state.channels.len()
+        )
+        .entered();
         if state.control_error.is_some() {
             self.gain.clear();
             self.balance.clear();
