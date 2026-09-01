@@ -160,19 +160,48 @@ It does not change explicit Play, Play Dry Through Wet, or explicit Lua/script-c
 
 - [x] Run `cargo fmt --all` and verify with `cargo fmt --all -- --check`.
 - [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
 - [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests changed.
 - [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Build/check `shoopdaloop` and build `shoop_audio_worklet` for `wasm32-unknown-unknown`.
-- [ ] Run `python3 scripts/run_wasm_tests.py --profile dev --runtime node` and the policy-relevant Chrome suite when a browser is available.
-- [ ] Run the documented raw Wasm host/worklet dependency and smoke checks affected by protocol changes.
-- [ ] Review the complete diff for unrelated changes, accidental generated files, concrete defaults embedded in composite plans, and direct evidence for every acceptance criterion.
-- [ ] Commit each remaining coherent milestone and leave a clean worktree.
+- [x] Build/check `shoopdaloop` and build `shoop_audio_worklet` for `wasm32-unknown-unknown`.
+- [x] Run `python3 scripts/run_wasm_tests.py --profile dev --runtime node` and the policy-relevant Chrome suite when a browser is available.
+- [x] Run the documented raw Wasm host/worklet dependency and smoke checks affected by protocol changes.
+- [x] Review the complete diff for unrelated changes, accidental generated files, concrete defaults embedded in composite plans, and direct evidence for every acceptance criterion.
+- [x] Commit each remaining coherent milestone and leave a clean worktree.
 
 **Verification**
 
-- [ ] Record every command and result in the plan, including host-facility or browser limitations.
-- [ ] Re-run any isolated failure to distinguish a reproducible defect from resource contention; fix reproducible failures before pushing.
+- [x] Record every command and result in the plan, including host-facility or browser limitations.
+- [x] Re-run any isolated failure to distinguish a reproducible defect from resource contention; fix reproducible failures before pushing.
+
+**Final local validation record before PR**
+
+- `cargo fmt --all -- --check`, `git diff --check`, built-in catalog verification, Shoop test-attribute policy, and closed tracing-inventory checks passed.
+- `RUSTFLAGS="-D warnings" cargo build --workspace` passed with the Nix development environment and a writable external Cargo cache/target directory.
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` passed: 1,648/1,648 tests, with four policy/platform skips. An initial highly parallel link attempt hit an LLVM `ld.lld` bus error; limiting Cargo build jobs removed that resource failure. Subsequent complete runs exposed and fixed a stale regular-composite recording test, two stale Lua higher-minor fixtures, missing Wasm-only struct fields, and protocol-version fixture drift; the final complete run is green.
+- Warning-denying Wasm checks passed for `shoopdaloop --no-default-features` and `shoop_audio_worklet` on `wasm32-unknown-unknown`.
+- The complete pinned Node 22.22.2 Wasm suite passed all package groups, including 840 engine tests and 10 remote-runtime tests. The complete policy-triggered Chromium 147.0.7727.137 suite also passed all package groups.
+- Worklet/client dependency isolation, import-free worklet validation, raw Wasm host contract, Wasm report parser, smoke-budget policy, and Wasm test dependency gates passed. The protocol contract was bumped to version 20 and its raw-host fixture was updated together.
+- `trunk build`, single-file application generation, hosted Chrome output-only AudioWorklet smoke, and direct-file self-contained output-only smoke passed at 900x600. Generated `target`, `dist`, and `generated` outputs remain ignored and untracked.
+- Browser tooling was available from the pinned Nix stores; no browser check was skipped. Native MIDI/audio host-facility tests retained their existing conditional behavior where devices were absent.
+
+**Acceptance-criterion artifact audit (criteria 1–13)**
+
+1. Dedicated regular/dry enums and regular defaults exist in app API, backend, engine, wire, settings, and session domains; constructor and migration tests pass.
+2. API, application, backend, UI, and session validation restrict dry-through-wet to non-sync dry/wet tracks with wet channels; direct, trigger, sync, zero-wet, and malformed cases are covered.
+3. `tracks.new.default_playback_mode`, `NewTrackConfiguration`, Track Defaults, Add Track override, and make-default retry/persistence paths are implemented and exercised by egui/settings tests.
+4. The dry/wet track options submenu dispatches `DefaultPlaybackModeChanged`; application publication follows backend success, and injected backend failure preserves application state.
+5. Application and Lua-helper default actions use the owning track value for stopped and recording primitive playback branches; mixed regular/dry targets are covered while existing record/grab/cancel/stop tests stay green.
+6. Concrete GUI and Lua mode-taking actions remain explicit; script timeline tests prove explicit regular playback bypasses a dry track default.
+7. `CompiledChildMode::Inherit` is absent. Mode-less regular entries compile only to `DefaultPlayback`; persisted regular events remain mode-less and script entries remain explicit.
+8. Timeline/runtime tests prove trigger-time primitive resolution, independent mixed-child defaults, nested same-sample propagation, ordinary outer composite playback, and rejection of unsupported outer modes.
+9. Script-composite events retain concrete modes; explicit play of a nested regular composite starts it normally and its descendants then resolve their own defaults.
+10. Default edits never enter plan inputs/signatures. Latching tests prove no active-child change until stop/retrigger, and no-allocation tests cover the dynamic boundary.
+11. Session document version 9 round-trips dry defaults; versions 6–8 migrate to regular; invalid topology/default combinations fail validation. Native app and remote Worker session replacement tests retain the value.
+12. Per-target runtime mirrors are bounded, all realtime resolution is lookup-only, no-allocation tests pass, and native/worklet protocol paths have parity coverage.
+13. The complete native, Node, Chromium, protocol, UI, scripting, session, migration, mixed-target, nested-composite, failure, and no-allocation suites listed above provide direct coverage.
+
+Criterion 14 is intentionally still open: the final rebase, push, PR, CI, and automated Codex review closure are Stages 8–9 below.
 
 ### Stage 8: Push and Open the Pull Request
 
