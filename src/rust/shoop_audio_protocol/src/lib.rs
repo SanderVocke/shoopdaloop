@@ -1122,7 +1122,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":19,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":20,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1133,7 +1133,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":19,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":20,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 
