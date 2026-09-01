@@ -45,6 +45,7 @@ enum TestGlobalControl {
     Sync,
     Solo,
     AutoMuteOtherTrackInputs,
+    AutoArmTrackInputs,
     ApplyNCycles,
 }
 
@@ -69,6 +70,7 @@ struct TestGlobalControlRects {
     sync: Option<egui::Rect>,
     solo: Option<egui::Rect>,
     auto_mute_other_track_inputs: Option<egui::Rect>,
+    auto_arm_track_inputs: Option<egui::Rect>,
     apply_n_cycles: Option<egui::Rect>,
 }
 
@@ -316,6 +318,23 @@ impl GlobalControls {
                     !state.auto_mute_other_track_inputs,
                 ));
             }
+            let response = control_button(
+                ui,
+                egui::RichText::new("A")
+                    .size(18.0)
+                    .color(if state.auto_arm_track_inputs {
+                        colors::COLORED_HIGHLIGHT
+                    } else {
+                        colors::MUTED_FOREGROUND
+                    }),
+                "Automatically monitor tracks one cycle before script-composite recording",
+            );
+            self.record_rect(TestGlobalControl::AutoArmTrackInputs, &response);
+            if response.clicked() {
+                actions.push(GlobalControlAction::SetAutoArmTrackInputs(
+                    !state.auto_arm_track_inputs,
+                ));
+            }
 
             let mut cycles = self
                 .apply_n_cycles
@@ -418,6 +437,7 @@ impl GlobalControls {
             TestGlobalControl::AutoMuteOtherTrackInputs => {
                 &mut self.test_rects.auto_mute_other_track_inputs
             }
+            TestGlobalControl::AutoArmTrackInputs => &mut self.test_rects.auto_arm_track_inputs,
             TestGlobalControl::ApplyNCycles => &mut self.test_rects.apply_n_cycles,
         };
         *target = Some(response.rect);
@@ -449,6 +469,7 @@ impl GlobalControls {
             TestGlobalControl::AutoMuteOtherTrackInputs => {
                 self.test_rects.auto_mute_other_track_inputs
             }
+            TestGlobalControl::AutoArmTrackInputs => self.test_rects.auto_arm_track_inputs,
             TestGlobalControl::ApplyNCycles => self.test_rects.apply_n_cycles,
         }
     }
@@ -621,6 +642,7 @@ mod tests {
             TestGlobalControl::Sync,
             TestGlobalControl::Solo,
             TestGlobalControl::AutoMuteOtherTrackInputs,
+            TestGlobalControl::AutoArmTrackInputs,
         ] {
             assert_eq!(
                 controls.test_rect(control).unwrap().size(),
@@ -736,6 +758,15 @@ mod tests {
         assert_eq!(
             click(&context, &mut controls, &state, TestGlobalControl::Solo),
             vec![GlobalControlAction::SetSolo(true)]
+        );
+        assert_eq!(
+            click(
+                &context,
+                &mut controls,
+                &state,
+                TestGlobalControl::AutoArmTrackInputs
+            ),
+            vec![GlobalControlAction::SetAutoArmTrackInputs(false)]
         );
     }
 

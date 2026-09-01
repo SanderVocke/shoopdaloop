@@ -9,6 +9,10 @@ The plan must contain:
 - Staged implementation steps using checkbox lists, with verification for each stage.
 - A final end-to-end validation stage.
 
+Unless instructed otherwise, follow these guidelines:
+- include branch creation, pushing, creating a PR and working to ensure CI turns green.
+- include checking the PR for any automated review coming in. If so, repeatedly address review feedback as you see fit, until the reviewer approves.
+
 Make dependencies and ordering explicit, but keep the plan concise and avoid speculative detail.
 
 Include this execution contract in the plan:

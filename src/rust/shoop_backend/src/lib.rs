@@ -779,6 +779,7 @@ pub enum BackendMutationDetail {
     TrackCreation,
     TrackRemoval,
     LoopCreation { loop_id: BackendLoopId },
+    CompositeConfiguration { plan_version: u64 },
     TrackControl(BackendTrackControl),
     TrackFxControl(BackendTrackFxControl),
     LoopGain(f32),
@@ -806,6 +807,7 @@ pub struct BackendSnapshot {
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
     pub composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
+    pub removed_composites: Vec<BackendCompositeId>,
     pub connections: BackendConnectionSnapshot,
     pub mutation_failures: Vec<BackendMutationFailure>,
 }
@@ -813,6 +815,10 @@ pub struct BackendSnapshot {
 pub trait Backend {
     fn supports_composite_loops(&self) -> bool {
         false
+    }
+
+    fn composite_plan_mutations_are_synchronous(&self) -> bool {
+        true
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
@@ -846,11 +852,12 @@ pub trait Backend {
     fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
         Err(anyhow!("composite loops are unavailable"))
     }
+    /// Installs a composite configuration and returns its backend-wide plan version.
     fn configure_composite_loop(
         &mut self,
         _composite_id: BackendCompositeId,
         _config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         Err(anyhow!("composite loops are unavailable"))
     }
     fn transition_composite_loop(
@@ -869,7 +876,7 @@ pub trait Backend {
     ) -> Result<()> {
         Err(anyhow!("composite loops are unavailable"))
     }
-    fn remove_composite_loop(&mut self, _composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, _composite_id: BackendCompositeId) -> Result<Option<u64>> {
         Err(anyhow!("composite loops are unavailable"))
     }
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -1818,7 +1825,7 @@ impl EngineBackend {
     fn install_composite_configs(
         &mut self,
         configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let mut timeline = self.compile_composite_timeline(&configs)?;
         let version = self.next_composite_version;
         self.next_composite_version = self.next_composite_version.saturating_add(1);
@@ -1841,7 +1848,7 @@ impl EngineBackend {
                 )?;
             }
         }
-        Ok(())
+        Ok(version)
     }
 
     pub fn configure_web_audio_channels(
@@ -3971,7 +3978,7 @@ impl Backend for EngineBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         if !self.composites.contains_key(&composite_id) {
             return Err(anyhow!("unknown composite {composite_id:?}"));
         }
@@ -4049,9 +4056,9 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
         if !self.composites.contains_key(&composite_id) {
-            return Ok(());
+            return Ok(None);
         }
         let configs = self
             .composites
@@ -4059,9 +4066,9 @@ impl Backend for EngineBackend {
             .filter(|(id, _)| **id != composite_id)
             .filter_map(|(id, composite)| composite.config.clone().map(|config| (*id, config)))
             .collect::<BTreeMap<_, _>>();
-        self.install_composite_configs(configs)?;
+        let version = self.install_composite_configs(configs)?;
         self.composites.remove(&composite_id);
-        Ok(())
+        Ok(Some(version))
     }
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
@@ -5149,15 +5156,10 @@ impl Backend for EngineBackend {
         ) {
             self.prepare_recording_storage(loop_id, mode == BackendLoopMode::Replacing)?;
         }
-        if let Some(delay) = cycles_delay {
-            self.session
-                .loop_mut(engine_loop)
-                .ok_or_else(|| anyhow!("missing engine loop"))?
-                .plan_transition(to_engine_mode(mode), Some(delay), None);
-        } else {
-            self.session
-                .set_loop_mode(engine_loop, to_engine_mode(mode))?;
-        }
+        self.session
+            .loop_mut(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .plan_transition(to_engine_mode(mode), cycles_delay, None);
         Ok(())
     }
 
@@ -5816,6 +5818,7 @@ impl Backend for EngineBackend {
             tracks,
             loops,
             composites,
+            removed_composites: Vec::new(),
             connections: self.connection_snapshot(),
             mutation_failures: Vec::new(),
         })
@@ -5879,7 +5882,7 @@ impl Backend for LocalDummyBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         self.runtime.configure_composite_loop(composite_id, config)
     }
 
@@ -5903,7 +5906,7 @@ impl Backend for LocalDummyBackend {
             .set_composite_play_after_record(composite_id, enabled)
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
         self.runtime.remove_composite_loop(composite_id)
     }
 
@@ -6390,6 +6393,7 @@ pub struct FakeBackend {
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
+    fail_next_track_control: Option<String>,
     fail_next_session_replace: Option<String>,
     fail_next_loop_content_replace: Option<String>,
     pending_session_captures: usize,
@@ -6482,6 +6486,7 @@ impl Default for FakeBackend {
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
+            fail_next_track_control: None,
             fail_next_session_replace: None,
             fail_next_loop_content_replace: None,
             pending_session_captures: 0,
@@ -6527,6 +6532,10 @@ impl FakeBackend {
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
         self.fail_track_creation_after = Some(successful_creations);
+    }
+
+    pub fn fail_next_track_control(&mut self, message: impl Into<String>) {
+        self.fail_next_track_control = Some(message.into());
     }
 
     pub fn fail_midi_input_for(&mut self, track_id: BackendTrackId) {
@@ -7032,7 +7041,7 @@ impl Backend for FakeBackend {
         &mut self,
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         if !self.composites.contains_key(&composite_id) {
             return Err(anyhow!("unknown fake composite {composite_id:?}"));
         }
@@ -7101,7 +7110,7 @@ impl Backend for FakeBackend {
             composite_id,
             config.clone(),
         ));
-        Ok(())
+        Ok(state.active_plan_version)
     }
 
     fn transition_composite_loop(
@@ -7149,12 +7158,25 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
-    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
-        self.composites.remove(&composite_id);
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<Option<u64>> {
+        let existed = self.composites.remove(&composite_id).is_some();
         self.composite_configs.remove(&composite_id);
         self.operations
             .push(FakeOperation::RemoveComposite(composite_id));
-        Ok(())
+        if !existed {
+            return Ok(None);
+        }
+        let version = self
+            .composites
+            .values()
+            .map(|state| state.active_plan_version)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        for state in self.composites.values_mut() {
+            state.active_plan_version = version;
+        }
+        Ok(Some(version))
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -7356,6 +7378,9 @@ impl Backend for FakeBackend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()> {
+        if let Some(message) = self.fail_next_track_control.take() {
+            return Err(anyhow!(message));
+        }
         let track = self
             .tracks
             .get_mut(&track_id)
@@ -8790,6 +8815,7 @@ impl Backend for FakeBackend {
                 .collect(),
             loops: self.loops.clone(),
             composites: self.composites.clone(),
+            removed_composites: Vec::new(),
             connections: self.connection_snapshot(),
             mutation_failures: Vec::new(),
         })

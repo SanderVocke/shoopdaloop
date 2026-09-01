@@ -594,10 +594,13 @@ impl fmt::Display for SettingsRegistryError {
 
 impl Error for SettingsRegistryError {}
 
+pub type SettingsDraftValidator = fn(&SettingsDraft) -> Result<(), SettingsDraftError>;
+
 #[derive(Default)]
 pub struct SettingsRegistryBuilder {
     definitions: Vec<ErasedSettingDefinition>,
     keys: BTreeSet<String>,
+    draft_validators: Vec<SettingsDraftValidator>,
 }
 
 impl SettingsRegistryBuilder {
@@ -627,6 +630,10 @@ impl SettingsRegistryBuilder {
         Ok(())
     }
 
+    pub fn register_draft_validator(&mut self, validator: SettingsDraftValidator) {
+        self.draft_validators.push(validator);
+    }
+
     pub fn finish(mut self) -> SettingsRegistry {
         self.definitions.sort_by(|left, right| {
             (
@@ -651,6 +658,7 @@ impl SettingsRegistryBuilder {
         SettingsRegistry {
             definitions: Arc::from(self.definitions),
             by_key,
+            draft_validators: Arc::from(self.draft_validators),
         }
     }
 }
@@ -674,6 +682,7 @@ fn validate_setting_key(key: &str) -> Result<(), SettingsRegistryError> {
 pub struct SettingsRegistry {
     definitions: Arc<[ErasedSettingDefinition]>,
     by_key: BTreeMap<String, usize>,
+    draft_validators: Arc<[SettingsDraftValidator]>,
 }
 
 impl SettingsRegistry {
@@ -746,6 +755,9 @@ impl SettingsRegistry {
             .find(|key| !self.by_key.contains_key(*key))
         {
             return Err(SettingsDraftError::UnknownKey(key.clone()));
+        }
+        for validator in self.draft_validators.iter() {
+            validator(draft)?;
         }
         Ok(())
     }

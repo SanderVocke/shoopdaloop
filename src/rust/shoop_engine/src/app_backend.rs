@@ -511,13 +511,12 @@ struct CpalBackend {
     xruns: Arc<AtomicU32>,
 }
 
-// On macOS the CoreAudio backend of cpal 0.16 holds a non-`Send` callback
+// On macOS the CoreAudio backend of cpal 0.17 holds a non-`Send` callback
 // (a `Box<dyn FnMut()>` without a `Send` bound) for property-listener
-// notifications, which makes `cpal::Stream` itself not `Send`. The pinned
-// cpal version (kept on 0.16 because rodio 0.21 depends on the same major
-// version) prevents upgrading to 0.18, where the bound is fixed. The
-// streams are always reached through a `Mutex`, so the audio thread stays
-// the sole owner of the underlying CoreAudio state -- promise by hand here.
+// notifications, which makes `cpal::Stream` itself not `Send`. Rodio 0.22
+// also requires cpal 0.17, preventing an upgrade to 0.18, where the bound
+// is fixed. The streams are always reached through a `Mutex`, so the audio
+// thread stays the sole owner of the underlying CoreAudio state -- promise by hand here.
 unsafe impl Send for CpalBackend {}
 unsafe impl Sync for CpalBackend {}
 
@@ -4252,16 +4251,12 @@ impl Loop {
             let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
                 return;
             };
-            if !immediate {
-                if let Some(l) = s.loop_mut(idx) {
-                    l.plan_transition(
-                        to_mode.into(),
-                        (maybe_cycles_delay >= 0).then_some(maybe_cycles_delay as u32),
-                        (maybe_to_sync_at_cycle >= 0).then_some(maybe_to_sync_at_cycle as u32),
-                    );
-                }
-            } else {
-                let _ = s.set_loop_mode(idx, to_mode.into());
+            if let Some(l) = s.loop_mut(idx) {
+                l.plan_transition(
+                    to_mode.into(),
+                    (maybe_cycles_delay >= 0).then_some(maybe_cycles_delay as u32),
+                    (maybe_to_sync_at_cycle >= 0).then_some(maybe_to_sync_at_cycle as u32),
+                );
             }
         })?;
         if immediate {
@@ -5878,11 +5873,7 @@ impl AudioPort {
         &self,
         n: u32,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let result = self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize));
-        if result.is_ok() {
-            self.control.mirror.set_ringbuffer_n_samples(n);
-        }
-        result
+        self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize))
     }
     pub fn direction(&self) -> PortDirection {
         self.direction

@@ -354,6 +354,7 @@ pub struct GlobalControlState {
     pub sync: bool,
     pub solo: bool,
     pub auto_mute_other_track_inputs: bool,
+    pub auto_arm_track_inputs: bool,
     pub apply_n_cycles: u32,
 }
 
@@ -365,6 +366,7 @@ impl Default for GlobalControlState {
             sync: true,
             solo: false,
             auto_mute_other_track_inputs: false,
+            auto_arm_track_inputs: true,
             apply_n_cycles: 0,
         }
     }
@@ -1328,11 +1330,18 @@ pub struct ClickTrackState {
     pub preview_message: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TrackCreationResult {
+    pub request_id: u64,
+    pub success: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
     pub revision: u64,
     pub tracks: Vec<TrackState>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
+    pub track_creation_results: Arc<[TrackCreationResult]>,
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
@@ -1345,10 +1354,22 @@ pub struct AppSnapshot {
 
 pub type AppState = AppSnapshot;
 
+pub const MAX_TRACK_LATENCY_FRAMES: i32 = shoop_latency::MAX_COMPENSATION_FRAMES as i32;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TrackLatencySpec {
+    pub adjustment: RecordingOffsetAdjustmentState,
+    pub manual_frames: i32,
+    pub processor_adjustment: ProcessorLatencyAdjustmentState,
+    pub processor_manual_frames: i32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrackSpec {
     pub name: String,
     pub topology: TrackSpecTopology,
+    pub latency: TrackLatencySpec,
+    pub creation_request_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1389,11 +1410,41 @@ impl TrackSpecTopology {
     }
 }
 
+impl TrackLatencySpec {
+    fn validate(self) -> Result<(), TrackSpecError> {
+        if self.adjustment != RecordingOffsetAdjustmentState::Automatic
+            && shoop_latency::RecordingOffset::new(self.manual_frames).is_err()
+        {
+            return Err(TrackSpecError::InvalidLatency);
+        }
+        match self.processor_adjustment {
+            ProcessorLatencyAdjustmentState::Automatic => {}
+            ProcessorLatencyAdjustmentState::ManualOverride => {
+                let Ok(frames) = u32::try_from(self.processor_manual_frames) else {
+                    return Err(TrackSpecError::InvalidLatency);
+                };
+                if shoop_latency::ProcessorRenderAdvance::new(frames).is_err() {
+                    return Err(TrackSpecError::InvalidLatency);
+                }
+            }
+            ProcessorLatencyAdjustmentState::AutomaticPlusTrim => {
+                if self.processor_manual_frames.unsigned_abs()
+                    > shoop_latency::MAX_COMPENSATION_FRAMES
+                {
+                    return Err(TrackSpecError::InvalidLatency);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 impl TrackSpec {
     pub fn validate(&self, processors: &[TrackProcessorDescriptor]) -> Result<(), TrackSpecError> {
         if self.name.trim().is_empty() {
             return Err(TrackSpecError::EmptyName);
         }
+        self.latency.validate()?;
         let TrackSpecTopology::DryWet {
             dry_audio_channels,
             wet_audio_channels,
@@ -1423,6 +1474,7 @@ impl TrackSpec {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TrackSpecError {
     EmptyName,
+    InvalidLatency,
     ProcessorUnavailable,
     UnsupportedShape,
 }
@@ -1442,6 +1494,8 @@ impl From<DirectTrackSpec> for TrackSpec {
                 audio_channels: value.audio_channels,
                 midi: value.midi,
             },
+            latency: TrackLatencySpec::default(),
+            creation_request_id: None,
         }
     }
 }
@@ -1586,6 +1640,7 @@ pub enum GlobalControlAction {
     SetSync(bool),
     SetSolo(bool),
     SetAutoMuteOtherTrackInputs(bool),
+    SetAutoArmTrackInputs(bool),
     SetApplyNCycles(u32),
 }
 
@@ -1919,6 +1974,7 @@ impl GlobalControlAction {
             Self::SetSync(_) => "global.sync",
             Self::SetSolo(_) => "global.solo",
             Self::SetAutoMuteOtherTrackInputs(_) => "global.auto_mute_other_track_inputs",
+            Self::SetAutoArmTrackInputs(_) => "global.auto_arm_track_inputs",
             Self::SetApplyNCycles(_) => "global.apply_n_cycles",
         }
     }
@@ -2081,6 +2137,8 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
             },
+            latency: TrackLatencySpec::default(),
+            creation_request_id: None,
         };
         assert_eq!(
             spec.validate(&[]),
@@ -2112,6 +2170,30 @@ mod tests {
             unsupported.validate(&[processor]),
             Err(TrackSpecError::UnsupportedShape)
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn track_spec_rejects_latency_values_outside_the_domain() {
+        let mut spec: TrackSpec = DirectTrackSpec {
+            name: "Track".to_owned(),
+            audio_channels: 2,
+            midi: false,
+        }
+        .into();
+        spec.latency.adjustment = RecordingOffsetAdjustmentState::ManualOverride;
+        spec.latency.manual_frames = 768_001;
+        assert_eq!(spec.validate(&[]), Err(TrackSpecError::InvalidLatency));
+
+        spec.latency.manual_frames = 0;
+        spec.latency.processor_adjustment = ProcessorLatencyAdjustmentState::ManualOverride;
+        spec.latency.processor_manual_frames = -1;
+        assert_eq!(spec.validate(&[]), Err(TrackSpecError::InvalidLatency));
+
+        spec.latency.processor_manual_frames = 768_000;
+        assert!(spec.validate(&[]).is_ok());
+        spec.latency.processor_adjustment = ProcessorLatencyAdjustmentState::AutomaticPlusTrim;
+        spec.latency.processor_manual_frames = -768_001;
+        assert_eq!(spec.validate(&[]), Err(TrackSpecError::InvalidLatency));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2299,6 +2381,10 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn global_controls_have_stable_intent_kinds() {
         assert_eq!(GlobalControlAction::MidiPanic.kind(), "global.midi_panic");
+        assert_eq!(
+            GlobalControlAction::SetAutoArmTrackInputs(false).kind(),
+            "global.auto_arm_track_inputs"
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

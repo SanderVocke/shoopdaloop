@@ -61,14 +61,6 @@
         touch-action: none;
       }
 
-      #runtime_status {
-        position: fixed;
-        right: 8px;
-        bottom: 6px;
-        color: #aaa;
-        font-size: 11px;
-      }
-
       #browser_permissions_dialog {
         position: fixed;
         inset: 0;
@@ -207,7 +199,7 @@
         </div>
       </div>
     </div>
-    <span id="runtime_status" data-driver-state="starting">Starting browser application…</span>
+    <span id="runtime_status" data-driver-state="starting" hidden></span>
     <noscript>This application requires JavaScript and WebAssembly. Browser audio availability depends on browser origin policy.</noscript>
   </body>
 </html>

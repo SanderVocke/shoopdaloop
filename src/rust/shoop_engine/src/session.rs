@@ -1517,6 +1517,7 @@ impl Session {
         }
         // A loop with no sync source transitions immediately rather than waiting
         // for a trigger, so this changes behaviour and not just wiring.
+        self.loops[loop_idx].set_repeat_sync(source.is_some());
         self.loops[loop_idx].set_sync_source(source.map(|_| SyncSourceState::default()));
         Ok(())
     }

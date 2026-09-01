@@ -83,7 +83,7 @@ impl SessionDocument {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GlobalControlsDocument {
     pub default_recording_action: RecordingActionDocument,
     pub play_after_record: bool,
@@ -91,7 +91,27 @@ pub struct GlobalControlsDocument {
     pub solo: bool,
     #[serde(default)]
     pub auto_mute_other_track_inputs: bool,
+    #[serde(default = "default_enabled")]
+    pub auto_arm_track_inputs: bool,
     pub apply_n_cycles: u32,
+}
+
+impl Default for GlobalControlsDocument {
+    fn default() -> Self {
+        Self {
+            default_recording_action: RecordingActionDocument::default(),
+            play_after_record: false,
+            sync: false,
+            solo: false,
+            auto_mute_other_track_inputs: false,
+            auto_arm_track_inputs: true,
+            apply_n_cycles: 0,
+        }
+    }
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
