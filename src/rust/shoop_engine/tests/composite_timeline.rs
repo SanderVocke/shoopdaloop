@@ -841,6 +841,65 @@ fn regular_default_playback_resolves_on_activation_and_latches_while_active() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn regular_default_playback_resolves_each_primitive_independently() {
+    let dry_child = basic(1);
+    let regular_child = basic(3);
+    let source = composite(10);
+    let targets = catalog(&[dry_child, regular_child, source]);
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: plan(
+                source,
+                1,
+                &[(dry_child, 0, None), (regular_child, 0, None)],
+                &targets,
+            ),
+            sync_source: basic(2),
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline
+        .queue_control(start(0, 1, source, LoopMode::Playing))
+        .unwrap();
+
+    let trace = timeline
+        .resolve_boundary_with_default_playback(
+            &[],
+            &[],
+            |identity| identity == dry_child || identity == regular_child,
+            |identity| {
+                if identity == dry_child {
+                    DefaultPlaybackMode::DryThroughWet
+                } else {
+                    DefaultPlaybackMode::Regular
+                }
+            },
+        )
+        .unwrap();
+    assert!(trace.iter().any(|entry| {
+        entry.target == dry_child
+            && matches!(
+                entry.action,
+                BoundaryTargetAction::SetMode {
+                    mode: LoopMode::PlayingDryThroughWet,
+                    ..
+                }
+            )
+    }));
+    assert!(trace.iter().any(|entry| {
+        entry.target == regular_child
+            && matches!(
+                entry.action,
+                BoundaryTargetAction::SetMode {
+                    mode: LoopMode::Playing,
+                    ..
+                }
+            )
+    }));
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn script_explicit_playback_bypasses_the_track_default() {
     let child = basic(1);
     let source = composite(10);

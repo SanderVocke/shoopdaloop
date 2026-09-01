@@ -1451,11 +1451,15 @@ impl TrackSpec {
             wet_audio_channels,
             dry_midi,
             processor_type,
-            ..
+            default_playback_mode,
         } = &self.topology
         else {
             return Ok(());
         };
+        if *default_playback_mode == DefaultPlaybackMode::DryThroughWet && *wet_audio_channels == 0
+        {
+            return Err(TrackSpecError::UnsupportedShape);
+        }
         let processor = processors
             .iter()
             .find(|candidate| candidate.id == *processor_type)
@@ -2158,7 +2162,22 @@ mod tests {
             ..spec.clone()
         };
         assert_eq!(
-            unsupported.validate(&[processor]),
+            unsupported.validate(std::slice::from_ref(&processor)),
+            Err(TrackSpecError::UnsupportedShape)
+        );
+
+        let no_wet_default = TrackSpec {
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 2,
+                wet_audio_channels: 0,
+                dry_midi: false,
+                processor_type: processor.id.clone(),
+                default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            },
+            ..spec
+        };
+        assert_eq!(
+            no_wet_default.validate(&[processor]),
             Err(TrackSpecError::UnsupportedShape)
         );
     }

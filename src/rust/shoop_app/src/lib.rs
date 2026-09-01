@@ -4758,7 +4758,15 @@ impl ApplicationModel {
                 return Ok(());
             }
             TrackAction::DefaultPlaybackModeChanged(mode) => {
-                if !matches!(track.topology, TrackTopology::DryWet { .. }) {
+                if track.is_sync
+                    || !matches!(
+                        track.topology,
+                        TrackTopology::DryWet {
+                            wet_audio_channels: 1..,
+                            ..
+                        }
+                    )
+                {
                     return Err(format!(
                         "track {track_id} does not support dry-through-wet default playback"
                     ));

@@ -724,13 +724,21 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     track.id
                 )));
             }
+            let supports_dry_through_wet = !track.is_sync
+                && match &track.topology {
+                    TrackTopologyDocument::DryWetExternal {
+                        wet_audio_channels, ..
+                    } => *wet_audio_channels > 0,
+                    TrackTopologyDocument::Carla {
+                        audio_channels,
+                        wet_audio_channels,
+                        ..
+                    } => wet_audio_channels.unwrap_or(*audio_channels) > 0,
+                    TrackTopologyDocument::OxiSynth => true,
+                    TrackTopologyDocument::Direct { .. } | TrackTopologyDocument::Trigger => false,
+                };
             if track.default_playback_mode == DefaultPlaybackModeDocument::DryThroughWet
-                && !matches!(
-                    track.topology,
-                    TrackTopologyDocument::DryWetExternal { .. }
-                        | TrackTopologyDocument::Carla { .. }
-                        | TrackTopologyDocument::OxiSynth
-                )
+                && !supports_dry_through_wet
             {
                 return Err(SessionError::Validation(format!(
                     "track {} has dry-through-wet default playback without dry/wet topology",

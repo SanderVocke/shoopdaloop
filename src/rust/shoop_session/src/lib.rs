@@ -1296,6 +1296,30 @@ mod tests {
             Err(SessionError::Validation(message))
                 if message.contains("dry-through-wet default playback")
         ));
+
+        let mut invalid_sync = deferred_feature_bundle();
+        invalid_sync.document.track_groups[0].tracks[3].is_sync = true;
+        invalid_sync.document.track_groups[0].tracks[3].default_playback_mode =
+            DefaultPlaybackModeDocument::DryThroughWet;
+        assert!(matches!(
+            encode_session(&invalid_sync, "invalid-sync-default"),
+            Err(SessionError::Validation(message))
+                if message.contains("dry-through-wet default playback")
+        ));
+
+        let mut invalid_no_wet = deferred_feature_bundle();
+        let TrackTopologyDocument::DryWetExternal {
+            wet_audio_channels, ..
+        } = &mut invalid_no_wet.document.track_groups[0].tracks[1].topology
+        else {
+            panic!("fixture dry/wet track changed topology");
+        };
+        *wet_audio_channels = 0;
+        assert!(matches!(
+            encode_session(&invalid_no_wet, "invalid-no-wet-default"),
+            Err(SessionError::Validation(message))
+                if message.contains("dry-through-wet default playback")
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]

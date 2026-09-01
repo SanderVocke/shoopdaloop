@@ -3338,5 +3338,17 @@ mod tests {
             .event,
             Event::Error { .. }
         ));
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::SetTrackDefaultPlaybackMode {
+                    track_id: 999,
+                    mode: WireDefaultPlaybackMode::Regular,
+                },
+            )
+            .event,
+            Event::Error { .. }
+        ));
     }
 }

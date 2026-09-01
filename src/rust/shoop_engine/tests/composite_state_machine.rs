@@ -705,7 +705,7 @@ fn stop_and_clear_cancel_pending_state_and_clean_children_in_stable_order() {
     runtime
         .transition_immediate(&plan, LoopMode::Playing, None, always_current)
         .unwrap();
-    runtime.request_transition(LoopMode::Recording, 3).unwrap();
+    runtime.request_transition(LoopMode::Playing, 3).unwrap();
 
     let stopped = runtime.stop(&plan, always_current).unwrap();
     assert_eq!(

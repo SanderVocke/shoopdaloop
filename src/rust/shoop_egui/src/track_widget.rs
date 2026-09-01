@@ -781,7 +781,15 @@ impl TrackWidget {
                         self.latency_dialog_open = true;
                         ui.close();
                     }
-                    if matches!(state.topology, crate::TrackTopology::DryWet { .. }) {
+                    if !state.is_sync
+                        && matches!(
+                            state.topology,
+                            crate::TrackTopology::DryWet {
+                                wet_audio_channels: 1..,
+                                ..
+                            }
+                        )
+                    {
                         #[cfg(test)]
                         self.test_default_playback_rects.clear();
                         let _playback_menu = ui.menu_button("Default playback", |ui| {
