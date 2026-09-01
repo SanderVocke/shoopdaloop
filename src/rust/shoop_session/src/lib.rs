@@ -411,6 +411,9 @@ mod tests {
                 internal_state: "bus-state".to_owned(),
                 midi_cc_assignments: Vec::new(),
             }),
+            gain_db: -2.0,
+            balance: 0.0,
+            muted: true,
         }];
         bundle.document.global_ports = vec![PortDocument {
             id: 5_001,
@@ -491,7 +494,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 10] {
+        for unsupported in [5, 11] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -651,6 +654,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn version_nine_buses_migrate_default_controls_and_invalid_controls_are_rejected() {
+        let bundle = deferred_feature_bundle();
+        let encoded = encode_session(&bundle, "bus-control-migration").unwrap();
+        let version_nine = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(9);
+            let bus = &mut manifest["document"]["buses"][0];
+            bus.as_object_mut().unwrap().remove("gain_db");
+            bus.as_object_mut().unwrap().remove("balance");
+            bus.as_object_mut().unwrap().remove("muted");
+        });
+        let migrated = decode_session(&version_nine).unwrap();
+        let bus = &migrated.document.buses[0];
+        assert_eq!(bus.gain_db, 0.0);
+        assert_eq!(bus.balance, 0.0);
+        assert!(!bus.muted);
+
+        for invalid in [f32::NAN, f32::INFINITY, -31.0, 21.0] {
+            let mut malformed = deferred_feature_bundle();
+            malformed.document.buses[0].gain_db = invalid;
+            assert!(matches!(
+                encode_session(&malformed, "invalid-bus-gain"),
+                Err(SessionError::Validation(_))
+            ));
+        }
+        let mut malformed = deferred_feature_bundle();
+        malformed.document.buses[0].balance = 1.5;
+        assert!(matches!(
+            encode_session(&malformed, "invalid-bus-balance"),
+            Err(SessionError::Validation(_))
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1322,6 +1358,9 @@ mod tests {
                 ringbuffer_frames: 0,
             }],
             fx_chain: None,
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
         }];
         bundle.document.mixer_routes = vec![MixerRouteDocument {
             source_port_id,

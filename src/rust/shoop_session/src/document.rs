@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 9;
+pub const SESSION_DOCUMENT_VERSION: u16 = 10;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -310,6 +310,12 @@ pub struct BusDocument {
     pub channels: Vec<BusChannelDocument>,
     pub ports: Vec<PortDocument>,
     pub fx_chain: Option<FxChainDocument>,
+    #[serde(default)]
+    pub gain_db: f32,
+    #[serde(default)]
+    pub balance: f32,
+    #[serde(default)]
+    pub muted: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

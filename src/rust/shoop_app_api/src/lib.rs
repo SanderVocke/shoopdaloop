@@ -827,6 +827,8 @@ pub struct BusState {
     pub balance: f32,
     pub muted: bool,
     pub output_peaks_db: Arc<[f32]>,
+    pub control_pending: bool,
+    pub control_error: Option<String>,
 }
 
 impl BusState {
@@ -2140,6 +2142,8 @@ mod tests {
             balance: 0.0,
             muted: false,
             output_peaks_db: Arc::from([-200.0]),
+            control_pending: false,
+            control_error: None,
         };
         assert!(!state.stereo());
         state.channels = Arc::from([channel(1), channel(2)]);

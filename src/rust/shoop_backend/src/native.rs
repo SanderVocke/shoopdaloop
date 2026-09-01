@@ -4204,6 +4204,16 @@ mod tests {
         assert_eq!(master.balance, -0.25);
         assert!(master.muted);
         assert_eq!(master.output_peaks_db.len(), 2);
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.buses[0].gain_db, -9.0);
+        assert_eq!(captured.buses[0].balance, -0.25);
+        assert!(captured.buses[0].muted);
+        backend.replace_session(&captured).unwrap();
+        let restored = backend.poll().unwrap();
+        let master = &restored.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.gain_db, -9.0);
+        assert_eq!(master.balance, -0.25);
+        assert!(master.muted);
         assert!(backend
             .set_bus_control(BackendBusId::from_raw(99), BackendBusControl::Mute(false))
             .is_err());

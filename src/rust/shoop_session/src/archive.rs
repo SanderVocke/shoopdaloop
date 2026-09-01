@@ -21,6 +21,9 @@ const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
 const PRE_MIXER_SESSION_DOCUMENT_VERSION: u16 = 8;
+const PRE_BUS_CONTROL_SESSION_DOCUMENT_VERSION: u16 = 9;
+const MIN_BUS_GAIN_DB: f32 = -30.0;
+const MAX_BUS_GAIN_DB: f32 = 20.0;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -222,6 +225,7 @@ pub fn decode_session_with_limits(
             PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
                 | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
                 | PRE_MIXER_SESSION_DOCUMENT_VERSION
+                | PRE_BUS_CONTROL_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -929,6 +933,23 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                 "duplicate bus ID {}",
                 bus.id
             )));
+        }
+        validate_finite(bus.gain_db, "bus gain")?;
+        validate_finite(bus.balance, "bus balance")?;
+        if !(MIN_BUS_GAIN_DB..=MAX_BUS_GAIN_DB).contains(&bus.gain_db) {
+            return Err(SessionError::Validation(format!(
+                "bus gain must be in {MIN_BUS_GAIN_DB}..={MAX_BUS_GAIN_DB} dB"
+            )));
+        }
+        if !(-1.0..=1.0).contains(&bus.balance) {
+            return Err(SessionError::Validation(
+                "bus balance must be in -1..=1".to_owned(),
+            ));
+        }
+        if bus.channels.len() != 2 && bus.balance != 0.0 {
+            return Err(SessionError::Validation(
+                "non-stereo buses cannot have nonzero balance".to_owned(),
+            ));
         }
         for port in &bus.ports {
             require_id(port.id, "bus port")?;

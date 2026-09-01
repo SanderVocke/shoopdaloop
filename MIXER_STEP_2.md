@@ -138,17 +138,17 @@ Verification:
 
 Depends on Stages 1–3 for complete parity.
 
-- [ ] Extend `BusModel` and immutable `AppState` snapshots with authoritative controls, ordered peaks, and stereo capability while preserving stable `BusId`/channel identities.
-- [ ] Handle UI and scripting bus intents through one application path, validate availability/capability, submit the backend mutation, apply bounded optimistic state, and reconcile on confirmation, failure, timeout, driver replacement, or bus disappearance.
-- [ ] Extend `BackendSessionBus` and the session document with explicit semantic gain, balance, and mute values; keep peak telemetry out of persistence and avoid double-applying output-port gain/mute fields.
-- [ ] Bump `SESSION_DOCUMENT_VERSION`, migrate version 9 and earlier accepted documents to `0 dB`/center/unmuted, and reject malformed, non-finite, out-of-range, unsupported, or noncanonical Master control shapes before backend mutation.
-- [ ] Capture and restore controls transactionally after bus/output creation and before exposing replacement completion; preserve them across same-rate replacement, resampling, compatible driver switching, and browser transfer.
-- [ ] Keep route and external-link capture/replacement unchanged and prove failed replacement rolls back controls with the rest of the staged session.
+- [x] Extend `BusModel` and immutable `AppState` snapshots with authoritative controls, ordered peaks, and stereo capability while preserving stable `BusId`/channel identities.
+- [x] Handle UI and scripting bus intents through one application path, validate availability/capability, submit the backend mutation, apply bounded optimistic state, and reconcile on confirmation, failure, timeout, driver replacement, or bus disappearance.
+- [x] Extend `BackendSessionBus` and the session document with explicit semantic gain, balance, and mute values; keep peak telemetry out of persistence and avoid double-applying output-port gain/mute fields.
+- [x] Bump `SESSION_DOCUMENT_VERSION`, migrate version 9 and earlier accepted documents to `0 dB`/center/unmuted, and reject malformed, non-finite, out-of-range, unsupported, or noncanonical Master control shapes before backend mutation.
+- [x] Capture and restore controls transactionally after bus/output creation and before exposing replacement completion; preserve them across same-rate replacement, resampling, compatible driver switching, and browser transfer.
+- [x] Keep route and external-link capture/replacement unchanged and prove failed replacement rolls back controls with the rest of the staged session.
 
 Verification:
 
-- [ ] Add application tests for pending-to-confirmed, rejection, saturation, timeout, stale bus, backend recreation, structural sharing, and meter updates without topology changes.
-- [ ] Round-trip default and non-default controls through deterministic archives, migration, same-rate/resampled replacement, failed-load rollback, driver switching, and browser session transfer.
+- [x] Add application tests for pending-to-confirmed, rejection, saturation, timeout, stale bus, backend recreation, structural sharing, and meter updates without topology changes.
+- [x] Round-trip default and non-default controls through deterministic archives, migration, same-rate/resampled replacement, failed-load rollback, driver switching, and browser session transfer.
 - [ ] Run focused `shoop_session`, `shoop_app`, fake-backend, native replacement, and remote-application tests.
 
 ### Stage 5 — Add the right-sidebar bus block column
