@@ -13,12 +13,14 @@ pub const MIDI_BATCH_CAPACITY: usize = 128;
 pub const MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 pub const TRACK_MIDI_MESSAGE_BYTES: usize = 4;
 
-pub fn encode_binary<T: Serialize>(value: &T) -> Result<Vec<u8>, bincode::Error> {
-    bincode::serialize(value)
+pub fn encode_binary<T: Serialize>(value: &T) -> Result<Vec<u8>, bincode::error::EncodeError> {
+    bincode::serde::encode_to_vec(value, bincode::config::legacy())
 }
 
-pub fn decode_binary<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, bincode::Error> {
-    bincode::deserialize(bytes)
+pub fn decode_binary<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+) -> Result<T, bincode::error::DecodeError> {
+    bincode::serde::decode_from_slice(bytes, bincode::config::legacy()).map(|(decoded, _)| decoded)
 }
 
 mod base64_bytes {
@@ -1089,6 +1091,28 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn binary_codec_and_bulk_base64_are_stable_and_bounded() {
+        #[derive(Debug, Deserialize, PartialEq, Serialize)]
+        struct LegacyBinaryFixture {
+            count: u32,
+            values: Vec<i16>,
+            label: String,
+        }
+
+        let fixture = LegacyBinaryFixture {
+            count: 0x1234_5678,
+            values: vec![-2, 300],
+            label: "old".to_owned(),
+        };
+        let legacy_bytes = [
+            0x78, 0x56, 0x34, 0x12, 2, 0, 0, 0, 0, 0, 0, 0, 0xfe, 0xff, 0x2c, 0x01, 3, 0, 0, 0, 0,
+            0, 0, 0, b'o', b'l', b'd',
+        ];
+        assert_eq!(encode_binary(&fixture).unwrap(), legacy_bytes);
+        assert_eq!(
+            decode_binary::<LegacyBinaryFixture>(&legacy_bytes).unwrap(),
+            fixture
+        );
+
         let payload = WireSnapshot {
             sample_rate: 48_000,
             quantum: 128,

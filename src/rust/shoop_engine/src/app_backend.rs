@@ -511,13 +511,12 @@ struct CpalBackend {
     xruns: Arc<AtomicU32>,
 }
 
-// On macOS the CoreAudio backend of cpal 0.16 holds a non-`Send` callback
+// On macOS the CoreAudio backend of cpal 0.17 holds a non-`Send` callback
 // (a `Box<dyn FnMut()>` without a `Send` bound) for property-listener
-// notifications, which makes `cpal::Stream` itself not `Send`. The pinned
-// cpal version (kept on 0.16 because rodio 0.21 depends on the same major
-// version) prevents upgrading to 0.18, where the bound is fixed. The
-// streams are always reached through a `Mutex`, so the audio thread stays
-// the sole owner of the underlying CoreAudio state -- promise by hand here.
+// notifications, which makes `cpal::Stream` itself not `Send`. Rodio 0.22
+// also requires cpal 0.17, preventing an upgrade to 0.18, where the bound
+// is fixed. The streams are always reached through a `Mutex`, so the audio
+// thread stays the sole owner of the underlying CoreAudio state -- promise by hand here.
 unsafe impl Send for CpalBackend {}
 unsafe impl Sync for CpalBackend {}
 
