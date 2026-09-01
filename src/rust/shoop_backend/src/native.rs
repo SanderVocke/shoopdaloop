@@ -3796,6 +3796,31 @@ fn from_native_mode(mode: shoop_engine::LoopMode) -> BackendLoopMode {
 mod tests {
     use super::*;
 
+    fn render_dummy_track_audio(
+        backend: &mut NativeBackend,
+        created: &BackendTrackCreation,
+        inputs: &[Vec<f32>],
+    ) -> Vec<Vec<f32>> {
+        let frames = u32::try_from(inputs[0].len()).unwrap();
+        let runtime = backend.runtime_mut().unwrap();
+        runtime.driver.dummy_enter_controlled_mode();
+        let track = &runtime.tracks[&created.track_id];
+        assert_eq!(track.audio_inputs.len(), inputs.len());
+        for (port, samples) in track.audio_inputs.iter().zip(inputs) {
+            port.dummy_queue_data(samples).unwrap();
+        }
+        for output in &track.audio_outputs {
+            output.dummy_request_data(frames).unwrap();
+        }
+        runtime.driver.dummy_request_controlled_frames(frames);
+        runtime.driver.dummy_run_requested_frames();
+        track
+            .audio_outputs
+            .iter()
+            .map(|output| output.dummy_dequeue_data(frames))
+            .collect()
+    }
+
     fn assert_injected_note_reaches_output(
         backend: &mut NativeBackend,
         created: &BackendTrackCreation,
@@ -4820,6 +4845,52 @@ mod tests {
             .ports
             .iter()
             .any(|port| port.data_type == BackendPortDataType::Midi));
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        let mut impulse = vec![vec![0.0; 128]; 2];
+        impulse[0][0] = 1.0;
+        impulse[1][0] = 0.5;
+        let output = render_dummy_track_audio(&mut backend, &created, &impulse);
+        assert!(output[0][0] > 0.9);
+        assert!(output[1][0] > 0.4);
+        let silence = vec![vec![0.0; 128]; 2];
+        let mut tail_peak = 0.0_f32;
+        for _ in 0..400 {
+            for channel in render_dummy_track_audio(&mut backend, &created, &silence) {
+                tail_peak = channel
+                    .iter()
+                    .fold(tail_peak, |peak, sample| peak.max(sample.abs()));
+            }
+        }
+        assert!(tail_peak > 1.0e-6, "tail peak {tail_peak}");
+
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            )
+            .unwrap();
+        let bypass_input = vec![
+            (0..128).map(|frame| frame as f32 / 256.0).collect(),
+            (0..128).map(|frame| -(frame as f32) / 512.0).collect(),
+        ];
+        assert_eq!(
+            render_dummy_track_audio(&mut backend, &created, &bypass_input),
+            bypass_input
+        );
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(true)),
+            )
+            .unwrap();
+        for _ in 0..400 {
+            assert!(render_dummy_track_audio(&mut backend, &created, &silence)
+                .iter()
+                .flatten()
+                .all(|sample| *sample == 0.0));
+        }
         backend
             .set_track_fx_control(
                 created.track_id,
