@@ -3489,8 +3489,11 @@ impl BrowserSelfTest {
                 });
                 if snapshot.track_processors.len() != 2
                     || !builtin_fx.is_some_and(|processor| {
-                        processor.constraints.accepts(2, 2, false)
-                            && !processor.constraints.accepts(2, 2, true)
+                        [1, 2, 3, 6]
+                            .into_iter()
+                            .all(|channels| processor.constraints.accepts(channels, channels, true))
+                            && !processor.constraints.accepts(2, 2, false)
+                            && !processor.constraints.accepts(2, 1, true)
                             && processor.features.state
                             && processor.features.embedded_ui
                     })

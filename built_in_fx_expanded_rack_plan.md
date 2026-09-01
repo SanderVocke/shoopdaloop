@@ -196,14 +196,16 @@ API/backend evidence: `shoop_app_api` now has concrete six-stage state, three ty
 
 Depends on Stage 5.
 
-- [ ] Bump `shoop_audio_protocol::PROTOCOL_VERSION` and change Built-in FX wire topology to carry matching audio channel count and required MIDI.
-- [ ] Add concrete wire enums/structures for all Built-in FX controls, types, continuous parameters, assignments, and editor state; update stable-envelope and raw-host contract expectations.
-- [ ] Give each wire control a correct supersession identity and retain ordered assignment mutations; add serialization and version-mismatch tests.
-- [ ] Translate topology, controls, state, and assignments in `shoop_audio_worklet` and `shoop_worklet_client`; reserve/register N dry inputs, N wet outputs, and one MIDI input deterministically.
-- [ ] Ensure browser tracks with N internal channels remain valid even though the current physical Web Audio device boundary is stereo; reject only actual storage/protocol-limit violations.
-- [ ] Exercise production worklet audio and MIDI for mono/stereo/N routing, each stage, bypass, learned local/global CC, ignored notes, snapshots, processor replacement, and save/restore transport.
-- [ ] Verify focused protocol/worklet/client native and Node Wasm tests, locked Wasm builds, dependency isolation, generated zero-import worklet, raw-host contract, and applicable browser tests.
-- [ ] Commit the browser transport milestone.
+Browser evidence: protocol 21 carries variable Built-in FX channel count, all concrete stage/type/parameter/assignment controls, and complete editor state. Supersession IDs are disjoint per stage/type/parameter, legacy Reverb enable coalesces with the typed Reverb stage, and assignment mutations remain ordered. Client/worklet translations round-trip all 23 parameters; deterministic reservations and the production worklet register N dry/N wet/one MIDI while the physical device remains stereo. Production tests cover true stereo Reverb/bypass, every non-Reverb stage on host audio, three-channel internal registration, local and global learned CC, ignored notes, snapshots, assignment/state capture and replacement, and malformed shapes. Native protocol/worklet/client passed 58/58; Node Wasm passed 9 protocol, 20 worklet, and 28 client tests. Locked Wasm builds, dependency isolation, zero imports, and the protocol-21 raw-host contract passed. Local Chrome remains unavailable, so the required Chromium/Chrome PR jobs remain mandatory in Stage 10.
+
+- [x] Bump `shoop_audio_protocol::PROTOCOL_VERSION` and change Built-in FX wire topology to carry matching audio channel count and required MIDI.
+- [x] Add concrete wire enums/structures for all Built-in FX controls, types, continuous parameters, assignments, and editor state; update stable-envelope and raw-host contract expectations.
+- [x] Give each wire control a correct supersession identity and retain ordered assignment mutations; add serialization and version-mismatch tests.
+- [x] Translate topology, controls, state, and assignments in `shoop_audio_worklet` and `shoop_worklet_client`; reserve/register N dry inputs, N wet outputs, and one MIDI input deterministically.
+- [x] Ensure browser tracks with N internal channels remain valid even though the current physical Web Audio device boundary is stereo; reject only actual storage/protocol-limit violations.
+- [x] Exercise production worklet audio and MIDI for mono/stereo/N routing, each stage, bypass, learned local/global CC, ignored notes, snapshots, processor replacement, and save/restore transport.
+- [x] Verify focused protocol/worklet/client native and Node Wasm tests, locked Wasm builds, dependency isolation, generated zero-import worklet, raw-host contract, and applicable browser tests.
+- [x] Commit the browser transport milestone.
 
 ## Stage 7 — Session and application persistence/migration
 

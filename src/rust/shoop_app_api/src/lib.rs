@@ -361,6 +361,36 @@ impl BuiltInFxParameter {
             Self::ReverbTone => "Reverb — Tone",
         }
     }
+
+    pub const fn range(self) -> (f32, f32) {
+        match self {
+            Self::CompressorThreshold => (-48.0, 0.0),
+            Self::CompressorRatio => (1.0, 20.0),
+            Self::CompressorAttack => (0.5, 100.0),
+            Self::CompressorRelease => (20.0, 1_000.0),
+            Self::CompressorMakeup => (0.0, 18.0),
+            Self::Drive => (0.0, 36.0),
+            Self::DriveOutput => (-18.0, 6.0),
+            Self::EqLow | Self::EqMid | Self::EqHigh => (-12.0, 12.0),
+            Self::ChorusRate | Self::ModulationRate => (0.05, 5.0),
+            Self::ModulationFeedback => (-0.95, 0.95),
+            Self::DriveTone
+            | Self::DriveMix
+            | Self::ChorusDepth
+            | Self::ChorusMix
+            | Self::ChorusWidth
+            | Self::ModulationDepth
+            | Self::ModulationMix
+            | Self::ModulationSpread
+            | Self::ReverbAmount
+            | Self::ReverbTone => (0.0, 1.0),
+        }
+    }
+
+    pub fn is_valid(self, value: f32) -> bool {
+        let (minimum, maximum) = self.range();
+        value.is_finite() && (minimum..=maximum).contains(&value)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
