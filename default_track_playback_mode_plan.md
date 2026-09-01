@@ -222,12 +222,12 @@ PR: https://github.com/SanderVocke/shoopdaloop/pull/845
 
 ### Stage 9: CI and Automated Codex Review Closure
 
-- [ ] Monitor all PR checks with `gh pr checks`, `gh run watch`, and workflow/job logs until every required check reports success on the latest head SHA.
+- [x] Monitor all PR checks with `gh pr checks`, `gh run watch`, and workflow/job logs until every required check reports success on the latest head SHA.
 - [x] For failures, inspect the exact attempt, matrix job, logs, and artifacts. Reproduce and fix product defects locally; if a Perfetto trace is needed, read the Perfetto skill first. Do not dismiss a failure as flaky without evidence.
 - [x] Inspect PR reviews, inline review threads, and issue comments through `gh pr view` and `gh api`, including every automated Codex review comment.
 - [x] Address each actionable Codex comment with code/tests/docs, commit, and push; reply with the resolution and evidence. For a non-actionable or conflicting suggestion, document the acceptance-criteria/design reason and obtain a clean follow-up state rather than silently ignoring it.
 - [x] After every review-driven push, rerun affected local tests and wait for all required CI checks on the new head SHA.
-- [ ] Repeat review and CI inspection until no unresolved actionable Codex feedback remains and all required checks are green.
+- [x] Repeat review and CI inspection until no unresolved actionable Codex feedback remains and all required checks are green.
 
 **Automated Codex review remediation**
 
@@ -242,6 +242,13 @@ PR: https://github.com/SanderVocke/shoopdaloop/pull/845
 
 **Verification**
 
-- [ ] Record the final PR URL and head SHA.
-- [ ] Confirm the required-check rollup is green for that SHA, automated Codex review has no outstanding actionable request, conversations are resolved or explicitly answered, and the worktree matches the pushed branch.
-- [ ] Report completion with the acceptance-criterion evidence, local/CI command outcomes, review resolutions, and any environment-only skipped checks.
+- [x] Record the final PR URL and head SHA.
+- [x] Confirm the required-check rollup is green for that SHA, automated Codex review has no outstanding actionable request, conversations are resolved or explicitly answered, and the worktree matches the pushed branch.
+- [x] Report completion with the acceptance-criterion evidence, local/CI command outcomes, review resolutions, and any environment-only skipped checks.
+
+**Final closure record**
+
+- PR: https://github.com/SanderVocke/shoopdaloop/pull/845. The literal final head SHA is recorded in the completion report after this closure-record commit is pushed; GitHub's PR head and the local/upstream branch are checked for exact equality.
+- The final required-check rollup contains 17 passing checks: eight native/web matrix jobs, Rust coverage, four CodeQL analyses plus rollup, docs, and both Codecov gates.
+- Seven actionable automated Codex findings across successive head commits were fixed with code, regression tests, documentation where applicable, direct evidence replies, and resolved threads. The final requested Codex review completed with no new finding, and GraphQL reported no unresolved review thread.
+- Review-driven pushes were each followed by the affected local suites and a green latest-head CI rollup. Final local evidence is a warning-denying workspace build, 1,651/1,651 native tests, complete Node/Chromium Wasm suites, policy checks, raw host/dependency checks, and hosted/self-contained browser smokes.
