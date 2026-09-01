@@ -5540,7 +5540,13 @@ impl ApplicationModel {
         desired_mode: LoopMode,
         demanded: &mut BTreeSet<TrackId>,
     ) {
-        if external_capture_mode(self.anticipated_composite_target_mode(loop_id, desired_mode)) {
+        let winning_mode = self
+            .loops
+            .get(&loop_id)
+            .filter(|model| model.backend_composite.is_none())
+            .map(|_| self.anticipated_composite_target_mode(loop_id, desired_mode))
+            .unwrap_or(desired_mode);
+        if external_capture_mode(winning_mode) {
             self.insert_capture_track(loop_id, demanded);
         }
     }
@@ -11015,6 +11021,34 @@ mod tests {
             root_model.state.mode = LoopMode::Playing;
             root_model.state.composite_iteration = Some(0);
         }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track, second_track])
+        );
+        {
+            let root_model = model.loops.get_mut(&root).unwrap();
+            root_model.active_composite_children.clear();
+            root_model.state.next_mode = LoopMode::Playing;
+            root_model.state.next_transition_delay = Some(0);
+        }
+        {
+            let first_model = model.loops.get_mut(&first).unwrap();
+            first_model.state.mode = LoopMode::Stopped;
+            first_model.state.next_mode = LoopMode::Playing;
+            first_model.state.next_transition_delay = Some(0);
+            first_model.active_composite_children.clear();
+        }
+        let (next_mode, next_iteration, _) = model.next_composite_iteration(root).unwrap();
+        assert_eq!(next_mode, LoopMode::Playing);
+        assert_eq!(next_iteration, 0);
+        assert_eq!(
+            model
+                .composite_desired_at(root, next_mode, next_iteration)
+                .unwrap()
+                .0[&first]
+                .mode,
+            LoopMode::Recording
+        );
         assert_eq!(
             model.auto_arm_demanded_tracks(),
             BTreeSet::from([first_track, second_track])
