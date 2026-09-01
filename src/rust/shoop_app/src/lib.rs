@@ -5522,6 +5522,25 @@ impl ApplicationModel {
         }
     }
 
+    fn insert_next_capture_track(
+        &self,
+        loop_id: LoopId,
+        desired_mode: LoopMode,
+        demanded: &mut BTreeSet<TrackId>,
+    ) {
+        let Some(model) = self.loops.get(&loop_id) else {
+            return;
+        };
+        let winning_mode = if model.state.next_transition_delay == Some(0) {
+            model.state.next_mode
+        } else {
+            desired_mode
+        };
+        if external_capture_mode(winning_mode) {
+            self.insert_capture_track(loop_id, demanded);
+        }
+    }
+
     fn collect_starting_composite_parents(
         &self,
         composite_id: LoopId,
@@ -5569,7 +5588,7 @@ impl ApplicationModel {
                     if target_is_composite {
                         self.collect_composite_start_capture(target, child.mode, demanded, stack);
                     } else {
-                        self.insert_capture_track(target, demanded);
+                        self.insert_next_capture_track(target, child.mode, demanded);
                     }
                 } else if target_is_composite {
                     self.collect_composite_start_capture(target, child.mode, demanded, stack);
@@ -5601,7 +5620,7 @@ impl ApplicationModel {
                 if runnable_composite_mode(model.state.mode) {
                     self.collect_current_composite_capture(child.id, demanded, stack);
                 }
-            } else if external_capture_mode(child.mode) {
+            } else if external_capture_mode(child.mode) && external_capture_mode(model.state.mode) {
                 self.insert_capture_track(child.id, demanded);
             }
         }
@@ -5656,7 +5675,7 @@ impl ApplicationModel {
             };
             if !self.auto_arm_target_is_composite(composite_id, target) {
                 if external_capture_mode(desired_child.mode) {
-                    self.insert_capture_track(target, demanded);
+                    self.insert_next_capture_track(target, desired_child.mode, demanded);
                 }
                 continue;
             }
@@ -10672,6 +10691,7 @@ mod tests {
                 cycle_offset: 0,
                 is_composite: false,
             }];
+            model.loops.get_mut(&first).unwrap().state.mode = LoopMode::Recording;
         }
         assert_eq!(
             model.auto_arm_demanded_tracks(),
@@ -10710,6 +10730,9 @@ mod tests {
                     is_composite: false,
                 },
             ];
+            model.loops.get_mut(&second).unwrap().state.mode = LoopMode::Replacing;
+            model.loops.get_mut(&same_track_peer).unwrap().state.mode = LoopMode::Replacing;
+            model.loops.get_mut(&channel_free).unwrap().state.mode = LoopMode::Recording;
         }
         assert_eq!(
             model.auto_arm_demanded_tracks(),
@@ -10891,6 +10914,7 @@ mod tests {
         model.apply_backend_snapshot(primitive_target_active);
         assert!(!model.auto_arm_target_is_composite(root, first));
         assert!(!model.loops[&root].active_composite_children[0].is_composite);
+        model.loops.get_mut(&first).unwrap().state.mode = LoopMode::Recording;
         {
             let root_model = model.loops.get_mut(&root).unwrap();
             root_model.state.mode = LoopMode::Playing;
@@ -11102,6 +11126,43 @@ mod tests {
             model.auto_arm_demanded_tracks(),
             BTreeSet::from([second_track])
         );
+
+        model.loops.get_mut(&first).unwrap().composite = None;
+        model.loops.get_mut(&first).unwrap().backend_composite = None;
+        model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 1,
+                loop_id: first.raw(),
+                mode: Some("recording".to_owned()),
+                n_cycles: Some(1),
+            }],
+        });
+        model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 1,
+                loop_id: first.raw(),
+                mode: Some("playing".to_owned()),
+                n_cycles: Some(1),
+            }],
+        });
+        for id in [root, nested] {
+            let composite = model.loops.get_mut(&id).unwrap();
+            composite.state.mode = LoopMode::Playing;
+            composite.state.composite_iteration = Some(0);
+            composite.active_composite_children.clear();
+            composite.auto_arm_active_target_kinds = BTreeMap::from([(first, false)]);
+        }
+        {
+            let first_model = model.loops.get_mut(&first).unwrap();
+            first_model.state.mode = LoopMode::Stopped;
+            first_model.state.next_mode = LoopMode::Playing;
+            first_model.state.next_transition_delay = Some(0);
+        }
+        assert!(model.auto_arm_demanded_tracks().is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -14555,6 +14616,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 cycle_offset: 0,
                 is_composite: false,
             }];
+            model.loops.get_mut(&sources[2]).unwrap().state.mode = LoopMode::Recording;
         }
         assert_eq!(model.auto_arm_demanded_tracks(), BTreeSet::from([track_id]));
 
