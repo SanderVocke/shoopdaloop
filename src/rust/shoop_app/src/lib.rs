@@ -5649,20 +5649,27 @@ impl ApplicationModel {
         stack.remove(&composite_id);
     }
 
-    fn next_composite_iteration(&self, composite_id: LoopId) -> Option<(u32, bool)> {
+    fn next_composite_iteration(&self, composite_id: LoopId) -> Option<(LoopMode, u32, bool)> {
         let model = self.loops.get(&composite_id)?;
+        if model.state.next_transition_delay == Some(0) {
+            return runnable_composite_mode(model.state.next_mode).then_some((
+                model.state.next_mode,
+                0,
+                true,
+            ));
+        }
         let mode = model.state.mode;
         let iteration = model.state.composite_iteration.unwrap_or(0);
         let (_, length) = self.composite_desired_at(composite_id, mode, iteration)?;
         match iteration.checked_add(1) {
-            Some(next) if next < length => Some((next, false)),
+            Some(next) if next < length => Some((mode, next, false)),
             _ if self
                 .auto_arm_composite_document(composite_id)
                 .is_some_and(|composite| composite.kind == CompositeKindDocument::Regular)
                 && !matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
                 && length > 0 =>
             {
-                Some((0, true))
+                Some((mode, 0, true))
             }
             _ => None,
         }
@@ -5681,8 +5688,8 @@ impl ApplicationModel {
             stack.remove(&composite_id);
             return;
         };
-        let mode = model.state.mode;
-        let Some((next_iteration, restarting)) = self.next_composite_iteration(composite_id) else {
+        let Some((mode, next_iteration, restarting)) = self.next_composite_iteration(composite_id)
+        else {
             stack.remove(&composite_id);
             return;
         };
@@ -5734,11 +5741,12 @@ impl ApplicationModel {
                     .or_default()
                     .insert(parent.id);
             }
-            let Some((next_iteration, _)) = self.next_composite_iteration(parent.id) else {
+            let Some((next_mode, next_iteration, _)) = self.next_composite_iteration(parent.id)
+            else {
                 continue;
             };
             let Some((desired, _)) =
-                self.composite_desired_at(parent.id, parent.state.mode, next_iteration)
+                self.composite_desired_at(parent.id, next_mode, next_iteration)
             else {
                 continue;
             };
@@ -10803,6 +10811,20 @@ mod tests {
             model.auto_arm_demanded_tracks(),
             BTreeSet::from([first_track])
         );
+        {
+            let root_model = model.loops.get_mut(&root).unwrap();
+            root_model.state.mode = LoopMode::Playing;
+            root_model.state.composite_iteration = Some(4);
+            root_model.state.next_mode = LoopMode::Playing;
+            root_model.state.next_transition_delay = Some(0);
+            root_model.active_composite_children.clear();
+        }
+        assert_eq!(
+            model.auto_arm_demanded_tracks(),
+            BTreeSet::from([first_track])
+        );
+        model.loops.get_mut(&root).unwrap().state.next_mode = LoopMode::Stopped;
+        assert!(model.auto_arm_demanded_tracks().is_empty());
 
         backend.enable_composite_loops();
         let plan_a = model.loops[&root].composite.clone().unwrap();
