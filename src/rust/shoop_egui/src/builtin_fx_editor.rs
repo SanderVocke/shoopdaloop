@@ -26,7 +26,7 @@ impl BuiltInFxEditor {
         let Some(fx) = &state.fx else {
             return Vec::new();
         };
-        let Some(TrackProcessorEditorState::BuiltInFx(BuiltInFxState { reverb_enabled })) =
+        let Some(TrackProcessorEditorState::BuiltInFx(BuiltInFxState { reverb_enabled, .. })) =
             &fx.editor
         else {
             return Vec::new();
@@ -118,9 +118,9 @@ mod tests {
                 generation: 0,
                 crash_summary: None,
                 logs: Arc::from([]),
-                editor: Some(TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
-                    reverb_enabled: true,
-                })),
+                editor: Some(TrackProcessorEditorState::BuiltInFx(
+                    BuiltInFxState::default(),
+                )),
             }),
             ..TrackState::default()
         };

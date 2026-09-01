@@ -1623,7 +1623,7 @@ impl Session {
         if let ProcessorBackend::BuiltInFx(processor) = &route.backend {
             if audio_inputs.len() != processor.audio_channels()
                 || audio_outputs.len() != processor.audio_channels()
-                || midi_inputs.len() > 1
+                || midi_inputs.len() != 1
             {
                 return Err(SessionError::InvalidProcessorPorts);
             }
@@ -3781,8 +3781,9 @@ mod tests {
             BuiltInFxProcessor::new(48_000.0, frames / 2, BuiltInFxState::default()),
         );
         session.set_builtin_fx_active("builtin", true);
+        let midi = session.add_port(dummy_midi(299, "builtin:midi_in", PortDirection::Input));
         session
-            .set_processor_ports("builtin", sends, returns, vec![])
+            .set_processor_ports("builtin", sends, returns, vec![midi])
             .unwrap();
         session.apply_graph_changes().unwrap();
 
@@ -4008,6 +4009,15 @@ mod tests {
                     processor_inputs[..channels - 1].to_vec(),
                     processor_outputs.clone(),
                     vec![midi],
+                ),
+                Err(SessionError::InvalidProcessorPorts)
+            );
+            assert_eq!(
+                session.set_processor_ports(
+                    "builtin",
+                    processor_inputs.clone(),
+                    processor_outputs.clone(),
+                    vec![],
                 ),
                 Err(SessionError::InvalidProcessorPorts)
             );

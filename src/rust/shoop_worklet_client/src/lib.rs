@@ -839,6 +839,7 @@ impl RemoteWorkletBackend {
                             let builtin_fx = fx.builtin_fx.map(|builtin_fx| {
                                 TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
                                     reverb_enabled: builtin_fx.reverb_enabled,
+                                    ..BuiltInFxState::default()
                                 })
                             });
                             let oxisynth = fx.oxisynth.map(|oxisynth| {
@@ -1793,7 +1794,7 @@ impl Backend for RemoteWorkletBackend {
         }
         let command = Command::SetTrackFxControl {
             track_id: track_id.raw(),
-            control: to_wire_track_fx_control(control.clone()),
+            control: to_wire_track_fx_control(control.clone())?,
         };
         if matches!(
             &control,
@@ -2679,15 +2680,22 @@ fn to_wire_oxisynth_parameter(parameter: OxiSynthParameter) -> WireOxiSynthParam
     }
 }
 
-fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxControl {
-    match control {
+fn to_wire_track_fx_control(control: BackendTrackFxControl) -> Result<WireTrackFxControl> {
+    let control = match control {
         BackendTrackFxControl::SetActive(value) => WireTrackFxControl::SetActive(value),
         BackendTrackFxControl::SetVisible(value) => WireTrackFxControl::SetVisible(value),
         BackendTrackFxControl::ToggleOrRecover => WireTrackFxControl::ToggleOrRecover,
         BackendTrackFxControl::RestoreState(value) => WireTrackFxControl::RestoreState(value),
         BackendTrackFxControl::ClearLogs => WireTrackFxControl::ClearLogs,
-        BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(value)) => {
-            WireTrackFxControl::BuiltInSetReverbEnabled(value)
+        BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(value))
+        | BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+            shoop_app_api::BuiltInFxStage::Reverb,
+            value,
+        )) => WireTrackFxControl::BuiltInSetReverbEnabled(value),
+        BackendTrackFxControl::BuiltInFx(_) => {
+            return Err(anyhow!(
+                "expanded Built-in FX controls require the expanded browser protocol"
+            ));
         }
         BackendTrackFxControl::OxiSynth(control) => match control {
             OxiSynthControl::SelectPreset(value) => WireTrackFxControl::OxiSelectPreset(value),
@@ -2708,7 +2716,8 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             }
             OxiSynthControl::Panic => WireTrackFxControl::OxiPanic,
         },
-    }
+    };
+    Ok(control)
 }
 
 fn to_wire_loop_mode(mode: BackendLoopMode) -> WireLoopMode {
@@ -3406,12 +3415,14 @@ mod tests {
                 .and_then(|fx| fx.editor.as_ref()),
             Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
                 reverb_enabled: false,
+                ..BuiltInFxState::default()
             }))
         );
         assert_eq!(
             backend.track_fx_state_string(builtin_fx_track).unwrap(),
             Some(encode_builtin_fx_state(&BuiltInFxState {
                 reverb_enabled: false,
+                ..BuiltInFxState::default()
             }))
         );
         backend

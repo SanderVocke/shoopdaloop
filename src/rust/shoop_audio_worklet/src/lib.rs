@@ -1222,15 +1222,15 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 id: id.raw(),
                 topology: to_wire_track_topology(&track.topology),
                 fx: track.fx.and_then(|fx| match fx.editor? {
-                    TrackProcessorEditorState::BuiltInFx(BuiltInFxState { reverb_enabled }) => {
-                        Some(WireTrackFxState {
-                            processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
-                            active: fx.active,
-                            visible: fx.visible,
-                            builtin_fx: Some(WireBuiltInFxState { reverb_enabled }),
-                            oxisynth: None,
-                        })
-                    }
+                    TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+                        reverb_enabled, ..
+                    }) => Some(WireTrackFxState {
+                        processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                        active: fx.active,
+                        visible: fx.visible,
+                        builtin_fx: Some(WireBuiltInFxState { reverb_enabled }),
+                        oxisynth: None,
+                    }),
                     TrackProcessorEditorState::OxiSynth(editor) => Some(WireTrackFxState {
                         processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                         active: fx.active,
@@ -3116,6 +3116,7 @@ mod tests {
             session.tracks[1].processor_state,
             Some(shoop_backend::encode_builtin_fx_state(&BuiltInFxState {
                 reverb_enabled: false,
+                ..BuiltInFxState::default()
             }))
         );
         session.tracks[0].loops[0].length = 4;

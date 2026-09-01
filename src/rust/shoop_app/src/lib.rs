@@ -779,7 +779,12 @@ fn apply_track_control(state: &mut TrackControlState, control: BackendTrackContr
 enum FxControlKey {
     Active,
     Visible,
-    BuiltInFxReverbEnabled,
+    BuiltInFxStage(shoop_app_api::BuiltInFxStage),
+    BuiltInFxDriveType,
+    BuiltInFxModulationType,
+    BuiltInFxReverbType,
+    BuiltInFxParameter(shoop_app_api::BuiltInFxParameter),
+    BuiltInFxMidiAssignments,
     OxiPreset,
     OxiReverbSend,
     OxiChorusSend,
@@ -790,15 +795,118 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
     match control {
         BackendTrackFxControl::SetActive(value) => fx.active = *value,
         BackendTrackFxControl::SetVisible(value) => fx.visible = *value,
-        BackendTrackFxControl::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(
-            enabled,
-        )) => {
+        BackendTrackFxControl::BuiltInFx(control) => {
             let Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(editor)) =
                 fx.editor.as_mut()
             else {
                 return;
             };
-            editor.reverb_enabled = *enabled;
+            match control {
+                shoop_app_api::BuiltInFxControl::SetStageEnabled(stage, enabled) => match stage {
+                    shoop_app_api::BuiltInFxStage::Compressor => {
+                        editor.compressor_enabled = *enabled
+                    }
+                    shoop_app_api::BuiltInFxStage::Drive => editor.drive_enabled = *enabled,
+                    shoop_app_api::BuiltInFxStage::Eq => editor.eq_enabled = *enabled,
+                    shoop_app_api::BuiltInFxStage::Chorus => editor.chorus_enabled = *enabled,
+                    shoop_app_api::BuiltInFxStage::Modulation => {
+                        editor.modulation_enabled = *enabled
+                    }
+                    shoop_app_api::BuiltInFxStage::Reverb => editor.reverb_enabled = *enabled,
+                },
+                shoop_app_api::BuiltInFxControl::SetDriveType(value) => editor.drive_type = *value,
+                shoop_app_api::BuiltInFxControl::SetModulationType(value) => {
+                    editor.modulation_type = *value
+                }
+                shoop_app_api::BuiltInFxControl::SetReverbType(value) => {
+                    editor.reverb_type = *value
+                }
+                shoop_app_api::BuiltInFxControl::SetParameter(parameter, value) => {
+                    match parameter {
+                        shoop_app_api::BuiltInFxParameter::CompressorThreshold => {
+                            editor.compressor_threshold_db = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorRatio => {
+                            editor.compressor_ratio = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorAttack => {
+                            editor.compressor_attack_ms = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorRelease => {
+                            editor.compressor_release_ms = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorMakeup => {
+                            editor.compressor_makeup_db = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::Drive => editor.drive_db = *value,
+                        shoop_app_api::BuiltInFxParameter::DriveTone => editor.drive_tone = *value,
+                        shoop_app_api::BuiltInFxParameter::DriveMix => editor.drive_mix = *value,
+                        shoop_app_api::BuiltInFxParameter::DriveOutput => {
+                            editor.drive_output_db = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::EqLow => editor.eq_low_db = *value,
+                        shoop_app_api::BuiltInFxParameter::EqMid => editor.eq_mid_db = *value,
+                        shoop_app_api::BuiltInFxParameter::EqHigh => editor.eq_high_db = *value,
+                        shoop_app_api::BuiltInFxParameter::ChorusRate => {
+                            editor.chorus_rate_hz = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ChorusDepth => {
+                            editor.chorus_depth = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ChorusMix => editor.chorus_mix = *value,
+                        shoop_app_api::BuiltInFxParameter::ChorusWidth => {
+                            editor.chorus_width = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationRate => {
+                            editor.modulation_rate_hz = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationDepth => {
+                            editor.modulation_depth = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationMix => {
+                            editor.modulation_mix = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationFeedback => {
+                            editor.modulation_feedback = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationSpread => {
+                            editor.modulation_spread = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ReverbAmount => {
+                            editor.reverb_amount = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ReverbTone => {
+                            editor.reverb_tone = *value
+                        }
+                    }
+                }
+                shoop_app_api::BuiltInFxControl::AssignMidiCc(assignment) => {
+                    let mut assignments = editor.midi_cc_assignments.to_vec();
+                    assignments.retain(|current| {
+                        current.parameter != assignment.parameter
+                            && (current.channel, current.controller)
+                                != (assignment.channel, assignment.controller)
+                    });
+                    assignments.push(*assignment);
+                    assignments.sort_by_key(|assignment| assignment.parameter);
+                    editor.midi_cc_assignments = assignments.into();
+                }
+                shoop_app_api::BuiltInFxControl::RemoveMidiCc(parameter) => {
+                    editor.midi_cc_assignments = editor
+                        .midi_cc_assignments
+                        .iter()
+                        .copied()
+                        .filter(|assignment| assignment.parameter != *parameter)
+                        .collect::<Vec<_>>()
+                        .into();
+                }
+                shoop_app_api::BuiltInFxControl::ClearMidiCcAssignments => {
+                    editor.midi_cc_assignments = Arc::from([])
+                }
+                shoop_app_api::BuiltInFxControl::SetReverbEnabled(enabled) => {
+                    editor.reverb_enabled = *enabled
+                }
+            }
         }
         BackendTrackFxControl::OxiSynth(control) => {
             let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) =
@@ -864,9 +972,27 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
     Some(match control {
         BackendTrackFxControl::SetActive(_) => FxControlKey::Active,
         BackendTrackFxControl::SetVisible(_) => FxControlKey::Visible,
-        BackendTrackFxControl::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(_)) => {
-            FxControlKey::BuiltInFxReverbEnabled
-        }
+        BackendTrackFxControl::BuiltInFx(control) => match control {
+            shoop_app_api::BuiltInFxControl::SetStageEnabled(stage, _enabled) => {
+                FxControlKey::BuiltInFxStage(*stage)
+            }
+            shoop_app_api::BuiltInFxControl::SetDriveType(_) => FxControlKey::BuiltInFxDriveType,
+            shoop_app_api::BuiltInFxControl::SetModulationType(_) => {
+                FxControlKey::BuiltInFxModulationType
+            }
+            shoop_app_api::BuiltInFxControl::SetReverbType(_) => FxControlKey::BuiltInFxReverbType,
+            shoop_app_api::BuiltInFxControl::SetParameter(parameter, _value) => {
+                FxControlKey::BuiltInFxParameter(*parameter)
+            }
+            shoop_app_api::BuiltInFxControl::AssignMidiCc(_)
+            | shoop_app_api::BuiltInFxControl::RemoveMidiCc(_)
+            | shoop_app_api::BuiltInFxControl::ClearMidiCcAssignments => {
+                FxControlKey::BuiltInFxMidiAssignments
+            }
+            shoop_app_api::BuiltInFxControl::SetReverbEnabled(_) => {
+                FxControlKey::BuiltInFxStage(shoop_app_api::BuiltInFxStage::Reverb)
+            }
+        },
         BackendTrackFxControl::OxiSynth(control) => match control {
             shoop_app_api::OxiSynthControl::SelectPreset(_) => FxControlKey::OxiPreset,
             shoop_app_api::OxiSynthControl::SetReverbSend(_) => FxControlKey::OxiReverbSend,
@@ -10802,6 +10928,7 @@ fn session_bundle_to_backend(
                 .fx_chain
                 .as_ref()
                 .map(|chain| chain.internal_state.clone()),
+            builtin_fx_midi_cc_assignments: Vec::new(),
             oxisynth_midi_cc_assignments: track
                 .fx_chain
                 .as_ref()
@@ -13141,6 +13268,87 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_optimistic_controls_and_supersession_are_parameter_typed() {
+        let mut fx = shoop_app_api::TrackFxState {
+            processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+            ),
+            active: true,
+            visible: true,
+            lifecycle: shoop_app_api::FxLifecycle::Running,
+            generation: 0,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                shoop_app_api::BuiltInFxState::default(),
+            )),
+        };
+        let parameter_keys = shoop_app_api::BuiltInFxParameter::ALL
+            .into_iter()
+            .map(|parameter| {
+                fx_control_key(&BackendTrackFxControl::BuiltInFx(
+                    shoop_app_api::BuiltInFxControl::SetParameter(parameter, 0.0),
+                ))
+                .unwrap()
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(parameter_keys.len(), 23);
+        let stage_keys = [
+            shoop_app_api::BuiltInFxStage::Compressor,
+            shoop_app_api::BuiltInFxStage::Drive,
+            shoop_app_api::BuiltInFxStage::Eq,
+            shoop_app_api::BuiltInFxStage::Chorus,
+            shoop_app_api::BuiltInFxStage::Modulation,
+            shoop_app_api::BuiltInFxStage::Reverb,
+        ]
+        .into_iter()
+        .map(|stage| {
+            fx_control_key(&BackendTrackFxControl::BuiltInFx(
+                shoop_app_api::BuiltInFxControl::SetStageEnabled(stage, true),
+            ))
+            .unwrap()
+        })
+        .collect::<BTreeSet<_>>();
+        assert_eq!(stage_keys.len(), 6);
+        assert_eq!(
+            fx_control_key(&BackendTrackFxControl::BuiltInFx(
+                shoop_app_api::BuiltInFxControl::SetReverbEnabled(false)
+            )),
+            Some(FxControlKey::BuiltInFxStage(
+                shoop_app_api::BuiltInFxStage::Reverb
+            ))
+        );
+
+        for control in [
+            shoop_app_api::BuiltInFxControl::SetStageEnabled(
+                shoop_app_api::BuiltInFxStage::Drive,
+                true,
+            ),
+            shoop_app_api::BuiltInFxControl::SetDriveType(shoop_app_api::BuiltInFxDriveType::Fuzz),
+            shoop_app_api::BuiltInFxControl::SetParameter(
+                shoop_app_api::BuiltInFxParameter::Drive,
+                24.0,
+            ),
+            shoop_app_api::BuiltInFxControl::AssignMidiCc(
+                shoop_app_api::BuiltInFxMidiCcAssignment {
+                    parameter: shoop_app_api::BuiltInFxParameter::Drive,
+                    channel: 2,
+                    controller: 17,
+                },
+            ),
+        ] {
+            apply_fx_control(&mut fx, &BackendTrackFxControl::BuiltInFx(control));
+        }
+        let Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(editor)) = fx.editor else {
+            panic!("missing Built-in FX editor state")
+        };
+        assert!(editor.drive_enabled);
+        assert_eq!(editor.drive_type, shoop_app_api::BuiltInFxDriveType::Fuzz);
+        assert_eq!(editor.drive_db, 24.0);
+        assert_eq!(editor.midi_cc_assignments.len(), 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn builtin_fx_session_round_trip_preserves_reverb_state() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -13151,7 +13359,7 @@ mod tests {
                 topology: TrackSpecTopology::DryWet {
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
-                    dry_midi: false,
+                    dry_midi: true,
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
                     ),
@@ -13165,9 +13373,7 @@ mod tests {
         assert_eq!(
             track.fx.as_ref().and_then(|fx| fx.editor.as_ref()),
             Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
-                shoop_app_api::BuiltInFxState {
-                    reverb_enabled: true,
-                },
+                shoop_app_api::BuiltInFxState::default(),
             ))
         );
         runtime
@@ -13187,6 +13393,7 @@ mod tests {
             Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
                 shoop_app_api::BuiltInFxState {
                     reverb_enabled: false,
+                    ..shoop_app_api::BuiltInFxState::default()
                 },
             ))
         );
@@ -13205,6 +13412,7 @@ mod tests {
             chain.internal_state,
             shoop_backend::encode_builtin_fx_state(&shoop_app_api::BuiltInFxState {
                 reverb_enabled: false,
+                ..shoop_app_api::BuiltInFxState::default()
             })
         );
         assert!(chain.midi_cc_assignments.is_empty());
@@ -13236,6 +13444,7 @@ mod tests {
             Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
                 shoop_app_api::BuiltInFxState {
                     reverb_enabled: false,
+                    ..shoop_app_api::BuiltInFxState::default()
                 },
             ))
         );

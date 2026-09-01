@@ -4040,7 +4040,7 @@ impl BrowserSelfTest {
                         topology: shoop_egui::TrackSpecTopology::DryWet {
                             dry_audio_channels: 2,
                             wet_audio_channels: 2,
-                            dry_midi: false,
+                            dry_midi: true,
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
                                 shoop_egui::TrackProcessorTypeId::BUILTIN_FX,
                             ),
@@ -5649,7 +5649,7 @@ mod tests {
                 topology: TrackSpecTopology::DryWet {
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
-                    dry_midi: false,
+                    dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                 },
                 latency: shoop_egui::TrackLatencySpec::default(),
@@ -5674,6 +5674,7 @@ mod tests {
                 .and_then(|fx| fx.editor.as_ref()),
             Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
                 reverb_enabled: false,
+                ..BuiltInFxState::default()
             }))
         );
 
@@ -5698,6 +5699,7 @@ mod tests {
                 .and_then(|fx| fx.editor.as_ref()),
             Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
                 reverb_enabled: false,
+                ..BuiltInFxState::default()
             }))
         );
     }

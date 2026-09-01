@@ -180,15 +180,17 @@ Routing/MIDI evidence: `Session` now feeds local plus filtered/deferred global M
 
 Depends on Stage 4.
 
-- [ ] Expand `shoop_app_api` with concrete Built-in FX state/type/parameter/assignment types and typed controls for each toggle, selector, continuous value, assignment mutation, and editor snapshot.
-- [ ] Change the descriptor to matching minimum-one audio input/output, no fixed maximum unless Stage 0 finds an existing repository safety limit that must be applied consistently, and required MIDI.
-- [ ] Extend command intent/supersession keys so each continuous/toggle/selector control supersedes only itself; assignment mutations remain ordered and non-supersedable as with Built-in Synth.
-- [ ] Extend in-process and native backend track creation, dry/wet/MIDI port mapping, controls, optimistic state, snapshots, state capture, staged replacement, sample-rate/backend recreation, and processor activity.
-- [ ] Add concrete Built-in FX assignment fields and conversion/validation paths to backend session capture/replace without weakening OxiSynth assignment validation.
-- [ ] Reject controls sent to the wrong processor, invalid parameter/type values, malformed assignments, mismatched audio counts, zero channels, and absent/extra MIDI before mutation.
-- [ ] Test both backends for catalog constraints, 1/2/3/6-channel creation/rendering, all controls/types, local/global MIDI mappings, snapshots, capture/restore, rollback, driver/sample-rate replacement, and inactive no-DSP behavior.
-- [ ] Verify focused `shoop_app_api`, `shoop_engine`, and `shoop_backend` native/Node tests plus per-commit gates.
-- [ ] Commit the API/backend milestone.
+API/backend evidence: `shoop_app_api` now has concrete six-stage state, three type enums, 23 labeled continuous parameters, concrete assignments, and typed controls. Optimistic application keys distinguish every stage/selector/parameter while assignment mutations remain ordered. The catalog requires matching positive 1..N audio plus MIDI. In-process and native backends create alternating N dry/wet ports plus one MIDI port, prepare matching processors, expose all controls/snapshots, validate values and assignment ownership/uniqueness, capture/restore assignments separately from processor state, preserve mappings on state replacement, and recreate at changed sample rate/buffer size. Focused native engine/in-process coverage passed 29/29; the comprehensive native dummy-driver test passed for 1/2/3/6 channels, all controls, learned MIDI, rollback, restore, and 96 kHz/256-frame replacement. API and optimistic-state tests passed; Node Wasm passed focused backend (3), API (1), and application (1) tests. Formatting, warning-denying workspace build, Rust-test policy, and tracing inventory passed. Browser wire support intentionally follows in Stage 6.
+
+- [x] Expand `shoop_app_api` with concrete Built-in FX state/type/parameter/assignment types and typed controls for each toggle, selector, continuous value, assignment mutation, and editor snapshot.
+- [x] Change the descriptor to matching minimum-one audio input/output, no fixed maximum unless Stage 0 finds an existing repository safety limit that must be applied consistently, and required MIDI.
+- [x] Extend command intent/supersession keys so each continuous/toggle/selector control supersedes only itself; assignment mutations remain ordered and non-supersedable as with Built-in Synth.
+- [x] Extend in-process and native backend track creation, dry/wet/MIDI port mapping, controls, optimistic state, snapshots, state capture, staged replacement, sample-rate/backend recreation, and processor activity.
+- [x] Add concrete Built-in FX assignment fields and conversion/validation paths to backend session capture/replace without weakening OxiSynth assignment validation.
+- [x] Reject controls sent to the wrong processor, invalid parameter/type values, malformed assignments, mismatched audio counts, zero channels, and absent/extra MIDI before mutation.
+- [x] Test both backends for catalog constraints, 1/2/3/6-channel creation/rendering, all controls/types, local/global MIDI mappings, snapshots, capture/restore, rollback, driver/sample-rate replacement, and inactive no-DSP behavior.
+- [x] Verify focused `shoop_app_api`, `shoop_engine`, and `shoop_backend` native/Node tests plus per-commit gates.
+- [x] Commit the API/backend milestone.
 
 ## Stage 6 — Browser protocol, Worker, and AudioWorklet
 
