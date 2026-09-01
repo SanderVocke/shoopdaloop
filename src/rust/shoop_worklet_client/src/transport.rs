@@ -95,12 +95,19 @@ struct PendingCommand {
     journal_mutation: Option<JournalMutation>,
 }
 
-fn is_session_connection_command(command: &Command) -> bool {
+fn is_global_journal_command(command: &Command) -> bool {
     matches!(
         command,
-        Command::SetPortConnected { .. }
-            | Command::SetBusControl { .. }
-            | Command::SetMixerRoute { .. }
+        Command::ConfigureMidiEndpoints { .. } | Command::SetLoopSmoothingMs { .. }
+    )
+}
+
+fn is_session_replay_command(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::BeginSessionReplace { .. }
+            | Command::WriteSessionReplace { .. }
+            | Command::CommitSessionReplace { .. }
     )
 }
 
@@ -117,7 +124,7 @@ pub(crate) struct TransportCore {
     error: Option<String>,
     endpoint: Option<Box<dyn MessageEndpoint>>,
     journal: Vec<Command>,
-    reserved_session_connections: Option<Vec<Command>>,
+    reserved_session_journal: Option<Vec<Command>>,
     inbound: VecDeque<ReceivedEvent>,
     next_sequence: u64,
     next_response_sequence: u64,
@@ -137,7 +144,7 @@ impl Default for TransportCore {
             error: None,
             endpoint: None,
             journal: Vec::new(),
-            reserved_session_connections: None,
+            reserved_session_journal: None,
             inbound: VecDeque::new(),
             next_sequence: 1,
             next_response_sequence: 1,
@@ -153,9 +160,9 @@ impl Default for TransportCore {
 
 impl TransportCore {
     pub(crate) fn journal(&mut self, command: Command) -> Result<()> {
-        if self.reserved_session_connections.is_some() && is_session_connection_command(&command) {
+        if self.reserved_session_journal.is_some() && !is_global_journal_command(&command) {
             return Err(anyhow!(
-                "session connection mutation is unavailable during session replacement"
+                "session mutation is unavailable during session replacement"
             ));
         }
         let existing_index = self
@@ -165,14 +172,11 @@ impl TransportCore {
         let previous = if let Some(index) = existing_index {
             Some(std::mem::replace(&mut self.journal[index], command.clone()))
         } else {
-            let reserved = self
-                .reserved_session_connections
-                .as_ref()
-                .map_or(0, Vec::len);
+            let reserved = self.reserved_session_journal.as_ref().map_or(0, Vec::len);
             let retained = self
                 .journal
                 .iter()
-                .filter(|command| !is_session_connection_command(command))
+                .filter(|command| is_global_journal_command(command))
                 .count();
             if self.journal.len() >= DURABLE_COMMAND_CAPACITY
                 || retained.saturating_add(reserved).saturating_add(1) > DURABLE_COMMAND_CAPACITY
@@ -238,48 +242,44 @@ impl TransportCore {
         }
     }
 
-    pub(crate) fn reserve_session_connection_journal(
-        &mut self,
-        commands: Vec<Command>,
-    ) -> Result<()> {
-        if self.reserved_session_connections.is_some() {
-            return Err(anyhow!("session connection journal is already reserved"));
+    pub(crate) fn reserve_session_journal(&mut self, commands: Vec<Command>) -> Result<()> {
+        if self.reserved_session_journal.is_some() {
+            return Err(anyhow!("session replay journal is already reserved"));
         }
         if commands
             .iter()
-            .any(|command| !is_session_connection_command(command))
+            .any(|command| !is_session_replay_command(command))
         {
             return Err(anyhow!(
-                "replacement connection journal contains an unrelated command"
+                "replacement replay journal contains an unrelated command"
             ));
         }
         let retained = self
             .journal
             .iter()
-            .filter(|command| !is_session_connection_command(command))
+            .filter(|command| is_global_journal_command(command))
             .count();
         if retained.saturating_add(commands.len()) > DURABLE_COMMAND_CAPACITY {
             self.overflows = self.overflows.saturating_add(1);
-            return Err(anyhow!("replacement connection command journal is full"));
+            return Err(anyhow!("replacement replay command journal is full"));
         }
-        self.reserved_session_connections = Some(commands);
+        self.reserved_session_journal = Some(commands);
         Ok(())
     }
 
-    pub(crate) fn commit_reserved_session_connection_journal(&mut self) {
-        let Some(commands) = self.reserved_session_connections.take() else {
+    pub(crate) fn commit_reserved_session_journal(&mut self) {
+        let Some(commands) = self.reserved_session_journal.take() else {
             return;
         };
-        self.journal
-            .retain(|command| !is_session_connection_command(command));
+        self.journal.retain(is_global_journal_command);
         debug_assert!(
             self.journal.len().saturating_add(commands.len()) <= DURABLE_COMMAND_CAPACITY
         );
         self.journal.extend(commands);
     }
 
-    pub(crate) fn cancel_reserved_session_connection_journal(&mut self) {
-        self.reserved_session_connections = None;
+    pub(crate) fn cancel_reserved_session_journal(&mut self) {
+        self.reserved_session_journal = None;
     }
 
     pub(crate) fn ephemeral(&mut self, command: Command) -> Result<()> {
@@ -500,8 +500,8 @@ impl TransportCore {
     }
 
     #[cfg(test)]
-    pub(crate) fn has_reserved_session_connections(&self) -> bool {
-        self.reserved_session_connections.is_some()
+    pub(crate) fn has_reserved_session_journal(&self) -> bool {
+        self.reserved_session_journal.is_some()
     }
 
     pub(crate) fn readiness(&self) -> RemoteReadiness {
@@ -767,53 +767,47 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn session_replacement_atomically_replaces_connection_replay_state() {
+    fn session_replacement_atomically_replaces_complete_session_replay_state() {
         let (transport, control) = transport_pair();
-        transport
-            .borrow_mut()
-            .journal(Command::SetPortConnected {
+        for command in [
+            Command::SetPortConnected {
                 application_port_id: 90,
                 host_port_id: "old:playback".to_owned(),
                 connected: true,
-            })
-            .unwrap();
-        let old_route = Command::SetMixerRoute {
-            source_port_id: 11,
-            destination_channel_id: 1,
-            connected: true,
-        };
-        transport.borrow_mut().journal(old_route).unwrap();
-        transport
-            .borrow_mut()
-            .journal(Command::SetBusControl {
-                bus_id: 1,
-                control: shoop_audio_protocol::WireBusControl::Mute(true),
-            })
-            .unwrap();
-        let retained = Command::SetLoopGain {
-            loop_id: 2,
-            gain: 0.5,
-        };
-        transport.borrow_mut().journal(retained.clone()).unwrap();
-        let replacement = vec![
-            Command::SetPortConnected {
-                application_port_id: 91,
-                host_port_id: "new:playback".to_owned(),
+            },
+            Command::SetMixerRoute {
+                source_port_id: 11,
+                destination_channel_id: 1,
                 connected: true,
             },
             Command::SetBusControl {
                 bus_id: 1,
-                control: shoop_audio_protocol::WireBusControl::Mute(false),
+                control: shoop_audio_protocol::WireBusControl::Mute(true),
             },
-            Command::SetMixerRoute {
-                source_port_id: 22,
-                destination_channel_id: 2,
-                connected: true,
+            Command::SetLoopGain {
+                loop_id: 2,
+                gain: 0.5,
             },
+        ] {
+            transport.borrow_mut().journal(command).unwrap();
+        }
+        let retained = Command::SetLoopSmoothingMs { milliseconds: 19 };
+        transport.borrow_mut().journal(retained.clone()).unwrap();
+        let replacement = vec![
+            Command::BeginSessionReplace {
+                generation: 7,
+                total_bytes: 2,
+            },
+            Command::WriteSessionReplace {
+                generation: 7,
+                offset: 0,
+                bytes: vec![1, 2],
+            },
+            Command::CommitSessionReplace { generation: 7 },
         ];
         transport
             .borrow_mut()
-            .reserve_session_connection_journal(replacement.clone())
+            .reserve_session_journal(replacement.clone())
             .unwrap();
         assert!(transport
             .borrow_mut()
@@ -823,9 +817,7 @@ mod tests {
                 connected: true,
             })
             .is_err());
-        transport
-            .borrow_mut()
-            .commit_reserved_session_connection_journal();
+        transport.borrow_mut().commit_reserved_session_journal();
 
         let endpoint = MemoryEndpoint::default();
         let sent = endpoint.sent.clone();
@@ -856,30 +848,23 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn session_replacement_reservation_preserves_capacity_until_commit_or_cancel() {
         let (transport, _) = transport_pair();
-        for loop_id in 0..DURABLE_COMMAND_CAPACITY as u64 - 1 {
-            transport
-                .borrow_mut()
-                .journal(Command::SetLoopGain { loop_id, gain: 0.5 })
-                .unwrap();
-        }
+        let replacement = (0..DURABLE_COMMAND_CAPACITY)
+            .map(|offset| Command::WriteSessionReplace {
+                generation: 7,
+                offset,
+                bytes: Vec::new(),
+            })
+            .collect();
         transport
             .borrow_mut()
-            .reserve_session_connection_journal(vec![Command::SetBusControl {
-                bus_id: 1,
-                control: shoop_audio_protocol::WireBusControl::Mute(false),
-            }])
+            .reserve_session_journal(replacement)
             .unwrap();
-        let final_command = Command::SetLoopGain {
-            loop_id: u64::MAX,
-            gain: 0.25,
-        };
+        let final_command = Command::SetLoopSmoothingMs { milliseconds: 17 };
         assert!(transport
             .borrow_mut()
             .journal(final_command.clone())
             .is_err());
-        transport
-            .borrow_mut()
-            .cancel_reserved_session_connection_journal();
+        transport.borrow_mut().cancel_reserved_session_journal();
         transport.borrow_mut().journal(final_command).unwrap();
     }
 
