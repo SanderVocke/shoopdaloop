@@ -7270,8 +7270,10 @@ impl ApplicationModel {
                             for (_, plan) in model
                                 .auto_arm_configured_plans
                                 .range_mut(plan_version.saturating_add(1)..)
-                                .filter(|(_, plan)| !plan.direct_configuration)
                             {
+                                if plan.direct_configuration {
+                                    break;
+                                }
                                 let mut replacement = previous.clone();
                                 replacement.direct_configuration = false;
                                 *plan = replacement;
@@ -10931,6 +10933,11 @@ mod tests {
         let mut later_direct_plan = plan_b.clone();
         later_direct_plan.instances[0].mode = Some("stopped".to_owned());
         model.remember_auto_arm_composite_plan(root, later_direct_version, &later_direct_plan);
+        let later_copied_version = later_direct_version + 1;
+        model.remember_auto_arm_registry_plan(
+            later_copied_version,
+            BackendCompositeId::from_raw(u64::MAX),
+        );
         rejected_snapshot
             .mutation_failures
             .push(shoop_backend::BackendMutationFailure {
@@ -10963,6 +10970,10 @@ mod tests {
             model.loops[&root].auto_arm_configured_plans[&later_direct_version].composite,
             later_direct_plan
         );
+        assert_eq!(
+            model.loops[&root].auto_arm_configured_plans[&later_copied_version].composite,
+            later_direct_plan
+        );
 
         let peer = model.tracks[4].loops[0];
         let peer_document = CompositeDocument {
@@ -10978,7 +10989,7 @@ mod tests {
         model.loops.get_mut(&peer).unwrap().composite = Some(peer_document.clone());
         model.loops.get_mut(&peer).unwrap().backend_composite =
             Some(backend.create_composite_loop().unwrap());
-        let global_version = later_direct_version + 1;
+        let global_version = later_copied_version + 1;
         model.remember_auto_arm_composite_plan(peer, global_version, &peer_document);
         assert_eq!(
             model.loops[&peer].auto_arm_configured_plans[&global_version].composite,
