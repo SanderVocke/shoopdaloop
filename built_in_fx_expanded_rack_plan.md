@@ -211,16 +211,18 @@ Browser evidence: protocol 21 carries variable Built-in FX channel count, all co
 
 Depends on Stages 5 and 6.
 
-- [ ] Bump `SESSION_DOCUMENT_VERSION` and change `TrackTopologyDocument::BuiltInFx` to store matching audio channel count with one required dry MIDI channel/port.
-- [ ] Add concrete Built-in FX CC assignment document types/fields while preserving the existing OxiSynth document representation and all previously accepted versions.
-- [ ] Implement deterministic migration of version-9 fixed-stereo/no-MIDI Built-in FX tracks: convert topology to two channels, add the required unconnected MIDI port and empty MIDI loop channels using collision-free IDs, migrate state version 1 to version 2, and leave mappings empty.
-- [ ] Validate canonical current state, finite/ranged controls, exact topology/port/channel shape, chain identity, assignment parameter/source uniqueness, and processor-specific assignment ownership for live and recorded processor states before publication.
-- [ ] Map expanded Built-in FX topology, state, and assignments through `shoop_app` capture, archive save/load, backend replacement, native/browser transfer, recorded FX-state handling, and sample-rate recreation.
-- [ ] Preserve transactional staging and rollback for malformed state, unsupported versions/types, invalid N-channel shape, assignment conflicts, missing capability, and processor construction failure.
-- [ ] Test deterministic current-format round trips; migration from every accepted document version; old reverb enabled/disabled preservation; 1/2/3/6-channel sessions; assignments and MIDI port connections; malformed current/live/recorded state; native/browser transfer; and tails/editor visibility remaining transient.
-- [ ] Update `docs/session_format_v1.md` with the new document version, topology, state grammar, assignment representation, migration, and transient/runtime-only state.
-- [ ] Verify focused `shoop_session` and `shoop_app` native/Node tests plus per-commit gates.
-- [ ] Commit the persistence/migration milestone.
+Persistence evidence: session document 10 stores positive Built-in FX `audio_channels`, one dry MIDI channel/port, canonical state-v2, and concrete `builtin_fx_midi_cc_assignments` separate from OxiSynth mappings. Version 9 deserializes its missing count as stereo, strictly accepts only state-v1/no-MIDI, allocates collision-free MIDI port/channel IDs, preserves Reverb enable, emits state-v2 defaults, migrates recorded states, and leaves mappings empty; versions 6–8 retain their prior migrations. Current validation enforces v2 field count/tags/finite ranges, N channel shape, one MIDI, chain ownership, and unique assignment targets/sources for live/recorded state before publication. Application save/load now round-trips a three-channel rack, typed controls, assignment, exact dry/wet/MIDI channel counts, and transient visibility; backend/native/worklet transfer and replacement tests cover the same backend session fields and rollback. Native combined app/session suites passed 148/148; Node Wasm passed 34 session tests and the complete 94-test application suite (plus latest focused Built-in FX reruns). `docs/session_format_v1.md` documents version 10, migration, topology, state, mappings, and transient DSP state.
+
+- [x] Bump `SESSION_DOCUMENT_VERSION` and change `TrackTopologyDocument::BuiltInFx` to store matching audio channel count with one required dry MIDI channel/port.
+- [x] Add concrete Built-in FX CC assignment document types/fields while preserving the existing OxiSynth document representation and all previously accepted versions.
+- [x] Implement deterministic migration of version-9 fixed-stereo/no-MIDI Built-in FX tracks: convert topology to two channels, add the required unconnected MIDI port and empty MIDI loop channels using collision-free IDs, migrate state version 1 to version 2, and leave mappings empty.
+- [x] Validate canonical current state, finite/ranged controls, exact topology/port/channel shape, chain identity, assignment parameter/source uniqueness, and processor-specific assignment ownership for live and recorded processor states before publication.
+- [x] Map expanded Built-in FX topology, state, and assignments through `shoop_app` capture, archive save/load, backend replacement, native/browser transfer, recorded FX-state handling, and sample-rate recreation.
+- [x] Preserve transactional staging and rollback for malformed state, unsupported versions/types, invalid N-channel shape, assignment conflicts, missing capability, and processor construction failure.
+- [x] Test deterministic current-format round trips; migration from every accepted document version; old reverb enabled/disabled preservation; 1/2/3/6-channel sessions; assignments and MIDI port connections; malformed current/live/recorded state; native/browser transfer; and tails/editor visibility remaining transient.
+- [x] Update `docs/session_format_v1.md` with the new document version, topology, state grammar, assignment representation, migration, and transient/runtime-only state.
+- [x] Verify focused `shoop_session` and `shoop_app` native/Node tests plus per-commit gates.
+- [x] Commit the persistence/migration milestone.
 
 ## Stage 8 — Embedded editor, MIDI Learn, and documentation
 

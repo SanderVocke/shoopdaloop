@@ -1,6 +1,7 @@
 use crate::document::{
-    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
-    FxChainTypeDocument, MediaPayload, ProcessorLatencyAdjustmentDocument,
+    AudioPayload, ChannelDocument, ChannelModeDocument, CompositeKindDocument,
+    ConnectabilityDocument, DataTypeDocument, FormatVersion, FxChainTypeDocument, MediaPayload,
+    PortDirectionDocument, PortDocument, PortRoleDocument, ProcessorLatencyAdjustmentDocument,
     RecordingOffsetAdjustmentDocument, SessionBundle, SessionDocument, TrackDocument,
     TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
     SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
@@ -21,6 +22,7 @@ const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
 const PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 8;
+const PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 9;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -222,6 +224,7 @@ pub fn decode_session_with_limits(
             PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
                 | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
                 | PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION
+                | PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -238,6 +241,9 @@ pub fn decode_session_with_limits(
     }
     if manifest.document_version <= PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION {
         migrate_pre_processor_adjustment_document(&mut manifest.document)?;
+    }
+    if manifest.document_version <= PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION {
+        migrate_pre_expanded_builtin_fx_document(&mut manifest.document)?;
     }
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -342,6 +348,190 @@ fn migrate_pre_processor_adjustment_document(
         }
     }
     Ok(())
+}
+
+fn migrate_pre_expanded_builtin_fx_document(
+    document: &mut SessionDocument,
+) -> Result<(), SessionError> {
+    let mut used_ids = collect_document_ids(document);
+    let mut next_id = 1_u64;
+    let mut allocate_id = || -> Result<u64, SessionError> {
+        while used_ids.contains(&next_id) {
+            next_id = next_id.checked_add(1).ok_or_else(|| {
+                SessionError::Validation("session ID space is exhausted".to_owned())
+            })?;
+        }
+        let allocated = next_id;
+        used_ids.insert(allocated);
+        next_id = next_id
+            .checked_add(1)
+            .ok_or_else(|| SessionError::Validation("session ID space is exhausted".to_owned()))?;
+        Ok(allocated)
+    };
+
+    for group in &mut document.track_groups {
+        for track in &mut group.tracks {
+            let TrackTopologyDocument::BuiltInFx { audio_channels } = track.topology else {
+                continue;
+            };
+            if audio_channels != 2
+                || track
+                    .ports
+                    .iter()
+                    .any(|port| port.data_type == DataTypeDocument::Midi)
+            {
+                return Err(SessionError::Validation(format!(
+                    "legacy Built-in FX track {} has an invalid topology",
+                    track.id
+                )));
+            }
+            let chain = track.fx_chain.as_mut().ok_or_else(|| {
+                SessionError::Validation(format!(
+                    "legacy Built-in FX track {} is missing its chain",
+                    track.id
+                ))
+            })?;
+            chain.internal_state = migrate_builtin_fx_v1_state(&chain.internal_state)?;
+            chain.builtin_fx_midi_cc_assignments.clear();
+
+            let midi_port_id = allocate_id()?;
+            track.ports.push(PortDocument {
+                id: midi_port_id,
+                name: format!("{}_dry_midi_in", track.port_name_base),
+                data_type: DataTypeDocument::Midi,
+                direction: PortDirectionDocument::Input,
+                role: PortRoleDocument::MidiInput,
+                input_connectability: vec![ConnectabilityDocument::External],
+                output_connectability: vec![ConnectabilityDocument::Internal],
+                gain: 1.0,
+                muted: false,
+                passthrough_muted: true,
+                internal_connections: Vec::new(),
+                external_connections: Vec::new(),
+                ringbuffer_frames: 0,
+            });
+            for loop_ in &mut track.loops {
+                if loop_
+                    .channels
+                    .iter()
+                    .any(|channel| channel.data_type == DataTypeDocument::Midi)
+                {
+                    return Err(SessionError::Validation(format!(
+                        "legacy Built-in FX loop {} unexpectedly contains MIDI",
+                        loop_.id
+                    )));
+                }
+                loop_.channels.push(ChannelDocument {
+                    id: allocate_id()?,
+                    mode: ChannelModeDocument::Dry,
+                    data_type: DataTypeDocument::Midi,
+                    data_length_frames: 0,
+                    start_offset_frames: 0,
+                    capture_alignment_frames: 0,
+                    preplay_frames: 0,
+                    gain: 1.0,
+                    connected_port_ids: vec![midi_port_id],
+                    media_id: None,
+                    recording_started_at: None,
+                    recording_fx_state_id: None,
+                });
+            }
+        }
+    }
+    for state in &mut document.fx_states {
+        if state.chain_type == FxChainTypeDocument::BuiltInFx {
+            state.internal_state = migrate_builtin_fx_v1_state(&state.internal_state)?;
+        }
+    }
+    Ok(())
+}
+
+fn collect_document_ids(document: &SessionDocument) -> BTreeSet<u64> {
+    let mut ids = BTreeSet::new();
+    for group in &document.track_groups {
+        for track in &group.tracks {
+            ids.insert(track.id);
+            ids.extend(track.ports.iter().map(|port| port.id));
+            if let Some(chain) = &track.fx_chain {
+                ids.insert(chain.id);
+                ids.extend(chain.ports.iter().map(|port| port.id));
+            }
+            for loop_ in &track.loops {
+                ids.insert(loop_.id);
+                ids.extend(loop_.channels.iter().map(|channel| channel.id));
+                if let Some(composite) = &loop_.composite {
+                    ids.extend(
+                        composite
+                            .instances
+                            .iter()
+                            .map(|instance| instance.instance_id),
+                    );
+                }
+            }
+        }
+    }
+    for bus in &document.buses {
+        ids.insert(bus.id);
+        ids.extend(bus.ports.iter().map(|port| port.id));
+        if let Some(chain) = &bus.fx_chain {
+            ids.insert(chain.id);
+            ids.extend(chain.ports.iter().map(|port| port.id));
+        }
+    }
+    ids.extend(document.global_ports.iter().map(|port| port.id));
+    ids.extend(document.fx_states.iter().map(|state| state.id));
+    ids.extend(document.scripts.iter().map(|script| script.id));
+    ids.extend(
+        document
+            .midi_control
+            .bindings
+            .iter()
+            .map(|binding| binding.id),
+    );
+    ids
+}
+
+pub(crate) fn migrate_builtin_fx_v1_state(state: &str) -> Result<String, SessionError> {
+    let enabled = match state {
+        "shoop-builtin-fx:1:0" => false,
+        "shoop-builtin-fx:1:1" => true,
+        _ => {
+            return Err(SessionError::Validation(
+                "legacy Built-in FX state is malformed or unsupported".to_owned(),
+            ));
+        }
+    };
+    let mut fields = vec![
+        "shoop-builtin-fx".to_owned(),
+        "2".to_owned(),
+        "0".to_owned(),
+    ];
+    for value in [-18.0_f32, 4.0, 10.0, 150.0, 0.0] {
+        fields.push(format!("{:08x}", value.to_bits()));
+    }
+    fields.extend(["0".to_owned(), "saturation".to_owned()]);
+    for value in [12.0_f32, 0.5, 1.0, 0.0] {
+        fields.push(format!("{:08x}", value.to_bits()));
+    }
+    fields.push("0".to_owned());
+    for value in [0.0_f32, 0.0, 0.0] {
+        fields.push(format!("{:08x}", value.to_bits()));
+    }
+    fields.push("0".to_owned());
+    for value in [0.3_f32, 0.5, 0.3, 1.0] {
+        fields.push(format!("{:08x}", value.to_bits()));
+    }
+    fields.extend(["0".to_owned(), "tremolo".to_owned()]);
+    for value in [0.5_f32, 0.5, 0.5, 0.25, 1.0] {
+        fields.push(format!("{:08x}", value.to_bits()));
+    }
+    fields.extend([
+        if enabled { "1" } else { "0" }.to_owned(),
+        "room".to_owned(),
+        format!("{:08x}", 0.2_f32.to_bits()),
+        format!("{:08x}", 0.5_f32.to_bits()),
+    ]);
+    Ok(fields.join(":"))
 }
 
 fn decode_script_bundles(
@@ -1014,9 +1204,6 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
 }
 
 fn is_canonical_builtin_fx_state(state: &str) -> bool {
-    if matches!(state, "shoop-builtin-fx:1:0" | "shoop-builtin-fx:1:1") {
-        return true;
-    }
     let fields: Vec<_> = state.split(':').collect();
     if fields.len() != 34
         || fields[0] != "shoop-builtin-fx"
@@ -1073,6 +1260,28 @@ fn is_canonical_builtin_fx_state(state: &str) -> bool {
 
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
     if let Some(chain) = &track.fx_chain {
+        if chain.chain_type != FxChainTypeDocument::BuiltInFx
+            && !chain.builtin_fx_midi_cc_assignments.is_empty()
+        {
+            return Err(SessionError::Validation(format!(
+                "non-Built-in FX chain {} contains Built-in FX MIDI CC assignments",
+                chain.id
+            )));
+        }
+        let mut builtin_parameters = BTreeSet::new();
+        let mut builtin_sources = BTreeSet::new();
+        for assignment in &chain.builtin_fx_midi_cc_assignments {
+            if assignment.channel > 15
+                || assignment.controller > 127
+                || !builtin_parameters.insert(assignment.parameter)
+                || !builtin_sources.insert((assignment.channel, assignment.controller))
+            {
+                return Err(SessionError::Validation(format!(
+                    "FX chain {} contains invalid or duplicate Built-in FX MIDI CC assignments",
+                    chain.id
+                )));
+            }
+        }
         if chain.chain_type != FxChainTypeDocument::OxiSynth
             && !chain.midi_cc_assignments.is_empty()
         {
@@ -1115,7 +1324,7 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
             "Carla track {} is missing its FX chain",
             track.id
         ))),
-        (TrackTopologyDocument::BuiltInFx, Some(chain))
+        (TrackTopologyDocument::BuiltInFx { .. }, Some(chain))
             if chain.chain_type != FxChainTypeDocument::BuiltInFx
                 || !is_canonical_builtin_fx_state(&chain.internal_state) =>
         {
@@ -1124,7 +1333,7 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
                 track.id
             )))
         }
-        (TrackTopologyDocument::BuiltInFx, None) => Err(SessionError::Validation(format!(
+        (TrackTopologyDocument::BuiltInFx { .. }, None) => Err(SessionError::Validation(format!(
             "Built-in FX track {} is missing its FX chain",
             track.id
         ))),
@@ -1210,15 +1419,17 @@ fn validate_track_channel_shape(
                         && channel.data_type == DataTypeDocument::Midi)
                 })
         }
-        TrackTopologyDocument::BuiltInFx => {
-            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == 2
-                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == 2
-                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 0
+        TrackTopologyDocument::BuiltInFx { audio_channels } => {
+            audio_channels > 0
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == audio_channels
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == audio_channels
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 1
                 && channels.iter().all(|channel| {
                     matches!(
                         channel.mode,
                         ChannelModeDocument::Dry | ChannelModeDocument::Wet
-                    ) && channel.data_type == DataTypeDocument::Audio
+                    ) && !(channel.mode == ChannelModeDocument::Wet
+                        && channel.data_type == DataTypeDocument::Midi)
                 })
         }
         TrackTopologyDocument::OxiSynth => {

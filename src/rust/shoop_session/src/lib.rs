@@ -181,6 +181,7 @@ mod tests {
                         chain_type: FxChainTypeDocument::CarlaPatchbay16x,
                         ports: Vec::new(),
                         internal_state: "{\"opaque\":\"å\\u0000state\"}".to_owned(),
+                        builtin_fx_midi_cc_assignments: Vec::new(),
                         midi_cc_assignments: Vec::new(),
                     }),
                 }],
@@ -242,6 +243,7 @@ mod tests {
             chain_type: FxChainTypeDocument::OxiSynth,
             ports: Vec::new(),
             internal_state: "shoop-oxisynth:2:timgm6mb:0:40:00000000:00000000".to_owned(),
+            builtin_fx_midi_cc_assignments: Vec::new(),
             midi_cc_assignments: Vec::new(),
         });
         let channels = &mut track.loops[0].channels;
@@ -270,14 +272,36 @@ mod tests {
         let track = &mut bundle.document.track_groups[0].tracks[0];
         track.name = "Built-in FX".to_owned();
         track.port_name_base = "builtin_fx".to_owned();
-        track.topology = TrackTopologyDocument::BuiltInFx;
+        track.topology = TrackTopologyDocument::BuiltInFx { audio_channels: 2 };
         let chain = track.fx_chain.as_mut().unwrap();
         chain.title = "Built-in FX".to_owned();
         chain.chain_type = FxChainTypeDocument::BuiltInFx;
-        chain.internal_state = "shoop-builtin-fx:1:0".to_owned();
-        track.loops[0]
+        chain.internal_state =
+            crate::archive::migrate_builtin_fx_v1_state("shoop-builtin-fx:1:0").unwrap();
+        let midi_port_id = 3_000;
+        track.ports.push(PortDocument {
+            id: midi_port_id,
+            name: "builtin_fx_dry_midi_in".to_owned(),
+            data_type: DataTypeDocument::Midi,
+            direction: PortDirectionDocument::Input,
+            role: PortRoleDocument::MidiInput,
+            input_connectability: vec![ConnectabilityDocument::External],
+            output_connectability: vec![ConnectabilityDocument::Internal],
+            gain: 1.0,
+            muted: false,
+            passthrough_muted: true,
+            internal_connections: Vec::new(),
+            external_connections: Vec::new(),
+            ringbuffer_frames: 0,
+        });
+        let midi = track.loops[0]
             .channels
-            .retain(|channel| channel.data_type == DataTypeDocument::Audio);
+            .iter_mut()
+            .find(|channel| channel.data_type == DataTypeDocument::Midi)
+            .unwrap();
+        midi.mode = ChannelModeDocument::Dry;
+        midi.connected_port_ids = vec![midi_port_id];
+        midi.recording_fx_state_id = None;
         bundle
     }
 
@@ -407,6 +431,7 @@ mod tests {
                     chain_type: FxChainTypeDocument::CarlaRack,
                     ports: Vec::new(),
                     internal_state: "opaque\0carla\nstate".to_owned(),
+                    builtin_fx_midi_cc_assignments: Vec::new(),
                     midi_cc_assignments: Vec::new(),
                 }),
             },
@@ -423,6 +448,7 @@ mod tests {
                 chain_type: FxChainTypeDocument::Test,
                 ports: Vec::new(),
                 internal_state: "bus-state".to_owned(),
+                builtin_fx_midi_cc_assignments: Vec::new(),
                 midi_cc_assignments: Vec::new(),
             }),
         }];
@@ -505,7 +531,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 10] {
+        for unsupported in [5, 11] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -561,7 +587,17 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn builtin_fx_state_shape_and_previous_version_are_validated() {
-        let bundle = builtin_fx_bundle();
+        let mut bundle = builtin_fx_bundle();
+        bundle.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .builtin_fx_midi_cc_assignments
+            .push(BuiltInFxMidiCcAssignmentDocument {
+                parameter: BuiltInFxParameterDocument::Drive,
+                channel: 2,
+                controller: 17,
+            });
         let encoded = encode_session(&bundle, "builtin-fx-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
@@ -581,7 +617,8 @@ mod tests {
             .push(FxStateDocument {
                 id: 99,
                 chain_type: FxChainTypeDocument::BuiltInFx,
-                internal_state: "shoop-builtin-fx:1:1".to_owned(),
+                internal_state: crate::archive::migrate_builtin_fx_v1_state("shoop-builtin-fx:1:1")
+                    .unwrap(),
             });
         validate_bundle(&with_recorded_state).unwrap();
 
@@ -607,6 +644,32 @@ mod tests {
                 "recorded {invalid_state}"
             );
         }
+
+        let mut duplicate_assignment = bundle.clone();
+        duplicate_assignment.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .builtin_fx_midi_cc_assignments
+            .push(BuiltInFxMidiCcAssignmentDocument {
+                parameter: BuiltInFxParameterDocument::ReverbAmount,
+                channel: 2,
+                controller: 17,
+            });
+        assert!(validate_bundle(&duplicate_assignment).is_err());
+
+        let mut wrong_assignment_owner = oxisynth_bundle();
+        wrong_assignment_owner.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .builtin_fx_midi_cc_assignments
+            .push(BuiltInFxMidiCcAssignmentDocument {
+                parameter: BuiltInFxParameterDocument::Drive,
+                channel: 2,
+                controller: 17,
+            });
+        assert!(validate_bundle(&wrong_assignment_owner).is_err());
 
         let mut mismatched = bundle.clone();
         mismatched.document.track_groups[0].tracks[0]
@@ -637,6 +700,132 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn version_nine_builtin_fx_migrates_state_topology_and_required_midi() {
+        let mut source = builtin_fx_bundle();
+        source.media.remove("midi_main");
+        let midi = source.document.track_groups[0].tracks[0].loops[0]
+            .channels
+            .iter_mut()
+            .find(|channel| channel.data_type == DataTypeDocument::Midi)
+            .unwrap();
+        midi.data_length_frames = 0;
+        midi.media_id = None;
+        source.document.fx_states.push(FxStateDocument {
+            id: 99,
+            chain_type: FxChainTypeDocument::BuiltInFx,
+            internal_state: crate::archive::migrate_builtin_fx_v1_state("shoop-builtin-fx:1:1")
+                .unwrap(),
+        });
+        let legacy = rewrite_manifest(
+            encode_session(&source, "builtin-fx-v9-migration").unwrap(),
+            |manifest| {
+                manifest["document_version"] = serde_json::json!(9);
+                let track = &mut manifest["document"]["track_groups"][0]["tracks"][0];
+                track["topology"] = serde_json::json!({"kind": "built_in_fx"});
+                track["ports"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|port| port["data_type"] != "midi");
+                track["loops"][0]["channels"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|channel| channel["data_type"] != "midi");
+                track["fx_chain"]["internal_state"] = serde_json::json!("shoop-builtin-fx:1:0");
+                track["fx_chain"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("builtin_fx_midi_cc_assignments");
+                manifest["document"]["fx_states"][0]["internal_state"] =
+                    serde_json::json!("shoop-builtin-fx:1:1");
+            },
+        );
+        let malformed = rewrite_manifest(legacy.clone(), |manifest| {
+            manifest["document"]["track_groups"][0]["tracks"][0]["fx_chain"]["internal_state"] =
+                serde_json::json!("shoop-builtin-fx:1:false");
+        });
+        assert!(decode_session(&malformed).is_err());
+        let migrated = decode_session(&legacy).unwrap();
+        let track = &migrated.document.track_groups[0].tracks[0];
+        assert_eq!(
+            track.topology,
+            TrackTopologyDocument::BuiltInFx { audio_channels: 2 }
+        );
+        assert_eq!(
+            track.fx_chain.as_ref().unwrap().internal_state,
+            crate::archive::migrate_builtin_fx_v1_state("shoop-builtin-fx:1:0").unwrap()
+        );
+        assert!(track
+            .fx_chain
+            .as_ref()
+            .unwrap()
+            .builtin_fx_midi_cc_assignments
+            .is_empty());
+        let midi_ports = track
+            .ports
+            .iter()
+            .filter(|port| port.data_type == DataTypeDocument::Midi)
+            .collect::<Vec<_>>();
+        assert_eq!(midi_ports.len(), 1);
+        assert!(midi_ports[0].external_connections.is_empty());
+        let midi_channels = track.loops[0]
+            .channels
+            .iter()
+            .filter(|channel| channel.data_type == DataTypeDocument::Midi)
+            .collect::<Vec<_>>();
+        assert_eq!(midi_channels.len(), 1);
+        assert_eq!(midi_channels[0].mode, ChannelModeDocument::Dry);
+        assert_eq!(midi_channels[0].connected_port_ids, [midi_ports[0].id]);
+        assert_eq!(
+            migrated.document.fx_states[0].internal_state,
+            crate::archive::migrate_builtin_fx_v1_state("shoop-builtin-fx:1:1").unwrap()
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_current_sessions_round_trip_mono_stereo_and_n_channels() {
+        for audio_channels in [1, 2, 3, 6] {
+            let mut bundle = builtin_fx_bundle();
+            let track = &mut bundle.document.track_groups[0].tracks[0];
+            track.topology = TrackTopologyDocument::BuiltInFx { audio_channels };
+            let source = track.loops[0].channels.clone();
+            let dry = source
+                .iter()
+                .find(|channel| {
+                    channel.mode == ChannelModeDocument::Dry
+                        && channel.data_type == DataTypeDocument::Audio
+                })
+                .unwrap();
+            let wet = source
+                .iter()
+                .find(|channel| {
+                    channel.mode == ChannelModeDocument::Wet
+                        && channel.data_type == DataTypeDocument::Audio
+                })
+                .unwrap();
+            let midi = source
+                .iter()
+                .find(|channel| channel.data_type == DataTypeDocument::Midi)
+                .unwrap()
+                .clone();
+            let mut channels = Vec::new();
+            for index in 0..audio_channels {
+                let mut channel = dry.clone();
+                channel.id = 4_000 + u64::from(index);
+                channels.push(channel);
+            }
+            for index in 0..audio_channels {
+                let mut channel = wet.clone();
+                channel.id = 5_000 + u64::from(index);
+                channels.push(channel);
+            }
+            channels.push(midi);
+            track.loops[0].channels = channels;
+            let encoded = encode_session(&bundle, "builtin-fx-n-channel").unwrap();
+            assert_eq!(decode_session(&encoded).unwrap(), bundle);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn legacy_fx_chain_without_midi_assignments_defaults_to_empty() {
         let chain = oxisynth_bundle().document.track_groups[0].tracks[0]
             .fx_chain
@@ -644,8 +833,13 @@ mod tests {
             .unwrap();
         let mut value = serde_json::to_value(chain).unwrap();
         value.as_object_mut().unwrap().remove("midi_cc_assignments");
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("builtin_fx_midi_cc_assignments");
         let decoded: FxChainDocument = serde_json::from_value(value).unwrap();
         assert!(decoded.midi_cc_assignments.is_empty());
+        assert!(decoded.builtin_fx_midi_cc_assignments.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
