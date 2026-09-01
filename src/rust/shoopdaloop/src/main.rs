@@ -4042,8 +4042,8 @@ impl BrowserSelfTest {
                     runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
                         name: "Browser Built-in FX".to_owned(),
                         topology: shoop_egui::TrackSpecTopology::DryWet {
-                            dry_audio_channels: 2,
-                            wet_audio_channels: 2,
+                            dry_audio_channels: 3,
+                            wet_audio_channels: 3,
                             dry_midi: true,
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
                                 shoop_egui::TrackProcessorTypeId::BUILTIN_FX,
@@ -4091,6 +4091,32 @@ impl BrowserSelfTest {
                     },
                     shoop_egui::TrackAction::BuiltInFx(
                         shoop_egui::BuiltInFxControl::SetReverbEnabled(false),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::SetStageEnabled(
+                            shoop_egui::BuiltInFxStage::Drive,
+                            true,
+                        ),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::SetDriveType(
+                            shoop_egui::BuiltInFxDriveType::Fuzz,
+                        ),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::SetParameter(
+                            shoop_egui::BuiltInFxParameter::Drive,
+                            24.0,
+                        ),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::AssignMidiCc(
+                            shoop_egui::BuiltInFxMidiCcAssignment {
+                                parameter: shoop_egui::BuiltInFxParameter::Drive,
+                                channel: 2,
+                                controller: 17,
+                            },
+                        ),
                     ),
                     shoop_egui::TrackAction::FxVisibilityChanged(true),
                 ]
@@ -4546,15 +4572,36 @@ impl BrowserSelfTest {
                     }
                     match fx.editor.as_ref()? {
                         shoop_egui::TrackProcessorEditorState::BuiltInFx(editor) => {
-                            Some((fx.visible, editor.reverb_enabled))
+                            Some((
+                                fx.visible,
+                                editor.reverb_enabled,
+                                editor.drive_enabled,
+                                editor.drive_type,
+                                editor.drive_db,
+                                editor.midi_cc_assignments.len(),
+                            ))
                         }
                         shoop_egui::TrackProcessorEditorState::OxiSynth(_) => None,
                     }
                 });
-                let Some((builtin_fx_visible, reverb_enabled)) = builtin_fx_state else {
+                let Some((
+                    builtin_fx_visible,
+                    reverb_enabled,
+                    drive_enabled,
+                    drive_type,
+                    drive_db,
+                    assignments,
+                )) = builtin_fx_state
+                else {
                     return;
                 };
-                if builtin_fx_visible || reverb_enabled {
+                if builtin_fx_visible
+                    || reverb_enabled
+                    || !drive_enabled
+                    || drive_type != shoop_egui::BuiltInFxDriveType::Fuzz
+                    || (drive_db - 24.0).abs() > f32::EPSILON
+                    || assignments != 1
+                {
                     return self.fail("loaded browser Built-in FX state changed");
                 }
                 let synth_state = snapshot.tracks.iter().find_map(|track| {
@@ -5636,8 +5683,10 @@ mod tests {
         use shoop_app::CooperativeApplicationRuntime;
         use shoop_backend::NativeBackend;
         use shoop_egui::{
-            AppIntent, AudioDriverConfig, BuiltInFxControl, BuiltInFxState, DummyAudioDriverConfig,
-            TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
+            AppIntent, AudioDriverConfig, BuiltInFxControl, BuiltInFxDriveType,
+            BuiltInFxMidiCcAssignment, BuiltInFxParameter, BuiltInFxStage, BuiltInFxState,
+            DummyAudioDriverConfig, TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec,
+            TrackSpecTopology,
         };
 
         let backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
@@ -5651,8 +5700,8 @@ mod tests {
             .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
                 name: "Native Built-in FX".to_owned(),
                 topology: TrackSpecTopology::DryWet {
-                    dry_audio_channels: 2,
-                    wet_audio_channels: 2,
+                    dry_audio_channels: 3,
+                    wet_audio_channels: 3,
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                 },
@@ -5671,15 +5720,39 @@ mod tests {
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
+        let assignment = BuiltInFxMidiCcAssignment {
+            parameter: BuiltInFxParameter::Drive,
+            channel: 2,
+            controller: 17,
+        };
+        for control in [
+            BuiltInFxControl::SetStageEnabled(BuiltInFxStage::Drive, true),
+            BuiltInFxControl::SetDriveType(BuiltInFxDriveType::Fuzz),
+            BuiltInFxControl::SetParameter(BuiltInFxParameter::Drive, 24.0),
+            BuiltInFxControl::AssignMidiCc(assignment),
+        ] {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: track.id,
+                    action: TrackAction::BuiltInFx(control),
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let expected = BuiltInFxState {
+            drive_enabled: true,
+            drive_type: BuiltInFxDriveType::Fuzz,
+            drive_db: 24.0,
+            reverb_enabled: false,
+            midi_cc_assignments: Arc::from([assignment]),
+            ..BuiltInFxState::default()
+        };
         assert_eq!(
             runtime.snapshot().tracks[1]
                 .fx
                 .as_ref()
                 .and_then(|fx| fx.editor.as_ref()),
-            Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
-                reverb_enabled: false,
-                ..BuiltInFxState::default()
-            }))
+            Some(&TrackProcessorEditorState::BuiltInFx(expected.clone()))
         );
 
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
@@ -5701,10 +5774,7 @@ mod tests {
                 .fx
                 .as_ref()
                 .and_then(|fx| fx.editor.as_ref()),
-            Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
-                reverb_enabled: false,
-                ..BuiltInFxState::default()
-            }))
+            Some(&TrackProcessorEditorState::BuiltInFx(expected))
         );
     }
 

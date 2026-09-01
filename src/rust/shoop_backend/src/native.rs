@@ -5721,7 +5721,10 @@ mod tests {
         assert!(catalog.iter().any(|descriptor| {
             descriptor.id.as_str() == TrackProcessorTypeId::BUILTIN_FX
                 && descriptor.available
-                && descriptor.constraints.accepts(2, 2, false)
+                && [1, 2, 3, 6]
+                    .into_iter()
+                    .all(|channels| descriptor.constraints.accepts(channels, channels, true))
+                && !descriptor.constraints.accepts(2, 2, false)
         }));
         let carla = catalog
             .iter()

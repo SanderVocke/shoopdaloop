@@ -244,24 +244,26 @@ UI/documentation evidence: the resizable editor renders the fixed six-stage orde
 
 Depends on all implementation stages. Run all payloads in the environment selected by `.agents/info/build.md`; on Nix/NixOS, use `nix develop`.
 
-- [ ] Extend native application smoke coverage to create mono, stereo, and N-channel Built-in FX tracks with MIDI; exercise representative audio for every stage/type, continuous controls, exact bypass, stale-tail reset, local/global learned CC, ignored notes, save/reload, and migrated version-9 state.
-- [ ] Extend browser self-test and production Worker/AudioWorklet smoke coverage with catalog/topology, representative DSP, local/global MIDI control, snapshots, save/reload, and N-channel internal routing evidence.
-- [ ] Add objective offline render checks for each effect and stereo specialization; inspect generated metrics/output for intended response rather than relying only on state snapshots or call counters.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `cargo check --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown` and `cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown`.
-- [ ] Run `python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown`, inspect relevant `cargo tree` output, and verify FunDSP/new rack code does not introduce disallowed worklet dependencies.
-- [ ] Run `python3 scripts/run_wasm_tests.py --runtime node --profile dev`.
-- [ ] Run `python3 scripts/run_wasm_tests.py --runtime chrome --profile dev` when Chrome is available; otherwise record the local limitation and require the corresponding PR matrix job.
-- [ ] Run `python3 -m unittest scripts.tests.test_wasm_test_report` and `python3 scripts/check_wasm_smoke_budget.py`.
-- [ ] Run `trunk build` from `src/rust/shoopdaloop`, verify the generated worklet remains import-free through the existing contract, and run applicable browser smoke commands from its README.
-- [ ] Run `sphinx-build -W --keep-going docs/source _build`.
-- [ ] Build a prompt-to-artifact completion checklist mapping every goal, scope item, immutable criterion, named file, command, test, migration, target, PR gate, and review item to inspected evidence. Treat uncertainty as incomplete and fix or verify every gap.
-- [ ] Inspect `git diff --check`, `git status`, changed-file scope, dependency trees, and generated-artifact exclusions; commit final corrections and rerun affected/full gates until the worktree is clean.
-- [ ] Commit the final validation milestone.
+Local validation evidence (2026-09-01): the complete native suite passed 1,688/1,688 with four policy skips after correcting one stale catalog assertion discovered by the first run. The complete 17-package Node Wasm suite passed 1,407/1,407. Warning-denying workspace and locked app/worklet Wasm builds, formatting, test/tracing policies, dependency isolation, Wasm report tests, smoke budget, Trunk, zero-import/raw-host protocol-21 contract, and Sphinx all passed. Native application smoke now saves/reloads a three-channel rack with typed controls and assignment; browser self-test requests three-channel Built-in FX and verifies expanded state after load. Engine/worklet objective signal tests inspect reduction, RMS/selectivity, waveform differences, tails, finite bounds, stereo linking/decorrelation, and isolation rather than relying on snapshots. No Chrome/Chromium, `chromedriver`, or `geckodriver` is installed locally, so policy-triggered Chromium/Chrome/Firefox CI remains mandatory. The prompt-to-artifact audit is `/tmp/expanded_builtin_fx_completion_audit.md`; only Stage 10 PR/CI/review closure remains incomplete.
+
+- [x] Extend native application smoke coverage to create mono, stereo, and N-channel Built-in FX tracks with MIDI; exercise representative audio for every stage/type, continuous controls, exact bypass, stale-tail reset, local/global learned CC, ignored notes, save/reload, and migrated version-9 state.
+- [x] Extend browser self-test and production Worker/AudioWorklet smoke coverage with catalog/topology, representative DSP, local/global MIDI control, snapshots, save/reload, and N-channel internal routing evidence.
+- [x] Add objective offline render checks for each effect and stereo specialization; inspect generated metrics/output for intended response rather than relying only on state snapshots or call counters.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `cargo check --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown` and `cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown`.
+- [x] Run `python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown`, inspect relevant `cargo tree` output, and verify FunDSP/new rack code does not introduce disallowed worklet dependencies.
+- [x] Run `python3 scripts/run_wasm_tests.py --runtime node --profile dev`.
+- [x] Run `python3 scripts/run_wasm_tests.py --runtime chrome --profile dev` when Chrome is available; otherwise record the local limitation and require the corresponding PR matrix job.
+- [x] Run `python3 -m unittest scripts.tests.test_wasm_test_report` and `python3 scripts/check_wasm_smoke_budget.py`.
+- [x] Run `trunk build` from `src/rust/shoopdaloop`, verify the generated worklet remains import-free through the existing contract, and run applicable browser smoke commands from its README.
+- [x] Run `sphinx-build -W --keep-going docs/source _build`.
+- [x] Build a prompt-to-artifact completion checklist mapping every goal, scope item, immutable criterion, named file, command, test, migration, target, PR gate, and review item to inspected evidence. Treat uncertainty as incomplete and fix or verify every gap.
+- [x] Inspect `git diff --check`, `git status`, changed-file scope, dependency trees, and generated-artifact exclusions; commit final corrections and rerun affected/full gates until the worktree is clean.
+- [x] Commit the final validation milestone.
 
 ## Stage 10 — Pull request, CI, and automated-review closure
 
