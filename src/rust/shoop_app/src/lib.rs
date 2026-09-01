@@ -1225,8 +1225,7 @@ impl ApplicationModel {
             .values()
             .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
         {
-            let id = PortId::from_raw(next_port_id);
-            next_port_id = next_port_id.saturating_add(1);
+            let id = allocate_connection_port_id(&connection_ports, &mut next_port_id);
             connection_ports.insert(
                 id,
                 ConnectionPortModel {
@@ -1254,8 +1253,8 @@ impl ApplicationModel {
                     .application_ports
                     .get(&backend_channel.output_port_id)
                     .ok_or_else(|| anyhow!("backend omitted Master output port"))?;
-                let output_port_id = PortId::from_raw(next_port_id);
-                next_port_id = next_port_id.saturating_add(1);
+                let output_port_id =
+                    allocate_connection_port_id(&connection_ports, &mut next_port_id);
                 connection_ports.insert(
                     output_port_id,
                     ConnectionPortModel {
@@ -7309,8 +7308,8 @@ impl ApplicationModel {
                 .values()
                 .all(|port| port.backend_id != descriptor.id)
             {
-                let id = PortId::from_raw(self.next_port_id);
-                self.next_port_id = self.next_port_id.saturating_add(1);
+                let id =
+                    allocate_connection_port_id(&self.connection_ports, &mut self.next_port_id);
                 self.connection_ports.insert(
                     id,
                     ConnectionPortModel {
@@ -7347,8 +7346,8 @@ impl ApplicationModel {
                 .find(|port| port.backend_id == descriptor.id)
                 .map(|port| port.id)
                 .unwrap_or_else(|| {
-                    let id = PortId::from_raw(self.next_port_id);
-                    self.next_port_id = self.next_port_id.saturating_add(1);
+                    let id =
+                        allocate_connection_port_id(&self.connection_ports, &mut self.next_port_id);
                     self.connection_ports.insert(
                         id,
                         ConnectionPortModel {
@@ -8510,12 +8509,7 @@ impl ApplicationModel {
                 );
             }
         }
-        self.next_port_id = connection_ports
-            .keys()
-            .map(|id| id.raw())
-            .max()
-            .unwrap_or(0)
-            .saturating_add(1);
+        self.next_port_id = 1;
         self.next_bus_id = buses
             .keys()
             .map(|id| id.raw())
@@ -10081,15 +10075,9 @@ fn session_bundle_to_backend(
         let mut next_port_id = 1_u64;
         let output_ids = (0..2)
             .map(|_| {
-                while used_port_ids.contains(&next_port_id) {
-                    next_port_id = next_port_id.saturating_add(1);
-                }
-                let id = next_port_id;
-                used_port_ids.insert(id);
-                next_port_id = next_port_id.saturating_add(1);
-                id
+                allocate_unused_port_id(&mut used_port_ids, &mut next_port_id).map(PortId::raw)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, String>>()?;
         let bus_id = 1_u64;
         (
             vec![BackendSessionBus {
@@ -10317,6 +10305,15 @@ fn script_midi_host_id(direction: PortDirection, endpoint: &str) -> HostPortId {
     HostPortId::new(shoop_scripting::midi_endpoint_host_id(direction, endpoint))
 }
 
+fn allocate_connection_port_id(
+    ports: &BTreeMap<PortId, ConnectionPortModel>,
+    next: &mut u64,
+) -> PortId {
+    let mut used = ports.keys().map(|id| id.raw()).collect::<BTreeSet<_>>();
+    allocate_unused_port_id(&mut used, next)
+        .expect("bounded application port inventory cannot exhaust u64 identities")
+}
+
 fn allocate_unused_port_id(used: &mut BTreeSet<u64>, next: &mut u64) -> Result<PortId, String> {
     if *next == 0 {
         *next = 1;
@@ -10359,8 +10356,7 @@ fn register_backend_ports(
 ) -> Arc<[PortId]> {
     let mut ids = Vec::with_capacity(descriptors.len());
     for descriptor in descriptors {
-        let id = PortId::from_raw(*next_port_id);
-        *next_port_id = next_port_id.saturating_add(1);
+        let id = allocate_connection_port_id(ports, next_port_id);
         ports.insert(
             id,
             ConnectionPortModel {
