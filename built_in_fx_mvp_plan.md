@@ -158,7 +158,7 @@ Depends on Stages 1–5.
 
 Depends on all implementation stages. Run in the environment selected by `.agents/info/build.md`; on Nix/NixOS, run all payloads inside `nix develop`.
 
-Final local validation evidence on implementation head `9873eee0a` (2026-09-01): the bounded native suite passed 1,658/1,658 tests with four policy skips; the complete Node Wasm suite passed all 17 packages (1,377 tests); warning-denying native/Wasm builds, dependency policies, tracing/test policies, Trunk, import-free worklet/raw-host contract, Wasm harness checks, and Sphinx all passed. No Chrome/Chromium, `chromedriver`, or `geckodriver` is installed locally, so packaged browser and Chromium harness execution is delegated to the required PR web-debug matrix job.
+Final local validation evidence on implementation/test head `f9c122990` (2026-09-01): the bounded native suite passed 1,658/1,658 tests with four policy skips; the complete Node Wasm suite passed all 17 packages (1,377 tests); warning-denying native/Wasm builds, dependency policies, tracing/test policies, Trunk, import-free worklet/raw-host contract, Wasm harness checks, and Sphinx all passed. No Chrome/Chromium, `chromedriver`, or `geckodriver` is installed locally, so packaged browser and Chromium harness execution is delegated to the required PR web-debug matrix job.
 
 - [x] Run `cargo fmt --all -- --check`.
 - [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
@@ -182,16 +182,18 @@ Depends on a clean Stage 7.
 - [x] Review the commit series for meaningful stage boundaries and ensure no generated `dist`, worklet, `_build`, trace, credential, or unrelated files are committed.
 - [x] Push the branch with `git push -u origin shoopdaloop-fundsp`.
 - [x] Open a PR against `master` using `gh pr create`, with a concise summary, immutable behavior contract, session-format note, FunDSP attribution/dependency details, and exact local validation evidence.
-- [x] Record the PR URL and validated implementation head in this plan: https://github.com/SanderVocke/shoopdaloop/pull/844 at `9873eee0a` before this validation-record-only commit.
+- [x] Record the PR URL and validated implementation/test head in this plan: https://github.com/SanderVocke/shoopdaloop/pull/844 at `f9c122990` before this closure-record-only commit.
 
 ## Stage 9 — CI and automated review closure
 
 Depends on the open PR. Repeat until the latest pushed SHA is green and review-clean.
 
-- [ ] Monitor required checks with `gh pr checks`/`gh run watch`; confirm Build and Test matrix, Rust coverage, Docs, and CodeQL complete for the latest head SHA.
-- [ ] For failures, inspect the exact attempt, matrix job, logs, and artifacts with `gh run view`, `gh run download`, or `gh api`. Compare matrix peers before deciding whether a failure is deterministic or flaky; read the Perfetto skill before analyzing any `.pftrace` artifact.
-- [ ] Reproduce deterministic failures locally where possible, add or improve a regression test, fix the root cause, rerun all affected local gates, commit the correction, and push it. Do not use blind reruns as a substitute for diagnosis.
-- [ ] Query PR reviews, issue comments, and inline review comments with `gh pr view` and `gh api` after each review cycle so automated findings are not missed.
-- [ ] Classify every automated finding. For a valid finding, add/adjust coverage, implement the fix, run affected and mandatory gates, commit, push, and reply with the fix SHA/evidence. For an invalid or already-covered finding, reply with concrete code/test evidence and resolve it where permissions allow.
-- [ ] After each push, wait for replacement checks and automated reviewers to finish on the new SHA, then repeat the CI/review query.
-- [ ] Finish only when all required checks are green on the latest SHA, there are no unresolved actionable automated findings, the PR is mergeable, and the worktree is clean. Record the final PR URL, head SHA, check summary, and review disposition in this plan.
+Closure evidence (2026-09-01): PR https://github.com/SanderVocke/shoopdaloop/pull/844, implementation/test head `f9c122990315bdeb3e1a7215d30a39f3a62f915e`. Build and Test run `33500456785` passed Rust coverage and all eight Linux/macOS/Windows/web debug/release jobs. The web-debug job passed the required complete Node and policy-triggered Chromium suites plus hosted/self-contained Chrome AudioWorklet and multirealm Perfetto smokes; web release passed Firefox Web Audio. Docs run `33500456549`, CodeQL run `33500456586`, and both Codecov statuses passed. The sole automated comment was Codecov's informational 97.07% patch-coverage report with project coverage increasing 0.14 points; it was reviewed and answered with direct acceptance-path coverage evidence at issue comment `5493247764`. Review, issue-comment, inline-comment, and GraphQL review-thread queries found no other findings or unresolved threads. The PR is ready, cleanly mergeable, and the local worktree was clean before this closure-record-only commit.
+
+- [x] Monitor required checks with `gh pr checks`/`gh run watch`; confirm Build and Test matrix, Rust coverage, Docs, and CodeQL complete for the latest head SHA.
+- [x] For failures, inspect the exact attempt, matrix job, logs, and artifacts with `gh run view`, `gh run download`, or `gh api`. Compare matrix peers before deciding whether a failure is deterministic or flaky; read the Perfetto skill before analyzing any `.pftrace` artifact.
+- [x] Reproduce deterministic failures locally where possible, add or improve a regression test, fix the root cause, rerun all affected local gates, commit the correction, and push it. Do not use blind reruns as a substitute for diagnosis.
+- [x] Query PR reviews, issue comments, and inline review comments with `gh pr view` and `gh api` after each review cycle so automated findings are not missed.
+- [x] Classify every automated finding. For a valid finding, add/adjust coverage, implement the fix, run affected and mandatory gates, commit, push, and reply with the fix SHA/evidence. For an invalid or already-covered finding, reply with concrete code/test evidence and resolve it where permissions allow.
+- [x] After each push, wait for replacement checks and automated reviewers to finish on the new SHA, then repeat the CI/review query.
+- [x] Finish only when all required checks are green on the latest SHA, there are no unresolved actionable automated findings, the PR is mergeable, and the worktree is clean. Record the final PR URL, head SHA, check summary, and review disposition in this plan.
