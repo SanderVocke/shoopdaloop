@@ -1,5 +1,6 @@
 use shoop_app::{ApplicationAudioPreview, ApplicationHandle};
 use shoop_egui::AppIntent;
+use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -10,7 +11,7 @@ enum PreviewCommand {
 }
 
 pub fn is_available() -> bool {
-    rodio::OutputStreamBuilder::from_default_device().is_ok()
+    rodio::DeviceSinkBuilder::from_default_device().is_ok()
 }
 
 pub struct NativePreviewPlayer {
@@ -121,13 +122,15 @@ fn run_worker(receiver: Receiver<PreviewCommand>, handle: ApplicationHandle) {
 
 fn start_playback(
     preview: &ApplicationAudioPreview,
-) -> anyhow::Result<(rodio::OutputStream, rodio::Sink)> {
-    let stream = rodio::OutputStreamBuilder::open_default_stream()
+) -> anyhow::Result<(rodio::MixerDeviceSink, rodio::Player)> {
+    let stream = rodio::DeviceSinkBuilder::open_default_sink()
         .map_err(|error| anyhow::anyhow!("Could not open preview output: {error}"))?;
-    let sink = rodio::Sink::connect_new(stream.mixer());
+    let sink = rodio::Player::connect_new(stream.mixer());
+    let sample_rate = NonZeroU32::new(preview.sample_rate)
+        .ok_or_else(|| anyhow::anyhow!("Click preview sample rate is zero"))?;
     sink.append(rodio::buffer::SamplesBuffer::new(
-        1,
-        preview.sample_rate,
+        NonZeroU16::MIN,
+        sample_rate,
         preview.samples.to_vec(),
     ));
     sink.play();
