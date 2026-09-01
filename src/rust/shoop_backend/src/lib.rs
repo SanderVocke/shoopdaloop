@@ -2583,23 +2583,11 @@ impl EngineBackend {
             return Err(anyhow!("unknown backend bus {bus_id:?}"));
         }
         let control = control.normalized(self.master_bus.channels.len())?;
-        let changed = match control {
-            BackendBusControl::GainDb(value) => {
-                let changed = self.master_bus.gain_db != value;
-                self.master_bus.gain_db = value;
-                changed
-            }
-            BackendBusControl::Balance(value) => {
-                let changed = self.master_bus.balance != value;
-                self.master_bus.balance = value;
-                changed
-            }
-            BackendBusControl::Mute(value) => {
-                let changed = self.master_bus.muted != value;
-                self.master_bus.muted = value;
-                changed
-            }
-        };
+        match control {
+            BackendBusControl::GainDb(value) => self.master_bus.gain_db = value,
+            BackendBusControl::Balance(value) => self.master_bus.balance = value,
+            BackendBusControl::Mute(value) => self.master_bus.muted = value,
+        }
         let base = db_gain(self.master_bus.gain_db);
         let (left, right) = balance_factors(self.master_bus.balance);
         let stereo = self.master_bus.channels.len() == 2;
@@ -2621,9 +2609,7 @@ impl EngineBackend {
             port.set_gain(base * balance);
             port.set_muted(self.master_bus.muted);
         }
-        if changed {
-            self.mixer_revision = self.mixer_revision.wrapping_add(1);
-        }
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
         Ok(())
     }
 
@@ -2651,6 +2637,7 @@ impl EngineBackend {
             destination_channel_id,
         };
         if self.mixer_routes.contains(&link) == connected {
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
             return Ok(());
         }
         if connected {

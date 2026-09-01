@@ -783,17 +783,10 @@ impl NativeRuntime {
             base * right,
             muted,
         )?;
-        let changed = (
-            self.master_bus.gain_db,
-            self.master_bus.balance,
-            self.master_bus.muted,
-        ) != (gain_db, balance, muted);
         self.master_bus.gain_db = gain_db;
         self.master_bus.balance = balance;
         self.master_bus.muted = muted;
-        if changed {
-            self.mixer_revision = self.mixer_revision.wrapping_add(1);
-        }
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
         Ok(())
     }
 
@@ -824,6 +817,7 @@ impl NativeRuntime {
             destination_channel_id,
         };
         if self.mixer_routes.contains(&link) == connected {
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
             return Ok(());
         }
         if connected {

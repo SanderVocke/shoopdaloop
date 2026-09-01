@@ -638,6 +638,8 @@ struct ApplicationModel {
     desired_loop_controls: BTreeMap<(BackendLoopId, LoopControlKey), f32>,
     connection_errors: Vec<ConnectionErrorState>,
     connection_revision: u64,
+    backend_connection_revision: u64,
+    backend_mixer_revision: u64,
     connection_backend_available: bool,
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
@@ -703,6 +705,8 @@ enum BusControlKey {
 struct PendingBusControl {
     desired: BackendBusControl,
     rollback: BackendBusControl,
+    cancelling: bool,
+    confirmation_revision: Option<u64>,
     age: Duration,
 }
 
@@ -1008,6 +1012,8 @@ struct ConnectionPortModel {
 
 struct PendingConnection {
     desired_connected: bool,
+    cancelling: bool,
+    confirmation_revision: Option<u64>,
     age: Duration,
 }
 
@@ -1509,6 +1515,8 @@ impl ApplicationModel {
             desired_loop_controls: BTreeMap::new(),
             connection_errors: Vec::new(),
             connection_revision: 1,
+            backend_connection_revision: 0,
+            backend_mixer_revision: 0,
             connection_backend_available: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
@@ -4902,6 +4910,8 @@ impl ApplicationModel {
             PendingBusControl {
                 desired: control,
                 rollback,
+                cancelling: false,
+                confirmation_revision: None,
                 age: Duration::ZERO,
             },
         );
@@ -7755,6 +7765,8 @@ impl ApplicationModel {
             key,
             PendingConnection {
                 desired_connected: connected,
+                cancelling: false,
+                confirmation_revision: None,
                 age: Duration::ZERO,
             },
         );
@@ -7817,6 +7829,8 @@ impl ApplicationModel {
             route,
             PendingConnection {
                 desired_connected: connected,
+                cancelling: false,
+                confirmation_revision: None,
                 age: Duration::ZERO,
             },
         );
@@ -7841,8 +7855,23 @@ impl ApplicationModel {
         for ((backend_id, control_key), rollback) in bus_timed_out {
             let message = match backend.set_bus_control(backend_id, rollback) {
                 Ok(()) => {
-                    self.desired_bus_controls.remove(&(backend_id, control_key));
-                    "bus control request timed out and was cancelled".to_owned()
+                    if let Some(pending) = self
+                        .desired_bus_controls
+                        .get_mut(&(backend_id, control_key))
+                    {
+                        pending.desired = rollback;
+                        pending.cancelling = true;
+                        pending.confirmation_revision = Some(self.backend_mixer_revision);
+                        pending.age = Duration::ZERO;
+                    }
+                    if let Some(bus) = self
+                        .buses
+                        .values_mut()
+                        .find(|bus| bus.backend_id == backend_id)
+                    {
+                        apply_bus_control(bus, rollback);
+                    }
+                    "bus control request timed out; cancellation is pending".to_owned()
                 }
                 Err(error) => {
                     if let Some(pending) = self
@@ -7883,9 +7912,15 @@ impl ApplicationModel {
                 Some(port) => {
                     match backend.set_port_connected(port.backend_id, &external_port, rollback) {
                         Ok(()) => {
-                            self.pending_connections.remove(&key);
+                            if let Some(pending) = self.pending_connections.get_mut(&key) {
+                                pending.desired_connected = rollback;
+                                pending.cancelling = true;
+                                pending.confirmation_revision =
+                                    Some(self.backend_connection_revision);
+                                pending.age = Duration::ZERO;
+                            }
                             format!(
-                                "connection request timed out and was cancelled: {external_port}"
+                                "connection request timed out; cancellation is pending: {external_port}"
                             )
                         }
                         Err(error) => {
@@ -7935,8 +7970,13 @@ impl ApplicationModel {
                     rollback,
                 ) {
                     Ok(()) => {
-                        self.pending_mixer_routes.remove(&route);
-                        "mixer route request timed out and was cancelled".to_owned()
+                        if let Some(pending) = self.pending_mixer_routes.get_mut(&route) {
+                            pending.desired_connected = rollback;
+                            pending.cancelling = true;
+                            pending.confirmation_revision = Some(self.backend_mixer_revision);
+                            pending.age = Duration::ZERO;
+                        }
+                        "mixer route request timed out; cancellation is pending".to_owned()
                     }
                     Err(error) => {
                         if let Some(pending) = self.pending_mixer_routes.get_mut(&route) {
@@ -8191,12 +8231,18 @@ impl ApplicationModel {
                     if let Some(entity) = failure.entity {
                         let backend_id = BackendBusId::from_raw(entity);
                         let key = (backend_id, bus_control_key(*rejected));
-                        let matches = self
-                            .desired_bus_controls
-                            .get(&key)
-                            .is_some_and(|pending| pending.desired == *rejected);
-                        if matches {
-                            self.desired_bus_controls.remove(&key);
+                        let state = self.desired_bus_controls.get(&key).and_then(|pending| {
+                            (pending.desired == *rejected).then_some(pending.cancelling)
+                        });
+                        if let Some(cancelling) = state {
+                            if cancelling {
+                                if let Some(pending) = self.desired_bus_controls.get_mut(&key) {
+                                    pending.confirmation_revision = None;
+                                    pending.age = Duration::ZERO;
+                                }
+                            } else {
+                                self.desired_bus_controls.remove(&key);
+                            }
                             let still_pending = self
                                 .desired_bus_controls
                                 .keys()
@@ -8207,7 +8253,14 @@ impl ApplicationModel {
                                 .find(|bus| bus.backend_id == backend_id)
                             {
                                 bus.control_pending = still_pending;
-                                bus.control_error = Some(failure.message.clone());
+                                bus.control_error = Some(if cancelling {
+                                    format!(
+                                        "bus cancellation was rejected and will retry: {}",
+                                        failure.message
+                                    )
+                                } else {
+                                    failure.message.clone()
+                                });
                             }
                         }
                     }
@@ -8772,6 +8825,7 @@ impl ApplicationModel {
     }
 
     fn apply_mixer_snapshot(&mut self, snapshot: BackendMixerSnapshot) {
+        let revision = snapshot.revision;
         for backend_bus in snapshot.buses.values() {
             let bus_id = self
                 .buses
@@ -8834,16 +8888,22 @@ impl ApplicationModel {
         self.buses
             .retain(|_, bus| snapshot.buses.contains_key(&bus.backend_id));
         for ((backend_id, key), pending) in &mut self.desired_bus_controls {
-            if let Some(bus) = snapshot.buses.get(backend_id) {
-                pending.rollback = backend_bus_control(bus, *key);
+            if !pending.cancelling {
+                if let Some(bus) = snapshot.buses.get(backend_id) {
+                    pending.rollback = backend_bus_control(bus, *key);
+                }
             }
         }
         self.desired_bus_controls
             .retain(|(backend_id, _), pending| {
-                snapshot
-                    .buses
-                    .get(backend_id)
-                    .is_some_and(|bus| !bus_control_matches(bus, pending.desired))
+                snapshot.buses.get(backend_id).is_some_and(|bus| {
+                    let matched = bus_control_matches(bus, pending.desired);
+                    let confirmed = !pending.cancelling
+                        || pending
+                            .confirmation_revision
+                            .is_some_and(|baseline| revision != baseline);
+                    !(matched && confirmed)
+                })
             });
         for ((backend_id, _), pending) in &self.desired_bus_controls {
             if let Some(bus) = self
@@ -8904,8 +8964,31 @@ impl ApplicationModel {
                 source_port_id,
                 destination_channel_id,
             };
-            self.pending_mixer_routes.remove(&route);
-            self.push_mixer_route_error(route, failure.message);
+            let cancelling = self.pending_mixer_routes.get(&route).and_then(|pending| {
+                (pending.desired_connected == failure.desired_connected)
+                    .then_some(pending.cancelling)
+            });
+            if let Some(cancelling) = cancelling {
+                if cancelling {
+                    if let Some(pending) = self.pending_mixer_routes.get_mut(&route) {
+                        pending.confirmation_revision = None;
+                        pending.age = Duration::ZERO;
+                    }
+                } else {
+                    self.pending_mixer_routes.remove(&route);
+                }
+            }
+            self.push_mixer_route_error(
+                route,
+                if cancelling == Some(true) {
+                    format!(
+                        "mixer route cancellation was rejected and will retry: {}",
+                        failure.message
+                    )
+                } else {
+                    failure.message
+                },
+            );
         }
         let pending = self
             .pending_mixer_routes
@@ -8920,16 +9003,23 @@ impl ApplicationModel {
                 .flat_map(|bus| &bus.channels)
                 .any(|channel| channel.id == route.destination_channel_id);
             let confirmed = self.confirmed_mixer_routes.contains(&route);
+            let pending = &self.pending_mixer_routes[&route];
+            let cancellation_confirmed = !pending.cancelling
+                || pending
+                    .confirmation_revision
+                    .is_some_and(|baseline| revision != baseline);
             if !source_exists
                 || !destination_exists
-                || self.pending_mixer_routes[&route].desired_connected == confirmed
+                || pending.desired_connected == confirmed && cancellation_confirmed
             {
                 self.pending_mixer_routes.remove(&route);
             }
         }
+        self.backend_mixer_revision = revision;
     }
 
     fn apply_connection_snapshot(&mut self, snapshot: BackendConnectionSnapshot) {
+        let revision = snapshot.revision;
         self.connection_backend_available = snapshot.available;
         for descriptor in snapshot
             .application_ports
@@ -9013,13 +9103,33 @@ impl ApplicationModel {
             else {
                 continue;
             };
-            self.pending_connections
-                .remove(&(port_id, failure.external_port.clone()));
+            let key = (port_id, failure.external_port.clone());
+            let cancelling = self.pending_connections.get(&key).and_then(|pending| {
+                (pending.desired_connected == failure.desired_connected)
+                    .then_some(pending.cancelling)
+            });
+            if let Some(cancelling) = cancelling {
+                if cancelling {
+                    if let Some(pending) = self.pending_connections.get_mut(&key) {
+                        pending.confirmation_revision = None;
+                        pending.age = Duration::ZERO;
+                    }
+                } else {
+                    self.pending_connections.remove(&key);
+                }
+            }
             self.push_connection_error(ConnectionErrorState {
                 port_id: Some(port_id),
                 external_port: Some(failure.external_port.clone()),
                 kind: ConnectionErrorKind::BackendRejected,
-                message: failure.message,
+                message: if cancelling == Some(true) {
+                    format!(
+                        "connection cancellation was rejected and will retry: {}",
+                        failure.message
+                    )
+                } else {
+                    failure.message
+                },
             });
         }
         self.host_ports = snapshot
@@ -9077,8 +9187,12 @@ impl ApplicationModel {
             let connected = self
                 .confirmed_connections
                 .contains(&(port_id, host_port_id.clone()));
-            let desired = self.pending_connections[&key].desired_connected;
-            if host_present && connected == desired {
+            let pending = &self.pending_connections[&key];
+            let cancellation_confirmed = !pending.cancelling
+                || pending
+                    .confirmation_revision
+                    .is_some_and(|baseline| revision != baseline);
+            if host_present && connected == pending.desired_connected && cancellation_confirmed {
                 self.pending_connections.remove(&key);
             } else if !host_present {
                 self.pending_connections.remove(&key);
@@ -9090,6 +9204,7 @@ impl ApplicationModel {
                 });
             }
         }
+        self.backend_connection_revision = revision;
         self.rebuild_connection_view();
     }
 
@@ -19609,12 +19724,44 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!model.desired_bus_controls.is_empty());
         assert_eq!(backend.operations().len(), operations_before_wait);
         model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
-        let bus = &model.buses[&bus_id];
-        assert!(!bus.control_pending);
+        assert!(model.buses[&bus_id].control_pending);
+        assert!(!model.buses[&bus_id].muted);
         assert_eq!(
-            bus.control_error.as_deref(),
-            Some("bus control request timed out and was cancelled")
+            model.buses[&bus_id].control_error.as_deref(),
+            Some("bus control request timed out; cancellation is pending")
         );
+        let mut rollback_rejected = backend.poll().unwrap();
+        rollback_rejected
+            .mixer
+            .buses
+            .get_mut(&backend_id)
+            .unwrap()
+            .muted = true;
+        rollback_rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 2,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::BusControl,
+                entity: Some(backend_id.raw()),
+                detail: Some(BackendMutationDetail::BusControl(BackendBusControl::Mute(
+                    false,
+                ))),
+                message: "rollback rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(rollback_rejected);
+        assert!(model.buses[&bus_id].control_pending);
+        assert!(!model.buses[&bus_id].muted);
+        assert!(model.buses[&bus_id]
+            .control_error
+            .as_deref()
+            .is_some_and(|error| error.contains("cancellation was rejected and will retry")));
+
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert!(!model.buses[&bus_id].control_pending);
+        assert!(!model.buses[&bus_id].muted);
         assert!(model.desired_bus_controls.is_empty());
         assert!(matches!(
             backend.operations().last(),
@@ -19656,12 +19803,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         };
         assert!(model.pending_mixer_routes.contains_key(&route));
         model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
-        assert!(!model.pending_mixer_routes.contains_key(&route));
+        assert!(model.pending_mixer_routes.contains_key(&route));
         assert!(model
             .mixer_route_errors
             .iter()
             .any(|error| error.route == route
-                && error.message == "mixer route request timed out and was cancelled"));
+                && error.message == "mixer route request timed out; cancellation is pending"));
         assert!(matches!(
             backend.operations().last(),
             Some(shoop_backend::FakeOperation::SetMixerRoute(link, false))
@@ -19669,6 +19816,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     && link.destination_channel_id
                         == model.buses.values().next().unwrap().channels[0].backend_id
         ));
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert!(!model.pending_mixer_routes.contains_key(&route));
         model
             .set_mixer_route_connected(&mut backend, source_port_id, destination_channel_id, true)
             .unwrap();
@@ -19982,9 +20131,22 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!timed_out.connections.confirmed_links.iter().any(|link| {
             link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
         }));
-        assert!(!timed_out.connections.pending_links.iter().any(|link| {
-            link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
+        assert!(timed_out.connections.pending_links.iter().any(|link| {
+            link.application_port_id == port_id
+                && link.host_port_id.as_str() == "system:capture_1"
+                && !link.desired_connected
         }));
+        control.complete_pending(true);
+        runtime.tick(Duration::ZERO);
+        assert!(!runtime
+            .snapshot()
+            .connections
+            .pending_links
+            .iter()
+            .any(|link| {
+                link.application_port_id == port_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+            }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
