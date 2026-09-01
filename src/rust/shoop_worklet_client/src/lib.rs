@@ -853,6 +853,19 @@ impl RemoteWorkletBackend {
                 host_port_id: link.host_port_id,
             })
             .collect();
+        self.snapshot
+            .connections
+            .failures
+            .extend(
+                wire.connection_failures
+                    .into_iter()
+                    .map(|failure| BackendConnectionFailure {
+                        port_id: BackendPortId::from_raw(failure.application_port_id),
+                        external_port: failure.host_port_id,
+                        desired_connected: failure.desired_connected,
+                        message: failure.message,
+                    }),
+            );
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
         self.snapshot.mixer.buses = wire
             .buses
@@ -3381,6 +3394,12 @@ mod tests {
                     application_port_id: 1,
                     host_port_id: "audio-in".to_owned(),
                 }],
+                connection_failures: vec![shoop_audio_protocol::WireConnectionFailure {
+                    application_port_id: 1,
+                    host_port_id: "missing-output".to_owned(),
+                    desired_connected: true,
+                    message: "unavailable".to_owned(),
+                }],
                 buses: vec![shoop_audio_protocol::WireBus {
                     id: 1,
                     name: "Master".to_owned(),
@@ -3438,6 +3457,8 @@ mod tests {
         assert_eq!(snapshot.connections.application_ports.len(), roles.len());
         assert_eq!(snapshot.connections.host_ports.len(), 2);
         assert_eq!(snapshot.connections.confirmed_links.len(), 1);
+        assert_eq!(snapshot.connections.failures.len(), 1);
+        assert!(backend.poll().unwrap().connections.failures.is_empty());
         assert_eq!(snapshot.mixer.buses.len(), 1);
         assert_eq!(snapshot.mixer.confirmed_links.len(), 1);
         backend

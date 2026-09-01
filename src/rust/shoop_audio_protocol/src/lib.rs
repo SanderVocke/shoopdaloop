@@ -575,6 +575,7 @@ pub struct WireSnapshot {
     pub application_ports: Vec<WireApplicationPort>,
     pub host_ports: Vec<WireHostPort>,
     pub confirmed_links: Vec<WireConfirmedLink>,
+    pub connection_failures: Vec<WireConnectionFailure>,
     pub buses: Vec<WireBus>,
     pub confirmed_mixer_links: Vec<WireMixerLink>,
     pub mixer_failures: Vec<WireMixerFailure>,
@@ -636,6 +637,14 @@ pub struct WireHostPort {
 pub struct WireConfirmedLink {
     pub application_port_id: u64,
     pub host_port_id: String,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireConnectionFailure {
+    pub application_port_id: u64,
+    pub host_port_id: String,
+    pub desired_connected: bool,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]

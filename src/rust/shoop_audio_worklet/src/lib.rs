@@ -5,15 +5,15 @@ use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk,
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
     WireBus, WireBusChannel, WireChannelMode, WireCompositeConfig, WireCompositeKind,
-    WireCompositeState, WireCompositeTarget, WireConfirmedLink, WireHostPort,
-    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent, WireMixerFailure,
-    WireMixerLink, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
-    WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
-    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
-    WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
-    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    WireCompositeState, WireCompositeTarget, WireConfirmedLink, WireConnectionFailure,
+    WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WireMixerFailure, WireMixerLink, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
+    WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
+    WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl,
+    WireTrackFxControl, WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology,
+    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendBusChannelId, BackendCompositeConfig, BackendCompositeEntry,
@@ -1208,6 +1208,17 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             host_port_id: link.host_port_id,
         })
         .collect();
+    let connection_failures = snapshot
+        .connections
+        .failures
+        .into_iter()
+        .map(|failure| WireConnectionFailure {
+            application_port_id: failure.port_id.raw(),
+            host_port_id: failure.external_port,
+            desired_connected: failure.desired_connected,
+            message: failure.message,
+        })
+        .collect();
     let buses = snapshot
         .mixer
         .buses
@@ -1402,6 +1413,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         application_ports,
         host_ports,
         confirmed_links,
+        connection_failures,
         buses,
         confirmed_mixer_links,
         mixer_failures,
@@ -2418,6 +2430,24 @@ mod tests {
             .event,
             Event::Ack
         ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn backend_snapshot_connection_failures_cross_the_wire() {
+        let mut snapshot = BackendSnapshot::default();
+        snapshot
+            .connections
+            .failures
+            .push(shoop_backend::BackendConnectionFailure {
+                port_id: BackendPortId::from_raw(7),
+                external_port: "missing-output".to_owned(),
+                desired_connected: true,
+                message: "unavailable".to_owned(),
+            });
+        let wire = to_wire_snapshot(snapshot);
+        assert_eq!(wire.connection_failures.len(), 1);
+        assert_eq!(wire.connection_failures[0].application_port_id, 7);
+        assert_eq!(wire.connection_failures[0].host_port_id, "missing-output");
     }
 
     #[shoop_wasm_test_support::shoop_test]
