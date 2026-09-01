@@ -1000,6 +1000,10 @@ impl NativeRuntime {
             if created.ports.len() != source_track.ports.len() {
                 return Err(anyhow!("prepared native port shape changed"));
             }
+            self.set_track_default_playback_mode(
+                created.track_id,
+                source_track.state.default_playback_mode,
+            )?;
             for control in [
                 BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
                 BackendTrackControl::OutputBalance(source_track.state.output_balance),
@@ -1652,6 +1656,7 @@ impl NativeRuntime {
             return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
         }
         track.default_playback_mode = mode;
+        track.state.default_playback_mode = mode;
         let loops = track.loops.clone();
         for loop_id in loops {
             self.loops

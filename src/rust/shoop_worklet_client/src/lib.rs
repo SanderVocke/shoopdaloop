@@ -813,6 +813,12 @@ impl RemoteWorkletBackend {
                 (
                     BackendTrackId::from_raw(track.id),
                     BackendTrackState {
+                        default_playback_mode: match track.default_playback_mode {
+                            WireDefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+                            WireDefaultPlaybackMode::DryThroughWet => {
+                                BackendDefaultPlaybackMode::DryThroughWet
+                            }
+                        },
                         topology: match track.topology {
                             WireTrackTopology::Direct {
                                 audio_channels,
@@ -1283,6 +1289,12 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
                 }
             }))
         }
+        Command::SetTrackDefaultPlaybackMode { mode, .. } => Some(
+            BackendMutationDetail::TrackDefaultPlaybackMode(match mode {
+                WireDefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+                WireDefaultPlaybackMode::DryThroughWet => BackendDefaultPlaybackMode::DryThroughWet,
+            }),
+        ),
         Command::SetTrackFxControl { control, .. } => Some(BackendMutationDetail::TrackFxControl(
             from_wire_track_fx_control(control),
         )),
@@ -3052,25 +3064,33 @@ mod tests {
             .ephemeral(Command::Poll)
             .unwrap();
 
-        let track = |id, topology, fx| WireTrackState {
-            id,
-            topology,
-            fx,
-            audio_channels: 2,
-            midi: true,
-            output_gain_db: -3.0,
-            output_balance: 0.25,
-            output_muted: true,
-            input_gain_db: -4.0,
-            input_balance: -0.25,
-            input_monitoring: true,
-            latency: Default::default(),
-            input_peaks: vec![0.1, 0.2],
-            output_peaks: vec![0.3, 0.4],
-            latest_input_midi_message: Some(WireLatestMidiMessage {
-                bytes: [0x90, 60, 100, 0],
-                len: 3,
-            }),
+        let track = |id, topology, fx| {
+            let default_playback_mode = if matches!(&topology, WireTrackTopology::OxiSynth) {
+                WireDefaultPlaybackMode::DryThroughWet
+            } else {
+                WireDefaultPlaybackMode::Regular
+            };
+            WireTrackState {
+                id,
+                topology,
+                default_playback_mode,
+                fx,
+                audio_channels: 2,
+                midi: true,
+                output_gain_db: -3.0,
+                output_balance: 0.25,
+                output_muted: true,
+                input_gain_db: -4.0,
+                input_balance: -0.25,
+                input_monitoring: true,
+                latency: Default::default(),
+                input_peaks: vec![0.1, 0.2],
+                output_peaks: vec![0.3, 0.4],
+                latest_input_midi_message: Some(WireLatestMidiMessage {
+                    bytes: [0x90, 60, 100, 0],
+                    len: 3,
+                }),
+            }
         };
         let modes = [
             WireLoopMode::Unknown,
@@ -3234,6 +3254,10 @@ mod tests {
         let snapshot = backend.poll().unwrap();
         assert_eq!(snapshot.tracks.len(), 2);
         let oxisynth_track = BackendTrackId::from_raw(3);
+        assert_eq!(
+            snapshot.tracks[&oxisynth_track].default_playback_mode,
+            BackendDefaultPlaybackMode::DryThroughWet
+        );
         let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot.tracks[&oxisynth_track]
             .fx
             .as_ref()
@@ -3454,6 +3478,30 @@ mod tests {
         assert_eq!(failure.entity, Some(creation.loops[0].raw()));
         assert_eq!(failure.message, "gain rejected");
         assert!(backend.poll().unwrap().mutation_failures.is_empty());
+
+        backend
+            .set_track_default_playback_mode(creation.track_id, BackendDefaultPlaybackMode::Regular)
+            .unwrap();
+        deliver(
+            &control,
+            11,
+            5,
+            Event::Error {
+                message: "default playback rejected".to_owned(),
+            },
+        );
+        let snapshot = backend.poll().unwrap();
+        assert!(matches!(
+            snapshot.mutation_failures.as_slice(),
+            [BackendMutationFailure {
+                kind: BackendMutationKind::TrackControl,
+                entity: Some(entity),
+                detail: Some(BackendMutationDetail::TrackDefaultPlaybackMode(
+                    BackendDefaultPlaybackMode::Regular
+                )),
+                ..
+            }] if *entity == creation.track_id.raw()
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]

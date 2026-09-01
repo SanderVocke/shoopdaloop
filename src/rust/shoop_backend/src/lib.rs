@@ -343,6 +343,8 @@ pub enum BackendTrackFxControl {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct BackendTrackState {
     pub topology: BackendTrackTopology,
+    #[serde(default)]
+    pub default_playback_mode: BackendDefaultPlaybackMode,
     #[serde(skip)]
     pub fx: Option<TrackFxState>,
     pub audio_channels: u32,
@@ -796,6 +798,7 @@ pub enum BackendMutationDetail {
     LoopCreation { loop_id: BackendLoopId },
     CompositeConfiguration { plan_version: u64 },
     TrackControl(BackendTrackControl),
+    TrackDefaultPlaybackMode(BackendDefaultPlaybackMode),
     TrackFxControl(BackendTrackFxControl),
     LoopGain(f32),
     LoopBalance(f32),
@@ -2735,6 +2738,7 @@ impl EngineBackend {
         for (track_id, track) in &mut self.tracks {
             let state = BackendTrackState {
                 topology: track.topology.clone(),
+                default_playback_mode: track.default_playback_mode,
                 fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
                 audio_channels: track.audio_outputs.len() as u32,
                 midi: track.midi_input.is_some(),
@@ -2998,6 +3002,10 @@ impl EngineBackend {
                     )),
                 )?;
             }
+            staged.set_track_default_playback_mode(
+                created.track_id,
+                source_track.state.default_playback_mode,
+            )?;
             for control in [
                 BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
                 BackendTrackControl::OutputBalance(source_track.state.output_balance),
@@ -5381,6 +5389,7 @@ impl Backend for EngineBackend {
                 *id,
                 BackendTrackState {
                     topology: track.topology.clone(),
+                    default_playback_mode: track.default_playback_mode,
                     fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
                     audio_channels: track.audio_outputs.len() as u32,
                     midi: track.midi_input.is_some(),
@@ -7192,6 +7201,7 @@ impl Backend for FakeBackend {
             return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
         }
         track.default_playback_mode = mode;
+        track.state.default_playback_mode = mode;
         self.operations
             .push(FakeOperation::SetTrackDefaultPlaybackMode(track_id, mode));
         Ok(())
@@ -8426,6 +8436,10 @@ impl Backend for FakeBackend {
                 }
                 _ => {}
             }
+            staged.set_track_default_playback_mode(
+                created.track_id,
+                source_track.state.default_playback_mode,
+            )?;
             for control in [
                 BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
                 BackendTrackControl::OutputBalance(source_track.state.output_balance),
@@ -9016,6 +9030,12 @@ mod tests {
             })
             .unwrap();
         backend
+            .set_track_default_playback_mode(
+                created.track_id,
+                BackendDefaultPlaybackMode::DryThroughWet,
+            )
+            .unwrap();
+        backend
             .set_track_latency(
                 created.track_id,
                 BackendRecordingOffsetAdjustment::ManualOverride(5),
@@ -9027,9 +9047,16 @@ mod tests {
         let replacement = backend.replace_session(&captured).unwrap();
         let restored_track = replacement.tracks[&created.track_id.raw()].track_id;
         let restored_loop = replacement.loops[&created.loops[0].raw()];
-        let latency = &backend.poll().unwrap().tracks[&restored_track].latency;
-        assert_eq!(latency.effective_offset_frames, Some(5));
-        assert_eq!(latency.effective_processor_advance_frames, Some(7));
+        let restored_state = &backend.poll().unwrap().tracks[&restored_track];
+        assert_eq!(
+            restored_state.default_playback_mode,
+            BackendDefaultPlaybackMode::DryThroughWet
+        );
+        assert_eq!(restored_state.latency.effective_offset_frames, Some(5));
+        assert_eq!(
+            restored_state.latency.effective_processor_advance_frames,
+            Some(7)
+        );
 
         backend
             .transition_loop(restored_loop, BackendLoopMode::Recording, None)

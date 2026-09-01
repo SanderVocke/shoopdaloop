@@ -770,13 +770,16 @@ impl CompositeBoundaryTimeline {
                     })
                     .and_then(|desired| {
                         let mode = match desired.mode {
-                            CompiledChildMode::DefaultPlayback => {
-                                if target.kind == LoopTargetKind::Composite {
-                                    LoopMode::Playing
-                                } else {
-                                    primitive_default_playback(target).loop_mode()
-                                }
-                            }
+                            CompiledChildMode::DefaultPlayback => current.map_or_else(
+                                || {
+                                    if target.kind == LoopTargetKind::Composite {
+                                        LoopMode::Playing
+                                    } else {
+                                        primitive_default_playback(target).loop_mode()
+                                    }
+                                },
+                                |active| active.mode,
+                            ),
                             CompiledChildMode::Explicit(mode) => mode,
                         };
                         (!desired.child_is_empty

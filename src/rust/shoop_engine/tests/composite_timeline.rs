@@ -808,6 +808,12 @@ fn regular_default_playback_resolves_on_activation_and_latches_while_active() {
             .mode,
         LoopMode::PlayingDryThroughWet
     );
+    assert_eq!(
+        timeline.anticipated_transition_with_default_playback(child, |_| {
+            DefaultPlaybackMode::Regular
+        }),
+        None
+    );
 
     timeline.advance_clock(1);
     timeline

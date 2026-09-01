@@ -700,6 +700,8 @@ pub struct WireTrackLatencyState {
 pub struct WireTrackState {
     pub id: u64,
     pub topology: WireTrackTopology,
+    #[serde(default)]
+    pub default_playback_mode: WireDefaultPlaybackMode,
     pub fx: Option<WireTrackFxState>,
     pub audio_channels: u32,
     pub midi: bool,

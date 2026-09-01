@@ -594,6 +594,7 @@ struct ApplicationModel {
     confirmed_connections: BTreeSet<(PortId, String)>,
     pending_connections: BTreeMap<(PortId, String), PendingConnection>,
     desired_track_controls: BTreeMap<(BackendTrackId, TrackControlKey), BackendTrackControl>,
+    desired_track_default_playback_modes: BTreeMap<BackendTrackId, BackendDefaultPlaybackMode>,
     desired_fx_controls: BTreeMap<(BackendTrackId, FxControlKey), BackendTrackFxControl>,
     desired_loop_controls: BTreeMap<(BackendLoopId, LoopControlKey), f32>,
     connection_errors: Vec<ConnectionErrorState>,
@@ -1333,6 +1334,7 @@ impl ApplicationModel {
             confirmed_connections: BTreeSet::new(),
             pending_connections: BTreeMap::new(),
             desired_track_controls: BTreeMap::new(),
+            desired_track_default_playback_modes: BTreeMap::new(),
             desired_fx_controls: BTreeMap::new(),
             desired_loop_controls: BTreeMap::new(),
             connection_errors: Vec::new(),
@@ -4525,6 +4527,10 @@ impl ApplicationModel {
                 loop_audio_channels,
             ));
         }
+        self.desired_track_default_playback_modes.insert(
+            created.track_id,
+            backend_default_playback_mode(default_playback_mode),
+        );
         self.tracks.push(TrackModel {
             id: track_id,
             backend_id: created.track_id,
@@ -4594,14 +4600,6 @@ impl ApplicationModel {
             let backend_loop = backend
                 .add_loop_to_track(backend_track)
                 .map_err(|error| format!("could not add aligned loop: {error}"))?;
-            backend
-                .set_track_default_playback_mode(
-                    backend_track,
-                    backend_default_playback_mode(self.tracks[index].default_playback_mode),
-                )
-                .map_err(|error| {
-                    format!("could not initialize added loop playback mode: {error}")
-                })?;
             if let Some(sync) = self.global.sync.then(|| self.sync_backend_loop()).flatten() {
                 backend
                     .set_loop_sync_source(backend_loop, Some(sync))
@@ -4639,6 +4637,8 @@ impl ApplicationModel {
         }
         self.desired_track_controls
             .retain(|(backend_id, _), _| *backend_id != track.backend_id);
+        self.desired_track_default_playback_modes
+            .remove(&track.backend_id);
         self.desired_fx_controls
             .retain(|(backend_id, _), _| *backend_id != track.backend_id);
         self.desired_loop_controls
@@ -4771,14 +4771,14 @@ impl ApplicationModel {
                         "track {track_id} does not support dry-through-wet default playback"
                     ));
                 }
+                let backend_mode = backend_default_playback_mode(mode);
                 backend
-                    .set_track_default_playback_mode(
-                        track.backend_id,
-                        backend_default_playback_mode(mode),
-                    )
+                    .set_track_default_playback_mode(track.backend_id, backend_mode)
                     .map_err(|error| {
                         format!("could not update track default playback mode: {error}")
                     })?;
+                self.desired_track_default_playback_modes
+                    .insert(track.backend_id, backend_mode);
                 track.default_playback_mode = mode;
                 return Ok(());
             }
@@ -7869,6 +7869,17 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::TrackDefaultPlaybackMode(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendTrackId::from_raw(entity);
+                        if self.desired_track_default_playback_modes.get(&backend_id)
+                            == Some(rejected)
+                        {
+                            self.desired_track_default_playback_modes
+                                .remove(&backend_id);
+                        }
+                    }
+                }
                 Some(BackendMutationDetail::LoopGain(rejected)) => {
                     if let Some(entity) = failure.entity {
                         let key = (BackendLoopId::from_raw(entity), LoopControlKey::Gain);
@@ -8023,6 +8034,13 @@ impl ApplicationModel {
                     .get(backend_id)
                     .is_some_and(|state| track_control_matches(state, *desired))
             });
+        self.desired_track_default_playback_modes
+            .retain(|backend_id, desired| {
+                snapshot
+                    .tracks
+                    .get(backend_id)
+                    .is_none_or(|state| state.default_playback_mode != *desired)
+            });
         self.desired_fx_controls.retain(|(backend_id, _), desired| {
             !snapshot
                 .tracks
@@ -8068,6 +8086,12 @@ impl ApplicationModel {
                         ..
                     } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
                 };
+            track.default_playback_mode = app_default_playback_mode(
+                self.desired_track_default_playback_modes
+                    .get(&track.backend_id)
+                    .copied()
+                    .unwrap_or(backend_state.default_playback_mode),
+            );
             track.fx.clone_from(&backend_state.fx);
             track.latency = app_track_latency(&backend_state.latency);
             if let Some(fx) = track.fx.as_mut() {
@@ -9311,17 +9335,6 @@ impl ApplicationModel {
                 DefaultPlaybackModeDocument::Regular => DefaultPlaybackMode::Regular,
                 DefaultPlaybackModeDocument::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
             };
-            backend
-                .set_track_default_playback_mode(
-                    created.track_id,
-                    backend_default_playback_mode(default_playback_mode),
-                )
-                .map_err(|error| {
-                    format!(
-                        "could not restore default playback mode for track {}: {error}",
-                        track_document.id
-                    )
-                })?;
             tracks.push(TrackModel {
                 id: TrackId::from_raw(track_document.id),
                 backend_id: created.track_id,
@@ -9416,6 +9429,16 @@ impl ApplicationModel {
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
         self.desired_track_controls.clear();
+        self.desired_track_default_playback_modes = self
+            .tracks
+            .iter()
+            .map(|track| {
+                (
+                    track.backend_id,
+                    backend_default_playback_mode(track.default_playback_mode),
+                )
+            })
+            .collect();
         self.desired_fx_controls.clear();
         self.desired_loop_controls.clear();
         self.connection_errors.clear();
@@ -10718,6 +10741,12 @@ fn session_bundle_to_backend(
         let output_audio_channels = topology.wet_audio_channels();
         let state = BackendTrackState {
             topology: topology.clone(),
+            default_playback_mode: match track.default_playback_mode {
+                DefaultPlaybackModeDocument::Regular => BackendDefaultPlaybackMode::Regular,
+                DefaultPlaybackModeDocument::DryThroughWet => {
+                    BackendDefaultPlaybackMode::DryThroughWet
+                }
+            },
             audio_channels: output_audio_channels,
             midi,
             output_gain_db: track.controls.output_gain_db,
@@ -11112,6 +11141,13 @@ fn backend_default_playback_mode(mode: DefaultPlaybackMode) -> BackendDefaultPla
     match mode {
         DefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
         DefaultPlaybackMode::DryThroughWet => BackendDefaultPlaybackMode::DryThroughWet,
+    }
+}
+
+fn app_default_playback_mode(mode: BackendDefaultPlaybackMode) -> DefaultPlaybackMode {
+    match mode {
+        BackendDefaultPlaybackMode::Regular => DefaultPlaybackMode::Regular,
+        BackendDefaultPlaybackMode::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
     }
 }
 
@@ -21515,6 +21551,57 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!model
             .desired_track_controls
             .contains_key(&(backend_track, TrackControlKey::OutputGain)));
+
+        model
+            .desired_track_default_playback_modes
+            .insert(backend_track, BackendDefaultPlaybackMode::DryThroughWet);
+        model.tracks[0].default_playback_mode = DefaultPlaybackMode::DryThroughWet;
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(
+            model.tracks[0].default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
+        let mut stale_default_rejection = backend.poll().unwrap();
+        stale_default_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 11,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackDefaultPlaybackMode(
+                    BackendDefaultPlaybackMode::Regular,
+                )),
+                message: "older default rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(stale_default_rejection);
+        assert_eq!(
+            model.tracks[0].default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
+        let mut latest_default_rejection = backend.poll().unwrap();
+        latest_default_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 12,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackDefaultPlaybackMode(
+                    BackendDefaultPlaybackMode::DryThroughWet,
+                )),
+                message: "latest default rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(latest_default_rejection);
+        assert_eq!(
+            model.tracks[0].default_playback_mode,
+            DefaultPlaybackMode::Regular
+        );
+        assert!(!model
+            .desired_track_default_playback_modes
+            .contains_key(&backend_track));
 
         let fx_rejected = BackendTrackFxControl::SetVisible(true);
         model

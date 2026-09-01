@@ -233,7 +233,10 @@ PR: https://github.com/SanderVocke/shoopdaloop/pull/845
 
 - Mixed primitive/composite selections now filter inapplicable composite targets for primitive-only modes while direct unsupported actions on an initiating composite still fail. A focused application regression test covers both outcomes.
 - Script events that request recording, replacing, or dry-through-wet modes from a nested regular composite are rejected during timeline construction and session validation. Engine and session regression tests cover all unsupported modes and retain ordinary play/stop.
-- Review-driven validation passed: warning-denying workspace build; 1,650/1,650 native tests; focused Node and Chromium Wasm suites for `shoop_app`, `shoop_engine`, and `shoop_session`; formatting, test-attribute, and tracing policy checks.
+- Browser worklet snapshots now publish confirmed track defaults. The application keeps an optimistic desired value only until confirmation, correlates asynchronous rejection detail, and rolls back to the backend snapshot after a rejected latest mutation while ignoring stale rejection detail.
+- Added loops rely on the backend's existing owning-track inheritance instead of issuing a redundant post-creation default update that could leak an unmodeled loop on failure. Generic native/engine/fake session replacement now preserves the confirmed track default directly.
+- Anticipated-transition publication uses an active default-playback child's latched concrete mode, so changing the track preference no longer advertises a transition that runtime reconciliation intentionally suppresses.
+- Review-driven validation passed: warning-denying workspace build; 1,650/1,650 native tests; complete Node and Chromium Wasm suites; raw host contract; hosted and self-contained browser smokes; formatting, test-attribute, and tracing policy checks.
 
 **Verification**
 

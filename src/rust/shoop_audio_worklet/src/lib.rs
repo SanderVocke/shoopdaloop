@@ -1220,6 +1220,12 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             .map(|(id, track)| WireTrackState {
                 id: id.raw(),
                 topology: to_wire_track_topology(&track.topology),
+                default_playback_mode: match track.default_playback_mode {
+                    BackendDefaultPlaybackMode::Regular => WireDefaultPlaybackMode::Regular,
+                    BackendDefaultPlaybackMode::DryThroughWet => {
+                        WireDefaultPlaybackMode::DryThroughWet
+                    }
+                },
                 fx: track.fx.and_then(|fx| match fx.editor? {
                     TrackProcessorEditorState::OxiSynth(editor) => Some(WireTrackFxState {
                         processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
@@ -3309,10 +3315,20 @@ mod tests {
             .event,
             Event::Ack
         ));
+        let default_snapshot = command(&mut host, 3, Command::Poll).event;
+        assert!(matches!(
+            default_snapshot,
+            Event::Snapshot(snapshot)
+                if snapshot.tracks.iter().any(|track| {
+                    track.id == 1
+                        && track.default_playback_mode
+                            == WireDefaultPlaybackMode::DryThroughWet
+                })
+        ));
         assert!(matches!(
             command(
                 &mut host,
-                3,
+                4,
                 Command::CreateTrack {
                     expected_track_id: 2,
                     expected_loop_ids: vec![2],
@@ -3329,7 +3345,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                4,
+                5,
                 Command::SetTrackDefaultPlaybackMode {
                     track_id: 2,
                     mode: WireDefaultPlaybackMode::DryThroughWet,
@@ -3341,7 +3357,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                5,
+                6,
                 Command::SetTrackDefaultPlaybackMode {
                     track_id: 999,
                     mode: WireDefaultPlaybackMode::Regular,
