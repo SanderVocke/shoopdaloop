@@ -5380,11 +5380,19 @@ impl ApplicationModel {
             })
     }
 
-    fn remember_auto_arm_registry_plan(&mut self, version: u64, removed: BackendCompositeId) {
+    fn remember_auto_arm_registry_plan(
+        &mut self,
+        version: u64,
+        removed: &BTreeSet<BackendCompositeId>,
+    ) {
         let plans = self
             .loops
             .values()
-            .filter(|model| model.backend_composite.is_some_and(|id| id != removed))
+            .filter(|model| {
+                model
+                    .backend_composite
+                    .is_some_and(|id| !removed.contains(&id))
+            })
             .filter_map(|model| {
                 let latest = model.auto_arm_latest_configured_plan.as_ref();
                 let document = latest
@@ -5411,11 +5419,64 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         composite_id: BackendCompositeId,
     ) -> Result<(), String> {
+        let mut removed_backend = BTreeSet::from([composite_id]);
+        let mut removed_app = self
+            .loops
+            .values()
+            .filter_map(|model| (model.backend_composite == Some(composite_id)).then_some(model.id))
+            .collect::<BTreeSet<_>>();
+        loop {
+            let dependents = self
+                .loops
+                .values()
+                .filter(|model| {
+                    model
+                        .backend_composite
+                        .is_some_and(|id| !removed_backend.contains(&id))
+                })
+                .filter_map(|model| {
+                    let latest = model.auto_arm_latest_configured_plan.as_ref();
+                    let document = latest
+                        .map(|plan| &plan.composite)
+                        .or(model.auto_arm_active_composite.as_ref())
+                        .or(model.composite.as_ref())?;
+                    let target_kinds = latest
+                        .map(|plan| &plan.target_kinds)
+                        .unwrap_or(&model.auto_arm_active_target_kinds);
+                    document
+                        .instances
+                        .iter()
+                        .map(|event| LoopId::from_raw(event.loop_id))
+                        .any(|target| {
+                            removed_app.contains(&target)
+                                && target_kinds.get(&target) == Some(&true)
+                        })
+                        .then_some((model.id, model.backend_composite.unwrap()))
+                })
+                .collect::<Vec<_>>();
+            if dependents.is_empty() {
+                break;
+            }
+            for (id, backend_id) in dependents {
+                removed_app.insert(id);
+                removed_backend.insert(backend_id);
+            }
+        }
         if let Some(version) = backend
             .remove_composite_loop(composite_id)
             .map_err(|error| error.to_string())?
         {
-            self.remember_auto_arm_registry_plan(version, composite_id);
+            self.remember_auto_arm_registry_plan(version, &removed_backend);
+        }
+        for model in self.loops.values_mut().filter(|model| {
+            model
+                .backend_composite
+                .is_some_and(|id| removed_backend.contains(&id))
+        }) {
+            clear_composite_runtime_state(model);
+            if model.backend_composite != Some(composite_id) {
+                model.backend_composite_signature.clear();
+            }
         }
         Ok(())
     }
@@ -10925,7 +10986,7 @@ mod tests {
         let contaminated_version = rejected_version + 1;
         model.remember_auto_arm_registry_plan(
             contaminated_version,
-            BackendCompositeId::from_raw(u64::MAX),
+            &BTreeSet::from([BackendCompositeId::from_raw(u64::MAX)]),
         );
         assert_eq!(
             model.loops[&root].auto_arm_configured_plans[&contaminated_version].composite,
@@ -10938,7 +10999,7 @@ mod tests {
         let later_copied_version = later_direct_version + 1;
         model.remember_auto_arm_registry_plan(
             later_copied_version,
-            BackendCompositeId::from_raw(u64::MAX),
+            &BTreeSet::from([BackendCompositeId::from_raw(u64::MAX)]),
         );
         rejected_snapshot
             .mutation_failures
@@ -11430,6 +11491,61 @@ mod tests {
             first_model.state.next_transition_delay = Some(0);
         }
         assert!(model.auto_arm_demanded_tracks().is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_arm_composite_removal_clears_dependent_runtime_state() {
+        let (mut backend, mut model) = auto_arm_planner_model();
+        backend.enable_composite_loops();
+        let parent = model.tracks[1].loops[0];
+        let child = model.tracks[2].loops[0];
+        let primitive = model.tracks[3].loops[0];
+        let child_document = CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: primitive.raw(),
+                mode: Some("playing".to_owned()),
+                n_cycles: Some(1),
+            }],
+        };
+        model
+            .commit_composite_editor_change(&mut backend, child, child_document)
+            .unwrap();
+        let parent_document = CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: child.raw(),
+                mode: Some("playing".to_owned()),
+                n_cycles: Some(1),
+            }],
+        };
+        model
+            .commit_composite_editor_change(&mut backend, parent, parent_document)
+            .unwrap();
+        {
+            let parent_model = model.loops.get_mut(&parent).unwrap();
+            parent_model.state.mode = LoopMode::Playing;
+            parent_model.state.composite_iteration = Some(0);
+            parent_model.active_composite_children = vec![ActiveCompositeChildModel {
+                id: child,
+                mode: LoopMode::Playing,
+                cycle_offset: 0,
+                is_composite: true,
+            }];
+        }
+        let child_backend = model.loops[&child].backend_composite.unwrap();
+        assert!(!model.loops[&parent].backend_composite_signature.is_empty());
+        model
+            .remove_backend_composite(&mut backend, child_backend)
+            .unwrap();
+        let parent_model = &model.loops[&parent];
+        assert_eq!(parent_model.state.mode, LoopMode::Stopped);
+        assert!(parent_model.active_composite_children.is_empty());
+        assert!(parent_model.backend_composite_signature.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
