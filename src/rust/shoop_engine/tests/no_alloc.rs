@@ -318,8 +318,17 @@ fn installed_audio_fan_in_is_allocation_free() {
         .load_data(&[0.5; 4]);
     session.loop_mut(loop_).unwrap().set_length(4);
     session.set_loop_mode(loop_, LoopMode::Playing).unwrap();
+    session.apply_graph_changes().unwrap();
+    session.process(4);
 
-    assert_steady_state_is_alloc_free(session, 4, 4);
+    assert_no_alloc(|| {
+        for index in 0..4 {
+            let output = session.port_mut(sum).unwrap().audio_mut().unwrap();
+            output.set_gain(0.5 + index as f32 * 0.1);
+            output.set_muted(index == 2);
+            session.process(4);
+        }
+    });
 }
 
 #[shoop_wasm_test_support::shoop_test(

@@ -165,6 +165,9 @@ struct NativeBus {
     id: BackendBusId,
     name: String,
     channels: Vec<NativeBusChannel>,
+    gain_db: f32,
+    balance: f32,
+    muted: bool,
 }
 
 struct NativeBusChannel {
@@ -385,6 +388,9 @@ impl NativeRuntime {
                 id: BackendBusId::from_raw(1),
                 name: "Master".to_owned(),
                 channels: Vec::new(),
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
             },
             mixer_routes: BTreeSet::new(),
             mixer_failures: Vec::new(),
@@ -674,6 +680,21 @@ impl NativeRuntime {
     }
 
     fn mixer_snapshot(&mut self) -> BackendMixerSnapshot {
+        let output_peaks_db = self
+            .master_bus
+            .channels
+            .iter()
+            .map(|channel| {
+                self.ports
+                    .get(&channel.output_port_id)
+                    .and_then(|port| match &port.handle {
+                        NativePortHandle::Audio(port) => port.poll_state(),
+                        NativePortHandle::Midi(_) => None,
+                    })
+                    .map(|state| amplitude_db(state.output_peak))
+                    .unwrap_or(-200.0)
+            })
+            .collect::<Vec<_>>();
         let channels = self
             .master_bus
             .channels
@@ -691,16 +712,69 @@ impl NativeRuntime {
                 BackendBusState {
                     id: self.master_bus.id,
                     name: self.master_bus.name.clone(),
-                    output_peaks_db: vec![-200.0; channels.len()],
                     channels,
-                    gain_db: 0.0,
-                    balance: 0.0,
-                    muted: false,
+                    gain_db: self.master_bus.gain_db,
+                    balance: self.master_bus.balance,
+                    muted: self.master_bus.muted,
+                    output_peaks_db,
                 },
             )]),
             confirmed_links: self.mixer_routes.clone(),
             failures: std::mem::take(&mut self.mixer_failures),
         }
+    }
+
+    fn apply_bus_control(
+        &mut self,
+        bus_id: BackendBusId,
+        control: BackendBusControl,
+    ) -> Result<()> {
+        if bus_id != self.master_bus.id {
+            return Err(anyhow!("unknown native bus {bus_id:?}"));
+        }
+        let control = control.normalized(self.master_bus.channels.len())?;
+        let changed = match control {
+            BackendBusControl::GainDb(value) => {
+                let changed = self.master_bus.gain_db != value;
+                self.master_bus.gain_db = value;
+                changed
+            }
+            BackendBusControl::Balance(value) => {
+                let changed = self.master_bus.balance != value;
+                self.master_bus.balance = value;
+                changed
+            }
+            BackendBusControl::Mute(value) => {
+                let changed = self.master_bus.muted != value;
+                self.master_bus.muted = value;
+                changed
+            }
+        };
+        let outputs = self
+            .master_bus
+            .channels
+            .iter()
+            .map(|channel| {
+                self.ports
+                    .get(&channel.output_port_id)
+                    .and_then(|port| match &port.handle {
+                        NativePortHandle::Audio(port) => Some(port.clone()),
+                        NativePortHandle::Midi(_) => None,
+                    })
+                    .ok_or_else(|| anyhow!("missing native bus output port"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let base = db_gain(self.master_bus.gain_db);
+        let (left, right) = balance_factors(self.master_bus.balance);
+        let stereo = outputs.len() == 2;
+        for (index, output) in outputs.iter().enumerate() {
+            output.set_gain(base * stereo_factor(stereo, index, left, right))?;
+            output.set_muted(self.master_bus.muted)?;
+        }
+        if changed {
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        }
+        Ok(())
     }
 
     fn apply_mixer_route(
@@ -3615,6 +3689,10 @@ impl Backend for NativeBackend {
             .apply_mixer_route(source_port_id, destination_channel_id, connected)
     }
 
+    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        self.runtime_mut()?.apply_bus_control(bus_id, control)
+    }
+
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -4096,6 +4174,24 @@ mod tests {
                 .iter()
                 .any(|channel| channel.output_port_id == link.application_port_id)
         }));
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-9.0))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Balance(-0.25))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Mute(true))
+            .unwrap();
+        let controlled = backend.poll().unwrap();
+        let master = &controlled.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.gain_db, -9.0);
+        assert_eq!(master.balance, -0.25);
+        assert!(master.muted);
+        assert_eq!(master.output_peaks_db.len(), 2);
+        assert!(backend
+            .set_bus_control(BackendBusId::from_raw(99), BackendBusControl::Mute(false))
+            .is_err());
     }
 
     fn assert_injected_note_reaches_output(

@@ -1575,6 +1575,9 @@ struct EngineBus {
     id: BackendBusId,
     name: String,
     channels: Vec<EngineBusChannel>,
+    gain_db: f32,
+    balance: f32,
+    muted: bool,
 }
 
 struct EngineBusChannel {
@@ -1667,6 +1670,9 @@ impl EngineBackend {
                 id: BackendBusId::from_raw(1),
                 name: "Master".to_owned(),
                 channels: Vec::new(),
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
             },
             mixer_routes: BTreeSet::new(),
             mixer_failures: Vec::new(),
@@ -2513,6 +2519,22 @@ impl EngineBackend {
     }
 
     fn mixer_snapshot(&mut self) -> BackendMixerSnapshot {
+        let output_peaks_db = self
+            .master_bus
+            .channels
+            .iter()
+            .map(|channel| {
+                self.session
+                    .port_mut(channel.output)
+                    .and_then(Port::audio_mut)
+                    .map(|port| {
+                        let peak = amplitude_db(port.output_peak());
+                        port.reset_output_peak();
+                        peak
+                    })
+                    .unwrap_or(-200.0)
+            })
+            .collect::<Vec<_>>();
         let channels = self
             .master_bus
             .channels
@@ -2530,16 +2552,69 @@ impl EngineBackend {
                 BackendBusState {
                     id: self.master_bus.id,
                     name: self.master_bus.name.clone(),
-                    output_peaks_db: vec![-200.0; channels.len()],
                     channels,
-                    gain_db: 0.0,
-                    balance: 0.0,
-                    muted: false,
+                    gain_db: self.master_bus.gain_db,
+                    balance: self.master_bus.balance,
+                    muted: self.master_bus.muted,
+                    output_peaks_db,
                 },
             )]),
             confirmed_links: self.mixer_routes.clone(),
             failures: std::mem::take(&mut self.mixer_failures),
         }
+    }
+
+    fn apply_bus_control(
+        &mut self,
+        bus_id: BackendBusId,
+        control: BackendBusControl,
+    ) -> Result<()> {
+        if bus_id != self.master_bus.id {
+            return Err(anyhow!("unknown backend bus {bus_id:?}"));
+        }
+        let control = control.normalized(self.master_bus.channels.len())?;
+        let changed = match control {
+            BackendBusControl::GainDb(value) => {
+                let changed = self.master_bus.gain_db != value;
+                self.master_bus.gain_db = value;
+                changed
+            }
+            BackendBusControl::Balance(value) => {
+                let changed = self.master_bus.balance != value;
+                self.master_bus.balance = value;
+                changed
+            }
+            BackendBusControl::Mute(value) => {
+                let changed = self.master_bus.muted != value;
+                self.master_bus.muted = value;
+                changed
+            }
+        };
+        let base = db_gain(self.master_bus.gain_db);
+        let (left, right) = balance_factors(self.master_bus.balance);
+        let stereo = self.master_bus.channels.len() == 2;
+        for (index, channel) in self.master_bus.channels.iter().enumerate() {
+            let balance = if stereo {
+                if index == 0 {
+                    left
+                } else {
+                    right
+                }
+            } else {
+                1.0
+            };
+            let port = self
+                .session
+                .port_mut(channel.output)
+                .and_then(Port::audio_mut)
+                .ok_or_else(|| anyhow!("missing bus output port"))?;
+            port.set_gain(base * balance);
+            port.set_muted(self.master_bus.muted);
+        }
+        if changed {
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        }
+        Ok(())
     }
 
     fn apply_mixer_route(
@@ -5808,6 +5883,10 @@ impl Backend for EngineBackend {
         connected: bool,
     ) -> Result<()> {
         self.apply_mixer_route(source_port_id, destination_channel_id, connected)
+    }
+
+    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        self.apply_bus_control(bus_id, control)
     }
 
     fn advance(&mut self, _elapsed: Duration) {
@@ -9333,6 +9412,8 @@ mod tests {
             BackendBusControl::Balance(2.0).normalized(2).unwrap(),
             BackendBusControl::Balance(1.0)
         );
+        assert_eq!(balance_factors(-1.0), (1.0, 0.0));
+        assert_eq!(balance_factors(1.0), (0.0, 1.0));
         assert!(BackendBusControl::GainDb(f32::NAN).normalized(2).is_err());
         assert!(BackendBusControl::Balance(f32::INFINITY)
             .normalized(2)
@@ -9367,6 +9448,201 @@ mod tests {
         assert_eq!(bus.balance, 0.25);
         assert!(bus.muted);
         assert_eq!(bus.output_peaks_db, vec![-200.0, -200.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_master_controls_process_post_sum_without_rebuilding_the_graph() {
+        let mut backend = EngineBackend::new_dummy_runtime(48_000, 4).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "controlled".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        load_direct_loop(&mut backend, track.loops[0], 0.5);
+        let second = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "controlled_second".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        load_direct_loop(&mut backend, second.loops[0], 0.25);
+        let source = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap()
+            .id;
+        let second_source = second
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap()
+            .id;
+        let channels = backend
+            .master_bus
+            .channels
+            .iter()
+            .map(|channel| (channel.id, channel.output))
+            .collect::<Vec<_>>();
+        for (channel, _) in &channels {
+            backend.set_mixer_route(source, *channel, true).unwrap();
+            backend
+                .set_mixer_route(second_source, *channel, true)
+                .unwrap();
+        }
+        assert!(backend.session.graph_up_to_date());
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-6.0))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Balance(0.5))
+            .unwrap();
+        assert!(backend.session.graph_up_to_date());
+
+        for (_, output) in &channels {
+            backend
+                .session
+                .port_mut(*output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+        }
+        let direct_output = backend.connection_ports[&source].engine_port_index;
+        backend
+            .session
+            .port_mut(direct_output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        backend.advance_frames(4);
+        assert_eq!(
+            backend
+                .session
+                .port_mut(direct_output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(4)
+                .unwrap(),
+            vec![0.5; 4]
+        );
+        let base = db_gain(-6.0);
+        let expected = [0.75 * base * 0.5, 0.75 * base];
+        let snapshot = backend.poll().unwrap();
+        let bus = &snapshot.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(bus.gain_db, -6.0);
+        assert_eq!(bus.balance, 0.5);
+        assert!(!bus.muted);
+        for (index, (_, output)) in channels.iter().enumerate() {
+            let samples = backend
+                .session
+                .port_mut(*output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(4)
+                .unwrap();
+            assert!(samples
+                .iter()
+                .all(|sample| (*sample - expected[index]).abs() < 1.0e-6));
+            assert!((bus.output_peaks_db[index] - amplitude_db(expected[index])).abs() < 1.0e-4);
+        }
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Mute(true))
+            .unwrap();
+        for (_, output) in &channels {
+            backend
+                .session
+                .port_mut(*output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+        }
+        backend.advance_frames(4);
+        let muted = backend.poll().unwrap();
+        assert!(muted.mixer.buses[&MASTER_BUS_ID].muted);
+        assert!(muted.mixer.buses[&MASTER_BUS_ID]
+            .output_peaks_db
+            .iter()
+            .all(|peak| *peak <= -100.0));
+        for (_, output) in &channels {
+            assert_eq!(
+                backend
+                    .session
+                    .port_mut(*output)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .dequeue_data(4)
+                    .unwrap(),
+                vec![0.0; 4]
+            );
+        }
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Mute(false))
+            .unwrap();
+        for (_, output) in &channels {
+            backend
+                .session
+                .port_mut(*output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+        }
+        backend.advance_frames(4);
+        for (index, (_, output)) in channels.iter().enumerate() {
+            let samples = backend
+                .session
+                .port_mut(*output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(4)
+                .unwrap();
+            assert!(samples
+                .iter()
+                .all(|sample| (*sample - expected[index]).abs() < 1.0e-6));
+        }
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Balance(1.0))
+            .unwrap();
+        for (_, output) in &channels {
+            backend
+                .session
+                .port_mut(*output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+        }
+        backend.advance_frames(4);
+        let extreme = [0.0, 0.75 * base];
+        for (index, (_, output)) in channels.iter().enumerate() {
+            let samples = backend
+                .session
+                .port_mut(*output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(4)
+                .unwrap();
+            assert!(samples
+                .iter()
+                .all(|sample| (*sample - extreme[index]).abs() < 1.0e-6));
+        }
+        assert!(backend.session.graph_up_to_date());
     }
 
     #[shoop_wasm_test_support::shoop_test]

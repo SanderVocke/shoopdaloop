@@ -105,18 +105,18 @@ Verification:
 
 Depends on Stage 1.
 
-- [ ] Store normalized gain, balance, and mute state on the fixed Master in `EngineBackend` and `NativeRuntime`.
-- [ ] Lower bus state into effective gain/mute parameters on each bus output port: uniform gain for arbitrary channel counts and the shared Left/Right attenuation factors only for exactly two channels.
-- [ ] Apply control updates without graph changes and preserve routes, direct track fan-out, output identities, and retained values across mute/unmute.
-- [ ] Collect and publish each bus output port's post-processing peak with the same accumulation/reset and dB-floor rules used by existing audio meters.
-- [ ] Ensure session polling and native state mirrors observe the effective bus output without adding callback work beyond the bounded per-channel processing already in the prepared graph.
-- [ ] Extend no-allocation coverage to active summed bus processing and gain/balance/mute changes between callbacks.
+- [x] Store normalized gain, balance, and mute state on the fixed Master in `EngineBackend` and `NativeRuntime`.
+- [x] Lower bus state into effective gain/mute parameters on each bus output port: uniform gain for arbitrary channel counts and the shared Left/Right attenuation factors only for exactly two channels.
+- [x] Apply control updates without graph changes and preserve routes, direct track fan-out, output identities, and retained values across mute/unmute.
+- [x] Collect and publish each bus output port's post-processing peak with the same accumulation/reset and dB-floor rules used by existing audio meters.
+- [x] Ensure session polling and native state mirrors observe the effective bus output without adding callback work beyond the bounded per-channel processing already in the prepared graph.
+- [x] Extend no-allocation coverage to active summed bus processing and gain/balance/mute changes between callbacks.
 
 Verification:
 
-- [ ] Use deterministic one- and two-track fixtures to prove unity center output, known dB attenuation, left/right balance extremes and intermediate values, mute/unmute restoration, additive summing before processing, post-processing peaks, and unaffected direct outputs.
-- [ ] Prove control changes leave the active graph/schedule identity unchanged.
-- [ ] Run focused engine/dummy, native app-backend, session, port-meter, and realtime no-allocation tests.
+- [x] Use deterministic one- and two-track fixtures to prove unity center output, known dB attenuation, left/right balance extremes and intermediate values, mute/unmute restoration, additive summing before processing, post-processing peaks, and unaffected direct outputs.
+- [x] Prove control changes leave the active graph/schedule identity unchanged.
+- [x] Run focused engine/dummy, native app-backend, session, port-meter, and realtime no-allocation tests.
 
 ### Stage 3 — Carry controls and meters through Worker and AudioWorklet
 
