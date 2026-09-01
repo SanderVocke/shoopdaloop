@@ -3803,6 +3803,45 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(actual, expected);
         }
+
+        session
+            .builtin_fx_processor_mut("builtin")
+            .unwrap()
+            .set_reverb_enabled(true);
+        session.set_builtin_fx_active("builtin", false);
+        for (channel, &input) in inputs.iter().enumerate() {
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&vec![0.5; frames]);
+            session
+                .port_mut(outputs[channel])
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for &output in &outputs {
+            assert!(session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap()
+                .iter()
+                .all(|sample| *sample == 0.0));
+        }
+        assert_eq!(
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .reverb_process_calls(),
+            0
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

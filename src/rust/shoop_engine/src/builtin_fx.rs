@@ -207,7 +207,7 @@ impl BuiltInFxProcessor {
     }
 
     #[cfg(test)]
-    fn reverb_process_calls(&self) -> u64 {
+    pub(crate) fn reverb_process_calls(&self) -> u64 {
         self.reverb_process_calls
     }
 }

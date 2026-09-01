@@ -147,12 +147,12 @@ Depends on Stage 2; land after Stage 4 so UI tests can exercise persistence.
 
 Depends on Stages 1–5.
 
-- [ ] Add or extend native application smoke coverage to create Built-in FX, feed stereo audio, observe reverb, disable it, verify transparent passthrough/no stale tail, save, reload, and confirm state.
-- [ ] Extend browser smoke/runtime coverage with the same catalog, topology, control, processing, snapshot, and save/reload evidence through the production Worker/AudioWorklet protocol.
-- [ ] Verify processor behavior with non-default sample rates and callback sizes, including sizes larger than one FunDSP processing block.
-- [ ] Confirm generic inactive routing and element-disabled routing both skip the enabled FunDSP tracing span; use a targeted Perfetto capture only if ordinary deterministic evidence is insufficient.
-- [ ] Review all new `match` arms and identity mappings across engine, native backend, in-process backend, application, session, protocol, worklet, client, and UI for accidental OxiSynth-only assumptions.
-- [ ] Run focused native, Node, and Chromium end-to-end tests and commit the integration-test milestone.
+- [x] Add or extend native application smoke coverage to create Built-in FX, feed stereo audio, observe reverb, disable it, verify transparent passthrough/no stale tail, save, reload, and confirm state.
+- [x] Extend browser smoke/runtime coverage with the same catalog, topology, control, processing, snapshot, and save/reload evidence through the production Worker/AudioWorklet protocol.
+- [x] Verify processor behavior with non-default sample rates and callback sizes, including sizes larger than one FunDSP processing block.
+- [x] Confirm generic inactive routing and element-disabled routing both skip the enabled FunDSP tracing span; deterministic processor-call and routed-session tests provide sufficient evidence without a Perfetto capture.
+- [x] Review all new `match` arms and identity mappings across engine, native backend, in-process backend, application, session, protocol, worklet, client, and UI for accidental OxiSynth-only assumptions.
+- [x] Run focused native and Node end-to-end tests and commit the integration-test milestone. Local Chromium remains unavailable because the shell has no `chromedriver`; Stage 9 requires the policy-triggered Chromium CI job on the final SHA.
 
 ## Stage 7 — Final local validation
 
