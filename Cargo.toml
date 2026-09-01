@@ -41,7 +41,7 @@ directories = "6.0"
 omnilua = { version = "=0.7.1", default-features = false, features = ["coroutine", "io", "os"] }
 num_enum = "0.7"
 enum-iterator = "2.1"
-rodio = "0.21"
+rodio = "0.22"
 libc = "0.2"
 assert2 = "0.4"
 assert_no_alloc = "1.1"
