@@ -83,14 +83,14 @@ Chosen MVP contract: FunDSP `reverb_stereo(10.0, 2.5, 0.5)`, enabled by default,
 
 Depends on Stage 0.
 
-- [ ] Add a dedicated Built-in FX module containing validated control state, strict versioned encode/decode, prepared FunDSP stereo reverb, preallocated buffers, and enable/disable transition handling.
-- [ ] Add the processor backend variant and fixed audio routing to `Session`; copy stereo input to output while disabled and invoke chunked FunDSP processing only while enabled.
-- [ ] Add creation, replacement, activation, state capture/restore, and editor-state access through the engine application backend and FX-chain facade.
-- [ ] Ensure sample-rate or maximum-buffer changes create and allocate a replacement on the control/staging path before callback publication.
-- [ ] Add realtime instrumentation around enabled processing only and update tracing coverage metadata.
-- [ ] Test strict state validation, canonical round-trip, stereo processing/tail behavior, exact disabled passthrough, stale-tail removal, block chunking, sample-rate handling, generic inactivity, and no allocation in both steady-state branches.
-- [ ] Verify with focused `shoop_engine` native tests, focused `shoop_engine` Node Wasm tests, tracing coverage, formatting, warning-denying workspace build, and the Rust-test policy check.
-- [ ] Commit the engine milestone.
+- [x] Add a dedicated Built-in FX module containing validated control state, strict versioned encode/decode, prepared FunDSP stereo reverb, preallocated buffers, and enable/disable transition handling.
+- [x] Add the processor backend variant and fixed audio routing to `Session`; copy stereo input to output while disabled and invoke chunked FunDSP processing only while enabled.
+- [x] Add creation, replacement, activation, state capture/restore, and editor-state access through the engine application backend and FX-chain facade.
+- [x] Ensure sample-rate or maximum-buffer changes create and allocate a replacement on the control/staging path before callback publication.
+- [x] Add realtime instrumentation around enabled processing only and update tracing coverage metadata.
+- [x] Test strict state validation, canonical round-trip, stereo processing/tail behavior, exact disabled passthrough, stale-tail removal, block chunking, sample-rate handling, generic inactivity, and no allocation in both steady-state branches.
+- [x] Verify with focused `shoop_engine` native tests, focused `shoop_engine` Node Wasm tests, tracing coverage, formatting, warning-denying workspace build, and the Rust-test policy check.
+- [x] Commit the engine milestone.
 
 ## Stage 2 — Application API and both backend implementations
 

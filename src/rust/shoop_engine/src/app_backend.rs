@@ -2845,6 +2845,18 @@ impl BackendSession {
         )
     }
 
+    pub fn create_builtin_fx_chain(
+        &self,
+        title: &str,
+        output_ringbuffer_n_samples: u32,
+    ) -> Result<FXChain> {
+        self.create_fx_chain_with_channels(
+            FXChainType::BuiltInFx,
+            title,
+            output_ringbuffer_n_samples,
+        )
+    }
+
     fn create_fx_chain_with_channels(
         &self,
         chain_type: FXChainType,
@@ -2853,6 +2865,19 @@ impl BackendSession {
     ) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
+            FXChainType::BuiltInFx => {
+                let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+                let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
+                let control = engine::builtin_fx::BuiltInFxControlState::default();
+                let processor = control.prepare_processor(sample_rate as f32, buffer_size as usize);
+                let mut pending = Some((title.to_owned(), processor));
+                self.shared.send_topology(move |session| {
+                    if let Some((title, processor)) = pending.take() {
+                        let _ = session.set_builtin_fx_processor(title, processor);
+                    }
+                })?;
+                FXChainBackendKind::BuiltInFx(Mutex::new(control))
+            }
             FXChainType::OxiSynth => {
                 let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
                 let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
@@ -6365,6 +6390,7 @@ pub type FXChainState = engine::FXChainState;
 
 enum FXChainBackendKind {
     Test2x2x1,
+    BuiltInFx(Mutex<engine::builtin_fx::BuiltInFxControlState>),
     OxiSynth(Mutex<engine::oxisynth::OxiSynthControlState>),
     #[cfg(feature = "carla")]
     Carla(engine::carla_processor::CarlaControlHandle),
@@ -6409,6 +6435,14 @@ impl FXChain {
                     log::error!("could not queue FX active state: {error}");
                 }
             }
+            FXChainBackendKind::BuiltInFx(_) => {
+                let title = self.title.clone();
+                if let Err(error) = self.shared.send_control(move |session| {
+                    session.set_builtin_fx_active(&title, active);
+                }) {
+                    log::error!("could not queue Built-in FX active state: {error}");
+                }
+            }
             FXChainBackendKind::OxiSynth(_) => {
                 let title = self.title.clone();
                 if let Err(error) = self.shared.send_control(move |session| {
@@ -6438,7 +6472,9 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
-            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => {
+            FXChainBackendKind::Test2x2x1
+            | FXChainBackendKind::BuiltInFx(_)
+            | FXChainBackendKind::OxiSynth(_) => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
                 Ok(())
             }
@@ -6450,7 +6486,9 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.lifecycle(),
-            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => {
+            FXChainBackendKind::Test2x2x1
+            | FXChainBackendKind::BuiltInFx(_)
+            | FXChainBackendKind::OxiSynth(_) => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
             }
             FXChainBackendKind::Unavailable { .. } => {
@@ -6494,6 +6532,7 @@ impl FXChain {
     pub fn try_get_state_str(&self) -> Result<String> {
         match &self.backend {
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
+            FXChainBackendKind::BuiltInFx(control) => Ok(control.lock().unwrap().encode()),
             FXChainBackendKind::OxiSynth(control) => Ok(control.lock().unwrap().encode()),
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.save_state(),
@@ -6509,6 +6548,20 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.restore_state(state),
+            FXChainBackendKind::BuiltInFx(control) => {
+                let replacement = engine::builtin_fx::BuiltInFxControlState::from_encoded(state)?;
+                let processor = replacement.prepare_processor(
+                    self.shared.sample_rate.load(Ordering::Relaxed).max(1) as f32,
+                    self.shared.buffer_size.load(Ordering::Relaxed).max(1) as usize,
+                );
+                let title = self.title.clone();
+                let displaced = self.shared.query_graph_scheduler_response(move |session| {
+                    session.set_builtin_fx_processor(title, processor)
+                })?;
+                drop(displaced);
+                *control.lock().unwrap() = replacement;
+                Ok(())
+            }
             FXChainBackendKind::OxiSynth(control) => {
                 let assignments = control.lock().unwrap().midi_cc_assignments();
                 let mut replacement = engine::oxisynth::OxiSynthControlState::from_encoded(state)?;
@@ -6532,6 +6585,27 @@ impl FXChain {
 
     pub fn restore_state(&self, state: &str) {
         let _ = self.try_restore_state(state);
+    }
+
+    pub fn builtin_fx_state(&self) -> Option<engine::builtin_fx::BuiltInFxState> {
+        match &self.backend {
+            FXChainBackendKind::BuiltInFx(control) => Some(control.lock().unwrap().state()),
+            _ => None,
+        }
+    }
+
+    pub fn builtin_fx_set_reverb_enabled(&self, enabled: bool) -> Result<()> {
+        let FXChainBackendKind::BuiltInFx(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Built-in FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.builtin_fx_processor_mut(&title) {
+                processor.set_reverb_enabled(enabled);
+            }
+        })?;
+        control.lock().unwrap().set_reverb_enabled(enabled);
+        Ok(())
     }
 
     pub fn oxisynth_editor_state(&self) -> Option<engine::oxisynth::OxiSynthEditorState> {
@@ -6647,7 +6721,7 @@ impl FXChain {
 
     fn n_audio_input_ports(&self) -> usize {
         match &self.backend {
-            FXChainBackendKind::Test2x2x1 => 2,
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::BuiltInFx(_) => 2,
             FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_inputs,
@@ -6657,8 +6731,9 @@ impl FXChain {
 
     fn n_audio_output_ports(&self) -> usize {
         match &self.backend {
-            FXChainBackendKind::Test2x2x1 => 2,
-            FXChainBackendKind::OxiSynth(_) => 2,
+            FXChainBackendKind::Test2x2x1
+            | FXChainBackendKind::BuiltInFx(_)
+            | FXChainBackendKind::OxiSynth(_) => 2,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6667,6 +6742,7 @@ impl FXChain {
     fn n_midi_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => 1,
+            FXChainBackendKind::BuiltInFx(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6675,7 +6751,9 @@ impl FXChain {
 
     fn n_midi_output_ports(&self) -> usize {
         match &self.backend {
-            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => 0,
+            FXChainBackendKind::Test2x2x1
+            | FXChainBackendKind::BuiltInFx(_)
+            | FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -8401,6 +8479,48 @@ mod tests {
         assert!(chunk_size >= (CAPTURE_SAMPLES as usize).div_ceil(32));
         assert!(output.ringbuffer_capacity() >= CAPTURE_SAMPLES as usize);
         assert!(output.ringbuffer_capacity() < CAPTURE_SAMPLES as usize + chunk_size);
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_chain_has_fixed_ports_and_mirrors_reverb_state() {
+        let sess = BackendSession::new().expect("session");
+        let chain = sess
+            .create_builtin_fx_chain("builtin-fx", 0)
+            .expect("chain");
+        assert!(chain.get_audio_input_port(0).is_some());
+        assert!(chain.get_audio_input_port(1).is_some());
+        assert!(chain.get_audio_input_port(2).is_none());
+        assert!(chain.get_audio_output_port(0).is_some());
+        assert!(chain.get_audio_output_port(1).is_some());
+        assert!(chain.get_audio_output_port(2).is_none());
+        assert!(chain.get_midi_input_port(0).is_none());
+        assert_eq!(
+            chain.builtin_fx_state(),
+            Some(engine::builtin_fx::BuiltInFxState {
+                reverb_enabled: true
+            })
+        );
+        assert_eq!(chain.try_get_state_str().unwrap(), "shoop-builtin-fx:1:1");
+        chain.builtin_fx_set_reverb_enabled(false).unwrap();
+        assert_eq!(
+            chain.builtin_fx_state(),
+            Some(engine::builtin_fx::BuiltInFxState {
+                reverb_enabled: false
+            })
+        );
+        assert_eq!(chain.try_get_state_str().unwrap(), "shoop-builtin-fx:1:0");
+
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        engine.pump();
+        assert!(
+            !engine
+                .session_mut()
+                .builtin_fx_processor_mut("builtin-fx")
+                .unwrap()
+                .state()
+                .reverb_enabled
+        );
         sess.shared.return_engine(engine);
     }
 

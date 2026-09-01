@@ -13,6 +13,7 @@ pub mod audio_channel;
 pub mod audio_midi_loop;
 pub mod basic_loop;
 pub mod buffer_queue;
+pub mod builtin_fx;
 #[cfg(feature = "carla")]
 pub mod carla_native;
 pub mod carla_processor;
