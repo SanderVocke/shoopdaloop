@@ -87,7 +87,7 @@ struct SessionCaptureAssembly {
 
 struct SessionReplaceAssembly {
     generation: u64,
-    bytes: Vec<u8>,
+    bytes: Arc<[u8]>,
     next_offset: usize,
     commit_sent: bool,
     complete: bool,
@@ -139,6 +139,7 @@ pub struct RemoteWorkletBackend {
     midi_revision: u64,
 }
 
+#[cfg(test)]
 fn replacement_session_journal(generation: u64, bytes: &[u8]) -> Vec<Command> {
     let mut commands = Vec::with_capacity(
         bytes
@@ -284,9 +285,7 @@ impl RemoteWorkletBackend {
     }
 
     fn cancel_transfers(&mut self, reason: &str) {
-        self.transport
-            .borrow_mut()
-            .cancel_reserved_session_journal();
+        self.transport.borrow_mut().cancel_reserved_session_replay();
         if let Some(capture) = self.session_capture.take() {
             self.session_capture_error = Some(format!(
                 "session capture operation {} was cancelled: {reason}",
@@ -691,9 +690,7 @@ impl RemoteWorkletBackend {
             }
         }
         self.session_replace = None;
-        self.transport
-            .borrow_mut()
-            .cancel_reserved_session_journal();
+        self.transport.borrow_mut().cancel_reserved_session_replay();
         Err(anyhow!(message))
     }
 
@@ -739,9 +736,7 @@ impl RemoteWorkletBackend {
         session: &BackendSessionData,
         replacement: &BackendSessionReplacement,
     ) {
-        self.transport
-            .borrow_mut()
-            .commit_reserved_session_journal();
+        self.transport.borrow_mut().commit_reserved_session_replay();
 
         self.snapshot.tracks.clear();
         self.snapshot.loops.clear();
@@ -2421,14 +2416,14 @@ impl Backend for RemoteWorkletBackend {
             self.pump_session_replace_or_abort()?;
             return Ok(BackendAsyncResult::Pending(progress));
         }
-        let bytes = encode_binary(session)?;
+        let bytes: Arc<[u8]> = Arc::from(encode_binary(session)?);
         if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
             return Err(anyhow!("prepared session exceeds browser transfer limit"));
         }
         let generation = self.next_session_generation;
         self.transport
             .borrow_mut()
-            .reserve_session_journal(replacement_session_journal(generation, &bytes))?;
+            .reserve_session_replay(generation, Arc::clone(&bytes))?;
         self.next_session_generation = self.next_session_generation.saturating_add(1);
         self.transport_generation = self.transport.borrow().diagnostics().generation;
         if let Err(error) = self
@@ -2439,9 +2434,7 @@ impl Backend for RemoteWorkletBackend {
                 total_bytes: bytes.len(),
             })
         {
-            self.transport
-                .borrow_mut()
-                .cancel_reserved_session_journal();
+            self.transport.borrow_mut().cancel_reserved_session_replay();
             return Err(error);
         }
         let total = bytes.len();
@@ -2463,9 +2456,7 @@ impl Backend for RemoteWorkletBackend {
 
     fn cancel_session_replacement(&mut self) -> Result<()> {
         let Some(replace) = self.session_replace.as_ref() else {
-            self.transport
-                .borrow_mut()
-                .cancel_reserved_session_journal();
+            self.transport.borrow_mut().cancel_reserved_session_replay();
             return Ok(());
         };
         if replace.commit_sent {
@@ -2477,9 +2468,7 @@ impl Backend for RemoteWorkletBackend {
             .ephemeral(Command::AbortSessionTransfer { generation })?;
         self.session_replace = None;
         self.session_replace_error = None;
-        self.transport
-            .borrow_mut()
-            .cancel_reserved_session_journal();
+        self.transport.borrow_mut().cancel_reserved_session_replay();
         Ok(())
     }
 
@@ -2732,9 +2721,7 @@ impl Backend for RemoteWorkletBackend {
                             }
                             BackendOperationKind::SessionReplacement => {
                                 self.session_replace = None;
-                                self.transport
-                                    .borrow_mut()
-                                    .cancel_reserved_session_journal();
+                                self.transport.borrow_mut().cancel_reserved_session_replay();
                                 self.session_replace_error = Some(message.clone());
                             }
                             BackendOperationKind::LoopContentReplacement => {
@@ -2899,9 +2886,7 @@ impl Backend for RemoteWorkletBackend {
                         .is_some_and(|replace| replace.generation == generation)
                     {
                         self.session_replace = None;
-                        self.transport
-                            .borrow_mut()
-                            .cancel_reserved_session_journal();
+                        self.transport.borrow_mut().cancel_reserved_session_replay();
                         self.session_replace_error = Some(format!(
                             "session replacement operation {generation} was cancelled"
                         ));
@@ -4181,19 +4166,20 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn saturated_replacement_journal_fails_before_session_transfer_begins() {
+    fn large_session_replay_reservation_does_not_consume_command_capacity() {
         let (backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
-        let bytes = vec![0; SESSION_TRANSFER_CHUNK_BYTES * (COMMAND_CAPACITY - 2)];
-        let error = backend
+        let bytes: Arc<[u8]> = Arc::from(vec![0; 9 * 1024 * 1024]);
+        backend
             .transport
             .borrow_mut()
-            .reserve_session_journal(replacement_session_journal(1, &bytes))
-            .unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("replacement replay command journal is full"));
-        assert!(!backend.transport.borrow().has_reserved_session_journal());
+            .reserve_session_replay(1, Arc::clone(&bytes))
+            .unwrap();
+        assert!(backend.transport.borrow().has_reserved_session_replay());
         assert_eq!(backend.transport.borrow().pending_len(), 0);
+        backend
+            .transport
+            .borrow_mut()
+            .cancel_reserved_session_replay();
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -4225,7 +4211,7 @@ mod tests {
             .to_string()
             .contains("session replacement submission failed"));
         assert!(backend.session_replace.is_none());
-        assert!(!backend.transport.borrow().has_reserved_session_journal());
+        assert!(!backend.transport.borrow().has_reserved_session_replay());
         assert_eq!(
             backend.transport.borrow().readiness().connection,
             ConnectionState::Failed
@@ -4243,11 +4229,11 @@ mod tests {
         backend
             .transport
             .borrow_mut()
-            .reserve_session_journal(Vec::new())
+            .reserve_session_replay(7, Arc::from([]))
             .unwrap();
         backend.session_replace = Some(SessionReplaceAssembly {
             generation: 7,
-            bytes: vec![1],
+            bytes: Arc::from([1_u8]),
             next_offset: 0,
             commit_sent: false,
             complete: false,
@@ -4255,7 +4241,7 @@ mod tests {
 
         backend.cancel_session_replacement().unwrap();
         assert!(backend.session_replace.is_none());
-        assert!(!backend.transport.borrow().has_reserved_session_journal());
+        assert!(!backend.transport.borrow().has_reserved_session_replay());
         let command = serde_json::from_str::<CommandEnvelope>(sent.borrow().last().unwrap())
             .unwrap()
             .command;
@@ -4264,18 +4250,18 @@ mod tests {
         backend
             .transport
             .borrow_mut()
-            .reserve_session_journal(Vec::new())
+            .reserve_session_replay(8, Arc::from([]))
             .unwrap();
         backend.session_replace = Some(SessionReplaceAssembly {
             generation: 8,
-            bytes: vec![1],
+            bytes: Arc::from([1_u8]),
             next_offset: 1,
             commit_sent: true,
             complete: false,
         });
         assert!(backend.cancel_session_replacement().is_err());
         assert!(backend.session_replace.is_some());
-        assert!(backend.transport.borrow().has_reserved_session_journal());
+        assert!(backend.transport.borrow().has_reserved_session_replay());
         backend.cancel_transfers("test cleanup");
     }
 
@@ -4357,16 +4343,17 @@ mod tests {
     fn failed_session_replay_retains_the_complete_transaction() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
-        let replay = replacement_session_journal(7, &[1, 2]);
+        let replay_bytes: Arc<[u8]> = Arc::from([1_u8, 2]);
+        let replay = replacement_session_journal(7, &replay_bytes);
         backend
             .transport
             .borrow_mut()
-            .reserve_session_journal(replay.clone())
+            .reserve_session_replay(7, Arc::clone(&replay_bytes))
             .unwrap();
         backend
             .transport
             .borrow_mut()
-            .commit_reserved_session_journal();
+            .commit_reserved_session_replay();
         control
             .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
             .unwrap();
@@ -4380,7 +4367,10 @@ mod tests {
             },
         );
         assert!(backend.poll().is_err());
-        assert_eq!(backend.transport.borrow().journal_commands(), replay);
+        assert_eq!(
+            backend.transport.borrow().session_replay(),
+            Some((7, Arc::clone(&replay_bytes)))
+        );
         assert_eq!(
             backend.transport.borrow().readiness().connection,
             ConnectionState::Failed
@@ -4495,11 +4485,11 @@ mod tests {
                 source_port_id: BackendPortId::from_raw(99),
                 destination_channel_id: BackendBusChannelId::from_raw(99),
             });
-        let encoded_session = encode_binary(&session).unwrap();
+        let encoded_session: Arc<[u8]> = Arc::from(encode_binary(&session).unwrap());
         backend
             .transport
             .borrow_mut()
-            .reserve_session_journal(replacement_session_journal(7, &encoded_session))
+            .reserve_session_replay(7, Arc::clone(&encoded_session))
             .unwrap();
         backend.apply_replaced_session(&session, &replacement);
         assert_eq!(backend.next_port_id, 1);
@@ -4510,9 +4500,10 @@ mod tests {
         assert!(master.muted);
         assert_eq!(master.output_peaks_db, [-200.0]);
         assert!(backend.snapshot.mixer.confirmed_links.is_empty());
+        assert!(backend.transport.borrow().journal_commands().is_empty());
         assert_eq!(
-            backend.transport.borrow().journal_commands(),
-            replacement_session_journal(7, &encoded_session)
+            backend.transport.borrow().session_replay(),
+            Some((7, encoded_session))
         );
         assert_eq!(
             backend.snapshot.connections.application_ports[&MASTER_BUS_OUTPUT_PORT_IDS[0]].owner,
