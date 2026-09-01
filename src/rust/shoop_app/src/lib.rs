@@ -7819,6 +7819,12 @@ impl ApplicationModel {
     }
 
     fn age_pending_connections(&mut self, backend: &mut dyn Backend, elapsed: Duration) {
+        if !matches!(
+            self.status.audio_driver,
+            AudioDriverState::Dummy | AudioDriverState::Running
+        ) {
+            return;
+        }
         let bus_timed_out = self
             .desired_bus_controls
             .iter_mut()
@@ -19560,6 +19566,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model
             .handle_bus_action(&mut backend, bus_id, BusAction::MuteChanged(true))
             .unwrap();
+        let operations_before_wait = backend.operations().len();
+        model.status.audio_driver = AudioDriverState::AwaitingGesture;
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT.saturating_mul(2));
+        assert!(model.buses[&bus_id].control_pending);
+        assert_eq!(backend.operations().len(), operations_before_wait);
+        model.status.audio_driver = AudioDriverState::Dummy;
         model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
         let bus = &model.buses[&bus_id];
         assert!(!bus.control_pending);
