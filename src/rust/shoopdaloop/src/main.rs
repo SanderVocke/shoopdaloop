@@ -5687,6 +5687,7 @@ mod tests {
         assert!(html.contains("data-trunk"));
         assert!(html.contains(&format!("id=\"{WEB_CANVAS_ID}\"")));
         assert!(html.contains("id=\"browser_permissions_dialog\""));
+        assert!(html.contains("id=\"runtime_status\" data-driver-state=\"starting\" hidden"));
         assert!(html.contains("Browser audio and MIDI permissions"));
         assert!(html.contains("Enable microphone audio"));
         assert!(html.contains("Enable output-only audio"));
