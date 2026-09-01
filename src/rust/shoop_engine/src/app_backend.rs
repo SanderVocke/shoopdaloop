@@ -5849,11 +5849,7 @@ impl AudioPort {
         &self,
         n: u32,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let result = self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize));
-        if result.is_ok() {
-            self.control.mirror.set_ringbuffer_n_samples(n);
-        }
-        result
+        self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize))
     }
     pub fn direction(&self) -> PortDirection {
         self.direction

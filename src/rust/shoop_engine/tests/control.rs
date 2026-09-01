@@ -239,19 +239,23 @@ fn handles_can_be_shared_across_threads() {
 #[shoop_wasm_test_support::shoop_test]
 fn a_port_reports_its_state() {
     let (_exclusive, driver, b) = backend();
+    driver.dummy_enter_controlled_mode();
+    driver.dummy_wait_controlled_mode();
 
     assert2::assert!(let Ok(p) = AudioPort::new_driver_port(&b, &driver, "in", &PortDirection::Input, 4));
 
     p.set_gain(0.5).expect("queue gain");
-    p.set_ringbuffer_n_samples(128).expect("queue ring size");
+    let sequence = p.set_ringbuffer_n_samples(128).expect("queue ring size");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("ring size command");
     assert2::assert!(let Ok(state) = p.get_state());
     check!(state.gain == 0.5);
     check!(!state.muted);
     // The name comes from this side, not from the audio thread, which cannot publish a
     // `String` -- so it is worth asserting it survives the round trip.
     check!(state.name == "in");
-    // Accepted value intent is visible immediately, without waiting for the audio thread.
-    check!(state.ringbuffer_n_samples == 128);
+    // Resizing discards retained audio; the requested window is not retained state.
+    check!(state.ringbuffer_n_samples == 0);
 }
 
 #[shoop_wasm_test_support::shoop_test]
