@@ -13156,6 +13156,8 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
                     ),
                 },
+                latency: shoop_app_api::TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);

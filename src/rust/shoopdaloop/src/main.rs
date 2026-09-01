@@ -4045,6 +4045,8 @@ impl BrowserSelfTest {
                                 shoop_egui::TrackProcessorTypeId::BUILTIN_FX,
                             ),
                         },
+                        latency: shoop_egui::TrackLatencySpec::default(),
+                        creation_request_id: None,
                     }))
                 })
                 .and_then(|()| {
@@ -5650,6 +5652,8 @@ mod tests {
                     dry_midi: false,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                 },
+                latency: shoop_egui::TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
             .unwrap();
         for _ in 0..3 {

@@ -3498,6 +3498,8 @@ mod tests {
                     dry_midi: false,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                 },
+                latency: TrackLatencySpec::default(),
+                creation_request_id: None,
             }))
         );
     }
