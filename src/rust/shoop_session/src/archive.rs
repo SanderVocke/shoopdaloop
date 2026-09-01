@@ -235,6 +235,9 @@ pub fn decode_session_with_limits(
             minor: header.format_version.minor,
         });
     }
+    if header.document_version >= PRE_BUS_CONTROL_SESSION_DOCUMENT_VERSION {
+        require_mixer_routes_field(&manifest_value)?;
+    }
     if header.document_version == SESSION_DOCUMENT_VERSION {
         require_current_bus_control_fields(&manifest_value)?;
     }
@@ -1290,6 +1293,19 @@ fn validate_finite(value: f32, field: &str) -> Result<(), SessionError> {
     } else {
         Err(SessionError::Validation(format!("{field} is not finite")))
     }
+}
+
+fn require_mixer_routes_field(manifest: &serde_json::Value) -> Result<(), SessionError> {
+    let document = manifest
+        .get("document")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| SessionError::Manifest("session document must be an object".to_owned()))?;
+    if !document.contains_key("mixer_routes") {
+        return Err(SessionError::Manifest(
+            "session document is missing required mixer_routes".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn require_current_bus_control_fields(manifest: &serde_json::Value) -> Result<(), SessionError> {
