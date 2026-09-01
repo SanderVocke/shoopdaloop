@@ -3,11 +3,12 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use crate::{
     click_track_dialog::ClickTrackDialog, colors, ephemeral_script_display_name,
     is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
-    AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
-    DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
-    ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState, SettingsAction,
-    SettingsDialog, TracingStatus, TracingStopped, TrackLatencySpec, TrackProcessorDescriptor,
-    TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
+    AudioDriverConfig, AudioDriverKind, BusControls, ConnectionDialog, ConnectionScope,
+    CpalAudioDriverConfig, DetailsPane, DummyAudioDriverConfig, GlobalControls,
+    JackAudioDriverConfig, PianoPane, ProcessorLatencyAdjustmentState,
+    RecordingOffsetAdjustmentState, SettingsAction, SettingsDialog, TracingStatus, TracingStopped,
+    TrackLatencySpec, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
+    TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsDraftError,
@@ -19,6 +20,7 @@ use std::sync::Arc;
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
 const LOGO_AREA_HEIGHT: f32 = 112.0;
 const SYNC_TRACK_HEIGHT: f32 = 118.0;
+const BUS_BLOCK_HEIGHT: f32 = 58.0;
 const SIDEBAR_SECTION_GAP: f32 = 8.0;
 
 pub const DEFAULT_NEW_TRACK_MODE: SettingKey<String> = SettingKey::new("tracks.new.default_mode");
@@ -908,6 +910,7 @@ pub struct AppWidget {
     details: DetailsPane,
     piano: PianoPane,
     sync_track: TrackWidget,
+    bus_controls: BTreeMap<crate::BusId, BusControls>,
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
@@ -968,6 +971,12 @@ pub struct AppWidget {
     xrun_menu_rect: Option<egui::Rect>,
     #[cfg(test)]
     reset_xruns_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    bus_area_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    logo_area_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    sync_area_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -988,6 +997,7 @@ impl AppWidget {
             details: DetailsPane::default(),
             piano: PianoPane::default(),
             sync_track,
+            bus_controls: BTreeMap::new(),
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
@@ -1048,6 +1058,12 @@ impl AppWidget {
             xrun_menu_rect: None,
             #[cfg(test)]
             reset_xruns_rect: None,
+            #[cfg(test)]
+            bus_area_rect: None,
+            #[cfg(test)]
+            logo_area_rect: None,
+            #[cfg(test)]
+            sync_area_rect: None,
         }
     }
 
@@ -1226,11 +1242,17 @@ impl AppWidget {
                     .inner_margin(egui::Margin::same(5)),
             )
             .show(ui, |ui| {
+                self.bus_controls
+                    .retain(|bus_id, _| state.buses.iter().any(|bus| bus.id == *bus_id));
                 let sidebar = ui.max_rect();
                 let logo_rect = egui::Rect::from_min_size(
                     egui::pos2(sidebar.left(), sidebar.bottom() - LOGO_AREA_HEIGHT),
                     egui::vec2(sidebar.width(), LOGO_AREA_HEIGHT),
                 );
+                #[cfg(test)]
+                {
+                    self.logo_area_rect = Some(logo_rect);
+                }
                 ui.scope_builder(
                     egui::UiBuilder::new()
                         .id_salt("logo_area")
@@ -1238,14 +1260,19 @@ impl AppWidget {
                         .layout(egui::Layout::top_down(egui::Align::Center)),
                     |ui| self.show_logo(ui, state),
                 );
+
+                let mut content_top = sidebar.top();
                 if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
+                    let sync_height = SYNC_TRACK_HEIGHT
+                        .min((logo_rect.top() - SIDEBAR_SECTION_GAP - content_top).max(0.0));
                     let sync_rect = egui::Rect::from_min_size(
-                        egui::pos2(
-                            sidebar.left(),
-                            logo_rect.top() - SIDEBAR_SECTION_GAP - SYNC_TRACK_HEIGHT,
-                        ),
-                        egui::vec2(sidebar.width(), SYNC_TRACK_HEIGHT),
+                        egui::pos2(sidebar.left(), content_top),
+                        egui::vec2(sidebar.width(), sync_height),
                     );
+                    #[cfg(test)]
+                    {
+                        self.sync_area_rect = Some(sync_rect);
+                    }
                     ui.scope_builder(
                         egui::UiBuilder::new()
                             .id_salt("sync_track_area")
@@ -1253,6 +1280,58 @@ impl AppWidget {
                             .layout(egui::Layout::top_down(egui::Align::Min)),
                         |ui| self.show_sync_track(ui, sync, state, &mut actions),
                     );
+                    content_top = sync_rect.bottom() + SIDEBAR_SECTION_GAP;
+                } else {
+                    #[cfg(test)]
+                    {
+                        self.sync_area_rect = None;
+                    }
+                }
+
+                let bus_bottom = logo_rect.top() - SIDEBAR_SECTION_GAP;
+                let available_height = (bus_bottom - content_top).max(0.0);
+                let desired_height = (state.buses.len() as f32 * BUS_BLOCK_HEIGHT
+                    + state.buses.len().saturating_sub(1) as f32 * SIDEBAR_SECTION_GAP)
+                    .min(available_height);
+                if desired_height > 0.0 {
+                    let bus_rect = egui::Rect::from_min_size(
+                        egui::pos2(sidebar.left(), bus_bottom - desired_height),
+                        egui::vec2(sidebar.width(), desired_height),
+                    );
+                    #[cfg(test)]
+                    {
+                        self.bus_area_rect = Some(bus_rect);
+                    }
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .id_salt("bus_control_area")
+                            .max_rect(bus_rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                        |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("bus_control_scroll")
+                                .scroll_source(crate::control_safe_scroll_source())
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    for bus in state.buses.iter() {
+                                        let controls = self.bus_controls.entry(bus.id).or_default();
+                                        actions.extend(controls.show(ui, bus).into_iter().map(
+                                            |action| AppAction::Bus {
+                                                bus_id: bus.id,
+                                                action,
+                                            },
+                                        ));
+                                        ui.add_space(SIDEBAR_SECTION_GAP);
+                                    }
+                                });
+                        },
+                    );
+                } else {
+                    #[cfg(test)]
+                    {
+                        self.bus_area_rect = None;
+                    }
                 }
             });
 
@@ -3464,6 +3543,124 @@ mod tests {
         assert!(widget.add_track_cancel_rect.is_some());
         widget.cancel_add_track();
         assert!(!widget.add_track_open);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_blocks_stack_immediately_above_logo_without_overlapping_sync() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let bus = |id| crate::BusState {
+            id: crate::BusId::from_raw(id),
+            name: if id == 1 {
+                "Master".to_owned()
+            } else {
+                format!("Bus {id}")
+            },
+            channels: Arc::from([
+                crate::BusChannelState {
+                    id: crate::BusChannelId::from_raw(id * 2 - 1),
+                    label: "Left".to_owned(),
+                    output_port_id: crate::PortId::from_raw(id * 2 - 1),
+                },
+                crate::BusChannelState {
+                    id: crate::BusChannelId::from_raw(id * 2),
+                    label: "Right".to_owned(),
+                    output_port_id: crate::PortId::from_raw(id * 2),
+                },
+            ]),
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
+            output_peaks_db: Arc::from([-20.0, -10.0]),
+            control_pending: false,
+            control_error: None,
+        };
+        let mut state = AppState {
+            tracks: vec![TrackState {
+                id: crate::TrackId::from_raw(1),
+                name: "Sync".to_owned(),
+                is_sync: true,
+                ..Default::default()
+            }],
+            buses: Arc::from([bus(1)]),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        let bus_rect = widget.bus_area_rect.unwrap();
+        let logo_rect = widget.logo_area_rect.unwrap();
+        let sync_rect = widget.sync_area_rect.unwrap();
+        assert!((bus_rect.bottom() - (logo_rect.top() - SIDEBAR_SECTION_GAP)).abs() < 0.01);
+        assert!(sync_rect.bottom() <= bus_rect.top());
+        assert_eq!(widget.bus_controls.len(), 1);
+        let mute = widget.bus_controls[&crate::BusId::from_raw(1)]
+            .mute_rect()
+            .unwrap()
+            .center();
+        frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(mute),
+                egui::Event::PointerButton {
+                    pos: mute,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let actions = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(mute),
+                egui::Event::PointerButton {
+                    pos: mute,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(actions.iter().any(|action| matches!(
+            action,
+            AppAction::Bus {
+                bus_id,
+                action: crate::BusAction::MuteChanged(true)
+            } if *bus_id == crate::BusId::from_raw(1)
+        )));
+
+        state.buses = Arc::from([bus(1), bus(2), bus(3)]);
+        frame(&context, &mut widget, &state, Vec::new());
+        assert_eq!(widget.bus_controls.len(), 3);
+        assert!(widget.bus_area_rect.unwrap().bottom() <= widget.logo_area_rect.unwrap().top());
+        assert!(widget.sync_area_rect.unwrap().bottom() <= widget.bus_area_rect.unwrap().top());
+
+        state.buses = Arc::from([bus(1)]);
+        frame(&context, &mut widget, &state, Vec::new());
+        assert_eq!(widget.bus_controls.len(), 1);
+
+        let settings = settings_state();
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 380.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                widget.show(ui, &state, &settings, None);
+            },
+        );
+        output.textures_delta.clear();
+        let short_bus = widget.bus_area_rect.unwrap();
+        let short_logo = widget.logo_area_rect.unwrap();
+        assert!(short_bus.bottom() <= short_logo.top());
+        assert!(widget.sync_area_rect.unwrap().bottom() <= short_bus.top());
     }
 
     #[shoop_wasm_test_support::shoop_test]

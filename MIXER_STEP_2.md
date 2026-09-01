@@ -155,17 +155,17 @@ Verification:
 
 Depends on Stage 4.
 
-- [ ] Add a reusable `BusControls`/bus-block widget keyed by `BusId`, with the bus name, channel-aware animated output meter, mute button, volume fader, and stereo-only balance dial.
-- [ ] Reuse the existing gain range, fader curve, double-click/default behavior, dial interaction, meter ballistics, optimistic values, disabled/error styling, touch-safe scrolling, and repaint policy used by track controls where applicable.
-- [ ] Place the ordered bus column directly above the fixed logo area in the 150-pixel right sidebar. Keep the logo pinned, keep the sync-track section separate, and add bounded vertical layout/scrolling so synthetic multiple-bus and short-window cases do not overlap or clip controls.
-- [ ] Emit exact typed bus intents, retain responsive drag state only while pending, and settle presentation from authoritative `AppState` snapshots.
-- [ ] Hide the balance control for non-stereo synthetic bus states while retaining one uniform gain/mute control and one meter indication per channel.
-- [ ] Prune widget-local state when a bus disappears and avoid deriving widget identity from bus name or list index.
+- [x] Add a reusable `BusControls`/bus-block widget keyed by `BusId`, with the bus name, channel-aware animated output meter, mute button, volume fader, and stereo-only balance dial.
+- [x] Reuse the existing gain range, fader curve, double-click/default behavior, dial interaction, meter ballistics, optimistic values, disabled/error styling, touch-safe scrolling, and repaint policy used by track controls where applicable.
+- [x] Place the ordered bus column directly above the fixed logo area in the 150-pixel right sidebar. Keep the logo pinned, keep the sync-track section separate, and add bounded vertical layout/scrolling so synthetic multiple-bus and short-window cases do not overlap or clip controls.
+- [x] Emit exact typed bus intents, retain responsive drag state only while pending, and settle presentation from authoritative `AppState` snapshots.
+- [x] Hide the balance control for non-stereo synthetic bus states while retaining one uniform gain/mute control and one meter indication per channel.
+- [x] Prune widget-local state when a bus disappears and avoid deriving widget identity from bus name or list index.
 
 Verification:
 
-- [ ] Add egui interaction tests for block order, right-sidebar placement above the logo, sync/logo non-overlap, fader/dial/mute intents, optimistic reconciliation, mute styling, animated dual peaks, stereo-only balance, stable widget identity, short windows, and a synthetic multi-bus scroll case.
-- [ ] Verify the Master block has no input/output split and no add/remove/rename/processor controls.
+- [x] Add egui interaction tests for block order, right-sidebar placement above the logo, sync/logo non-overlap, fader/dial/mute intents, optimistic reconciliation, mute styling, animated dual peaks, stereo-only balance, stable widget identity, short windows, and a synthetic multi-bus scroll case.
+- [x] Verify the Master block has no input/output split and no add/remove/rename/processor controls.
 - [ ] Run focused `shoop_egui` bus-widget and `AppWidget` layout tests plus native headless and browser rendering smokes where available.
 
 ### Stage 6 — Expose bus control through Lua

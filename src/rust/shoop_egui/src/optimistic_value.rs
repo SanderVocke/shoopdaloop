@@ -14,6 +14,15 @@ impl<T: Copy + PartialEq> OptimisticValue<T> {
     pub(crate) fn set(&mut self, value: T) {
         self.pending = Some(value);
     }
+
+    pub(crate) fn clear(&mut self) {
+        self.pending = None;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_pending(&self) -> bool {
+        self.pending.is_some()
+    }
 }
 
 #[cfg(test)]
