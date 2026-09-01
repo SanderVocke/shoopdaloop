@@ -2715,9 +2715,10 @@ impl Backend for RemoteWorkletBackend {
                     if retry_media_read {
                         continue;
                     }
-                    self.transport
-                        .borrow_mut()
-                        .reject_journaled(&received.command);
+                    self.transport.borrow_mut().restore_rejected_journal(
+                        &received.command,
+                        received.journal_mutation.clone(),
+                    );
                     match &received.command {
                         Command::CreateTrack {
                             expected_track_id, ..
@@ -2829,9 +2830,10 @@ impl Backend for RemoteWorkletBackend {
                     desired_connected,
                     message,
                 } => {
-                    self.transport
-                        .borrow_mut()
-                        .reject_journaled(&received.command);
+                    self.transport.borrow_mut().restore_rejected_journal(
+                        &received.command,
+                        received.journal_mutation.clone(),
+                    );
                     self.snapshot
                         .connections
                         .failures
@@ -2848,9 +2850,10 @@ impl Backend for RemoteWorkletBackend {
                     desired_connected,
                     message,
                 } => {
-                    self.transport
-                        .borrow_mut()
-                        .reject_journaled(&received.command);
+                    self.transport.borrow_mut().restore_rejected_journal(
+                        &received.command,
+                        received.journal_mutation.clone(),
+                    );
                     self.snapshot.mixer.failures.push(BackendMixerFailure {
                         link: BackendMixerLink {
                             source_port_id: BackendPortId::from_raw(source_port_id),
@@ -3977,6 +3980,63 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn chained_rejections_restore_the_last_accepted_bus_control() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-1.0))
+            .unwrap();
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        deliver(&control, 1, 2, Event::Ack);
+        backend.poll().unwrap();
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-2.0))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-3.0))
+            .unwrap();
+        deliver(
+            &control,
+            1,
+            3,
+            Event::Error {
+                message: "first gain rejected".to_owned(),
+            },
+        );
+        backend.poll().unwrap();
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::GainDb(-3.0),
+            }));
+
+        deliver(
+            &control,
+            1,
+            4,
+            Event::Error {
+                message: "second gain rejected".to_owned(),
+            },
+        );
+        backend.poll().unwrap();
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::GainDb(-1.0),
+            }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn remote_clients_keep_sequences_resources_and_failures_isolated() {
         let (mut first, first_control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         let (mut second, second_control) = RemoteWorkletBackend::new(NullHostMidiBridge);
@@ -4492,7 +4552,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn rejected_connection_commands_are_removed_from_replay() {
+    fn rejected_connection_commands_restore_prior_replay_state() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
         control
@@ -4500,7 +4560,19 @@ mod tests {
             .unwrap();
         deliver(&control, 1, 1, Event::Ack);
 
-        let route = Command::SetMixerRoute {
+        let old_route = Command::SetMixerRoute {
+            source_port_id: 2,
+            destination_channel_id: 1,
+            connected: false,
+        };
+        backend
+            .transport
+            .borrow_mut()
+            .journal(old_route.clone())
+            .unwrap();
+        deliver(&control, 1, 2, Event::Ack);
+        backend.poll().unwrap();
+        let rejected_route = Command::SetMixerRoute {
             source_port_id: 2,
             destination_channel_id: 1,
             connected: true,
@@ -4508,12 +4580,12 @@ mod tests {
         backend
             .transport
             .borrow_mut()
-            .journal(route.clone())
+            .journal(rejected_route)
             .unwrap();
         deliver(
             &control,
             1,
-            2,
+            3,
             Event::MixerMutationFailed {
                 source_port_id: 2,
                 destination_channel_id: 1,
@@ -4522,26 +4594,37 @@ mod tests {
             },
         );
         assert_eq!(backend.poll().unwrap().mixer.failures.len(), 1);
-        assert!(!backend
+        assert!(backend
             .transport
             .borrow()
             .journal_commands()
-            .contains(&route));
+            .contains(&old_route));
 
-        let host_link = Command::SetPortConnected {
+        let old_host_link = Command::SetPortConnected {
             application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
             host_port_id: "system:playback_1".to_owned(),
-            connected: true,
+            connected: false,
         };
         backend
             .transport
             .borrow_mut()
-            .journal(host_link.clone())
+            .journal(old_host_link.clone())
+            .unwrap();
+        deliver(&control, 1, 4, Event::Ack);
+        backend.poll().unwrap();
+        backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetPortConnected {
+                application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+                host_port_id: "system:playback_1".to_owned(),
+                connected: true,
+            })
             .unwrap();
         deliver(
             &control,
             1,
-            3,
+            5,
             Event::ConnectionMutationFailed {
                 application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
                 host_port_id: "system:playback_1".to_owned(),
@@ -4550,11 +4633,11 @@ mod tests {
             },
         );
         assert_eq!(backend.poll().unwrap().connections.failures.len(), 1);
-        assert!(!backend
+        assert!(backend
             .transport
             .borrow()
             .journal_commands()
-            .contains(&host_link));
+            .contains(&old_host_link));
     }
 
     #[shoop_wasm_test_support::shoop_test]

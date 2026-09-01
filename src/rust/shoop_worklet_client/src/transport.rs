@@ -83,9 +83,16 @@ pub struct TransportDiagnostics {
     pub out_of_order_responses: u32,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) enum JournalMutation {
+    Appended,
+    Replaced(Command),
+}
+
 struct PendingCommand {
     command: Command,
     replay: bool,
+    journal_mutation: Option<JournalMutation>,
 }
 
 fn is_session_connection_command(command: &Command) -> bool {
@@ -100,6 +107,7 @@ fn is_session_connection_command(command: &Command) -> bool {
 pub(crate) struct ReceivedEvent {
     pub envelope: EventEnvelope,
     pub command: Command,
+    pub journal_mutation: Option<JournalMutation>,
     pub generation: u64,
 }
 
@@ -175,8 +183,12 @@ impl TransportCore {
             self.journal.push(command.clone());
             None
         };
+        let journal_mutation = Some(match previous.as_ref() {
+            Some(previous) => JournalMutation::Replaced(previous.clone()),
+            None => JournalMutation::Appended,
+        });
         if self.endpoint.is_some() {
-            if let Err(error) = self.send(command.clone(), false) {
+            if let Err(error) = self.send(command.clone(), false, journal_mutation) {
                 if let (Some(index), Some(previous)) = (existing_index, previous) {
                     self.journal[index] = previous;
                 } else {
@@ -189,8 +201,41 @@ impl TransportCore {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn reject_journaled(&mut self, command: &Command) {
         self.journal.retain(|candidate| candidate != command);
+    }
+
+    pub(crate) fn restore_rejected_journal(
+        &mut self,
+        command: &Command,
+        mutation: Option<JournalMutation>,
+    ) {
+        let fallback = mutation.clone();
+        for pending in self.pending.values_mut() {
+            if pending
+                .journal_mutation
+                .as_ref()
+                .is_some_and(|candidate| {
+                    matches!(candidate, JournalMutation::Replaced(previous) if previous == command)
+                })
+            {
+                pending.journal_mutation = fallback.clone();
+            }
+        }
+        let Some(index) = self
+            .journal
+            .iter()
+            .rposition(|candidate| candidate == command)
+        else {
+            return;
+        };
+        match mutation {
+            Some(JournalMutation::Replaced(previous)) => self.journal[index] = previous,
+            Some(JournalMutation::Appended) | None => {
+                self.journal.remove(index);
+            }
+        }
     }
 
     pub(crate) fn reserve_session_connection_journal(
@@ -241,10 +286,15 @@ impl TransportCore {
         if self.endpoint.is_none() {
             return Err(anyhow!("remote worklet is not connected"));
         }
-        self.send(command, false).map(|_| ())
+        self.send(command, false, None).map(|_| ())
     }
 
-    fn send(&mut self, command: Command, replay: bool) -> Result<u64> {
+    fn send(
+        &mut self,
+        command: Command,
+        replay: bool,
+        journal_mutation: Option<JournalMutation>,
+    ) -> Result<u64> {
         if self.pending.len() >= COMMAND_CAPACITY {
             self.overflows = self.overflows.saturating_add(1);
             return Err(anyhow!("remote worklet command queue is full"));
@@ -258,8 +308,14 @@ impl TransportCore {
             .post_message(&json)
             .map_err(|error| anyhow!("could not post remote worklet command: {error}"))?;
         self.next_sequence = self.next_sequence.saturating_add(1);
-        self.pending
-            .insert(sequence, PendingCommand { command, replay });
+        self.pending.insert(
+            sequence,
+            PendingCommand {
+                command,
+                replay,
+                journal_mutation,
+            },
+        );
         if replay {
             self.replay_sequences.insert(sequence);
         }
@@ -294,6 +350,7 @@ impl TransportCore {
                 output_channels,
             },
             true,
+            None,
         )?;
         let journal = self.journal.clone();
         for command in journal
@@ -301,13 +358,13 @@ impl TransportCore {
             .filter(|command| matches!(command, Command::ConfigureMidiEndpoints { .. }))
             .cloned()
         {
-            self.send(command, true)?;
+            self.send(command, true, None)?;
         }
         for command in journal
             .into_iter()
             .filter(|command| !matches!(command, Command::ConfigureMidiEndpoints { .. }))
         {
-            self.send(command, true)?;
+            self.send(command, true, None)?;
         }
         Ok(())
     }
@@ -395,6 +452,7 @@ impl TransportCore {
         self.inbound.push_back(ReceivedEvent {
             envelope: event,
             command: pending.command,
+            journal_mutation: pending.journal_mutation,
             generation,
         });
         Ok(())
@@ -402,7 +460,7 @@ impl TransportCore {
 
     fn detach(&mut self, send_shutdown: bool) {
         if send_shutdown && self.endpoint.is_some() && self.pending.len() < COMMAND_CAPACITY {
-            let _ = self.send(Command::Shutdown, false);
+            let _ = self.send(Command::Shutdown, false, None);
         }
         if let Some(endpoint) = self.endpoint.take() {
             endpoint.close();
