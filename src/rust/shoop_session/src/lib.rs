@@ -713,6 +713,14 @@ mod tests {
             .is_empty());
 
         for version in [9, SESSION_DOCUMENT_VERSION] {
+            let missing_bus = rewrite_manifest(encoded.clone(), |manifest| {
+                manifest["document_version"] = serde_json::json!(version);
+                manifest["document"]["buses"] = serde_json::json!([]);
+            });
+            assert!(matches!(
+                decode_session(&missing_bus),
+                Err(SessionError::Manifest(_))
+            ));
             let malformed = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(version);
                 manifest["document"]["buses"][0]
@@ -734,6 +742,15 @@ mod tests {
         });
         assert!(decode_session(&version_eight).unwrap().document.buses[0]
             .channels
+            .is_empty());
+        let version_eight = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(8);
+            manifest["document"]["buses"] = serde_json::json!([]);
+        });
+        assert!(decode_session(&version_eight)
+            .unwrap()
+            .document
+            .buses
             .is_empty());
 
         for invalid in [f32::NAN, f32::INFINITY, -31.0, 21.0] {

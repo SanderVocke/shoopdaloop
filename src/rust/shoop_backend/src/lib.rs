@@ -5862,6 +5862,13 @@ impl Backend for EngineBackend {
                 self.connection_revision = self.connection_revision.wrapping_add(1);
                 return Ok(());
             }
+            if !connected
+                && (WEB_AUDIO_CAPTURE_PORTS.contains(&external_port)
+                    || WEB_AUDIO_DESTINATION_PORTS.contains(&external_port))
+            {
+                self.connection_revision = self.connection_revision.wrapping_add(1);
+                return Ok(());
+            }
             return Err(anyhow!("external port disappeared: {external_port}"));
         };
         if candidate.direction != engine_direction(opposite_backend_direction(local_direction))
@@ -13271,6 +13278,11 @@ mod tests {
                 host_port_id: (*host).to_owned(),
             })
         }));
+
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        backend
+            .set_port_connected(migrated_output, "webaudio:destination_1", false)
+            .unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]

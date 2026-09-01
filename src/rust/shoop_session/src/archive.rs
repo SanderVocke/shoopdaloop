@@ -1309,6 +1309,12 @@ fn require_mixer_document_fields(manifest: &serde_json::Value) -> Result<(), Ses
         .get("buses")
         .and_then(serde_json::Value::as_array)
         .ok_or_else(|| SessionError::Manifest("session buses must be an array".to_owned()))?;
+    if buses.len() != 1 {
+        return Err(SessionError::Manifest(format!(
+            "mixer session must contain exactly one bus, found {}",
+            buses.len()
+        )));
+    }
     for (index, bus) in buses.iter().enumerate() {
         let bus = bus.as_object().ok_or_else(|| {
             SessionError::Manifest(format!("session bus {index} must be an object"))

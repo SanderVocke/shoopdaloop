@@ -74,6 +74,8 @@ struct MidiDataAssembly {
 }
 
 const SESSION_CAPTURE_IN_FLIGHT_LIMIT: usize = 8;
+const WEB_AUDIO_CAPTURE_HOSTS: [&str; 2] = ["webaudio:capture_1", "webaudio:capture_2"];
+const WEB_AUDIO_DESTINATION_HOSTS: [&str; 2] = ["webaudio:destination_1", "webaudio:destination_2"];
 const WAVEFORM_IN_FLIGHT_LIMIT: usize = 8;
 const WAVEFORM_PENDING_COMMAND_LIMIT: usize = COMMAND_CAPACITY / 2;
 
@@ -149,7 +151,33 @@ fn replacement_connection_journal(
             let Some(&application_port_id) = replacement.ports.get(&source_port.source_id) else {
                 continue;
             };
-            for host_port_id in &source_port.external_connections {
+            let default_hosts: &[&str] = match (
+                source_port.descriptor.data_type,
+                source_port.descriptor.direction,
+            ) {
+                (BackendPortDataType::Audio, BackendPortDirection::Input) => {
+                    &WEB_AUDIO_CAPTURE_HOSTS
+                }
+                (BackendPortDataType::Audio, BackendPortDirection::Output) => {
+                    &WEB_AUDIO_DESTINATION_HOSTS
+                }
+                _ => &[],
+            };
+            for host_port_id in default_hosts {
+                commands.push(Command::SetPortConnected {
+                    application_port_id: application_port_id.raw(),
+                    host_port_id: (*host_port_id).to_owned(),
+                    connected: source_port
+                        .external_connections
+                        .iter()
+                        .any(|saved| saved == host_port_id),
+                });
+            }
+            for host_port_id in source_port
+                .external_connections
+                .iter()
+                .filter(|saved| !default_hosts.contains(&saved.as_str()))
+            {
                 commands.push(Command::SetPortConnected {
                     application_port_id: application_port_id.raw(),
                     host_port_id: host_port_id.clone(),
@@ -4352,6 +4380,69 @@ mod tests {
             .borrow()
             .has_reserved_session_connections());
         backend.cancel_transfers("test cleanup");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn replacement_replay_records_explicit_web_audio_disconnections() {
+        let input = shoop_backend::BackendSessionPort {
+            source_id: 10,
+            descriptor: BackendPortDescriptor {
+                id: BackendPortId::from_raw(10),
+                owner: BackendPortOwner::Track,
+                name: "track_audio_in_1".to_owned(),
+                data_type: BackendPortDataType::Audio,
+                direction: BackendPortDirection::Input,
+                role: BackendPortRole::AudioInput,
+            },
+            external_connections: Vec::new(),
+        };
+        let output = shoop_backend::BackendSessionPort {
+            source_id: 11,
+            descriptor: BackendPortDescriptor {
+                id: BackendPortId::from_raw(11),
+                owner: BackendPortOwner::Track,
+                name: "track_audio_out_1".to_owned(),
+                data_type: BackendPortDataType::Audio,
+                direction: BackendPortDirection::Output,
+                role: BackendPortRole::AudioOutput,
+            },
+            external_connections: Vec::new(),
+        };
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: vec![shoop_backend::BackendSessionTrack {
+                source_id: 1,
+                port_name_base: "track".to_owned(),
+                topology: BackendTrackTopology::Direct {
+                    audio_channels: 1,
+                    midi: false,
+                },
+                state: BackendTrackState::default(),
+                loops: Vec::new(),
+                ports: vec![input, output],
+                processor_state: None,
+                oxisynth_midi_cc_assignments: Vec::new(),
+            }],
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+        let replacement = browser_replacement_mapping(&session);
+        let commands = replacement_connection_journal(&session, &replacement);
+        for (source_id, hosts) in [
+            (10, WEB_AUDIO_CAPTURE_HOSTS.as_slice()),
+            (11, WEB_AUDIO_DESTINATION_HOSTS.as_slice()),
+        ] {
+            let application_port_id = replacement.ports[&source_id].raw();
+            for host_port_id in hosts {
+                assert!(commands.contains(&Command::SetPortConnected {
+                    application_port_id,
+                    host_port_id: (*host_port_id).to_owned(),
+                    connected: false,
+                }));
+            }
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
