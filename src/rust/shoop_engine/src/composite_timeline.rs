@@ -1,8 +1,8 @@
 //! Bounded same-sample resolution for compiled composite-loop plans.
 
 use crate::composite_plan::{
-    CompiledChildMode, CompiledCompositeKind, CompiledCompositePlan, LoopIdentity, LoopTargetKind,
-    MAX_COMPOSITE_BOUNDARY_OUTPUTS,
+    CompiledChildMode, CompiledCompositeKind, CompiledCompositePlan, CompiledPlanActionKind,
+    LoopIdentity, LoopTargetKind, MAX_COMPOSITE_BOUNDARY_OUTPUTS,
 };
 use crate::composite_runtime::{
     CompositeRuntime, CompositeRuntimeError, CompositeTargetAction, CompositeTransitionBatch,
@@ -140,6 +140,8 @@ pub enum CompositeTimelineBuildError {
     SourceIsNotComposite,
     #[error("a composite target is not installed in this timeline")]
     MissingCompositeTarget,
+    #[error("a script event requests an unsupported mode from a nested regular composite")]
+    UnsupportedNestedRegularMode,
     #[error("the installed composite topology contains a cycle")]
     DependencyCycle,
     #[error("the installed composite topology exceeds the event-wave capacity")]
@@ -280,6 +282,29 @@ impl CompositeBoundaryTimeline {
             {
                 if !source_set.contains(target) {
                     return Err(CompositeTimelineBuildError::MissingCompositeTarget);
+                }
+            }
+        }
+
+        for node in by_source.values() {
+            if node.plan().kind() != CompiledCompositeKind::Script {
+                continue;
+            }
+            for action in node.plan().actions() {
+                let CompiledPlanActionKind::SetDesired(desired) = action.kind else {
+                    continue;
+                };
+                let CompiledChildMode::Explicit(mode) = desired.mode else {
+                    continue;
+                };
+                let target = node.plan().targets()[usize::from(action.target_index)];
+                if target.kind == LoopTargetKind::Composite
+                    && by_source.get(&target).is_some_and(|target_node| {
+                        target_node.plan().kind() == CompiledCompositeKind::Regular
+                    })
+                    && !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
+                {
+                    return Err(CompositeTimelineBuildError::UnsupportedNestedRegularMode);
                 }
             }
         }

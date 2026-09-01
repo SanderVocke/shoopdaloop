@@ -701,6 +701,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     let mut track_ids = BTreeSet::new();
     let mut loop_ids = BTreeSet::new();
     let mut loop_lengths = BTreeMap::new();
+    let mut loop_composite_kinds = BTreeMap::new();
     let mut sync_length = 1_u64;
     let mut port_ids = BTreeSet::new();
     let mut channel_ids = BTreeSet::new();
@@ -836,6 +837,10 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     )));
                 }
                 loop_lengths.insert(loop_.id, loop_.length_frames);
+                loop_composite_kinds.insert(
+                    loop_.id,
+                    loop_.composite.as_ref().map(|composite| composite.kind),
+                );
                 if loop_.is_sync {
                     sync_length = loop_.length_frames.max(1);
                 }
@@ -1019,6 +1024,16 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         if !loop_ids.contains(&event.loop_id) {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} references stale loop {}",
+                                loop_.id, event.loop_id
+                            )));
+                        }
+                        if composite.kind == CompositeKindDocument::Script
+                            && loop_composite_kinds.get(&event.loop_id)
+                                == Some(&Some(CompositeKindDocument::Regular))
+                            && !matches!(event.mode.as_deref(), Some("playing" | "stopped"))
+                        {
+                            return Err(SessionError::Validation(format!(
+                                "script composite loop {} requests an unsupported mode from nested regular composite {}",
                                 loop_.id, event.loop_id
                             )));
                         }

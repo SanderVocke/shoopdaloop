@@ -7385,7 +7385,7 @@ impl ApplicationModel {
                 .loops
                 .get(&initiating_loop)
                 .is_some_and(|model| model.state.selected);
-        let targets: Vec<_> = self
+        let mut targets: Vec<_> = self
             .loops
             .values()
             .filter(|model| {
@@ -7400,12 +7400,14 @@ impl ApplicationModel {
                 )
             })
             .collect();
-        if targets
-            .iter()
-            .any(|(_, _, _, composite_id)| composite_id.is_some())
-            && !matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Stopped)
-        {
-            return Err("composite loops support only playback and stop".to_owned());
+        if !matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Stopped) {
+            if targets
+                .iter()
+                .any(|(id, _, _, composite_id)| *id == initiating_loop && composite_id.is_some())
+            {
+                return Err("composite loops support only playback and stop".to_owned());
+            }
+            targets.retain(|(_, _, _, composite_id)| composite_id.is_none());
         }
         let delay = self.global.sync.then_some(self.target_delay());
         if matches!(
@@ -18456,6 +18458,67 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     && requests[0].cycles_length == Some(1)
                     && requests[0].go_to_mode == BackendLoopMode::Playing
         )));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mixed_selection_applies_primitive_only_modes_without_faulting_the_composite() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Mixed".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let primitive = model.tracks[1].loops[0];
+        let composite = model.tracks[1].loops[1];
+        model.loops.get_mut(&primitive).unwrap().state.selected = true;
+        let composite_model = model.loops.get_mut(&composite).unwrap();
+        composite_model.state.selected = true;
+        composite_model.backend_composite = Some(BackendCompositeId::from_raw(999));
+        let operation_start = backend.operations().len();
+
+        model
+            .transition_targets(
+                &mut backend,
+                primitive,
+                BackendLoopMode::PlayingDryThroughWet,
+            )
+            .unwrap();
+        let transitions = backend.operations()[operation_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::Transition(id, mode, delay) => {
+                    Some((*id, *mode, *delay))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            transitions,
+            [(
+                model.loops[&primitive].backend_id,
+                BackendLoopMode::PlayingDryThroughWet,
+                Some(0),
+            )]
+        );
+        assert!(model
+            .transition_targets(
+                &mut backend,
+                composite,
+                BackendLoopMode::PlayingDryThroughWet,
+            )
+            .is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

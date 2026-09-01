@@ -8,7 +8,7 @@ A regular-composite event has one symbolic mode, `DefaultPlayback`. It does not 
 
 A nested composite resolves `DefaultPlayback` as ordinary composite playback and recursively applies its own schedule at the same sample. Regular composites expose only ordinary playback and stop at their outer boundary.
 
-Every script-composite event stores an explicit concrete mode. Explicit script modes bypass primitive track defaults. Explicit playback of a nested regular composite starts that composite normally, after which the nested regular schedule resolves its own `DefaultPlayback` events.
+Every script-composite event stores an explicit concrete mode. Explicit script modes bypass primitive track defaults. Explicit playback of a nested regular composite starts that composite normally, after which the nested regular schedule resolves its own `DefaultPlayback` events. Because regular composites expose only ordinary playback and stop, script events requesting recording, replacing, or dry-through-wet modes from a nested regular composite are rejected when the composite graph is configured rather than faulting during playback.
 
 ## Explicit control
 

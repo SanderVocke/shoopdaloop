@@ -821,6 +821,30 @@ mod tests {
         ));
 
         let mut invalid = deferred_feature_bundle();
+        let mut nested_regular = invalid.document.track_groups[0].tracks[2].loops[0].clone();
+        nested_regular.id = 31;
+        nested_regular.name = "Nested regular".to_owned();
+        let nested_document = nested_regular.composite.as_mut().unwrap();
+        nested_document.kind = CompositeKindDocument::Regular;
+        for instance in &mut nested_document.instances {
+            instance.mode = None;
+        }
+        invalid.document.track_groups[0].tracks[2]
+            .loops
+            .push(nested_regular);
+        let script = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        script.instances[0].loop_id = 31;
+        script.instances[0].mode = Some("recording".to_owned());
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message))
+                if message.contains("unsupported mode from nested regular composite")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
         let composite = invalid.document.track_groups[0].tracks[2].loops[0]
             .composite
             .as_mut()

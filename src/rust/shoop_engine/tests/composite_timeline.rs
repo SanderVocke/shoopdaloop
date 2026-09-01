@@ -937,6 +937,54 @@ fn script_explicit_playback_bypasses_the_track_default() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn unsupported_script_modes_for_nested_regular_composites_fail_during_timeline_build() {
+    let child = basic(1);
+    let nested = composite(10);
+    let script = composite(20);
+    let targets = catalog(&[child, nested, script]);
+    for mode in [
+        LoopMode::Recording,
+        LoopMode::Replacing,
+        LoopMode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet,
+    ] {
+        let result = CompositeBoundaryTimeline::new(
+            vec![
+                CompositeTimelineNode {
+                    plan: plan(nested, 1, &[(child, 0, None)], &targets),
+                    sync_source: basic(2),
+                },
+                CompositeTimelineNode {
+                    plan: plan(script, 1, &[(nested, 0, Some(mode))], &targets),
+                    sync_source: basic(2),
+                },
+            ],
+            CompositeTimelineLimits::default(),
+        );
+        assert!(matches!(
+            result,
+            Err(CompositeTimelineBuildError::UnsupportedNestedRegularMode)
+        ));
+    }
+    for mode in [LoopMode::Playing, LoopMode::Stopped] {
+        assert!(CompositeBoundaryTimeline::new(
+            vec![
+                CompositeTimelineNode {
+                    plan: plan(nested, 1, &[(child, 0, None)], &targets),
+                    sync_source: basic(2),
+                },
+                CompositeTimelineNode {
+                    plan: plan(script, 1, &[(nested, 0, Some(mode))], &targets),
+                    sync_source: basic(2),
+                },
+            ],
+            CompositeTimelineLimits::default(),
+        )
+        .is_ok());
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn explicit_script_play_of_nested_regular_composite_uses_descendant_track_default() {
     let child = basic(1);
     let nested = composite(10);
