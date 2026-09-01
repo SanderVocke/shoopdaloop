@@ -2141,7 +2141,7 @@ impl AppWidget {
     }
 
     fn show_logo(&mut self, ui: &mut egui::Ui, state: &AppState) {
-        ui.add_space(6.0);
+        ui.add_space(12.0);
         if let Some(logo) = &self.logo {
             let size = logo.size_vec2();
             let width = (ui.available_width() - 12.0).max(1.0).min(128.0);
