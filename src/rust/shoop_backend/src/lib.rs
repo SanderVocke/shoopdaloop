@@ -1225,6 +1225,9 @@ pub trait Backend {
     ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
         self.replace_session(session).map(BackendAsyncResult::Ready)
     }
+    fn cancel_session_replacement(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn replace_loop_content_async(
         &mut self,
         loop_id: BackendLoopId,
@@ -6797,6 +6800,7 @@ pub enum FakeOperation {
     AddTrackLoop(BackendTrackId, BackendLoopId),
     SetTrackControl(BackendTrackId, BackendTrackControl),
     SetBusControl(BackendBusId, BackendBusControl),
+    CancelSessionReplacement,
     SetLoopGain(BackendLoopId, f32),
     SetLoopBalance(BackendLoopId, f32),
     GrabLoops(Vec<BackendGrabRequest>),
@@ -9278,6 +9282,12 @@ impl Backend for FakeBackend {
         }
         *self = staged;
         Ok(replacement)
+    }
+
+    fn cancel_session_replacement(&mut self) -> Result<()> {
+        self.operations
+            .push(FakeOperation::CancelSessionReplacement);
+        Ok(())
     }
 
     fn set_port_connected(

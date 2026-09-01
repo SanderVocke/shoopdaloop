@@ -2490,6 +2490,28 @@ impl Backend for RemoteWorkletBackend {
         }))
     }
 
+    fn cancel_session_replacement(&mut self) -> Result<()> {
+        let Some(replace) = self.session_replace.as_ref() else {
+            self.transport
+                .borrow_mut()
+                .cancel_reserved_session_connection_journal();
+            return Ok(());
+        };
+        if replace.commit_sent {
+            return Err(anyhow!("session replacement commit is already in flight"));
+        }
+        let generation = replace.generation;
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::AbortSessionTransfer { generation })?;
+        self.session_replace = None;
+        self.session_replace_error = None;
+        self.transport
+            .borrow_mut()
+            .cancel_reserved_session_connection_journal();
+        Ok(())
+    }
+
     fn set_port_connected(
         &mut self,
         port_id: BackendPortId,
@@ -4136,6 +4158,59 @@ mod tests {
             .borrow()
             .has_reserved_session_connections());
         assert_eq!(backend.transport.borrow().pending_len(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_replacement_cancel_aborts_before_commit_and_refuses_after_commit() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_connection_journal(Vec::new())
+            .unwrap();
+        backend.session_replace = Some(SessionReplaceAssembly {
+            generation: 7,
+            bytes: vec![1],
+            next_offset: 0,
+            commit_sent: false,
+            complete: false,
+        });
+
+        backend.cancel_session_replacement().unwrap();
+        assert!(backend.session_replace.is_none());
+        assert!(!backend
+            .transport
+            .borrow()
+            .has_reserved_session_connections());
+        let command = serde_json::from_str::<CommandEnvelope>(sent.borrow().last().unwrap())
+            .unwrap()
+            .command;
+        assert_eq!(command, Command::AbortSessionTransfer { generation: 7 });
+
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_connection_journal(Vec::new())
+            .unwrap();
+        backend.session_replace = Some(SessionReplaceAssembly {
+            generation: 8,
+            bytes: vec![1],
+            next_offset: 1,
+            commit_sent: true,
+            complete: false,
+        });
+        assert!(backend.cancel_session_replacement().is_err());
+        assert!(backend.session_replace.is_some());
+        assert!(backend
+            .transport
+            .borrow()
+            .has_reserved_session_connections());
+        backend.cancel_transfers("test cleanup");
     }
 
     #[shoop_wasm_test_support::shoop_test]

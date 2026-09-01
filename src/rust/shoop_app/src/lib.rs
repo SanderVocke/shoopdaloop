@@ -1857,7 +1857,7 @@ impl ApplicationModel {
             AppIntent::ConfirmAudioChannelSelection { task_id, channels } => {
                 self.confirm_audio_channel_selection(task_id, channels)
             }
-            AppIntent::CancelIoTask { task_id } => self.cancel_io_task(task_id),
+            AppIntent::CancelIoTask { task_id } => self.cancel_io_task(backend, task_id),
             AppIntent::FailIoTask { task_id, message } => {
                 if self.io_task.as_ref().is_some_and(|task| task.id == task_id) {
                     tracing::error!(task_id = task_id.raw(), error = %message, "frontend.app.io_task_failed");
@@ -4057,9 +4057,14 @@ impl ApplicationModel {
         Ok(())
     }
 
-    fn cancel_io_task(&mut self, task_id: TaskId) -> Result<(), String> {
+    fn cancel_io_task(&mut self, backend: &mut dyn Backend, task_id: TaskId) -> Result<(), String> {
         if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
             return Err(format!("stale I/O task {task_id}"));
+        }
+        if matches!(self.pending_io, Some(PendingIo::CommitSessionLoad { .. })) {
+            backend
+                .cancel_session_replacement()
+                .map_err(|error| format!("could not cancel session replacement: {error}"))?;
         }
         self.pending_io = None;
         self.finish_io(IoTaskStatus::Cancelled, "I/O cancelled");
@@ -20247,6 +20252,37 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             shoop_app_api::AudioDriverKind::Dummy
         );
         assert!(cancelled.audio_drivers.switch.message.contains("cancelled"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn cancelling_committing_session_load_releases_backend_replacement() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let backend_data = backend.capture_session().unwrap();
+        let bundle = model.session_bundle_from_backend(&backend_data).unwrap();
+        let task_id = model.start_io_task(IoTaskKind::LoadSession, "Loading");
+        model.pending_io = Some(PendingIo::CommitSessionLoad {
+            name: "cancelled.shoop".to_owned(),
+            bundle,
+            backend_data,
+        });
+
+        model.cancel_io_task(&mut backend, task_id).unwrap();
+        assert!(matches!(
+            backend.operations().last(),
+            Some(shoop_backend::FakeOperation::CancelSessionReplacement)
+        ));
+        assert!(model.pending_io.is_none());
+        assert_eq!(
+            model.io_task.as_ref().unwrap().status,
+            IoTaskStatus::Cancelled
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
