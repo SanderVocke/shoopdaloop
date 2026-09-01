@@ -38,7 +38,7 @@ jobs:
             gh api --paginate \
               "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
               --jq '.artifacts[] | select(.expired == false) | .name' |
-              grep -E '^shoopdaloop-web-wasm32-release-[A-Za-z0-9._-]+\.html$'
+              grep -E '^shoopdaloop-web-wasm32-release(-[A-Za-z0-9._-]+)?\.html$'
           )
           if (( ${#names[@]} != 1 )); then
             echo "Expected exactly one optimized standalone web artifact, found ${#names[@]}: ${names[*]}" >&2
@@ -56,6 +56,7 @@ jobs:
           skip-decompress: true
 
       - name: Publish rolling development release
+        id: publish
         env:
           ASSET_NAME: shoopdaloop-web-wasm32-development-preview.html
           CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -64,11 +65,19 @@ jobs:
           RELEASE_TAG: dev-web
           SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
           SOURCE_RUN_URL: ${{ github.event.workflow_run.html_url }}
-        run: >-
-          bash .github/scripts/publish_dev_web_release.sh
-          "${{ runner.temp }}/self-contained-web-preview"
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/publish-development-web-release.log"
+          bash .github/scripts/publish_dev_web_release.sh \
+            "${{ runner.temp }}/self-contained-web-preview" | tee "$log"
+          if grep -Fq "Published $CANDIDATE_SHA to " "$log"; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Trigger website rebuild
+        if: steps.publish.outputs.published == 'true'
         env:
           CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
           GH_TOKEN: ${{ secrets.SHOOPDALOOP_WEBSITE_ACTIONS_TOKEN }}
