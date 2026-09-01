@@ -104,6 +104,15 @@ fn is_global_journal_command(command: &Command) -> bool {
     )
 }
 
+fn is_session_replay_command(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::BeginSessionReplace { .. }
+            | Command::WriteSessionReplace { .. }
+            | Command::CommitSessionReplace { .. }
+    )
+}
+
 #[derive(Clone)]
 struct DurableSessionReplay {
     generation: u64,
@@ -535,6 +544,15 @@ impl TransportCore {
             Event::Snapshot(_) => self.readiness.engine = RemoteEngineState::Observed,
             Event::Stopped => self.readiness.engine = RemoteEngineState::Stopped,
             _ => {}
+        }
+        if pending.replay
+            && is_session_replay_command(&pending.command)
+            && matches!(
+                &event.event,
+                Event::Ack | Event::SessionReplaceComplete { .. }
+            )
+        {
+            return Ok(());
         }
         if self.inbound.len() >= COMMAND_CAPACITY {
             self.overflows = self.overflows.saturating_add(1);
@@ -1010,9 +1028,9 @@ mod tests {
         for sequence in 1..=total_commands as u64 {
             assert!(transport.borrow().pending_len() <= COMMAND_CAPACITY);
             control.receive(1, &response(sequence, Event::Ack)).unwrap();
-            transport.borrow_mut().drain_events();
         }
         assert_eq!(sent.borrow().len(), total_commands);
+        assert!(transport.borrow().inbound.len() <= 1);
         assert_eq!(transport.borrow().readiness().replay, ReplayState::Complete);
     }
 
