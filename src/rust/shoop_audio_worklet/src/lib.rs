@@ -2946,6 +2946,34 @@ mod tests {
             Event::Ack
         ));
         sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CreateTrack {
+                    expected_track_id: 2,
+                    expected_loop_ids: vec![2],
+                    port_name_base: "session-builtin-fx".to_owned(),
+                    topology: WireTrackTopology::BuiltInFx,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::SetTrackFxControl {
+                    track_id: 2,
+                    control: WireTrackFxControl::BuiltInSetReverbEnabled(false),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
         let Event::SessionCaptureReady { total_bytes, .. } = command(
             &mut host,
             sequence,
@@ -2981,6 +3009,10 @@ mod tests {
             assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
         }
         let mut session: BackendSessionData = decode_binary(&captured).unwrap();
+        assert_eq!(
+            session.tracks[1].processor_state.as_deref(),
+            Some("shoop-builtin-fx:1:0")
+        );
         session.tracks[0].loops[0].length = 4;
         session.tracks[0].loops[0].audio[0].samples = vec![0.1, 0.2, 0.3, 0.4];
         session.tracks[0].loops[0].midi[0] = shoop_backend::BackendMidiContent {
@@ -3047,6 +3079,18 @@ mod tests {
             panic!("expected snapshot")
         };
         assert_eq!(snapshot.loops[0].length, 4);
+        let builtin_fx = snapshot
+            .tracks
+            .iter()
+            .find(|track| track.topology == WireTrackTopology::BuiltInFx)
+            .and_then(|track| track.fx.as_ref())
+            .and_then(|fx| fx.builtin_fx);
+        assert_eq!(
+            builtin_fx,
+            Some(WireBuiltInFxState {
+                reverb_enabled: false,
+            })
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

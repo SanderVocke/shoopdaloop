@@ -20,6 +20,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
+const PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 8;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -220,6 +221,7 @@ pub fn decode_session_with_limits(
             header.document_version,
             PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
                 | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
+                | PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -1047,6 +1049,22 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
             "Carla track {} is missing its FX chain",
             track.id
         ))),
+        (TrackTopologyDocument::BuiltInFx, Some(chain))
+            if chain.chain_type != FxChainTypeDocument::BuiltInFx
+                || !matches!(
+                    chain.internal_state.as_str(),
+                    "shoop-builtin-fx:1:0" | "shoop-builtin-fx:1:1"
+                ) =>
+        {
+            Err(SessionError::Validation(format!(
+                "Built-in FX track {} contains mismatched or invalid processor state",
+                track.id
+            )))
+        }
+        (TrackTopologyDocument::BuiltInFx, None) => Err(SessionError::Validation(format!(
+            "Built-in FX track {} is missing its FX chain",
+            track.id
+        ))),
         (TrackTopologyDocument::OxiSynth, Some(chain))
             if chain.chain_type != FxChainTypeDocument::OxiSynth
                 || chain.internal_state.is_empty() =>
@@ -1127,6 +1145,17 @@ fn validate_track_channel_shape(
                         ChannelModeDocument::Dry | ChannelModeDocument::Wet
                     ) && !(channel.mode == ChannelModeDocument::Wet
                         && channel.data_type == DataTypeDocument::Midi)
+                })
+        }
+        TrackTopologyDocument::BuiltInFx => {
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == 2
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == 2
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 0
+                && channels.iter().all(|channel| {
+                    matches!(
+                        channel.mode,
+                        ChannelModeDocument::Dry | ChannelModeDocument::Wet
+                    ) && channel.data_type == DataTypeDocument::Audio
                 })
         }
         TrackTopologyDocument::OxiSynth => {

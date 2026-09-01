@@ -121,14 +121,14 @@ Depends on Stage 2.
 
 Depends on Stages 2 and 3.
 
-- [ ] Add dedicated Built-in FX track topology and chain-type document variants with strict fixed-shape and chain/state consistency validation.
-- [ ] Bump the session document version; retain decoding and migration behavior for every version currently accepted before the bump.
-- [ ] Map Built-in FX among application topology, backend requests, captured session tracks, processor states, and recorded-take state where the generic stateful-processor contract applies.
-- [ ] Decode and prepare Built-in FX state during staged load before backend mutation; preserve the current session on malformed state, missing capability, or construction failure.
-- [ ] Test new-session save/reload, old-version compatibility, canonical state, malformed state, wrong chain/topology combinations, cross native/browser transfer, and sample-rate recreation.
-- [ ] Update `docs/session_format_v1.md` with the identity, fixed topology, state grammar, transient state, compatibility, and current document version.
-- [ ] Verify focused `shoop_session` and `shoop_app` native/Node Wasm tests plus the per-commit gates.
-- [ ] Commit the persistence milestone.
+- [x] Add dedicated Built-in FX track topology and chain-type document variants with strict fixed-shape and chain/state consistency validation.
+- [x] Bump the session document version; retain decoding and migration behavior for every version currently accepted before the bump.
+- [x] Map Built-in FX among application topology, backend requests, captured session tracks, processor states, and recorded-take state where the generic stateful-processor contract applies.
+- [x] Decode and prepare Built-in FX state during staged load before backend mutation; preserve the current session on malformed state, missing capability, or construction failure.
+- [x] Test new-session save/reload, old-version compatibility, canonical state, malformed state, wrong chain/topology combinations, cross native/browser transfer, and sample-rate recreation.
+- [x] Update `docs/session_format_v1.md` with the identity, fixed topology, state grammar, transient state, compatibility, and current document version.
+- [x] Verify focused `shoop_session` and `shoop_app` native/Node Wasm tests plus the per-commit gates.
+- [x] Commit the persistence milestone.
 
 ## Stage 5 — Embedded editor and attribution
 
