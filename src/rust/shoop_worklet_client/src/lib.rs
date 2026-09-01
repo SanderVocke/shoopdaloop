@@ -1326,6 +1326,10 @@ impl Backend for RemoteWorkletBackend {
         true
     }
 
+    fn composite_plan_mutations_are_synchronous(&self) -> bool {
+        false
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![oxisynth_descriptor()].into())
     }

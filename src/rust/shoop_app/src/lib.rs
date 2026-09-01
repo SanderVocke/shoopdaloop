@@ -911,6 +911,7 @@ struct LoopModel {
     backend_composite_signature: Vec<(LoopId, u32)>,
     auto_arm_active_composite: Option<CompositeDocument>,
     auto_arm_active_plan_version: Option<u64>,
+    auto_arm_pending_plan_version: Option<u64>,
     auto_arm_active_sync_length: Option<u32>,
     auto_arm_active_source_lengths: BTreeMap<LoopId, u32>,
     auto_arm_active_target_kinds: BTreeMap<LoopId, bool>,
@@ -965,6 +966,7 @@ fn clear_composite_runtime_state(model: &mut LoopModel) {
     model.state.position = 0.0;
     model.auto_arm_active_composite = None;
     model.auto_arm_active_plan_version = None;
+    model.auto_arm_pending_plan_version = None;
     model.auto_arm_active_sync_length = None;
     model.auto_arm_active_source_lengths.clear();
     model.auto_arm_active_target_kinds.clear();
@@ -1273,6 +1275,7 @@ impl ApplicationModel {
             backend_composite_signature: Vec::new(),
             auto_arm_active_composite: None,
             auto_arm_active_plan_version: None,
+            auto_arm_pending_plan_version: None,
             auto_arm_active_sync_length: None,
             auto_arm_active_source_lengths: BTreeMap::new(),
             auto_arm_active_target_kinds: BTreeMap::new(),
@@ -2482,6 +2485,7 @@ impl ApplicationModel {
                     model.backend_composite_signature.clear();
                     model.auto_arm_active_composite = None;
                     model.auto_arm_active_plan_version = None;
+                    model.auto_arm_pending_plan_version = None;
                     model.auto_arm_active_sync_length = None;
                     model.auto_arm_active_source_lengths.clear();
                     model.auto_arm_active_target_kinds.clear();
@@ -4682,6 +4686,7 @@ impl ApplicationModel {
                 backend_composite_signature: Vec::new(),
                 auto_arm_active_composite: None,
                 auto_arm_active_plan_version: None,
+                auto_arm_pending_plan_version: None,
                 auto_arm_active_sync_length: None,
                 auto_arm_active_source_lengths: BTreeMap::new(),
                 auto_arm_active_target_kinds: BTreeMap::new(),
@@ -5103,6 +5108,7 @@ impl ApplicationModel {
         model.backend_composite_signature.clear();
         model.auto_arm_active_composite = None;
         model.auto_arm_active_plan_version = None;
+        model.auto_arm_pending_plan_version = None;
         model.auto_arm_active_sync_length = None;
         model.auto_arm_active_source_lengths.clear();
         model.auto_arm_active_target_kinds.clear();
@@ -5419,6 +5425,7 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         composite_id: BackendCompositeId,
     ) -> Result<(), String> {
+        let synchronous_plans = backend.composite_plan_mutations_are_synchronous();
         let mut removed_backend = BTreeSet::from([composite_id]);
         let mut removed_app = self
             .loops
@@ -5435,12 +5442,18 @@ impl ApplicationModel {
                         .is_some_and(|id| !removed_backend.contains(&id))
                 })
                 .filter_map(|model| {
-                    let latest = model.auto_arm_latest_configured_plan.as_ref();
-                    let document = latest
+                    let acknowledged = if synchronous_plans {
+                        model.auto_arm_latest_configured_plan.as_ref()
+                    } else {
+                        model
+                            .auto_arm_pending_plan_version
+                            .and_then(|version| model.auto_arm_configured_plans.get(&version))
+                    };
+                    let document = acknowledged
                         .map(|plan| &plan.composite)
                         .or(model.auto_arm_active_composite.as_ref())
                         .or(model.composite.as_ref())?;
-                    let target_kinds = latest
+                    let target_kinds = acknowledged
                         .map(|plan| &plan.target_kinds)
                         .unwrap_or(&model.auto_arm_active_target_kinds);
                     document
@@ -6009,6 +6022,7 @@ impl ApplicationModel {
             model.backend_composite_signature = signature;
             model.auto_arm_active_composite = None;
             model.auto_arm_active_plan_version = None;
+            model.auto_arm_pending_plan_version = None;
             model.auto_arm_active_sync_length = None;
             model.auto_arm_active_source_lengths.clear();
             model.auto_arm_active_target_kinds.clear();
@@ -7722,6 +7736,7 @@ impl ApplicationModel {
             let Some(state) = snapshot.composites.get(&composite_id) else {
                 continue;
             };
+            model.auto_arm_pending_plan_version = state.pending_plan_version;
             if model.auto_arm_active_plan_version != Some(state.active_plan_version) {
                 model.auto_arm_active_plan_version = Some(state.active_plan_version);
                 if let Some(plan) = model
@@ -8761,6 +8776,7 @@ impl ApplicationModel {
                         backend_composite_signature: Vec::new(),
                         auto_arm_active_composite: None,
                         auto_arm_active_plan_version: None,
+                        auto_arm_pending_plan_version: None,
                         auto_arm_active_sync_length: None,
                         auto_arm_active_source_lengths: BTreeMap::new(),
                         auto_arm_active_target_kinds: BTreeMap::new(),

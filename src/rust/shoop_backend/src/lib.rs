@@ -815,6 +815,10 @@ pub trait Backend {
         false
     }
 
+    fn composite_plan_mutations_are_synchronous(&self) -> bool {
+        true
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(Arc::from([]))
     }
