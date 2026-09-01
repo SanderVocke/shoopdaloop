@@ -223,11 +223,17 @@ PR: https://github.com/SanderVocke/shoopdaloop/pull/845
 ### Stage 9: CI and Automated Codex Review Closure
 
 - [ ] Monitor all PR checks with `gh pr checks`, `gh run watch`, and workflow/job logs until every required check reports success on the latest head SHA.
-- [ ] For failures, inspect the exact attempt, matrix job, logs, and artifacts. Reproduce and fix product defects locally; if a Perfetto trace is needed, read the Perfetto skill first. Do not dismiss a failure as flaky without evidence.
-- [ ] Inspect PR reviews, inline review threads, and issue comments through `gh pr view` and `gh api`, including every automated Codex review comment.
-- [ ] Address each actionable Codex comment with code/tests/docs, commit, and push; reply with the resolution and evidence. For a non-actionable or conflicting suggestion, document the acceptance-criteria/design reason and obtain a clean follow-up state rather than silently ignoring it.
-- [ ] After every review-driven push, rerun affected local tests and wait for all required CI checks on the new head SHA.
+- [x] For failures, inspect the exact attempt, matrix job, logs, and artifacts. Reproduce and fix product defects locally; if a Perfetto trace is needed, read the Perfetto skill first. Do not dismiss a failure as flaky without evidence.
+- [x] Inspect PR reviews, inline review threads, and issue comments through `gh pr view` and `gh api`, including every automated Codex review comment.
+- [x] Address each actionable Codex comment with code/tests/docs, commit, and push; reply with the resolution and evidence. For a non-actionable or conflicting suggestion, document the acceptance-criteria/design reason and obtain a clean follow-up state rather than silently ignoring it.
+- [x] After every review-driven push, rerun affected local tests and wait for all required CI checks on the new head SHA.
 - [ ] Repeat review and CI inspection until no unresolved actionable Codex feedback remains and all required checks are green.
+
+**Automated Codex review remediation**
+
+- Mixed primitive/composite selections now filter inapplicable composite targets for primitive-only modes while direct unsupported actions on an initiating composite still fail. A focused application regression test covers both outcomes.
+- Script events that request recording, replacing, or dry-through-wet modes from a nested regular composite are rejected during timeline construction and session validation. Engine and session regression tests cover all unsupported modes and retain ordinary play/stop.
+- Review-driven validation passed: warning-denying workspace build; 1,650/1,650 native tests; focused Node and Chromium Wasm suites for `shoop_app`, `shoop_engine`, and `shoop_session`; formatting, test-attribute, and tracing policy checks.
 
 **Verification**
 
