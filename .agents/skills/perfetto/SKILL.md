@@ -71,11 +71,27 @@ GROUP BY t.name ORDER BY t.name;
 SQL
 ```
 
+On Windows, the wrapper downloads a native `.exe`, which cannot read the
+MSYS `/dev/stdin` path. Invoke the wrapper through Python and use a real query
+file instead:
+
+```powershell
+$trace = 'C:\path\to\capture.pftrace'
+$query = [IO.Path]::GetTempFileName()
+@'
+SELECT start_ts, end_ts FROM trace_bounds;
+SELECT name, COUNT(*) AS count
+FROM slice GROUP BY name ORDER BY count DESC LIMIT 50;
+'@ | Set-Content -Encoding utf8 $query
+python scripts/trace_processor --query-file $query $trace
+Remove-Item $query
+```
+
 Shoop's stable families remain `frontend.egui.*`, `frontend.app.*`,
-`engine.control.*`, `engine.graph.*`, `engine.rt.*`, `engine.fx.*`, and
-`worker.*`. Correlate app dispatch/handle using `intent_id`; follow topology
-changes into the next callback; compare callback duration with the frame budget
-only on native CPU-clock tracks.
+`engine.control.*`, `engine.graph.*`, `engine.rt.*`, `engine.fx.*`,
+`engine.meter.*`, and `worker.*`. Correlate app dispatch/handle using `intent_id`;
+follow topology changes into the next callback; compare callback duration with the
+frame budget only on native CPU-clock tracks.
 
 Structured logs are instant slices with typed debug arguments. Query `args`
 through each slice's `arg_set_id`; do not infer severity from color or payload

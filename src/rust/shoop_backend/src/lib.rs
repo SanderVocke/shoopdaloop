@@ -3540,6 +3540,39 @@ fn amplitude_db(amplitude: f32) -> f32 {
     }
 }
 
+fn trace_peak_counters(
+    tracks: &BTreeMap<BackendTrackId, BackendTrackState>,
+    loops: &BTreeMap<BackendLoopId, BackendLoopState>,
+) {
+    if !shoop_tracing::is_engine_detail_enabled() {
+        return;
+    }
+    let track_input_peak_max_db = tracks
+        .values()
+        .flat_map(|track| track.input_peaks.iter().copied())
+        .fold(-200.0_f32, f32::max);
+    let track_output_peak_max_db = tracks
+        .values()
+        .flat_map(|track| track.output_peaks.iter().copied())
+        .fold(-200.0_f32, f32::max);
+    let loop_output_peak_max_db = loops
+        .values()
+        .flat_map(|loop_| loop_.audio_peaks.iter().copied())
+        .fold(-200.0_f32, f32::max);
+    shoop_tracing::realtime_plot_f64_detail!(
+        "engine.meter.track_input_peak_max_db",
+        track_input_peak_max_db
+    );
+    shoop_tracing::realtime_plot_f64_detail!(
+        "engine.meter.track_output_peak_max_db",
+        track_output_peak_max_db
+    );
+    shoop_tracing::realtime_plot_f64_detail!(
+        "engine.meter.loop_output_peak_max_db",
+        loop_output_peak_max_db
+    );
+}
+
 fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
     let editor = fx.control.editor_state();
     TrackFxState {
@@ -5410,6 +5443,7 @@ impl Backend for EngineBackend {
                 },
             );
         }
+        trace_peak_counters(&tracks, &loops);
         let composites = self
             .composites
             .iter()
@@ -11816,6 +11850,13 @@ mod tests {
         assert!(loud.tracks[&track.track_id].output_peaks[0] > -100.0);
         assert!(loud.loops[&track.loops[0]].audio_peaks[0] > -100.0);
 
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        output.fill(0.0);
+        backend
+            .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 1, 128)
+            .unwrap();
         let silent = backend.poll().unwrap();
         assert!(silent.tracks[&track.track_id].output_peaks[0] <= -100.0);
         assert!(silent.loops[&track.loops[0]].audio_peaks[0] <= -100.0);
