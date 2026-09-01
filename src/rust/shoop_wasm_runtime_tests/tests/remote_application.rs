@@ -257,6 +257,16 @@ async fn generate_click(harness: &mut RemoteAppHarness, loop_id: shoop_app_api::
                 .is_some_and(|task| task.status == IoTaskStatus::Completed)
         })
         .await;
+    harness
+        .drive_until("published generated click content", |snapshot| {
+            snapshot
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .find(|loop_| loop_.id == loop_id)
+                .is_some_and(|loop_| !loop_.empty && loop_.length_frames > 0)
+        })
+        .await;
 }
 
 async fn save_session(harness: &mut RemoteAppHarness) -> shoop_app::ApplicationFileOutput {
