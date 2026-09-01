@@ -7,10 +7,11 @@ This document defines the Shoop Lua compatibility target for the native and brow
 - A loop coordinate is a two-integer Lua sequence `{track, row}`. Main tracks are zero-based; the sync loop is `{-1, 0}`.
 - A loop selector is one coordinate, a sequence of coordinates, or `nil`. Missing coordinates select no object. Results follow current track/row order.
 - A track selector is a zero-based integer, a sequence of integers, or `nil`; track `-1` is the sync track. Missing indices select no object.
+- A bus selector is a zero-based integer, a sequence of integers, or `nil`. Bus `0` is the fixed Master in the current capability; missing indices select no object.
 - Setters accept exactly one of their documented argument counts. Unsupported selector/value types are errors. Setters return `nil` unless noted.
 - Multi-object getters return Lua sequences in selector order. A singular-looking selector still produces a sequence for getters documented as `list[...]`.
 - Mode, event, key, and modifier values are integers. `nil` represents an absent queued transition or target.
-- Gain-factor APIs use linear amplitude. Output and input balance are clamped to `[-1, 1]`; fader positions are clamped to `[0, 1]` and use the same conversion curve as the application controls.
+- Gain-factor APIs use linear amplitude. Output, input, and stereo-bus balance are clamped to `[-1, 1]`; fader positions are clamped to `[0, 1]` and use the same conversion curve as the application controls. Bus balance rejects any selected bus that is not exactly stereo.
 
 The auto-mute-other-track-inputs policy defaults off, and changing the policy does not alter current input monitoring. A respecting multi-track unmute treats its selector as one target group: selected tracks are unmuted and every track outside the group, including the sync track, is muted. Muting and non-respecting calls never affect tracks outside the selector.
 
@@ -65,6 +66,14 @@ The auto-mute-other-track-inputs policy defaults off, and changing the policy do
 | Track mutation | `track_set_input_gain(selector, gain)` | Sets linear input gain. |
 | Track mutation | `track_set_input_gain_fader(selector, position)` | Sets input gain through the fader curve. |
 | Track mutation | `track_set_input_balance(selector, balance)` | Sets input balance, clamped to `[-1, 1]`. |
+| Bus query | `bus_get_gain(selector)` | Sequence of linear post-sum bus gains. |
+| Bus query | `bus_get_gain_fader(selector)` | Sequence of post-sum bus fader positions. |
+| Bus query | `bus_get_balance(selector)` | Sequence of retained bus balance values. |
+| Bus query | `bus_get_muted(selector)` | Sequence of bus mute states. |
+| Bus mutation | `bus_set_gain(selector, gain)` | Sets uniform post-sum gain on every selected bus channel. |
+| Bus mutation | `bus_set_gain_fader(selector, position)` | Sets uniform post-sum gain through the application fader curve. |
+| Bus mutation | `bus_set_balance(selector, balance)` | Sets stereo post-sum balance, clamped to `[-1, 1]`; non-stereo selections are rejected. |
+| Bus mutation | `bus_set_muted(selector, muted)` | Mutes or unmutes every channel while retaining gain, balance, and routes. |
 | Global | `set_apply_n_cycles(n)` / `get_apply_n_cycles()` | Sets/gets the non-negative fixed recording cycle count; zero disables it. |
 | Global | `set_solo(active)` / `get_solo()` | Sets/gets solo policy. |
 | Global | `set_sync_active(active)` / `get_sync_active()` | Sets/gets synchronized-trigger policy. |

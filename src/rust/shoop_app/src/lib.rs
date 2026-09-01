@@ -52,8 +52,8 @@ use shoop_backend::{
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
 use shoop_scripting::{
-    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NullMidiService, ScriptKeyEvent,
-    ScriptLoopEvent, ScriptManager, SessionScriptSource,
+    ControlBus, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NullMidiService,
+    ScriptKeyEvent, ScriptLoopEvent, ScriptManager, SessionScriptSource,
 };
 use shoop_session::{
     click_sound_ids, decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi,
@@ -2480,9 +2480,23 @@ impl ApplicationModel {
                 });
             }
         }
+        let buses = self
+            .buses
+            .values()
+            .enumerate()
+            .map(|(index, bus)| ControlBus {
+                id: bus.id,
+                index: index as i64,
+                channel_count: bus.channels.len(),
+                gain_db: bus.gain_db,
+                balance: bus.balance,
+                muted: bus.muted,
+            })
+            .collect();
         ControlSnapshot {
             loops,
             tracks,
+            buses,
             apply_n_cycles: self.global.apply_n_cycles,
             solo: self.global.solo,
             sync_active: self.global.sync,
@@ -2894,6 +2908,15 @@ impl ApplicationModel {
                 muted,
                 respect_auto_mute,
             } => self.handle_track_input_monitoring(backend, &tracks, !muted, respect_auto_mute),
+            ControlOperation::SetBusGain { buses, gain_db } => {
+                self.apply_script_bus_action(backend, buses, BusAction::GainChanged(gain_db))
+            }
+            ControlOperation::SetBusBalance { buses, balance } => {
+                self.apply_script_bus_action(backend, buses, BusAction::BalanceChanged(balance))
+            }
+            ControlOperation::SetBusMuted { buses, muted } => {
+                self.apply_script_bus_action(backend, buses, BusAction::MuteChanged(muted))
+            }
             ControlOperation::SetApplyNCycles(value) => {
                 self.handle_global_action(backend, GlobalControlAction::SetApplyNCycles(value))
             }
@@ -2915,6 +2938,18 @@ impl ApplicationModel {
                 GlobalControlAction::SetDefaultRecordingAction(value),
             ),
         }
+    }
+
+    fn apply_script_bus_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        buses: Vec<BusId>,
+        action: BusAction,
+    ) -> Result<(), String> {
+        for id in buses {
+            self.handle_bus_action(backend, id, action)?;
+        }
+        Ok(())
     }
 
     fn apply_script_track_action(
@@ -14984,7 +15019,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 5); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 6); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -15002,7 +15037,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.5, host supports 1.4"));
+        assert!(error.contains("script requests 1.6, host supports 1.5"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -15096,11 +15131,15 @@ c.track_set_input_muted(1, false, true)
                 name: "control.lua".to_owned(),
                 source: Arc::from(
                     r#"
-shoop_announce_api_version(1, 0)
+shoop_announce_api_version(1, 5)
 local c = require('shoop_control')
 c.set_solo(true)
 c.loop_select({-1, 0}, true)
 c.loop_set_gain({-1, 0}, 0.25)
+c.bus_set_gain_fader(0, 0.5)
+c.bus_set_balance(0, -0.4)
+c.bus_set_muted(0, true)
+if #c.bus_get_gain(0) ~= 1 or c.bus_get_muted(0)[1] ~= true then error('bus shadow') end
 "#,
                 ),
                 kind: ScriptKind::User,
@@ -15111,6 +15150,9 @@ c.loop_set_gain({-1, 0}, 0.25)
             snapshot.global_controls.solo
                 && snapshot.tracks[0].loops[0].selected
                 && (snapshot.tracks[0].loops[0].gain - 0.25).abs() < f32::EPSILON
+                && snapshot.buses[0].muted
+                && (snapshot.buses[0].balance + 0.4).abs() < f32::EPSILON
+                && (snapshot.buses[0].gain_db + 5.0).abs() < f32::EPSILON
         });
         assert_eq!(snapshot.scripting.scripts.len(), 1);
         assert_eq!(
@@ -20705,7 +20747,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn scripts_export_exact_source_and_convert_session_ownership() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let source = "shoop_announce_api_version(1, 5)\nprint('future')";
+        let source = "shoop_announce_api_version(1, 6)\nprint('future')";
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),

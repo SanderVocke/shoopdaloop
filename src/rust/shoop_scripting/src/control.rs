@@ -8,7 +8,7 @@ use anyhow::anyhow;
 use omnilua::{FromLua, Function, IntoLua, Lua, Table, Value, Variadic};
 use regex::Regex;
 use shoop_app_api::{
-    DefaultRecordingAction, LoopId, LoopMode, TrackId, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
+    BusId, DefaultRecordingAction, LoopId, LoopMode, TrackId, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
 };
 
 use crate::api_version::ApiVersionState;
@@ -70,6 +70,14 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
     "track_set_input_gain",
     "track_set_input_gain_fader",
     "track_set_input_balance",
+    "bus_get_gain",
+    "bus_get_gain_fader",
+    "bus_get_balance",
+    "bus_get_muted",
+    "bus_set_gain",
+    "bus_set_gain_fader",
+    "bus_set_balance",
+    "bus_set_muted",
     "set_apply_n_cycles",
     "get_apply_n_cycles",
     "set_solo",
@@ -117,9 +125,20 @@ pub struct ControlTrack {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ControlBus {
+    pub id: BusId,
+    pub index: i64,
+    pub channel_count: usize,
+    pub gain_db: f32,
+    pub balance: f32,
+    pub muted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ControlSnapshot {
     pub loops: Vec<ControlLoop>,
     pub tracks: Vec<ControlTrack>,
+    pub buses: Vec<ControlBus>,
     pub apply_n_cycles: u32,
     pub solo: bool,
     pub sync_active: bool,
@@ -133,6 +152,7 @@ impl Default for ControlSnapshot {
         Self {
             loops: Vec::new(),
             tracks: Vec::new(),
+            buses: Vec::new(),
             apply_n_cycles: 0,
             solo: false,
             sync_active: true,
@@ -225,6 +245,18 @@ pub enum ControlOperation {
         tracks: Vec<TrackId>,
         muted: bool,
         respect_auto_mute: bool,
+    },
+    SetBusGain {
+        buses: Vec<BusId>,
+        gain_db: f32,
+    },
+    SetBusBalance {
+        buses: Vec<BusId>,
+        balance: f32,
+    },
+    SetBusMuted {
+        buses: Vec<BusId>,
+        muted: bool,
     },
     SetApplyNCycles(u32),
     SetSolo(bool),
@@ -796,6 +828,7 @@ pub fn install_control_api(
         install_loop_queries(lua, &module, &bridge)?;
         install_loop_mutations(lua, &module, &bridge)?;
         install_track_api(lua, &module, &bridge)?;
+        install_bus_api(lua, &module, &bridge)?;
         install_global_api(lua, &module, &bridge)?;
         install_subscriptions(lua, &module, callbacks, mark_listening)?;
         for name in CONTROL_FUNCTION_NAMES {
@@ -1382,6 +1415,52 @@ fn install_track_api(
     Ok(())
 }
 
+fn install_bus_api(lua: &Lua, module: &Table, bridge: &SharedControlBridge) -> omnilua::Result<()> {
+    set_bus_list_getter(lua, module, "bus_get_gain", bridge, |bus| {
+        Value::Number(f64::from(db_to_gain(bus.gain_db)))
+    })?;
+    set_bus_list_getter(lua, module, "bus_get_gain_fader", bridge, |bus| {
+        Value::Number(f64::from(db_to_fader(bus.gain_db)))
+    })?;
+    set_bus_list_getter(lua, module, "bus_get_balance", bridge, |bus| {
+        Value::Number(f64::from(bus.balance))
+    })?;
+    set_bus_list_getter(lua, module, "bus_get_muted", bridge, |bus| {
+        Value::Boolean(bus.muted)
+    })?;
+    set_bus_number(
+        lua,
+        module,
+        "bus_set_gain",
+        bridge,
+        false,
+        gain_to_db,
+        |buses, gain_db| ControlOperation::SetBusGain { buses, gain_db },
+    )?;
+    set_bus_number(
+        lua,
+        module,
+        "bus_set_gain_fader",
+        bridge,
+        false,
+        fader_to_db,
+        |buses, gain_db| ControlOperation::SetBusGain { buses, gain_db },
+    )?;
+    set_bus_number(
+        lua,
+        module,
+        "bus_set_balance",
+        bridge,
+        true,
+        |balance| balance.clamp(-1.0, 1.0),
+        |buses, balance| ControlOperation::SetBusBalance { buses, balance },
+    )?;
+    set_bus_bool(lua, module, "bus_set_muted", bridge, |buses, muted| {
+        ControlOperation::SetBusMuted { buses, muted }
+    })?;
+    Ok(())
+}
+
 fn install_global_api(
     lua: &Lua,
     module: &Table,
@@ -1672,6 +1751,31 @@ fn set_track_list_getter(
     Ok(())
 }
 
+fn set_bus_list_getter(
+    lua: &Lua,
+    module: &Table,
+    name: &str,
+    bridge: &SharedControlBridge,
+    getter: impl Fn(&ControlBus) -> Value + 'static,
+) -> omnilua::Result<()> {
+    let bridge = Rc::clone(bridge);
+    module.set(
+        name,
+        lua.create_function(move |lua, selector: Value| {
+            let bridge = bridge.borrow();
+            let table = lua.create_table()?;
+            for (index, bus) in select_buses(&bridge.snapshot, &selector)?
+                .iter()
+                .enumerate()
+            {
+                table.set(index + 1, getter(bus))?;
+            }
+            Ok(table)
+        })?,
+    )?;
+    Ok(())
+}
+
 fn set_loop_ids_op(
     lua: &Lua,
     module: &Table,
@@ -1750,6 +1854,62 @@ fn set_track_number(
             let ids = selected_track_ids(&bridge.snapshot, &selector)?;
             let operation = make(ids.clone(), value as f32);
             shadow_track_operation(&mut bridge.snapshot, &operation);
+            bridge.operations.push(operation);
+            Ok(())
+        })?,
+    )?;
+    Ok(())
+}
+
+fn set_bus_number(
+    lua: &Lua,
+    module: &Table,
+    name: &str,
+    bridge: &SharedControlBridge,
+    require_stereo: bool,
+    normalize: impl Fn(f32) -> f32 + 'static,
+    make: impl Fn(Vec<BusId>, f32) -> ControlOperation + 'static,
+) -> omnilua::Result<()> {
+    let bridge = Rc::clone(bridge);
+    module.set(
+        name,
+        lua.create_function(move |_, (selector, value): (Value, f64)| {
+            let value = value as f32;
+            if !value.is_finite() {
+                return Err(runtime_error("bus control value must be finite"));
+            }
+            let mut bridge = bridge.borrow_mut();
+            let buses = select_buses(&bridge.snapshot, &selector)?;
+            if require_stereo && buses.iter().any(|bus| bus.channel_count != 2) {
+                return Err(runtime_error(
+                    "bus balance is available only for stereo buses",
+                ));
+            }
+            let ids = buses.iter().map(|bus| bus.id).collect::<Vec<_>>();
+            let operation = make(ids, normalize(value));
+            shadow_bus_operation(&mut bridge.snapshot, &operation);
+            bridge.operations.push(operation);
+            Ok(())
+        })?,
+    )?;
+    Ok(())
+}
+
+fn set_bus_bool(
+    lua: &Lua,
+    module: &Table,
+    name: &str,
+    bridge: &SharedControlBridge,
+    make: impl Fn(Vec<BusId>, bool) -> ControlOperation + 'static,
+) -> omnilua::Result<()> {
+    let bridge = Rc::clone(bridge);
+    module.set(
+        name,
+        lua.create_function(move |_, (selector, value): (Value, bool)| {
+            let mut bridge = bridge.borrow_mut();
+            let ids = selected_bus_ids(&bridge.snapshot, &selector)?;
+            let operation = make(ids, value);
+            shadow_bus_operation(&mut bridge.snapshot, &operation);
             bridge.operations.push(operation);
             Ok(())
         })?,
@@ -1850,6 +2010,24 @@ fn selected_track_ids(
         .collect())
 }
 
+fn select_buses<'a>(
+    snapshot: &'a ControlSnapshot,
+    selector: &Value,
+) -> omnilua::Result<Vec<&'a ControlBus>> {
+    let indices = parse_bus_selector(selector)?;
+    Ok(indices
+        .iter()
+        .filter_map(|index| snapshot.buses.iter().find(|bus| bus.index == *index))
+        .collect())
+}
+
+fn selected_bus_ids(snapshot: &ControlSnapshot, selector: &Value) -> omnilua::Result<Vec<BusId>> {
+    Ok(select_buses(snapshot, selector)?
+        .into_iter()
+        .map(|bus| bus.id)
+        .collect())
+}
+
 fn parse_loop_selector(selector: &Value) -> omnilua::Result<Vec<[i64; 2]>> {
     match selector {
         Value::Nil => Ok(Vec::new()),
@@ -1887,6 +2065,18 @@ fn parse_track_selector(selector: &Value) -> omnilua::Result<Vec<i64>> {
         Value::Table(table) => (1..=table.len()?).map(|index| table.get(index)).collect(),
         other => Err(runtime_error(format!(
             "unsupported track selector: {}",
+            value_type_name(other)
+        ))),
+    }
+}
+
+fn parse_bus_selector(selector: &Value) -> omnilua::Result<Vec<i64>> {
+    match selector {
+        Value::Nil => Ok(Vec::new()),
+        Value::Integer(index) => Ok(vec![*index]),
+        Value::Table(table) => (1..=table.len()?).map(|index| table.get(index)).collect(),
+        other => Err(runtime_error(format!(
+            "unsupported bus selector: {}",
             value_type_name(other)
         ))),
     }
@@ -1961,6 +2151,23 @@ fn shadow_track_operation(snapshot: &mut ControlSnapshot, operation: &ControlOpe
                 if tracks.contains(&track.id) =>
             {
                 track.input_balance = *balance
+            }
+            _ => {}
+        }
+    }
+}
+
+fn shadow_bus_operation(snapshot: &mut ControlSnapshot, operation: &ControlOperation) {
+    for bus in &mut snapshot.buses {
+        match operation {
+            ControlOperation::SetBusGain { buses, gain_db } if buses.contains(&bus.id) => {
+                bus.gain_db = *gain_db
+            }
+            ControlOperation::SetBusBalance { buses, balance } if buses.contains(&bus.id) => {
+                bus.balance = *balance
+            }
+            ControlOperation::SetBusMuted { buses, muted } if buses.contains(&bus.id) => {
+                bus.muted = *muted
             }
             _ => {}
         }

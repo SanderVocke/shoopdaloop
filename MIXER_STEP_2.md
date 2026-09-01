@@ -172,16 +172,16 @@ Verification:
 
 Depends on Stage 4 and may proceed alongside Stage 5.
 
-- [ ] Extend `ControlSnapshot` with ordered bus identities, indices, channel count/capability, gain, balance, and mute; update it from the same application snapshot used by the UI.
-- [ ] Add zero-based bus selectors with the existing scalar/list/`nil` conventions. In this increment selector `0` resolves to Master; missing indices select no bus, and invalid selector types are errors.
-- [ ] Add `bus_get_gain`, `bus_get_gain_fader`, `bus_get_balance`, `bus_get_muted`, `bus_set_gain`, `bus_set_gain_fader`, `bus_set_balance`, and `bus_set_muted` to `shoop_control`.
-- [ ] Use the shared linear-gain/dB/fader conversions and balance clamp. Reject balance for selected non-stereo buses before queuing an operation.
-- [ ] Route `ControlOperation` bus mutations through the application bus-intent handler and shadow accepted values within a script pump without bypassing backend authority.
-- [ ] Bump the Lua API minor version, preserve older minor compatibility, update function inventories and the compatibility contract, and leave existing bundled scripts unchanged.
+- [x] Extend `ControlSnapshot` with ordered bus identities, indices, channel count/capability, gain, balance, and mute; update it from the same application snapshot used by the UI.
+- [x] Add zero-based bus selectors with the existing scalar/list/`nil` conventions. In this increment selector `0` resolves to Master; missing indices select no bus, and invalid selector types are errors.
+- [x] Add `bus_get_gain`, `bus_get_gain_fader`, `bus_get_balance`, `bus_get_muted`, `bus_set_gain`, `bus_set_gain_fader`, `bus_set_balance`, and `bus_set_muted` to `shoop_control`.
+- [x] Use the shared linear-gain/dB/fader conversions and balance clamp. Reject balance for selected non-stereo buses before queuing an operation.
+- [x] Route `ControlOperation` bus mutations through the application bus-intent handler and shadow accepted values within a script pump without bypassing backend authority.
+- [x] Bump the Lua API minor version, preserve older minor compatibility, update function inventories and the compatibility contract, and leave existing bundled scripts unchanged.
 
 Verification:
 
-- [ ] Add Lua shape, selector-order, getter, setter, clamping/conversion, mute, non-stereo rejection, invalid argument, optimistic shadow, and control-operation dispatch tests.
+- [x] Add Lua shape, selector-order, getter, setter, clamping/conversion, mute, non-stereo rejection, invalid argument, optimistic shadow, and control-operation dispatch tests.
 - [ ] Add native and browser scripting integration tests proving Lua changes the same Master state/audio as the UI and that backend rejection reconciles the published state.
 - [ ] Run focused `shoop_scripting`, `shoop_app`, script-resource, native runtime, and Wasm scripting suites.
 
