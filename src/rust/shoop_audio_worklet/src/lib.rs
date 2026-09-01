@@ -3113,8 +3113,10 @@ mod tests {
         }
         let mut session: BackendSessionData = decode_binary(&captured).unwrap();
         assert_eq!(
-            session.tracks[1].processor_state.as_deref(),
-            Some("shoop-builtin-fx:1:0")
+            session.tracks[1].processor_state,
+            Some(shoop_backend::encode_builtin_fx_state(&BuiltInFxState {
+                reverb_enabled: false,
+            }))
         );
         session.tracks[0].loops[0].length = 4;
         session.tracks[0].loops[0].audio[0].samples = vec![0.1, 0.2, 0.3, 0.4];

@@ -8488,19 +8488,19 @@ mod tests {
         assert!(chain.get_midi_input_port(0).is_none());
         assert_eq!(
             chain.builtin_fx_state(),
-            Some(engine::builtin_fx::BuiltInFxState {
-                reverb_enabled: true
-            })
+            Some(engine::builtin_fx::BuiltInFxState::default())
         );
-        assert_eq!(chain.try_get_state_str().unwrap(), "shoop-builtin-fx:1:1");
-        chain.builtin_fx_set_reverb_enabled(false).unwrap();
         assert_eq!(
-            chain.builtin_fx_state(),
-            Some(engine::builtin_fx::BuiltInFxState {
-                reverb_enabled: false
-            })
+            chain.try_get_state_str().unwrap(),
+            engine::builtin_fx::BuiltInFxState::default().encode()
         );
-        assert_eq!(chain.try_get_state_str().unwrap(), "shoop-builtin-fx:1:0");
+        chain.builtin_fx_set_reverb_enabled(false).unwrap();
+        let disabled = engine::builtin_fx::BuiltInFxState {
+            reverb_enabled: false,
+            ..engine::builtin_fx::BuiltInFxState::default()
+        };
+        assert_eq!(chain.builtin_fx_state(), Some(disabled));
+        assert_eq!(chain.try_get_state_str().unwrap(), disabled.encode());
 
         let mut engine = sess.shared.take_engine().expect("parked engine");
         engine.pump();

@@ -4907,7 +4907,12 @@ mod tests {
             .track_fx_state_string(created.track_id)
             .unwrap()
             .unwrap();
-        assert_eq!(state, "shoop-builtin-fx:1:0");
+        assert_eq!(
+            state,
+            crate::encode_builtin_fx_state(&BuiltInFxState {
+                reverb_enabled: false,
+            })
+        );
         let snapshot = backend.poll().unwrap();
         assert_eq!(
             snapshot.tracks[&created.track_id]

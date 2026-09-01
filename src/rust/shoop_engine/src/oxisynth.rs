@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::midi_cc::MidiCcSources;
 use crate::midi_storage::MidiStorageElem;
 
 pub const SOUNDFONT_BYTES: &[u8] = include_bytes!(concat!(
@@ -108,46 +109,42 @@ pub struct OxiSynthMidiCcAssignment {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OxiSynthMidiCcAssignments {
-    sources: [Option<(u8, u8)>; 2],
+    sources: MidiCcSources<2>,
 }
 
 impl OxiSynthMidiCcAssignments {
     pub fn assign(&mut self, assignment: OxiSynthMidiCcAssignment) -> bool {
-        if assignment.channel > 15 || assignment.controller > 127 {
-            return false;
-        }
-        for source in &mut self.sources {
-            if *source == Some((assignment.channel, assignment.controller)) {
-                *source = None;
-            }
-        }
-        self.sources[assignment.parameter.index()] =
-            Some((assignment.channel, assignment.controller));
-        true
+        self.sources.assign(
+            assignment.parameter.index(),
+            assignment.channel,
+            assignment.controller,
+        )
     }
 
     pub fn remove(&mut self, parameter: OxiSynthParameter) {
-        self.sources[parameter.index()] = None;
+        self.sources.remove(parameter.index());
     }
 
     pub fn clear(&mut self) {
-        self.sources.fill(None);
+        self.sources.clear();
     }
 
     pub fn iter(&self) -> impl Iterator<Item = OxiSynthMidiCcAssignment> + '_ {
         OxiSynthParameter::ALL.into_iter().filter_map(|parameter| {
-            self.sources[parameter.index()].map(|(channel, controller)| OxiSynthMidiCcAssignment {
-                parameter,
-                channel,
-                controller,
-            })
+            self.sources
+                .source(parameter.index())
+                .map(|(channel, controller)| OxiSynthMidiCcAssignment {
+                    parameter,
+                    channel,
+                    controller,
+                })
         })
     }
 
     fn matching_parameter(&self, channel: u8, controller: u8) -> Option<OxiSynthParameter> {
-        OxiSynthParameter::ALL
-            .into_iter()
-            .find(|parameter| self.sources[parameter.index()] == Some((channel, controller)))
+        self.sources
+            .matching_index(channel, controller)
+            .and_then(|index| OxiSynthParameter::ALL.get(index).copied())
     }
 }
 

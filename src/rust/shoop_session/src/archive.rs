@@ -1014,7 +1014,61 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
 }
 
 fn is_canonical_builtin_fx_state(state: &str) -> bool {
-    matches!(state, "shoop-builtin-fx:1:0" | "shoop-builtin-fx:1:1")
+    if matches!(state, "shoop-builtin-fx:1:0" | "shoop-builtin-fx:1:1") {
+        return true;
+    }
+    let fields: Vec<_> = state.split(':').collect();
+    if fields.len() != 34
+        || fields[0] != "shoop-builtin-fx"
+        || fields[1] != "2"
+        || ![2, 8, 14, 18, 23, 30]
+            .into_iter()
+            .all(|index| matches!(fields[index], "0" | "1"))
+        || !matches!(
+            fields[9],
+            "saturation" | "overdrive" | "distortion" | "fuzz"
+        )
+        || !matches!(fields[24], "tremolo" | "flanger" | "phaser")
+        || !matches!(fields[31], "room" | "hall" | "plate")
+    {
+        return false;
+    }
+    let ranges = [
+        (3, -48.0, 0.0),
+        (4, 1.0, 20.0),
+        (5, 0.5, 100.0),
+        (6, 20.0, 1_000.0),
+        (7, 0.0, 18.0),
+        (10, 0.0, 36.0),
+        (11, 0.0, 1.0),
+        (12, 0.0, 1.0),
+        (13, -18.0, 6.0),
+        (15, -12.0, 12.0),
+        (16, -12.0, 12.0),
+        (17, -12.0, 12.0),
+        (19, 0.05, 5.0),
+        (20, 0.0, 1.0),
+        (21, 0.0, 1.0),
+        (22, 0.0, 1.0),
+        (25, 0.05, 5.0),
+        (26, 0.0, 1.0),
+        (27, 0.0, 1.0),
+        (28, -0.95, 0.95),
+        (29, 0.0, 1.0),
+        (32, 0.0, 1.0),
+        (33, 0.0, 1.0),
+    ];
+    ranges.into_iter().all(|(index, minimum, maximum)| {
+        let field = fields[index];
+        if field.len() != 8 {
+            return false;
+        }
+        let Ok(bits) = u32::from_str_radix(field, 16) else {
+            return false;
+        };
+        let value = f32::from_bits(bits);
+        value.is_finite() && (minimum..=maximum).contains(&value) && format!("{bits:08x}") == field
+    })
 }
 
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {

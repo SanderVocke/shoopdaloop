@@ -3409,11 +3409,10 @@ mod tests {
             }))
         );
         assert_eq!(
-            backend
-                .track_fx_state_string(builtin_fx_track)
-                .unwrap()
-                .as_deref(),
-            Some("shoop-builtin-fx:1:0")
+            backend.track_fx_state_string(builtin_fx_track).unwrap(),
+            Some(encode_builtin_fx_state(&BuiltInFxState {
+                reverb_enabled: false,
+            }))
         );
         backend
             .set_track_fx_control(

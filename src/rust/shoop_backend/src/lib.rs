@@ -1310,6 +1310,7 @@ mod oxisynth_descriptor_tests {
 pub fn encode_builtin_fx_state(state: &BuiltInFxState) -> String {
     shoop_engine::builtin_fx::BuiltInFxState {
         reverb_enabled: state.reverb_enabled,
+        ..shoop_engine::builtin_fx::BuiltInFxState::default()
     }
     .encode()
 }
@@ -11849,9 +11850,12 @@ mod tests {
             .process_audio_quantum(&input, 2, &mut output, 2, 128)
             .unwrap();
         assert_eq!(output, input);
+        let disabled_state = encode_builtin_fx_state(&BuiltInFxState {
+            reverb_enabled: false,
+        });
         assert_eq!(
             backend.track_fx_state_string(created.track_id).unwrap(),
-            Some("shoop-builtin-fx:1:0".to_owned())
+            Some(disabled_state.clone())
         );
         let snapshot = backend.poll().unwrap();
         assert_eq!(
@@ -11877,20 +11881,20 @@ mod tests {
             .is_err());
         assert_eq!(
             backend.track_fx_state_string(created.track_id).unwrap(),
-            Some("shoop-builtin-fx:1:0".to_owned())
+            Some(disabled_state.clone())
         );
 
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].processor_state.as_deref(),
-            Some("shoop-builtin-fx:1:0")
+            Some(disabled_state.as_str())
         );
         let source_track = captured.tracks[0].source_id;
         let replacement = backend.replace_session(&captured).unwrap();
         let restored_track = replacement.tracks[&source_track].track_id;
         assert_eq!(
             backend.track_fx_state_string(restored_track).unwrap(),
-            Some("shoop-builtin-fx:1:0".to_owned())
+            Some(disabled_state)
         );
         assert_eq!(
             backend.poll().unwrap().tracks[&restored_track]

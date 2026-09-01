@@ -119,15 +119,17 @@ DSP/control contract established by disposable native/Wasm probes:
 
 Depends on Stage 0.
 
-- [ ] Expand `shoop_engine/src/builtin_fx.rs` and focused submodules with typed stage states, effect type enums, the continuous-parameter enum, strict validation, defaults, and canonical version-2 encode/decode plus version-1 migration.
-- [ ] Add Built-in FX CC assignment storage with Built-in Synth-equivalent uniqueness, validation, iteration, matching, assign/remove/clear behavior, and no default assignments.
-- [ ] Add callback-visible runtime parameter publication so UI/backend and MIDI updates converge on one current state without locks; ensure captured/editor state observes MIDI-driven values.
-- [ ] Replace fixed `[Vec<f32>; 2]` storage with prepared N-channel input/output and ping-pong storage, preserving legal FunDSP chunking and exact all-disabled passthrough.
-- [ ] Add a fixed stage interface with explicit enable/reset/process behavior and test-visible processing counters; a disabled stage must never be called even when later stages are enabled.
-- [ ] Implement block-boundary state transitions, parameter smoothers, sample-rate replacement, and reset semantics without callback allocation.
-- [ ] Test strict/canonical state, version-1 migration, invalid/non-finite/out-of-range controls, assignment conflicts, CC curve endpoints/midpoints, 1/2/3/6-channel buffer access, chunking, exact bypass, and no-allocation control synchronization.
-- [ ] Verify focused `shoop_engine` native/Node Wasm tests, formatting, warning-denying workspace build, tracing/test policies, and locked Wasm compilation.
-- [ ] Commit the rack foundation milestone.
+Foundation evidence: `builtin_fx.rs` now defines six stage states, stable type enums, 23 continuous parameters/ranges/CC curves, strict finite validation, canonical ordered version-2 hex-float state, and exact version-1 migration. A private fixed-size MIDI source table is shared with OxiSynth while public types remain concrete. Control and processor state share lock-free atomic parameter publication; allocation-free 10/20 ms linear smoothers retain targets across control/MIDI paths. Processors prepare 1..N inputs, outputs, two stage buffers, true-stereo Room reverb for two channels, and isolated mono reverb banks otherwise. Native focused Built-in FX/OxiSynth tests passed 28/28, backend tests 5/5, app/session tests 2/2, worklet/client tests 3/3; focused Node Wasm passed 9 Built-in FX and 18 OxiSynth tests. Formatting, warning-denying workspace build, Rust-test policy, closed tracing coverage, and locked engine Wasm check passed.
+
+- [x] Expand `shoop_engine/src/builtin_fx.rs` and focused submodules with typed stage states, effect type enums, the continuous-parameter enum, strict validation, defaults, and canonical version-2 encode/decode plus version-1 migration.
+- [x] Add Built-in FX CC assignment storage with Built-in Synth-equivalent uniqueness, validation, iteration, matching, assign/remove/clear behavior, and no default assignments.
+- [x] Add callback-visible runtime parameter publication so UI/backend and MIDI updates converge on one current state without locks; ensure captured/editor state observes MIDI-driven values.
+- [x] Replace fixed `[Vec<f32>; 2]` storage with prepared N-channel input/output and ping-pong storage, preserving legal FunDSP chunking and exact all-disabled passthrough.
+- [x] Add a fixed stage interface with explicit enable/reset/process behavior and test-visible processing counters; a disabled stage must never be called even when later stages are enabled.
+- [x] Implement block-boundary state transitions, parameter smoothers, sample-rate replacement, and reset semantics without callback allocation.
+- [x] Test strict/canonical state, version-1 migration, invalid/non-finite/out-of-range controls, assignment conflicts, CC curve endpoints/midpoints, 1/2/3/6-channel buffer access, chunking, exact bypass, and no-allocation control synchronization.
+- [x] Verify focused `shoop_engine` native/Node Wasm tests, formatting, warning-denying workspace build, tracing/test policies, and locked Wasm compilation.
+- [x] Commit the rack foundation milestone.
 
 ## Stage 2 — Dynamics, Drive, and EQ DSP
 

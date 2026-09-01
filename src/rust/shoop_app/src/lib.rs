@@ -13201,7 +13201,12 @@ mod tests {
         assert_eq!(saved_track.topology, TrackTopologyDocument::BuiltInFx);
         let chain = saved_track.fx_chain.as_ref().unwrap();
         assert_eq!(chain.chain_type, FxChainTypeDocument::BuiltInFx);
-        assert_eq!(chain.internal_state, "shoop-builtin-fx:1:0");
+        assert_eq!(
+            chain.internal_state,
+            shoop_backend::encode_builtin_fx_state(&shoop_app_api::BuiltInFxState {
+                reverb_enabled: false,
+            })
+        );
         assert!(chain.midi_cc_assignments.is_empty());
 
         runtime
