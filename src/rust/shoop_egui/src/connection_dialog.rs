@@ -121,8 +121,36 @@ struct GraphEndpoint {
     full_name: String,
     data_type: PortDataType,
     policy: ConnectionPolicy,
-    pending: bool,
-    error: Option<String>,
+    source_pending: bool,
+    sink_pending: bool,
+    source_error: Option<String>,
+    sink_error: Option<String>,
+}
+
+impl GraphEndpoint {
+    fn pending(&self, source: bool) -> bool {
+        if source {
+            self.source_pending
+        } else {
+            self.sink_pending
+        }
+    }
+
+    fn error(&self, source: bool) -> Option<&str> {
+        if source {
+            self.source_error.as_deref()
+        } else {
+            self.sink_error.as_deref()
+        }
+    }
+
+    fn any_pending(&self) -> bool {
+        self.source_pending || self.sink_pending
+    }
+
+    fn any_error(&self) -> bool {
+        self.source_error.is_some() || self.sink_error.is_some()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -214,8 +242,14 @@ impl ConnectionGraph {
                     full_name: port.name.clone(),
                     data_type: port.data_type,
                     policy: port.connection_policy,
-                    pending,
-                    error,
+                    source_pending: port.direction == PortDirection::Output && pending,
+                    sink_pending: port.direction == PortDirection::Input && pending,
+                    source_error: (port.direction == PortDirection::Output)
+                        .then_some(error.clone())
+                        .flatten(),
+                    sink_error: (port.direction == PortDirection::Input)
+                        .then_some(error)
+                        .flatten(),
                 });
         }
 
@@ -226,11 +260,11 @@ impl ConnectionGraph {
                         continue;
                     };
                     visible_application_ids.insert(output.id);
-                    let pending = state
+                    let sink_pending = state
                         .pending_mixer_links
                         .iter()
                         .any(|pending| pending.route.destination_channel_id == channel.id);
-                    let error = state
+                    let sink_error = state
                         .mixer_errors
                         .iter()
                         .rev()
@@ -250,8 +284,13 @@ impl ConnectionGraph {
                             full_name: format!("{} {}", bus.name, channel.label),
                             data_type: PortDataType::Audio,
                             policy: ConnectionPolicy::UserManaged,
-                            pending,
-                            error,
+                            source_pending: state
+                                .pending_links
+                                .iter()
+                                .any(|link| link.application_port_id == output.id),
+                            sink_pending,
+                            source_error: latest_error(state, output.id, None),
+                            sink_error,
                         });
                 }
             }
@@ -304,8 +343,14 @@ impl ConnectionGraph {
                     full_name: host.name.clone(),
                     data_type: host.data_type,
                     policy: ConnectionPolicy::UserManaged,
-                    pending,
-                    error,
+                    source_pending: host.direction == PortDirection::Output && pending,
+                    sink_pending: host.direction == PortDirection::Input && pending,
+                    source_error: (host.direction == PortDirection::Output)
+                        .then_some(error.clone())
+                        .flatten(),
+                    sink_error: (host.direction == PortDirection::Input)
+                        .then_some(error)
+                        .flatten(),
                 });
         }
 
@@ -468,8 +513,8 @@ impl ConnectionGraph {
             && adjacent_columns(source_endpoint.column, sink_endpoint.column)
             && source_endpoint.policy == ConnectionPolicy::UserManaged
             && sink_endpoint.policy == ConnectionPolicy::UserManaged
-            && !source_endpoint.pending
-            && !sink_endpoint.pending
+            && !source_endpoint.source_pending
+            && !sink_endpoint.sink_pending
             && !self.blocks_pair(source, sink)
     }
 }
@@ -1066,9 +1111,9 @@ impl ConnectionDialog {
                         .drag
                         .as_ref()
                         .is_some_and(|drag| graph.compatible_drop(&drag.source, facet));
-                let connector_color = if endpoint.error.is_some() {
+                let connector_color = if endpoint.error(source).is_some() {
                     colors::ERROR
-                } else if endpoint.pending {
+                } else if endpoint.pending(source) {
                     colors::WARNING
                 } else if endpoint.policy == ConnectionPolicy::OwnerManaged {
                     colors::MUTED_FOREGROUND
@@ -1096,9 +1141,9 @@ impl ConnectionDialog {
                 #[cfg(test)]
                 self.endpoint_rects.insert(facet.clone(), rect);
             }
-            let status_glyph = if endpoint.error.is_some() {
+            let status_glyph = if endpoint.any_error() {
                 Some("!")
-            } else if endpoint.pending {
+            } else if endpoint.any_pending() {
                 Some("…")
             } else if endpoint.policy == ConnectionPolicy::OwnerManaged {
                 Some("◆")
@@ -1373,10 +1418,10 @@ fn endpoint_hover(endpoint: &GraphEndpoint, source: bool) -> String {
     } else if source {
         text.push_str("\nDrag to a compatible sink to connect");
     }
-    if endpoint.pending {
+    if endpoint.pending(source) {
         text.push_str("\nA connection change is pending");
     }
-    if let Some(error) = &endpoint.error {
+    if let Some(error) = endpoint.error(source) {
         text.push_str("\n");
         text.push_str(error);
     }
@@ -1612,6 +1657,21 @@ mod tests {
             })
         );
         assert!(graph.compatible_drop(&bus_output, &system_sink));
+        Arc::make_mut(&mut state.connections).pending_mixer_links =
+            Arc::from([crate::PendingMixerRouteState {
+                route: MixerRouteState {
+                    source_port_id: PortId::from_raw(13),
+                    destination_channel_id: BusChannelId::from_raw(1),
+                },
+                desired_connected: true,
+            }]);
+        let pending = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        assert!(!pending.compatible_drop(&track_output, &bus_input));
+        assert!(pending.compatible_drop(&bus_output, &system_sink));
+        Arc::make_mut(&mut state.connections).pending_mixer_links = Arc::from([]);
         assert_eq!(
             route_intent(&graph, &bus_output, &system_sink, true),
             Some(AppIntent::SetPortConnected {
