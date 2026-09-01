@@ -165,14 +165,16 @@ DSP evidence: preallocated custom delay/LFO stages implement five-voice Chorus a
 
 Depends on Stages 1–3.
 
-- [ ] Extend `Session` Built-in FX routing from fixed stereo to matching N-channel ports and pass the combined track/global MIDI stream to the processor while preserving oversized-callback chunking and event order.
-- [ ] Give Built-in FX a `process_midi_controls_only` path equivalent to Built-in Synth: local MIDI may update controls while processor audio is inactive; global controls retain the existing bounded deferred behavior and never wake inactive DSP.
-- [ ] Apply learned absolute CC mappings to continuous parameters at the event/block boundary with smoothing; ignore notes, selectors/toggles, malformed CC, program changes, pressure, pitch bend, and other unsupported messages.
-- [ ] Preserve local MIDI plus global fan-out ordering, saturation bounds, pending-control replacement, diagnostics, and no-recording behavior already established for built-in processors.
-- [ ] Test local learning/control, global mapped control, local/global additive order, note/unsupported-message rejection, inactive behavior, bounded deferred global restoration, assignment changes, no default mapping, and no audio-stage calls caused only by MIDI.
-- [ ] Test routed 1/2/3/6-channel input/output, exact bypass, stereo-specific behavior, generic inactivity, callback growth, and channel-count/port-shape rejection.
-- [ ] Verify focused `shoop_engine` native/Node tests and per-commit gates.
-- [ ] Commit the engine routing/MIDI milestone.
+Routing/MIDI evidence: `Session` now feeds local plus filtered/deferred global MIDI to Built-in FX before chunked audio processing and invokes a control-only path while inactive. Learned absolute CC updates lock-free parameter targets; unsupported traffic is ignored. Local CC applies while inactive, global CC remains pending until reactivation, and neither path wakes inactive rack DSP. Built-in routing validates matching processor audio counts and at most one transitional MIDI port, routes 1/2/3/6 channels with one MIDI port, preserves exact all-off bypass, and chunks callbacks twice the prepared size through enabled Drive. Focused native engine/global tests passed 30/30 and Node Wasm Built-in FX tests passed 24; existing bounded global saturation/no-recording/allocation tests remain green. Formatting, warning-denying workspace build, Rust-test policy, and tracing inventory passed.
+
+- [x] Extend `Session` Built-in FX routing from fixed stereo to matching N-channel ports and pass the combined track/global MIDI stream to the processor while preserving oversized-callback chunking and event order.
+- [x] Give Built-in FX a `process_midi_controls_only` path equivalent to Built-in Synth: local MIDI may update controls while processor audio is inactive; global controls retain the existing bounded deferred behavior and never wake inactive DSP.
+- [x] Apply learned absolute CC mappings to continuous parameters at the event/block boundary with smoothing; ignore notes, selectors/toggles, malformed CC, program changes, pressure, pitch bend, and other unsupported messages.
+- [x] Preserve local MIDI plus global fan-out ordering, saturation bounds, pending-control replacement, diagnostics, and no-recording behavior already established for built-in processors.
+- [x] Test local learning/control, global mapped control, local/global additive order, note/unsupported-message rejection, inactive behavior, bounded deferred global restoration, assignment changes, no default mapping, and no audio-stage calls caused only by MIDI.
+- [x] Test routed 1/2/3/6-channel input/output, exact bypass, stereo-specific behavior, generic inactivity, callback growth, and channel-count/port-shape rejection.
+- [x] Verify focused `shoop_engine` native/Node tests and per-commit gates.
+- [x] Commit the engine routing/MIDI milestone.
 
 ## Stage 5 — Application API and native/in-process backends
 
