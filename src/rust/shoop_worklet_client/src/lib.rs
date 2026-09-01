@@ -4125,7 +4125,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn saturated_replacement_journal_fails_before_session_transfer_begins() {
         let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
-        for loop_id in 0..COMMAND_CAPACITY as u64 {
+        for loop_id in 0..COMMAND_CAPACITY as u64 - 1 {
             backend
                 .transport
                 .borrow_mut()

@@ -6759,6 +6759,7 @@ pub struct FakeBackend {
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
     fail_next_track_control: Option<String>,
+    fail_next_bus_control: Option<String>,
     fail_next_session_replace: Option<String>,
     fail_next_loop_content_replace: Option<String>,
     pending_session_captures: usize,
@@ -6905,6 +6906,7 @@ impl Default for FakeBackend {
             next_port_id: 1,
             fail_track_creation_after: None,
             fail_next_track_control: None,
+            fail_next_bus_control: None,
             fail_next_session_replace: None,
             fail_next_loop_content_replace: None,
             pending_session_captures: 0,
@@ -6955,6 +6957,10 @@ impl FakeBackend {
 
     pub fn fail_next_track_control(&mut self, message: impl Into<String>) {
         self.fail_next_track_control = Some(message.into());
+    }
+
+    pub fn fail_next_bus_control(&mut self, message: impl Into<String>) {
+        self.fail_next_bus_control = Some(message.into());
     }
 
     pub fn fail_midi_input_for(&mut self, track_id: BackendTrackId) {
@@ -9379,6 +9385,9 @@ impl Backend for FakeBackend {
     }
 
     fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        if let Some(message) = self.fail_next_bus_control.take() {
+            return Err(anyhow!(message));
+        }
         let bus = self
             .mixer
             .buses

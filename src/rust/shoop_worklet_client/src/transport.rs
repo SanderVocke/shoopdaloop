@@ -9,6 +9,8 @@ use shoop_audio_protocol::{
 };
 use shoop_backend::BackendDriverState;
 
+const DURABLE_COMMAND_CAPACITY: usize = COMMAND_CAPACITY - 1;
+
 pub trait MessageEndpoint {
     fn post_message(&self, message: &str) -> Result<()>;
     fn close(&self) {}
@@ -164,8 +166,8 @@ impl TransportCore {
                 .iter()
                 .filter(|command| !is_session_connection_command(command))
                 .count();
-            if self.journal.len() >= COMMAND_CAPACITY
-                || retained.saturating_add(reserved).saturating_add(1) > COMMAND_CAPACITY
+            if self.journal.len() >= DURABLE_COMMAND_CAPACITY
+                || retained.saturating_add(reserved).saturating_add(1) > DURABLE_COMMAND_CAPACITY
             {
                 self.overflows = self.overflows.saturating_add(1);
                 return Err(anyhow!("remote worklet command journal is full"));
@@ -211,7 +213,7 @@ impl TransportCore {
             .iter()
             .filter(|command| !is_session_connection_command(command))
             .count();
-        if retained.saturating_add(commands.len()) > COMMAND_CAPACITY {
+        if retained.saturating_add(commands.len()) > DURABLE_COMMAND_CAPACITY {
             self.overflows = self.overflows.saturating_add(1);
             return Err(anyhow!("replacement connection command journal is full"));
         }
@@ -225,7 +227,9 @@ impl TransportCore {
         };
         self.journal
             .retain(|command| !is_session_connection_command(command));
-        debug_assert!(self.journal.len().saturating_add(commands.len()) <= COMMAND_CAPACITY);
+        debug_assert!(
+            self.journal.len().saturating_add(commands.len()) <= DURABLE_COMMAND_CAPACITY
+        );
         self.journal.extend(commands);
     }
 
@@ -794,7 +798,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn session_replacement_reservation_preserves_capacity_until_commit_or_cancel() {
         let (transport, _) = transport_pair();
-        for loop_id in 0..COMMAND_CAPACITY as u64 - 1 {
+        for loop_id in 0..DURABLE_COMMAND_CAPACITY as u64 - 1 {
             transport
                 .borrow_mut()
                 .journal(Command::SetLoopGain { loop_id, gain: 0.5 })
@@ -819,6 +823,22 @@ mod tests {
             .borrow_mut()
             .cancel_reserved_session_connection_journal();
         transport.borrow_mut().journal(final_command).unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn full_durable_journal_leaves_device_configuration_replay_headroom() {
+        let (transport, control) = transport_pair();
+        for loop_id in 0..DURABLE_COMMAND_CAPACITY as u64 {
+            transport
+                .borrow_mut()
+                .journal(Command::SetLoopGain { loop_id, gain: 0.5 })
+                .unwrap();
+        }
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        assert_eq!(sent.borrow().len(), COMMAND_CAPACITY);
+        assert_eq!(transport.borrow().pending_len(), COMMAND_CAPACITY);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -939,7 +959,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn bounded_failure_shutdown_and_journal_edges_are_observable() {
         let (journal, _) = transport_pair();
-        for loop_id in 0..COMMAND_CAPACITY as u64 {
+        for loop_id in 0..DURABLE_COMMAND_CAPACITY as u64 {
             journal
                 .borrow_mut()
                 .journal(Command::SetLoopGain { loop_id, gain: 0.5 })
@@ -957,7 +977,7 @@ mod tests {
             gain: 0.5,
         };
         journal.borrow_mut().reject_journaled(&rejected);
-        assert_eq!(journal.borrow().journal.len(), COMMAND_CAPACITY - 1);
+        assert_eq!(journal.borrow().journal.len(), DURABLE_COMMAND_CAPACITY - 1);
 
         let (_, failed_post) = transport_pair();
         assert!(failed_post

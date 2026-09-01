@@ -7839,12 +7839,20 @@ impl ApplicationModel {
             })
             .collect::<Vec<_>>();
         for ((backend_id, control_key), rollback) in bus_timed_out {
-            self.desired_bus_controls.remove(&(backend_id, control_key));
             let message = match backend.set_bus_control(backend_id, rollback) {
-                Ok(()) => "bus control request timed out and was cancelled".to_owned(),
-                Err(error) => format!(
-                    "bus control request timed out; cancellation could not be dispatched: {error}"
-                ),
+                Ok(()) => {
+                    self.desired_bus_controls.remove(&(backend_id, control_key));
+                    "bus control request timed out and was cancelled".to_owned()
+                }
+                Err(error) => {
+                    if let Some(pending) = self
+                        .desired_bus_controls
+                        .get_mut(&(backend_id, control_key))
+                    {
+                        pending.age = Duration::ZERO;
+                    }
+                    format!("bus control request timed out; cancellation will retry: {error}")
+                }
             };
             let still_pending = self
                 .desired_bus_controls
@@ -7869,27 +7877,33 @@ impl ApplicationModel {
             })
             .collect();
         for (port_id, external_port) in timed_out {
-            self.pending_connections
-                .remove(&(port_id, external_port.clone()));
-            let rollback = self
-                .confirmed_connections
-                .contains(&(port_id, external_port.clone()));
+            let key = (port_id, external_port.clone());
+            let rollback = self.confirmed_connections.contains(&key);
             let message = match self.connection_ports.get(&port_id) {
-                Some(port) => match backend.set_port_connected(
-                    port.backend_id,
-                    &external_port,
-                    rollback,
-                ) {
-                    Ok(()) => format!(
-                        "connection request timed out and was cancelled: {external_port}"
-                    ),
-                    Err(error) => format!(
-                        "connection request timed out; cancellation could not be dispatched for {external_port}: {error}"
-                    ),
-                },
-                None => format!(
-                    "connection request timed out; cancellation target became stale: {external_port}"
-                ),
+                Some(port) => {
+                    match backend.set_port_connected(port.backend_id, &external_port, rollback) {
+                        Ok(()) => {
+                            self.pending_connections.remove(&key);
+                            format!(
+                                "connection request timed out and was cancelled: {external_port}"
+                            )
+                        }
+                        Err(error) => {
+                            if let Some(pending) = self.pending_connections.get_mut(&key) {
+                                pending.age = Duration::ZERO;
+                            }
+                            format!(
+                            "connection request timed out; cancellation will retry for {external_port}: {error}"
+                        )
+                        }
+                    }
+                }
+                None => {
+                    self.pending_connections.remove(&key);
+                    format!(
+                        "connection request timed out; cancellation target became stale: {external_port}"
+                    )
+                }
             };
             self.push_connection_error(ConnectionErrorState {
                 port_id: Some(port_id),
@@ -7907,7 +7921,6 @@ impl ApplicationModel {
             })
             .collect::<Vec<_>>();
         for route in mixer_timed_out {
-            self.pending_mixer_routes.remove(&route);
             let rollback = self.confirmed_mixer_routes.contains(&route);
             let source = self.connection_ports.get(&route.source_port_id);
             let destination = self
@@ -7921,12 +7934,21 @@ impl ApplicationModel {
                     destination.backend_id,
                     rollback,
                 ) {
-                    Ok(()) => "mixer route request timed out and was cancelled".to_owned(),
-                    Err(error) => format!(
-                        "mixer route request timed out; cancellation could not be dispatched: {error}"
-                    ),
+                    Ok(()) => {
+                        self.pending_mixer_routes.remove(&route);
+                        "mixer route request timed out and was cancelled".to_owned()
+                    }
+                    Err(error) => {
+                        if let Some(pending) = self.pending_mixer_routes.get_mut(&route) {
+                            pending.age = Duration::ZERO;
+                        }
+                        format!("mixer route request timed out; cancellation will retry: {error}")
+                    }
                 },
-                _ => "mixer route request timed out; cancellation target became stale".to_owned(),
+                _ => {
+                    self.pending_mixer_routes.remove(&route);
+                    "mixer route request timed out; cancellation target became stale".to_owned()
+                }
             };
             self.push_mixer_route_error(route, message);
         }
@@ -19577,6 +19599,15 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(model.buses[&bus_id].control_pending);
         assert_eq!(backend.operations().len(), operations_before_wait);
         model.status.audio_driver = AudioDriverState::Dummy;
+        backend.fail_next_bus_control("rollback queue is full");
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        assert!(model.buses[&bus_id].control_pending);
+        assert!(model.buses[&bus_id]
+            .control_error
+            .as_deref()
+            .is_some_and(|error| error.contains("cancellation will retry")));
+        assert!(!model.desired_bus_controls.is_empty());
+        assert_eq!(backend.operations().len(), operations_before_wait);
         model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
         let bus = &model.buses[&bus_id];
         assert!(!bus.control_pending);
