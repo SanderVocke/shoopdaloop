@@ -1,12 +1,17 @@
+mod chorus;
 mod compressor;
 mod drive;
 mod eq;
+mod modulation;
+mod reverb;
 
+use self::chorus::ChorusProcessor;
 use self::compressor::CompressorProcessor;
 use self::drive::DriveProcessor;
 use self::eq::EqProcessor;
+use self::modulation::ModulationProcessor;
+use self::reverb::ReverbProcessor;
 use crate::midi_cc::MidiCcSources;
-use fundsp::prelude32::{reverb_stereo, AudioUnit, BufferVec};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
@@ -926,8 +931,9 @@ pub struct BuiltInFxProcessor {
     compressor: CompressorProcessor,
     drive: DriveProcessor,
     eq: EqProcessor,
-    stereo_reverb: Option<Box<dyn AudioUnit>>,
-    mono_reverbs: Vec<Box<dyn AudioUnit>>,
+    chorus: ChorusProcessor,
+    modulation: ModulationProcessor,
+    reverb: ReverbProcessor,
     state: BuiltInFxState,
     midi_cc_assignments: BuiltInFxMidiCcAssignments,
     runtime_state: Arc<BuiltInFxRuntimeState>,
@@ -938,8 +944,6 @@ pub struct BuiltInFxProcessor {
     outputs: Vec<Vec<f32>>,
     stage_a: Vec<Vec<f32>>,
     stage_b: Vec<Vec<f32>>,
-    fundsp_input: BufferVec,
-    fundsp_output: BufferVec,
     #[cfg(test)]
     stage_process_calls: [u64; 6],
 }
@@ -991,29 +995,14 @@ impl BuiltInFxProcessor {
             return Err(BuiltInFxStateError::InvalidAudioChannels);
         }
         let sample_rate = sample_rate.max(1.0);
-        let make_reverb = || {
-            let mut reverb: Box<dyn AudioUnit> = Box::new(reverb_stereo(
-                ROOM_SIZE_METERS,
-                REVERB_TIME_SECONDS,
-                DAMPING,
-            ));
-            reverb.set_sample_rate(f64::from(sample_rate));
-            reverb.reset();
-            reverb.allocate();
-            reverb
-        };
-        let (stereo_reverb, mono_reverbs) = if audio_channels == AUDIO_CHANNELS {
-            (Some(make_reverb()), Vec::new())
-        } else {
-            (None, (0..audio_channels).map(|_| make_reverb()).collect())
-        };
         let max_frames = max_frames.max(1);
         Ok(Self {
             compressor: CompressorProcessor::new(sample_rate, audio_channels),
             drive: DriveProcessor::new(sample_rate, audio_channels),
             eq: EqProcessor::new(sample_rate, audio_channels),
-            stereo_reverb,
-            mono_reverbs,
+            chorus: ChorusProcessor::new(sample_rate, audio_channels),
+            modulation: ModulationProcessor::new(sample_rate, audio_channels),
+            reverb: ReverbProcessor::new(sample_rate, max_frames, audio_channels),
             state,
             midi_cc_assignments,
             runtime_state,
@@ -1026,8 +1015,6 @@ impl BuiltInFxProcessor {
             outputs: (0..audio_channels).map(|_| vec![0.0; max_frames]).collect(),
             stage_a: (0..audio_channels).map(|_| vec![0.0; max_frames]).collect(),
             stage_b: (0..audio_channels).map(|_| vec![0.0; max_frames]).collect(),
-            fundsp_input: BufferVec::new(AUDIO_CHANNELS),
-            fundsp_output: BufferVec::new(AUDIO_CHANNELS),
             #[cfg(test)]
             stage_process_calls: [0; 6],
         })
@@ -1069,8 +1056,9 @@ impl BuiltInFxProcessor {
                 BuiltInFxStage::Compressor => self.compressor.reset(),
                 BuiltInFxStage::Drive => self.drive.reset(),
                 BuiltInFxStage::Eq => self.eq.reset(),
-                BuiltInFxStage::Reverb => self.reset_reverbs(),
-                BuiltInFxStage::Chorus | BuiltInFxStage::Modulation => {}
+                BuiltInFxStage::Chorus => self.chorus.reset(),
+                BuiltInFxStage::Modulation => self.modulation.reset(),
+                BuiltInFxStage::Reverb => self.reverb.reset(),
             }
         }
         self.state.set_stage_enabled(stage, enabled);
@@ -1088,12 +1076,15 @@ impl BuiltInFxProcessor {
     }
 
     pub fn set_modulation_type(&mut self, modulation_type: ModulationType) {
-        self.state.modulation_type = modulation_type;
+        if self.state.modulation_type != modulation_type {
+            self.modulation.reset();
+            self.state.modulation_type = modulation_type;
+        }
     }
 
     pub fn set_reverb_type(&mut self, reverb_type: ReverbType) {
         if self.state.reverb_type != reverb_type {
-            self.reset_reverbs();
+            self.reverb.reset();
             self.state.reverb_type = reverb_type;
         }
     }
@@ -1139,16 +1130,9 @@ impl BuiltInFxProcessor {
         self.compressor.reset();
         self.drive.reset();
         self.eq.reset();
-        self.reset_reverbs();
-    }
-
-    fn reset_reverbs(&mut self) {
-        if let Some(reverb) = &mut self.stereo_reverb {
-            reverb.reset();
-        }
-        for reverb in &mut self.mono_reverbs {
-            reverb.reset();
-        }
+        self.chorus.reset();
+        self.modulation.reset();
+        self.reverb.reset();
     }
 
     pub fn process(&mut self, frames: usize) {
@@ -1228,84 +1212,84 @@ impl BuiltInFxProcessor {
             }
         }
 
-        if self.state.reverb_enabled {
-            if !source_is_a {
-                for channel in 0..self.audio_channels() {
-                    self.stage_a[channel][..frames]
-                        .copy_from_slice(&self.stage_b[channel][..frames]);
-                }
-            }
-            self.process_reverb(frames);
-        } else {
-            let source = if source_is_a {
-                &self.stage_a
-            } else {
-                &self.stage_b
-            };
-            for channel in 0..self.audio_channels() {
-                self.outputs[channel][..frames].copy_from_slice(&source[channel][..frames]);
-            }
-        }
-    }
-
-    fn process_reverb(&mut self, frames: usize) {
-        if let Some(reverb) = &mut self.stereo_reverb {
-            let mut start = 0;
-            while start < frames {
-                let chunk = (frames - start).min(fundsp::MAX_BUFFER_SIZE);
-                for channel in 0..AUDIO_CHANNELS {
-                    self.fundsp_input.channel_f32_mut(channel)[..chunk]
-                        .copy_from_slice(&self.stage_a[channel][start..start + chunk]);
-                }
-                reverb.process(
-                    chunk,
-                    &self.fundsp_input.buffer_ref(),
-                    &mut self.fundsp_output.buffer_mut(),
+        if self.state.chorus_enabled {
+            if source_is_a {
+                self.chorus.process(
+                    frames,
+                    &self.stage_a,
+                    &mut self.stage_b,
+                    &mut self.smoothers,
                 );
-                for channel in 0..AUDIO_CHANNELS {
-                    self.stage_b[channel][start..start + chunk]
-                        .copy_from_slice(&self.fundsp_output.channel_f32_mut(channel)[..chunk]);
-                }
-                start += chunk;
-                #[cfg(test)]
-                {
-                    self.stage_process_calls[BuiltInFxStage::Reverb.index()] += 1;
-                }
+            } else {
+                self.chorus.process(
+                    frames,
+                    &self.stage_b,
+                    &mut self.stage_a,
+                    &mut self.smoothers,
+                );
             }
-        } else {
-            for channel in 0..self.audio_channels() {
-                let reverb = &mut self.mono_reverbs[channel];
-                let mut start = 0;
-                while start < frames {
-                    let chunk = (frames - start).min(fundsp::MAX_BUFFER_SIZE);
-                    for fundsp_channel in 0..AUDIO_CHANNELS {
-                        self.fundsp_input.channel_f32_mut(fundsp_channel)[..chunk]
-                            .copy_from_slice(&self.stage_a[channel][start..start + chunk]);
-                    }
-                    reverb.process(
-                        chunk,
-                        &self.fundsp_input.buffer_ref(),
-                        &mut self.fundsp_output.buffer_mut(),
-                    );
-                    for index in 0..chunk {
-                        let left = self.fundsp_output.channel_f32_mut(0)[index];
-                        let right = self.fundsp_output.channel_f32_mut(1)[index];
-                        self.stage_b[channel][start + index] = (left + right) * 0.5;
-                    }
-                    start += chunk;
-                    #[cfg(test)]
-                    {
-                        self.stage_process_calls[BuiltInFxStage::Reverb.index()] += 1;
-                    }
-                }
+            source_is_a = !source_is_a;
+            #[cfg(test)]
+            {
+                self.stage_process_calls[BuiltInFxStage::Chorus.index()] += 1;
             }
         }
-        for frame in 0..frames {
-            let amount = self.smoothers[BuiltInFxParameter::ReverbAmount.index()].next();
-            for channel in 0..self.audio_channels() {
-                self.outputs[channel][frame] =
-                    self.stage_a[channel][frame] + amount * self.stage_b[channel][frame];
+        if self.state.modulation_enabled {
+            if source_is_a {
+                self.modulation.process(
+                    self.state.modulation_type,
+                    frames,
+                    &self.stage_a,
+                    &mut self.stage_b,
+                    &mut self.smoothers,
+                );
+            } else {
+                self.modulation.process(
+                    self.state.modulation_type,
+                    frames,
+                    &self.stage_b,
+                    &mut self.stage_a,
+                    &mut self.smoothers,
+                );
             }
+            source_is_a = !source_is_a;
+            #[cfg(test)]
+            {
+                self.stage_process_calls[BuiltInFxStage::Modulation.index()] += 1;
+            }
+        }
+        if self.state.reverb_enabled {
+            if source_is_a {
+                self.reverb.process(
+                    self.state.reverb_type,
+                    frames,
+                    &self.stage_a,
+                    &mut self.stage_b,
+                    &mut self.smoothers,
+                );
+            } else {
+                self.reverb.process(
+                    self.state.reverb_type,
+                    frames,
+                    &self.stage_b,
+                    &mut self.stage_a,
+                    &mut self.smoothers,
+                );
+            }
+            source_is_a = !source_is_a;
+            #[cfg(test)]
+            {
+                self.stage_process_calls[BuiltInFxStage::Reverb.index()] += 1;
+            }
+        }
+
+        let source = if source_is_a {
+            &self.stage_a
+        } else {
+            &self.stage_b
+        };
+        for channel in 0..self.audio_channels() {
+            self.outputs[channel][..frames].copy_from_slice(&source[channel][..frames]);
         }
     }
 
@@ -1389,6 +1373,13 @@ mod tests {
         for channel in 0..processor.audio_channels() {
             processor.input_mut(channel, frames).unwrap().fill(0.0);
         }
+    }
+
+    fn difference(left: &[f32], right: &[f32]) -> f32 {
+        left.iter()
+            .zip(right)
+            .map(|(left, right)| (left - right).abs())
+            .sum()
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1805,6 +1796,400 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn chorus_uses_stereo_width_preserves_n_channel_isolation_and_discards_tails() {
+        let frames = 4_096;
+        let make_state = |width| BuiltInFxState {
+            chorus_enabled: true,
+            chorus_rate_hz: 0.7,
+            chorus_depth: 1.0,
+            chorus_mix: 1.0,
+            chorus_width: width,
+            reverb_enabled: false,
+            ..BuiltInFxState::default()
+        };
+        let mut centered =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 2, make_state(0.0)).unwrap();
+        let mut wide =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 2, make_state(1.0)).unwrap();
+        for processor in [&mut centered, &mut wide] {
+            for channel in 0..2 {
+                for (index, sample) in processor
+                    .input_mut(channel, frames)
+                    .unwrap()
+                    .iter_mut()
+                    .enumerate()
+                {
+                    *sample = (std::f32::consts::TAU * 220.0 * index as f32 / 48_000.0).sin();
+                }
+            }
+            processor.process(frames);
+            assert_eq!(processor.stage_process_calls(BuiltInFxStage::Chorus), 1);
+        }
+        assert_eq!(
+            centered.output(0, frames).unwrap(),
+            centered.output(1, frames).unwrap()
+        );
+        let stereo_difference: f32 = wide
+            .output(0, frames)
+            .unwrap()
+            .iter()
+            .zip(wide.output(1, frames).unwrap())
+            .map(|(left, right)| (left - right).abs())
+            .sum();
+        assert!(stereo_difference > 1.0);
+
+        let mut multichannel =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 3, make_state(1.0)).unwrap();
+        for channel in 0..3 {
+            multichannel.input_mut(channel, frames).unwrap().fill(0.0);
+        }
+        multichannel.input_mut(1, frames).unwrap()[0] = 1.0;
+        multichannel.process(frames);
+        assert!(multichannel
+            .output(0, frames)
+            .unwrap()
+            .iter()
+            .all(|sample| *sample == 0.0));
+        assert!(multichannel
+            .output(2, frames)
+            .unwrap()
+            .iter()
+            .all(|sample| *sample == 0.0));
+
+        multichannel.set_stage_enabled(BuiltInFxStage::Chorus, false);
+        set_silence(&mut multichannel, frames);
+        multichannel.process(frames);
+        multichannel.set_stage_enabled(BuiltInFxStage::Chorus, true);
+        multichannel.process(frames);
+        for channel in 0..3 {
+            assert!(multichannel
+                .output(channel, frames)
+                .unwrap()
+                .iter()
+                .all(|sample| *sample == 0.0));
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn modulation_modes_are_distinct_and_only_the_selected_mode_runs() {
+        let frames = 4_096;
+        let mut rendered = Vec::new();
+        for modulation_type in [
+            ModulationType::Tremolo,
+            ModulationType::Flanger,
+            ModulationType::Phaser,
+        ] {
+            let state = BuiltInFxState {
+                modulation_enabled: true,
+                modulation_type,
+                modulation_rate_hz: 1.0,
+                modulation_depth: 1.0,
+                modulation_mix: 1.0,
+                modulation_feedback: 0.5,
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            };
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+            for (index, sample) in processor
+                .input_mut(0, frames)
+                .unwrap()
+                .iter_mut()
+                .enumerate()
+            {
+                *sample = (std::f32::consts::TAU * 440.0 * index as f32 / 48_000.0).sin() * 0.5;
+            }
+            processor.process(frames);
+            assert!(processor
+                .output(0, frames)
+                .unwrap()
+                .iter()
+                .all(|sample| sample.is_finite()));
+            assert_eq!(processor.stage_process_calls(BuiltInFxStage::Modulation), 1);
+            for candidate in [
+                ModulationType::Tremolo,
+                ModulationType::Flanger,
+                ModulationType::Phaser,
+            ] {
+                assert_eq!(
+                    processor.modulation.type_process_calls(candidate),
+                    u64::from(candidate == modulation_type)
+                );
+            }
+            rendered.push(processor.output(0, frames).unwrap().to_vec());
+        }
+        for left in 0..rendered.len() {
+            for right in left + 1..rendered.len() {
+                let difference: f32 = rendered[left]
+                    .iter()
+                    .zip(&rendered[right])
+                    .map(|(left, right)| (left - right).abs())
+                    .sum();
+                assert!(difference > 1.0, "modes {left} and {right}: {difference}");
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn modulation_stereo_spread_and_tremolo_feedback_semantics_are_stable() {
+        let frames = 2_048;
+        let render = |spread: f32, feedback: f32| {
+            let state = BuiltInFxState {
+                modulation_enabled: true,
+                modulation_type: ModulationType::Tremolo,
+                modulation_rate_hz: 2.0,
+                modulation_depth: 1.0,
+                modulation_mix: 1.0,
+                modulation_feedback: feedback,
+                modulation_spread: spread,
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            };
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 2, state).unwrap();
+            for channel in 0..2 {
+                processor.input_mut(channel, frames).unwrap().fill(0.5);
+            }
+            processor.process(frames);
+            [
+                processor.output(0, frames).unwrap().to_vec(),
+                processor.output(1, frames).unwrap().to_vec(),
+            ]
+        };
+        let centered = render(0.0, -0.95);
+        assert_eq!(centered[0], centered[1]);
+        let centered_other_feedback = render(0.0, 0.95);
+        assert_eq!(centered, centered_other_feedback);
+        let spread = render(1.0, 0.0);
+        assert_ne!(spread[0], spread[1]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn chorus_and_modulation_continuous_controls_change_rendering() {
+        let frames = 4_096;
+        let input = (0..frames)
+            .map(|index| (std::f32::consts::TAU * 330.0 * index as f32 / 48_000.0).sin() * 0.5)
+            .collect::<Vec<_>>();
+        let render_chorus = |rate, depth, mix| {
+            let state = BuiltInFxState {
+                chorus_enabled: true,
+                chorus_rate_hz: rate,
+                chorus_depth: depth,
+                chorus_mix: mix,
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            };
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+            processor
+                .input_mut(0, frames)
+                .unwrap()
+                .copy_from_slice(&input);
+            processor.process(frames);
+            processor.output(0, frames).unwrap().to_vec()
+        };
+        assert_eq!(render_chorus(0.3, 1.0, 0.0), input);
+        let chorus_slow = render_chorus(0.1, 1.0, 1.0);
+        let chorus_fast = render_chorus(5.0, 1.0, 1.0);
+        let chorus_shallow = render_chorus(0.3, 0.0, 1.0);
+        assert!(difference(&chorus_slow, &chorus_fast) > 1.0);
+        assert!(difference(&chorus_slow, &chorus_shallow) > 1.0);
+
+        let render_modulation = |modulation_type, rate, depth, mix, feedback| {
+            let state = BuiltInFxState {
+                modulation_enabled: true,
+                modulation_type,
+                modulation_rate_hz: rate,
+                modulation_depth: depth,
+                modulation_mix: mix,
+                modulation_feedback: feedback,
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            };
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+            processor
+                .input_mut(0, frames)
+                .unwrap()
+                .copy_from_slice(&input);
+            processor.process(frames);
+            processor.output(0, frames).unwrap().to_vec()
+        };
+        assert_eq!(
+            render_modulation(ModulationType::Tremolo, 1.0, 1.0, 0.0, 0.0),
+            input
+        );
+        assert_eq!(
+            render_modulation(ModulationType::Tremolo, 1.0, 0.0, 1.0, 0.0),
+            input
+        );
+        let tremolo_slow = render_modulation(ModulationType::Tremolo, 0.1, 1.0, 1.0, 0.0);
+        let tremolo_fast = render_modulation(ModulationType::Tremolo, 5.0, 1.0, 1.0, 0.0);
+        assert!(difference(&tremolo_slow, &tremolo_fast) > 1.0);
+        let flanger_negative = render_modulation(ModulationType::Flanger, 0.5, 1.0, 1.0, -0.95);
+        let flanger_positive = render_modulation(ModulationType::Flanger, 0.5, 1.0, 1.0, 0.95);
+        assert!(flanger_negative.iter().all(|sample| sample.is_finite()));
+        assert!(flanger_positive.iter().all(|sample| sample.is_finite()));
+        assert!(difference(&flanger_negative, &flanger_positive) > 1.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn reverb_types_amount_and_tone_are_distinct_and_selected_only() {
+        let frames = 257;
+        let mut rendered = Vec::new();
+        for reverb_type in [ReverbType::Room, ReverbType::Hall, ReverbType::Plate] {
+            let state = BuiltInFxState {
+                reverb_type,
+                reverb_amount: 0.5,
+                reverb_tone: 0.5,
+                ..BuiltInFxState::default()
+            };
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 2, state).unwrap();
+            set_impulse(&mut processor, frames);
+            let mut response = Vec::new();
+            for block in 0..120 {
+                if block > 0 {
+                    set_silence(&mut processor, frames);
+                }
+                processor.process(frames);
+                response.extend_from_slice(processor.output(0, frames).unwrap());
+            }
+            for candidate in [ReverbType::Room, ReverbType::Hall, ReverbType::Plate] {
+                let calls = processor.reverb.type_process_calls(candidate);
+                assert_eq!(calls > 0, candidate == reverb_type);
+            }
+            rendered.push(response);
+        }
+        for left in 0..rendered.len() {
+            for right in left + 1..rendered.len() {
+                let difference: f32 = rendered[left]
+                    .iter()
+                    .zip(&rendered[right])
+                    .map(|(left, right)| (left - right).abs())
+                    .sum();
+                assert!(difference > 0.1, "reverbs {left} and {right}: {difference}");
+            }
+        }
+
+        let dry_state = BuiltInFxState {
+            reverb_amount: 0.0,
+            ..BuiltInFxState::default()
+        };
+        let mut dry =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, dry_state).unwrap();
+        for (index, sample) in dry.input_mut(0, frames).unwrap().iter_mut().enumerate() {
+            *sample = index as f32 / frames as f32;
+        }
+        dry.process(frames);
+        assert_eq!(dry.output(0, frames).unwrap(), dry.inputs[0]);
+
+        let render_tone = |tone| {
+            let state = BuiltInFxState {
+                reverb_amount: 1.0,
+                reverb_tone: tone,
+                ..BuiltInFxState::default()
+            };
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+            set_impulse(&mut processor, frames);
+            for _ in 0..40 {
+                processor.process(frames);
+                set_silence(&mut processor, frames);
+            }
+            processor.process(frames);
+            processor.output(0, frames).unwrap().to_vec()
+        };
+        let dark = render_tone(0.0);
+        let bright = render_tone(1.0);
+        let tone_difference: f32 = dark
+            .iter()
+            .zip(&bright)
+            .map(|(dark, bright)| (dark - bright).abs())
+            .sum();
+        assert!(tone_difference > 1.0e-4);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn changing_modulation_or_reverb_type_discards_displaced_state() {
+        let frames = 2_048;
+        let state = BuiltInFxState {
+            modulation_enabled: true,
+            modulation_type: ModulationType::Flanger,
+            modulation_feedback: 0.9,
+            reverb_enabled: false,
+            ..BuiltInFxState::default()
+        };
+        let mut modulation =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
+        set_impulse(&mut modulation, frames);
+        modulation.process(frames);
+        modulation.set_modulation_type(ModulationType::Phaser);
+        modulation.set_modulation_type(ModulationType::Flanger);
+        set_silence(&mut modulation, frames);
+        modulation.process(frames);
+        assert!(modulation
+            .output(0, frames)
+            .unwrap()
+            .iter()
+            .all(|sample| *sample == 0.0));
+
+        let mut reverb =
+            BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, BuiltInFxState::default())
+                .unwrap();
+        set_impulse(&mut reverb, frames);
+        reverb.process(frames);
+        reverb.set_reverb_type(ReverbType::Hall);
+        reverb.set_reverb_type(ReverbType::Room);
+        set_silence(&mut reverb, frames);
+        reverb.process(frames);
+        assert!(reverb
+            .output(0, frames)
+            .unwrap()
+            .iter()
+            .all(|sample| *sample == 0.0));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn chorus_modulation_and_reverb_support_rates_blocks_and_n_channel_isolation() {
+        let state = BuiltInFxState {
+            chorus_enabled: true,
+            modulation_enabled: true,
+            modulation_type: ModulationType::Phaser,
+            reverb_type: ReverbType::Plate,
+            ..BuiltInFxState::default()
+        };
+        for (sample_rate, frames) in [
+            (44_100.0, 1),
+            (48_000.0, 128),
+            (96_000.0, 257),
+            (48_000.0, 2_048),
+        ] {
+            let mut processor =
+                BuiltInFxProcessor::new_with_channels(sample_rate, frames, 3, state).unwrap();
+            for channel in 0..3 {
+                processor.input_mut(channel, frames).unwrap().fill(0.0);
+            }
+            processor.input_mut(1, frames).unwrap()[0] = 0.5;
+            processor.process(frames);
+            for channel in 0..3 {
+                assert!(processor
+                    .output(channel, frames)
+                    .unwrap()
+                    .iter()
+                    .all(|sample| sample.is_finite()));
+            }
+            for channel in [0, 2] {
+                assert!(processor
+                    .output(channel, frames)
+                    .unwrap()
+                    .iter()
+                    .all(|sample| *sample == 0.0));
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn enabled_reverb_processes_mono_stereo_and_n_channel_tails() {
         let frames = 257;
         for channels in [1, 2, 3, 6] {
@@ -1890,17 +2275,24 @@ mod tests {
             compressor_enabled: true,
             drive_enabled: true,
             eq_enabled: true,
-            reverb_enabled: false,
+            chorus_enabled: true,
+            modulation_enabled: true,
+            reverb_enabled: true,
             ..BuiltInFxState::default()
         };
         let mut rack = BuiltInFxProcessor::new_with_channels(48_000.0, frames, 6, state).unwrap();
         set_impulse(&mut rack, frames);
         assert_no_alloc::assert_no_alloc(|| rack.process(frames));
-        assert_no_alloc::assert_no_alloc(|| {
-            rack.set_stage_enabled(BuiltInFxStage::Compressor, false)
-        });
-        assert_no_alloc::assert_no_alloc(|| rack.set_stage_enabled(BuiltInFxStage::Drive, false));
-        assert_no_alloc::assert_no_alloc(|| rack.set_stage_enabled(BuiltInFxStage::Eq, false));
+        for stage in [
+            BuiltInFxStage::Compressor,
+            BuiltInFxStage::Drive,
+            BuiltInFxStage::Eq,
+            BuiltInFxStage::Chorus,
+            BuiltInFxStage::Modulation,
+            BuiltInFxStage::Reverb,
+        ] {
+            assert_no_alloc::assert_no_alloc(|| rack.set_stage_enabled(stage, false));
+        }
         assert_no_alloc::assert_no_alloc(|| rack.process(frames));
         assert_no_alloc::assert_no_alloc(|| rack.reset());
     }

@@ -150,14 +150,16 @@ DSP evidence: focused modules implement a stereo-linked/otherwise-independent pe
 
 Depends on Stage 1; may proceed in parallel with Stage 2 only if edits remain non-overlapping.
 
-- [ ] Implement Chorus Rate/Depth/Mix/Width with preallocated delay/modulation state, mono behavior, exactly-stereo decorrelation, and deterministic independent N-channel seeds.
-- [ ] Implement Tremolo, Flanger, and Phaser behind one Modulation stage with shared Rate/Depth/Mix/Feedback/Spread controls; keep Feedback inactive in Tremolo and process only the selected mode.
-- [ ] Implement Room, Hall, and Plate using the Stage 0 FunDSP mappings, additive Amount, wet Tone filtering, true-stereo processing for two channels, and mono wrappers for mono/N-channel banks.
-- [ ] Reset chorus/modulation/reverb tails and displaced type state on disable or type change; prove re-enable cannot revive stale output.
-- [ ] Add deterministic tests for modulation frequency/depth/mix, stereo width/spread, mode distinction, feedback bounds, reverb type distinction/tails/Amount/Tone, channel isolation, sample rates, callback sizes, and finite output under extreme valid controls.
-- [ ] Prove bypassed stages and unselected types receive zero calls and all steady-state paths allocate nothing.
-- [ ] Verify focused native/Node tests, tracing inventories, warning-denying builds, and per-commit gates.
-- [ ] Commit the modulation/reverb milestone.
+DSP evidence: preallocated custom delay/LFO stages implement five-voice Chorus and Tremolo/Flanger/4-stage Phaser with stable phase under smoothed controls; exactly-stereo Width/Spread decorrelates L/R while N-channel processing remains isolated. Reverb preconstructs Room/Hall/Plate FunDSP families, processes only the selected type, folds stereo wet output for mono banks, applies neutral-centered wet tilt, and preserves additive dry+Amount behavior. Disable/type transitions reset delay/allpass/reverb/tone state. Native focused engine/backend coverage passed 26/26 and Node Wasm passed 22 tests, including mode/type call counters, stale-state removal, tone/amount/type distinctions, stereo specialization, N isolation, 44.1/48/96 kHz, 1/128/257/2048 frames, finite extremes, and allocation-free full-rack processing. Formatting, warning-denying workspace build, Rust-test policy, and 150-module closed tracing inventory passed.
+
+- [x] Implement Chorus Rate/Depth/Mix/Width with preallocated delay/modulation state, mono behavior, exactly-stereo decorrelation, and deterministic independent N-channel seeds.
+- [x] Implement Tremolo, Flanger, and Phaser behind one Modulation stage with shared Rate/Depth/Mix/Feedback/Spread controls; keep Feedback inactive in Tremolo and process only the selected mode.
+- [x] Implement Room, Hall, and Plate using the Stage 0 FunDSP mappings, additive Amount, wet Tone filtering, true-stereo processing for two channels, and mono wrappers for mono/N-channel banks.
+- [x] Reset chorus/modulation/reverb tails and displaced type state on disable or type change; prove re-enable cannot revive stale output.
+- [x] Add deterministic tests for modulation frequency/depth/mix, stereo width/spread, mode distinction, feedback bounds, reverb type distinction/tails/Amount/Tone, channel isolation, sample rates, callback sizes, and finite output under extreme valid controls.
+- [x] Prove bypassed stages and unselected types receive zero calls and all steady-state paths allocate nothing.
+- [x] Verify focused native/Node tests, tracing inventories, warning-denying builds, and per-commit gates.
+- [x] Commit the modulation/reverb milestone.
 
 ## Stage 4 — Engine routing and MIDI behavior
 
