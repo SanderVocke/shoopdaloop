@@ -2565,7 +2565,11 @@ impl EngineBackend {
         self.input_peak = 0.0;
         for track in self.tracks.values() {
             for (channel, session_port) in track.audio_inputs.iter().enumerate() {
-                let backend_port_id = track.ports[channel * 2];
+                let backend_port_id = if track.builtin_fx.is_some() {
+                    track.ports[channel]
+                } else {
+                    track.ports[channel * 2]
+                };
                 let registry_id = self.connection_ports[&backend_port_id].registry_id;
                 let mut source_count = 0;
                 self.route_scratch[..n_frames].fill(0.0);
@@ -2623,7 +2627,11 @@ impl EngineBackend {
         self.output_peak = 0.0;
         for track in self.tracks.values() {
             for (channel, session_port) in track.audio_outputs.iter().enumerate() {
-                let backend_port_id = track.ports[channel * 2 + 1];
+                let backend_port_id = if track.builtin_fx.is_some() {
+                    track.ports[track.audio_inputs.len() + channel]
+                } else {
+                    track.ports[channel * 2 + 1]
+                };
                 let registry_id = self.connection_ports[&backend_port_id].registry_id;
                 let samples = self
                     .session
@@ -3121,13 +3129,7 @@ impl EngineBackend {
             BackendPortRole::MidiInput,
         );
         let midi_input_port = Some(midi_descriptor.id);
-        let mut ordered_ports = Vec::with_capacity(audio_channels * 2 + 1);
-        for channel in 0..audio_channels {
-            ordered_ports.push(ports[channel].clone());
-            ordered_ports.push(ports[audio_channels + channel].clone());
-        }
-        ordered_ports.push(midi_descriptor);
-        let ports = ordered_ports;
+        ports.push(midi_descriptor);
 
         let control = shoop_engine::builtin_fx::BuiltInFxControlState::default();
         let processor = control.prepare_processor_with_channels(
@@ -12496,6 +12498,22 @@ mod tests {
                     initial_loops: 1,
                 })
                 .unwrap();
+            let expected_roles =
+                std::iter::repeat_n(BackendPortRole::AudioInput, channels as usize)
+                    .chain(std::iter::repeat_n(
+                        BackendPortRole::AudioOutput,
+                        channels as usize,
+                    ))
+                    .chain([BackendPortRole::MidiInput])
+                    .collect::<Vec<_>>();
+            assert_eq!(
+                created
+                    .ports
+                    .iter()
+                    .map(|port| port.role)
+                    .collect::<Vec<_>>(),
+                expected_roles
+            );
             assert_eq!(
                 created
                     .ports
@@ -12550,6 +12568,20 @@ mod tests {
             initial_loops: 1,
         };
         let created = backend.create_track(request.clone()).unwrap();
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .map(|port| port.role)
+                .collect::<Vec<_>>(),
+            [
+                BackendPortRole::AudioInput,
+                BackendPortRole::AudioInput,
+                BackendPortRole::AudioOutput,
+                BackendPortRole::AudioOutput,
+                BackendPortRole::MidiInput,
+            ]
+        );
         for (index, port) in created
             .ports
             .iter()

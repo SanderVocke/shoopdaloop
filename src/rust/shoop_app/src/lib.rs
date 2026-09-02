@@ -10818,7 +10818,7 @@ fn runtime_track_topology(
                     dry_midi: true,
                     processor_type: processor,
                 },
-                *audio_channels,
+                audio_channels.saturating_mul(2),
                 true,
             ))
         }
@@ -13758,6 +13758,12 @@ mod tests {
         assert_eq!(
             saved_track.topology,
             TrackTopologyDocument::BuiltInFx { audio_channels: 3 }
+        );
+        assert_eq!(
+            runtime_track_topology(saved_track, &runtime.snapshot().track_processors)
+                .unwrap()
+                .2,
+            6
         );
         let chain = saved_track.fx_chain.as_ref().unwrap();
         assert_eq!(chain.chain_type, FxChainTypeDocument::BuiltInFx);

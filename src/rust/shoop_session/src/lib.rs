@@ -535,7 +535,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 11] {
+        for unsupported in [5, 12] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -604,7 +604,6 @@ mod tests {
             });
         let encoded = encode_session(&bundle, "builtin-fx-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
-
         let previous_bundle = SessionBundle::new(SessionDocument::empty(48_000));
         let previous = rewrite_manifest(
             encode_session(&previous_bundle, "previous-version").unwrap(),
@@ -704,7 +703,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn version_nine_builtin_fx_migrates_state_topology_and_required_midi() {
+    fn predecessor_builtin_fx_versions_migrate_state_topology_and_required_midi() {
         let mut source = builtin_fx_bundle();
         source.media.remove("midi_main");
         let midi = source.document.track_groups[0].tracks[0].loops[0]
@@ -742,6 +741,13 @@ mod tests {
                 manifest["document"]["fx_states"][0]["internal_state"] =
                     serde_json::json!("shoop-builtin-fx:1:1");
             },
+        );
+        let version_ten = rewrite_manifest(legacy.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(10);
+        });
+        assert_eq!(
+            decode_session(&version_ten).unwrap(),
+            decode_session(&legacy).unwrap()
         );
         let malformed = rewrite_manifest(legacy.clone(), |manifest| {
             manifest["document"]["track_groups"][0]["tracks"][0]["fx_chain"]["internal_state"] =
