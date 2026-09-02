@@ -269,11 +269,11 @@ Local validation evidence (2026-09-01): after merging current `origin/master` at
 
 Depends on a clean Stage 9.
 
-Precondition status (2026-09-02): prerequisite MVP PR #844 is green, review-clean, and mergeable at `81274c6ce3495c1a4c89f0ce314fa605e5276e04`; all six Codex threads are resolved. The expanded branch includes that head and current master, is clean/pushed at `1792b002c4e77769cca34e7097d1726e2ee19b73`, and passes 1,702 native plus 1,420 Node tests. This plan forbids a stacked implementation PR without explicit approval, and merging #844 was not included in the granted execution scope, so opening the expanded PR is blocked until the user merges #844, authorizes its merge, or explicitly approves a stacked PR.
+PR status (2026-09-02): prerequisite MVP PR #844 merged green and review-clean as `6f03a0abf90e75a73583dd6e0094e1ad272f3c9e`. The expanded branch includes the merged base and is clean/pushed at `48b8db114`; its 32-file diff excludes generated/build/trace artifacts. Expanded PR https://github.com/SanderVocke/shoopdaloop/pull/846 targets `master` and records the immutable rack/channel/MIDI contract, session 11, protocol 22, attribution, and exact 1,702-native/1,420-Node local evidence.
 
-- [ ] Review the commit series for meaningful stage boundaries and ensure no generated `dist`, worklet, `_build`, trace, credential, or unrelated files are committed.
-- [ ] Push the implementation branch and open a PR against `master` with the immutable behavior contract, rack/channel/MIDI design, migration/protocol notes, FunDSP attribution, and exact local validation evidence. Keep it draft until local gates are complete if opened earlier for CI feedback.
-- [ ] Record the PR URL and pushed head SHA in this plan.
+- [x] Review the commit series for meaningful stage boundaries and ensure no generated `dist`, worklet, `_build`, trace, credential, or unrelated files are committed.
+- [x] Push the implementation branch and open a PR against `master` with the immutable behavior contract, rack/channel/MIDI design, migration/protocol notes, FunDSP attribution, and exact local validation evidence. Keep it draft until local gates are complete if opened earlier for CI feedback.
+- [x] Record the PR URL and pushed head SHA in this plan.
 - [ ] Monitor required checks with `gh pr checks`/`gh run watch`; require Build and Test matrices, Rust coverage, Docs, CodeQL, Codecov, Node/Chromium Wasm, Chrome AudioWorklet/Perfetto, and Firefox Web Audio jobs applicable to the changed paths.
 - [ ] For failures, inspect the exact attempt, matrix job, logs, and artifacts with `gh run view`, `gh run download`, or `gh api`; compare peers before classifying a failure and read the Perfetto skill before analyzing `.pftrace` files.
 - [ ] Reproduce deterministic failures locally where possible, add or improve regression coverage, fix the root cause, rerun affected and mandatory gates, commit, push, and wait for replacement checks. Do not use blind reruns instead of diagnosis.
