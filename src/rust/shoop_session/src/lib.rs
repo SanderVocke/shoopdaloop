@@ -719,6 +719,27 @@ mod tests {
             internal_state: crate::archive::migrate_builtin_fx_v1_state("shoop-builtin-fx:1:1")
                 .unwrap(),
         });
+        source.document.track_groups[0].tracks[0]
+            .loops
+            .push(LoopDocument {
+                id: 11,
+                name: "Composite".to_owned(),
+                length_frames: 301,
+                is_sync: false,
+                gain: 1.0,
+                balance: 0.0,
+                channels: Vec::new(),
+                composite: Some(CompositeDocument {
+                    kind: CompositeKindDocument::Regular,
+                    instances: vec![CompositeLoopInstanceDocument {
+                        instance_id: 6_001,
+                        start_cycle: 0,
+                        loop_id: 10,
+                        mode: None,
+                        n_cycles: Some(1),
+                    }],
+                }),
+            });
         let legacy = rewrite_manifest(
             encode_session(&source, "builtin-fx-v9-migration").unwrap(),
             |manifest| {
@@ -785,6 +806,8 @@ mod tests {
         assert_eq!(midi_channels.len(), 1);
         assert_eq!(midi_channels[0].mode, ChannelModeDocument::Dry);
         assert_eq!(midi_channels[0].connected_port_ids, [midi_ports[0].id]);
+        assert!(track.loops[1].composite.is_some());
+        assert!(track.loops[1].channels.is_empty());
         assert_eq!(
             migrated.document.fx_states[0].internal_state,
             crate::archive::migrate_builtin_fx_v1_state("shoop-builtin-fx:1:1").unwrap()

@@ -424,6 +424,9 @@ fn migrate_pre_expanded_builtin_fx_document(
                 ringbuffer_frames: 0,
             });
             for loop_ in &mut track.loops {
+                if loop_.composite.is_some() {
+                    continue;
+                }
                 if loop_
                     .channels
                     .iter()
