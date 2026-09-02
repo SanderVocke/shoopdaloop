@@ -1174,17 +1174,27 @@ impl NativeRuntime {
         }
         let activation = self.wait_for_graph();
         if !matches!(activation, Ok(true)) {
-            if connected {
-                let _ = source.disconnect_internal(&destination);
+            let inverse = if connected {
+                source.disconnect_internal(&destination)
             } else {
-                let _ = source.connect_internal(&destination);
-            }
-            let _ = self.wait_for_graph();
-            let message = match activation {
+                source.connect_internal(&destination)
+            };
+            let rollback =
+                inverse
+                    .map_err(anyhow::Error::from)
+                    .and_then(|_| match self.wait_for_graph() {
+                        Ok(true) => Ok(()),
+                        Ok(false) => Err(anyhow!("rollback graph did not become active")),
+                        Err(error) => Err(error),
+                    });
+            let mut message = match activation {
                 Ok(false) => "mixer route graph could not be activated".to_owned(),
                 Err(error) => format!("mixer route graph activation failed: {error}"),
                 Ok(true) => unreachable!(),
             };
+            if let Err(error) = rollback {
+                message.push_str(&format!("; rollback failed: {error}"));
+            }
             self.mixer_failures.push(BackendMixerFailure {
                 link,
                 desired_connected: connected,
