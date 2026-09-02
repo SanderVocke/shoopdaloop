@@ -252,16 +252,16 @@ Depends on Stages 4–7.
 Verification:
 
 - [x] Run focused `shoop_scripting`, `shoop_app`, script-resource, native runtime, and Wasm scripting tests.
-- [ ] Audit every user-facing label/diagram and compatibility statement against implemented behavior, especially “System inputs/outputs,” visual-only order, removable Master, zero buses, and presentation-only Connections modes.
+- [x] Audit every user-facing label/diagram and compatibility statement against implemented behavior, especially “System inputs/outputs,” visual-only order, removable Master, zero buses, and presentation-only Connections modes.
 
 ### Stage 9 — End-to-end validation and completion audit
 
 Depends on all implementation stages.
 
-- [ ] Run an end-to-end dummy/native scenario: create mono, stereo, and multichannel buses; retain direct track outputs; create explicit track-to-bus and bus-to-system routes; exercise controls/meters; reorder; save/reload; switch drivers; remove a routed bus; and verify exact identities, order, cleanup, direct audio, unaffected buses, and zero-bus behavior.
-- [ ] Run the equivalent Worker/AudioWorklet scenario, including restart/replay and session replacement, and verify authoritative snapshots/audio before and after every structural operation.
-- [ ] Exercise all three Connections layouts and prove switching tabs/modes neither mutates nor loses hidden confirmed/pending routes.
-- [ ] Verify new, version-10-migrated, zero-bus, duplicate-name, reordered, resampled, maximum-supported, over-limit, malformed, cancelled, and failed-replacement sessions.
+- [x] Run an end-to-end dummy/native scenario: create mono, stereo, and multichannel buses; retain direct track outputs; create explicit track-to-bus and bus-to-system routes; exercise controls/meters; reorder; save/reload; switch drivers; remove a routed bus; and verify exact identities, order, cleanup, direct audio, unaffected buses, and zero-bus behavior.
+- [x] Run the equivalent Worker/AudioWorklet scenario, including restart/replay and session replacement, and verify authoritative snapshots/audio before and after every structural operation.
+- [x] Exercise all three Connections layouts and prove switching tabs/modes neither mutates nor loses hidden confirmed/pending routes.
+- [x] Verify new, version-10-migrated, zero-bus, duplicate-name, reordered, resampled, maximum-supported, over-limit, malformed, cancelled, and failed-replacement sessions.
 - [ ] Run `cargo fmt --all -- --check`.
 - [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace` in the environment selected by `.agents/info/build.md`.
 - [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
@@ -269,7 +269,7 @@ Depends on all implementation stages.
 - [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
 - [ ] Build `shoopdaloop --no-default-features --target wasm32-unknown-unknown` and `shoop_audio_worklet --target wasm32-unknown-unknown --release`.
 - [ ] Run the complete Node Wasm suite with `python3 scripts/run_wasm_tests.py --runtime node --profile dev`, relevant Chromium suites, `trunk build`, smoke-budget checks, and packaged Chromium/Firefox smokes when available.
-- [ ] Run native headless startup/rendering validation and any real-host tests available without weakening unavailable-host behavior into success.
+- [x] Run native headless startup/rendering validation and any real-host tests available without weakening unavailable-host behavior into success.
 - [ ] Build a prompt-to-artifact checklist mapping every scope bullet, immutable criterion, named file/contract, command, test, target, migration, PR requirement, and Codex finding to concrete exact-head evidence; inspect the evidence and leave no unchecked or weakly covered requirement.
 
 ### Stage 10 — New unified PR, CI, review, and replacement closure

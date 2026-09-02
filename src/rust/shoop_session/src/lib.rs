@@ -1240,6 +1240,59 @@ mod tests {
             encode_session(&malformed, "zero-channel"),
             Err(SessionError::Validation(message)) if message.contains("channel count")
         ));
+        let mut widest = SessionBundle::new(SessionDocument::empty(48_000));
+        widest.document.buses = vec![bus(1, 1, 20_000, "Widest", shoop_app_api::MAX_BUS_CHANNELS)];
+        widest.document.bus_display_order = vec![1];
+        encode_session(&widest, "widest-bus").unwrap();
+        let mut too_wide = widest;
+        too_wide.document.buses = vec![bus(
+            1,
+            1,
+            20_000,
+            "Too wide",
+            shoop_app_api::MAX_BUS_CHANNELS + 1,
+        )];
+        assert!(matches!(
+            encode_session(&too_wide, "too-wide-bus"),
+            Err(SessionError::Validation(message)) if message.contains("channel count")
+        ));
+
+        let mut maximal = SessionBundle::new(SessionDocument::empty(48_000));
+        maximal.document.buses.clear();
+        maximal.document.bus_display_order.clear();
+        let mut channel_id = 1_u64;
+        let mut port_id = 10_000_u64;
+        for bus_id in 1..=shoop_app_api::MAX_BUSES as u64 {
+            maximal.document.buses.push(bus(
+                bus_id,
+                channel_id,
+                port_id,
+                &format!("Bus {bus_id}"),
+                4,
+            ));
+            maximal.document.bus_display_order.push(bus_id);
+            channel_id += 4;
+            port_id += 4;
+        }
+        assert_eq!(channel_id - 1, shoop_app_api::MAX_TOTAL_BUS_CHANNELS as u64);
+        encode_session(&maximal, "maximal-buses").unwrap();
+        let mut excessive = maximal.clone();
+        excessive.document.buses.push(bus(
+            shoop_app_api::MAX_BUSES as u64 + 1,
+            channel_id,
+            port_id,
+            "Excess",
+            1,
+        ));
+        excessive
+            .document
+            .bus_display_order
+            .push(shoop_app_api::MAX_BUSES as u64 + 1);
+        assert!(matches!(
+            encode_session(&excessive, "too-many-buses"),
+            Err(SessionError::Validation(message)) if message.contains("bus count")
+        ));
+
         let mut malformed = bundle;
         malformed.document.buses[2].channels[0].label = "Left".to_owned();
         assert!(matches!(
