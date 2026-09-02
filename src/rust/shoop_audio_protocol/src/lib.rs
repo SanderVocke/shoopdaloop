@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 24;
+pub const PROTOCOL_VERSION: u16 = 25;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -653,6 +653,7 @@ pub struct WireSnapshot {
     pub host_ports: Vec<WireHostPort>,
     pub confirmed_links: Vec<WireConfirmedLink>,
     pub connection_failures: Vec<WireConnectionFailure>,
+    pub mixer_revision: u64,
     pub buses: Vec<WireBus>,
     pub confirmed_mixer_links: Vec<WireMixerLink>,
     pub mixer_failures: Vec<WireMixerFailure>,
@@ -1576,7 +1577,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":24,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":25,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1587,7 +1588,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":24,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":25,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 
@@ -1618,6 +1619,7 @@ mod tests {
         let payload = WireSnapshot {
             sample_rate: 48_000,
             quantum: 128,
+            mixer_revision: 37,
             ..Default::default()
         };
         let binary = encode_binary(&payload).unwrap();

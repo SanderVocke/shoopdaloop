@@ -1111,7 +1111,7 @@ impl RemoteWorkletBackend {
                         message: failure.message,
                     }),
             );
-        self.snapshot.mixer.revision = self.snapshot.mixer.revision.wrapping_add(1);
+        self.snapshot.mixer.revision = wire.mixer_revision;
         let observed_track_ids = wire
             .tracks
             .iter()
@@ -4273,6 +4273,7 @@ mod tests {
                 command_overflows: 6,
                 storage_low_channels: 7,
                 storage_exhaustions: 8,
+                mixer_revision: 9,
                 tracks: vec![
                     track(
                         1,
@@ -4535,6 +4536,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(snapshot.status.storage_exhaustions, 8);
+        assert_eq!(snapshot.mixer.revision, 9);
     }
 
     #[shoop_wasm_test_support::shoop_test]

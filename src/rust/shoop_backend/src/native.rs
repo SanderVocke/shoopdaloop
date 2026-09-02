@@ -934,6 +934,16 @@ impl NativeRuntime {
                     .ok_or_else(|| anyhow!("missing native bus output port"))
             })
             .collect::<Result<Vec<_>>>()?;
+        let output_connections = outputs
+            .iter()
+            .map(|output| {
+                output
+                    .get_connections_state_now()
+                    .into_iter()
+                    .filter_map(|(endpoint, connected)| connected.then_some(endpoint))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         let affected_routes = self
             .mixer_routes
             .iter()
@@ -959,18 +969,47 @@ impl NativeRuntime {
             }
         }
         let mut unregistered = Vec::new();
-        for (channel, output) in bus.channels.iter().zip(&outputs) {
-            unregistered.push((channel.output_port_id, output.clone()));
+        for (index, (channel, output)) in bus.channels.iter().zip(&outputs).enumerate() {
+            unregistered.push((index, channel.output_port_id, output.clone()));
             if let Err(error) = self.driver.unregister_audio_port(output) {
-                for (restored_channel, restored_output) in &unregistered {
-                    self.driver.register_existing_audio_port(
+                let mut rollback_errors = Vec::new();
+                for (restored_index, restored_channel, restored_output) in &unregistered {
+                    if let Err(restore_error) = self.driver.register_existing_audio_port(
                         restored_output,
                         &self.ports[restored_channel].descriptor.name,
                         PortDirection::Output,
-                    )?;
+                    ) {
+                        rollback_errors.push(restore_error.to_string());
+                        continue;
+                    }
+                    for endpoint in &output_connections[*restored_index] {
+                        restored_output.connect_external_port(endpoint);
+                    }
                 }
-                self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
-                return Err(error);
+                self.wait();
+                for (restored_index, _, restored_output) in &unregistered {
+                    let observed = restored_output.get_connections_state_now();
+                    for endpoint in &output_connections[*restored_index] {
+                        if !observed.get(endpoint).copied().unwrap_or(false) {
+                            rollback_errors.push(format!(
+                                "output {} did not reconnect to {endpoint}",
+                                restored_index + 1
+                            ));
+                        }
+                    }
+                }
+                if let Err(restore_error) =
+                    self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)
+                {
+                    rollback_errors.push(restore_error.to_string());
+                }
+                if rollback_errors.is_empty() {
+                    return Err(error);
+                }
+                return Err(anyhow!(
+                    "bus removal failed: {error}; rollback failed: {}",
+                    rollback_errors.join("; ")
+                ));
             }
         }
         self.buses.remove(&bus_id);

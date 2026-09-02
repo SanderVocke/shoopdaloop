@@ -1684,7 +1684,7 @@ impl ApplicationModel {
             connection_errors: Vec::new(),
             connection_revision: 1,
             backend_connection_revision: 0,
-            backend_mixer_revision: 0,
+            backend_mixer_revision: initial_backend.mixer.revision,
             connection_backend_available: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
@@ -20775,6 +20775,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         )
         .unwrap();
         let master = model.bus_order[0];
+        let stale_before_create = backend.poll().unwrap();
         model.handle_intent(
             &mut backend,
             AppIntent::AddBus(BusSpec {
@@ -20802,6 +20803,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 }),
             )
             .is_err());
+        assert!(model.bus_creation_results.is_empty());
+        model.apply_backend_snapshot(stale_before_create);
+        assert!(model.buses.contains_key(&added));
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Creating
+        );
         assert!(model.bus_creation_results.is_empty());
         model.apply_backend_snapshot(backend.poll().unwrap());
         assert_eq!(

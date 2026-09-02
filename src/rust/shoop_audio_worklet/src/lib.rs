@@ -1427,6 +1427,7 @@ fn to_wire_role(value: BackendPortRole) -> WirePortRole {
 }
 
 fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
+    let mixer_revision = snapshot.mixer.revision;
     let application_ports = snapshot
         .connections
         .application_ports
@@ -1734,6 +1735,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         host_ports,
         confirmed_links,
         connection_failures,
+        mixer_revision,
         buses,
         confirmed_mixer_links,
         mixer_failures,
