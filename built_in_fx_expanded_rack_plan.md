@@ -269,6 +269,8 @@ Local validation evidence (2026-09-01): after merging current `origin/master` at
 
 Depends on a clean Stage 9.
 
+Precondition status (2026-09-02): prerequisite MVP PR #844 is green, review-clean, and mergeable at `81274c6ce3495c1a4c89f0ce314fa605e5276e04`; all six Codex threads are resolved. The expanded branch includes that head and current master, is clean/pushed at `1792b002c4e77769cca34e7097d1726e2ee19b73`, and passes 1,702 native plus 1,420 Node tests. This plan forbids a stacked implementation PR without explicit approval, and merging #844 was not included in the granted execution scope, so opening the expanded PR is blocked until the user merges #844, authorizes its merge, or explicitly approves a stacked PR.
+
 - [ ] Review the commit series for meaningful stage boundaries and ensure no generated `dist`, worklet, `_build`, trace, credential, or unrelated files are committed.
 - [ ] Push the implementation branch and open a PR against `master` with the immutable behavior contract, rack/channel/MIDI design, migration/protocol notes, FunDSP attribution, and exact local validation evidence. Keep it draft until local gates are complete if opened earlier for CI feedback.
 - [ ] Record the PR URL and pushed head SHA in this plan.
