@@ -3455,6 +3455,19 @@ mod tests {
         assert!(!widget.add_bus_open);
         assert_eq!(widget.pending_add_bus_request, None);
 
+        widget.open_add_bus_dialog(1);
+        widget.pending_add_bus_request = Some(2);
+        let failed = AppState {
+            bus_creation_results: Arc::from([crate::BusCreationResult {
+                request_id: 2,
+                success: false,
+            }]),
+            ..Default::default()
+        };
+        frame(&context, &mut widget, &failed, Vec::new());
+        assert!(widget.add_bus_open);
+        assert!(widget.add_bus_error.is_some());
+
         widget.open_add_bus_dialog(0);
         widget.add_bus_name = " ".to_owned();
         frame(&context, &mut widget, &state, Vec::new());

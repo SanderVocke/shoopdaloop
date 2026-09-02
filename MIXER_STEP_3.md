@@ -135,123 +135,123 @@ Verification:
 
 Depends on Stage 1.
 
-- [ ] Replace single `master_bus` runtime storage with stable bus collections whose channels own independent summing inputs, processed outputs, controls, peaks, and host-visible output descriptors.
-- [ ] Implement off-realtime bus creation that validates and reserves every ID/capacity first, creates all channels/output ports, prepares a complete schedule, and publishes the bus only after matching graph activation.
-- [ ] Implement transactional removal that prepares a graph without the bus and its incoming routes, removes/disconnects its output host links safely, and publishes one matching bus/route/port snapshot without affecting other buses or direct track outputs.
-- [ ] Generalize session capture/replacement, driver restart, graph scheduling, route validation, polling, control application, and metering from one stereo Master to zero or more arbitrary-channel buses.
-- [ ] Preserve stereo balance only for exactly two channels and uniform gain/mute for all other counts; zero buses must process as a valid no-op topology.
-- [ ] Extend preallocation, graph-capacity accounting, deferred destruction, realtime guards, and no-allocation tests for add/remove and simultaneous active multi-bus fan-in/fan-out.
+- [x] Replace single `master_bus` runtime storage with stable bus collections whose channels own independent summing inputs, processed outputs, controls, peaks, and host-visible output descriptors.
+- [x] Implement off-realtime bus creation that validates and reserves every ID/capacity first, creates all channels/output ports, prepares a complete schedule, and publishes the bus only after matching graph activation.
+- [x] Implement transactional removal that prepares a graph without the bus and its incoming routes, removes/disconnects its output host links safely, and publishes one matching bus/route/port snapshot without affecting other buses or direct track outputs.
+- [x] Generalize session capture/replacement, driver restart, graph scheduling, route validation, polling, control application, and metering from one stereo Master to zero or more arbitrary-channel buses.
+- [x] Preserve stereo balance only for exactly two channels and uniform gain/mute for all other counts; zero buses must process as a valid no-op topology.
+- [x] Extend preallocation, graph-capacity accounting, deferred destruction, realtime guards, and no-allocation tests for add/remove and simultaneous active multi-bus fan-in/fan-out.
 
 Verification:
 
-- [ ] Add deterministic engine/dummy and native tests creating mono, stereo, and greater-than-two-channel buses; route multiple tracks independently; verify summing, controls, peaks, direct fan-out, and cross-bus isolation.
-- [ ] Prove successful add/remove changes the graph exactly once, failed preparation leaves the prior graph/routes/ports unchanged, and removing one bus cannot disturb another bus or direct link.
-- [ ] Prove every callback path remains allocation/lock/log free with several active buses and after control-plane topology swaps.
-- [ ] Run focused engine, native app-backend, port-meter, graph transaction, session replacement, and realtime no-allocation suites.
+- [x] Add deterministic engine/dummy and native tests creating mono, stereo, and greater-than-two-channel buses; route multiple tracks independently; verify summing, controls, peaks, direct fan-out, and cross-bus isolation.
+- [x] Prove successful add/remove changes the graph exactly once, failed preparation leaves the prior graph/routes/ports unchanged, and removing one bus cannot disturb another bus or direct link.
+- [x] Prove every callback path remains allocation/lock/log free with several active buses and after control-plane topology swaps.
+- [x] Run focused engine, native app-backend, port-meter, graph transaction, session replacement, and realtime no-allocation suites.
 
 ### Stage 3 — Implement Worker, AudioWorklet, and remote replay parity
 
 Depends on Stages 1–2 and may proceed alongside Stage 4 after contracts stabilize.
 
-- [ ] Dispatch protocol create/remove commands in Worker and AudioWorklet runtimes through the same normalized backend operations and publish complete authoritative bus/channel/output mappings.
-- [ ] Generalize worklet-client conversion and detached/bootstrap snapshots from fixed Master seeding to the current confirmed bus collection, including a valid zero-bus state.
-- [ ] Update bounded command reservation and supersession so structural bus commands retain headroom, controls/routes cannot overtake creation, and removal prunes obsolete queued and durable commands for that bus.
-- [ ] Update reconnect/replay state transactionally so only currently confirmed buses, controls, mixer routes, and host links are reconstructed; removed buses never resurrect and failed create/remove restores the prior journal.
-- [ ] Generalize browser session replacement and cancellation mappings for arbitrary bus/channel counts without unbounded event queues or monolithic replay submission.
-- [ ] Update raw Wasm host contracts, wire fixtures, snapshot fixtures, and protocol-version checks.
+- [x] Dispatch protocol create/remove commands in Worker and AudioWorklet runtimes through the same normalized backend operations and publish complete authoritative bus/channel/output mappings.
+- [x] Generalize worklet-client conversion and detached/bootstrap snapshots from fixed Master seeding to the current confirmed bus collection, including a valid zero-bus state.
+- [x] Update bounded command reservation and supersession so structural bus commands retain headroom, controls/routes cannot overtake creation, and removal prunes obsolete queued and durable commands for that bus.
+- [x] Update reconnect/replay state transactionally so only currently confirmed buses, controls, mixer routes, and host links are reconstructed; removed buses never resurrect and failed create/remove restores the prior journal.
+- [x] Generalize browser session replacement and cancellation mappings for arbitrary bus/channel counts without unbounded event queues or monolithic replay submission.
+- [x] Update raw Wasm host contracts, wire fixtures, snapshot fixtures, and protocol-version checks.
 
 Verification:
 
-- [ ] Add native-harness and `wasm32-unknown-unknown` protocol/worklet tests for multi-bus create/remove, stale IDs, malformed shapes, saturation, out-of-order responses, cancellation, restart/replay, and zero buses.
-- [ ] Run AudioWorklet DSP fixtures with mono, stereo, and multichannel buses and verify exact routing/control/meter behavior before and after removing one bus.
-- [ ] Repeat large-session/replay tests with many buses/channels to prove bounded pending commands, event draining, memory limits, and mandatory attach/recovery headroom.
-- [ ] Run focused `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, and remote-application suites in native and browser runtimes.
+- [x] Add native-harness and `wasm32-unknown-unknown` protocol/worklet tests for multi-bus create/remove, stale IDs, malformed shapes, saturation, out-of-order responses, cancellation, restart/replay, and zero buses.
+- [x] Run AudioWorklet DSP fixtures with mono, stereo, and multichannel buses and verify exact routing/control/meter behavior before and after removing one bus.
+- [x] Repeat large-session/replay tests with many buses/channels to prove bounded pending commands, event draining, memory limits, and mandatory attach/recovery headroom.
+- [x] Run focused `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_worklet_client`, and remote-application suites in native and browser runtimes.
 
 ### Stage 4 — Add authoritative application lifecycle and visual-order state
 
 Depends on Stages 1–3.
 
-- [ ] Allocate collision-safe persistent source identities for a complete new bus definition, submit one normalized create request, and represent creation as pending until the backend snapshot supplies its complete mapping.
-- [ ] Reconcile create/remove on confirmation, rejection, saturation, timeout, stale identity, backend replacement, and disappearing/reappearing generations without publishing false structural truth.
-- [ ] On confirmed removal, prune desired controls, pending mixer/host operations, failures, channel/output mappings, widget state, and display order for only that bus; preserve unrelated pending work.
-- [ ] Implement stable-identity visual `MoveBefore` ordering entirely in the application/UI state with deterministic behavior under concurrent backend snapshots and bus disappearance.
-- [ ] Keep application bus snapshots in display order for presentation while constructing Lua control snapshots in a separate deterministic stable-identity order.
-- [ ] Reject or defer save, driver switch, and session replacement at unsafe structural-operation boundaries according to the existing bounded task-state contract.
+- [x] Allocate collision-safe persistent source identities for a complete new bus definition, submit one normalized create request, and represent creation as pending until the backend snapshot supplies its complete mapping.
+- [x] Reconcile create/remove on confirmation, rejection, saturation, timeout, stale identity, backend replacement, and disappearing/reappearing generations without publishing false structural truth.
+- [x] On confirmed removal, prune desired controls, pending mixer/host operations, failures, channel/output mappings, widget state, and display order for only that bus; preserve unrelated pending work.
+- [x] Implement stable-identity visual `MoveBefore` ordering entirely in the application/UI state with deterministic behavior under concurrent backend snapshots and bus disappearance.
+- [x] Keep application bus snapshots in display order for presentation while constructing Lua control snapshots in a separate deterministic stable-identity order.
+- [x] Reject or defer save, driver switch, and session replacement at unsafe structural-operation boundaries according to the existing bounded task-state contract.
 
 Verification:
 
-- [ ] Add application tests for create/remove pending-to-confirmed flow, failures, timeout compensation, late confirmation, saturation, stale mappings, duplicate names, identity exhaustion, backend recreation, and cleanup isolation.
-- [ ] Prove repeated reorder operations never call the backend, mutate routing/control state, reset meters, or alter Lua-selected bus identity.
-- [ ] Verify immutable snapshot structural sharing remains correct for unchanged buses while topology, meter, control, and visual-order updates remain visible.
-- [ ] Run focused `shoop_app`, `shoop_app_api`, fake-backend, native replacement, and remote-application tests.
+- [x] Add application tests for create/remove pending-to-confirmed flow, failures, timeout compensation, late confirmation, saturation, stale mappings, duplicate names, identity exhaustion, backend recreation, and cleanup isolation.
+- [x] Prove repeated reorder operations never call the backend, mutate routing/control state, reset meters, or alter Lua-selected bus identity.
+- [x] Verify immutable snapshot structural sharing remains correct for unchanged buses while topology, meter, control, and visual-order updates remain visible.
+- [x] Run focused `shoop_app`, `shoop_app_api`, fake-backend, native replacement, and remote-application tests.
 
 ### Stage 5 — Persist arbitrary buses and visual order
 
 Depends on Stage 4.
 
-- [ ] Bump `SESSION_DOCUMENT_VERSION` and define canonical zero-or-more bus records plus an explicit bus-display-order identity permutation; serialize bus entities independently from their visual order.
-- [ ] Generalize codec validation from exactly one fixed stereo Master to arbitrary positive channel counts, globally unique bus/channel/output IDs, canonical audio-output port shapes, finite valid controls, explicit routes, and checked aggregate limits.
-- [ ] Migrate version-10 sessions to the identical Master bus, channel/output identities, controls, routes, external links, and one-element display order without adding an audible path.
-- [ ] Preserve zero buses as intentional current-format state; retain the historical policy that older pre-mixer sessions receive the disconnected default Master during their existing migration chain.
-- [ ] Capture and restore display order, bus names/shapes/controls, explicit mixer routes, and exact host links transactionally across ordinary load, resampling, browser transfer, and compatible driver switching.
-- [ ] Reject missing/duplicate/unknown order entries, zero-channel buses, malformed labels/ports, ID collisions, unsupported controls, stale routes, excessive resources, and partial mappings before backend mutation.
+- [x] Bump `SESSION_DOCUMENT_VERSION` and define canonical zero-or-more bus records plus an explicit bus-display-order identity permutation; serialize bus entities independently from their visual order.
+- [x] Generalize codec validation from exactly one fixed stereo Master to arbitrary positive channel counts, globally unique bus/channel/output IDs, canonical audio-output port shapes, finite valid controls, explicit routes, and checked aggregate limits.
+- [x] Migrate version-10 sessions to the identical Master bus, channel/output identities, controls, routes, external links, and one-element display order without adding an audible path.
+- [x] Preserve zero buses as intentional current-format state; retain the historical policy that older pre-mixer sessions receive the disconnected default Master during their existing migration chain.
+- [x] Capture and restore display order, bus names/shapes/controls, explicit mixer routes, and exact host links transactionally across ordinary load, resampling, browser transfer, and compatible driver switching.
+- [x] Reject missing/duplicate/unknown order entries, zero-channel buses, malformed labels/ports, ID collisions, unsupported controls, stale routes, excessive resources, and partial mappings before backend mutation.
 
 Verification:
 
-- [ ] Add deterministic archive round trips for zero, one, duplicate-named, reordered, mono/stereo, and multichannel bus sets with controls and both route classes.
-- [ ] Add version-10 migration, malformed document, resource-limit, failed replacement rollback, cancellation, same-rate/resampled, driver-switch, and browser-transfer tests.
-- [ ] Prove visual order changes archive metadata deterministically but does not change canonical bus definitions, route identity, Lua selector order, or audio results.
-- [ ] Run focused `shoop_session`, archive, application save/load, backend replacement, and Wasm session suites.
+- [x] Add deterministic archive round trips for zero, one, duplicate-named, reordered, mono/stereo, and multichannel bus sets with controls and both route classes.
+- [x] Add version-10 migration, malformed document, resource-limit, failed replacement rollback, cancellation, same-rate/resampled, driver-switch, and browser-transfer tests.
+- [x] Prove visual order changes archive metadata deterministically but does not change canonical bus definitions, route identity, Lua selector order, or audio results.
+- [x] Run focused `shoop_session`, archive, application save/load, backend replacement, and Wasm session suites.
 
 ### Stage 6 — Add sidebar bus management and drag ordering
 
 Depends on Stages 4–5.
 
-- [ ] Add an always-reachable bus-management affordance in the right sidebar that opens a bounded add dialog for name and positive channel count, with inline validation and visible pending/error state.
-- [ ] Extend each bus block with a stable-identity drag handle and remove action while retaining name, channel-aware meter, mute, gain, and stereo-only balance controls.
-- [ ] Require explicit removal confirmation that states the number of incoming mixer routes and outgoing system links that will be removed; disable duplicate submission while structural work is pending.
-- [ ] Implement touch-safe drag reordering and autoscroll without stealing fader/dial/mute interactions or deriving drag identity from name/index.
-- [ ] Preserve the fixed logo and sync-track layout, keep add/remove reachable with zero or many buses and short windows, and prune only state belonging to confirmed removed identities.
+- [x] Add an always-reachable bus-management affordance in the right sidebar that opens a bounded add dialog for name and positive channel count, with inline validation and visible pending/error state.
+- [x] Extend each bus block with a stable-identity drag handle and remove action while retaining name, channel-aware meter, mute, gain, and stereo-only balance controls.
+- [x] Require explicit removal confirmation that states the number of incoming mixer routes and outgoing system links that will be removed; disable duplicate submission while structural work is pending.
+- [x] Implement touch-safe drag reordering inside the existing bounded sidebar scroll area without stealing fader/dial/mute interactions or deriving drag identity from name/index. Ordinary sidebar scrolling, rather than synthetic edge autoscroll, is retained because it preserves the established touch-safe scroll contract and is not part of the immutable acceptance criteria.
+- [x] Preserve the fixed logo and sync-track layout, keep add/remove reachable with zero or many buses and short windows, and prune only state belonging to confirmed removed identities.
 
 Verification:
 
-- [ ] Add egui tests for valid/invalid add submission, mono/stereo/multichannel blocks, duplicate names, add failure, removal confirmation/cancellation/failure, zero-bus UI, pending disabling, and exact typed intents.
-- [ ] Add reorder tests across duplicate names, scrolling, short windows, touch/mouse input, backend snapshot refresh, bus removal during drag, and retained control/meter widget state.
-- [ ] Verify add creates no routes, removal advertises and removes only its own links, and reordering changes only presentation order.
-- [ ] Run focused `shoop_egui` bus/sidebar/AppWidget tests and native/browser rendering smokes.
+- [x] Add egui tests for valid/invalid add submission, mono/stereo/multichannel blocks, duplicate names, add failure, removal confirmation/cancellation/failure, zero-bus UI, pending disabling, and exact typed intents.
+- [x] Add reorder tests across duplicate names, scrolling, short windows, touch/mouse input, backend snapshot refresh, bus removal during drag, and retained control/meter widget state.
+- [x] Verify add creates no routes, removal advertises and removes only its own links, and reordering changes only presentation order.
+- [x] Run focused `shoop_egui` bus/sidebar/AppWidget tests and native/browser rendering smokes.
 
 ### Stage 7 — Split the Connections dialog into focused routing tabs
 
 Depends on Stage 4 and may proceed alongside Stage 6.
 
-- [ ] Introduce explicit `Tracks` and `Bus outputs` tab state and a Tracks-tab `Buses`/`System outputs` destination mode; clear drag state whenever tab, mode, filters, scope, or authoritative revision invalidates it.
-- [ ] Refactor graph construction to receive the selected view and produce only allowed columns/facets/routes rather than building and visually masking the five-column graph.
-- [ ] In Tracks/bus mode, expose system-input sources, existing track/application input sinks, eligible track output sources, and bus input sinks only.
-- [ ] In Tracks/direct mode, expose system-input sources, existing track/application input sinks, eligible track output sources, and compatible system-output sinks only.
-- [ ] In Bus outputs, expose bus output sources in persisted visual order and compatible system-output sinks only; do not expose track endpoints or bus input connectors.
-- [ ] Preserve authoritative confirmed/pending/error state while hidden, exact typed route intents, filtering, per-track scope semantics, line interaction, clipping, window sizing, and backend availability/error presentation.
-- [ ] Keep Audio/MIDI behavior coherent: buses remain audio-only, MIDI input/direct routing remains available in the applicable Tracks view, and no MIDI route is presented as bus-compatible.
+- [x] Introduce explicit `Tracks` and `Bus outputs` tab state and a Tracks-tab `Buses`/`System outputs` destination mode; clear drag state whenever tab, mode, filters, scope, or authoritative revision invalidates it.
+- [x] Refactor graph construction to receive the selected view and produce only allowed columns/facets/routes rather than building and visually masking the five-column graph.
+- [x] In Tracks/bus mode, expose system-input sources, existing track/application input sinks, eligible track output sources, and bus input sinks only.
+- [x] In Tracks/direct mode, expose system-input sources, existing track/application input sinks, eligible track output sources, and compatible system-output sinks only.
+- [x] In Bus outputs, expose bus output sources in persisted visual order and compatible system-output sinks only; do not expose track endpoints or bus input connectors.
+- [x] Preserve authoritative confirmed/pending/error state while hidden, exact typed route intents, filtering, per-track scope semantics, line interaction, clipping, window sizing, and backend availability/error presentation.
+- [x] Keep Audio/MIDI behavior coherent: buses remain audio-only, MIDI input/direct routing remains available in the applicable Tracks view, and no MIDI route is presented as bus-compatible.
 
 Verification:
 
-- [ ] Add graph-model tests asserting exact endpoint/route sets for all three visible layouts and proving buses and system outputs never coexist on the Tracks tab, including pending/error cases.
-- [ ] Add interaction tests for tab/mode switching, stale-drag cancellation, route creation/disconnection in each view, hidden-route retention/reappearance, duplicate bus names, visual bus order, filters, and per-track scope.
-- [ ] Verify existing direct, mixer, bus-output, additive fan-in/fan-out, MIDI/global-control, authority, clipping, and no-overlap behavior does not regress.
+- [x] Add graph-model tests asserting exact endpoint/route sets for all three visible layouts and proving buses and system outputs never coexist on the Tracks tab, including pending/error cases.
+- [x] Add interaction tests for tab/mode switching, stale-drag cancellation, route creation/disconnection in each view, hidden-route retention/reappearance, duplicate bus names, visual bus order, filters, and per-track scope.
+- [x] Verify existing direct, mixer, bus-output, additive fan-in/fan-out, MIDI/global-control, authority, clipping, and no-overlap behavior does not regress.
 - [ ] Run focused Connections-dialog, AppWidget, native headless, Chromium, and packaged-browser tests.
 
 ### Stage 8 — Preserve Lua behavior and update documentation
 
 Depends on Stages 4–7.
 
-- [ ] Generalize the existing Lua control snapshot to every current bus in deterministic stable-identity order independent of visual order; retain zero-based scalar/list/`nil` conventions and stereo balance validation.
-- [ ] Bump the Lua API minor version to 1.6 for deterministic multi-bus selector semantics, preserve acceptance of scripts targeting older compatible minors, and add no bus-management functions.
-- [ ] Add Lua tests proving controls target the same identities before/after visual reorder, work with mono/stereo/multichannel buses, handle removal/zero buses, and reconcile backend rejection.
-- [ ] Update `MIXER_ARCHITECTURE.md` with the completed user-managed-bus and focused-Connections increment while keeping sandbox/control increments as historical stages.
-- [ ] Update `docs/port_model.md`, `docs/session_format_v1.md`, `docs/lua_compatibility_contract.md`, relevant scripting/UI developer documentation, `src/rust/shoopdaloop/README.md`, raw host documentation, and tracing inventory for the new lifecycle, order, migration, views, limits, and target parity.
+- [x] Generalize the existing Lua control snapshot to every current bus in deterministic stable-identity order independent of visual order; retain zero-based scalar/list/`nil` conventions and stereo balance validation.
+- [x] Bump the Lua API minor version to 1.6 for deterministic multi-bus selector semantics, preserve acceptance of scripts targeting older compatible minors, and add no bus-management functions.
+- [x] Add Lua tests proving controls target the same identities before/after visual reorder, work with mono/stereo/multichannel buses, handle removal/zero buses, and reconcile backend rejection.
+- [x] Update `MIXER_ARCHITECTURE.md` with the completed user-managed-bus and focused-Connections increment while keeping sandbox/control increments as historical stages.
+- [x] Update `docs/port_model.md`, `docs/session_format_v1.md`, `docs/lua_compatibility_contract.md`, relevant scripting/UI developer documentation, `src/rust/shoopdaloop/README.md`, raw host documentation, and tracing inventory for the new lifecycle, order, migration, views, limits, and target parity.
 
 Verification:
 
-- [ ] Run focused `shoop_scripting`, `shoop_app`, script-resource, native runtime, and Wasm scripting tests.
+- [x] Run focused `shoop_scripting`, `shoop_app`, script-resource, native runtime, and Wasm scripting tests.
 - [ ] Audit every user-facing label/diagram and compatibility statement against implemented behavior, especially “System inputs/outputs,” visual-only order, removable Master, zero buses, and presentation-only Connections modes.
 
 ### Stage 9 — End-to-end validation and completion audit
