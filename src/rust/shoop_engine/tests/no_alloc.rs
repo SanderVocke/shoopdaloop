@@ -27,8 +27,8 @@ use shoop_engine::{
     compile_composite_plan, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
     CompositePlanDescriptor, CompositePlanLimits, CompositeRuntime, CompositeSection,
     CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, ContentMutation,
-    LoopIdentity, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, MidiStorageElem,
-    PreparedAudioChannelData, PreparedAudioRingbufferAdoptionChannel,
+    DefaultPlaybackMode, LoopIdentity, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata,
+    MidiStorageElem, PreparedAudioChannelData, PreparedAudioRingbufferAdoptionChannel,
 };
 
 #[cfg(debug_assertions)]
@@ -515,7 +515,7 @@ fn composite_state_machine_does_not_allocate_or_free() {
             .unwrap();
         runtime.sync_boundary(&plan, |_| true).unwrap();
         runtime.seek(&plan, 2, |_| true).unwrap();
-        runtime.request_transition(LoopMode::Recording, 0).unwrap();
+        runtime.request_transition(LoopMode::Playing, 0).unwrap();
         runtime.sync_boundary(&plan, |_| true).unwrap();
         runtime.stop(&plan, |_| true).unwrap();
         assert_eq!(runtime.active_children().count(), 0);
@@ -793,7 +793,14 @@ fn dense_composite_events_and_fail_closed_overflow_do_not_allocate() {
         })
         .unwrap();
     assert_no_alloc(|| {
-        dense.resolve_boundary(&[], &[], |_| true).unwrap();
+        dense
+            .resolve_boundary_with_default_playback(
+                &[],
+                &[],
+                |_| true,
+                |_| DefaultPlaybackMode::DryThroughWet,
+            )
+            .unwrap();
     });
     assert_eq!(dense.runtime(source).unwrap().active_children().count(), 64);
 

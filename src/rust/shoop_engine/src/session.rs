@@ -19,6 +19,7 @@ use std::sync::Arc;
 use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
+use crate::builtin_fx::BuiltInFxProcessor;
 use crate::channel_mode::{loop_mode_to_channel_process_flags, ChannelMode, ProcessFlags};
 use crate::composite_plan::{CompiledCompositePlan, LoopIdentity, LoopTargetKind};
 use crate::composite_timeline::{
@@ -118,6 +119,8 @@ pub enum SessionError {
     NoSuchLoop(usize),
     #[error("no such processor")]
     NoSuchProcessor,
+    #[error("processor port shape is invalid")]
+    InvalidProcessorPorts,
     #[error("loop {0} cannot be its own sync source")]
     SelfSync(usize),
     #[error("no channel at index {0}, or it is not of the expected kind")]
@@ -411,6 +414,7 @@ pub struct Session {
 enum ProcessorBackend {
     External,
     Test2x2x1,
+    BuiltInFx(BuiltInFxProcessor),
     OxiSynth(OxiSynthProcessor),
     #[cfg(feature = "carla")]
     Carla(Box<dyn CarlaProcessor>),
@@ -835,14 +839,24 @@ impl Session {
                 .map(|loop_| u64::from(loop_.position()))
         });
         let trace = composite_timeline
-            .resolve_boundary(&[], &[], |identity| {
-                identity.kind == LoopTargetKind::Basic
-                    && identity.generation == 1
-                    && loop_live
+            .resolve_boundary_with_default_playback(
+                &[],
+                &[],
+                |identity| {
+                    identity.kind == LoopTargetKind::Basic
+                        && identity.generation == 1
+                        && loop_live
+                            .get(identity.slot as usize)
+                            .copied()
+                            .unwrap_or(false)
+                },
+                |identity| {
+                    loops
                         .get(identity.slot as usize)
-                        .copied()
-                        .unwrap_or(false)
-            })
+                        .map(AudioMidiLoop::default_playback_mode)
+                        .unwrap_or_default()
+                },
+            )
             .map_err(|_| CompositeTimelineControlError::BoundaryFault)?;
         for entry in trace {
             if entry.target.kind != LoopTargetKind::Basic
@@ -930,8 +944,15 @@ impl Session {
     fn publish_composite_anticipated_transitions(&self) {
         for (index, loop_) in self.loops.iter().enumerate() {
             let transition = loop_.first_planned_transition().or_else(|| {
-                self.loop_identity(index)
-                    .and_then(|identity| self.composite_timeline.anticipated_transition(identity))
+                self.loop_identity(index).and_then(|identity| {
+                    self.composite_timeline
+                        .anticipated_transition_with_default_playback(identity, |target| {
+                            self.loops
+                                .get(target.slot as usize)
+                                .map(AudioMidiLoop::default_playback_mode)
+                                .unwrap_or_default()
+                        })
+                })
             });
             loop_.publish_state_with_transition(transition);
         }
@@ -1660,6 +1681,14 @@ impl Session {
             .iter_mut()
             .find(|route| route.title == title)
             .ok_or(SessionError::NoSuchProcessor)?;
+        if let ProcessorBackend::BuiltInFx(processor) = &route.backend {
+            if audio_inputs.len() != processor.audio_channels()
+                || audio_outputs.len() != processor.audio_channels()
+                || midi_inputs.len() != 1
+            {
+                return Err(SessionError::InvalidProcessorPorts);
+            }
+        }
         route.audio_inputs = audio_inputs;
         route.audio_outputs = audio_outputs;
         route.midi_inputs = midi_inputs;
@@ -1669,6 +1698,69 @@ impl Session {
         });
         self.note_graph_change();
         Ok(())
+    }
+
+    pub fn set_builtin_fx_processor(
+        &mut self,
+        title: impl Into<String>,
+        processor: BuiltInFxProcessor,
+    ) -> Option<BuiltInFxProcessor> {
+        let title = title.into();
+        let displaced = if let Some(route) = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+        {
+            match std::mem::replace(&mut route.backend, ProcessorBackend::BuiltInFx(processor)) {
+                ProcessorBackend::BuiltInFx(previous) => Some(previous),
+                _ => None,
+            }
+        } else {
+            self.processors.push(ProcessorRoute {
+                title,
+                backend: ProcessorBackend::BuiltInFx(processor),
+                active: false,
+                audio_inputs: Vec::new(),
+                audio_outputs: Vec::new(),
+                midi_inputs: Vec::new(),
+                midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                global_rejected: 0,
+                global_pending_overwrites: 0,
+                global_pending_drained: 0,
+                global_capacity_deferrals: 0,
+            });
+            None
+        };
+        self.note_graph_change();
+        displaced
+    }
+
+    pub fn set_builtin_fx_active(&mut self, title: &str, active: bool) {
+        if let Some(route) = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+        {
+            if route.active && !active {
+                if let ProcessorBackend::BuiltInFx(processor) = &mut route.backend {
+                    processor.reset();
+                }
+            }
+            route.active = active;
+        }
+    }
+
+    pub fn builtin_fx_processor_mut(&mut self, title: &str) -> Option<&mut BuiltInFxProcessor> {
+        self.processors
+            .iter_mut()
+            .find(|route| route.title == title)
+            .and_then(|route| match &mut route.backend {
+                ProcessorBackend::BuiltInFx(processor) => Some(processor),
+                _ => None,
+            })
     }
 
     pub fn set_oxisynth_processor(
@@ -2492,6 +2584,12 @@ impl Session {
             // never wake or silently process an inactive processor.
             let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
             match &mut route.backend {
+                ProcessorBackend::BuiltInFx(processor) => {
+                    processor.process_midi_controls_only(events);
+                    for &port in &route.audio_outputs {
+                        self.ports[port].buffer(n_frames).fill(0.0);
+                    }
+                }
                 ProcessorBackend::OxiSynth(processor) => {
                     processor.process_midi_controls_only(events);
                     for &port in &route.audio_outputs {
@@ -2589,6 +2687,31 @@ impl Session {
                     self.ports[route.audio_outputs[output_index]]
                         .buffer(n_frames)
                         .copy_from_slice(&self.scratch[..n_frames]);
+                }
+            }
+            ProcessorBackend::BuiltInFx(processor) => {
+                processor.process_midi_controls_only(&route.combined_midi);
+                let mut start = 0;
+                while start < n_frames {
+                    let chunk = (n_frames - start).min(processor.max_frames());
+                    let end = start + chunk;
+                    for (input_index, &port_index) in route.audio_inputs.iter().enumerate() {
+                        if let Some(destination) = processor.input_mut(input_index, chunk) {
+                            destination.copy_from_slice(
+                                &self.ports[port_index].buffer(n_frames)[start..end],
+                            );
+                        }
+                    }
+                    processor.process(chunk);
+                    for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
+                        let destination = &mut self.ports[port_index].buffer(n_frames)[start..end];
+                        if let Some(source) = processor.output(output_index, chunk) {
+                            destination.copy_from_slice(source);
+                        } else {
+                            destination.fill(0.0);
+                        }
+                    }
+                    start = end;
                 }
             }
             ProcessorBackend::OxiSynth(processor) => {
@@ -2994,7 +3117,7 @@ impl Session {
                             .get(identity.slot as usize)
                             .map(|loop_| u64::from(loop_.position()))
                     });
-                    let trace = match composite_timeline.resolve_boundary(
+                    let trace = match composite_timeline.resolve_boundary_with_default_playback(
                         boundary_triggers,
                         boundary_natural_intents,
                         |identity| {
@@ -3004,6 +3127,12 @@ impl Session {
                                     .get(identity.slot as usize)
                                     .copied()
                                     .unwrap_or(false)
+                        },
+                        |identity| {
+                            loops
+                                .get(identity.slot as usize)
+                                .map(AudioMidiLoop::default_playback_mode)
+                                .unwrap_or_default()
                         },
                     ) {
                         Ok(trace) => trace,
@@ -3270,6 +3399,10 @@ mod tests {
 
     fn dummy(id: u64, name: &str, dir: PortDirection) -> Port {
         Port::Dummy(DummyAudioPort::new(PortId(id), name, dir, 4))
+    }
+
+    fn dummy_with_frames(id: u64, name: &str, dir: PortDirection, frames: usize) -> Port {
+        Port::Dummy(DummyAudioPort::new(PortId(id), name, dir, frames))
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3712,6 +3845,382 @@ mod tests {
             .unwrap();
         session.apply_graph_changes().unwrap();
         (session, loop_, output)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_processor_routes_stereo_and_bypasses_exactly_when_disabled() {
+        use crate::builtin_fx::{BuiltInFxProcessor, BuiltInFxStage, BuiltInFxState};
+
+        let frames = 128;
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(frames as u32);
+        let mut inputs = Vec::new();
+        let mut sends = Vec::new();
+        let mut returns = Vec::new();
+        let mut outputs = Vec::new();
+        for channel in 0..2 {
+            let input = session.add_port(dummy_with_frames(
+                100 + channel as u64,
+                &format!("input-{channel}"),
+                PortDirection::Input,
+                frames,
+            ));
+            let send = session.add_port(internal(&format!("builtin:audio_in_{channel}"), frames));
+            let return_ =
+                session.add_port(internal(&format!("builtin:audio_out_{channel}"), frames));
+            let output = session.add_port(dummy_with_frames(
+                200 + channel as u64,
+                &format!("output-{channel}"),
+                PortDirection::Output,
+                frames,
+            ));
+            session.connect_ports_internal(input, send).unwrap();
+            session.connect_ports_internal(return_, output).unwrap();
+            inputs.push(input);
+            sends.push(send);
+            returns.push(return_);
+            outputs.push(output);
+        }
+        session.set_builtin_fx_processor(
+            "builtin",
+            BuiltInFxProcessor::new(48_000.0, frames / 2, BuiltInFxState::default()),
+        );
+        session.set_builtin_fx_active("builtin", true);
+        let midi = session.add_port(dummy_midi(299, "builtin:midi_in", PortDirection::Input));
+        session
+            .set_processor_ports("builtin", sends, returns, vec![midi])
+            .unwrap();
+        session.apply_graph_changes().unwrap();
+
+        for (channel, &input) in inputs.iter().enumerate() {
+            let mut impulse = vec![0.0; frames];
+            impulse[0] = 1.0 - channel as f32 * 0.5;
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&impulse);
+            session
+                .port_mut(outputs[channel])
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for (channel, &output) in outputs.iter().enumerate() {
+            let actual = session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap();
+            assert!(actual[0] > 0.4 * (2 - channel) as f32);
+        }
+        assert_eq!(
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .reverb_process_calls(),
+            2
+        );
+
+        session
+            .builtin_fx_processor_mut("builtin")
+            .unwrap()
+            .set_reverb_enabled(false);
+        for (channel, &input) in inputs.iter().enumerate() {
+            let samples = (0..frames)
+                .map(|frame| (frame + channel) as f32 / frames as f32)
+                .collect::<Vec<_>>();
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&samples);
+            session
+                .port_mut(outputs[channel])
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for (channel, &output) in outputs.iter().enumerate() {
+            let actual = session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap();
+            let expected = (0..frames)
+                .map(|frame| (frame + channel) as f32 / frames as f32)
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+        }
+
+        {
+            let processor = session.builtin_fx_processor_mut("builtin").unwrap();
+            processor.set_stage_enabled(BuiltInFxStage::Compressor, true);
+            processor.set_stage_enabled(BuiltInFxStage::Drive, true);
+            processor.set_stage_enabled(BuiltInFxStage::Eq, true);
+        }
+        for (channel, &input) in inputs.iter().enumerate() {
+            let samples = (0..frames)
+                .map(|frame| {
+                    ((frame + channel) as f32 * 0.07).sin() * if channel == 0 { 0.8 } else { 0.2 }
+                })
+                .collect::<Vec<_>>();
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&samples);
+            session
+                .port_mut(outputs[channel])
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for &output in &outputs {
+            assert!(session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap()
+                .iter()
+                .all(|sample| sample.is_finite()));
+        }
+        {
+            let processor = session.builtin_fx_processor_mut("builtin").unwrap();
+            for stage in [
+                BuiltInFxStage::Compressor,
+                BuiltInFxStage::Drive,
+                BuiltInFxStage::Eq,
+            ] {
+                assert_eq!(processor.stage_process_calls(stage), 2);
+                processor.set_stage_enabled(stage, false);
+            }
+            processor.set_reverb_enabled(true);
+        }
+        session.set_builtin_fx_active("builtin", false);
+        for (channel, &input) in inputs.iter().enumerate() {
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&vec![0.5; frames]);
+            session
+                .port_mut(outputs[channel])
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for &output in &outputs {
+            assert!(session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap()
+                .iter()
+                .all(|sample| *sample == 0.0));
+        }
+        assert_eq!(
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .reverb_process_calls(),
+            2
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_routes_matching_mono_stereo_and_n_channels_with_required_midi() {
+        use crate::builtin_fx::{BuiltInFxProcessor, BuiltInFxStage, BuiltInFxState};
+
+        let frames = 4;
+        for channels in [1, 2, 3, 6] {
+            let mut session = Session::default();
+            session.set_sample_rate(48_000);
+            session.set_buffer_size(frames as u32);
+            let mut audio_inputs = Vec::new();
+            let mut processor_inputs = Vec::new();
+            let mut processor_outputs = Vec::new();
+            let mut audio_outputs = Vec::new();
+            for channel in 0..channels {
+                let input = session.add_port(dummy_with_frames(
+                    300 + channel as u64,
+                    &format!("input-{channel}"),
+                    PortDirection::Input,
+                    frames,
+                ));
+                let processor_input =
+                    session.add_port(internal(&format!("builtin:audio_in_{channel}"), frames));
+                let processor_output =
+                    session.add_port(internal(&format!("builtin:audio_out_{channel}"), frames));
+                let output = session.add_port(dummy_with_frames(
+                    400 + channel as u64,
+                    &format!("output-{channel}"),
+                    PortDirection::Output,
+                    frames,
+                ));
+                session
+                    .connect_ports_internal(input, processor_input)
+                    .unwrap();
+                session
+                    .connect_ports_internal(processor_output, output)
+                    .unwrap();
+                audio_inputs.push(input);
+                processor_inputs.push(processor_input);
+                processor_outputs.push(processor_output);
+                audio_outputs.push(output);
+            }
+            let midi = session.add_port(dummy_midi(500, "builtin:midi_in", PortDirection::Input));
+            let state = BuiltInFxState {
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            };
+            session.set_builtin_fx_processor(
+                "builtin",
+                BuiltInFxProcessor::new_with_channels(48_000.0, frames / 2, channels, state)
+                    .unwrap(),
+            );
+            session.set_builtin_fx_active("builtin", true);
+            session
+                .set_processor_ports(
+                    "builtin",
+                    processor_inputs.clone(),
+                    processor_outputs.clone(),
+                    vec![midi],
+                )
+                .unwrap();
+            assert_eq!(
+                session.set_processor_ports(
+                    "builtin",
+                    processor_inputs[..channels - 1].to_vec(),
+                    processor_outputs.clone(),
+                    vec![midi],
+                ),
+                Err(SessionError::InvalidProcessorPorts)
+            );
+            assert_eq!(
+                session.set_processor_ports(
+                    "builtin",
+                    processor_inputs.clone(),
+                    processor_outputs.clone(),
+                    vec![],
+                ),
+                Err(SessionError::InvalidProcessorPorts)
+            );
+            assert_eq!(
+                session.set_processor_ports(
+                    "builtin",
+                    processor_inputs.clone(),
+                    processor_outputs.clone(),
+                    vec![midi, midi],
+                ),
+                Err(SessionError::InvalidProcessorPorts)
+            );
+            session.apply_graph_changes().unwrap();
+
+            for (channel, &input) in audio_inputs.iter().enumerate() {
+                let samples = (0..frames)
+                    .map(|frame| channel as f32 + frame as f32 * 0.25)
+                    .collect::<Vec<_>>();
+                session
+                    .port_mut(input)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .queue_data(&samples);
+                session
+                    .port_mut(audio_outputs[channel])
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .request_data(frames);
+            }
+            assert!(session
+                .port_mut(midi)
+                .unwrap()
+                .as_dummy_midi_mut()
+                .unwrap()
+                .queue_msg(0, &[0x90, 60, 100]));
+            session.process(frames);
+            for (channel, &output) in audio_outputs.iter().enumerate() {
+                let actual = session
+                    .port_mut(output)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .dequeue_data(frames)
+                    .unwrap();
+                let expected = (0..frames)
+                    .map(|frame| channel as f32 + frame as f32 * 0.25)
+                    .collect::<Vec<_>>();
+                assert_eq!(actual, expected);
+            }
+            assert_eq!(
+                session
+                    .builtin_fx_processor_mut("builtin")
+                    .unwrap()
+                    .stage_process_calls(BuiltInFxStage::Reverb),
+                0
+            );
+
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .set_stage_enabled(BuiltInFxStage::Drive, true);
+            for (channel, &input) in audio_inputs.iter().enumerate() {
+                session
+                    .port_mut(input)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .queue_data(&vec![0.1 * (channel + 1) as f32; frames]);
+                session
+                    .port_mut(audio_outputs[channel])
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .request_data(frames);
+            }
+            session.process(frames);
+            for &output in &audio_outputs {
+                assert!(session
+                    .port_mut(output)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .dequeue_data(frames)
+                    .unwrap()
+                    .iter()
+                    .all(|sample| sample.is_finite()));
+            }
+            assert_eq!(
+                session
+                    .builtin_fx_processor_mut("builtin")
+                    .unwrap()
+                    .stage_process_calls(BuiltInFxStage::Drive),
+                2
+            );
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -5048,6 +5557,111 @@ mod tests {
                 .map(|event| (event.time, event.data().to_vec()))
                 .collect::<Vec<_>>(),
             vec![(1, vec![0xb2, 17, 32]), (2, vec![0xb2, 17, 127])]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_midi_mapping_mirrors_local_global_and_inactive_synth_behavior() {
+        use crate::builtin_fx::{
+            BuiltInFxControlState, BuiltInFxMidiCcAssignment, BuiltInFxParameter, BuiltInFxStage,
+        };
+
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(4);
+        let mut control = BuiltInFxControlState::default();
+        assert!(control.assign_midi_cc(BuiltInFxMidiCcAssignment {
+            parameter: BuiltInFxParameter::Drive,
+            channel: 2,
+            controller: 17,
+        }));
+        let processor = control
+            .prepare_processor_with_channels(48_000.0, 4, 1)
+            .unwrap();
+        session.set_builtin_fx_processor("builtin", processor);
+        session.set_builtin_fx_active("builtin", true);
+        let audio_in = session.add_port(internal("builtin:audio_in", 4));
+        let audio_out = session.add_port(internal("builtin:audio_out", 4));
+        let track_midi = session.add_port(dummy_midi(101, "builtin:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(102, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("builtin", vec![audio_in], vec![audio_out], vec![track_midi])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(track_midi)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(1, &[0xb2, 17, 32]);
+        session
+            .port_mut(track_midi)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &[0x92, 60, 127]);
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(3, &[0xb2, 17, 127]);
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+
+        assert_eq!(control.state().drive_db, crate::builtin_fx::MAX_DRIVE_DB);
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| (event.time, event.data().to_vec()))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, vec![0xb2, 17, 32]),
+                (2, vec![0x92, 60, 127]),
+                (3, vec![0xb2, 17, 127]),
+            ]
+        );
+        let active_calls = session
+            .builtin_fx_processor_mut("builtin")
+            .unwrap()
+            .stage_process_calls(BuiltInFxStage::Reverb);
+
+        session.set_builtin_fx_active("builtin", false);
+        session
+            .port_mut(track_midi)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg_next_cycle(1, &[0xb2, 17, 0]);
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg_next_cycle(2, &[0xb2, 17, 64]);
+        session.process(4);
+        assert_eq!(control.state().drive_db, crate::builtin_fx::MIN_DRIVE_DB);
+        assert_eq!(
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .stage_process_calls(BuiltInFxStage::Reverb),
+            active_calls
+        );
+
+        session.set_builtin_fx_active("builtin", true);
+        session.process(4);
+        assert_eq!(
+            control.state().drive_db,
+            BuiltInFxParameter::Drive.value_from_cc(64)
+        );
+        assert!(
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .stage_process_calls(BuiltInFxStage::Reverb)
+                > active_calls
         );
     }
 

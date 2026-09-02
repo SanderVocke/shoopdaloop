@@ -140,6 +140,7 @@ struct NativeRuntime {
 
 struct NativeTrack {
     port_name_base: String,
+    default_playback_mode: BackendDefaultPlaybackMode,
     audio_inputs: Vec<AudioPort>,
     audio_outputs: Vec<AudioPort>,
     audio_sends: Vec<Option<AudioPort>>,
@@ -860,6 +861,7 @@ impl NativeRuntime {
             midi_input,
             midi_output,
             latency,
+            default_playback_mode,
         ) = {
             let track = self
                 .tracks
@@ -874,9 +876,11 @@ impl NativeRuntime {
                 track.midi_input.clone(),
                 track.midi_output.clone(),
                 track.state.latency.clone(),
+                track.default_playback_mode,
             )
         };
         let handle = self.session.create_loop()?;
+        handle.set_default_playback_mode(default_playback_mode.engine_mode())?;
         let mut audio = Vec::new();
         let mut audio_modes = Vec::new();
         let mut midi = Vec::new();
@@ -1155,6 +1159,19 @@ impl NativeRuntime {
             } else {
                 None
             };
+            let builtin_fx_midi_cc_assignments = track
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.chain.builtin_fx_midi_cc_assignments())
+                .into_iter()
+                .flat_map(|assignments| assignments.iter().collect::<Vec<_>>())
+                .map(|assignment| BuiltInFxMidiCcAssignment {
+                    parameter: app_builtin_fx_parameter(assignment.parameter),
+                    channel: assignment.channel,
+                    controller: assignment.controller,
+                })
+                .map(backend_builtin_fx_midi_cc_assignment)
+                .collect();
             let oxisynth_midi_cc_assignments = track
                 .fx
                 .as_ref()
@@ -1172,6 +1189,7 @@ impl NativeRuntime {
                 loops,
                 ports,
                 processor_state,
+                builtin_fx_midi_cc_assignments,
                 oxisynth_midi_cc_assignments,
             });
         }
@@ -1368,6 +1386,13 @@ impl NativeRuntime {
                         .and_then(|track| track.fx.as_mut())
                         .ok_or_else(|| anyhow!("restored track has no processor"))?;
                     fx.chain.try_restore_state(state)?;
+                    for assignment in &source_track.builtin_fx_midi_cc_assignments {
+                        fx.chain.builtin_fx_assign_midi_cc(
+                            engine_builtin_fx_midi_cc_assignment(
+                                app_backend_builtin_fx_midi_cc_assignment(*assignment),
+                            ),
+                        )?;
+                    }
                     for assignment in &source_track.oxisynth_midi_cc_assignments {
                         fx.chain
                             .oxisynth_assign_midi_cc(engine_oxisynth_midi_cc_assignment(
@@ -1384,6 +1409,10 @@ impl NativeRuntime {
             if created.ports.len() != source_track.ports.len() {
                 return Err(anyhow!("prepared native port shape changed"));
             }
+            self.set_track_default_playback_mode(
+                created.track_id,
+                source_track.state.default_playback_mode,
+            )?;
             for control in [
                 BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
                 BackendTrackControl::OutputBalance(source_track.state.output_balance),
@@ -1624,6 +1653,7 @@ impl NativeRuntime {
             track_id,
             NativeTrack {
                 port_name_base: request.port_name_base,
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 audio_inputs,
                 audio_outputs,
                 audio_sends: Vec::new(),
@@ -1820,6 +1850,7 @@ impl NativeRuntime {
                 },
                 dry_passthrough_muted: Some(true),
                 wet_passthrough_muted: Some(true),
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 fx: None,
             },
         );
@@ -1847,6 +1878,13 @@ impl NativeRuntime {
         };
         let chain_type = processor_chain_type(&processor_type)
             .ok_or_else(|| anyhow!("unknown track processor {processor_type}"))?;
+        if chain_type == FXChainType::BuiltInFx
+            && (dry_audio_channels == 0 || dry_audio_channels != wet_audio_channels || !dry_midi)
+        {
+            return Err(anyhow!(
+                "Built-in FX requires matching positive dry/wet audio channels and one MIDI input"
+            ));
+        }
         if chain_type == FXChainType::OxiSynth
             && (dry_audio_channels != 2 || wet_audio_channels != 2 || !dry_midi)
         {
@@ -1860,6 +1898,11 @@ impl NativeRuntime {
             .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
         let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         let chain = match chain_type {
+            FXChainType::BuiltInFx => self.session.create_builtin_fx_chain_with_audio_channels(
+                &request.port_name_base,
+                ring,
+                dry_audio_channels as usize,
+            )?,
             FXChainType::OxiSynth => self
                 .session
                 .create_oxisynth_chain(&request.port_name_base, ring)?,
@@ -1970,6 +2013,7 @@ impl NativeRuntime {
                 },
                 dry_passthrough_muted: Some(true),
                 wet_passthrough_muted: Some(true),
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
                 fx: Some(NativeFx {
                     processor_type: TrackProcessorTypeId::new(processor_type),
                     chain,
@@ -2029,6 +2073,41 @@ impl NativeRuntime {
             .expect("native loop was checked above")
             .handle
             .prepare_latency(values, logical_capacity)
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        let track = self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
+        if mode == BackendDefaultPlaybackMode::DryThroughWet
+            && !track.state.topology.has_wet_channels()
+        {
+            return Err(anyhow!("dry-through-wet default requires dry/wet topology"));
+        }
+        let loops = track
+            .loops
+            .iter()
+            .map(|loop_id| {
+                self.loops
+                    .get(loop_id)
+                    .map(|loop_| loop_.handle.clone())
+                    .ok_or_else(|| anyhow!("missing native loop {loop_id:?}"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.session
+            .set_default_playback_mode_for_loops(&loops, mode.engine_mode())?;
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("native track disappeared during playback-mode update"))?;
+        track.default_playback_mode = mode;
+        track.state.default_playback_mode = mode;
+        Ok(())
     }
 
     fn set_track_control(
@@ -2475,6 +2554,44 @@ impl NativeRuntime {
                 fx.last_confirmed_state = Some(state);
             }
             BackendTrackFxControl::ClearLogs => fx.chain.clear_logs(),
+            BackendTrackFxControl::BuiltInFx(control) => {
+                if fx.processor_type.as_str() != TrackProcessorTypeId::BUILTIN_FX {
+                    return Err(anyhow!("track is not a Built-in FX processor"));
+                }
+                match control {
+                    BuiltInFxControl::SetStageEnabled(stage, enabled) => fx
+                        .chain
+                        .builtin_fx_set_stage_enabled(engine_builtin_fx_stage(stage), enabled)?,
+                    BuiltInFxControl::SetDriveType(drive_type) => fx
+                        .chain
+                        .builtin_fx_set_drive_type(engine_builtin_fx_drive_type(drive_type))?,
+                    BuiltInFxControl::SetModulationType(modulation_type) => {
+                        fx.chain.builtin_fx_set_modulation_type(
+                            engine_builtin_fx_modulation_type(modulation_type),
+                        )?
+                    }
+                    BuiltInFxControl::SetReverbType(reverb_type) => fx
+                        .chain
+                        .builtin_fx_set_reverb_type(engine_builtin_fx_reverb_type(reverb_type))?,
+                    BuiltInFxControl::SetParameter(parameter, value) => fx
+                        .chain
+                        .builtin_fx_set_parameter(engine_builtin_fx_parameter(parameter), value)?,
+                    BuiltInFxControl::AssignMidiCc(assignment) => fx
+                        .chain
+                        .builtin_fx_assign_midi_cc(engine_builtin_fx_midi_cc_assignment(
+                            assignment,
+                        ))?,
+                    BuiltInFxControl::RemoveMidiCc(parameter) => fx
+                        .chain
+                        .builtin_fx_remove_midi_cc(engine_builtin_fx_parameter(parameter))?,
+                    BuiltInFxControl::ClearMidiCcAssignments => {
+                        fx.chain.builtin_fx_clear_midi_cc_assignments()?
+                    }
+                    BuiltInFxControl::SetReverbEnabled(enabled) => {
+                        fx.chain.builtin_fx_set_reverb_enabled(enabled)?
+                    }
+                }
+            }
             BackendTrackFxControl::OxiSynth(control) => {
                 if fx.processor_type.as_str() != TrackProcessorTypeId::OXISYNTH {
                     return Err(anyhow!("track is not an OxiSynth processor"));
@@ -2995,6 +3112,7 @@ impl Backend for NativeBackend {
                 features: TrackProcessorFeatures::default(),
                 editor: None,
             },
+            builtin_fx_descriptor(),
             oxisynth_descriptor(),
         ];
         #[cfg(feature = "native-fx")]
@@ -3076,6 +3194,15 @@ impl Backend for NativeBackend {
         control: BackendTrackControl,
     ) -> Result<()> {
         self.runtime_mut()?.set_track_control(track_id, control)
+    }
+
+    fn set_track_default_playback_mode(
+        &mut self,
+        track_id: BackendTrackId,
+        mode: BackendDefaultPlaybackMode,
+    ) -> Result<()> {
+        self.runtime_mut()?
+            .set_track_default_playback_mode(track_id, mode)
     }
 
     fn set_track_latency(
@@ -3759,19 +3886,32 @@ impl Backend for NativeBackend {
                         })
                         .collect::<Vec<_>>()
                         .into(),
-                    editor: fx.chain.oxisynth_editor_state().map(|editor| {
-                        TrackProcessorEditorState::OxiSynth(OxiSynthState {
-                            selected_preset_id: editor.selected_preset.stable_id(),
-                            reverb_send: editor.reverb_send,
-                            chorus_send: editor.chorus_send,
-                            midi_cc_assignments: editor
-                                .midi_cc_assignments
-                                .into_iter()
-                                .map(app_oxisynth_midi_cc_assignment)
-                                .collect::<Vec<_>>()
-                                .into(),
+                    editor: fx
+                        .chain
+                        .builtin_fx_state()
+                        .map(|state| {
+                            TrackProcessorEditorState::BuiltInFx(super::app_builtin_fx_state(
+                                state,
+                                fx.chain
+                                    .builtin_fx_midi_cc_assignments()
+                                    .unwrap_or_default(),
+                            ))
                         })
-                    }),
+                        .or_else(|| {
+                            fx.chain.oxisynth_editor_state().map(|editor| {
+                                TrackProcessorEditorState::OxiSynth(OxiSynthState {
+                                    selected_preset_id: editor.selected_preset.stable_id(),
+                                    reverb_send: editor.reverb_send,
+                                    chorus_send: editor.chorus_send,
+                                    midi_cc_assignments: editor
+                                        .midi_cc_assignments
+                                        .into_iter()
+                                        .map(app_oxisynth_midi_cc_assignment)
+                                        .collect::<Vec<_>>()
+                                        .into(),
+                                })
+                            })
+                        }),
                 }
             });
             state.input_peaks = track
@@ -4143,6 +4283,7 @@ fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycl
 
 fn processor_chain_type(processor_type: &str) -> Option<FXChainType> {
     match processor_type {
+        TrackProcessorTypeId::BUILTIN_FX => Some(FXChainType::BuiltInFx),
         TrackProcessorTypeId::OXISYNTH => Some(FXChainType::OxiSynth),
         #[cfg(feature = "native-fx")]
         TrackProcessorTypeId::CARLA_RACK => Some(FXChainType::CarlaRack),
@@ -4230,6 +4371,31 @@ mod tests {
         assert!(backend
             .set_bus_control(BackendBusId::from_raw(99), BackendBusControl::Mute(false))
             .is_err());
+    }
+
+    fn render_dummy_track_audio(
+        backend: &mut NativeBackend,
+        created: &BackendTrackCreation,
+        inputs: &[Vec<f32>],
+    ) -> Vec<Vec<f32>> {
+        let frames = u32::try_from(inputs[0].len()).unwrap();
+        let runtime = backend.runtime_mut().unwrap();
+        runtime.driver.dummy_enter_controlled_mode();
+        let track = &runtime.tracks[&created.track_id];
+        assert_eq!(track.audio_inputs.len(), inputs.len());
+        for (port, samples) in track.audio_inputs.iter().zip(inputs) {
+            port.dummy_queue_data(samples).unwrap();
+        }
+        for output in &track.audio_outputs {
+            output.dummy_request_data(frames).unwrap();
+        }
+        runtime.driver.dummy_request_controlled_frames(frames);
+        runtime.driver.dummy_run_requested_frames();
+        track
+            .audio_outputs
+            .iter()
+            .map(|output| output.dummy_dequeue_data(frames))
+            .collect()
     }
 
     fn assert_injected_note_reaches_output(
@@ -5213,6 +5379,329 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn native_builtin_fx_track_has_matching_audio_midi_and_transactional_state() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }))
+        .unwrap();
+        let request = |dry_audio_channels, wet_audio_channels, dry_midi| TrackRequest {
+            port_name_base: format!(
+                "builtin-fx-{dry_audio_channels}-{wet_audio_channels}-{dry_midi}"
+            ),
+            topology: BackendTrackTopology::DryWetProcessor {
+                processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+            },
+            initial_loops: 1,
+        };
+        assert!(backend.create_track(request(0, 0, true)).is_err());
+        assert!(backend.create_track(request(2, 1, true)).is_err());
+        assert!(backend.create_track(request(1, 2, true)).is_err());
+        assert!(backend.create_track(request(2, 2, false)).is_err());
+        let created = backend.create_track(request(2, 2, true)).unwrap();
+        assert_eq!(created.ports.len(), 5);
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .filter(|port| port.role == BackendPortRole::AudioInput)
+                .count(),
+            2
+        );
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .filter(|port| port.role == BackendPortRole::AudioOutput)
+                .count(),
+            2
+        );
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .filter(|port| port.data_type == BackendPortDataType::Midi)
+                .count(),
+            1
+        );
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        let mut impulse = vec![vec![0.0; 128]; 2];
+        impulse[0][0] = 1.0;
+        impulse[1][0] = 0.5;
+        let output = render_dummy_track_audio(&mut backend, &created, &impulse);
+        assert!(output[0][0] > 0.9);
+        assert!(output[1][0] > 0.4);
+        let silence = vec![vec![0.0; 128]; 2];
+        let mut tail_peak = 0.0_f32;
+        for _ in 0..400 {
+            for channel in render_dummy_track_audio(&mut backend, &created, &silence) {
+                tail_peak = channel
+                    .iter()
+                    .fold(tail_peak, |peak, sample| peak.max(sample.abs()));
+            }
+        }
+        assert!(tail_peak > 1.0e-6, "tail peak {tail_peak}");
+
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            )
+            .unwrap();
+        let bypass_input = vec![
+            (0..128).map(|frame| frame as f32 / 256.0).collect(),
+            (0..128).map(|frame| -(frame as f32) / 512.0).collect(),
+        ];
+        assert_eq!(
+            render_dummy_track_audio(&mut backend, &created, &bypass_input),
+            bypass_input
+        );
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(true)),
+            )
+            .unwrap();
+        for _ in 0..400 {
+            assert!(render_dummy_track_audio(&mut backend, &created, &silence)
+                .iter()
+                .flatten()
+                .all(|sample| *sample == 0.0));
+        }
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
+            )
+            .is_err());
+        for stage in [
+            BuiltInFxStage::Compressor,
+            BuiltInFxStage::Drive,
+            BuiltInFxStage::Eq,
+            BuiltInFxStage::Chorus,
+            BuiltInFxStage::Modulation,
+        ] {
+            backend
+                .set_track_fx_control(
+                    created.track_id,
+                    BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                        stage, true,
+                    )),
+                )
+                .unwrap();
+        }
+        for control in [
+            BuiltInFxControl::SetDriveType(BuiltInFxDriveType::Overdrive),
+            BuiltInFxControl::SetModulationType(BuiltInFxModulationType::Flanger),
+            BuiltInFxControl::SetReverbType(BuiltInFxReverbType::Hall),
+        ] {
+            backend
+                .set_track_fx_control(created.track_id, BackendTrackFxControl::BuiltInFx(control))
+                .unwrap();
+        }
+        for (parameter, value) in builtin_fx_parameter_test_values() {
+            backend
+                .set_track_fx_control(
+                    created.track_id,
+                    BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetParameter(
+                        parameter, value,
+                    )),
+                )
+                .unwrap();
+        }
+        let assignment = BuiltInFxMidiCcAssignment {
+            parameter: BuiltInFxParameter::Drive,
+            channel: 2,
+            controller: 17,
+        };
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::AssignMidiCc(assignment)),
+            )
+            .unwrap();
+        let global_midi = {
+            let runtime = backend.runtime.as_ref().unwrap();
+            match &runtime.ports[&runtime.global_fx_port].handle {
+                NativePortHandle::Midi(port) => port.clone(),
+                NativePortHandle::Audio(_) => panic!("global FX control port is not MIDI"),
+            }
+        };
+        global_midi
+            .dummy_queue_msg(&MidiEvent::new(0, vec![0xb2, 17, 64]))
+            .unwrap();
+        let _ = render_dummy_track_audio(&mut backend, &created, &bypass_input);
+        let global_editor = backend.poll().unwrap().tracks[&created.track_id]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+            .cloned();
+        let Some(TrackProcessorEditorState::BuiltInFx(global_editor)) = global_editor else {
+            panic!("missing Built-in FX editor state")
+        };
+        assert_eq!(
+            global_editor.drive_db,
+            shoop_engine::builtin_fx::BuiltInFxParameter::Drive.value_from_cc(64)
+        );
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0xb2, 17, 127],
+                }],
+            )
+            .unwrap();
+        let _ = render_dummy_track_audio(&mut backend, &created, &bypass_input);
+        let mut disabled_editor = BuiltInFxState::default();
+        disabled_editor.reverb_enabled = false;
+        for stage in [
+            BuiltInFxStage::Compressor,
+            BuiltInFxStage::Drive,
+            BuiltInFxStage::Eq,
+            BuiltInFxStage::Chorus,
+            BuiltInFxStage::Modulation,
+        ] {
+            apply_app_builtin_fx_control(
+                &mut disabled_editor,
+                BuiltInFxControl::SetStageEnabled(stage, true),
+            );
+        }
+        for control in [
+            BuiltInFxControl::SetDriveType(BuiltInFxDriveType::Overdrive),
+            BuiltInFxControl::SetModulationType(BuiltInFxModulationType::Flanger),
+            BuiltInFxControl::SetReverbType(BuiltInFxReverbType::Hall),
+        ] {
+            apply_app_builtin_fx_control(&mut disabled_editor, control);
+        }
+        for (parameter, value) in builtin_fx_parameter_test_values() {
+            apply_app_builtin_fx_control(
+                &mut disabled_editor,
+                BuiltInFxControl::SetParameter(parameter, value),
+            );
+        }
+        disabled_editor.drive_db = shoop_engine::builtin_fx::MAX_DRIVE_DB;
+        disabled_editor.midi_cc_assignments = Arc::from([assignment]);
+        let state = backend
+            .track_fx_state_string(created.track_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, crate::encode_builtin_fx_state(&disabled_editor));
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.tracks[&created.track_id]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(
+                disabled_editor.clone()
+            ))
+        );
+        assert!(backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::RestoreState("malformed".to_owned()),
+            )
+            .is_err());
+        assert_eq!(
+            backend.track_fx_state_string(created.track_id).unwrap(),
+            Some(state.clone())
+        );
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].processor_state, Some(state));
+        assert_eq!(
+            captured.tracks[0].builtin_fx_midi_cc_assignments,
+            [BackendBuiltInFxMidiCcAssignment {
+                parameter: BackendBuiltInFxParameter::Drive,
+                channel: 2,
+                controller: 17,
+            }]
+        );
+        let mut malformed = captured.clone();
+        malformed.tracks[0].processor_state = Some("malformed".to_owned());
+        assert!(backend.replace_session(&malformed).is_err());
+        assert_eq!(backend.capture_session().unwrap(), captured);
+        let source_track = captured.tracks[0].source_id;
+        let replacement = backend.replace_session(&captured).unwrap();
+        let restored_track = replacement.tracks[&source_track].track_id;
+        assert_eq!(
+            backend.poll().unwrap().tracks[&restored_track]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(
+                disabled_editor.clone()
+            ))
+        );
+
+        let mut switched_session = backend.capture_session().unwrap();
+        switched_session.sample_rate = 96_000;
+        let switched_source = switched_session.tracks[0].source_id;
+        let switched = backend
+            .switch_audio_driver(
+                &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 96_000,
+                    buffer_size: 256,
+                }),
+                96_000,
+                &switched_session,
+            )
+            .unwrap();
+        let switched_track = switched.tracks[&switched_source].track_id;
+        assert_eq!(backend.capture_session().unwrap().sample_rate, 96_000);
+        assert_eq!(
+            backend.poll().unwrap().tracks[&switched_track]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(disabled_editor))
+        );
+        backend.remove_track(switched_track).unwrap();
+
+        for channels in [1, 3, 6] {
+            let created = backend
+                .create_track(request(channels, channels, true))
+                .unwrap();
+            assert_eq!(
+                created
+                    .ports
+                    .iter()
+                    .filter(|port| port.role == BackendPortRole::AudioInput)
+                    .count(),
+                channels as usize
+            );
+            assert_eq!(
+                created
+                    .ports
+                    .iter()
+                    .filter(|port| port.role == BackendPortRole::AudioOutput)
+                    .count(),
+                channels as usize
+            );
+            assert_eq!(
+                created
+                    .ports
+                    .iter()
+                    .filter(|port| port.role == BackendPortRole::MidiInput)
+                    .count(),
+                1
+            );
+            backend.remove_track(created.track_id).unwrap();
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn native_oxisynth_track_has_fixed_ports_and_rejects_invalid_shapes() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -5745,10 +6234,24 @@ mod tests {
         }))
         .unwrap();
         let catalog = backend.track_processor_catalog().unwrap();
-        assert_eq!(catalog.len(), 5);
-        assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::OXISYNTH);
+        assert!(catalog
+            .iter()
+            .any(|descriptor| descriptor.id.as_str() == TrackProcessorTypeId::OXISYNTH));
+        assert!(catalog.iter().any(|descriptor| {
+            descriptor.id.as_str() == TrackProcessorTypeId::BUILTIN_FX
+                && descriptor.available
+                && [1, 2, 3, 6]
+                    .into_iter()
+                    .all(|channels| descriptor.constraints.accepts(channels, channels, true))
+                && !descriptor.constraints.accepts(2, 2, false)
+        }));
+        let carla = catalog
+            .iter()
+            .filter(|descriptor| descriptor.id.as_str().starts_with("carla_"))
+            .collect::<Vec<_>>();
+        assert_eq!(carla.len(), 3);
         let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
-        for descriptor in &catalog[2..] {
+        for descriptor in carla {
             assert_eq!(descriptor.available, runtime_available);
             assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
@@ -5783,12 +6286,16 @@ mod tests {
                     buffer_size: 128,
                 }))?;
             let catalog = backend.track_processor_catalog()?;
-            assert!(catalog[..2].iter().all(|descriptor| {
-                descriptor.available && !descriptor.id.as_str().starts_with("carla_")
-            }));
-            assert!(catalog[2..].iter().all(|descriptor| {
-                !descriptor.available && descriptor.unavailable_reason.is_some()
-            }));
+            assert!(catalog
+                .iter()
+                .filter(|descriptor| !descriptor.id.as_str().starts_with("carla_"))
+                .all(|descriptor| descriptor.available));
+            assert!(catalog
+                .iter()
+                .filter(|descriptor| descriptor.id.as_str().starts_with("carla_"))
+                .all(|descriptor| {
+                    !descriptor.available && descriptor.unavailable_reason.is_some()
+                }));
             Ok::<_, anyhow::Error>(())
         })();
         unsafe {

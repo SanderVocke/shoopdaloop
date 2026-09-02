@@ -148,8 +148,9 @@ function shoop_helpers.default_loop_action(loops, dry)
             print_debug("Default loop action: Recording -> Playing Dry")
             new_mode = shoop_control.constants.LoopMode_PlayingDryThroughWet
         else
-            print_debug("Default loop action: Recording -> Playing")
-            new_mode = shoop_control.constants.LoopMode_Playing
+            print_debug("Default loop action: Recording -> Default Playback")
+            shoop_control.loop_trigger_default_playback(loops)
+            return
         end
     elseif all_empty then
         print_debug("Default loop action: Empty -> Recording / Grab")
@@ -161,11 +162,12 @@ function shoop_helpers.default_loop_action(loops, dry)
         end
     elseif all_stopped then
         if dry then
-            print_debug("Default loop action: Recording -> Playing Dry")
+            print_debug("Default loop action: Stopped -> Playing Dry")
             new_mode = shoop_control.constants.LoopMode_PlayingDryThroughWet
         else
-            print_debug("Default loop action: Stopped -> Playing")
-            new_mode = shoop_control.constants.LoopMode_Playing
+            print_debug("Default loop action: Stopped -> Default Playback")
+            shoop_control.loop_trigger_default_playback(loops)
+            return
         end
     else
         print_debug("Default loop action: Any -> Stopped")

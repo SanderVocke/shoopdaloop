@@ -1812,6 +1812,7 @@ d.open('Simple')
                     ControlLoop {
                         id: LoopId::from_raw(1),
                         coords: [-1, 0],
+                        default_playback_mode: LoopMode::Playing,
                         mode: LoopMode::Stopped,
                         next_mode: None,
                         next_mode_delay: None,
@@ -1824,6 +1825,7 @@ d.open('Simple')
                     ControlLoop {
                         id: LoopId::from_raw(2),
                         coords: [0, 0],
+                        default_playback_mode: LoopMode::Playing,
                         mode: LoopMode::Playing,
                         next_mode: Some(LoopMode::Recording),
                         next_mode_delay: Some(2),
@@ -1836,6 +1838,7 @@ d.open('Simple')
                     ControlLoop {
                         id: LoopId::from_raw(3),
                         coords: [1, 0],
+                        default_playback_mode: LoopMode::PlayingDryThroughWet,
                         mode: LoopMode::Recording,
                         next_mode: None,
                         next_mode_delay: None,
@@ -1943,6 +1946,9 @@ eq(c.loop_get_balance({0,0})[1], -0.25, 'loop balance')
 
 c.loop_transition({0,0}, c.constants.LoopMode_Replacing, c.constants.Loop_DontWaitForSync, c.constants.Loop_DontAlignToSyncImmediately)
 c.loop_trigger({1,0}, c.constants.LoopMode_Playing)
+c.loop_trigger_default_playback({1,0})
+eq(c.loop_get_mode({1,0})[1], c.constants.LoopMode_PlayingDryThroughWet, 'default playback shadow mode')
+coords(c.loop_get_by_mode(c.constants.LoopMode_PlayingDryThroughWet)[1], 1, 0, 'default playback shadow query')
 c.loop_trigger_grab({0,0})
 c.loop_record_n({0,0}, 4, 2)
 c.loop_record_with_targeted({0,0})
@@ -2023,7 +2029,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
             .map(|name| (*name).to_owned())
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(called, expected);
-        assert_eq!(bridge.borrow().operations.len(), 36);
+        assert_eq!(bridge.borrow().operations.len(), 37);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2034,6 +2040,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
                     ControlLoop {
                         id: LoopId::from_raw(1),
                         coords: [0, 0],
+                        default_playback_mode: LoopMode::Playing,
                         mode: LoopMode::Stopped,
                         next_mode: None,
                         next_mode_delay: None,
@@ -2046,6 +2053,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
                     ControlLoop {
                         id: LoopId::from_raw(2),
                         coords: [0, 1],
+                        default_playback_mode: LoopMode::Playing,
                         mode: LoopMode::Playing,
                         next_mode: None,
                         next_mode_delay: None,
@@ -2095,6 +2103,7 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
                 loops: vec![ControlLoop {
                     id: first_loop,
                     coords: [0, 0],
+                    default_playback_mode: LoopMode::Playing,
                     mode: LoopMode::Stopped,
                     next_mode: None,
                     next_mode_delay: None,
@@ -2266,6 +2275,7 @@ if c.get_auto_mute_other_track_inputs() then error('global setter') end
                     ControlLoop {
                         id: first_loop,
                         coords: [0, 0],
+                        default_playback_mode: LoopMode::Playing,
                         mode: LoopMode::Stopped,
                         next_mode: None,
                         next_mode_delay: None,
@@ -2278,6 +2288,7 @@ if c.get_auto_mute_other_track_inputs() then error('global setter') end
                     ControlLoop {
                         id: second_loop,
                         coords: [0, 1],
+                        default_playback_mode: LoopMode::Playing,
                         mode: LoopMode::Playing,
                         next_mode: None,
                         next_mode_delay: None,

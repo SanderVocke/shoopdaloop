@@ -3208,8 +3208,9 @@ fn browser_unsupported_session_bytes(
     carla: bool,
 ) -> Result<std::sync::Arc<[u8]>, String> {
     use shoop_session::{
-        encode_session, FxChainDocument, FxChainTypeDocument, SessionBundle, SessionDocument,
-        TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackTopologyDocument,
+        encode_session, DefaultPlaybackModeDocument, FxChainDocument, FxChainTypeDocument,
+        SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument, TrackGroupDocument,
+        TrackTopologyDocument,
     };
 
     let mut document = SessionDocument::empty(sample_rate);
@@ -3230,6 +3231,7 @@ fn browser_unsupported_session_bytes(
                 chain_type: FxChainTypeDocument::CarlaRack,
                 ports: Vec::new(),
                 internal_state: "opaque browser rejection state".to_owned(),
+                builtin_fx_midi_cc_assignments: Vec::new(),
                 midi_cc_assignments: Vec::new(),
             }),
         )
@@ -3254,6 +3256,7 @@ fn browser_unsupported_session_bytes(
             is_sync: false,
             width: None,
             topology,
+            default_playback_mode: DefaultPlaybackModeDocument::Regular,
             controls: TrackControlsDocument::default(),
             latency: Default::default(),
             loops: Vec::new(),
@@ -3481,11 +3484,25 @@ impl BrowserSelfTest {
                 Ok(Self::WaitForDryWetForm)
             }
             Self::WaitForDryWetForm => {
-                if snapshot.track_processors.len() != 1
-                    || snapshot.track_processors[0].id.as_str()
-                        != shoop_egui::TrackProcessorTypeId::OXISYNTH
+                let builtin_fx = snapshot.track_processors.iter().find(|processor| {
+                    processor.id.as_str() == shoop_egui::TrackProcessorTypeId::BUILTIN_FX
+                });
+                let builtin_synth = snapshot.track_processors.iter().find(|processor| {
+                    processor.id.as_str() == shoop_egui::TrackProcessorTypeId::OXISYNTH
+                });
+                if snapshot.track_processors.len() != 2
+                    || !builtin_fx.is_some_and(|processor| {
+                        [1, 2, 3, 6]
+                            .into_iter()
+                            .all(|channels| processor.constraints.accepts(channels, channels, true))
+                            && !processor.constraints.accepts(2, 2, false)
+                            && !processor.constraints.accepts(2, 1, true)
+                            && processor.features.state
+                            && processor.features.embedded_ui
+                    })
+                    || builtin_synth.is_none()
                 {
-                    return self.fail("browser Built-in Synth catalog changed unexpectedly");
+                    return self.fail("browser built-in processor catalog changed unexpectedly");
                 }
                 widget.browser_test_close_add_track();
                 widget.browser_test_open_global_connections();
@@ -3551,6 +3568,7 @@ impl BrowserSelfTest {
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
+                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
                         creation_request_id: None,
@@ -4025,6 +4043,22 @@ impl BrowserSelfTest {
                 })
                 .and_then(|()| {
                     runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
+                        name: "Browser Built-in FX".to_owned(),
+                        topology: shoop_egui::TrackSpecTopology::DryWet {
+                            dry_audio_channels: 3,
+                            wet_audio_channels: 3,
+                            dry_midi: true,
+                            processor_type: shoop_egui::TrackProcessorTypeId::new(
+                                shoop_egui::TrackProcessorTypeId::BUILTIN_FX,
+                            ),
+                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
+                        },
+                        latency: shoop_egui::TrackLatencySpec::default(),
+                        creation_request_id: None,
+                    }))
+                })
+                .and_then(|()| {
+                    runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
                         name: "Browser Built-in Synth".to_owned(),
                         topology: shoop_egui::TrackSpecTopology::DryWet {
                             dry_audio_channels: 2,
@@ -4033,6 +4067,7 @@ impl BrowserSelfTest {
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
                                 shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
+                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
                         creation_request_id: None,
@@ -4046,6 +4081,57 @@ impl BrowserSelfTest {
                 let Some(loop_state) = track.loops.first() else {
                     return;
                 };
+                let Some(builtin_fx) = snapshot.tracks.iter().find(|track| {
+                    track.fx.as_ref().is_some_and(|fx| {
+                        fx.processor_type.as_str()
+                            == shoop_egui::TrackProcessorTypeId::BUILTIN_FX
+                    })
+                }) else {
+                    return;
+                };
+                let builtin_fx_controls = [
+                    shoop_egui::TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::SetReverbEnabled(false),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::SetStageEnabled(
+                            shoop_egui::BuiltInFxStage::Drive,
+                            true,
+                        ),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::SetDriveType(
+                            shoop_egui::BuiltInFxDriveType::Fuzz,
+                        ),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::SetParameter(
+                            shoop_egui::BuiltInFxParameter::Drive,
+                            24.0,
+                        ),
+                    ),
+                    shoop_egui::TrackAction::BuiltInFx(
+                        shoop_egui::BuiltInFxControl::AssignMidiCc(
+                            shoop_egui::BuiltInFxMidiCcAssignment {
+                                parameter: shoop_egui::BuiltInFxParameter::Drive,
+                                channel: 2,
+                                controller: 17,
+                            },
+                        ),
+                    ),
+                    shoop_egui::TrackAction::FxVisibilityChanged(true),
+                ]
+                .into_iter()
+                .try_for_each(|action| {
+                    runtime.dispatch(AppIntent::Track {
+                        track_id: builtin_fx.id,
+                        action,
+                    })
+                });
                 let Some(tiny) = snapshot.tracks.iter().find(|track| {
                     track.fx.as_ref().is_some_and(|fx| {
                         fx.processor_type.as_str()
@@ -4100,7 +4186,8 @@ impl BrowserSelfTest {
                     .filter(|link| tiny_audio_inputs.contains(&link.application_port_id))
                     .map(|link| (link.application_port_id, link.host_port_id.clone()))
                     .collect::<Vec<_>>();
-                tiny_controls
+                builtin_fx_controls
+                    .and_then(|()| tiny_controls)
                     .and_then(|()| {
                         tiny_audio_links
                             .into_iter()
@@ -4477,9 +4564,50 @@ impl BrowserSelfTest {
                     .iter()
                     .filter(|track| !track.is_sync)
                     .count()
-                    != 3
+                    != 4
                 {
                     return self.fail("loaded browser session lost tracks");
+                }
+                let builtin_fx_state = snapshot.tracks.iter().find_map(|track| {
+                    let fx = track.fx.as_ref()?;
+                    if fx.processor_type.as_str()
+                        != shoop_egui::TrackProcessorTypeId::BUILTIN_FX
+                    {
+                        return None;
+                    }
+                    match fx.editor.as_ref()? {
+                        shoop_egui::TrackProcessorEditorState::BuiltInFx(editor) => {
+                            Some((
+                                fx.visible,
+                                editor.reverb_enabled,
+                                editor.drive_enabled,
+                                editor.drive_type,
+                                editor.drive_db,
+                                editor.midi_cc_assignments.len(),
+                            ))
+                        }
+                        shoop_egui::TrackProcessorEditorState::OxiSynth(_) => None,
+                    }
+                });
+                let Some((
+                    builtin_fx_visible,
+                    reverb_enabled,
+                    drive_enabled,
+                    drive_type,
+                    drive_db,
+                    assignments,
+                )) = builtin_fx_state
+                else {
+                    return;
+                };
+                if builtin_fx_visible
+                    || reverb_enabled
+                    || !drive_enabled
+                    || drive_type != shoop_egui::BuiltInFxDriveType::Fuzz
+                    || (drive_db - 24.0).abs() > f32::EPSILON
+                    || assignments != 1
+                {
+                    return self.fail("loaded browser Built-in FX state changed");
                 }
                 let synth_state = snapshot.tracks.iter().find_map(|track| {
                     let fx = track.fx.as_ref()?;
@@ -4487,6 +4615,7 @@ impl BrowserSelfTest {
                         return None;
                     }
                     match fx.editor.as_ref()? {
+                        shoop_egui::TrackProcessorEditorState::BuiltInFx(_) => None,
                         shoop_egui::TrackProcessorEditorState::OxiSynth(editor) => {
                             Some((fx.visible, editor))
                         }
@@ -5551,6 +5680,108 @@ mod tests {
             .finish(vec![browser_window_calibration().unwrap()], Vec::new())
             .unwrap();
         assert!(bytes.len() > 128);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "uses the native backend")]
+    fn native_application_builtin_fx_save_reload_smoke() {
+        use shoop_app::CooperativeApplicationRuntime;
+        use shoop_backend::NativeBackend;
+        use shoop_egui::{
+            AppIntent, AudioDriverConfig, BuiltInFxControl, BuiltInFxDriveType,
+            BuiltInFxMidiCcAssignment, BuiltInFxParameter, BuiltInFxStage, BuiltInFxState,
+            DummyAudioDriverConfig, TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec,
+            TrackSpecTopology,
+        };
+
+        let backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }))
+        .unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Native Built-in FX".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 3,
+                    wet_audio_channels: 3,
+                    dry_midi: true,
+                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+                    default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
+                },
+                latency: shoop_egui::TrackLatencySpec::default(),
+                creation_request_id: None,
+            }))
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let track = runtime.snapshot().tracks[1].clone();
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let assignment = BuiltInFxMidiCcAssignment {
+            parameter: BuiltInFxParameter::Drive,
+            channel: 2,
+            controller: 17,
+        };
+        for control in [
+            BuiltInFxControl::SetStageEnabled(BuiltInFxStage::Drive, true),
+            BuiltInFxControl::SetDriveType(BuiltInFxDriveType::Fuzz),
+            BuiltInFxControl::SetParameter(BuiltInFxParameter::Drive, 24.0),
+            BuiltInFxControl::AssignMidiCc(assignment),
+        ] {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: track.id,
+                    action: TrackAction::BuiltInFx(control),
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let expected = BuiltInFxState {
+            drive_enabled: true,
+            drive_type: BuiltInFxDriveType::Fuzz,
+            drive_db: 24.0,
+            reverb_enabled: false,
+            midi_cc_assignments: Arc::from([assignment]),
+            ..BuiltInFxState::default()
+        };
+        assert_eq!(
+            runtime.snapshot().tracks[1]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(expected.clone()))
+        );
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..4 {
+            runtime.tick(Duration::ZERO);
+        }
+        let output = runtime.take_file_output().unwrap();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "native-builtin-fx.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..5 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().tracks[1]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(expected))
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

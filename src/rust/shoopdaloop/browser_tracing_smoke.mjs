@@ -100,6 +100,35 @@ try {
       socket.send(JSON.stringify({id, method, params}));
     });
   }
+  async function clickButtonWhenReady(id, description, attempts = 300) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const result = await command('Runtime.evaluate', {
+          expression: `(() => {
+            const button = document.getElementById(${JSON.stringify(id)});
+            if (!button || button.disabled || button.hidden || typeof button.onclick !== 'function') return false;
+            button.click();
+            return true;
+          })()`,
+          returnByValue: true,
+        });
+        if (result.result.value) return;
+      } catch {}
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const diagnostic = await command('Runtime.evaluate', {
+      expression: `JSON.stringify({
+        button: (() => {
+          const value = document.getElementById(${JSON.stringify(id)});
+          return value && { disabled: value.disabled, hidden: value.hidden, hasOnclick: typeof value.onclick === 'function' };
+        })(),
+        status: document.getElementById('runtime_status')?.textContent,
+        driver: window.shoopAudioDiagnostics?.state?.()
+      })`,
+      returnByValue: true,
+    });
+    throw new Error(`${description}: ${diagnostic.result.value}`);
+  }
   await command('Runtime.enable');
   await command('Browser.setDownloadBehavior', {
     behavior: 'allow',
@@ -107,33 +136,9 @@ try {
     eventsEnabled: true,
   });
   if (realm === 'audio') {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
-      try {
-        const result = await command('Runtime.evaluate', {
-          expression: `(() => {
-            const button = document.getElementById('enable_output_audio');
-            if (!button || button.disabled || button.hidden || typeof button.onclick !== 'function') return false;
-            button.click();
-            return true;
-          })()`,
-          returnByValue: true,
-        });
-        if (result.result.value) break;
-      } catch {}
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    await clickButtonWhenReady('enable_output_audio', 'could not enable output-only audio');
     if (process.env.TRACE_REBUILD === '1') {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const upgrade = await command('Runtime.evaluate', {
-        expression: `(() => {
-          const button = document.getElementById('enable_audio');
-          if (!button || button.disabled || button.hidden || typeof button.onclick !== 'function') return false;
-          button.click();
-          return true;
-        })()`,
-        returnByValue: true,
-      });
-      if (!upgrade.result.value) throw new Error('could not request traced AudioWorklet rebuild');
+      await clickButtonWhenReady('enable_audio', 'could not request traced AudioWorklet rebuild');
     }
   }
   let saved = null;

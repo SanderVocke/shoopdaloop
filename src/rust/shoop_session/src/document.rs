@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 10;
+pub const SESSION_DOCUMENT_VERSION: u16 = 12;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -179,6 +179,8 @@ pub struct TrackDocument {
     pub is_sync: bool,
     pub width: Option<f32>,
     pub topology: TrackTopologyDocument,
+    #[serde(default)]
+    pub default_playback_mode: DefaultPlaybackModeDocument,
     pub controls: TrackControlsDocument,
     #[serde(default)]
     pub latency: TrackLatencyDocument,
@@ -209,8 +211,20 @@ pub enum TrackTopologyDocument {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wet_audio_channels: Option<u32>,
     },
+    BuiltInFx {
+        #[serde(default = "default_builtin_fx_audio_channels")]
+        audio_channels: u32,
+    },
     OxiSynth,
     Trigger,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DefaultPlaybackModeDocument {
+    #[default]
+    Regular,
+    DryThroughWet,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
@@ -371,6 +385,10 @@ pub struct MixerRouteDocument {
     pub destination_channel_id: u64,
 }
 
+fn default_builtin_fx_audio_channels() -> u32 {
+    2
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FxChainDocument {
     pub id: u64,
@@ -379,7 +397,44 @@ pub struct FxChainDocument {
     pub ports: Vec<PortDocument>,
     pub internal_state: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub builtin_fx_midi_cc_assignments: Vec<BuiltInFxMidiCcAssignmentDocument>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub midi_cc_assignments: Vec<OxiSynthMidiCcAssignmentDocument>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct BuiltInFxMidiCcAssignmentDocument {
+    pub parameter: BuiltInFxParameterDocument,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum BuiltInFxParameterDocument {
+    CompressorThreshold,
+    CompressorRatio,
+    CompressorAttack,
+    CompressorRelease,
+    CompressorMakeup,
+    Drive,
+    DriveTone,
+    DriveMix,
+    DriveOutput,
+    EqLow,
+    EqMid,
+    EqHigh,
+    ChorusRate,
+    ChorusDepth,
+    ChorusMix,
+    ChorusWidth,
+    ModulationRate,
+    ModulationDepth,
+    ModulationMix,
+    ModulationFeedback,
+    ModulationSpread,
+    ReverbAmount,
+    ReverbTone,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -402,6 +457,7 @@ pub enum FxChainTypeDocument {
     CarlaRack,
     CarlaPatchbay,
     CarlaPatchbay16x,
+    BuiltInFx,
     OxiSynth,
     Test,
 }

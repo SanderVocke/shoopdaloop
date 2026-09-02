@@ -38,7 +38,7 @@ fn protocol_chain_type(chain_type: FXChainType) -> Result<CarlaChainType> {
         FXChainType::CarlaRack => Ok(CarlaChainType::Rack),
         FXChainType::CarlaPatchbay => Ok(CarlaChainType::Patchbay),
         FXChainType::CarlaPatchbay16x => Ok(CarlaChainType::Patchbay16x),
-        FXChainType::Test2x2x1 | FXChainType::OxiSynth => {
+        FXChainType::Test2x2x1 | FXChainType::OxiSynth | FXChainType::BuiltInFx => {
             Err(anyhow!("FX chain is not a Carla worker type"))
         }
     }

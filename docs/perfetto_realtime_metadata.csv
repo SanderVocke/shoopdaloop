@@ -28,6 +28,7 @@ span,detail,engine.rt.fx.bridge_process,u64,frame count
 span,detail,engine.rt.fx.bridge_submit,u64,bridge sequence identifier
 span,detail,engine.rt.fx.bridge_wait,u64,configured wait timeout in nanoseconds
 span,detail,engine.rt.fx.bridge_worker,u64,bridge sequence identifier
+span,detail,engine.rt.fx.builtin_fx_process,u64,frame count
 span,detail,engine.rt.fx.oxisynth_process,u64,frame count
 span,detail,engine.rt.fx.plugin_process,u64,frame count
 span,coarse,engine.rt.fx.processor,u64,bounded node/index identifier

@@ -139,7 +139,7 @@ pub enum CompiledCompositeKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompiledChildMode {
-    Inherit,
+    DefaultPlayback,
     Explicit(LoopMode),
 }
 
@@ -384,7 +384,7 @@ pub fn compile_composite_plan(
                     end,
                     mode: match entry.mode {
                         Some(mode) => CompiledChildMode::Explicit(mode),
-                        None => CompiledChildMode::Inherit,
+                        None => CompiledChildMode::DefaultPlayback,
                     },
                     child_is_empty: metadata.length_samples == 0,
                     occurrence: 0,
@@ -583,7 +583,7 @@ fn compile_duration(
 
 fn mode_sort_key(mode: CompiledChildMode) -> i32 {
     match mode {
-        CompiledChildMode::Inherit => -1,
+        CompiledChildMode::DefaultPlayback => -1,
         CompiledChildMode::Explicit(mode) => mode as i32,
     }
 }

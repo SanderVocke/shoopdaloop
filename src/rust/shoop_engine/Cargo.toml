@@ -46,6 +46,7 @@ tracing = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 oxisynth = { workspace = true }
+fundsp = { workspace = true }
 sha2 = { workspace = true }
 
 [build-dependencies]

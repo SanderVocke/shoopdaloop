@@ -92,18 +92,26 @@ Acceptance criteria may not be weakened by hard-coding a small set of channel co
 
 Dependencies are linear unless a stage explicitly says otherwise. Each stage must leave touched packages compiling and focused tests passing before dependent work starts.
 
+### Recorded baseline and bounded capability
+
+- Step-2 source head: `2fcb940871822899d32a86ef7a50e979e0da5e6c`; PR #843 had 17/17 successful checks and an exact-head Codex no-major-issues result before this branch was created.
+- Step-3 branch: `shoopdaloop-mixer-step-3`, created directly from that head. Current `master` at branch establishment was `83863bd2347cf7ea18ef528ddcc63d99dda3aaaa`; it was merged immediately so Built-in FX/default-playback work and mixer work share protocol version 23 and session document version 12 before step-3 contract changes.
+- Fixed assumptions are concentrated in `shoop_backend` engine/native bus fields and session adapters, `shoop_app` validation/mapping, audio protocol/worklet/worklet-client snapshots and replay, session codec validation, Lua bus snapshot ordering, sidebar widgets, Connections graph construction, and mixer/user documentation. Constants remain only for constructing/migrating the default Master and must not constrain general runtime buses.
+- Step-3 logical limits are 128 UTF-8 bytes after trimming per bus name, 64 buses, 64 channels per bus, 256 aggregate bus channels/output ports, 4,096 mixer routes, and 4,096 aggregate bus-to-system links. These sit below the existing application command queue (1,024), engine command queue (4,096), remote command queue (256), 64 KiB command envelope, 32 KiB session chunks, 256 MiB browser session transfer, and archive limits; create/remove remain one structural command rather than one command per channel. Every count is validated before allocation/registration and exceeding it is an explicit error.
+- Master is removable; zero buses persist; duplicate names are valid; names/shapes are chosen only at creation; visual order is separate from backend/Lua semantic order; and Connections modes are presentation-only.
+
 ### Stage 0 — Establish the unified replacement branch and baseline
 
-- [ ] Record the final exact head, merge base, all-green checks, and no-major-issues Codex result of PR #843; confirm `MIXER_STEP_2.md` and `MIXER_MASTER_GOAL.md` have no unchecked items.
-- [ ] Create `shoopdaloop-mixer-step-3` from the final step-2 head, not from `master`, so the new branch contains the complete prior mixer implementation. Keep its eventual PR base as `master`.
+- [x] Record the final exact head, merge base, all-green checks, and no-major-issues Codex result of PR #843; confirm `MIXER_STEP_2.md` and `MIXER_MASTER_GOAL.md` have no unchecked items.
+- [x] Create `shoopdaloop-mixer-step-3` from the final step-2 head, not from `master`, so the new branch contains the complete prior mixer implementation. Keep its eventual PR base as `master`.
 - [ ] Verify the initial `origin/master...HEAD` diff is exactly the completed mixer foundation/step-2 work plus this plan, with no unrelated changes.
-- [ ] Inventory fixed-Master assumptions across backend, native runtime, engine graph, application model, protocol/worklet replay, session validation, Lua snapshots, sidebar, Connections graph, and documentation before replacing them.
-- [ ] Record the concrete name-length, bus-count, per-bus channel-count, total-channel/output-port, graph-capacity, command-capacity, and session-budget limits selected from existing bounded infrastructure. Any newly necessary limit must be justified as a resource bound rather than a functional mono/stereo restriction.
-- [ ] Record the resolved lifecycle semantics from the immutable criteria: Master is removable, zero buses persist, names are chosen only at creation and may duplicate, existing buses are not resized, visual order is separate from Lua/backend order, and Connections modes are presentation-only.
+- [x] Inventory fixed-Master assumptions across backend, native runtime, engine graph, application model, protocol/worklet replay, session validation, Lua snapshots, sidebar, Connections graph, and documentation before replacing them.
+- [x] Record the concrete name-length, bus-count, per-bus channel-count, total-channel/output-port, graph-capacity, command-capacity, and session-budget limits selected from existing bounded infrastructure. Any newly necessary limit must be justified as a resource bound rather than a functional mono/stereo restriction.
+- [x] Record the resolved lifecycle semantics from the immutable criteria: Master is removable, zero buses persist, names are chosen only at creation and may duplicate, existing buses are not resized, visual order is separate from Lua/backend order, and Connections modes are presentation-only.
 
 Verification:
 
-- [ ] Confirm the branch points at the recorded step-2 SHA and its merge base with `master` is understood before implementation.
+- [x] Confirm the branch points at the recorded step-2 SHA and its merge base with `master` is understood before implementation.
 - [ ] Run the existing fixed-Master routing, control, session, sidebar, Connections, Lua, and native/browser focused tests as the regression baseline.
 
 ### Stage 1 — Define dynamic bus lifecycle, identity, order, and protocol contracts

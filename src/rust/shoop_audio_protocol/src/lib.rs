@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 20;
+pub const PROTOCOL_VERSION: u16 = 23;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -123,6 +123,10 @@ pub enum Command {
         bus_id: u64,
         control: WireBusControl,
     },
+    SetTrackDefaultPlaybackMode {
+        track_id: u64,
+        mode: WireDefaultPlaybackMode,
+    },
     SetTrackLatency {
         track_id: u64,
         adjustment: WireRecordingOffsetAdjustment,
@@ -244,6 +248,16 @@ pub enum Command {
 impl Command {
     pub fn supersedes_in_journal(&self, existing: &Self) -> bool {
         match (existing, self) {
+            (
+                Self::SetTrackDefaultPlaybackMode {
+                    track_id: existing_track,
+                    ..
+                },
+                Self::SetTrackDefaultPlaybackMode {
+                    track_id: replacement_track,
+                    ..
+                },
+            ) => existing_track == replacement_track,
             (
                 Self::SetTrackControl {
                     track_id: existing_track,
@@ -422,6 +436,7 @@ pub enum WireBusControl {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WireTrackTopology {
     Direct { audio_channels: u32, midi: bool },
+    BuiltInFx { audio_channels: u32 },
     OxiSynth,
 }
 
@@ -433,6 +448,15 @@ pub enum WireTrackFxControl {
     ToggleOrRecover,
     RestoreState(String),
     ClearLogs,
+    BuiltInSetStageEnabled(WireBuiltInFxStage, bool),
+    BuiltInSetDriveType(WireBuiltInFxDriveType),
+    BuiltInSetModulationType(WireBuiltInFxModulationType),
+    BuiltInSetReverbType(WireBuiltInFxReverbType),
+    BuiltInSetParameter(WireBuiltInFxParameter, f32),
+    BuiltInAssignMidiCc(WireBuiltInFxMidiCcAssignment),
+    BuiltInRemoveMidiCc(WireBuiltInFxParameter),
+    BuiltInClearMidiCcAssignments,
+    BuiltInSetReverbEnabled(bool),
     OxiSelectPreset(String),
     OxiSetReverbSend(f32),
     OxiSetChorusSend(f32),
@@ -446,6 +470,12 @@ impl WireTrackFxControl {
     fn supersedable_parameter(&self) -> Option<u8> {
         Some(match self {
             Self::SetActive(_) => 0,
+            Self::BuiltInSetReverbEnabled(_) => 16 + WireBuiltInFxStage::Reverb.index(),
+            Self::BuiltInSetStageEnabled(stage, _) => 16 + stage.index(),
+            Self::BuiltInSetDriveType(_) => 22,
+            Self::BuiltInSetModulationType(_) => 23,
+            Self::BuiltInSetReverbType(_) => 24,
+            Self::BuiltInSetParameter(parameter, _) => 32 + parameter.index(),
             Self::OxiSelectPreset(_) => 8,
             Self::OxiSetReverbSend(_) => 9,
             Self::OxiSetChorusSend(_) => 10,
@@ -453,12 +483,23 @@ impl WireTrackFxControl {
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
             | Self::ClearLogs
+            | Self::BuiltInAssignMidiCc(_)
+            | Self::BuiltInRemoveMidiCc(_)
+            | Self::BuiltInClearMidiCcAssignments
             | Self::OxiAssignMidiCc(_)
             | Self::OxiRemoveMidiCc(_)
             | Self::OxiClearMidiCcAssignments
             | Self::OxiPanic => return None,
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireDefaultPlaybackMode {
+    #[default]
+    Regular,
+    DryThroughWet,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
@@ -706,6 +747,123 @@ pub struct WireMixerFailure {
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum WireBuiltInFxStage {
+    Compressor,
+    Drive,
+    Eq,
+    Chorus,
+    Modulation,
+    Reverb,
+}
+
+impl WireBuiltInFxStage {
+    const fn index(self) -> u8 {
+        match self {
+            Self::Compressor => 0,
+            Self::Drive => 1,
+            Self::Eq => 2,
+            Self::Chorus => 3,
+            Self::Modulation => 4,
+            Self::Reverb => 5,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireBuiltInFxDriveType {
+    #[default]
+    Saturation,
+    Overdrive,
+    Distortion,
+    Fuzz,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireBuiltInFxModulationType {
+    #[default]
+    Tremolo,
+    Flanger,
+    Phaser,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireBuiltInFxReverbType {
+    #[default]
+    Room,
+    Hall,
+    Plate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireBuiltInFxParameter {
+    CompressorThreshold,
+    CompressorRatio,
+    CompressorAttack,
+    CompressorRelease,
+    CompressorMakeup,
+    Drive,
+    DriveTone,
+    DriveMix,
+    DriveOutput,
+    EqLow,
+    EqMid,
+    EqHigh,
+    ChorusRate,
+    ChorusDepth,
+    ChorusMix,
+    ChorusWidth,
+    ModulationRate,
+    ModulationDepth,
+    ModulationMix,
+    ModulationFeedback,
+    ModulationSpread,
+    ReverbAmount,
+    ReverbTone,
+}
+
+impl WireBuiltInFxParameter {
+    const fn index(self) -> u8 {
+        match self {
+            Self::CompressorThreshold => 0,
+            Self::CompressorRatio => 1,
+            Self::CompressorAttack => 2,
+            Self::CompressorRelease => 3,
+            Self::CompressorMakeup => 4,
+            Self::Drive => 5,
+            Self::DriveTone => 6,
+            Self::DriveMix => 7,
+            Self::DriveOutput => 8,
+            Self::EqLow => 9,
+            Self::EqMid => 10,
+            Self::EqHigh => 11,
+            Self::ChorusRate => 12,
+            Self::ChorusDepth => 13,
+            Self::ChorusMix => 14,
+            Self::ChorusWidth => 15,
+            Self::ModulationRate => 16,
+            Self::ModulationDepth => 17,
+            Self::ModulationMix => 18,
+            Self::ModulationFeedback => 19,
+            Self::ModulationSpread => 20,
+            Self::ReverbAmount => 21,
+            Self::ReverbTone => 22,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireBuiltInFxMidiCcAssignment {
+    pub parameter: WireBuiltInFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum WireOxiSynthParameter {
     ReverbSend,
     ChorusSend,
@@ -774,6 +932,8 @@ pub struct WireTrackLatencyState {
 pub struct WireTrackState {
     pub id: u64,
     pub topology: WireTrackTopology,
+    #[serde(default)]
+    pub default_playback_mode: WireDefaultPlaybackMode,
     pub fx: Option<WireTrackFxState>,
     pub audio_channels: u32,
     pub midi: bool,
@@ -797,7 +957,86 @@ pub struct WireTrackFxState {
     pub active: bool,
     pub visible: bool,
     #[serde(default)]
+    pub builtin_fx: Option<WireBuiltInFxState>,
+    #[serde(default)]
     pub oxisynth: Option<WireOxiSynthState>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct WireBuiltInFxState {
+    pub compressor_enabled: bool,
+    pub compressor_threshold_db: f32,
+    pub compressor_ratio: f32,
+    pub compressor_attack_ms: f32,
+    pub compressor_release_ms: f32,
+    pub compressor_makeup_db: f32,
+    pub drive_enabled: bool,
+    pub drive_type: WireBuiltInFxDriveType,
+    pub drive_db: f32,
+    pub drive_tone: f32,
+    pub drive_mix: f32,
+    pub drive_output_db: f32,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
+    pub chorus_enabled: bool,
+    pub chorus_rate_hz: f32,
+    pub chorus_depth: f32,
+    pub chorus_mix: f32,
+    pub chorus_width: f32,
+    pub modulation_enabled: bool,
+    pub modulation_type: WireBuiltInFxModulationType,
+    pub modulation_rate_hz: f32,
+    pub modulation_depth: f32,
+    pub modulation_mix: f32,
+    pub modulation_feedback: f32,
+    pub modulation_spread: f32,
+    pub reverb_enabled: bool,
+    pub reverb_type: WireBuiltInFxReverbType,
+    pub reverb_amount: f32,
+    pub reverb_tone: f32,
+    pub midi_cc_assignments: Vec<WireBuiltInFxMidiCcAssignment>,
+}
+
+impl Default for WireBuiltInFxState {
+    fn default() -> Self {
+        Self {
+            compressor_enabled: false,
+            compressor_threshold_db: -18.0,
+            compressor_ratio: 4.0,
+            compressor_attack_ms: 10.0,
+            compressor_release_ms: 150.0,
+            compressor_makeup_db: 0.0,
+            drive_enabled: false,
+            drive_type: WireBuiltInFxDriveType::Saturation,
+            drive_db: 12.0,
+            drive_tone: 0.5,
+            drive_mix: 1.0,
+            drive_output_db: 0.0,
+            eq_enabled: false,
+            eq_low_db: 0.0,
+            eq_mid_db: 0.0,
+            eq_high_db: 0.0,
+            chorus_enabled: false,
+            chorus_rate_hz: 0.3,
+            chorus_depth: 0.5,
+            chorus_mix: 0.3,
+            chorus_width: 1.0,
+            modulation_enabled: false,
+            modulation_type: WireBuiltInFxModulationType::Tremolo,
+            modulation_rate_hz: 0.5,
+            modulation_depth: 0.5,
+            modulation_mix: 0.5,
+            modulation_feedback: 0.25,
+            modulation_spread: 1.0,
+            reverb_enabled: true,
+            reverb_type: WireBuiltInFxReverbType::Room,
+            reverb_amount: 0.2,
+            reverb_tone: 0.5,
+            midi_cc_assignments: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -886,6 +1125,32 @@ mod tests {
 
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
     shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn track_default_playback_mode_round_trips_and_supersedes_only_the_same_track() {
+        let command = CommandEnvelope::new(
+            40,
+            Command::SetTrackDefaultPlaybackMode {
+                track_id: 7,
+                mode: WireDefaultPlaybackMode::DryThroughWet,
+            },
+        );
+        let json = serde_json::to_vec(&command).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&json).unwrap(),
+            command
+        );
+        let replacement = Command::SetTrackDefaultPlaybackMode {
+            track_id: 7,
+            mode: WireDefaultPlaybackMode::Regular,
+        };
+        assert!(replacement.supersedes_in_journal(&command.command));
+        assert!(!Command::SetTrackDefaultPlaybackMode {
+            track_id: 8,
+            mode: WireDefaultPlaybackMode::Regular,
+        }
+        .supersedes_in_journal(&command.command));
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn composite_configuration_round_trips_without_losing_targets_or_modes() {
@@ -998,6 +1263,51 @@ mod tests {
             input_channels: 0,
             output_channels: 1,
         }));
+        let builtin_reverb = Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetReverbEnabled(true),
+        };
+        assert!(Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetReverbEnabled(false),
+        }
+        .supersedes_in_journal(&builtin_reverb));
+        assert!(!Command::SetTrackFxControl {
+            track_id: 5,
+            control: WireTrackFxControl::BuiltInSetReverbEnabled(false),
+        }
+        .supersedes_in_journal(&builtin_reverb));
+        assert!(Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetStageEnabled(WireBuiltInFxStage::Reverb, false,),
+        }
+        .supersedes_in_journal(&builtin_reverb));
+        let drive = Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetParameter(WireBuiltInFxParameter::Drive, 6.0),
+        };
+        assert!(Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetParameter(WireBuiltInFxParameter::Drive, 12.0),
+        }
+        .supersedes_in_journal(&drive));
+        assert!(!Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInSetParameter(
+                WireBuiltInFxParameter::DriveTone,
+                0.5,
+            ),
+        }
+        .supersedes_in_journal(&drive));
+        assert!(!Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::BuiltInAssignMidiCc(WireBuiltInFxMidiCcAssignment {
+                parameter: WireBuiltInFxParameter::Drive,
+                channel: 0,
+                controller: 74,
+            }),
+        }
+        .supersedes_in_journal(&drive));
         let send = Command::SetTrackFxControl {
             track_id: 4,
             control: WireTrackFxControl::OxiSetReverbSend(0.25),
@@ -1229,7 +1539,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":20,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":23,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1240,7 +1550,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":20,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":23,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 
@@ -1370,6 +1680,19 @@ mod tests {
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, piano);
 
+        let builtin_fx_topology = CommandEnvelope::new(
+            46,
+            Command::CreateTrack {
+                expected_track_id: 10,
+                expected_loop_ids: vec![11],
+                port_name_base: "builtin-fx".to_owned(),
+                topology: WireTrackTopology::BuiltInFx { audio_channels: 6 },
+            },
+        );
+        let encoded = serde_json::to_string(&builtin_fx_topology).unwrap();
+        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, builtin_fx_topology);
+
         let oxisynth_topology = CommandEnvelope::new(
             47,
             Command::CreateTrack {
@@ -1387,6 +1710,19 @@ mod tests {
             WireTrackFxControl::SetActive(false),
             WireTrackFxControl::SetVisible(true),
             WireTrackFxControl::RestoreState("state".to_owned()),
+            WireTrackFxControl::BuiltInSetStageEnabled(WireBuiltInFxStage::Drive, true),
+            WireTrackFxControl::BuiltInSetDriveType(WireBuiltInFxDriveType::Fuzz),
+            WireTrackFxControl::BuiltInSetModulationType(WireBuiltInFxModulationType::Phaser),
+            WireTrackFxControl::BuiltInSetReverbType(WireBuiltInFxReverbType::Plate),
+            WireTrackFxControl::BuiltInSetParameter(WireBuiltInFxParameter::Drive, 24.0),
+            WireTrackFxControl::BuiltInAssignMidiCc(WireBuiltInFxMidiCcAssignment {
+                parameter: WireBuiltInFxParameter::Drive,
+                channel: 2,
+                controller: 17,
+            }),
+            WireTrackFxControl::BuiltInRemoveMidiCc(WireBuiltInFxParameter::Drive),
+            WireTrackFxControl::BuiltInClearMidiCcAssignments,
+            WireTrackFxControl::BuiltInSetReverbEnabled(false),
             WireTrackFxControl::OxiSelectPreset("0:40".to_owned()),
             WireTrackFxControl::OxiSetReverbSend(0.25),
             WireTrackFxControl::OxiSetChorusSend(0.5),

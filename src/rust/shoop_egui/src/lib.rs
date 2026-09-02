@@ -4,6 +4,7 @@
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod app_widget;
+mod builtin_fx_editor;
 mod bus_controls;
 mod click_track_dialog;
 pub mod colors;

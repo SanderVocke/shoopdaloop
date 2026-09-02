@@ -13,6 +13,7 @@ pub mod audio_channel;
 pub mod audio_midi_loop;
 pub mod basic_loop;
 pub mod buffer_queue;
+pub mod builtin_fx;
 #[cfg(feature = "carla")]
 pub mod carla_native;
 pub mod carla_processor;
@@ -30,6 +31,7 @@ pub mod content_snapshot;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
+pub mod default_playback_mode;
 pub mod driver;
 pub mod dummy_driver;
 pub mod dummy_midi_port;
@@ -46,6 +48,7 @@ pub mod latency_runtime;
 pub mod loop_mode;
 pub mod midi;
 pub mod midi_buffering_input_port;
+mod midi_cc;
 pub mod midi_channel;
 pub mod midi_event;
 pub mod midi_port;
@@ -110,6 +113,7 @@ pub use content_snapshot::{
     StaleReason,
 };
 pub use decoupled_midi_port::DecoupledMidiPort;
+pub use default_playback_mode::DefaultPlaybackMode;
 pub use driver::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
     cpal_output_device_names, cpal_output_device_names_for_host, driver_type_supported,

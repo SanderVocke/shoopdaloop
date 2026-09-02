@@ -21,26 +21,27 @@ use shoop_app_api::{
     BusId, BusState, ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus,
     ClickTrackRequest, ClickTrackState, CompositeDetailsState, CompositeEventDetailsState,
     CompositeEventId, CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
-    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
-    DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
-    IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
-    LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, MixerRouteErrorState,
-    MixerRouteState, PendingConnectionState, PendingMixerRouteState, PianoAction, PortDataType,
-    PortDirection, PortId, PortRole, ProcessorLatencyAdjustmentState,
-    RecordingOffsetAdjustmentState, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
-    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
-    TaskId, TrackAction, TrackControlState, TrackCreationResult, TrackId, TrackLatencyState,
-    TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
-    TrackTopology, WaveformChannelState,
+    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultPlaybackMode,
+    DefaultRecordingAction, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
+    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
+    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
+    MidiSequenceChannelState, MixerRouteErrorState, MixerRouteState, PendingConnectionState,
+    PendingMixerRouteState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
+    ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState, SampleRateWarning,
+    ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind, ScriptMidiRuleDirection,
+    ScriptingState, StatusState, StructuralState, TaskId, TrackAction, TrackControlState,
+    TrackCreationResult, TrackId, TrackLatencyState, TrackPortOwnerKind, TrackProcessorDescriptor,
+    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
-    BackendAudioContent, BackendAudioData, BackendBusChannelId, BackendBusControl, BackendBusId,
+    BackendAudioContent, BackendAudioData, BackendBuiltInFxMidiCcAssignment,
+    BackendBuiltInFxParameter, BackendBusChannelId, BackendBusControl, BackendBusId,
     BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest,
-    BackendLoopContent, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
-    BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData, BackendMidiEvent,
-    BackendMixerSnapshot, BackendMutationDetail, BackendOperationProgress,
+    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot,
+    BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
+    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
+    BackendMidiEvent, BackendMixerSnapshot, BackendMutationDetail, BackendOperationProgress,
     BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
     BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
     BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionBus,
@@ -60,11 +61,12 @@ use shoop_session::{
     decode_wav, encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session,
     encode_standard_midi, generate_audio_click_track, generate_midi_click_track,
     resample_exact_midi, resample_loop_audio, resample_session, AudioClickTrackSpec, AudioPayload,
-    BusChannelDocument, BusDocument, ChannelDocument, ChannelModeDocument, ClickTrackTimingSpec,
-    CompositeDocument, CompositeKindDocument, CompositeLoopInstanceDocument,
-    ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent, FxChainDocument,
-    FxChainTypeDocument, FxStateDocument, GlobalControlsDocument, LoopAudio, LoopAudioChannel,
-    LoopDocument, MediaPayload, MidiClickTrackSpec, MidiControlDocument, MixerRouteDocument,
+    BuiltInFxMidiCcAssignmentDocument, BuiltInFxParameterDocument, BusChannelDocument, BusDocument,
+    ChannelDocument, ChannelModeDocument, ClickTrackTimingSpec, CompositeDocument,
+    CompositeKindDocument, CompositeLoopInstanceDocument, ConnectabilityDocument, DataTypeDocument,
+    DefaultPlaybackModeDocument, ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument,
+    FxStateDocument, GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument,
+    MediaPayload, MidiClickTrackSpec, MidiControlDocument, MixerRouteDocument,
     OxiSynthMidiCcAssignmentDocument, OxiSynthParameterDocument, PortDirectionDocument,
     PortDocument, PortRoleDocument, ProcessorLatencyAdjustmentDocument, RecordingActionDocument,
     RecordingOffsetAdjustmentDocument, ScriptDocument, SessionBundle, SessionDocument,
@@ -634,6 +636,7 @@ struct ApplicationModel {
     mixer_route_errors: Vec<MixerRouteErrorState>,
     desired_bus_controls: BTreeMap<(BackendBusId, BusControlKey), PendingBusControl>,
     desired_track_controls: BTreeMap<(BackendTrackId, TrackControlKey), BackendTrackControl>,
+    desired_track_default_playback_modes: BTreeMap<BackendTrackId, BackendDefaultPlaybackMode>,
     desired_fx_controls: BTreeMap<(BackendTrackId, FxControlKey), BackendTrackFxControl>,
     desired_loop_controls: BTreeMap<(BackendLoopId, LoopControlKey), f32>,
     connection_errors: Vec<ConnectionErrorState>,
@@ -770,6 +773,7 @@ struct TrackModel {
     is_sync: bool,
     audio_channels: u32,
     topology: TrackTopology,
+    default_playback_mode: DefaultPlaybackMode,
     fx: Option<shoop_app_api::TrackFxState>,
     loops: Vec<LoopId>,
     port_ids: Arc<[PortId]>,
@@ -902,6 +906,12 @@ fn apply_track_control(state: &mut TrackControlState, control: BackendTrackContr
 enum FxControlKey {
     Active,
     Visible,
+    BuiltInFxStage(shoop_app_api::BuiltInFxStage),
+    BuiltInFxDriveType,
+    BuiltInFxModulationType,
+    BuiltInFxReverbType,
+    BuiltInFxParameter(shoop_app_api::BuiltInFxParameter),
+    BuiltInFxMidiAssignments,
     OxiPreset,
     OxiReverbSend,
     OxiChorusSend,
@@ -912,6 +922,119 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
     match control {
         BackendTrackFxControl::SetActive(value) => fx.active = *value,
         BackendTrackFxControl::SetVisible(value) => fx.visible = *value,
+        BackendTrackFxControl::BuiltInFx(control) => {
+            let Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(editor)) =
+                fx.editor.as_mut()
+            else {
+                return;
+            };
+            match control {
+                shoop_app_api::BuiltInFxControl::SetStageEnabled(stage, enabled) => match stage {
+                    shoop_app_api::BuiltInFxStage::Compressor => {
+                        editor.compressor_enabled = *enabled
+                    }
+                    shoop_app_api::BuiltInFxStage::Drive => editor.drive_enabled = *enabled,
+                    shoop_app_api::BuiltInFxStage::Eq => editor.eq_enabled = *enabled,
+                    shoop_app_api::BuiltInFxStage::Chorus => editor.chorus_enabled = *enabled,
+                    shoop_app_api::BuiltInFxStage::Modulation => {
+                        editor.modulation_enabled = *enabled
+                    }
+                    shoop_app_api::BuiltInFxStage::Reverb => editor.reverb_enabled = *enabled,
+                },
+                shoop_app_api::BuiltInFxControl::SetDriveType(value) => editor.drive_type = *value,
+                shoop_app_api::BuiltInFxControl::SetModulationType(value) => {
+                    editor.modulation_type = *value
+                }
+                shoop_app_api::BuiltInFxControl::SetReverbType(value) => {
+                    editor.reverb_type = *value
+                }
+                shoop_app_api::BuiltInFxControl::SetParameter(parameter, value) => {
+                    match parameter {
+                        shoop_app_api::BuiltInFxParameter::CompressorThreshold => {
+                            editor.compressor_threshold_db = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorRatio => {
+                            editor.compressor_ratio = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorAttack => {
+                            editor.compressor_attack_ms = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorRelease => {
+                            editor.compressor_release_ms = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::CompressorMakeup => {
+                            editor.compressor_makeup_db = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::Drive => editor.drive_db = *value,
+                        shoop_app_api::BuiltInFxParameter::DriveTone => editor.drive_tone = *value,
+                        shoop_app_api::BuiltInFxParameter::DriveMix => editor.drive_mix = *value,
+                        shoop_app_api::BuiltInFxParameter::DriveOutput => {
+                            editor.drive_output_db = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::EqLow => editor.eq_low_db = *value,
+                        shoop_app_api::BuiltInFxParameter::EqMid => editor.eq_mid_db = *value,
+                        shoop_app_api::BuiltInFxParameter::EqHigh => editor.eq_high_db = *value,
+                        shoop_app_api::BuiltInFxParameter::ChorusRate => {
+                            editor.chorus_rate_hz = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ChorusDepth => {
+                            editor.chorus_depth = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ChorusMix => editor.chorus_mix = *value,
+                        shoop_app_api::BuiltInFxParameter::ChorusWidth => {
+                            editor.chorus_width = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationRate => {
+                            editor.modulation_rate_hz = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationDepth => {
+                            editor.modulation_depth = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationMix => {
+                            editor.modulation_mix = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationFeedback => {
+                            editor.modulation_feedback = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ModulationSpread => {
+                            editor.modulation_spread = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ReverbAmount => {
+                            editor.reverb_amount = *value
+                        }
+                        shoop_app_api::BuiltInFxParameter::ReverbTone => {
+                            editor.reverb_tone = *value
+                        }
+                    }
+                }
+                shoop_app_api::BuiltInFxControl::AssignMidiCc(assignment) => {
+                    let mut assignments = editor.midi_cc_assignments.to_vec();
+                    assignments.retain(|current| {
+                        current.parameter != assignment.parameter
+                            && (current.channel, current.controller)
+                                != (assignment.channel, assignment.controller)
+                    });
+                    assignments.push(*assignment);
+                    assignments.sort_by_key(|assignment| assignment.parameter);
+                    editor.midi_cc_assignments = assignments.into();
+                }
+                shoop_app_api::BuiltInFxControl::RemoveMidiCc(parameter) => {
+                    editor.midi_cc_assignments = editor
+                        .midi_cc_assignments
+                        .iter()
+                        .copied()
+                        .filter(|assignment| assignment.parameter != *parameter)
+                        .collect::<Vec<_>>()
+                        .into();
+                }
+                shoop_app_api::BuiltInFxControl::ClearMidiCcAssignments => {
+                    editor.midi_cc_assignments = Arc::from([])
+                }
+                shoop_app_api::BuiltInFxControl::SetReverbEnabled(enabled) => {
+                    editor.reverb_enabled = *enabled
+                }
+            }
+        }
         BackendTrackFxControl::OxiSynth(control) => {
             let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) =
                 fx.editor.as_mut()
@@ -976,6 +1099,27 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
     Some(match control {
         BackendTrackFxControl::SetActive(_) => FxControlKey::Active,
         BackendTrackFxControl::SetVisible(_) => FxControlKey::Visible,
+        BackendTrackFxControl::BuiltInFx(control) => match control {
+            shoop_app_api::BuiltInFxControl::SetStageEnabled(stage, _enabled) => {
+                FxControlKey::BuiltInFxStage(*stage)
+            }
+            shoop_app_api::BuiltInFxControl::SetDriveType(_) => FxControlKey::BuiltInFxDriveType,
+            shoop_app_api::BuiltInFxControl::SetModulationType(_) => {
+                FxControlKey::BuiltInFxModulationType
+            }
+            shoop_app_api::BuiltInFxControl::SetReverbType(_) => FxControlKey::BuiltInFxReverbType,
+            shoop_app_api::BuiltInFxControl::SetParameter(parameter, _value) => {
+                FxControlKey::BuiltInFxParameter(*parameter)
+            }
+            shoop_app_api::BuiltInFxControl::AssignMidiCc(_)
+            | shoop_app_api::BuiltInFxControl::RemoveMidiCc(_)
+            | shoop_app_api::BuiltInFxControl::ClearMidiCcAssignments => {
+                FxControlKey::BuiltInFxMidiAssignments
+            }
+            shoop_app_api::BuiltInFxControl::SetReverbEnabled(_) => {
+                FxControlKey::BuiltInFxStage(shoop_app_api::BuiltInFxStage::Reverb)
+            }
+        },
         BackendTrackFxControl::OxiSynth(control) => match control {
             shoop_app_api::OxiSynthControl::SelectPreset(_) => FxControlKey::OxiPreset,
             shoop_app_api::OxiSynthControl::SetReverbSend(_) => FxControlKey::OxiReverbSend,
@@ -1214,10 +1358,16 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
         .collect()
 }
 
+#[derive(Clone, Copy)]
+enum ScriptTriggerMode {
+    Explicit(LoopMode),
+    DefaultPlayback,
+}
+
 struct ScriptCompositionPlayback {
     section: usize,
     remaining_frames: u64,
-    mode: LoopMode,
+    mode: ScriptTriggerMode,
 }
 
 struct PendingAudioSwitch {
@@ -1492,6 +1642,7 @@ impl ApplicationModel {
                 is_sync: true,
                 audio_channels: 1,
                 topology: TrackTopology::Direct,
+                default_playback_mode: DefaultPlaybackMode::Regular,
                 fx: None,
                 loops: vec![loop_id],
                 port_ids,
@@ -1511,6 +1662,7 @@ impl ApplicationModel {
             mixer_route_errors: Vec::new(),
             desired_bus_controls: BTreeMap::new(),
             desired_track_controls: BTreeMap::new(),
+            desired_track_default_playback_modes: BTreeMap::new(),
             desired_fx_controls: BTreeMap::new(),
             desired_loop_controls: BTreeMap::new(),
             connection_errors: Vec::new(),
@@ -2494,6 +2646,14 @@ impl ApplicationModel {
                 loops.push(ControlLoop {
                     id: model.id,
                     coords: [index, row as i64],
+                    default_playback_mode: if model.composite.is_some() {
+                        LoopMode::Playing
+                    } else {
+                        match track.default_playback_mode {
+                            DefaultPlaybackMode::Regular => LoopMode::Playing,
+                            DefaultPlaybackMode::DryThroughWet => LoopMode::PlayingDryThroughWet,
+                        }
+                    },
                     mode: model.state.mode,
                     next_mode: model.state.next_transition_delay.and_then(|_| {
                         (model.state.next_mode != LoopMode::Unknown)
@@ -2592,7 +2752,10 @@ impl ApplicationModel {
                 Ok(())
             }
             ControlOperation::Trigger { loops, mode } => {
-                self.script_trigger_loops(backend, &loops, mode)
+                self.script_trigger_loops(backend, &loops, ScriptTriggerMode::Explicit(mode))
+            }
+            ControlOperation::TriggerDefaultPlayback { loops } => {
+                self.script_trigger_loops(backend, &loops, ScriptTriggerMode::DefaultPlayback)
             }
             ControlOperation::Grab { loops } => {
                 for id in loops {
@@ -3040,18 +3203,51 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn script_trigger_mode_for_loop(
+        &self,
+        loop_id: LoopId,
+        requested: ScriptTriggerMode,
+    ) -> Result<Option<LoopMode>, String> {
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?;
+        if model.composite.is_some() {
+            return Ok(match requested {
+                ScriptTriggerMode::DefaultPlayback
+                | ScriptTriggerMode::Explicit(LoopMode::Playing) => Some(LoopMode::Playing),
+                ScriptTriggerMode::Explicit(LoopMode::Stopped) => Some(LoopMode::Stopped),
+                ScriptTriggerMode::Explicit(_) => None,
+            });
+        }
+        Ok(Some(match requested {
+            ScriptTriggerMode::Explicit(mode) => mode,
+            ScriptTriggerMode::DefaultPlayback => self
+                .tracks
+                .iter()
+                .find(|track| track.id == model.track_id)
+                .map(|track| match track.default_playback_mode {
+                    DefaultPlaybackMode::Regular => LoopMode::Playing,
+                    DefaultPlaybackMode::DryThroughWet => LoopMode::PlayingDryThroughWet,
+                })
+                .unwrap_or(LoopMode::Playing),
+        }))
+    }
+
     fn script_trigger_loops(
         &mut self,
         backend: &mut dyn Backend,
         loops: &[LoopId],
-        mode: LoopMode,
+        requested: ScriptTriggerMode,
     ) -> Result<(), String> {
         let delay = self.global.sync.then_some(self.target_delay());
-        let backend_mode = backend_loop_mode(mode);
         let sync_length = self.sync_length().max(1);
         let mut expanded = Vec::new();
         let mut backend_composite_targets = Vec::new();
         for id in loops {
+            let Some(mode) = self.script_trigger_mode_for_loop(*id, requested)? else {
+                continue;
+            };
             let model = self
                 .loops
                 .get(id)
@@ -3061,22 +3257,22 @@ impl ApplicationModel {
                     .set_composite_play_after_record(composite_id, self.global.play_after_record)
                     .map_err(|error| format!("could not set composite option: {error}"))?;
                 backend
-                    .transition_composite_loop(composite_id, backend_mode, delay, None)
+                    .transition_composite_loop(composite_id, backend_loop_mode(mode), delay, None)
                     .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
                 self.loops.get_mut(id).unwrap().composite_play_after_record =
                     self.global.play_after_record;
-                backend_composite_targets.push(*id);
+                backend_composite_targets.push((*id, mode));
                 continue;
             }
             let composition = model.script_composition.clone();
             if composition.is_empty() {
-                expanded.push((*id, delay));
+                expanded.push((*id, delay, mode));
                 continue;
             }
             if mode == LoopMode::Stopped {
                 self.script_composition_playback.remove(id);
                 for source in composition.iter().flatten() {
-                    expanded.push((*source, None));
+                    expanded.push((*source, None, LoopMode::Stopped));
                 }
                 continue;
             }
@@ -3088,11 +3284,8 @@ impl ApplicationModel {
                     .iter()
                     .flatten()
                     .copied()
-                    .collect::<std::collections::BTreeSet<_>>();
-                let first_sources = composition[0]
-                    .iter()
-                    .copied()
-                    .collect::<std::collections::BTreeSet<_>>();
+                    .collect::<BTreeSet<_>>();
+                let first_sources = composition[0].iter().copied().collect::<BTreeSet<_>>();
                 for source in all_sources.difference(&first_sources) {
                     let backend_id = self
                         .loops
@@ -3106,7 +3299,11 @@ impl ApplicationModel {
                         })?;
                 }
                 for source in &composition[0] {
-                    expanded.push((*source, None));
+                    if let Some(source_mode) =
+                        self.script_trigger_mode_for_loop(*source, requested)?
+                    {
+                        expanded.push((*source, None, source_mode));
+                    }
                 }
                 if composition.len() > 1 {
                     self.script_composition_playback.insert(
@@ -3116,7 +3313,7 @@ impl ApplicationModel {
                             remaining_frames: self
                                 .script_composition_section_length(&composition[0])
                                 .max(1),
-                            mode,
+                            mode: requested,
                         },
                     );
                 }
@@ -3125,7 +3322,15 @@ impl ApplicationModel {
             let mut section_delay = delay.unwrap_or(0);
             for section in &composition {
                 for source in section {
-                    expanded.push((*source, self.global.sync.then_some(section_delay)));
+                    if let Some(source_mode) =
+                        self.script_trigger_mode_for_loop(*source, requested)?
+                    {
+                        expanded.push((
+                            *source,
+                            self.global.sync.then_some(section_delay),
+                            source_mode,
+                        ));
+                    }
                 }
                 let section_length = self
                     .script_composition_section_length(section)
@@ -3135,13 +3340,13 @@ impl ApplicationModel {
                     section_delay.saturating_add(section_length.max(1).div_ceil(sync_length));
             }
         }
-        for (id, loop_delay) in expanded.iter().copied() {
+        for (id, loop_delay, mode) in expanded.iter().copied() {
             let model = self
                 .loops
                 .get(&id)
                 .ok_or_else(|| format!("stale or unknown loop {id}"))?;
             backend
-                .transition_loop(model.backend_id, backend_mode, loop_delay)
+                .transition_loop(model.backend_id, backend_loop_mode(mode), loop_delay)
                 .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
             if mode == LoopMode::Recording && self.global.apply_n_cycles > 0 {
                 let finish = if self.global.play_after_record {
@@ -3164,14 +3369,20 @@ impl ApplicationModel {
                     })?;
             }
         }
-        if self.global.solo
-            && matches!(
+        let solo_active = expanded.iter().any(|(_, _, mode)| {
+            matches!(
                 mode,
                 LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
             )
-        {
-            let mut expanded_ids = expanded.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-            expanded_ids.extend(backend_composite_targets);
+        }) || backend_composite_targets.iter().any(|(_, mode)| {
+            matches!(
+                mode,
+                LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
+            )
+        });
+        if self.global.solo && solo_active {
+            let mut expanded_ids = expanded.iter().map(|(id, _, _)| *id).collect::<Vec<_>>();
+            expanded_ids.extend(backend_composite_targets.iter().map(|(id, _)| *id));
             let target_tracks: Vec<_> = expanded_ids
                 .iter()
                 .filter_map(|id| self.loops.get(id).map(|model| model.track_id))
@@ -3279,8 +3490,11 @@ impl ApplicationModel {
                     .get(source)
                     .ok_or_else(|| format!("stale composition source {source}"))?
                     .backend_id;
+                let Some(source_mode) = self.script_trigger_mode_for_loop(*source, mode)? else {
+                    continue;
+                };
                 backend
-                    .transition_loop(backend_id, backend_loop_mode(mode), None)
+                    .transition_loop(backend_id, backend_loop_mode(source_mode), None)
                     .map_err(|error| {
                         format!("could not start composition source {source}: {error}")
                     })?;
@@ -4564,7 +4778,9 @@ impl ApplicationModel {
     fn add_track_spec(&mut self, backend: &mut dyn Backend, spec: TrackSpec) -> Result<(), String> {
         spec.validate(&self.track_processors)
             .map_err(|error| format!("invalid track: {error:?}"))?;
-        let (backend_topology, topology, loop_audio_channels) = match &spec.topology {
+        let (backend_topology, topology, loop_audio_channels, default_playback_mode) = match &spec
+            .topology
+        {
             TrackSpecTopology::Direct {
                 audio_channels,
                 midi,
@@ -4575,12 +4791,14 @@ impl ApplicationModel {
                 },
                 TrackTopology::Direct,
                 *audio_channels,
+                DefaultPlaybackMode::Regular,
             ),
             TrackSpecTopology::DryWet {
                 dry_audio_channels,
                 wet_audio_channels,
                 dry_midi,
                 processor_type,
+                default_playback_mode,
             } => {
                 let backend_topology =
                     if processor_type.as_str() == shoop_app_api::TrackProcessorTypeId::EXTERNAL {
@@ -4606,6 +4824,7 @@ impl ApplicationModel {
                         processor_type: processor_type.clone(),
                     },
                     dry_audio_channels.saturating_add(*wet_audio_channels),
+                    *default_playback_mode,
                 )
             }
         };
@@ -4626,6 +4845,17 @@ impl ApplicationModel {
                 initial_loops: slot_count,
             })
             .map_err(|error| format!("could not create track: {error}"))?;
+        if let Err(error) = backend.set_track_default_playback_mode(
+            created.track_id,
+            backend_default_playback_mode(default_playback_mode),
+        ) {
+            return match backend.remove_track(created.track_id) {
+                Ok(()) => Err(format!("could not set initial track playback mode: {error}")),
+                Err(rollback) => Err(format!(
+                    "could not set initial track playback mode: {error}; could not remove the new track: {rollback}"
+                )),
+            };
+        }
         let latency_pending = spec.latency != Default::default();
         if latency_pending {
             let backend_adjustment = match spec.latency.adjustment {
@@ -4687,6 +4917,10 @@ impl ApplicationModel {
                 loop_audio_channels,
             ));
         }
+        self.desired_track_default_playback_modes.insert(
+            created.track_id,
+            backend_default_playback_mode(default_playback_mode),
+        );
         self.tracks.push(TrackModel {
             id: track_id,
             backend_id: created.track_id,
@@ -4696,6 +4930,7 @@ impl ApplicationModel {
             is_sync: false,
             audio_channels: loop_audio_channels,
             topology,
+            default_playback_mode,
             fx: None,
             loops: loop_ids,
             port_ids,
@@ -4792,6 +5027,8 @@ impl ApplicationModel {
         }
         self.desired_track_controls
             .retain(|(backend_id, _), _| *backend_id != track.backend_id);
+        self.desired_track_default_playback_modes
+            .remove(&track.backend_id);
         self.desired_fx_controls
             .retain(|(backend_id, _), _| *backend_id != track.backend_id);
         self.desired_loop_controls
@@ -4960,6 +5197,31 @@ impl ApplicationModel {
                 track.name = name;
                 return Ok(());
             }
+            TrackAction::DefaultPlaybackModeChanged(mode) => {
+                if track.is_sync
+                    || !matches!(
+                        track.topology,
+                        TrackTopology::DryWet {
+                            wet_audio_channels: 1..,
+                            ..
+                        }
+                    )
+                {
+                    return Err(format!(
+                        "track {track_id} does not support dry-through-wet default playback"
+                    ));
+                }
+                let backend_mode = backend_default_playback_mode(mode);
+                backend
+                    .set_track_default_playback_mode(track.backend_id, backend_mode)
+                    .map_err(|error| {
+                        format!("could not update track default playback mode: {error}")
+                    })?;
+                self.desired_track_default_playback_modes
+                    .insert(track.backend_id, backend_mode);
+                track.default_playback_mode = mode;
+                return Ok(());
+            }
             TrackAction::OutputGainChanged(value) => BackendTrackControl::OutputGainDb(value),
             TrackAction::OutputBalanceChanged(value) => BackendTrackControl::OutputBalance(value),
             TrackAction::OutputMuteChanged(value) => BackendTrackControl::OutputMute(value),
@@ -5007,6 +5269,22 @@ impl ApplicationModel {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::BuiltInFx(builtin_fx) => {
+                let control = BackendTrackFxControl::BuiltInFx(builtin_fx);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| {
+                        format!("could not update Built-in FX track {track_id}: {error}")
+                    })?;
+                if let Some(key) = fx_control_key(&control) {
+                    self.desired_fx_controls
+                        .insert((track.backend_id, key), control.clone());
+                    if let Some(fx) = track.fx.as_mut() {
+                        apply_fx_control(fx, &control);
+                    }
+                }
+                return Ok(());
             }
             TrackAction::OxiSynth(oxisynth) => {
                 let control = BackendTrackFxControl::OxiSynth(oxisynth);
@@ -7355,19 +7633,32 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?;
+        let default_playback_mode =
+            if model.state.composite_kind != shoop_app_api::CompositeKind::None {
+                BackendLoopMode::Playing
+            } else {
+                self.tracks
+                    .iter()
+                    .find(|track| track.id == model.track_id)
+                    .map(|track| match track.default_playback_mode {
+                        DefaultPlaybackMode::Regular => BackendLoopMode::Playing,
+                        DefaultPlaybackMode::DryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+                    })
+                    .unwrap_or(BackendLoopMode::Playing)
+            };
         let has_planned_transition = model.state.next_transition_delay.is_some()
             && !matches!(model.state.next_mode, LoopMode::Unknown | LoopMode::Stopped);
         let mode = if has_planned_transition {
             BackendLoopMode::Stopped
         } else if model.state.mode == LoopMode::Recording {
-            BackendLoopMode::Playing
+            default_playback_mode
         } else if model.length == 0 && model.state.mode == LoopMode::Stopped {
             if self.global.default_recording_action == DefaultRecordingAction::Grab {
                 return self.grab_single_target(backend, loop_id);
             }
             BackendLoopMode::Recording
         } else if model.length > 0 && model.state.mode == LoopMode::Stopped {
-            BackendLoopMode::Playing
+            default_playback_mode
         } else {
             BackendLoopMode::Stopped
         };
@@ -7550,7 +7841,7 @@ impl ApplicationModel {
                 .loops
                 .get(&initiating_loop)
                 .is_some_and(|model| model.state.selected);
-        let targets: Vec<_> = self
+        let mut targets: Vec<_> = self
             .loops
             .values()
             .filter(|model| {
@@ -7565,6 +7856,15 @@ impl ApplicationModel {
                 )
             })
             .collect();
+        if !matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Stopped) {
+            if targets
+                .iter()
+                .any(|(id, _, _, composite_id)| *id == initiating_loop && composite_id.is_some())
+            {
+                return Err("composite loops support only playback and stop".to_owned());
+            }
+            targets.retain(|(_, _, _, composite_id)| composite_id.is_none());
+        }
         let delay = self.global.sync.then_some(self.target_delay());
         if matches!(
             mode,
@@ -8265,6 +8565,17 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::TrackDefaultPlaybackMode(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendTrackId::from_raw(entity);
+                        if self.desired_track_default_playback_modes.get(&backend_id)
+                            == Some(rejected)
+                        {
+                            self.desired_track_default_playback_modes
+                                .remove(&backend_id);
+                        }
+                    }
+                }
                 Some(BackendMutationDetail::LoopGain(rejected)) => {
                     if let Some(entity) = failure.entity {
                         let key = (BackendLoopId::from_raw(entity), LoopControlKey::Gain);
@@ -8419,6 +8730,13 @@ impl ApplicationModel {
                     .get(backend_id)
                     .is_some_and(|state| track_control_matches(state, *desired))
             });
+        self.desired_track_default_playback_modes
+            .retain(|backend_id, desired| {
+                snapshot
+                    .tracks
+                    .get(backend_id)
+                    .is_none_or(|state| state.default_playback_mode != *desired)
+            });
         self.desired_fx_controls.retain(|(backend_id, _), desired| {
             !snapshot
                 .tracks
@@ -8464,6 +8782,12 @@ impl ApplicationModel {
                         ..
                     } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
                 };
+            track.default_playback_mode = app_default_playback_mode(
+                self.desired_track_default_playback_modes
+                    .get(&track.backend_id)
+                    .copied()
+                    .unwrap_or(backend_state.default_playback_mode),
+            );
             track.fx.clone_from(&backend_state.fx);
             track.latency = app_track_latency(&backend_state.latency);
             if let Some(fx) = track.fx.as_mut() {
@@ -9655,7 +9979,20 @@ impl ApplicationModel {
                     let internal_state = captured.processor_state.clone().ok_or_else(|| {
                         format!("processed track {} has no captured state", track.id)
                     })?;
-                    let topology = if chain_type == FxChainTypeDocument::OxiSynth {
+                    let topology = if chain_type == FxChainTypeDocument::BuiltInFx {
+                        if *dry_audio_channels == 0
+                            || *dry_audio_channels != *wet_audio_channels
+                            || !*dry_midi
+                        {
+                            return Err(format!(
+                                "Built-in FX track {} has an invalid channel shape",
+                                track.id
+                            ));
+                        }
+                        TrackTopologyDocument::BuiltInFx {
+                            audio_channels: *dry_audio_channels,
+                        }
+                    } else if chain_type == FxChainTypeDocument::OxiSynth {
                         if *dry_audio_channels != 2 || *wet_audio_channels != 2 || !dry_midi {
                             return Err(format!(
                                 "OxiSynth track {} has an invalid channel shape",
@@ -9680,6 +10017,12 @@ impl ApplicationModel {
                             chain_type,
                             ports: Vec::new(),
                             internal_state,
+                            builtin_fx_midi_cc_assignments: captured
+                                .builtin_fx_midi_cc_assignments
+                                .iter()
+                                .copied()
+                                .map(document_builtin_fx_midi_cc_assignment)
+                                .collect(),
                             midi_cc_assignments: captured
                                 .oxisynth_midi_cc_assignments
                                 .iter()
@@ -9697,6 +10040,12 @@ impl ApplicationModel {
                 is_sync: track.is_sync,
                 width: None,
                 topology,
+                default_playback_mode: match track.default_playback_mode {
+                    DefaultPlaybackMode::Regular => DefaultPlaybackModeDocument::Regular,
+                    DefaultPlaybackMode::DryThroughWet => {
+                        DefaultPlaybackModeDocument::DryThroughWet
+                    }
+                },
                 controls: TrackControlsDocument {
                     output_gain_db: captured.state.output_gain_db,
                     output_balance: captured.state.output_balance,
@@ -10084,6 +10433,10 @@ impl ApplicationModel {
                     },
                 );
             }
+            let default_playback_mode = match track_document.default_playback_mode {
+                DefaultPlaybackModeDocument::Regular => DefaultPlaybackMode::Regular,
+                DefaultPlaybackModeDocument::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
+            };
             tracks.push(TrackModel {
                 id: TrackId::from_raw(track_document.id),
                 backend_id: created.track_id,
@@ -10093,6 +10446,7 @@ impl ApplicationModel {
                 is_sync: track_document.is_sync,
                 audio_channels,
                 topology,
+                default_playback_mode,
                 fx: None,
                 loops: loop_ids,
                 port_ids: Arc::from(port_ids),
@@ -10316,6 +10670,16 @@ impl ApplicationModel {
         self.mixer_route_errors.clear();
         self.desired_bus_controls.clear();
         self.desired_track_controls.clear();
+        self.desired_track_default_playback_modes = self
+            .tracks
+            .iter()
+            .map(|track| {
+                (
+                    track.backend_id,
+                    backend_default_playback_mode(track.default_playback_mode),
+                )
+            })
+            .collect();
         self.desired_fx_controls.clear();
         self.desired_loop_controls.clear();
         self.connection_errors.clear();
@@ -10401,6 +10765,7 @@ impl ApplicationModel {
                     structural_state: track.structural_state,
                     is_sync: track.is_sync,
                     topology: track.topology.clone(),
+                    default_playback_mode: track.default_playback_mode,
                     fx: track.fx.clone(),
                     loops: track
                         .loops
@@ -11178,6 +11543,7 @@ fn new_session_document(sample_rate: u32) -> SessionDocument {
                 audio_channels: 1,
                 midi: false,
             },
+            default_playback_mode: DefaultPlaybackModeDocument::Regular,
             controls: TrackControlsDocument::default(),
             latency: TrackLatencyDocument::default(),
             loops: vec![LoopDocument {
@@ -11283,6 +11649,88 @@ fn safe_file_stem(name: &str) -> String {
     }
 }
 
+fn document_builtin_fx_midi_cc_assignment(
+    assignment: BackendBuiltInFxMidiCcAssignment,
+) -> BuiltInFxMidiCcAssignmentDocument {
+    let parameter = match assignment.parameter {
+        BackendBuiltInFxParameter::CompressorThreshold => {
+            BuiltInFxParameterDocument::CompressorThreshold
+        }
+        BackendBuiltInFxParameter::CompressorRatio => BuiltInFxParameterDocument::CompressorRatio,
+        BackendBuiltInFxParameter::CompressorAttack => BuiltInFxParameterDocument::CompressorAttack,
+        BackendBuiltInFxParameter::CompressorRelease => {
+            BuiltInFxParameterDocument::CompressorRelease
+        }
+        BackendBuiltInFxParameter::CompressorMakeup => BuiltInFxParameterDocument::CompressorMakeup,
+        BackendBuiltInFxParameter::Drive => BuiltInFxParameterDocument::Drive,
+        BackendBuiltInFxParameter::DriveTone => BuiltInFxParameterDocument::DriveTone,
+        BackendBuiltInFxParameter::DriveMix => BuiltInFxParameterDocument::DriveMix,
+        BackendBuiltInFxParameter::DriveOutput => BuiltInFxParameterDocument::DriveOutput,
+        BackendBuiltInFxParameter::EqLow => BuiltInFxParameterDocument::EqLow,
+        BackendBuiltInFxParameter::EqMid => BuiltInFxParameterDocument::EqMid,
+        BackendBuiltInFxParameter::EqHigh => BuiltInFxParameterDocument::EqHigh,
+        BackendBuiltInFxParameter::ChorusRate => BuiltInFxParameterDocument::ChorusRate,
+        BackendBuiltInFxParameter::ChorusDepth => BuiltInFxParameterDocument::ChorusDepth,
+        BackendBuiltInFxParameter::ChorusMix => BuiltInFxParameterDocument::ChorusMix,
+        BackendBuiltInFxParameter::ChorusWidth => BuiltInFxParameterDocument::ChorusWidth,
+        BackendBuiltInFxParameter::ModulationRate => BuiltInFxParameterDocument::ModulationRate,
+        BackendBuiltInFxParameter::ModulationDepth => BuiltInFxParameterDocument::ModulationDepth,
+        BackendBuiltInFxParameter::ModulationMix => BuiltInFxParameterDocument::ModulationMix,
+        BackendBuiltInFxParameter::ModulationFeedback => {
+            BuiltInFxParameterDocument::ModulationFeedback
+        }
+        BackendBuiltInFxParameter::ModulationSpread => BuiltInFxParameterDocument::ModulationSpread,
+        BackendBuiltInFxParameter::ReverbAmount => BuiltInFxParameterDocument::ReverbAmount,
+        BackendBuiltInFxParameter::ReverbTone => BuiltInFxParameterDocument::ReverbTone,
+    };
+    BuiltInFxMidiCcAssignmentDocument {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn backend_builtin_fx_midi_cc_assignment(
+    assignment: BuiltInFxMidiCcAssignmentDocument,
+) -> BackendBuiltInFxMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        BuiltInFxParameterDocument::CompressorThreshold => {
+            BackendBuiltInFxParameter::CompressorThreshold
+        }
+        BuiltInFxParameterDocument::CompressorRatio => BackendBuiltInFxParameter::CompressorRatio,
+        BuiltInFxParameterDocument::CompressorAttack => BackendBuiltInFxParameter::CompressorAttack,
+        BuiltInFxParameterDocument::CompressorRelease => {
+            BackendBuiltInFxParameter::CompressorRelease
+        }
+        BuiltInFxParameterDocument::CompressorMakeup => BackendBuiltInFxParameter::CompressorMakeup,
+        BuiltInFxParameterDocument::Drive => BackendBuiltInFxParameter::Drive,
+        BuiltInFxParameterDocument::DriveTone => BackendBuiltInFxParameter::DriveTone,
+        BuiltInFxParameterDocument::DriveMix => BackendBuiltInFxParameter::DriveMix,
+        BuiltInFxParameterDocument::DriveOutput => BackendBuiltInFxParameter::DriveOutput,
+        BuiltInFxParameterDocument::EqLow => BackendBuiltInFxParameter::EqLow,
+        BuiltInFxParameterDocument::EqMid => BackendBuiltInFxParameter::EqMid,
+        BuiltInFxParameterDocument::EqHigh => BackendBuiltInFxParameter::EqHigh,
+        BuiltInFxParameterDocument::ChorusRate => BackendBuiltInFxParameter::ChorusRate,
+        BuiltInFxParameterDocument::ChorusDepth => BackendBuiltInFxParameter::ChorusDepth,
+        BuiltInFxParameterDocument::ChorusMix => BackendBuiltInFxParameter::ChorusMix,
+        BuiltInFxParameterDocument::ChorusWidth => BackendBuiltInFxParameter::ChorusWidth,
+        BuiltInFxParameterDocument::ModulationRate => BackendBuiltInFxParameter::ModulationRate,
+        BuiltInFxParameterDocument::ModulationDepth => BackendBuiltInFxParameter::ModulationDepth,
+        BuiltInFxParameterDocument::ModulationMix => BackendBuiltInFxParameter::ModulationMix,
+        BuiltInFxParameterDocument::ModulationFeedback => {
+            BackendBuiltInFxParameter::ModulationFeedback
+        }
+        BuiltInFxParameterDocument::ModulationSpread => BackendBuiltInFxParameter::ModulationSpread,
+        BuiltInFxParameterDocument::ReverbAmount => BackendBuiltInFxParameter::ReverbAmount,
+        BuiltInFxParameterDocument::ReverbTone => BackendBuiltInFxParameter::ReverbTone,
+    };
+    BackendBuiltInFxMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
 fn document_oxisynth_midi_cc_assignment(
     assignment: BackendOxiSynthMidiCcAssignment,
 ) -> OxiSynthMidiCcAssignmentDocument {
@@ -11322,6 +11770,7 @@ fn fx_chain_type_for_processor(
         shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X => {
             Ok(FxChainTypeDocument::CarlaPatchbay16x)
         }
+        shoop_app_api::TrackProcessorTypeId::BUILTIN_FX => Ok(FxChainTypeDocument::BuiltInFx),
         shoop_app_api::TrackProcessorTypeId::OXISYNTH => Ok(FxChainTypeDocument::OxiSynth),
         "test_2x2x1" => Ok(FxChainTypeDocument::Test),
         value => Err(format!(
@@ -11339,6 +11788,7 @@ fn processor_for_fx_chain_type(
         FxChainTypeDocument::CarlaPatchbay16x => {
             shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
         }
+        FxChainTypeDocument::BuiltInFx => shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
         FxChainTypeDocument::OxiSynth => shoop_app_api::TrackProcessorTypeId::OXISYNTH,
         FxChainTypeDocument::Test => "test_2x2x1",
     })
@@ -11431,6 +11881,35 @@ fn runtime_track_topology(
                 },
                 dry_audio_channels.saturating_add(wet_audio_channels),
                 *midi,
+            ))
+        }
+        TrackTopologyDocument::BuiltInFx { audio_channels } => {
+            let processor = shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+            );
+            validate_loaded_processor(
+                track.id,
+                &processor,
+                *audio_channels,
+                *audio_channels,
+                true,
+                processors,
+            )?;
+            Ok((
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: processor.as_str().to_owned(),
+                    dry_audio_channels: *audio_channels,
+                    wet_audio_channels: *audio_channels,
+                    dry_midi: true,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels: *audio_channels,
+                    wet_audio_channels: *audio_channels,
+                    dry_midi: true,
+                    processor_type: processor,
+                },
+                audio_channels.saturating_mul(2),
+                true,
             ))
         }
         TrackTopologyDocument::OxiSynth => {
@@ -11667,6 +12146,12 @@ fn session_bundle_to_backend(
         let output_audio_channels = topology.wet_audio_channels();
         let state = BackendTrackState {
             topology: topology.clone(),
+            default_playback_mode: match track.default_playback_mode {
+                DefaultPlaybackModeDocument::Regular => BackendDefaultPlaybackMode::Regular,
+                DefaultPlaybackModeDocument::DryThroughWet => {
+                    BackendDefaultPlaybackMode::DryThroughWet
+                }
+            },
             audio_channels: output_audio_channels,
             midi,
             output_gain_db: track.controls.output_gain_db,
@@ -11849,6 +12334,13 @@ fn session_bundle_to_backend(
                 .fx_chain
                 .as_ref()
                 .map(|chain| chain.internal_state.clone()),
+            builtin_fx_midi_cc_assignments: track
+                .fx_chain
+                .as_ref()
+                .into_iter()
+                .flat_map(|chain| chain.builtin_fx_midi_cc_assignments.iter().copied())
+                .map(backend_builtin_fx_midi_cc_assignment)
+                .collect(),
             oxisynth_midi_cc_assignments: track
                 .fx_chain
                 .as_ref()
@@ -12233,6 +12725,20 @@ fn external_capture_mode(mode: LoopMode) -> bool {
 
 fn runnable_composite_mode(mode: LoopMode) -> bool {
     !matches!(mode, LoopMode::Unknown | LoopMode::Stopped)
+}
+
+fn backend_default_playback_mode(mode: DefaultPlaybackMode) -> BackendDefaultPlaybackMode {
+    match mode {
+        DefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+        DefaultPlaybackMode::DryThroughWet => BackendDefaultPlaybackMode::DryThroughWet,
+    }
+}
+
+fn app_default_playback_mode(mode: BackendDefaultPlaybackMode) -> DefaultPlaybackMode {
+    match mode {
+        BackendDefaultPlaybackMode::Regular => DefaultPlaybackMode::Regular,
+        BackendDefaultPlaybackMode::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
+    }
 }
 
 fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
@@ -14264,6 +14770,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec {
                     adjustment: RecordingOffsetAdjustmentState::ManualOverride,
@@ -14366,6 +14873,257 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_optimistic_controls_and_supersession_are_parameter_typed() {
+        let mut fx = shoop_app_api::TrackFxState {
+            processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+            ),
+            active: true,
+            visible: true,
+            lifecycle: shoop_app_api::FxLifecycle::Running,
+            generation: 0,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                shoop_app_api::BuiltInFxState::default(),
+            )),
+        };
+        let parameter_keys = shoop_app_api::BuiltInFxParameter::ALL
+            .into_iter()
+            .map(|parameter| {
+                fx_control_key(&BackendTrackFxControl::BuiltInFx(
+                    shoop_app_api::BuiltInFxControl::SetParameter(parameter, 0.0),
+                ))
+                .unwrap()
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(parameter_keys.len(), 23);
+        let stage_keys = [
+            shoop_app_api::BuiltInFxStage::Compressor,
+            shoop_app_api::BuiltInFxStage::Drive,
+            shoop_app_api::BuiltInFxStage::Eq,
+            shoop_app_api::BuiltInFxStage::Chorus,
+            shoop_app_api::BuiltInFxStage::Modulation,
+            shoop_app_api::BuiltInFxStage::Reverb,
+        ]
+        .into_iter()
+        .map(|stage| {
+            fx_control_key(&BackendTrackFxControl::BuiltInFx(
+                shoop_app_api::BuiltInFxControl::SetStageEnabled(stage, true),
+            ))
+            .unwrap()
+        })
+        .collect::<BTreeSet<_>>();
+        assert_eq!(stage_keys.len(), 6);
+        assert_eq!(
+            fx_control_key(&BackendTrackFxControl::BuiltInFx(
+                shoop_app_api::BuiltInFxControl::SetReverbEnabled(false)
+            )),
+            Some(FxControlKey::BuiltInFxStage(
+                shoop_app_api::BuiltInFxStage::Reverb
+            ))
+        );
+
+        for control in [
+            shoop_app_api::BuiltInFxControl::SetStageEnabled(
+                shoop_app_api::BuiltInFxStage::Drive,
+                true,
+            ),
+            shoop_app_api::BuiltInFxControl::SetDriveType(shoop_app_api::BuiltInFxDriveType::Fuzz),
+            shoop_app_api::BuiltInFxControl::SetParameter(
+                shoop_app_api::BuiltInFxParameter::Drive,
+                24.0,
+            ),
+            shoop_app_api::BuiltInFxControl::AssignMidiCc(
+                shoop_app_api::BuiltInFxMidiCcAssignment {
+                    parameter: shoop_app_api::BuiltInFxParameter::Drive,
+                    channel: 2,
+                    controller: 17,
+                },
+            ),
+        ] {
+            apply_fx_control(&mut fx, &BackendTrackFxControl::BuiltInFx(control));
+        }
+        let Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(editor)) = fx.editor else {
+            panic!("missing Built-in FX editor state")
+        };
+        assert!(editor.drive_enabled);
+        assert_eq!(editor.drive_type, shoop_app_api::BuiltInFxDriveType::Fuzz);
+        assert_eq!(editor.drive_db, 24.0);
+        assert_eq!(editor.midi_cc_assignments.len(), 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_session_round_trip_preserves_n_channels_controls_and_assignments() {
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Built-in FX".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 3,
+                    wet_audio_channels: 3,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+                    ),
+                    default_playback_mode: shoop_app_api::DefaultPlaybackMode::Regular,
+                },
+                latency: shoop_app_api::TrackLatencySpec::default(),
+                creation_request_id: None,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = runtime.snapshot().tracks[1].clone();
+        assert_eq!(
+            track.fx.as_ref().and_then(|fx| fx.editor.as_ref()),
+            Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                shoop_app_api::BuiltInFxState::default(),
+            ))
+        );
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(
+                    false,
+                )),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let assignment = shoop_app_api::BuiltInFxMidiCcAssignment {
+            parameter: shoop_app_api::BuiltInFxParameter::Drive,
+            channel: 2,
+            controller: 17,
+        };
+        for control in [
+            shoop_app_api::BuiltInFxControl::SetStageEnabled(
+                shoop_app_api::BuiltInFxStage::Drive,
+                true,
+            ),
+            shoop_app_api::BuiltInFxControl::SetDriveType(shoop_app_api::BuiltInFxDriveType::Fuzz),
+            shoop_app_api::BuiltInFxControl::SetParameter(
+                shoop_app_api::BuiltInFxParameter::Drive,
+                24.0,
+            ),
+            shoop_app_api::BuiltInFxControl::AssignMidiCc(assignment),
+        ] {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: track.id,
+                    action: TrackAction::BuiltInFx(control),
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let expected = shoop_app_api::BuiltInFxState {
+            drive_enabled: true,
+            drive_type: shoop_app_api::BuiltInFxDriveType::Fuzz,
+            drive_db: 24.0,
+            reverb_enabled: false,
+            midi_cc_assignments: Arc::from([assignment]),
+            ..shoop_app_api::BuiltInFxState::default()
+        };
+        assert_eq!(
+            runtime.snapshot().tracks[1]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                expected.clone()
+            ))
+        );
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let saved_track = &saved.document.track_groups[1].tracks[0];
+        assert_eq!(
+            saved_track.topology,
+            TrackTopologyDocument::BuiltInFx { audio_channels: 3 }
+        );
+        assert_eq!(
+            runtime_track_topology(saved_track, &runtime.snapshot().track_processors)
+                .unwrap()
+                .2,
+            6
+        );
+        let chain = saved_track.fx_chain.as_ref().unwrap();
+        assert_eq!(chain.chain_type, FxChainTypeDocument::BuiltInFx);
+        assert_eq!(
+            chain.internal_state,
+            shoop_backend::encode_builtin_fx_state(&expected)
+        );
+        assert_eq!(
+            chain.builtin_fx_midi_cc_assignments,
+            [BuiltInFxMidiCcAssignmentDocument {
+                parameter: BuiltInFxParameterDocument::Drive,
+                channel: 2,
+                controller: 17,
+            }]
+        );
+        assert!(chain.midi_cc_assignments.is_empty());
+        let channels = &saved_track.loops[0].channels;
+        assert_eq!(
+            channels
+                .iter()
+                .filter(|channel| channel.mode == ChannelModeDocument::Dry
+                    && channel.data_type == DataTypeDocument::Audio)
+                .count(),
+            3
+        );
+        assert_eq!(
+            channels
+                .iter()
+                .filter(|channel| channel.mode == ChannelModeDocument::Wet
+                    && channel.data_type == DataTypeDocument::Audio)
+                .count(),
+            3
+        );
+        assert_eq!(
+            channels
+                .iter()
+                .filter(|channel| channel.mode == ChannelModeDocument::Dry
+                    && channel.data_type == DataTypeDocument::Midi)
+                .count(),
+            1
+        );
+
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(
+                    true,
+                )),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "builtin-fx.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..4 {
+            runtime.tick(Duration::ZERO);
+        }
+        let loaded = runtime.snapshot();
+        assert_eq!(
+            loaded.tracks[1]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                expected
+            ))
+        );
+        assert!(!loaded.tracks[1].fx.as_ref().unwrap().visible);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn oxisynth_session_round_trip_preserves_selected_preset() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -14380,6 +15138,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::OXISYNTH,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -14638,6 +15397,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -14703,6 +15463,10 @@ mod tests {
             .unwrap()
             .recording_fx_state_id
             .unwrap();
+        assert_eq!(
+            saved_track.default_playback_mode,
+            DefaultPlaybackModeDocument::DryThroughWet
+        );
         assert_eq!(saved.document.fx_states.len(), 1);
         assert_eq!(saved.document.fx_states[0].id, take_id);
         assert_eq!(saved.document.fx_states[0].internal_state, exact_state);
@@ -14722,6 +15486,10 @@ mod tests {
         let loaded = runtime.snapshot();
         assert_eq!(loaded.tracks.len(), 2);
         assert_eq!(loaded.tracks[1].topology, track.topology);
+        assert_eq!(
+            loaded.tracks[1].default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
         assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
         runtime
             .dispatch(AppIntent::Loop {
@@ -14775,6 +15543,7 @@ mod tests {
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -17611,7 +18380,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         let before = backend.operations().len();
         model
-            .script_trigger_loops(&mut backend, &[target], LoopMode::Playing)
+            .script_trigger_loops(
+                &mut backend,
+                &[target],
+                ScriptTriggerMode::Explicit(LoopMode::Playing),
+            )
             .unwrap();
         let source_a_backend = model.loops[&source_a].backend_id;
         let source_b_backend = model.loops[&source_b].backend_id;
@@ -17660,7 +18433,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             ),
         ]));
         model
-            .script_trigger_loops(&mut backend, &[target], LoopMode::Stopped)
+            .script_trigger_loops(
+                &mut backend,
+                &[target],
+                ScriptTriggerMode::Explicit(LoopMode::Stopped),
+            )
             .unwrap();
         assert!(!model.script_composition_playback.contains_key(&target));
     }
@@ -18258,10 +19035,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .is_none());
         send_note(&mut runtime, &midi_control, 56, true);
         let composition_play = runtime.snapshot();
-        assert_eq!(
-            composition_play.tracks[2].loops[0].mode,
-            LoopMode::Recording
-        );
+        assert_eq!(composition_play.tracks[2].loops[0].mode, LoopMode::Stopped);
 
         assert!(!midi_control.take_sent().is_empty());
         midi_control.set_endpoints(Vec::new());
@@ -18968,6 +19742,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -19568,6 +20343,67 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     && requests[0].cycles_length == Some(1)
                     && requests[0].go_to_mode == BackendLoopMode::Playing
         )));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mixed_selection_applies_primitive_only_modes_without_faulting_the_composite() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Mixed".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let primitive = model.tracks[1].loops[0];
+        let composite = model.tracks[1].loops[1];
+        model.loops.get_mut(&primitive).unwrap().state.selected = true;
+        let composite_model = model.loops.get_mut(&composite).unwrap();
+        composite_model.state.selected = true;
+        composite_model.backend_composite = Some(BackendCompositeId::from_raw(999));
+        let operation_start = backend.operations().len();
+
+        model
+            .transition_targets(
+                &mut backend,
+                primitive,
+                BackendLoopMode::PlayingDryThroughWet,
+            )
+            .unwrap();
+        let transitions = backend.operations()[operation_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::Transition(id, mode, delay) => {
+                    Some((*id, *mode, *delay))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            transitions,
+            [(
+                model.loops[&primitive].backend_id,
+                BackendLoopMode::PlayingDryThroughWet,
+                Some(0),
+            )]
+        );
+        assert!(model
+            .transition_targets(
+                &mut backend,
+                composite,
+                BackendLoopMode::PlayingDryThroughWet,
+            )
+            .is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -21588,6 +22424,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 is_sync: false,
                 width: None,
                 topology: TrackTopologyDocument::Trigger,
+                default_playback_mode: DefaultPlaybackModeDocument::Regular,
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: Vec::new(),
@@ -22115,6 +22952,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
                 creation_request_id: None,
@@ -23002,6 +23840,57 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .desired_track_controls
             .contains_key(&(backend_track, TrackControlKey::OutputGain)));
 
+        model
+            .desired_track_default_playback_modes
+            .insert(backend_track, BackendDefaultPlaybackMode::DryThroughWet);
+        model.tracks[0].default_playback_mode = DefaultPlaybackMode::DryThroughWet;
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(
+            model.tracks[0].default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
+        let mut stale_default_rejection = backend.poll().unwrap();
+        stale_default_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 11,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackDefaultPlaybackMode(
+                    BackendDefaultPlaybackMode::Regular,
+                )),
+                message: "older default rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(stale_default_rejection);
+        assert_eq!(
+            model.tracks[0].default_playback_mode,
+            DefaultPlaybackMode::DryThroughWet
+        );
+        let mut latest_default_rejection = backend.poll().unwrap();
+        latest_default_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 12,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackDefaultPlaybackMode(
+                    BackendDefaultPlaybackMode::DryThroughWet,
+                )),
+                message: "latest default rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(latest_default_rejection);
+        assert_eq!(
+            model.tracks[0].default_playback_mode,
+            DefaultPlaybackMode::Regular
+        );
+        assert!(!model
+            .desired_track_default_playback_modes
+            .contains_key(&backend_track));
+
         let fx_rejected = BackendTrackFxControl::SetVisible(true);
         model
             .desired_loop_controls
@@ -23136,5 +24025,252 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.tick(Duration::ZERO);
         }
         assert!(!runtime.has_pending_commands());
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit() {
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            ),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
+                ..Default::default()
+            },
+            features: Default::default(),
+            editor: None,
+        }]);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Processed".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                    ),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                },
+                latency: TrackLatencySpec::default(),
+                creation_request_id: None,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track_id = runtime.model.tracks[1].id;
+        let loop_id = runtime.model.tracks[1].loops[0];
+        let backend_id = runtime.model.loops[&loop_id].backend_id;
+        runtime.backend.set_loop_length(backend_id, 64).unwrap();
+        runtime.tick(Duration::ZERO);
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .model
+            .apply_script_operation(
+                &mut *runtime.backend,
+                ControlOperation::TriggerDefaultPlayback {
+                    loops: vec![loop_id],
+                },
+            )
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Direct".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let direct_loop_id = runtime.model.tracks[2].loops[0];
+        let direct_backend_id = runtime.model.loops[&direct_loop_id].backend_id;
+        runtime
+            .backend
+            .set_loop_length(direct_backend_id, 64)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .model
+            .apply_script_operation(
+                &mut *runtime.backend,
+                ControlOperation::TriggerDefaultPlayback {
+                    loops: vec![loop_id, direct_loop_id],
+                },
+            )
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+        assert_eq!(
+            runtime.snapshot().tracks[2].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .backend
+            .transition_loop(backend_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id,
+                action: TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::Regular),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_track_default_playback_update_keeps_application_state_unchanged() {
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            ),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
+                ..Default::default()
+            },
+            features: Default::default(),
+            editor: None,
+        }]);
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track_spec(
+                &mut backend,
+                TrackSpec {
+                    name: "Processed".to_owned(),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: 1,
+                        wet_audio_channels: 1,
+                        dry_midi: false,
+                        processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                            shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                        ),
+                        default_playback_mode: DefaultPlaybackMode::Regular,
+                    },
+                    latency: TrackLatencySpec::default(),
+                    creation_request_id: None,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        backend.fail_next_track_control("injected default playback failure");
+        assert!(model
+            .handle_track_action(
+                &mut backend,
+                track_id,
+                TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::DryThroughWet),
+            )
+            .is_err());
+        assert_eq!(
+            model.tracks[1].default_playback_mode,
+            DefaultPlaybackMode::Regular
+        );
     }
 }
