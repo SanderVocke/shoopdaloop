@@ -2249,6 +2249,10 @@ struct EngineOxiFx {
 }
 
 impl EngineBackend {
+    pub fn mixer_revision(&self) -> u64 {
+        self.mixer_revision
+    }
+
     pub fn loop_smoothing_ms(&self) -> u32 {
         self.session.loop_smoothing_ms()
     }

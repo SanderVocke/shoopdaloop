@@ -975,12 +975,7 @@ impl WorkletHost {
                 self.backend
                     .replace_session(&session)
                     .map_err(|error| error.to_string())?;
-                let mixer_revision = self
-                    .backend
-                    .poll()
-                    .map_err(|error| error.to_string())?
-                    .mixer
-                    .revision;
+                let mixer_revision = self.backend.mixer_revision();
                 self.replace_generation = None;
                 self.replace_expected_bytes = 0;
                 self.replace_bytes.clear();
