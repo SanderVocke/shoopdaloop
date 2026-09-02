@@ -3366,7 +3366,24 @@ mod tests {
             .event,
             Event::Ack
         ));
-        let Event::Snapshot(snapshot) = command(&mut host, 2, Command::Poll).event else {
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "fanout".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 3, Command::Poll).event else {
             panic!("expected snapshot");
         };
         assert_eq!(snapshot.buses.len(), 2);
@@ -3382,14 +3399,65 @@ mod tests {
         );
         assert!(snapshot.confirmed_mixer_links.is_empty());
         assert!(matches!(
-            command(&mut host, 3, Command::RemoveBus { bus_id: 1 }).event,
+            command(
+                &mut host,
+                4,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                },
+            )
+            .event,
             Event::Ack
         ));
         assert!(matches!(
-            command(&mut host, 4, Command::RemoveBus { bus_id: 2 }).event,
+            command(
+                &mut host,
+                5,
+                Command::SetMixerRoute {
+                    source_port_id: 6,
+                    destination_channel_id: 3,
+                    connected: true,
+                },
+            )
+            .event,
             Event::Ack
         ));
-        let Event::Snapshot(snapshot) = command(&mut host, 5, Command::Poll).event else {
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::SetPortConnected {
+                    application_port_id: 1,
+                    host_port_id: "webaudio:destination_1".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::SetPortConnected {
+                    application_port_id: 6,
+                    host_port_id: "webaudio:destination_1".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 8, Command::RemoveBus { bus_id: 1 }).event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 9, Command::RemoveBus { bus_id: 2 }).event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 10, Command::Poll).event else {
             panic!("expected snapshot");
         };
         assert!(snapshot.buses.is_empty());
@@ -3397,6 +3465,10 @@ mod tests {
             .application_ports
             .iter()
             .all(|port| { !matches!(port.owner, WireApplicationPortOwner::Bus { .. }) }));
+        assert!(snapshot.confirmed_mixer_links.is_empty());
+        assert!(snapshot.confirmed_links.iter().any(|link| {
+            link.application_port_id == 6 && link.host_port_id == "webaudio:destination_1"
+        }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
