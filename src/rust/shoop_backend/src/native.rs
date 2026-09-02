@@ -844,10 +844,42 @@ impl NativeRuntime {
         Ok(creation)
     }
 
+    fn restore_detached_bus_graph(
+        &self,
+        bus: &NativeBus,
+        outputs: &[AudioPort],
+        affected_routes: &[BackendMixerLink],
+    ) -> Result<()> {
+        for (channel, output) in bus.channels.iter().zip(outputs) {
+            channel.input.connect_internal(output)?;
+        }
+        for route in affected_routes {
+            let source = self
+                .ports
+                .get(&route.source_port_id)
+                .and_then(|port| match &port.handle {
+                    NativePortHandle::Audio(source) => Some(source),
+                    NativePortHandle::Midi(_) => None,
+                })
+                .ok_or_else(|| anyhow!("missing mixer source during bus rollback"))?;
+            let destination = bus
+                .channels
+                .iter()
+                .find(|channel| channel.id == route.destination_channel_id)
+                .ok_or_else(|| anyhow!("missing mixer destination during bus rollback"))?;
+            source.connect_internal(&destination.input)?;
+        }
+        if !self.wait_for_graph()? {
+            return Err(anyhow!("bus rollback graph did not become active"));
+        }
+        Ok(())
+    }
+
     fn remove_bus_internal(&mut self, bus_id: BackendBusId) -> Result<()> {
         let bus = self
             .buses
-            .remove(&bus_id)
+            .get(&bus_id)
+            .cloned()
             .ok_or_else(|| anyhow!("unknown native bus {bus_id:?}"))?;
         let channel_ids = bus
             .channels
@@ -859,22 +891,52 @@ impl NativeRuntime {
             .iter()
             .map(|channel| channel.output_port_id)
             .collect::<BTreeSet<_>>();
-        for channel in &bus.channels {
-            let output = self
-                .ports
-                .get(&channel.output_port_id)
-                .and_then(|port| match &port.handle {
-                    NativePortHandle::Audio(output) => Some(output.clone()),
-                    NativePortHandle::Midi(_) => None,
-                })
-                .ok_or_else(|| anyhow!("missing native bus output port"))?;
-            self.driver.unregister_audio_port(&output)?;
-            self.session.remove_audio_port(&channel.input)?;
-            self.session.remove_audio_port(&output)?;
-        }
+        let outputs = bus
+            .channels
+            .iter()
+            .map(|channel| {
+                self.ports
+                    .get(&channel.output_port_id)
+                    .and_then(|port| match &port.handle {
+                        NativePortHandle::Audio(output) => Some(output.clone()),
+                        NativePortHandle::Midi(_) => None,
+                    })
+                    .ok_or_else(|| anyhow!("missing native bus output port"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let affected_routes = self
+            .mixer_routes
+            .iter()
+            .filter(|link| channel_ids.contains(&link.destination_channel_id))
+            .copied()
+            .collect::<Vec<_>>();
+        let mut all_ports = bus
+            .channels
+            .iter()
+            .map(|channel| channel.input.clone())
+            .collect::<Vec<_>>();
+        all_ports.extend(outputs.iter().cloned());
+        self.session.detach_audio_ports(&all_ports)?;
         if !self.wait_for_graph()? {
+            self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
             return Err(anyhow!("removed bus graph did not become active"));
         }
+        let mut unregistered = Vec::new();
+        for (channel, output) in bus.channels.iter().zip(&outputs) {
+            unregistered.push((channel.output_port_id, output.clone()));
+            if let Err(error) = self.driver.unregister_audio_port(output) {
+                for (restored_channel, restored_output) in &unregistered {
+                    self.driver.register_existing_audio_port(
+                        restored_output,
+                        &self.ports[restored_channel].descriptor.name,
+                        PortDirection::Output,
+                    )?;
+                }
+                self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
+                return Err(error);
+            }
+        }
+        self.buses.remove(&bus_id);
         for output_id in &output_ids {
             self.ports.remove(output_id);
         }

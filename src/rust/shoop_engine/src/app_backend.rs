@@ -2291,6 +2291,26 @@ impl BackendSession {
         })?)
     }
 
+    pub fn detach_audio_ports(&self, ports: &[AudioPort]) -> Result<CommandSequence> {
+        if ports
+            .iter()
+            .any(|port| !Arc::ptr_eq(&self.shared, &port.shared))
+        {
+            return Err(anyhow!("audio port belongs to another session"));
+        }
+        let controls = ports
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        Ok(self.shared.send_topology(move |session| {
+            for control in &controls {
+                if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                    let _ = session.remove_port(index);
+                }
+            }
+        })?)
+    }
+
     pub fn remove_audio_port(&self, port: &AudioPort) -> Result<CommandSequence> {
         if !Arc::ptr_eq(&self.shared, &port.shared) {
             return Err(anyhow!("audio port belongs to another session"));
@@ -3559,6 +3579,15 @@ impl AudioDriver {
         }
         Ok(())
     }
+    pub fn register_existing_audio_port(
+        &self,
+        port: &AudioPort,
+        name: &str,
+        direction: PortDirection,
+    ) -> Result<()> {
+        self.register_audio_port(name, direction, Arc::clone(&port.control))
+    }
+
     pub fn unregister_audio_port(&self, port: &AudioPort) -> Result<()> {
         let Some(jack) = self.jack() else {
             return Ok(());
