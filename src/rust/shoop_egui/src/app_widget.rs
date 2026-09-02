@@ -3529,6 +3529,59 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn dry_wet_dialog_exposes_builtin_fx_as_fixed_stereo_without_midi() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let processor = TrackProcessorDescriptor {
+            id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+            label: "Built-in FX".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: crate::TrackProcessorConstraints {
+                min_dry_audio_channels: Some(2),
+                max_dry_audio_channels: Some(2),
+                min_wet_audio_channels: Some(2),
+                max_wet_audio_channels: Some(2),
+                matching_audio_channels: true,
+                midi: crate::TrackProcessorMidiPolicy::Unsupported,
+            },
+            features: crate::TrackProcessorFeatures {
+                state: true,
+                embedded_ui: true,
+                ..crate::TrackProcessorFeatures::default()
+            },
+            editor: Some(crate::TrackProcessorEditorDescriptor::BuiltInFx),
+        };
+        let state = AppState {
+            track_processors: Arc::from([processor.clone()]),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Reverb".to_owned();
+        widget.add_track_mode = AddTrackMode::DryWet;
+        widget.add_track_audio_channels = 2;
+        widget.add_track_dry_midi = true;
+        frame(&context, &mut widget, &state, Vec::new());
+        assert!(!widget.add_track_dry_midi);
+        assert_eq!(
+            widget.accept_add_track(&[processor]),
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "Reverb".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
+                },
+                latency: TrackLatencySpec::default(),
+                creation_request_id: None,
+            }))
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn cancelling_add_track_has_no_action() {
         let context = egui::Context::default();
         crate::initialize(&context);

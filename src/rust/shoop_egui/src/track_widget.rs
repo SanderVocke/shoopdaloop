@@ -8,6 +8,7 @@ use crate::{
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
+use crate::builtin_fx_editor::BuiltInFxEditor;
 use crate::oxisynth_editor::OxiSynthEditor;
 
 const DEFAULT_TRACK_WIDTH: f32 = 120.0;
@@ -45,6 +46,7 @@ pub struct TrackWidget {
     controls: TrackControls,
     latency_dialog_open: bool,
     fx_logs_open: bool,
+    builtin_fx_editor: BuiltInFxEditor,
     oxisynth_editor: OxiSynthEditor,
     width: f32,
     rendered_content_width: f32,
@@ -112,6 +114,7 @@ impl Default for TrackWidget {
             controls: TrackControls::default(),
             latency_dialog_open: false,
             fx_logs_open: false,
+            builtin_fx_editor: BuiltInFxEditor::default(),
             oxisynth_editor: OxiSynthEditor::default(),
             width: DEFAULT_TRACK_WIDTH,
             rendered_content_width: DEFAULT_TRACK_WIDTH,
@@ -446,6 +449,9 @@ impl TrackWidget {
         self.show_clone_confirmation(ui.ctx(), state, &mut result);
         self.show_latency_dialog(ui.ctx(), state, &mut result);
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
+        result
+            .actions
+            .extend(self.builtin_fx_editor.show(ui.ctx(), state, processor));
         result
             .actions
             .extend(self.oxisynth_editor.show(ui.ctx(), state, processor));

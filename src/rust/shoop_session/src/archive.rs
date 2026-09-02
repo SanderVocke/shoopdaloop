@@ -21,6 +21,7 @@ const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
 const PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION: u16 = 8;
+const PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 9;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -222,6 +223,7 @@ pub fn decode_session_with_limits(
             PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION
                 | PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION
                 | PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION
+                | PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -715,6 +717,14 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                 state.id
             )));
         }
+        if state.chain_type == FxChainTypeDocument::BuiltInFx
+            && !is_canonical_builtin_fx_state(&state.internal_state)
+        {
+            return Err(SessionError::Validation(format!(
+                "Built-in FX state {} contains an invalid processor state",
+                state.id
+            )));
+        }
     }
     for group in &bundle.document.track_groups {
         for track in &group.tracks {
@@ -735,7 +745,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         wet_audio_channels,
                         ..
                     } => wet_audio_channels.unwrap_or(*audio_channels) > 0,
-                    TrackTopologyDocument::OxiSynth => true,
+                    TrackTopologyDocument::BuiltInFx | TrackTopologyDocument::OxiSynth => true,
                     TrackTopologyDocument::Direct { .. } | TrackTopologyDocument::Trigger => false,
                 };
             if track.default_playback_mode == DefaultPlaybackModeDocument::DryThroughWet
@@ -1058,6 +1068,10 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     Ok(())
 }
 
+fn is_canonical_builtin_fx_state(state: &str) -> bool {
+    matches!(state, "shoop-builtin-fx:1:0" | "shoop-builtin-fx:1:1")
+}
+
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
     if let Some(chain) = &track.fx_chain {
         if chain.chain_type != FxChainTypeDocument::OxiSynth
@@ -1100,6 +1114,19 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
         }
         (TrackTopologyDocument::Carla { .. }, None) => Err(SessionError::Validation(format!(
             "Carla track {} is missing its FX chain",
+            track.id
+        ))),
+        (TrackTopologyDocument::BuiltInFx, Some(chain))
+            if chain.chain_type != FxChainTypeDocument::BuiltInFx
+                || !is_canonical_builtin_fx_state(&chain.internal_state) =>
+        {
+            Err(SessionError::Validation(format!(
+                "Built-in FX track {} contains mismatched or invalid processor state",
+                track.id
+            )))
+        }
+        (TrackTopologyDocument::BuiltInFx, None) => Err(SessionError::Validation(format!(
+            "Built-in FX track {} is missing its FX chain",
             track.id
         ))),
         (TrackTopologyDocument::OxiSynth, Some(chain))
@@ -1182,6 +1209,17 @@ fn validate_track_channel_shape(
                         ChannelModeDocument::Dry | ChannelModeDocument::Wet
                     ) && !(channel.mode == ChannelModeDocument::Wet
                         && channel.data_type == DataTypeDocument::Midi)
+                })
+        }
+        TrackTopologyDocument::BuiltInFx => {
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == 2
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == 2
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 0
+                && channels.iter().all(|channel| {
+                    matches!(
+                        channel.mode,
+                        ChannelModeDocument::Dry | ChannelModeDocument::Wet
+                    ) && channel.data_type == DataTypeDocument::Audio
                 })
         }
         TrackTopologyDocument::OxiSynth => {

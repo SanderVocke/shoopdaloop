@@ -266,6 +266,22 @@ mod tests {
         bundle
     }
 
+    fn builtin_fx_bundle() -> SessionBundle {
+        let mut bundle = oxisynth_bundle();
+        let track = &mut bundle.document.track_groups[0].tracks[0];
+        track.name = "Built-in FX".to_owned();
+        track.port_name_base = "builtin_fx".to_owned();
+        track.topology = TrackTopologyDocument::BuiltInFx;
+        let chain = track.fx_chain.as_mut().unwrap();
+        chain.title = "Built-in FX".to_owned();
+        chain.chain_type = FxChainTypeDocument::BuiltInFx;
+        chain.internal_state = "shoop-builtin-fx:1:0".to_owned();
+        track.loops[0]
+            .channels
+            .retain(|channel| channel.data_type == DataTypeDocument::Audio);
+        bundle
+    }
+
     fn deferred_feature_bundle() -> SessionBundle {
         let mut bundle = direct_bundle(2);
         bundle.document.track_groups[0].tracks.extend([
@@ -493,7 +509,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 10] {
+        for unsupported in [5, 11] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -545,6 +561,87 @@ mod tests {
                 controller: 91,
             });
         assert!(validate_bundle(&duplicate).is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_state_shape_and_previous_version_are_validated() {
+        let bundle = builtin_fx_bundle();
+        let encoded = encode_session(&bundle, "builtin-fx-test").unwrap();
+        assert_eq!(decode_session(&encoded).unwrap(), bundle);
+        let immediate_predecessor = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(9);
+        });
+        assert_eq!(decode_session(&immediate_predecessor).unwrap(), bundle);
+
+        let previous_bundle = SessionBundle::new(SessionDocument::empty(48_000));
+        let previous = rewrite_manifest(
+            encode_session(&previous_bundle, "previous-version").unwrap(),
+            |manifest| {
+                manifest["document_version"] = serde_json::json!(8);
+            },
+        );
+        assert_eq!(decode_session(&previous).unwrap(), previous_bundle);
+
+        let mut with_recorded_state = bundle.clone();
+        with_recorded_state
+            .document
+            .fx_states
+            .push(FxStateDocument {
+                id: 99,
+                chain_type: FxChainTypeDocument::BuiltInFx,
+                internal_state: "shoop-builtin-fx:1:1".to_owned(),
+            });
+        validate_bundle(&with_recorded_state).unwrap();
+
+        for invalid_state in [
+            "",
+            "shoop-builtin-fx:1:false",
+            "shoop-builtin-fx:1:2",
+            "shoop-builtin-fx:2:1",
+            "shoop-builtin-fx:1:1:extra",
+        ] {
+            let mut invalid = bundle.clone();
+            invalid.document.track_groups[0].tracks[0]
+                .fx_chain
+                .as_mut()
+                .unwrap()
+                .internal_state = invalid_state.to_owned();
+            assert!(validate_bundle(&invalid).is_err(), "{invalid_state}");
+
+            let mut invalid_recorded_state = with_recorded_state.clone();
+            invalid_recorded_state.document.fx_states[0].internal_state = invalid_state.to_owned();
+            assert!(
+                validate_bundle(&invalid_recorded_state).is_err(),
+                "recorded {invalid_state}"
+            );
+        }
+
+        let mut mismatched = bundle.clone();
+        mismatched.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .chain_type = FxChainTypeDocument::OxiSynth;
+        assert!(validate_bundle(&mismatched).is_err());
+
+        let mut midi = bundle.clone();
+        midi.document.track_groups[0].tracks[0].loops[0]
+            .channels
+            .push(ChannelDocument {
+                id: 9999,
+                mode: ChannelModeDocument::Dry,
+                data_type: DataTypeDocument::Midi,
+                data_length_frames: 0,
+                start_offset_frames: 0,
+                capture_alignment_frames: 0,
+                preplay_frames: 0,
+                gain: 1.0,
+                connected_port_ids: Vec::new(),
+                media_id: None,
+                recording_started_at: None,
+                recording_fx_state_id: None,
+            });
+        assert!(validate_bundle(&midi).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

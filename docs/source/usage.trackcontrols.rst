@@ -12,8 +12,9 @@ complete draft for the next track. Dry + Wet tracks may use regular wet playback
 or replay their dry recording through live effects as their default; other track
 types always use regular playback.
 
-Native processor choices are External, **Built-in Synth**, and feature-dependent
-Carla modes. Browser builds offer Built-in Synth. Its channel shape is fixed at
+Native processor choices are External, **Built-in FX**, **Built-in Synth**, and
+feature-dependent Carla modes. Browser builds offer both built-ins. Built-in FX
+has two dry audio inputs, two wet audio outputs, and no MIDI. Built-in Synth has
 two dry inputs, two wet outputs, and one MIDI input.
 
 Track controls
@@ -76,8 +77,12 @@ mappings in Carla. External chains respond only to controls they already support
 Built-in Synth provides MIDI Learn for its reverb-send and chorus-send controls.
 
 Processed-track controls show only capabilities advertised by the selected
-processor. Built-in Synth uses an embedded editor. Carla tracks expose lifecycle,
+processor. Both built-ins use embedded editors. Carla tracks expose lifecycle,
 UI, recovery, state, and bounded process-log controls when available.
+
+Built-in FX is powered by FunDSP. It is a fixed stereo audio rack whose MVP has
+one reverb toggle. Disabling reverb passes audio through without running reverb
+DSP and discards the old tail; the toggle is saved with the session.
 
 Built-in Synth is powered by OxiSynth and the embedded SoundFont. Its track shape
 is fixed at two dry audio inputs, two wet audio outputs, and one MIDI input; the

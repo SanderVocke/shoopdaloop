@@ -11,8 +11,8 @@ pub use native::{
     run_carla_worker_if_requested, smoke_test_carla_runtime, smoke_test_carla_ui,
 };
 pub use shoop_app_api::{
-    OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
-    TrackProcessorEditorState, TrackProcessorTypeId,
+    BuiltInFxControl, BuiltInFxState, OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter,
+    OxiSynthState, TrackProcessorEditorState, TrackProcessorTypeId,
 };
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -337,6 +337,7 @@ pub enum BackendTrackFxControl {
     ToggleOrRecover,
     RestoreState(String),
     ClearLogs,
+    BuiltInFx(BuiltInFxControl),
     OxiSynth(OxiSynthControl),
 }
 
@@ -1229,6 +1230,51 @@ fn validate_backend_midi_cc_assignments(track: &BackendSessionTrack) -> Result<(
     Ok(())
 }
 
+pub fn builtin_fx_descriptor() -> TrackProcessorDescriptor {
+    TrackProcessorDescriptor {
+        id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+        label: "Built-in FX".to_owned(),
+        available: true,
+        unavailable_reason: None,
+        constraints: shoop_app_api::TrackProcessorConstraints {
+            min_dry_audio_channels: Some(2),
+            max_dry_audio_channels: Some(2),
+            min_wet_audio_channels: Some(2),
+            max_wet_audio_channels: Some(2),
+            matching_audio_channels: true,
+            midi: shoop_app_api::TrackProcessorMidiPolicy::Unsupported,
+        },
+        features: shoop_app_api::TrackProcessorFeatures {
+            state: true,
+            embedded_ui: true,
+            ..shoop_app_api::TrackProcessorFeatures::default()
+        },
+        editor: Some(shoop_app_api::TrackProcessorEditorDescriptor::BuiltInFx),
+    }
+}
+
+#[cfg(test)]
+mod builtin_fx_descriptor_tests {
+    use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn descriptor_is_fixed_stereo_audio_only_and_stateful() {
+        let descriptor = builtin_fx_descriptor();
+        assert_eq!(descriptor.id.as_str(), TrackProcessorTypeId::BUILTIN_FX);
+        assert_eq!(descriptor.label, "Built-in FX");
+        assert!(descriptor.available);
+        assert!(descriptor.constraints.accepts(2, 2, false));
+        assert!(!descriptor.constraints.accepts(1, 1, false));
+        assert!(!descriptor.constraints.accepts(2, 2, true));
+        assert!(descriptor.features.state);
+        assert!(descriptor.features.embedded_ui);
+        assert_eq!(
+            descriptor.editor,
+            Some(shoop_app_api::TrackProcessorEditorDescriptor::BuiltInFx)
+        );
+    }
+}
+
 pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
     TrackProcessorDescriptor {
         id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
@@ -1285,6 +1331,13 @@ mod oxisynth_descriptor_tests {
         assert_eq!(presets[0].id, "0:0");
         assert_eq!(presets[0].name, "Piano 1");
     }
+}
+
+pub fn encode_builtin_fx_state(state: &BuiltInFxState) -> String {
+    shoop_engine::builtin_fx::BuiltInFxState {
+        reverb_enabled: state.reverb_enabled,
+    }
+    .encode()
 }
 
 pub fn encode_oxisynth_state(state: &OxiSynthState) -> Result<String> {
@@ -1448,7 +1501,14 @@ struct EngineTrack {
     input_balance: f32,
     input_monitoring: bool,
     latency: BackendTrackLatencyState,
+    builtin_fx: Option<EngineBuiltInFx>,
     oxisynth: Option<EngineOxiFx>,
+}
+
+struct EngineBuiltInFx {
+    control: shoop_engine::builtin_fx::BuiltInFxControlState,
+    active: bool,
+    visible: bool,
 }
 
 struct EngineOxiFx {
@@ -2040,7 +2100,11 @@ impl EngineBackend {
         self.input_peak = 0.0;
         for track in self.tracks.values() {
             for (channel, session_port) in track.audio_inputs.iter().enumerate() {
-                let backend_port_id = track.ports[channel * 2];
+                let backend_port_id = if track.builtin_fx.is_some() {
+                    track.ports[channel]
+                } else {
+                    track.ports[channel * 2]
+                };
                 let registry_id = self.connection_ports[&backend_port_id].registry_id;
                 let mut source_count = 0;
                 self.route_scratch[..n_frames].fill(0.0);
@@ -2098,7 +2162,11 @@ impl EngineBackend {
         self.output_peak = 0.0;
         for track in self.tracks.values() {
             for (channel, session_port) in track.audio_outputs.iter().enumerate() {
-                let backend_port_id = track.ports[channel * 2 + 1];
+                let backend_port_id = if track.builtin_fx.is_some() {
+                    track.ports[track.audio_inputs.len() + channel]
+                } else {
+                    track.ports[channel * 2 + 1]
+                };
                 let registry_id = self.connection_ports[&backend_port_id].registry_id;
                 let samples = self
                     .session
@@ -2443,6 +2511,186 @@ impl EngineBackend {
         Ok(loop_id)
     }
 
+    fn create_builtin_fx_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        let BackendTrackTopology::DryWetProcessor {
+            processor_type,
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } = request.topology.clone()
+        else {
+            return Err(anyhow!("expected processed track topology"));
+        };
+        if processor_type != TrackProcessorTypeId::BUILTIN_FX
+            || dry_audio_channels != 2
+            || wet_audio_channels != 2
+            || dry_midi
+        {
+            return Err(anyhow!(
+                "Built-in FX requires two dry audio channels, two wet audio channels, and no MIDI input"
+            ));
+        }
+        let capture_samples = self.sample_rate as usize * INPUT_CAPTURE_CAPACITY_SECONDS as usize;
+        let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
+        let mut audio_inputs = Vec::with_capacity(2);
+        let mut audio_sends = Vec::with_capacity(2);
+        let mut audio_outputs = Vec::with_capacity(2);
+        let mut audio_returns = Vec::with_capacity(2);
+        let mut ports = Vec::with_capacity(4);
+        for index in 0..2 {
+            let input_name = format!("{}_audio_dry_in_{}", request.port_name_base, index + 1);
+            let input_registry_id = self.next_port_id();
+            let input = if self.port_model == EnginePortModel::Physical {
+                let mut input = ExternalAudioPort::new(
+                    input_name.clone(),
+                    PortDirection::Input,
+                    capture_block_size,
+                );
+                input.audio_mut().set_passthrough_muted(true);
+                input.audio_mut().set_ringbuffer_n_samples(capture_samples);
+                self.session.add_port(Port::External(input))
+            } else {
+                let mut input = DummyAudioPort::new(
+                    input_registry_id,
+                    input_name.clone(),
+                    PortDirection::Input,
+                    capture_block_size,
+                );
+                input.audio_mut().set_passthrough_muted(true);
+                input.audio_mut().set_ringbuffer_n_samples(capture_samples);
+                self.session.add_port(Port::Dummy(input))
+            };
+            let send = self.session.add_port(Port::Internal(InternalAudioPort::new(
+                format!("{}:audio_in_{index}", request.port_name_base),
+                self.buffer_size as usize,
+                shoop_engine::PortConnectability::INTERNAL,
+                shoop_engine::PortConnectability::INTERNAL,
+                0,
+            )));
+            self.session.connect_ports_internal(input, send)?;
+            ports.push(self.register_connection_port(
+                input_registry_id,
+                input_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Input,
+                BackendPortRole::AudioInput,
+            ));
+            audio_inputs.push(input);
+            audio_sends.push(send);
+        }
+        for index in 0..2 {
+            let output_name = format!("{}_audio_wet_out_{}", request.port_name_base, index + 1);
+            let output_registry_id = self.next_port_id();
+            let output = if self.port_model == EnginePortModel::Physical {
+                self.session.add_port(Port::External(ExternalAudioPort::new(
+                    output_name.clone(),
+                    PortDirection::Output,
+                    self.buffer_size as usize,
+                )))
+            } else {
+                self.session.add_port(Port::Dummy(DummyAudioPort::new(
+                    output_registry_id,
+                    output_name.clone(),
+                    PortDirection::Output,
+                    1,
+                )))
+            };
+            let mut receive = InternalAudioPort::new(
+                format!("{}:audio_out_{index}", request.port_name_base),
+                self.buffer_size as usize,
+                shoop_engine::PortConnectability::INTERNAL,
+                shoop_engine::PortConnectability::INTERNAL,
+                capture_block_size,
+            );
+            receive
+                .audio_mut()
+                .set_ringbuffer_n_samples(capture_samples);
+            let receive = self.session.add_port(Port::Internal(receive));
+            self.session.connect_ports_internal(receive, output)?;
+            ports.push(self.register_connection_port(
+                output_registry_id,
+                output_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Output,
+                BackendPortRole::AudioOutput,
+            ));
+            audio_outputs.push(output);
+            audio_returns.push(receive);
+        }
+        if self.port_model == EnginePortModel::Physical {
+            let output_channels = WEB_AUDIO_DESTINATION_PORTS
+                .iter()
+                .filter(|host| {
+                    self.external_connections
+                        .mock_ports()
+                        .iter()
+                        .any(|port| port.name == **host)
+                })
+                .count();
+            for channel in 0..output_channels.min(2) {
+                let registry = self.connection_ports[&ports[2 + channel].id].registry_id;
+                self.external_connections
+                    .connect(registry, WEB_AUDIO_DESTINATION_PORTS[channel])?;
+            }
+            self.connection_revision = self.connection_revision.wrapping_add(1);
+        }
+        let control = shoop_engine::builtin_fx::BuiltInFxControlState::default();
+        let processor =
+            control.prepare_processor(self.sample_rate as f32, self.buffer_size as usize);
+        let _ = self
+            .session
+            .set_builtin_fx_processor(request.port_name_base.clone(), processor);
+        self.session.set_processor_ports(
+            &request.port_name_base,
+            audio_sends.clone(),
+            audio_returns.clone(),
+            vec![],
+        )?;
+        let track_id = BackendTrackId::from_raw(self.next_track_id);
+        self.next_track_id = self.next_track_id.saturating_add(1);
+        self.tracks.insert(
+            track_id,
+            EngineTrack {
+                port_name_base: request.port_name_base,
+                topology: request.topology,
+                default_playback_mode: BackendDefaultPlaybackMode::Regular,
+                audio_inputs,
+                audio_outputs,
+                audio_sends,
+                audio_returns,
+                midi_input: None,
+                midi_output: None,
+                midi_input_port: None,
+                midi_output_port: None,
+                loops: Vec::new(),
+                ports: ports.iter().map(|port| port.id).collect(),
+                output_gain_db: 0.0,
+                output_balance: 0.0,
+                output_muted: false,
+                input_gain_db: 0.0,
+                input_balance: 0.0,
+                input_monitoring: false,
+                latency: BackendTrackLatencyState::default(),
+                builtin_fx: Some(EngineBuiltInFx {
+                    control,
+                    active: false,
+                    visible: false,
+                }),
+                oxisynth: None,
+            },
+        );
+        let mut loops = Vec::with_capacity(request.initial_loops);
+        for _ in 0..request.initial_loops {
+            loops.push(self.create_track_loop(track_id)?);
+        }
+        self.apply_graph_changes()?;
+        Ok(BackendTrackCreation {
+            track_id,
+            loops,
+            ports,
+        })
+    }
+
     fn create_oxisynth_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
         let BackendTrackTopology::DryWetProcessor {
             processor_type,
@@ -2633,6 +2881,7 @@ impl EngineBackend {
                 input_balance: 0.0,
                 input_monitoring: false,
                 latency: BackendTrackLatencyState::default(),
+                builtin_fx: None,
                 oxisynth: Some(EngineOxiFx {
                     control,
                     active: false,
@@ -2724,6 +2973,11 @@ impl EngineBackend {
                 .ok_or_else(|| anyhow!("missing processor output port"))?
                 .set_passthrough_muted(routing.wet_output_passthrough_muted);
         }
+        if let Some(builtin_fx) = track.builtin_fx.as_mut() {
+            builtin_fx.active = routing.processor_active;
+            self.session
+                .set_builtin_fx_active(&title, routing.processor_active);
+        }
         if let Some(oxisynth) = track.oxisynth.as_mut() {
             oxisynth.active = routing.processor_active;
             self.session
@@ -2739,7 +2993,11 @@ impl EngineBackend {
             let state = BackendTrackState {
                 topology: track.topology.clone(),
                 default_playback_mode: track.default_playback_mode,
-                fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
+                fx: track
+                    .builtin_fx
+                    .as_ref()
+                    .map(engine_builtin_fx_state)
+                    .or_else(|| track.oxisynth.as_ref().map(engine_oxisynth_fx_state)),
                 audio_channels: track.audio_outputs.len() as u32,
                 midi: track.midi_input.is_some(),
                 output_gain_db: track.output_gain_db,
@@ -2878,7 +3136,11 @@ impl EngineBackend {
                     .map(app_oxisynth_midi_cc_assignment)
                     .map(backend_oxisynth_midi_cc_assignment)
                     .collect(),
-                processor_state: track.oxisynth.as_ref().map(|fx| fx.control.encode()),
+                processor_state: track
+                    .builtin_fx
+                    .as_ref()
+                    .map(|fx| fx.control.encode())
+                    .or_else(|| track.oxisynth.as_ref().map(|fx| fx.control.encode())),
             });
         }
         let mut global_connections = connections
@@ -2928,7 +3190,8 @@ impl EngineBackend {
             let processor_state_valid = match &track.topology {
                 BackendTrackTopology::Direct { .. } => track.processor_state.is_none(),
                 BackendTrackTopology::DryWetProcessor { processor_type, .. }
-                    if processor_type == TrackProcessorTypeId::OXISYNTH =>
+                    if processor_type == TrackProcessorTypeId::BUILTIN_FX
+                        || processor_type == TrackProcessorTypeId::OXISYNTH =>
                 {
                     track.processor_state.is_some()
                 }
@@ -3611,6 +3874,22 @@ fn trace_peak_counters(
     );
 }
 
+fn engine_builtin_fx_state(fx: &EngineBuiltInFx) -> TrackFxState {
+    let state = fx.control.state();
+    TrackFxState {
+        processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+        active: fx.active,
+        visible: fx.visible,
+        lifecycle: FxLifecycle::Running,
+        generation: 0,
+        crash_summary: None,
+        logs: Arc::from([]),
+        editor: Some(TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+            reverb_enabled: state.reverb_enabled,
+        })),
+    }
+}
+
 fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
     let editor = fx.control.editor_state();
     TrackFxState {
@@ -3646,7 +3925,7 @@ impl Backend for EngineBackend {
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
-        Ok(vec![oxisynth_descriptor()].into())
+        Ok(vec![builtin_fx_descriptor(), oxisynth_descriptor()].into())
     }
 
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
@@ -3720,6 +3999,11 @@ impl Backend for EngineBackend {
                 midi: *midi,
                 initial_loops: request.initial_loops,
             }),
+            BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                if processor_type == TrackProcessorTypeId::BUILTIN_FX =>
+            {
+                self.create_builtin_fx_track(request)
+            }
             BackendTrackTopology::DryWetProcessor { processor_type, .. }
                 if processor_type == TrackProcessorTypeId::OXISYNTH =>
             {
@@ -4062,6 +4346,7 @@ impl Backend for EngineBackend {
                 input_balance: 0.0,
                 input_monitoring: false,
                 latency: BackendTrackLatencyState::default(),
+                builtin_fx: None,
                 oxisynth: None,
             },
         );
@@ -4574,6 +4859,38 @@ impl Backend for EngineBackend {
             .tracks
             .get_mut(&track_id)
             .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
+        if let Some(fx) = track.builtin_fx.as_mut() {
+            let title = track.port_name_base.clone();
+            match control {
+                BackendTrackFxControl::SetActive(active) => {
+                    fx.active = active;
+                    self.session.set_builtin_fx_active(&title, active);
+                }
+                BackendTrackFxControl::SetVisible(visible) => fx.visible = visible,
+                BackendTrackFxControl::ToggleOrRecover => fx.visible = !fx.visible,
+                BackendTrackFxControl::RestoreState(state) => {
+                    let replacement =
+                        shoop_engine::builtin_fx::BuiltInFxControlState::from_encoded(&state)?;
+                    let processor = replacement
+                        .prepare_processor(self.sample_rate as f32, self.buffer_size as usize);
+                    let displaced = self.session.set_builtin_fx_processor(title, processor);
+                    drop(displaced);
+                    fx.control = replacement;
+                }
+                BackendTrackFxControl::ClearLogs => {}
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(enabled)) => {
+                    fx.control.set_reverb_enabled(enabled);
+                    self.session
+                        .builtin_fx_processor_mut(&title)
+                        .ok_or_else(|| anyhow!("missing Built-in FX processor"))?
+                        .set_reverb_enabled(enabled);
+                }
+                BackendTrackFxControl::OxiSynth(_) => {
+                    return Err(anyhow!("OxiSynth control belongs to a Built-in FX track"));
+                }
+            }
+            return Ok(());
+        }
         if let Some(fx) = track.oxisynth.as_mut() {
             let title = track.port_name_base.clone();
             match control {
@@ -4595,6 +4912,9 @@ impl Backend for EngineBackend {
                     fx.control = replacement;
                 }
                 BackendTrackFxControl::ClearLogs => {}
+                BackendTrackFxControl::BuiltInFx(_) => {
+                    return Err(anyhow!("Built-in FX control belongs to an OxiSynth track"));
+                }
                 BackendTrackFxControl::OxiSynth(control) => match control {
                     OxiSynthControl::SelectPreset(id) => {
                         let preset = shoop_engine::oxisynth::OxiSynthPresetId::from_stable_id(&id)?;
@@ -4664,7 +4984,11 @@ impl Backend for EngineBackend {
             .tracks
             .get_mut(&track_id)
             .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
-        Ok(track.oxisynth.as_ref().map(|fx| fx.control.encode()))
+        Ok(track
+            .builtin_fx
+            .as_ref()
+            .map(|fx| fx.control.encode())
+            .or_else(|| track.oxisynth.as_ref().map(|fx| fx.control.encode())))
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
@@ -5390,7 +5714,11 @@ impl Backend for EngineBackend {
                 BackendTrackState {
                     topology: track.topology.clone(),
                     default_playback_mode: track.default_playback_mode,
-                    fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
+                    fx: track
+                        .builtin_fx
+                        .as_ref()
+                        .map(engine_builtin_fx_state)
+                        .or_else(|| track.oxisynth.as_ref().map(engine_oxisynth_fx_state)),
                     audio_channels: track.audio_outputs.len() as u32,
                     midi: track.midi_input.is_some(),
                     output_gain_db: track.output_gain_db,
@@ -7557,6 +7885,12 @@ impl Backend for FakeBackend {
             }
             BackendTrackFxControl::RestoreState(_) => {}
             BackendTrackFxControl::ClearLogs => fx.logs = Arc::from([]),
+            BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(enabled)) => {
+                let Some(TrackProcessorEditorState::BuiltInFx(editor)) = fx.editor.as_mut() else {
+                    return Err(anyhow!("Built-in FX editor state is unavailable"));
+                };
+                editor.reverb_enabled = enabled;
+            }
             BackendTrackFxControl::OxiSynth(control) => {
                 let Some(TrackProcessorEditorState::OxiSynth(editor)) = fx.editor.as_mut() else {
                     return Err(anyhow!("OxiSynth editor state is unavailable"));
@@ -11572,6 +11906,147 @@ mod tests {
                 .process_audio_quantum(&[], 0, &mut [], 0, 128)
                 .unwrap();
         });
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_renders_bypasses_and_restores_transactionally() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(2, 2).unwrap();
+        let request = TrackRequest {
+            port_name_base: "builtin-fx-state".to_owned(),
+            topology: BackendTrackTopology::DryWetProcessor {
+                processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: false,
+            },
+            initial_loops: 1,
+        };
+        let created = backend.create_track(request.clone()).unwrap();
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .map(|port| port.role)
+                .collect::<Vec<_>>(),
+            [
+                BackendPortRole::AudioInput,
+                BackendPortRole::AudioInput,
+                BackendPortRole::AudioOutput,
+                BackendPortRole::AudioOutput,
+            ]
+        );
+        for (index, port) in created
+            .ports
+            .iter()
+            .filter(|port| port.role == BackendPortRole::AudioInput)
+            .enumerate()
+        {
+            backend
+                .set_port_connected(port.id, WEB_AUDIO_CAPTURE_PORTS[index], true)
+                .unwrap();
+        }
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend.poll().unwrap();
+
+        let mut impulse = vec![0.0; 256];
+        impulse[0] = 1.0;
+        impulse[1] = 0.5;
+        let mut output = vec![0.0; 256];
+        backend
+            .process_audio_quantum(&impulse, 2, &mut output, 2, 128)
+            .unwrap();
+        let mut tail_peak = 0.0_f32;
+        for _ in 0..400 {
+            backend
+                .process_audio_quantum(&vec![0.0; 256], 2, &mut output, 2, 128)
+                .unwrap();
+            tail_peak = output
+                .iter()
+                .fold(tail_peak, |peak, sample| peak.max(sample.abs()));
+        }
+        assert!(tail_peak > 1.0e-6, "tail peak {tail_peak}");
+
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            )
+            .unwrap();
+        let input = (0..256)
+            .map(|index| index as f32 / 512.0)
+            .collect::<Vec<_>>();
+        backend
+            .process_audio_quantum(&input, 2, &mut output, 2, 128)
+            .unwrap();
+        assert_eq!(output, input);
+        assert_eq!(
+            backend.track_fx_state_string(created.track_id).unwrap(),
+            Some("shoop-builtin-fx:1:0".to_owned())
+        );
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.tracks[&created.track_id]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+                reverb_enabled: false,
+            }))
+        );
+        assert!(backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
+            )
+            .is_err());
+        assert!(backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::RestoreState("malformed".to_owned()),
+            )
+            .is_err());
+        assert_eq!(
+            backend.track_fx_state_string(created.track_id).unwrap(),
+            Some("shoop-builtin-fx:1:0".to_owned())
+        );
+
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].processor_state.as_deref(),
+            Some("shoop-builtin-fx:1:0")
+        );
+        let source_track = captured.tracks[0].source_id;
+        let replacement = backend.replace_session(&captured).unwrap();
+        let restored_track = replacement.tracks[&source_track].track_id;
+        assert_eq!(
+            backend.track_fx_state_string(restored_track).unwrap(),
+            Some("shoop-builtin-fx:1:0".to_owned())
+        );
+        assert_eq!(
+            backend.poll().unwrap().tracks[&restored_track]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+                reverb_enabled: false,
+            }))
+        );
+
+        for (dry_audio_channels, wet_audio_channels, dry_midi) in
+            [(1, 2, false), (2, 1, false), (2, 2, true)]
+        {
+            let mut invalid = request.clone();
+            invalid.topology = BackendTrackTopology::DryWetProcessor {
+                processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+            };
+            assert!(backend.create_track(invalid).is_err());
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

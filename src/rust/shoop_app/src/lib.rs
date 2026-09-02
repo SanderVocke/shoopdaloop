@@ -783,6 +783,7 @@ fn apply_track_control(state: &mut TrackControlState, control: BackendTrackContr
 enum FxControlKey {
     Active,
     Visible,
+    BuiltInFxReverbEnabled,
     OxiPreset,
     OxiReverbSend,
     OxiChorusSend,
@@ -793,6 +794,16 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
     match control {
         BackendTrackFxControl::SetActive(value) => fx.active = *value,
         BackendTrackFxControl::SetVisible(value) => fx.visible = *value,
+        BackendTrackFxControl::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(
+            enabled,
+        )) => {
+            let Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(editor)) =
+                fx.editor.as_mut()
+            else {
+                return;
+            };
+            editor.reverb_enabled = *enabled;
+        }
         BackendTrackFxControl::OxiSynth(control) => {
             let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) =
                 fx.editor.as_mut()
@@ -857,6 +868,9 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
     Some(match control {
         BackendTrackFxControl::SetActive(_) => FxControlKey::Active,
         BackendTrackFxControl::SetVisible(_) => FxControlKey::Visible,
+        BackendTrackFxControl::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(_)) => {
+            FxControlKey::BuiltInFxReverbEnabled
+        }
         BackendTrackFxControl::OxiSynth(control) => match control {
             shoop_app_api::OxiSynthControl::SelectPreset(_) => FxControlKey::OxiPreset,
             shoop_app_api::OxiSynthControl::SetReverbSend(_) => FxControlKey::OxiReverbSend,
@@ -4837,6 +4851,22 @@ impl ApplicationModel {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::BuiltInFx(builtin_fx) => {
+                let control = BackendTrackFxControl::BuiltInFx(builtin_fx);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| {
+                        format!("could not update Built-in FX track {track_id}: {error}")
+                    })?;
+                if let Some(key) = fx_control_key(&control) {
+                    self.desired_fx_controls
+                        .insert((track.backend_id, key), control.clone());
+                    if let Some(fx) = track.fx.as_mut() {
+                        apply_fx_control(fx, &control);
+                    }
+                }
+                return Ok(());
             }
             TrackAction::OxiSynth(oxisynth) => {
                 let control = BackendTrackFxControl::OxiSynth(oxisynth);
@@ -8984,7 +9014,15 @@ impl ApplicationModel {
                     let internal_state = captured.processor_state.clone().ok_or_else(|| {
                         format!("processed track {} has no captured state", track.id)
                     })?;
-                    let topology = if chain_type == FxChainTypeDocument::OxiSynth {
+                    let topology = if chain_type == FxChainTypeDocument::BuiltInFx {
+                        if *dry_audio_channels != 2 || *wet_audio_channels != 2 || *dry_midi {
+                            return Err(format!(
+                                "Built-in FX track {} has an invalid channel shape",
+                                track.id
+                            ));
+                        }
+                        TrackTopologyDocument::BuiltInFx
+                    } else if chain_type == FxChainTypeDocument::OxiSynth {
                         if *dry_audio_channels != 2 || *wet_audio_channels != 2 || !dry_midi {
                             return Err(format!(
                                 "OxiSynth track {} has an invalid channel shape",
@@ -10422,6 +10460,7 @@ fn fx_chain_type_for_processor(
         shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X => {
             Ok(FxChainTypeDocument::CarlaPatchbay16x)
         }
+        shoop_app_api::TrackProcessorTypeId::BUILTIN_FX => Ok(FxChainTypeDocument::BuiltInFx),
         shoop_app_api::TrackProcessorTypeId::OXISYNTH => Ok(FxChainTypeDocument::OxiSynth),
         "test_2x2x1" => Ok(FxChainTypeDocument::Test),
         value => Err(format!(
@@ -10439,6 +10478,7 @@ fn processor_for_fx_chain_type(
         FxChainTypeDocument::CarlaPatchbay16x => {
             shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
         }
+        FxChainTypeDocument::BuiltInFx => shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
         FxChainTypeDocument::OxiSynth => shoop_app_api::TrackProcessorTypeId::OXISYNTH,
         FxChainTypeDocument::Test => "test_2x2x1",
     })
@@ -10531,6 +10571,28 @@ fn runtime_track_topology(
                 },
                 dry_audio_channels.saturating_add(wet_audio_channels),
                 *midi,
+            ))
+        }
+        TrackTopologyDocument::BuiltInFx => {
+            let processor = shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+            );
+            validate_loaded_processor(track.id, &processor, 2, 2, false, processors)?;
+            Ok((
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: processor.as_str().to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                    processor_type: processor,
+                },
+                4,
+                false,
             ))
         }
         TrackTopologyDocument::OxiSynth => {
@@ -13288,6 +13350,110 @@ mod tests {
                 PortRoleDocument::MidiSend,
             ]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_session_round_trip_preserves_reverb_state() {
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Built-in FX".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+                    ),
+                    default_playback_mode: shoop_app_api::DefaultPlaybackMode::Regular,
+                },
+                latency: shoop_app_api::TrackLatencySpec::default(),
+                creation_request_id: None,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = runtime.snapshot().tracks[1].clone();
+        assert_eq!(
+            track.fx.as_ref().and_then(|fx| fx.editor.as_ref()),
+            Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                shoop_app_api::BuiltInFxState {
+                    reverb_enabled: true,
+                },
+            ))
+        );
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(
+                    false,
+                )),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                shoop_app_api::BuiltInFxState {
+                    reverb_enabled: false,
+                },
+            ))
+        );
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let saved_track = &saved.document.track_groups[1].tracks[0];
+        assert_eq!(saved_track.topology, TrackTopologyDocument::BuiltInFx);
+        assert_eq!(
+            runtime_track_topology(saved_track, &runtime.snapshot().track_processors)
+                .unwrap()
+                .2,
+            4
+        );
+        let chain = saved_track.fx_chain.as_ref().unwrap();
+        assert_eq!(chain.chain_type, FxChainTypeDocument::BuiltInFx);
+        assert_eq!(chain.internal_state, "shoop-builtin-fx:1:0");
+        assert!(chain.midi_cc_assignments.is_empty());
+
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(
+                    true,
+                )),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "builtin-fx.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..4 {
+            runtime.tick(Duration::ZERO);
+        }
+        let loaded = runtime.snapshot();
+        assert_eq!(
+            loaded.tracks[1]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&shoop_app_api::TrackProcessorEditorState::BuiltInFx(
+                shoop_app_api::BuiltInFxState {
+                    reverb_enabled: false,
+                },
+            ))
+        );
+        assert!(!loaded.tracks[1].fx.as_ref().unwrap().visible);
     }
 
     #[shoop_wasm_test_support::shoop_test]

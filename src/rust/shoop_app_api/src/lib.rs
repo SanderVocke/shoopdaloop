@@ -70,6 +70,7 @@ impl TrackProcessorTypeId {
     pub const CARLA_PATCHBAY: &'static str = "carla_patchbay";
     pub const CARLA_PATCHBAY_16X: &'static str = "carla_patchbay_16x";
     pub const OXISYNTH: &'static str = "oxisynth";
+    pub const BUILTIN_FX: &'static str = "builtin_fx";
 
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -143,6 +144,7 @@ pub struct TrackProcessorPresetDescriptor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrackProcessorEditorDescriptor {
+    BuiltInFx,
     OxiSynth {
         presets: Arc<[TrackProcessorPresetDescriptor]>,
     },
@@ -243,8 +245,14 @@ pub struct OxiSynthState {
     pub midi_cc_assignments: Arc<[OxiSynthMidiCcAssignment]>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BuiltInFxState {
+    pub reverb_enabled: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackProcessorEditorState {
+    BuiltInFx(BuiltInFxState),
     OxiSynth(OxiSynthState),
 }
 
@@ -1593,6 +1601,11 @@ pub enum LoopAction {
 
 pub type LoopWidgetAction = LoopAction;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuiltInFxControl {
+    SetReverbEnabled(bool),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum OxiSynthControl {
     SelectPreset(String),
@@ -1624,6 +1637,7 @@ pub enum TrackAction {
     FxToggleOrRecover,
     FxRestoreState(String),
     FxClearLogs,
+    BuiltInFx(BuiltInFxControl),
     OxiSynth(OxiSynthControl),
 }
 
@@ -1917,6 +1931,14 @@ impl LoopAction {
     }
 }
 
+impl BuiltInFxControl {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::SetReverbEnabled(_) => "track.builtin_fx.reverb_enabled",
+        }
+    }
+}
+
 impl OxiSynthControl {
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -1949,6 +1971,7 @@ impl TrackAction {
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
+            Self::BuiltInFx(control) => control.kind(),
             Self::OxiSynth(control) => control.kind(),
         }
     }
@@ -2394,6 +2417,14 @@ mod tests {
         assert_eq!(
             GlobalControlAction::SetAutoArmTrackInputs(false).kind(),
             "global.auto_arm_track_inputs"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_controls_have_stable_intent_kinds() {
+        assert_eq!(
+            TrackAction::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)).kind(),
+            "track.builtin_fx.reverb_enabled"
         );
     }
 
