@@ -77,6 +77,10 @@ impl DummyExternalConnections {
         self.connections.clear();
     }
 
+    pub fn remove_local_port_connections(&mut self, port: PortId) {
+        self.connections.retain(|(candidate, _)| *candidate != port);
+    }
+
     pub fn mock_ports(&self) -> &[ExternalPortDescriptor] {
         &self.mock_ports
     }
@@ -426,6 +430,17 @@ mod tests {
         c.remove_mock_port("a");
         check!(c.mock_ports().is_empty());
         check!(c.connection_status_of(PortId(1)).is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn removing_a_local_port_drops_only_its_connections() {
+        let mut c = DummyExternalConnections::default();
+        c.add_mock_port("a", D::Input, T::Audio);
+        assert2::assert!(let Ok(()) = c.connect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(2), "a"));
+        c.remove_local_port_connections(PortId(1));
+        check!(c.connection_status_of(PortId(1)).get("a") == Some(&false));
+        check!(c.connection_status_of(PortId(2)).get("a") == Some(&true));
     }
 
     #[shoop_wasm_test_support::shoop_test]

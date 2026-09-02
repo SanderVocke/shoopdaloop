@@ -3339,6 +3339,8 @@ impl EngineBackend {
         for channel in bus.channels {
             if let Some(port) = self.connection_ports.remove(&channel.output_port_id) {
                 self.external_connections
+                    .remove_local_port_connections(port.registry_id);
+                self.external_connections
                     .remove_mock_port(&format!("shoop:{}", port.descriptor.name));
             }
         }
@@ -10440,7 +10442,24 @@ impl Backend for FakeBackend {
                 name: source_bus.name.clone(),
                 channel_count: u32::try_from(source_bus.channels.len())
                     .map_err(|_| anyhow!("session bus channel count exceeds u32"))?,
-            };
+            }
+            .normalized()?;
+            let expected_labels = default_bus_channel_labels(source_bus.channels.len())?;
+            if source_bus
+                .channels
+                .iter()
+                .zip(&expected_labels)
+                .any(|(channel, label)| {
+                    channel.label != *label
+                        || channel.output_port.descriptor.owner
+                            != BackendPortOwner::Bus(BackendBusId::from_raw(source_bus.source_id))
+                        || channel.output_port.descriptor.data_type != BackendPortDataType::Audio
+                        || channel.output_port.descriptor.direction != BackendPortDirection::Output
+                        || channel.output_port.descriptor.role != BackendPortRole::AudioOutput
+                })
+            {
+                return Err(anyhow!("session bus shape is invalid"));
+            }
             let created = if source_bus.source_id == MASTER_BUS_ID.raw()
                 && source_bus.name == MASTER_BUS_NAME
                 && source_bus.channels.len() == 2
