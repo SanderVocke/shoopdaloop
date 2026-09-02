@@ -724,6 +724,19 @@ impl NativeRuntime {
         self.create_bus_with_ids(request, bus_id, channel_ids, output_port_ids)
     }
 
+    fn rollback_unpublished_bus_channels(&mut self, channels: Vec<NativeBusChannel>) {
+        for channel in channels {
+            if let Some(port) = self.ports.remove(&channel.output_port_id) {
+                if let NativePortHandle::Audio(output) = port.handle {
+                    let _ = self.driver.unregister_audio_port(&output);
+                    let _ = self.session.remove_audio_port(&output);
+                }
+            }
+            let _ = self.session.remove_audio_port(&channel.input);
+        }
+        let _ = self.wait_for_graph();
+    }
+
     fn create_bus_with_ids(
         &mut self,
         request: BackendBusRequest,
@@ -770,25 +783,44 @@ impl NativeRuntime {
             .zip(labels)
             .enumerate()
         {
-            let input = AudioPort::new_internal_port(
+            let input = match AudioPort::new_internal_port(
                 &self.session,
                 &format!("bus_{}:input_{}", bus_id.raw(), index + 1),
                 &PortDirection::Input,
                 0,
-            )?;
+            ) {
+                Ok(input) => input,
+                Err(error) => {
+                    self.rollback_unpublished_bus_channels(channels);
+                    return Err(error);
+                }
+            };
             let output_name = if bus_id == MASTER_BUS_ID {
                 format!("master_out_{}", index + 1)
             } else {
                 format!("bus_{}_out_{}", bus_id.raw(), index + 1)
             };
-            let output = AudioPort::new_driver_port(
+            let output = match AudioPort::new_driver_port(
                 &self.session,
                 &self.driver,
                 &output_name,
                 &PortDirection::Output,
                 self.resolved.buffer_size,
-            )?;
-            input.connect_internal(&output)?;
+            ) {
+                Ok(output) => output,
+                Err(error) => {
+                    let _ = self.session.remove_audio_port(&input);
+                    self.rollback_unpublished_bus_channels(channels);
+                    return Err(error);
+                }
+            };
+            if let Err(error) = input.connect_internal(&output) {
+                let _ = self.driver.unregister_audio_port(&output);
+                let _ = self.session.remove_audio_port(&input);
+                let _ = self.session.remove_audio_port(&output);
+                self.rollback_unpublished_bus_channels(channels);
+                return Err(error.into());
+            }
             self.next_owned_port_with_id(
                 output_port_id,
                 BackendPortOwner::Bus(bus_id),
@@ -806,16 +838,7 @@ impl NativeRuntime {
             });
         }
         if !self.wait_for_graph()? {
-            for channel in &channels {
-                if let Some(port) = self.ports.remove(&channel.output_port_id) {
-                    if let NativePortHandle::Audio(output) = port.handle {
-                        let _ = self.driver.unregister_audio_port(&output);
-                        let _ = self.session.remove_audio_port(&output);
-                    }
-                }
-                let _ = self.session.remove_audio_port(&channel.input);
-            }
-            let _ = self.wait_for_graph();
+            self.rollback_unpublished_bus_channels(channels);
             return Err(anyhow!("bus graph did not become active"));
         }
         let creation = BackendBusCreation {

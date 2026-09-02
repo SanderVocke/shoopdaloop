@@ -7810,6 +7810,28 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn batch_detach_keeps_audio_handles_live_for_transactional_rollback() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let input =
+            AudioPort::new_internal_port(&sess, "input", &PortDirection::Input, 0).expect("input");
+        let output = AudioPort::new_internal_port(&sess, "output", &PortDirection::Output, 0)
+            .expect("output");
+        input.connect_internal(&output).expect("connect");
+        engine.pump();
+        sess.detach_audio_ports(&[input.clone(), output.clone()])
+            .expect("batch detach");
+        engine.pump();
+        assert_eq!(input.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(output.lifecycle(), ObjectLifecycle::Ready);
+        input.connect_internal(&output).expect("rollback connect");
+        engine.pump();
+        assert_eq!(input.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(output.lifecycle(), ObjectLifecycle::Ready);
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn multichannel_audio_port_parameters_use_one_control_command() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
