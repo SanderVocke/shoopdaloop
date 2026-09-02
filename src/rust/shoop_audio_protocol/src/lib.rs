@@ -620,6 +620,7 @@ pub enum Event {
     },
     SessionReplaceComplete {
         generation: u64,
+        mixer_revision: u64,
     },
     LoopContentReplaceComplete {
         generation: u64,

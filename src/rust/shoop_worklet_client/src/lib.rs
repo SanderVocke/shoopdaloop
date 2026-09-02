@@ -94,6 +94,7 @@ struct SessionCaptureAssembly {
 
 struct SessionReplaceAssembly {
     generation: u64,
+    mixer_revision: Option<u64>,
     bytes: Arc<[u8]>,
     next_offset: usize,
     commit_sent: bool,
@@ -764,6 +765,7 @@ impl RemoteWorkletBackend {
         &mut self,
         session: &BackendSessionData,
         replacement: &BackendSessionReplacement,
+        mixer_revision: u64,
     ) {
         self.transport.borrow_mut().commit_reserved_session_replay();
 
@@ -896,7 +898,7 @@ impl RemoteWorkletBackend {
                 })
             })
             .collect();
-        self.snapshot.mixer.revision = self.snapshot.mixer.revision.wrapping_add(1);
+        self.snapshot.mixer.revision = mixer_revision;
         self.next_track_id = replacement
             .tracks
             .values()
@@ -2704,8 +2706,11 @@ impl Backend for RemoteWorkletBackend {
         }
         if let Some(replace) = &self.session_replace {
             if replace.complete {
+                let mixer_revision = replace
+                    .mixer_revision
+                    .ok_or_else(|| anyhow!("session replacement omitted mixer revision"))?;
                 let replacement = browser_replacement_mapping(session);
-                self.apply_replaced_session(session, &replacement);
+                self.apply_replaced_session(session, &replacement, mixer_revision);
                 self.session_replace = None;
                 return Ok(BackendAsyncResult::Ready(replacement));
             }
@@ -2742,6 +2747,7 @@ impl Backend for RemoteWorkletBackend {
         let total = bytes.len();
         self.session_replace = Some(SessionReplaceAssembly {
             generation,
+            mixer_revision: None,
             bytes,
             next_offset: 0,
             commit_sent: false,
@@ -3267,9 +3273,13 @@ impl Backend for RemoteWorkletBackend {
                     final_chunk,
                     bytes,
                 )?,
-                Event::SessionReplaceComplete { generation } => {
+                Event::SessionReplaceComplete {
+                    generation,
+                    mixer_revision,
+                } => {
                     if let Some(replace) = self.session_replace.as_mut() {
                         if replace.generation == generation {
+                            replace.mixer_revision = Some(mixer_revision);
                             replace.complete = true;
                         }
                     }
@@ -5176,6 +5186,7 @@ mod tests {
             .unwrap();
         backend.session_replace = Some(SessionReplaceAssembly {
             generation: 7,
+            mixer_revision: None,
             bytes: Arc::from([1_u8]),
             next_offset: 0,
             commit_sent: false,
@@ -5197,6 +5208,7 @@ mod tests {
             .unwrap();
         backend.session_replace = Some(SessionReplaceAssembly {
             generation: 8,
+            mixer_revision: None,
             bytes: Arc::from([1_u8]),
             next_offset: 1,
             commit_sent: true,
@@ -5487,9 +5499,10 @@ mod tests {
             .borrow_mut()
             .reserve_session_replay(7, Arc::clone(&encoded_session))
             .unwrap();
-        backend.apply_replaced_session(&session, &replacement);
+        backend.apply_replaced_session(&session, &replacement, 9);
         assert_eq!(backend.next_port_id, 1);
         assert_eq!(backend.snapshot.mixer.buses.len(), 1);
+        assert_eq!(backend.snapshot.mixer.revision, 9);
         let master = &backend.snapshot.mixer.buses[&MASTER_BUS_ID];
         assert_eq!(master.gain_db, -3.0);
         assert_eq!(master.balance, 0.0);

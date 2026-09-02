@@ -975,13 +975,22 @@ impl WorkletHost {
                 self.backend
                     .replace_session(&session)
                     .map_err(|error| error.to_string())?;
+                let mixer_revision = self
+                    .backend
+                    .poll()
+                    .map_err(|error| error.to_string())?
+                    .mixer
+                    .revision;
                 self.replace_generation = None;
                 self.replace_expected_bytes = 0;
                 self.replace_bytes.clear();
                 self.capture_generation = None;
                 self.capture_bytes.clear();
                 self.composite_plan_versions.clear();
-                Ok(Event::SessionReplaceComplete { generation })
+                Ok(Event::SessionReplaceComplete {
+                    generation,
+                    mixer_revision,
+                })
             }
             Command::AbortSessionTransfer { generation } => {
                 if self.capture_generation == Some(generation) {
@@ -4430,15 +4439,20 @@ mod tests {
         };
         assert!(before_commit.callback_count > 1);
         sequence += 1;
-        assert!(matches!(
-            command(
-                &mut host,
-                sequence,
-                Command::CommitSessionReplace { generation: 8 },
-            )
-            .event,
-            Event::SessionReplaceComplete { generation: 8 }
-        ));
+        let Event::SessionReplaceComplete {
+            generation,
+            mixer_revision,
+        } = command(
+            &mut host,
+            sequence,
+            Command::CommitSessionReplace { generation: 8 },
+        )
+        .event
+        else {
+            panic!("expected session replacement completion")
+        };
+        assert_eq!(generation, 8);
+        assert!(mixer_revision > 0);
         sequence += 1;
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
         let Event::Snapshot(snapshot) = command(&mut host, sequence, Command::Poll).event else {
