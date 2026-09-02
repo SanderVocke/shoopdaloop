@@ -1,14 +1,14 @@
 //! Bounded same-sample resolution for compiled composite-loop plans.
 
 use crate::composite_plan::{
-    CompiledChildMode, CompiledCompositeKind, CompiledCompositePlan, LoopIdentity, LoopTargetKind,
-    MAX_COMPOSITE_BOUNDARY_OUTPUTS,
+    CompiledChildMode, CompiledCompositeKind, CompiledCompositePlan, CompiledPlanActionKind,
+    LoopIdentity, LoopTargetKind, MAX_COMPOSITE_BOUNDARY_OUTPUTS,
 };
 use crate::composite_runtime::{
     CompositeRuntime, CompositeRuntimeError, CompositeTargetAction, CompositeTransitionBatch,
 };
 use crate::state_mirror::CompositeStateMirror;
-use crate::LoopMode;
+use crate::{DefaultPlaybackMode, LoopMode};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
@@ -140,6 +140,8 @@ pub enum CompositeTimelineBuildError {
     SourceIsNotComposite,
     #[error("a composite target is not installed in this timeline")]
     MissingCompositeTarget,
+    #[error("a script event requests an unsupported mode from a nested regular composite")]
+    UnsupportedNestedRegularMode,
     #[error("the installed composite topology contains a cycle")]
     DependencyCycle,
     #[error("the installed composite topology exceeds the event-wave capacity")]
@@ -280,6 +282,29 @@ impl CompositeBoundaryTimeline {
             {
                 if !source_set.contains(target) {
                     return Err(CompositeTimelineBuildError::MissingCompositeTarget);
+                }
+            }
+        }
+
+        for node in by_source.values() {
+            if node.plan().kind() != CompiledCompositeKind::Script {
+                continue;
+            }
+            for action in node.plan().actions() {
+                let CompiledPlanActionKind::SetDesired(desired) = action.kind else {
+                    continue;
+                };
+                let CompiledChildMode::Explicit(mode) = desired.mode else {
+                    continue;
+                };
+                let target = node.plan().targets()[usize::from(action.target_index)];
+                if target.kind == LoopTargetKind::Composite
+                    && by_source.get(&target).is_some_and(|target_node| {
+                        target_node.plan().kind() == CompiledCompositeKind::Regular
+                    })
+                    && !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
+                {
+                    return Err(CompositeTimelineBuildError::UnsupportedNestedRegularMode);
                 }
             }
         }
@@ -652,6 +677,17 @@ impl CompositeBoundaryTimeline {
     }
 
     pub fn anticipated_transition(&self, target: LoopIdentity) -> Option<(LoopMode, u32)> {
+        self.anticipated_transition_with_default_playback(target, |_| DefaultPlaybackMode::Regular)
+    }
+
+    pub fn anticipated_transition_with_default_playback<D>(
+        &self,
+        target: LoopIdentity,
+        mut primitive_default_playback: D,
+    ) -> Option<(LoopMode, u32)>
+    where
+        D: FnMut(LoopIdentity) -> DefaultPlaybackMode,
+    {
         let mut node_modes = [None; MAX_COMPOSITE_CONTROLS];
         let mut anticipated = None;
         for (node_index, node) in self.nodes.iter().enumerate() {
@@ -675,7 +711,13 @@ impl CompositeBoundaryTimeline {
                     continue;
                 };
                 let mode = match desired.mode {
-                    CompiledChildMode::Inherit => composite_mode,
+                    CompiledChildMode::DefaultPlayback => {
+                        if child.kind == LoopTargetKind::Composite {
+                            LoopMode::Playing
+                        } else {
+                            primitive_default_playback(child).loop_mode()
+                        }
+                    }
                     CompiledChildMode::Explicit(mode) => mode,
                 };
                 if desired.child_is_empty
@@ -728,7 +770,16 @@ impl CompositeBoundaryTimeline {
                     })
                     .and_then(|desired| {
                         let mode = match desired.mode {
-                            CompiledChildMode::Inherit => mode,
+                            CompiledChildMode::DefaultPlayback => current.map_or_else(
+                                || {
+                                    if target.kind == LoopTargetKind::Composite {
+                                        LoopMode::Playing
+                                    } else {
+                                        primitive_default_playback(target).loop_mode()
+                                    }
+                                },
+                                |active| active.mode,
+                            ),
                             CompiledChildMode::Explicit(mode) => mode,
                         };
                         (!desired.child_is_empty
@@ -985,10 +1036,29 @@ impl CompositeBoundaryTimeline {
         &mut self,
         primitive_triggers: &[LoopIdentity],
         natural_intents: &[BoundaryIntent],
-        mut primitive_is_current: F,
+        primitive_is_current: F,
     ) -> Result<&[BoundaryTraceEntry], CompositeTimelineFaultRecord>
     where
         F: FnMut(LoopIdentity) -> bool,
+    {
+        self.resolve_boundary_with_default_playback(
+            primitive_triggers,
+            natural_intents,
+            primitive_is_current,
+            |_| DefaultPlaybackMode::Regular,
+        )
+    }
+
+    pub fn resolve_boundary_with_default_playback<F, D>(
+        &mut self,
+        primitive_triggers: &[LoopIdentity],
+        natural_intents: &[BoundaryIntent],
+        mut primitive_is_current: F,
+        mut primitive_default_playback: D,
+    ) -> Result<&[BoundaryTraceEntry], CompositeTimelineFaultRecord>
+    where
+        F: FnMut(LoopIdentity) -> bool,
+        D: FnMut(LoopIdentity) -> DefaultPlaybackMode,
     {
         if self.fault.fault != CompositeTimelineFault::None {
             return Err(self.fault);
@@ -1080,7 +1150,7 @@ impl CompositeBoundaryTimeline {
                     intent_is_authoritative(intent.origin),
                     &mut primitive_is_current,
                 )?;
-                self.append_batch(node_index, &batch)?;
+                self.append_batch(node_index, &batch, &mut primitive_default_playback)?;
                 if matches!(
                     intent.action,
                     BoundaryTargetAction::Stop
@@ -1093,7 +1163,7 @@ impl CompositeBoundaryTimeline {
                     let activation =
                         self.activate_stopped_replacement(node_index, &mut primitive_is_current)?;
                     self.activated_replacements[node_index] = true;
-                    self.append_batch(node_index, &activation)?;
+                    self.append_batch(node_index, &activation, &mut primitive_default_playback)?;
                 }
                 if matches!(intent.action, BoundaryTargetAction::SetMode { .. })
                     && self.working_runtimes[node_index].mode() != LoopMode::Stopped
@@ -1133,7 +1203,7 @@ impl CompositeBoundaryTimeline {
                         })
                         .map_err(|_| self.runtime_fault())?
                 };
-                self.append_batch(node_index, &batch)?;
+                self.append_batch(node_index, &batch, &mut primitive_default_playback)?;
                 if was_eligible {
                     self.mark_triggered(source)?;
                 }
@@ -1311,11 +1381,15 @@ impl CompositeBoundaryTimeline {
         result.map_err(|_| self.runtime_fault())
     }
 
-    fn append_batch(
+    fn append_batch<D>(
         &mut self,
         node_index: usize,
         batch: &CompositeTransitionBatch,
-    ) -> Result<(), CompositeTimelineFaultRecord> {
+        primitive_default_playback: &mut D,
+    ) -> Result<(), CompositeTimelineFaultRecord>
+    where
+        D: FnMut(LoopIdentity) -> DefaultPlaybackMode,
+    {
         let plan = if self.activated_replacements[node_index] {
             self.nodes[node_index]
                 .pending_plan
@@ -1331,6 +1405,25 @@ impl CompositeBoundaryTimeline {
         for (ordinal, transition) in batch.as_slice().iter().enumerate() {
             let action = match transition.action {
                 CompositeTargetAction::Stop => BoundaryTargetAction::Stop,
+                CompositeTargetAction::DefaultPlayback {
+                    cycle_offset,
+                    retrigger,
+                } => {
+                    let mode = if transition.target.kind == LoopTargetKind::Composite {
+                        LoopMode::Playing
+                    } else {
+                        primitive_default_playback(transition.target).loop_mode()
+                    };
+                    self.working_runtimes[node_index]
+                        .latch_default_playback_mode(transition.target, mode);
+                    BoundaryTargetAction::SetMode {
+                        mode,
+                        offset_samples: u64::from(cycle_offset)
+                            .saturating_mul(sync_length)
+                            .saturating_add(sync_position),
+                        retrigger,
+                    }
+                }
                 CompositeTargetAction::SetMode {
                     mode,
                     cycle_offset,

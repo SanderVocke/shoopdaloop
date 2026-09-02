@@ -88,6 +88,13 @@ fn set_mode(mode: LoopMode, cycle_offset: u32, retrigger: bool) -> CompositeTarg
     }
 }
 
+fn default_playback(cycle_offset: u32, retrigger: bool) -> CompositeTargetAction {
+    CompositeTargetAction::DefaultPlayback {
+        cycle_offset,
+        retrigger,
+    }
+}
+
 #[shoop_wasm_test_support::shoop_test]
 fn compiler_flattens_sequential_parallel_delayed_and_repeated_entries() {
     let source = composite(100);
@@ -108,6 +115,11 @@ fn compiler_flattens_sequential_parallel_delayed_and_repeated_entries() {
     let plan = compile(&desc, &catalog(source, &[(a, 100), (b, 100), (c, 100)]));
 
     assert_eq!(plan.kind(), CompiledCompositeKind::Regular);
+    let a_index = plan.targets().binary_search(&a).unwrap();
+    assert_eq!(
+        plan.desired(0, a_index, false).unwrap().mode,
+        CompiledChildMode::DefaultPlayback
+    );
     assert_eq!(plan.n_iterations(), 4);
     assert_eq!(plan.targets(), &[b, c, a]);
     assert!(plan
@@ -479,10 +491,7 @@ fn explicit_start_establishes_an_authoritative_target_snapshot() {
     assert_eq!(batch.as_slice()[0].target, delayed);
     assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
     assert_eq!(batch.as_slice()[1].target, active);
-    assert_eq!(
-        batch.as_slice()[1].action,
-        set_mode(LoopMode::Playing, 0, true)
-    );
+    assert_eq!(batch.as_slice()[1].action, default_playback(0, true));
 }
 
 #[shoop_wasm_test_support::shoop_test]
@@ -510,10 +519,7 @@ fn explicit_seek_reestablishes_the_complete_destination_snapshot() {
     assert_eq!(batch.as_slice()[0].target, delayed);
     assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
     assert_eq!(batch.as_slice()[1].target, active);
-    assert_eq!(
-        batch.as_slice()[1].action,
-        set_mode(LoopMode::Playing, 0, true)
-    );
+    assert_eq!(batch.as_slice()[1].action, default_playback(0, true));
 }
 
 #[shoop_wasm_test_support::shoop_test]
@@ -539,14 +545,11 @@ fn delayed_start_executes_the_authoritative_snapshot() {
     assert_eq!(batch.as_slice()[0].target, delayed);
     assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
     assert_eq!(batch.as_slice()[1].target, active);
-    assert_eq!(
-        batch.as_slice()[1].action,
-        set_mode(LoopMode::Playing, 0, true)
-    );
+    assert_eq!(batch.as_slice()[1].action, default_playback(0, true));
 }
 
 #[shoop_wasm_test_support::shoop_test]
-fn regular_runtime_inherits_modes_and_empty_playback_is_duration_only() {
+fn regular_runtime_uses_only_default_playback_and_reserves_empty_children() {
     let source = composite(100);
     let full = basic(1);
     let empty = basic(2);
@@ -560,38 +563,27 @@ fn regular_runtime_inherits_modes_and_empty_playback_is_duration_only() {
     );
     let plan = compile(&desc, &catalog(source, &[(full, 1), (empty, 0)]));
 
+    let mut runtime = CompositeRuntime::new(&plan);
+    let batch = runtime
+        .transition_immediate(&plan, LoopMode::Playing, None, always_current)
+        .unwrap();
+    assert_eq!(batch.as_slice().len(), 2);
+    assert_eq!(batch.as_slice()[0].target, empty);
+    assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
+    assert_eq!(batch.as_slice()[1].target, full);
+    assert_eq!(batch.as_slice()[1].action, default_playback(0, true));
+
     for mode in [
-        LoopMode::Playing,
         LoopMode::PlayingDryThroughWet,
+        LoopMode::Recording,
         LoopMode::Replacing,
+        LoopMode::RecordingDryIntoWet,
     ] {
         let mut runtime = CompositeRuntime::new(&plan);
-        let batch = runtime
-            .transition_immediate(&plan, mode, None, always_current)
-            .unwrap();
-        assert_eq!(batch.as_slice().len(), 2);
-        if mode == LoopMode::Replacing {
-            assert_eq!(batch.as_slice()[0].target, full);
-            assert_eq!(
-                batch.as_slice()[0].action,
-                set_mode(LoopMode::Replacing, 0, true)
-            );
-            assert_eq!(batch.as_slice()[1].target, empty);
-            assert_eq!(batch.as_slice()[1].action, set_mode(mode, 0, true));
-        } else {
-            assert_eq!(batch.as_slice()[0].target, empty);
-            assert_eq!(batch.as_slice()[0].action, CompositeTargetAction::Stop);
-            assert_eq!(batch.as_slice()[1].target, full);
-            assert_eq!(batch.as_slice()[1].action, set_mode(mode, 0, true));
-        }
-    }
-
-    for mode in [LoopMode::Recording, LoopMode::RecordingDryIntoWet] {
-        let mut runtime = CompositeRuntime::new(&plan);
-        let batch = runtime
-            .transition_immediate(&plan, mode, None, always_current)
-            .unwrap();
-        assert_eq!(batch.as_slice().len(), 2);
+        assert_eq!(
+            runtime.transition_immediate(&plan, mode, None, always_current),
+            Err(CompositeRuntimeError::UnsupportedRegularMode)
+        );
     }
 }
 
@@ -636,6 +628,11 @@ fn script_uses_explicit_modes_and_stops_after_one_pass() {
         ])],
     );
     let plan = compile(&desc, &catalog(source, &[(child, 1)]));
+    let child_index = plan.targets().binary_search(&child).unwrap();
+    assert_eq!(
+        plan.desired(0, child_index, false).unwrap().mode,
+        CompiledChildMode::Explicit(LoopMode::Playing)
+    );
     let mut runtime = CompositeRuntime::new(&plan);
 
     let start = runtime
@@ -708,7 +705,7 @@ fn stop_and_clear_cancel_pending_state_and_clean_children_in_stable_order() {
     runtime
         .transition_immediate(&plan, LoopMode::Playing, None, always_current)
         .unwrap();
-    runtime.request_transition(LoopMode::Recording, 3).unwrap();
+    runtime.request_transition(LoopMode::Playing, 3).unwrap();
 
     let stopped = runtime.stop(&plan, always_current).unwrap();
     assert_eq!(
@@ -754,7 +751,7 @@ fn countdown_skips_exactly_the_requested_boundaries_while_current_pass_advances(
     runtime
         .transition_immediate(&plan, LoopMode::Playing, None, always_current)
         .unwrap();
-    runtime.request_transition(LoopMode::Recording, 1).unwrap();
+    runtime.request_transition(LoopMode::Playing, 1).unwrap();
 
     assert!(runtime
         .sync_boundary(&plan, always_current)
@@ -764,11 +761,8 @@ fn countdown_skips_exactly_the_requested_boundaries_while_current_pass_advances(
     assert_eq!(runtime.pending().unwrap().boundaries_to_skip, 0);
     let due = runtime.sync_boundary(&plan, always_current).unwrap();
     assert_eq!(runtime.iteration(), 0);
-    assert_eq!(runtime.mode(), LoopMode::Recording);
-    assert_eq!(
-        due.as_slice()[0].action,
-        set_mode(LoopMode::Recording, 0, true)
-    );
+    assert_eq!(runtime.mode(), LoopMode::Playing);
+    assert_eq!(due.as_slice()[0].action, default_playback(0, true));
     assert_eq!(
         runtime.request_transition(LoopMode::Unknown, 0),
         Err(CompositeRuntimeError::UnknownMode)
@@ -783,7 +777,7 @@ fn countdown_skips_exactly_the_requested_boundaries_while_current_pass_advances(
 }
 
 #[shoop_wasm_test_support::shoop_test]
-fn overlapping_references_do_not_hide_the_first_recording_occurrence() {
+fn regular_composites_reject_recording_even_with_overlapping_references() {
     let source = composite(100);
     let child = basic(1);
     let desc = descriptor(
@@ -796,19 +790,14 @@ fn overlapping_references_do_not_hide_the_first_recording_occurrence() {
     );
     let plan = compile(&desc, &catalog(source, &[(child, 1)]));
     let mut runtime = CompositeRuntime::new(&plan);
-    runtime
-        .transition_immediate(&plan, LoopMode::Recording, None, always_current)
-        .unwrap();
-    assert!(runtime
-        .sync_boundary(&plan, always_current)
-        .unwrap()
-        .is_empty());
-    let first_end = runtime.sync_boundary(&plan, always_current).unwrap();
-    assert_eq!(first_end.as_slice()[0].action, CompositeTargetAction::Stop);
+    assert_eq!(
+        runtime.transition_immediate(&plan, LoopMode::Recording, None, always_current),
+        Err(CompositeRuntimeError::UnsupportedRegularMode)
+    );
 }
 
 #[shoop_wasm_test_support::shoop_test]
-fn recording_only_uses_first_occurrence_and_honors_both_pass_end_options() {
+fn regular_composites_reject_every_non_regular_outer_mode() {
     let source = composite(100);
     let child = basic(1);
     let desc = descriptor(
@@ -821,31 +810,19 @@ fn recording_only_uses_first_occurrence_and_honors_both_pass_end_options() {
     );
     let plan = compile(&desc, &catalog(source, &[(child, 1)]));
 
-    let mut stop_after = CompositeRuntime::new(&plan);
-    stop_after
-        .transition_immediate(&plan, LoopMode::Recording, None, always_current)
-        .unwrap();
-    let repeated = stop_after.sync_boundary(&plan, always_current).unwrap();
-    assert_eq!(repeated.as_slice()[0].action, CompositeTargetAction::Stop);
-    assert!(stop_after
-        .sync_boundary(&plan, always_current)
-        .unwrap()
-        .is_empty());
-    assert_eq!(stop_after.mode(), LoopMode::Stopped);
-
-    let mut play_after = CompositeRuntime::new(&plan);
-    play_after.set_play_after_record(true);
-    play_after
-        .transition_immediate(&plan, LoopMode::Recording, None, always_current)
-        .unwrap();
-    play_after.sync_boundary(&plan, always_current).unwrap();
-    let playback = play_after.sync_boundary(&plan, always_current).unwrap();
-    assert_eq!(play_after.mode(), LoopMode::Playing);
-    assert_eq!(play_after.iteration(), 0);
-    assert_eq!(
-        playback.as_slice()[0].action,
-        set_mode(LoopMode::Playing, 0, true)
-    );
+    let mut runtime = CompositeRuntime::new(&plan);
+    for mode in [
+        LoopMode::PlayingDryThroughWet,
+        LoopMode::Recording,
+        LoopMode::Replacing,
+        LoopMode::RecordingDryIntoWet,
+    ] {
+        assert_eq!(
+            runtime.transition_immediate(&plan, mode, None, always_current),
+            Err(CompositeRuntimeError::UnsupportedRegularMode)
+        );
+    }
+    assert_eq!(runtime.counters().rejected_modes, 4);
 }
 
 #[shoop_wasm_test_support::shoop_test]
@@ -868,14 +845,8 @@ fn immediate_seek_uses_precomputed_state_offsets_without_replay() {
         .transition_immediate(&plan, LoopMode::Playing, Some(2), always_current)
         .unwrap();
     assert_eq!(middle.as_slice().len(), 2);
-    assert_eq!(
-        middle.as_slice()[0].action,
-        set_mode(LoopMode::Playing, 2, true)
-    );
-    assert_eq!(
-        middle.as_slice()[1].action,
-        set_mode(LoopMode::Playing, 1, true)
-    );
+    assert_eq!(middle.as_slice()[0].action, default_playback(2, true));
+    assert_eq!(middle.as_slice()[1].action, default_playback(1, true));
     runtime.set_sync_position(&plan, 7).unwrap();
     assert_eq!(runtime.position_samples(&plan).unwrap(), 207);
 
@@ -884,10 +855,7 @@ fn immediate_seek_uses_precomputed_state_offsets_without_replay() {
     assert_eq!(changed.as_slice()[0].target, b);
     assert_eq!(changed.as_slice()[0].action, CompositeTargetAction::Stop);
     assert_eq!(changed.as_slice()[1].target, a);
-    assert_eq!(
-        changed.as_slice()[1].action,
-        set_mode(LoopMode::Playing, 3, true)
-    );
+    assert_eq!(changed.as_slice()[1].action, default_playback(3, true));
 
     let before = (runtime.mode(), runtime.iteration());
     assert_eq!(
@@ -1006,10 +974,7 @@ fn stopped_and_pending_plan_replacements_activate_but_running_replacements_defer
     assert_eq!(activated.as_slice()[0].target, a);
     assert_eq!(activated.as_slice()[0].action, CompositeTargetAction::Stop);
     assert_eq!(activated.as_slice()[1].target, b);
-    assert_eq!(
-        activated.as_slice()[1].action,
-        set_mode(LoopMode::Playing, 0, true)
-    );
+    assert_eq!(activated.as_slice()[1].action, default_playback(0, true));
     assert_eq!(stopped.active_children().next().unwrap().identity, b);
 }
 

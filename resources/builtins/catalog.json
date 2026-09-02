@@ -4,13 +4,13 @@
       "bytes": 21546,
       "kind": "lua",
       "path": "akai_apc_mini_mk1.lua",
-      "sha256": "250300110ce9f9ba05d5e154eb192e5d5da9bc89d45c7d3ed75b7beaf5fae112"
+      "sha256": "0919f4d9533a478f1fb8813f4eab31d05aed97972cd42892d4acf5d96aaf8a3c"
     },
     {
       "bytes": 19976,
       "kind": "lua",
       "path": "akai_apc_mini_mk2.lua",
-      "sha256": "097902b0d83ad957471d5a45806be85b0e56c4bc42b9c5541fbf1eafc5f2205d"
+      "sha256": "13ac96d4e9a6e6967201c771e795d1c668824651fd3c78a74d97447d8684e3d6"
     },
     {
       "bytes": 1656,
@@ -34,7 +34,7 @@
       "bytes": 9108,
       "kind": "lua",
       "path": "keyboard.lua",
-      "sha256": "869d18b6a79fa74a96fbab7aa432a0af896d0f23b46cacb8f0977d62f4560f4e"
+      "sha256": "015b729b18995549058938626b1e0c77326845d7b2781fea38419da2af08316a"
     }
   ],
   "format": "shoop-builtins-catalog",

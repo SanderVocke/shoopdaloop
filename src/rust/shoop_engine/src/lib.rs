@@ -31,6 +31,7 @@ pub mod content_snapshot;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
+pub mod default_playback_mode;
 pub mod driver;
 pub mod dummy_driver;
 pub mod dummy_midi_port;
@@ -111,6 +112,7 @@ pub use content_snapshot::{
     StaleReason,
 };
 pub use decoupled_midi_port::DecoupledMidiPort;
+pub use default_playback_mode::DefaultPlaybackMode;
 pub use driver::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
     cpal_output_device_names, cpal_output_device_names_for_host, driver_type_supported,

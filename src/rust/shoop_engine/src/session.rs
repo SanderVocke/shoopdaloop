@@ -829,14 +829,24 @@ impl Session {
                 .map(|loop_| u64::from(loop_.position()))
         });
         let trace = composite_timeline
-            .resolve_boundary(&[], &[], |identity| {
-                identity.kind == LoopTargetKind::Basic
-                    && identity.generation == 1
-                    && loop_live
+            .resolve_boundary_with_default_playback(
+                &[],
+                &[],
+                |identity| {
+                    identity.kind == LoopTargetKind::Basic
+                        && identity.generation == 1
+                        && loop_live
+                            .get(identity.slot as usize)
+                            .copied()
+                            .unwrap_or(false)
+                },
+                |identity| {
+                    loops
                         .get(identity.slot as usize)
-                        .copied()
-                        .unwrap_or(false)
-            })
+                        .map(AudioMidiLoop::default_playback_mode)
+                        .unwrap_or_default()
+                },
+            )
             .map_err(|_| CompositeTimelineControlError::BoundaryFault)?;
         for entry in trace {
             if entry.target.kind != LoopTargetKind::Basic
@@ -924,8 +934,15 @@ impl Session {
     fn publish_composite_anticipated_transitions(&self) {
         for (index, loop_) in self.loops.iter().enumerate() {
             let transition = loop_.first_planned_transition().or_else(|| {
-                self.loop_identity(index)
-                    .and_then(|identity| self.composite_timeline.anticipated_transition(identity))
+                self.loop_identity(index).and_then(|identity| {
+                    self.composite_timeline
+                        .anticipated_transition_with_default_playback(identity, |target| {
+                            self.loops
+                                .get(target.slot as usize)
+                                .map(AudioMidiLoop::default_playback_mode)
+                                .unwrap_or_default()
+                        })
+                })
             });
             loop_.publish_state_with_transition(transition);
         }
@@ -3039,7 +3056,7 @@ impl Session {
                             .get(identity.slot as usize)
                             .map(|loop_| u64::from(loop_.position()))
                     });
-                    let trace = match composite_timeline.resolve_boundary(
+                    let trace = match composite_timeline.resolve_boundary_with_default_playback(
                         boundary_triggers,
                         boundary_natural_intents,
                         |identity| {
@@ -3049,6 +3066,12 @@ impl Session {
                                     .get(identity.slot as usize)
                                     .copied()
                                     .unwrap_or(false)
+                        },
+                        |identity| {
+                            loops
+                                .get(identity.slot as usize)
+                                .map(AudioMidiLoop::default_playback_mode)
+                                .unwrap_or_default()
                         },
                     ) {
                         Ok(trace) => trace,

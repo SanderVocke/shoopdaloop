@@ -5,8 +5,8 @@ use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk,
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
     WireBuiltInFxState, WireChannelMode, WireCompositeConfig, WireCompositeKind,
-    WireCompositeState, WireCompositeTarget, WireConfirmedLink, WireHostPort,
-    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WireCompositeState, WireCompositeTarget, WireConfirmedLink, WireDefaultPlaybackMode,
+    WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
     WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState, WirePortDataType,
     WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
     WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyState,
@@ -16,13 +16,13 @@ use shoop_audio_protocol::{
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
-    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, BuiltInFxControl, BuiltInFxState, EngineBackend,
-    OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter, TrackProcessorEditorState,
-    TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
+    BackendCompositeKind, BackendCompositeTarget, BackendDefaultPlaybackMode, BackendGrabRequest,
+    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
+    BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, BuiltInFxControl, BuiltInFxState,
+    EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter,
+    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -483,6 +483,20 @@ impl WorkletHost {
                     .set_track_control(
                         BackendTrackId::from_raw(track_id),
                         from_wire_track_control(control),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetTrackDefaultPlaybackMode { track_id, mode } => {
+                self.backend
+                    .set_track_default_playback_mode(
+                        BackendTrackId::from_raw(track_id),
+                        match mode {
+                            WireDefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+                            WireDefaultPlaybackMode::DryThroughWet => {
+                                BackendDefaultPlaybackMode::DryThroughWet
+                            }
+                        },
                     )
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
@@ -1221,6 +1235,12 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             .map(|(id, track)| WireTrackState {
                 id: id.raw(),
                 topology: to_wire_track_topology(&track.topology),
+                default_playback_mode: match track.default_playback_mode {
+                    BackendDefaultPlaybackMode::Regular => WireDefaultPlaybackMode::Regular,
+                    BackendDefaultPlaybackMode::DryThroughWet => {
+                        WireDefaultPlaybackMode::DryThroughWet
+                    }
+                },
                 fx: track.fx.and_then(|fx| match fx.editor? {
                     TrackProcessorEditorState::BuiltInFx(BuiltInFxState { reverb_enabled }) => {
                         Some(WireTrackFxState {
@@ -3452,6 +3472,87 @@ mod tests {
         ));
         assert!(matches!(
             command(&mut host, 1, Command::Poll).event,
+            Event::Error { .. }
+        ));
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_applies_and_validates_track_default_playback_commands() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "processed".to_owned(),
+                    topology: WireTrackTopology::OxiSynth,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::SetTrackDefaultPlaybackMode {
+                    track_id: 1,
+                    mode: WireDefaultPlaybackMode::DryThroughWet,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let default_snapshot = command(&mut host, 3, Command::Poll).event;
+        assert!(matches!(
+            default_snapshot,
+            Event::Snapshot(snapshot)
+                if snapshot.tracks.iter().any(|track| {
+                    track.id == 1
+                        && track.default_playback_mode
+                            == WireDefaultPlaybackMode::DryThroughWet
+                })
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::CreateTrack {
+                    expected_track_id: 2,
+                    expected_loop_ids: vec![2],
+                    port_name_base: "direct".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::SetTrackDefaultPlaybackMode {
+                    track_id: 2,
+                    mode: WireDefaultPlaybackMode::DryThroughWet,
+                },
+            )
+            .event,
+            Event::Error { .. }
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::SetTrackDefaultPlaybackMode {
+                    track_id: 999,
+                    mode: WireDefaultPlaybackMode::Regular,
+                },
+            )
+            .event,
             Event::Error { .. }
         ));
     }

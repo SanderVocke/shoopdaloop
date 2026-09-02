@@ -8,10 +8,10 @@ use std::time::Duration;
 use js_sys::{Array, Function, Promise};
 use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
-    AppIntent, AppSnapshot, ClickTrackRequest, DirectTrackSpec, GlobalControlAction, IoTaskKind,
-    IoTaskStatus, LoopAction, LoopMode, OxiSynthControl, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, TrackAction, TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec,
-    TrackSpecTopology,
+    AppIntent, AppSnapshot, ClickTrackRequest, DefaultPlaybackMode, DirectTrackSpec,
+    GlobalControlAction, IoTaskKind, IoTaskStatus, LoopAction, LoopMode, OxiSynthControl,
+    OxiSynthMidiCcAssignment, OxiSynthParameter, TrackAction, TrackProcessorEditorState,
+    TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
 };
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
@@ -545,6 +545,7 @@ async fn remote_builtin_synth_state_round_trips_through_session() {
             wet_audio_channels: 2,
             dry_midi: true,
             processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
+            default_playback_mode: DefaultPlaybackMode::DryThroughWet,
         },
         latency: Default::default(),
         creation_request_id: None,
@@ -592,15 +593,16 @@ async fn remote_builtin_synth_state_round_trips_through_session() {
     harness
         .drive_until("published loaded Built-in Synth state", |snapshot| {
             snapshot.tracks.get(1).is_some_and(|track| {
-                track.fx.as_ref().is_some_and(|fx| {
-                    matches!(
-                        fx.editor.as_ref(),
-                        Some(TrackProcessorEditorState::OxiSynth(editor))
-                            if (editor.reverb_send - 0.4).abs() < f32::EPSILON
-                                && (editor.chorus_send - 0.6).abs() < f32::EPSILON
-                                && editor.midi_cc_assignments.len() == 1
-                    )
-                })
+                track.default_playback_mode == DefaultPlaybackMode::DryThroughWet
+                    && track.fx.as_ref().is_some_and(|fx| {
+                        matches!(
+                            fx.editor.as_ref(),
+                            Some(TrackProcessorEditorState::OxiSynth(editor))
+                                if (editor.reverb_send - 0.4).abs() < f32::EPSILON
+                                    && (editor.chorus_send - 0.6).abs() < f32::EPSILON
+                                    && editor.midi_cc_assignments.len() == 1
+                        )
+                    })
             })
         })
         .await;

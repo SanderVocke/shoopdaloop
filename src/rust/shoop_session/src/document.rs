@@ -136,6 +136,8 @@ pub struct TrackDocument {
     pub is_sync: bool,
     pub width: Option<f32>,
     pub topology: TrackTopologyDocument,
+    #[serde(default)]
+    pub default_playback_mode: DefaultPlaybackModeDocument,
     pub controls: TrackControlsDocument,
     #[serde(default)]
     pub latency: TrackLatencyDocument,
@@ -169,6 +171,14 @@ pub enum TrackTopologyDocument {
     BuiltInFx,
     OxiSynth,
     Trigger,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DefaultPlaybackModeDocument {
+    #[default]
+    Regular,
+    DryThroughWet,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]

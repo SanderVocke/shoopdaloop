@@ -328,6 +328,13 @@ pub enum DefaultRecordingAction {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DefaultPlaybackMode {
+    #[default]
+    Regular,
+    DryThroughWet,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum LoopMode {
     #[default]
     Unknown,
@@ -899,6 +906,7 @@ pub struct TrackState {
     pub structural_state: StructuralState,
     pub is_sync: bool,
     pub topology: TrackTopology,
+    pub default_playback_mode: DefaultPlaybackMode,
     pub fx: Option<TrackFxState>,
     pub loops: Vec<LoopState>,
     pub controls: TrackControlState,
@@ -1097,7 +1105,7 @@ impl LuaApiVersion {
     }
 }
 
-pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 4 };
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 5 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
@@ -1383,6 +1391,7 @@ pub enum TrackSpecTopology {
         wet_audio_channels: u32,
         dry_midi: bool,
         processor_type: TrackProcessorTypeId,
+        default_playback_mode: DefaultPlaybackMode,
     },
 }
 
@@ -1450,10 +1459,15 @@ impl TrackSpec {
             wet_audio_channels,
             dry_midi,
             processor_type,
+            default_playback_mode,
         } = &self.topology
         else {
             return Ok(());
         };
+        if *default_playback_mode == DefaultPlaybackMode::DryThroughWet && *wet_audio_channels == 0
+        {
+            return Err(TrackSpecError::UnsupportedShape);
+        }
         let processor = processors
             .iter()
             .find(|candidate| candidate.id == *processor_type)
@@ -1608,6 +1622,7 @@ pub enum TrackAction {
     Remove,
     MoveBefore(Option<TrackId>),
     NameChanged(String),
+    DefaultPlaybackModeChanged(DefaultPlaybackMode),
     OutputGainChanged(f32),
     OutputBalanceChanged(f32),
     OutputMuteChanged(bool),
@@ -1944,6 +1959,7 @@ impl TrackAction {
             Self::Remove => "track.remove",
             Self::MoveBefore(_) => "track.move_before",
             Self::NameChanged(_) => "track.name",
+            Self::DefaultPlaybackModeChanged(_) => "track.default_playback_mode",
             Self::OutputGainChanged(_) => "track.output_gain",
             Self::OutputBalanceChanged(_) => "track.output_balance",
             Self::OutputMuteChanged(_) => "track.output_mute",
@@ -2136,6 +2152,7 @@ mod tests {
                 wet_audio_channels: 2,
                 dry_midi: false,
                 processor_type: processor.id.clone(),
+                default_playback_mode: DefaultPlaybackMode::Regular,
             },
             latency: TrackLatencySpec::default(),
             creation_request_id: None,
@@ -2163,11 +2180,27 @@ mod tests {
                 wet_audio_channels: 2,
                 dry_midi: false,
                 processor_type: processor.id.clone(),
+                default_playback_mode: DefaultPlaybackMode::Regular,
             },
             ..spec.clone()
         };
         assert_eq!(
-            unsupported.validate(&[processor]),
+            unsupported.validate(std::slice::from_ref(&processor)),
+            Err(TrackSpecError::UnsupportedShape)
+        );
+
+        let no_wet_default = TrackSpec {
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 2,
+                wet_audio_channels: 0,
+                dry_midi: false,
+                processor_type: processor.id.clone(),
+                default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            },
+            ..spec
+        };
+        assert_eq!(
+            no_wet_default.validate(&[processor]),
             Err(TrackSpecError::UnsupportedShape)
         );
     }
@@ -2453,7 +2486,7 @@ mod tests {
         assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
         assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
         assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
-        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 4 });
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 5 });
     }
 
     #[shoop_wasm_test_support::shoop_test]
