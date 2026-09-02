@@ -75,6 +75,46 @@ impl ConnectionFilters {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+enum ConnectionTab {
+    #[default]
+    Tracks,
+    BusOutputs,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+enum TrackDestination {
+    Buses,
+    #[default]
+    SystemOutputs,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+struct ConnectionPresentation {
+    tab: ConnectionTab,
+    track_destination: TrackDestination,
+}
+
+impl ConnectionPresentation {
+    fn columns(self) -> &'static [GraphColumn] {
+        match (self.tab, self.track_destination) {
+            (ConnectionTab::Tracks, TrackDestination::Buses) => &[
+                GraphColumn::SystemSources,
+                GraphColumn::ShoopSinks,
+                GraphColumn::ShoopSources,
+                GraphColumn::Buses,
+            ],
+            (ConnectionTab::Tracks, TrackDestination::SystemOutputs) => &[
+                GraphColumn::SystemSources,
+                GraphColumn::ShoopSinks,
+                GraphColumn::ShoopSources,
+                GraphColumn::SystemSinks,
+            ],
+            (ConnectionTab::BusOutputs, _) => &[GraphColumn::Buses, GraphColumn::SystemSinks],
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum GraphColumn {
     SystemSources,
@@ -85,6 +125,7 @@ enum GraphColumn {
 }
 
 impl GraphColumn {
+    #[cfg(test)]
     const ORDERED: [Self; 5] = [
         Self::SystemSources,
         Self::ShoopSinks,
@@ -95,10 +136,10 @@ impl GraphColumn {
 
     const fn system_heading(self) -> Option<&'static str> {
         match self {
-            Self::SystemSources => Some("System sources"),
+            Self::SystemSources => Some("System inputs"),
             Self::ShoopSinks | Self::ShoopSources => None,
             Self::Buses => Some("Buses"),
-            Self::SystemSinks => Some("System sinks"),
+            Self::SystemSinks => Some("System outputs"),
         }
     }
 }
@@ -189,7 +230,16 @@ struct ConnectionGraph {
 }
 
 impl ConnectionGraph {
+    #[cfg(test)]
     fn build(app_state: &AppState, filters: &ConnectionFilters) -> Self {
+        Self::build_for(app_state, filters, ConnectionPresentation::default())
+    }
+
+    fn build_for(
+        app_state: &AppState,
+        filters: &ConnectionFilters,
+        presentation: ConnectionPresentation,
+    ) -> Self {
         let state = app_state.connections.as_ref();
         let track_names: BTreeMap<_, _> = app_state
             .tracks
@@ -206,7 +256,8 @@ impl ConnectionGraph {
             .application_ports
             .iter()
             .filter(|port| {
-                filters.includes_type(port.data_type)
+                presentation.tab == ConnectionTab::Tracks
+                    && filters.includes_type(port.data_type)
                     && filters.includes_owner(&port.owner)
                     && !matches!(port.owner, ApplicationPortOwner::Bus { .. })
             })
@@ -258,13 +309,18 @@ impl ConnectionGraph {
                 });
         }
 
-        if filters.audio {
+        let show_bus_inputs = presentation.tab == ConnectionTab::Tracks
+            && presentation.track_destination == TrackDestination::Buses;
+        let show_bus_outputs = presentation.tab == ConnectionTab::BusOutputs;
+        if filters.audio && (show_bus_inputs || show_bus_outputs) {
             for bus in app_state.buses.iter() {
                 for channel in bus.channels.iter() {
                     let Some(output) = find_application_port(state, channel.output_port_id) else {
                         continue;
                     };
-                    visible_application_ids.insert(output.id);
+                    if show_bus_outputs {
+                        visible_application_ids.insert(output.id);
+                    }
                     let sink_pending = state
                         .pending_mixer_links
                         .iter()
@@ -281,8 +337,9 @@ impl ConnectionGraph {
                         .or_default()
                         .push(GraphEndpoint {
                             id: EndpointId::BusInput(channel.id),
-                            source_id: Some(EndpointId::Application(output.id)),
-                            sink_id: Some(EndpointId::BusInput(channel.id)),
+                            source_id: show_bus_outputs
+                                .then_some(EndpointId::Application(output.id)),
+                            sink_id: show_bus_inputs.then_some(EndpointId::BusInput(channel.id)),
                             column: GraphColumn::Buses,
                             group: bus.name.clone(),
                             label: channel.label.clone(),
@@ -290,13 +347,16 @@ impl ConnectionGraph {
                             data_type: PortDataType::Audio,
                             policy: ConnectionPolicy::UserManaged,
                             mixer_source: false,
-                            source_pending: state
-                                .pending_links
-                                .iter()
-                                .any(|link| link.application_port_id == output.id),
-                            sink_pending,
-                            source_error: latest_error(state, output.id, None),
-                            sink_error,
+                            source_pending: show_bus_outputs
+                                && state
+                                    .pending_links
+                                    .iter()
+                                    .any(|link| link.application_port_id == output.id),
+                            sink_pending: show_bus_inputs && sink_pending,
+                            source_error: show_bus_outputs
+                                .then(|| latest_error(state, output.id, None))
+                                .flatten(),
+                            sink_error: show_bus_inputs.then_some(sink_error).flatten(),
                         });
                 }
             }
@@ -306,6 +366,15 @@ impl ConnectionGraph {
             .host_ports
             .iter()
             .filter(|host| !is_application_owned_host(app_state, host))
+            .filter(|host| match presentation.tab {
+                ConnectionTab::Tracks => match host.direction {
+                    PortDirection::Output => true,
+                    PortDirection::Input => {
+                        presentation.track_destination == TrackDestination::SystemOutputs
+                    }
+                },
+                ConnectionTab::BusOutputs => host.direction == PortDirection::Input,
+            })
             .filter(|host| {
                 filters.includes_type(host.data_type)
                     && visible_application_ids.iter().any(|port_id| {
@@ -361,10 +430,16 @@ impl ConnectionGraph {
                 });
         }
 
-        for endpoints in graph.endpoints.values_mut() {
-            endpoints.sort_by(|left, right| {
-                (&left.group, &left.label, &left.id).cmp(&(&right.group, &right.label, &right.id))
-            });
+        for (column, endpoints) in &mut graph.endpoints {
+            if *column != GraphColumn::Buses {
+                endpoints.sort_by(|left, right| {
+                    (&left.group, &left.label, &left.id).cmp(&(
+                        &right.group,
+                        &right.label,
+                        &right.id,
+                    ))
+                });
+            }
         }
 
         let confirmed: BTreeSet<_> = state
@@ -625,6 +700,7 @@ struct DragState {
     source: EndpointId,
     revision: u64,
     filters: ConnectionFilters,
+    presentation: ConnectionPresentation,
 }
 
 #[derive(Clone, Debug)]
@@ -638,6 +714,7 @@ pub struct ConnectionDialog {
     open: bool,
     scope: ConnectionScope,
     filters: ConnectionFilters,
+    presentation: ConnectionPresentation,
     drag: Option<DragState>,
     open_generation: u64,
     #[cfg(test)]
@@ -658,6 +735,7 @@ impl Default for ConnectionDialog {
             open: false,
             scope: ConnectionScope::AllTracks,
             filters: ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+            presentation: ConnectionPresentation::default(),
             drag: None,
             open_generation: 0,
             #[cfg(test)]
@@ -678,6 +756,7 @@ impl ConnectionDialog {
     pub fn open(&mut self, scope: ConnectionScope) {
         self.scope = scope;
         self.filters = ConnectionFilters::for_scope(scope);
+        self.presentation = ConnectionPresentation::default();
         self.drag = None;
         self.open_generation = self.open_generation.wrapping_add(1);
         self.open = true;
@@ -754,9 +833,12 @@ impl ConnectionDialog {
         let content_height = if state.connections.loading {
             90.0
         } else {
-            let graph = ConnectionGraph::build(state, &self.filters);
-            let tallest_column = GraphColumn::ORDERED
-                .into_iter()
+            let graph = ConnectionGraph::build_for(state, &self.filters, self.presentation);
+            let tallest_column = self
+                .presentation
+                .columns()
+                .iter()
+                .copied()
                 .map(|column| {
                     let endpoints = graph.column(column);
                     let groups = endpoints
@@ -767,7 +849,9 @@ impl ConnectionDialog {
                     34.0 + endpoints.len() as f32 * ENDPOINT_HEIGHT + groups as f32 * 24.0
                 })
                 .fold(0.0, f32::max);
-            let warning_height = if dual_route_warning(&state.connections) {
+            let warning_height = if self.presentation.tab == ConnectionTab::Tracks
+                && dual_route_warning(&state.connections)
+            {
                 58.0
             } else {
                 0.0
@@ -777,7 +861,11 @@ impl ConnectionDialog {
             } else {
                 32.0
             };
-            82.0 + warning_height + tallest_column + error_height
+            let controls_height = match self.presentation.tab {
+                ConnectionTab::Tracks => 130.0,
+                ConnectionTab::BusOutputs => 104.0,
+            };
+            controls_height + warning_height + tallest_column + error_height
         };
         let max_height = (context.content_rect().height() * 0.9).max(220.0);
         content_height.clamp(220.0, max_height)
@@ -798,19 +886,24 @@ impl ConnectionDialog {
             );
         }
 
+        let previous_presentation = self.presentation;
+        self.show_presentation(ui);
         let previous_filters = self.filters.clone();
         self.show_filters(ui, state);
-        if self.filters != previous_filters {
+        if self.filters != previous_filters || self.presentation != previous_presentation {
             self.drag = None;
         }
         if self.drag.as_ref().is_some_and(|drag| {
-            drag.revision != state.connections.revision || drag.filters != self.filters
+            drag.revision != state.connections.revision
+                || drag.filters != self.filters
+                || drag.presentation != self.presentation
         }) {
             self.drag = None;
         }
         ui.separator();
 
-        if dual_route_warning(&state.connections) {
+        if self.presentation.tab == ConnectionTab::Tracks && dual_route_warning(&state.connections)
+        {
             #[cfg(test)]
             {
                 self.dual_route_warning_visible = true;
@@ -822,7 +915,7 @@ impl ConnectionDialog {
             ui.separator();
         }
 
-        let graph = ConnectionGraph::build(state, &self.filters);
+        let graph = ConnectionGraph::build_for(state, &self.filters, self.presentation);
         if graph.endpoints.values().all(Vec::is_empty) {
             ui.label("No ports match the current filters.");
         } else {
@@ -832,6 +925,32 @@ impl ConnectionDialog {
         if let Some(error) = state.connections.errors.last() {
             ui.separator();
             ui.colored_label(colors::ERROR, &error.message);
+        }
+    }
+
+    fn show_presentation(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.presentation.tab, ConnectionTab::Tracks, "Tracks");
+            ui.selectable_value(
+                &mut self.presentation.tab,
+                ConnectionTab::BusOutputs,
+                "Bus outputs",
+            );
+        });
+        if self.presentation.tab == ConnectionTab::Tracks {
+            ui.horizontal(|ui| {
+                ui.label(crate::fonts::bold_text("Track outputs to:"));
+                ui.selectable_value(
+                    &mut self.presentation.track_destination,
+                    TrackDestination::Buses,
+                    "Buses",
+                );
+                ui.selectable_value(
+                    &mut self.presentation.track_destination,
+                    TrackDestination::SystemOutputs,
+                    "System outputs",
+                );
+            });
         }
     }
 
@@ -901,7 +1020,7 @@ impl ConnectionDialog {
         intents: &mut Vec<AppIntent>,
     ) {
         let scroll = egui::ScrollArea::both()
-            .id_salt(("connection_graph", self.scope))
+            .id_salt(("connection_graph", self.scope, self.presentation))
             .auto_shrink([false, false])
             .scroll_source(crate::control_safe_scroll_source())
             .show(ui, |ui| {
@@ -909,44 +1028,53 @@ impl ConnectionDialog {
                 ui.spacing_mut().item_spacing.x = SYSTEM_COLUMN_GAP;
                 ui.horizontal_top(|ui| {
                     let column_height = ui.available_height().max(140.0);
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(COLUMN_WIDTH, column_height),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            self.show_column(
+                    match self.presentation.tab {
+                        ConnectionTab::Tracks => {
+                            self.allocate_column(
                                 ui,
+                                column_height,
                                 revision,
                                 GraphColumn::SystemSources,
                                 graph,
                                 &mut anchors,
-                            )
-                        },
-                    );
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(COLUMN_WIDTH * 2.0 + SHOOP_COLUMN_GAP, column_height),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| self.show_shoop_columns(ui, revision, graph, &mut anchors),
-                    );
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(COLUMN_WIDTH, column_height),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            self.show_column(ui, revision, GraphColumn::Buses, graph, &mut anchors)
-                        },
-                    );
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(COLUMN_WIDTH, column_height),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            self.show_column(
+                            );
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(COLUMN_WIDTH * 2.0 + SHOOP_COLUMN_GAP, column_height),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| self.show_shoop_columns(ui, revision, graph, &mut anchors),
+                            );
+                            let destination = match self.presentation.track_destination {
+                                TrackDestination::Buses => GraphColumn::Buses,
+                                TrackDestination::SystemOutputs => GraphColumn::SystemSinks,
+                            };
+                            self.allocate_column(
                                 ui,
+                                column_height,
+                                revision,
+                                destination,
+                                graph,
+                                &mut anchors,
+                            );
+                        }
+                        ConnectionTab::BusOutputs => {
+                            self.allocate_column(
+                                ui,
+                                column_height,
+                                revision,
+                                GraphColumn::Buses,
+                                graph,
+                                &mut anchors,
+                            );
+                            self.allocate_column(
+                                ui,
+                                column_height,
                                 revision,
                                 GraphColumn::SystemSinks,
                                 graph,
                                 &mut anchors,
-                            )
-                        },
-                    );
+                            );
+                        }
+                    }
                 });
                 let clip_rect = ui.clip_rect();
                 self.paint_routes_and_interact(ui, clip_rect, graph, &anchors, intents);
@@ -991,6 +1119,22 @@ impl ConnectionDialog {
         }
     }
 
+    fn allocate_column(
+        &mut self,
+        ui: &mut egui::Ui,
+        height: f32,
+        revision: u64,
+        column: GraphColumn,
+        graph: &ConnectionGraph,
+        anchors: &mut BTreeMap<EndpointId, EndpointAnchor>,
+    ) {
+        ui.allocate_ui_with_layout(
+            egui::vec2(COLUMN_WIDTH, height),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| self.show_column(ui, revision, column, graph, anchors),
+        );
+    }
+
     fn show_shoop_columns(
         &mut self,
         ui: &mut egui::Ui,
@@ -1001,7 +1145,7 @@ impl ConnectionDialog {
         let width = COLUMN_WIDTH * 2.0 + SHOOP_COLUMN_GAP;
         ui.set_min_width(width);
         ui.set_max_width(width);
-        show_column_heading(ui, "ShoopDaLoop");
+        show_column_heading(ui, "Tracks");
         ui.spacing_mut().item_spacing.x = SHOOP_COLUMN_GAP;
         ui.horizontal_top(|ui| {
             for column in [GraphColumn::ShoopSinks, GraphColumn::ShoopSources] {
@@ -1110,6 +1254,7 @@ impl ConnectionDialog {
                         source: facet.clone(),
                         revision,
                         filters: self.filters.clone(),
+                        presentation: self.presentation,
                     });
                 }
                 let compatible_target = !source
@@ -1621,6 +1766,8 @@ mod tests {
         state.buses = Arc::from([BusState {
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
+            structural_state: crate::StructuralState::Confirmed,
+            structural_error: None,
             channels: Arc::from([BusChannelState {
                 id: BusChannelId::from_raw(1),
                 label: "Left".to_owned(),
@@ -1664,29 +1811,69 @@ mod tests {
         ));
         connections.host_ports = hosts.into();
 
-        let graph = ConnectionGraph::build(
+        let filters = ConnectionFilters::for_scope(ConnectionScope::AllTracks);
+        let bus_graph = ConnectionGraph::build_for(
             &state,
-            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+            &filters,
+            ConnectionPresentation {
+                tab: ConnectionTab::Tracks,
+                track_destination: TrackDestination::Buses,
+            },
         );
-        assert_eq!(graph.column(GraphColumn::Buses).len(), 1);
+        let output_graph = ConnectionGraph::build_for(
+            &state,
+            &filters,
+            ConnectionPresentation {
+                tab: ConnectionTab::BusOutputs,
+                track_destination: TrackDestination::Buses,
+            },
+        );
+        assert_eq!(bus_graph.column(GraphColumn::Buses).len(), 1);
         let bus_input = EndpointId::BusInput(BusChannelId::from_raw(1));
         let bus_output = EndpointId::Application(PortId::from_raw(14));
         let track_output = EndpointId::Application(PortId::from_raw(13));
         let other_track_output = EndpointId::Application(PortId::from_raw(15));
         let system_sink = EndpointId::Host(HostPortId::new("speaker:audio_sink"));
         let other_system_sink = EndpointId::Host(HostPortId::new("headphones:audio_sink"));
-        assert!(graph.is_sink(&bus_input));
-        assert!(graph.is_source(&bus_output));
-        assert!(graph.compatible_drop(&track_output, &bus_input));
+        assert!(bus_graph.is_sink(&bus_input));
+        assert!(!bus_graph.is_source(&bus_output));
+        assert!(bus_graph.column(GraphColumn::SystemSinks).is_empty());
+        assert!(output_graph.is_source(&bus_output));
+        assert!(!output_graph.is_sink(&bus_input));
+        assert!(output_graph.column(GraphColumn::SystemSources).is_empty());
+        assert!(output_graph.column(GraphColumn::ShoopSinks).is_empty());
+        assert!(output_graph.column(GraphColumn::ShoopSources).is_empty());
+        let scoped_output_graph = ConnectionGraph::build_for(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::Track(TrackId::from_raw(1))),
+            ConnectionPresentation {
+                tab: ConnectionTab::BusOutputs,
+                track_destination: TrackDestination::Buses,
+            },
+        );
+        assert!(scoped_output_graph.is_source(&bus_output));
+        assert!(scoped_output_graph.is_sink(&system_sink));
+        let direct_graph = ConnectionGraph::build_for(
+            &state,
+            &filters,
+            ConnectionPresentation {
+                tab: ConnectionTab::Tracks,
+                track_destination: TrackDestination::SystemOutputs,
+            },
+        );
+        assert!(direct_graph.column(GraphColumn::Buses).is_empty());
+        assert!(direct_graph.is_source(&track_output));
+        assert!(direct_graph.is_sink(&system_sink));
+        assert!(bus_graph.compatible_drop(&track_output, &bus_input));
         assert_eq!(
-            route_intent(&graph, &track_output, &bus_input, true),
+            route_intent(&bus_graph, &track_output, &bus_input, true),
             Some(AppIntent::SetMixerRouteConnected {
                 source_port_id: PortId::from_raw(13),
                 destination_channel_id: BusChannelId::from_raw(1),
                 connected: true,
             })
         );
-        assert!(graph.compatible_drop(&bus_output, &system_sink));
+        assert!(output_graph.compatible_drop(&bus_output, &system_sink));
         Arc::make_mut(&mut state.connections).pending_mixer_links =
             Arc::from([crate::PendingMixerRouteState {
                 route: MixerRouteState {
@@ -1695,13 +1882,17 @@ mod tests {
                 },
                 desired_connected: true,
             }]);
-        let pending = ConnectionGraph::build(
+        let pending = ConnectionGraph::build_for(
             &state,
-            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+            &filters,
+            ConnectionPresentation {
+                tab: ConnectionTab::Tracks,
+                track_destination: TrackDestination::Buses,
+            },
         );
         assert!(!pending.compatible_drop(&track_output, &bus_input));
         assert!(pending.compatible_drop(&other_track_output, &bus_input));
-        assert!(pending.compatible_drop(&bus_output, &system_sink));
+        assert!(!pending.is_source(&bus_output));
         let connections = Arc::make_mut(&mut state.connections);
         connections.pending_mixer_links = Arc::from([]);
         connections.pending_links = Arc::from([PendingConnectionState {
@@ -1709,9 +1900,13 @@ mod tests {
             host_port_id: HostPortId::new("speaker:audio_sink"),
             desired_connected: true,
         }]);
-        let pending_fanout = ConnectionGraph::build(
+        let pending_fanout = ConnectionGraph::build_for(
             &state,
-            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+            &filters,
+            ConnectionPresentation {
+                tab: ConnectionTab::BusOutputs,
+                track_destination: TrackDestination::Buses,
+            },
         );
         assert!(!pending_fanout.compatible_drop(&bus_output, &system_sink));
         assert!(pending_fanout.compatible_drop(&bus_output, &other_system_sink));
@@ -1724,9 +1919,13 @@ mod tests {
             .unwrap()
             .role = PortRole::AudioSend;
         Arc::make_mut(&mut state.connections).application_ports = ports.clone().into();
-        let send_graph = ConnectionGraph::build(
+        let send_graph = ConnectionGraph::build_for(
             &state,
-            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+            &filters,
+            ConnectionPresentation {
+                tab: ConnectionTab::Tracks,
+                track_destination: TrackDestination::Buses,
+            },
         );
         assert!(!send_graph.compatible_drop(&track_output, &bus_input));
         ports
@@ -1736,7 +1935,7 @@ mod tests {
             .role = PortRole::AudioOutput;
         Arc::make_mut(&mut state.connections).application_ports = ports.into();
         assert_eq!(
-            route_intent(&graph, &bus_output, &system_sink, true),
+            route_intent(&output_graph, &bus_output, &system_sink, true),
             Some(AppIntent::SetPortConnected {
                 port_id: PortId::from_raw(14),
                 host_port_id: HostPortId::new("speaker:audio_sink"),
@@ -1747,9 +1946,13 @@ mod tests {
             source_port_id: PortId::from_raw(13),
             destination_channel_id: BusChannelId::from_raw(1),
         }]);
-        let confirmed = ConnectionGraph::build(
+        let confirmed = ConnectionGraph::build_for(
             &state,
-            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+            &filters,
+            ConnectionPresentation {
+                tab: ConnectionTab::Tracks,
+                track_destination: TrackDestination::Buses,
+            },
         );
         let mixer_route = confirmed
             .routes
@@ -1768,7 +1971,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn graph_classifies_five_columns_and_prunes_incompatible_system_ports() {
+    fn direct_track_view_classifies_four_columns_and_prunes_incompatible_system_ports() {
         let state = state();
         let graph = ConnectionGraph::build(
             &state,
@@ -1777,11 +1980,11 @@ mod tests {
         assert_eq!(
             GraphColumn::ORDERED.map(GraphColumn::system_heading),
             [
-                Some("System sources"),
+                Some("System inputs"),
                 None,
                 None,
                 Some("Buses"),
-                Some("System sinks")
+                Some("System outputs")
             ]
         );
         assert_eq!(graph.column(GraphColumn::SystemSources).len(), 1);
@@ -2330,9 +2533,9 @@ mod tests {
         assert_eq!(
             painted_text
                 .iter()
-                .filter(|(text, _)| text == "ShoopDaLoop")
+                .filter(|(text, _)| text == "Tracks")
                 .count(),
-            1
+            2
         );
         assert!(painted_text.iter().all(|(text, _)| {
             text != "ShoopDaLoop sinks"
@@ -2618,13 +2821,14 @@ mod tests {
         let mut dialog = ConnectionDialog::default();
         dialog.open(ConnectionScope::AllTracks);
         assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+        assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
         let points = &dialog
             .route_points
             .iter()
             .find(|(_, host, _)| host.as_str() == "synth2:midi_sink")
             .unwrap()
             .2;
-        let point = points[points.len() * 3 / 4];
+        let point = points[points.len() * 4 / 5];
         assert!(frame(
             &context,
             &mut dialog,

@@ -1053,6 +1053,13 @@ pub struct HostPortState {
     pub direction: PortDirection,
 }
 
+pub const MAX_BUS_NAME_BYTES: usize = 128;
+pub const MAX_BUSES: usize = 64;
+pub const MAX_BUS_CHANNELS: usize = 64;
+pub const MAX_TOTAL_BUS_CHANNELS: usize = 256;
+pub const MAX_MIXER_ROUTES: usize = 4_096;
+pub const MAX_BUS_HOST_LINKS: usize = 4_096;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BusChannelState {
     pub id: BusChannelId,
@@ -1064,6 +1071,8 @@ pub struct BusChannelState {
 pub struct BusState {
     pub id: BusId,
     pub name: String,
+    pub structural_state: StructuralState,
+    pub structural_error: Option<String>,
     pub channels: Arc<[BusChannelState]>,
     pub gain_db: f32,
     pub balance: f32,
@@ -1389,7 +1398,7 @@ impl LuaApiVersion {
     }
 }
 
-pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 5 };
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 6 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
@@ -1628,6 +1637,19 @@ pub struct TrackCreationResult {
     pub success: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BusCreationResult {
+    pub request_id: u64,
+    pub success: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BusSpec {
+    pub name: String,
+    pub channel_count: u32,
+    pub creation_request_id: Option<u64>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
     pub revision: u64,
@@ -1635,6 +1657,7 @@ pub struct AppSnapshot {
     pub buses: Arc<[BusState]>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
     pub track_creation_results: Arc<[TrackCreationResult]>,
+    pub bus_creation_results: Arc<[BusCreationResult]>,
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
@@ -1938,6 +1961,8 @@ pub type TrackWidgetAction = TrackAction;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BusAction {
+    Remove,
+    MoveBefore(Option<BusId>),
     GainChanged(f32),
     BalanceChanged(f32),
     MuteChanged(bool),
@@ -2024,6 +2049,7 @@ pub enum AppIntent {
     Piano(PianoAction),
     AddTrack(DirectTrackSpec),
     AddTrackWithTopology(TrackSpec),
+    AddBus(BusSpec),
     AddLoop {
         track_id: TrackId,
     },
@@ -2297,6 +2323,8 @@ impl TrackAction {
 impl BusAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::Remove => "bus.remove",
+            Self::MoveBefore(_) => "bus.move_before",
             Self::GainChanged(_) => "bus.gain",
             Self::BalanceChanged(_) => "bus.balance",
             Self::MuteChanged(_) => "bus.mute",
@@ -2348,6 +2376,7 @@ impl AppIntent {
             Self::Piano(action) => action.kind(),
             Self::AddTrack(_) => "track.add_direct",
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
+            Self::AddBus(_) => "bus.add",
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",
@@ -2419,6 +2448,8 @@ mod tests {
         let mut state = BusState {
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
+            structural_state: StructuralState::Confirmed,
+            structural_error: None,
             channels: Arc::from([channel(1)]),
             gain_db: 0.0,
             balance: 0.0,
@@ -2888,7 +2919,7 @@ mod tests {
         assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
         assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
         assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
-        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 5 });
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 6 });
     }
 
     #[shoop_wasm_test_support::shoop_test]

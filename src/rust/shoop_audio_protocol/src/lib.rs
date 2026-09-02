@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 23;
+pub const PROTOCOL_VERSION: u16 = 24;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -118,6 +118,16 @@ pub enum Command {
     SetTrackControl {
         track_id: u64,
         control: WireTrackControl,
+    },
+    CreateBus {
+        expected_bus_id: u64,
+        expected_channel_ids: Vec<u64>,
+        expected_output_port_ids: Vec<u64>,
+        name: String,
+        channel_count: u32,
+    },
+    RemoveBus {
+        bus_id: u64,
     },
     SetBusControl {
         bus_id: u64,
@@ -1405,6 +1415,33 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn bus_structure_commands_round_trip_without_cross_kind_supersession() {
+        let create = Command::CreateBus {
+            expected_bus_id: 7,
+            expected_channel_ids: vec![11, 12, 13, 14],
+            expected_output_port_ids: vec![21, 22, 23, 24],
+            name: "Surround".to_owned(),
+            channel_count: 4,
+        };
+        let remove = Command::RemoveBus { bus_id: 7 };
+        for (sequence, command) in [(1, create.clone()), (2, remove.clone())] {
+            let envelope = CommandEnvelope::new(sequence, command);
+            let encoded = serde_json::to_vec(&envelope).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+                envelope
+            );
+            assert!(encoded.len() <= COMMAND_MAX_BYTES);
+        }
+        assert!(!create.supersedes_in_journal(&remove));
+        assert!(!remove.supersedes_in_journal(&create));
+        assert!(!remove.supersedes_in_journal(&Command::SetBusControl {
+            bus_id: 7,
+            control: WireBusControl::Mute(true),
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn bus_control_commands_round_trip_with_stable_identity_and_values() {
         for (sequence, control) in [
             WireBusControl::GainDb(-6.0),
@@ -1539,7 +1576,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":23,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":24,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1550,7 +1587,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":23,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":24,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

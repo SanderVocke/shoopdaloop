@@ -18,37 +18,38 @@ use shoop_app_api::{
     AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, AudioChannelMappingState,
     AudioChannelSelectionState, AudioDriverConfig, AudioDriverRuntimeState, AudioDriverState,
     AudioDriverSwitchState, AudioDriverSwitchStatus, BusAction, BusChannelId, BusChannelState,
-    BusId, BusState, ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus,
-    ClickTrackRequest, ClickTrackState, CompositeDetailsState, CompositeEventDetailsState,
-    CompositeEventId, CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
-    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultPlaybackMode,
-    DefaultRecordingAction, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
-    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
-    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
-    MidiSequenceChannelState, MixerRouteErrorState, MixerRouteState, PendingConnectionState,
-    PendingMixerRouteState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
-    ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState, SampleRateWarning,
-    ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind, ScriptMidiRuleDirection,
-    ScriptingState, StatusState, StructuralState, TaskId, TrackAction, TrackControlState,
-    TrackCreationResult, TrackId, TrackLatencyState, TrackPortOwnerKind, TrackProcessorDescriptor,
-    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
+    BusCreationResult, BusId, BusSpec, BusState, ChannelId, ClickSoundDescriptor, ClickTrackKind,
+    ClickTrackPreviewStatus, ClickTrackRequest, ClickTrackState, CompositeDetailsState,
+    CompositeEventDetailsState, CompositeEventId, CompositeTrackDetailsState,
+    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
+    ConnectionViewState, DefaultPlaybackMode, DefaultRecordingAction, DirectTrackSpec,
+    GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState, IoTaskStatus,
+    KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode,
+    LoopState, MidiEventState, MidiSequenceChannelState, MixerRouteErrorState, MixerRouteState,
+    PendingConnectionState, PendingMixerRouteState, PianoAction, PortDataType, PortDirection,
+    PortId, PortRole, ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState,
+    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
+    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
+    TrackControlState, TrackCreationResult, TrackId, TrackLatencyState, TrackPortOwnerKind,
+    TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState, TrackTopology,
+    WaveformChannelState,
 };
 use shoop_backend::{
-    canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
-    BackendAudioContent, BackendAudioData, BackendBuiltInFxMidiCcAssignment,
-    BackendBuiltInFxParameter, BackendBusChannelId, BackendBusControl, BackendBusId,
-    BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot,
-    BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
-    BackendMidiEvent, BackendMixerSnapshot, BackendMutationDetail, BackendOperationProgress,
-    BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionBus,
-    BackendSessionBusChannel, BackendSessionData, BackendSessionMixerRoute, BackendSessionPort,
-    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
-    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
-    DirectTrackRequest, TrackRequest,
+    canonical_midi_start_state, default_bus_channel_labels, Backend, BackendAsyncResult,
+    BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData,
+    BackendBuiltInFxMidiCcAssignment, BackendBuiltInFxParameter, BackendBusChannelId,
+    BackendBusControl, BackendBusId, BackendBusRequest, BackendChannelMode, BackendCompositeConfig,
+    BackendCompositeEntry, BackendCompositeId, BackendCompositeKind, BackendCompositeTarget,
+    BackendConnectionSnapshot, BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate,
+    BackendMidiContent, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
+    BackendMutationDetail, BackendOperationProgress, BackendOxiSynthMidiCcAssignment,
+    BackendOxiSynthParameter, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortOwner, BackendPortRole, BackendProcessorLatencyAdjustment,
+    BackendRecordingOffsetAdjustment, BackendSessionBus, BackendSessionBusChannel,
+    BackendSessionData, BackendSessionMixerRoute, BackendSessionPort, BackendSessionReplacement,
+    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
+    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -625,6 +626,7 @@ struct ApplicationModel {
     next_port_id: u64,
     tracks: Vec<TrackModel>,
     buses: BTreeMap<BusId, BusModel>,
+    bus_order: Vec<BusId>,
     bus_view: Arc<[BusState]>,
     loops: BTreeMap<LoopId, LoopModel>,
     connection_ports: BTreeMap<PortId, ConnectionPortModel>,
@@ -648,6 +650,7 @@ struct ApplicationModel {
     scripting_view: Arc<ScriptingState>,
     track_processors: Arc<[TrackProcessorDescriptor]>,
     track_creation_results: VecDeque<TrackCreationResult>,
+    bus_creation_results: VecDeque<BusCreationResult>,
     script_manager: ScriptManager,
     script_last_snapshot: ControlSnapshot,
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
@@ -689,6 +692,11 @@ struct BusModel {
     id: BusId,
     backend_id: BackendBusId,
     name: String,
+    structural_state: StructuralState,
+    structural_error: Option<String>,
+    structural_confirmation_revision: u64,
+    structural_age: Duration,
+    creation_request_id: Option<u64>,
     channels: Vec<BusChannelModel>,
     gain_db: f32,
     balance: f32,
@@ -1534,6 +1542,7 @@ impl ApplicationModel {
             );
         }
         let mut buses = BTreeMap::new();
+        let mut bus_order = Vec::new();
         let mut next_bus_id = 1_u64;
         let mut next_bus_channel_id = 1_u64;
         for backend_bus in initial_backend.mixer.buses.values() {
@@ -1571,12 +1580,18 @@ impl ApplicationModel {
                     output_port_id: Some(output_port_id),
                 });
             }
+            bus_order.push(bus_id);
             buses.insert(
                 bus_id,
                 BusModel {
                     id: bus_id,
                     backend_id: backend_bus.id,
                     name: backend_bus.name.clone(),
+                    structural_state: StructuralState::Confirmed,
+                    structural_error: None,
+                    structural_confirmation_revision: initial_backend.mixer.revision,
+                    structural_age: Duration::ZERO,
+                    creation_request_id: None,
                     channels,
                     gain_db: backend_bus.gain_db,
                     balance: backend_bus.balance,
@@ -1651,6 +1666,7 @@ impl ApplicationModel {
                 creation_request_id: None,
             }],
             buses,
+            bus_order,
             bus_view: Arc::from([]),
             loops: BTreeMap::from([(loop_id, loop_model)]),
             connection_ports,
@@ -1679,6 +1695,7 @@ impl ApplicationModel {
                 .track_processor_catalog()
                 .unwrap_or_else(|_| Arc::from([])),
             track_creation_results: VecDeque::new(),
+            bus_creation_results: VecDeque::new(),
             script_manager,
             script_last_snapshot: ControlSnapshot::default(),
             script_composition_playback: BTreeMap::new(),
@@ -1876,6 +1893,16 @@ impl ApplicationModel {
                 if result.is_err() {
                     if let Some(request_id) = request_id {
                         self.record_track_creation_result(request_id, false);
+                    }
+                }
+                result
+            }
+            AppIntent::AddBus(spec) => {
+                let request_id = spec.creation_request_id;
+                let result = self.add_bus(backend, spec);
+                if result.is_err() {
+                    if let Some(request_id) = request_id {
+                        self.record_bus_creation_result(request_id, false);
                     }
                 }
                 result
@@ -4767,6 +4794,118 @@ impl ApplicationModel {
         }
     }
 
+    fn record_bus_creation_result(&mut self, request_id: u64, success: bool) {
+        const MAX_RESULTS: usize = 64;
+        self.bus_creation_results.push_back(BusCreationResult {
+            request_id,
+            success,
+        });
+        while self.bus_creation_results.len() > MAX_RESULTS {
+            self.bus_creation_results.pop_front();
+        }
+    }
+
+    fn add_bus(&mut self, backend: &mut dyn Backend, spec: BusSpec) -> Result<(), String> {
+        let request = BackendBusRequest {
+            name: spec.name,
+            channel_count: spec.channel_count,
+        }
+        .normalized()
+        .map_err(|error| format!("invalid bus: {error}"))?;
+        let bus_raw = self.next_bus_id;
+        let next_bus_id = bus_raw
+            .checked_add(1)
+            .ok_or_else(|| "application bus identity space is exhausted".to_owned())?;
+        let channel_start = self.next_bus_channel_id;
+        let next_bus_channel_id = channel_start
+            .checked_add(u64::from(request.channel_count))
+            .ok_or_else(|| "application bus channel identity space is exhausted".to_owned())?;
+        let bus_id = BusId::from_raw(bus_raw);
+        if self.buses.contains_key(&bus_id)
+            || (0..u64::from(request.channel_count)).any(|offset| {
+                let id = BusChannelId::from_raw(channel_start + offset);
+                self.buses
+                    .values()
+                    .any(|bus| bus.channels.iter().any(|channel| channel.id == id))
+            })
+        {
+            return Err("application bus identity reservation collides".to_owned());
+        }
+        let creation = backend
+            .create_bus(request.clone())
+            .map_err(|error| format!("could not create bus: {error}"))?;
+        let channel_ids = creation
+            .channels
+            .iter()
+            .map(|channel| channel.id)
+            .collect::<BTreeSet<_>>();
+        let output_ids = creation
+            .channels
+            .iter()
+            .map(|channel| channel.output_port_id)
+            .collect::<BTreeSet<_>>();
+        let mapping_invalid = creation.bus_id.raw() == 0
+            || self
+                .buses
+                .values()
+                .any(|bus| bus.backend_id == creation.bus_id)
+            || creation.channels.len() != request.channel_count as usize
+            || channel_ids.len() != creation.channels.len()
+            || output_ids.len() != creation.channels.len()
+            || creation.channels.iter().any(|channel| {
+                channel.id.raw() == 0
+                    || channel.output_port_id.raw() == 0
+                    || self.buses.values().any(|bus| {
+                        bus.channels.iter().any(|existing| {
+                            existing.backend_id == channel.id
+                                || existing.output_backend_port_id == channel.output_port_id
+                        })
+                    })
+            });
+        if mapping_invalid {
+            let _ = backend.remove_bus(creation.bus_id);
+            return Err("backend returned an invalid bus identity mapping".to_owned());
+        }
+        self.next_bus_id = next_bus_id;
+        self.next_bus_channel_id = next_bus_channel_id;
+        let mut channels = Vec::with_capacity(creation.channels.len());
+        for (index, backend_channel) in creation.channels.into_iter().enumerate() {
+            let channel_id = BusChannelId::from_raw(channel_start + index as u64);
+            channels.push(BusChannelModel {
+                id: channel_id,
+                backend_id: backend_channel.id,
+                label: backend_channel.label,
+                output_backend_port_id: backend_channel.output_port_id,
+                output_port_id: None,
+            });
+        }
+        self.buses.insert(
+            bus_id,
+            BusModel {
+                id: bus_id,
+                backend_id: creation.bus_id,
+                name: request.name,
+                structural_state: StructuralState::Creating,
+                structural_error: None,
+                structural_confirmation_revision: self.backend_mixer_revision,
+                structural_age: Duration::ZERO,
+                creation_request_id: spec.creation_request_id,
+                channels,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+                output_peaks_db: vec![-200.0; request.channel_count as usize],
+                control_pending: false,
+                control_error: None,
+            },
+        );
+        self.bus_order.push(bus_id);
+        if let Some(request_id) = spec.creation_request_id {
+            self.record_bus_creation_result(request_id, true);
+        }
+        Ok(())
+    }
+
     fn add_track(
         &mut self,
         backend: &mut dyn Backend,
@@ -5114,6 +5253,54 @@ impl ApplicationModel {
         bus_id: BusId,
         action: BusAction,
     ) -> Result<(), String> {
+        if action == BusAction::Remove {
+            let bus = self
+                .buses
+                .get_mut(&bus_id)
+                .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+            backend.remove_bus(bus.backend_id).map_err(|error| {
+                let message = format!("could not remove bus {bus_id}: {error}");
+                bus.structural_error = Some(message.clone());
+                message
+            })?;
+            bus.structural_state = StructuralState::Removing;
+            bus.structural_error = None;
+            bus.structural_confirmation_revision = self.backend_mixer_revision;
+            bus.structural_age = Duration::ZERO;
+            return Ok(());
+        }
+        if let BusAction::MoveBefore(target) = action {
+            if !self.buses.contains_key(&bus_id) {
+                return Err(format!("stale or unknown bus {bus_id}"));
+            }
+            if let Some(target) = target {
+                if !self.buses.contains_key(&target) {
+                    return Err(format!("stale or unknown bus {target}"));
+                }
+            }
+            if target == Some(bus_id) {
+                return Ok(());
+            }
+            let source_index = self
+                .bus_order
+                .iter()
+                .position(|id| *id == bus_id)
+                .ok_or_else(|| format!("bus {bus_id} is absent from display order"))?;
+            let target_index = target
+                .map(|target| {
+                    self.bus_order
+                        .iter()
+                        .position(|id| *id == target)
+                        .ok_or_else(|| format!("bus {target} is absent from display order"))
+                })
+                .transpose()?;
+            let moved = self.bus_order.remove(source_index);
+            let target_index = target_index
+                .map(|index| index - usize::from(source_index < index))
+                .unwrap_or(self.bus_order.len());
+            self.bus_order.insert(target_index, moved);
+            return Ok(());
+        }
         let bus = self
             .buses
             .get_mut(&bus_id)
@@ -5122,6 +5309,7 @@ impl ApplicationModel {
             BusAction::GainChanged(value) => BackendBusControl::GainDb(value),
             BusAction::BalanceChanged(value) => BackendBusControl::Balance(value),
             BusAction::MuteChanged(value) => BackendBusControl::Mute(value),
+            BusAction::Remove | BusAction::MoveBefore(_) => unreachable!(),
         };
         let control = match requested.normalized(bus.channels.len()) {
             Ok(control) => control,
@@ -8144,6 +8332,66 @@ impl ApplicationModel {
         ) {
             return;
         }
+        let structural_timed_out = self
+            .buses
+            .iter_mut()
+            .filter_map(|(id, bus)| {
+                if bus.structural_state == StructuralState::Confirmed {
+                    return None;
+                }
+                bus.structural_age = bus.structural_age.saturating_add(elapsed);
+                (bus.structural_age >= CONNECTION_TIMEOUT).then_some((
+                    *id,
+                    bus.backend_id,
+                    bus.structural_state,
+                    bus.creation_request_id,
+                ))
+            })
+            .collect::<Vec<_>>();
+        for (id, backend_id, state, request_id) in structural_timed_out {
+            match state {
+                StructuralState::Creating => match backend.remove_bus(backend_id) {
+                    Ok(()) => {
+                        if let Some(bus) = self.buses.get_mut(&id) {
+                            bus.structural_state = StructuralState::Removing;
+                            bus.structural_error =
+                                Some("bus creation timed out; cancellation is pending".to_owned());
+                            bus.structural_confirmation_revision = self.backend_mixer_revision;
+                            bus.structural_age = Duration::ZERO;
+                        }
+                        if let Some(request_id) = request_id {
+                            self.record_bus_creation_result(request_id, false);
+                        }
+                        self.report_error(
+                            "bus creation timed out; cancellation is pending".to_owned(),
+                        );
+                    }
+                    Err(error) => {
+                        if let Some(bus) = self.buses.get_mut(&id) {
+                            bus.structural_error = Some(format!(
+                                "bus creation timed out; cancellation will retry: {error}"
+                            ));
+                            bus.structural_age = Duration::ZERO;
+                        }
+                    }
+                },
+                StructuralState::Removing => {
+                    if let Some(bus) = self.buses.get_mut(&id) {
+                        bus.structural_state = StructuralState::Confirmed;
+                        bus.structural_error = Some(
+                            "bus removal timed out; the confirmed bus remains authoritative"
+                                .to_owned(),
+                        );
+                        bus.structural_age = Duration::ZERO;
+                    }
+                    self.report_error(
+                        "bus removal timed out; the confirmed bus remains authoritative".to_owned(),
+                    );
+                }
+                StructuralState::Confirmed => {}
+            }
+        }
+
         let bus_timed_out = self
             .desired_bus_controls
             .iter_mut()
@@ -8428,6 +8676,41 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::BusCreation) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendBusId::from_raw(entity);
+                        if let Some(id) = self
+                            .buses
+                            .iter()
+                            .find_map(|(id, bus)| (bus.backend_id == backend_id).then_some(*id))
+                        {
+                            let request_id = self
+                                .buses
+                                .remove(&id)
+                                .and_then(|bus| bus.creation_request_id);
+                            self.bus_order.retain(|candidate| *candidate != id);
+                            self.desired_bus_controls
+                                .retain(|(candidate, _), _| *candidate != backend_id);
+                            if let Some(request_id) = request_id {
+                                self.record_bus_creation_result(request_id, false);
+                            }
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::BusRemoval) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendBusId::from_raw(entity);
+                        if let Some(bus) = self
+                            .buses
+                            .values_mut()
+                            .find(|bus| bus.backend_id == backend_id)
+                        {
+                            bus.structural_state = StructuralState::Confirmed;
+                            bus.structural_error = Some(failure.message.clone());
+                            bus.structural_age = Duration::ZERO;
+                        }
+                    }
+                }
                 Some(BackendMutationDetail::LoopCreation { loop_id }) => {
                     if let Some((id, track_id)) = self.loops.iter().find_map(|(id, model)| {
                         (model.backend_id == *loop_id).then_some((*id, model.track_id))
@@ -8513,6 +8796,8 @@ impl ApplicationModel {
                 Some(
                     BackendMutationDetail::TrackCreation
                     | BackendMutationDetail::TrackRemoval
+                    | BackendMutationDetail::BusCreation
+                    | BackendMutationDetail::BusRemoval
                     | BackendMutationDetail::LoopCreation { .. }
                     | BackendMutationDetail::CompositeConfiguration { .. },
                 ) => {}
@@ -9159,12 +9444,18 @@ impl ApplicationModel {
                 .unwrap_or_else(|| {
                     let id = BusId::from_raw(self.next_bus_id);
                     self.next_bus_id = self.next_bus_id.saturating_add(1);
+                    self.bus_order.push(id);
                     self.buses.insert(
                         id,
                         BusModel {
                             id,
                             backend_id: backend_bus.id,
                             name: backend_bus.name.clone(),
+                            structural_state: StructuralState::Confirmed,
+                            structural_error: None,
+                            structural_confirmation_revision: revision,
+                            structural_age: Duration::ZERO,
+                            creation_request_id: None,
                             channels: Vec::new(),
                             gain_db: backend_bus.gain_db,
                             balance: backend_bus.balance,
@@ -9177,6 +9468,13 @@ impl ApplicationModel {
                     id
                 });
             let bus = self.buses.get_mut(&bus_id).expect("bus was inserted");
+            if bus.structural_state == StructuralState::Creating
+                && revision != bus.structural_confirmation_revision
+            {
+                bus.structural_state = StructuralState::Confirmed;
+                bus.structural_error = None;
+                bus.structural_age = Duration::ZERO;
+            }
             bus.name.clone_from(&backend_bus.name);
             bus.gain_db = backend_bus.gain_db;
             bus.balance = backend_bus.balance;
@@ -9209,8 +9507,18 @@ impl ApplicationModel {
                     .any(|backend| backend.id == channel.backend_id)
             });
         }
-        self.buses
-            .retain(|_, bus| snapshot.buses.contains_key(&bus.backend_id));
+        self.buses.retain(|_, bus| {
+            if snapshot.buses.contains_key(&bus.backend_id) {
+                return true;
+            }
+            match bus.structural_state {
+                StructuralState::Creating | StructuralState::Removing => {
+                    revision == bus.structural_confirmation_revision
+                }
+                StructuralState::Confirmed => false,
+            }
+        });
+        self.bus_order.retain(|id| self.buses.contains_key(id));
         for ((backend_id, key), pending) in &mut self.desired_bus_controls {
             if !pending.cancelling {
                 if let Some(bus) = snapshot.buses.get(backend_id) {
@@ -10092,7 +10400,7 @@ impl ApplicationModel {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let buses = capture
+        let mut buses = capture
             .buses
             .iter()
             .map(|captured_bus| {
@@ -10148,6 +10456,7 @@ impl ApplicationModel {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
+        buses.sort_by_key(|bus| bus.id);
         let mixer_routes = capture
             .mixer_routes
             .iter()
@@ -10211,6 +10520,7 @@ impl ApplicationModel {
                 .find(|loop_| loop_.state.targeted)
                 .map(|loop_| loop_.id.raw()),
             buses,
+            bus_display_order: self.bus_order.iter().map(|id| id.raw()).collect(),
             mixer_routes,
             global_ports,
             fx_states,
@@ -10516,130 +10826,72 @@ impl ApplicationModel {
             );
         }
         let mut buses = BTreeMap::new();
-        if bundle.document.buses.is_empty() {
-            let (source_bus_id, backend_bus_id) = replacement
+        for bus_document in &bundle.document.buses {
+            let backend_bus_id = replacement
                 .buses
-                .iter()
-                .next()
-                .ok_or_else(|| "backend omitted migrated Master bus".to_owned())?;
-            let bus_id = BusId::from_raw(*source_bus_id);
-            let mut used_port_ids = connection_ports
-                .keys()
-                .map(|id| id.raw())
-                .collect::<BTreeSet<_>>();
-            let mut next_generated_port_id = 1_u64;
-            let channels = replacement
-                .bus_channels
-                .iter()
-                .map(|(source_channel_id, backend_channel_id)| {
-                    let output_backend_port_id = replacement
-                        .bus_output_ports
-                        .get(source_channel_id)
-                        .copied()
-                        .ok_or_else(|| "backend omitted migrated Master output".to_owned())?;
-                    let output_port_id =
-                        allocate_unused_port_id(&mut used_port_ids, &mut next_generated_port_id)?;
-                    let index = *source_channel_id as usize;
-                    connection_ports.insert(
-                        output_port_id,
-                        ConnectionPortModel {
-                            id: output_port_id,
-                            backend_id: output_backend_port_id,
-                            owner: ApplicationPortOwner::Bus { bus_id },
-                            name: format!("master_out_{index}"),
-                            data_type: PortDataType::Audio,
-                            direction: PortDirection::Output,
-                            role: PortRole::AudioOutput,
-                            candidates: BTreeMap::new(),
-                        },
-                    );
-                    Ok(BusChannelModel {
-                        id: BusChannelId::from_raw(*source_channel_id),
-                        backend_id: *backend_channel_id,
-                        label: if index == 1 { "Left" } else { "Right" }.to_owned(),
-                        output_backend_port_id,
-                        output_port_id: Some(output_port_id),
-                    })
-                })
-                .collect::<Result<Vec<_>, String>>()?;
+                .get(&bus_document.id)
+                .copied()
+                .ok_or_else(|| "backend omitted loaded bus".to_owned())?;
+            let bus_id = BusId::from_raw(bus_document.id);
+            let mut channels = Vec::with_capacity(bus_document.channels.len());
+            for channel_document in &bus_document.channels {
+                let backend_channel_id = replacement
+                    .bus_channels
+                    .get(&channel_document.id)
+                    .copied()
+                    .ok_or_else(|| "backend omitted loaded bus channel".to_owned())?;
+                let output_backend_port_id = replacement
+                    .bus_output_ports
+                    .get(&channel_document.id)
+                    .copied()
+                    .ok_or_else(|| "backend omitted loaded bus output".to_owned())?;
+                let port_document = bus_document
+                    .ports
+                    .iter()
+                    .find(|port| port.id == channel_document.output_port_id)
+                    .ok_or_else(|| "loaded bus output document is stale".to_owned())?;
+                let output_port_id = PortId::from_raw(port_document.id);
+                connection_ports.insert(
+                    output_port_id,
+                    ConnectionPortModel {
+                        id: output_port_id,
+                        backend_id: output_backend_port_id,
+                        owner: ApplicationPortOwner::Bus { bus_id },
+                        name: port_document.name.clone(),
+                        data_type: PortDataType::Audio,
+                        direction: PortDirection::Output,
+                        role: PortRole::AudioOutput,
+                        candidates: BTreeMap::new(),
+                    },
+                );
+                channels.push(BusChannelModel {
+                    id: BusChannelId::from_raw(channel_document.id),
+                    backend_id: backend_channel_id,
+                    label: channel_document.label.clone(),
+                    output_backend_port_id,
+                    output_port_id: Some(output_port_id),
+                });
+            }
             buses.insert(
                 bus_id,
                 BusModel {
                     id: bus_id,
-                    backend_id: *backend_bus_id,
-                    name: "Master".to_owned(),
+                    backend_id: backend_bus_id,
+                    name: bus_document.name.clone(),
+                    structural_state: StructuralState::Confirmed,
+                    structural_error: None,
+                    structural_confirmation_revision: self.backend_mixer_revision,
+                    structural_age: Duration::ZERO,
+                    creation_request_id: None,
                     output_peaks_db: vec![-200.0; channels.len()],
                     channels,
-                    gain_db: 0.0,
-                    balance: 0.0,
-                    muted: false,
+                    gain_db: bus_document.gain_db,
+                    balance: bus_document.balance,
+                    muted: bus_document.muted,
                     control_pending: false,
                     control_error: None,
                 },
             );
-        } else {
-            for bus_document in &bundle.document.buses {
-                let backend_bus_id = replacement
-                    .buses
-                    .get(&bus_document.id)
-                    .copied()
-                    .ok_or_else(|| "backend omitted loaded Master bus".to_owned())?;
-                let bus_id = BusId::from_raw(bus_document.id);
-                let mut channels = Vec::with_capacity(bus_document.channels.len());
-                for channel_document in &bus_document.channels {
-                    let backend_channel_id = replacement
-                        .bus_channels
-                        .get(&channel_document.id)
-                        .copied()
-                        .ok_or_else(|| "backend omitted loaded Master channel".to_owned())?;
-                    let output_backend_port_id = replacement
-                        .bus_output_ports
-                        .get(&channel_document.id)
-                        .copied()
-                        .ok_or_else(|| "backend omitted loaded Master output".to_owned())?;
-                    let port_document = bus_document
-                        .ports
-                        .iter()
-                        .find(|port| port.id == channel_document.output_port_id)
-                        .ok_or_else(|| "loaded Master output document is stale".to_owned())?;
-                    let output_port_id = PortId::from_raw(port_document.id);
-                    connection_ports.insert(
-                        output_port_id,
-                        ConnectionPortModel {
-                            id: output_port_id,
-                            backend_id: output_backend_port_id,
-                            owner: ApplicationPortOwner::Bus { bus_id },
-                            name: port_document.name.clone(),
-                            data_type: PortDataType::Audio,
-                            direction: PortDirection::Output,
-                            role: PortRole::AudioOutput,
-                            candidates: BTreeMap::new(),
-                        },
-                    );
-                    channels.push(BusChannelModel {
-                        id: BusChannelId::from_raw(channel_document.id),
-                        backend_id: backend_channel_id,
-                        label: channel_document.label.clone(),
-                        output_backend_port_id,
-                        output_port_id: Some(output_port_id),
-                    });
-                }
-                buses.insert(
-                    bus_id,
-                    BusModel {
-                        id: bus_id,
-                        backend_id: backend_bus_id,
-                        name: bus_document.name.clone(),
-                        output_peaks_db: vec![-200.0; channels.len()],
-                        channels,
-                        gain_db: bus_document.gain_db,
-                        balance: bus_document.balance,
-                        muted: bus_document.muted,
-                        control_pending: false,
-                        control_error: None,
-                    },
-                );
-            }
         }
         self.next_port_id = 1;
         self.next_bus_id = buses
@@ -10656,6 +10908,12 @@ impl ApplicationModel {
             .unwrap_or(0)
             .saturating_add(1);
         self.tracks = tracks;
+        self.bus_order = bundle
+            .document
+            .bus_display_order
+            .iter()
+            .map(|id| BusId::from_raw(*id))
+            .collect();
         self.buses = buses;
         self.loops = loops;
         self.restore_backend_composites(backend)?;
@@ -10706,11 +10964,14 @@ impl ApplicationModel {
 
     fn refresh_bus_view(&mut self) {
         let next = self
-            .buses
-            .values()
+            .bus_order
+            .iter()
+            .filter_map(|id| self.buses.get(id))
             .map(|bus| BusState {
                 id: bus.id,
                 name: bus.name.clone(),
+                structural_state: bus.structural_state,
+                structural_error: bus.structural_error.clone(),
                 channels: bus
                     .channels
                     .iter()
@@ -10791,6 +11052,12 @@ impl ApplicationModel {
             track_processors: Arc::clone(&self.track_processors),
             track_creation_results: self
                 .track_creation_results
+                .iter()
+                .copied()
+                .collect::<Vec<_>>()
+                .into(),
+            bus_creation_results: self
+                .bus_creation_results
                 .iter()
                 .copied()
                 .collect::<Vec<_>>()
@@ -12052,20 +12319,6 @@ fn backend_document_latency(
     })
 }
 
-fn valid_master_output_port_document(port: &PortDocument, index: usize) -> bool {
-    port.name == format!("master_out_{}", index + 1)
-        && port.data_type == DataTypeDocument::Audio
-        && port.direction == PortDirectionDocument::Output
-        && port.role == PortRoleDocument::AudioOutput
-        && port.input_connectability == [ConnectabilityDocument::Internal]
-        && port.output_connectability == [ConnectabilityDocument::External]
-        && port.gain == 1.0
-        && !port.muted
-        && !port.passthrough_muted
-        && port.internal_connections.is_empty()
-        && port.ringbuffer_frames == 0
-}
-
 fn valid_global_fx_port_document(port: &PortDocument) -> bool {
     port.name == "Global FX Control MIDI In"
         && port.data_type == DataTypeDocument::Midi
@@ -12084,6 +12337,7 @@ fn session_bundle_to_backend(
     bundle: &SessionBundle,
     processors: &[TrackProcessorDescriptor],
 ) -> Result<BackendSessionData, String> {
+    shoop_session::validate_bundle(bundle).map_err(|error| error.to_string())?;
     if !bundle.document.midi_control.bindings.is_empty() || !bundle.document.settings.is_empty() {
         return Err(
             "session requires a feature not yet available in the application runtime".to_owned(),
@@ -12360,142 +12614,95 @@ fn session_bundle_to_backend(
         })
         .map(|port| port.source_id)
         .collect::<BTreeSet<_>>();
-    let (buses, mixer_routes) = if bundle.document.buses.is_empty() {
-        let mut used_port_ids = used_ids.clone();
-        used_port_ids.insert(global_id);
-        let mut next_port_id = 1_u64;
-        let output_ids = (0..2)
-            .map(|_| {
-                allocate_unused_port_id(&mut used_port_ids, &mut next_port_id).map(PortId::raw)
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        let bus_id = 1_u64;
-        (
-            vec![BackendSessionBus {
-                source_id: bus_id,
-                name: "Master".to_owned(),
-                channels: ["Left", "Right"]
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, label)| BackendSessionBusChannel {
-                        source_id: index as u64 + 1,
-                        label: label.to_owned(),
+    let mut bus_channel_ids = BTreeSet::new();
+    let buses = bundle
+        .document
+        .buses
+        .iter()
+        .map(|bus| {
+            BackendBusRequest {
+                name: bus.name.clone(),
+                channel_count: u32::try_from(bus.channels.len())
+                    .map_err(|_| "session bus channel count exceeds u32".to_owned())?,
+            }
+            .normalized()
+            .map_err(|error| error.to_string())?;
+            let normalized_gain = BackendBusControl::GainDb(bus.gain_db)
+                .normalized(bus.channels.len())
+                .map_err(|error| error.to_string())?;
+            if normalized_gain != BackendBusControl::GainDb(bus.gain_db) {
+                return Err("session bus gain is out of range".to_owned());
+            }
+            if bus.channels.len() == 2 {
+                let normalized_balance = BackendBusControl::Balance(bus.balance)
+                    .normalized(bus.channels.len())
+                    .map_err(|error| error.to_string())?;
+                if normalized_balance != BackendBusControl::Balance(bus.balance) {
+                    return Err("session bus balance is out of range".to_owned());
+                }
+            } else if bus.balance != 0.0 {
+                return Err("non-stereo session bus balance must be centered".to_owned());
+            }
+            let expected_labels = default_bus_channel_labels(bus.channels.len())
+                .map_err(|error| error.to_string())?;
+            let backend_bus_id = BackendBusId::from_raw(bus.id);
+            let channels = bus
+                .channels
+                .iter()
+                .zip(expected_labels)
+                .map(|(channel, expected_label)| {
+                    if channel.label != expected_label || !bus_channel_ids.insert(channel.id) {
+                        return Err("session bus channel shape is invalid".to_owned());
+                    }
+                    let port = bus
+                        .ports
+                        .iter()
+                        .find(|port| port.id == channel.output_port_id)
+                        .ok_or_else(|| "bus channel output port is stale".to_owned())?;
+                    Ok(BackendSessionBusChannel {
+                        source_id: channel.id,
+                        label: channel.label.clone(),
                         output_port: BackendSessionPort {
-                            source_id: output_ids[index],
+                            source_id: port.id,
                             descriptor: BackendPortDescriptor {
-                                id: BackendPortId::from_raw(output_ids[index]),
-                                owner: BackendPortOwner::Bus(BackendBusId::from_raw(bus_id)),
-                                name: format!("master_out_{}", index + 1),
+                                id: BackendPortId::from_raw(port.id),
+                                owner: BackendPortOwner::Bus(backend_bus_id),
+                                name: port.name.clone(),
                                 data_type: BackendPortDataType::Audio,
                                 direction: BackendPortDirection::Output,
                                 role: BackendPortRole::AudioOutput,
                             },
-                            external_connections: Vec::new(),
+                            external_connections: port.external_connections.clone(),
                         },
                     })
-                    .collect(),
-                gain_db: 0.0,
-                balance: 0.0,
-                muted: false,
-            }],
-            Vec::new(),
-        )
-    } else {
-        let [bus] = bundle.document.buses.as_slice() else {
-            return Err("session must contain exactly one Master bus".to_owned());
-        };
-        let channel_output_ids = bus
-            .channels
-            .iter()
-            .map(|channel| channel.output_port_id)
-            .collect::<BTreeSet<_>>();
-        let port_ids = bus
-            .ports
-            .iter()
-            .map(|port| port.id)
-            .collect::<BTreeSet<_>>();
-        if bus.name != "Master"
-            || bus.channels.len() != 2
-            || bus.ports.len() != 2
-            || bus.fx_chain.is_some()
-            || channel_output_ids.len() != 2
-            || channel_output_ids != port_ids
-        {
-            return Err("session Master bus shape is invalid".to_owned());
-        }
-        let normalized_gain = BackendBusControl::GainDb(bus.gain_db)
-            .normalized(bus.channels.len())
-            .map_err(|error| error.to_string())?;
-        let normalized_balance = BackendBusControl::Balance(bus.balance)
-            .normalized(bus.channels.len())
-            .map_err(|error| error.to_string())?;
-        if normalized_gain != BackendBusControl::GainDb(bus.gain_db)
-            || normalized_balance != BackendBusControl::Balance(bus.balance)
-        {
-            return Err("session Master controls are out of range".to_owned());
-        }
-        let backend_bus_id = BackendBusId::from_raw(bus.id);
-        let mut channels = Vec::with_capacity(2);
-        for (index, channel) in bus.channels.iter().enumerate() {
-            let port = bus
-                .ports
-                .iter()
-                .find(|port| port.id == channel.output_port_id)
-                .ok_or_else(|| "Master channel output port is stale".to_owned())?;
-            if channel.label != ["Left", "Right"][index]
-                || !valid_master_output_port_document(port, index)
-            {
-                return Err("session Master channel shape is invalid".to_owned());
-            }
-            channels.push(BackendSessionBusChannel {
-                source_id: channel.id,
-                label: channel.label.clone(),
-                output_port: BackendSessionPort {
-                    source_id: port.id,
-                    descriptor: BackendPortDescriptor {
-                        id: BackendPortId::from_raw(port.id),
-                        owner: BackendPortOwner::Bus(backend_bus_id),
-                        name: port.name.clone(),
-                        data_type: BackendPortDataType::Audio,
-                        direction: BackendPortDirection::Output,
-                        role: BackendPortRole::AudioOutput,
-                    },
-                    external_connections: port.external_connections.clone(),
-                },
-            });
-        }
-        let channel_ids = channels
-            .iter()
-            .map(|channel| channel.source_id)
-            .collect::<BTreeSet<_>>();
-        let mixer_routes = bundle
-            .document
-            .mixer_routes
-            .iter()
-            .map(|route| {
-                if !track_output_ids.contains(&route.source_port_id)
-                    || !channel_ids.contains(&route.destination_channel_id)
-                {
-                    return Err("session mixer route is incompatible".to_owned());
-                }
-                Ok(BackendSessionMixerRoute {
-                    source_port_id: route.source_port_id,
-                    destination_channel_id: route.destination_channel_id,
                 })
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        (
-            vec![BackendSessionBus {
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(BackendSessionBus {
                 source_id: bus.id,
                 name: bus.name.clone(),
                 channels,
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
-            }],
-            mixer_routes,
-        )
-    };
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mixer_routes = bundle
+        .document
+        .mixer_routes
+        .iter()
+        .map(|route| {
+            if !track_output_ids.contains(&route.source_port_id)
+                || !bus_channel_ids.contains(&route.destination_channel_id)
+            {
+                return Err("session mixer route is incompatible".to_owned());
+            }
+            Ok(BackendSessionMixerRoute {
+                source_port_id: route.source_port_id,
+                destination_channel_id: route.destination_channel_id,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(BackendSessionData {
         sample_rate: bundle.document.sample_rate,
         tracks,
@@ -16015,7 +16222,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 6); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 7); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -16033,7 +16240,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.6, host supports 1.5"));
+        assert!(error.contains("script requests 1.7, host supports 1.6"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -20492,6 +20699,189 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn bus_lifecycle_and_visual_order_use_stable_identity_without_backend_reorder() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let master = model.bus_order[0];
+        model.handle_intent(
+            &mut backend,
+            AppIntent::AddBus(BusSpec {
+                name: "  Duplicate  ".to_owned(),
+                channel_count: 4,
+                creation_request_id: Some(42),
+            }),
+        );
+        let added = *model.bus_order.last().unwrap();
+        assert_ne!(added, master);
+        assert_eq!(model.buses[&added].name, "Duplicate");
+        assert_eq!(model.buses[&added].channels.len(), 4);
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Creating
+        );
+        assert_eq!(
+            model.bus_creation_results.back(),
+            Some(&BusCreationResult {
+                request_id: 42,
+                success: true,
+            })
+        );
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Confirmed
+        );
+
+        let before_move = backend.operations().len();
+        assert!(model
+            .handle_bus_action(
+                &mut backend,
+                BusId::from_raw(999),
+                BusAction::MoveBefore(Some(master)),
+            )
+            .is_err());
+        assert!(model
+            .handle_bus_action(
+                &mut backend,
+                added,
+                BusAction::MoveBefore(Some(BusId::from_raw(999))),
+            )
+            .is_err());
+        model
+            .handle_bus_action(&mut backend, added, BusAction::MoveBefore(Some(added)))
+            .unwrap();
+        assert_eq!(model.bus_order, [master, added]);
+        model
+            .handle_bus_action(&mut backend, added, BusAction::MoveBefore(Some(master)))
+            .unwrap();
+        assert_eq!(model.bus_order, [added, master]);
+        assert_eq!(backend.operations().len(), before_move);
+        assert_eq!(
+            model
+                .script_control_snapshot()
+                .buses
+                .iter()
+                .map(|bus| (bus.index, bus.id))
+                .collect::<Vec<_>>(),
+            [(0, master), (1, added)]
+        );
+        let captured = backend.capture_session().unwrap();
+        let bundle = model.session_bundle_from_backend(&captured).unwrap();
+        assert_eq!(
+            bundle
+                .document
+                .buses
+                .iter()
+                .map(|bus| bus.id)
+                .collect::<Vec<_>>(),
+            [master.raw(), added.raw()]
+        );
+        assert_eq!(
+            bundle.document.bus_display_order,
+            [added.raw(), master.raw()]
+        );
+        let round_trip = decode_session(&encode_session(&bundle, "bus-order").unwrap()).unwrap();
+        assert_eq!(
+            round_trip.document.bus_display_order,
+            [added.raw(), master.raw()]
+        );
+        model
+            .handle_bus_action(&mut backend, added, BusAction::MoveBefore(None))
+            .unwrap();
+        assert_eq!(model.bus_order, [master, added]);
+        assert_eq!(backend.operations().len(), before_move);
+
+        model
+            .handle_bus_action(&mut backend, added, BusAction::Remove)
+            .unwrap();
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Removing
+        );
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(!model.buses.contains_key(&added));
+        assert_eq!(model.bus_order, [master]);
+        model
+            .handle_bus_action(&mut backend, master, BusAction::Remove)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(model.buses.is_empty());
+        assert!(model.bus_order.is_empty());
+        let captured = backend.capture_session().unwrap();
+        let zero_bundle = model.session_bundle_from_backend(&captured).unwrap();
+        assert!(zero_bundle.document.buses.is_empty());
+        assert!(zero_bundle.document.bus_display_order.is_empty());
+        let decoded = decode_session(&encode_session(&zero_bundle, "zero-buses").unwrap()).unwrap();
+        assert!(decoded.document.buses.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_structure_rejection_and_timeout_reconcile_without_false_state() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let master = model.bus_order[0];
+        backend.fail_next_bus_structure("remove rejected");
+        assert!(model
+            .handle_bus_action(&mut backend, master, BusAction::Remove)
+            .is_err());
+        assert_eq!(
+            model.buses[&master].structural_state,
+            StructuralState::Confirmed
+        );
+        assert!(model.buses[&master]
+            .structural_error
+            .as_deref()
+            .unwrap()
+            .contains("remove rejected"));
+
+        model.handle_intent(
+            &mut backend,
+            AppIntent::AddBus(BusSpec {
+                name: "Timeout".to_owned(),
+                channel_count: 1,
+                creation_request_id: Some(77),
+            }),
+        );
+        let pending = *model.bus_order.last().unwrap();
+        assert_eq!(
+            model.buses[&pending].structural_state,
+            StructuralState::Creating
+        );
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        assert_eq!(
+            model.buses[&pending].structural_state,
+            StructuralState::Removing
+        );
+        assert!(model.buses[&pending]
+            .structural_error
+            .as_deref()
+            .unwrap()
+            .contains("cancellation is pending"));
+        assert_eq!(
+            model.bus_creation_results.back(),
+            Some(&BusCreationResult {
+                request_id: 77,
+                success: false,
+            })
+        );
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(!model.buses.contains_key(&pending));
+        assert!(model.buses.contains_key(&master));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn bus_controls_reconcile_confirmation_failure_timeout_stale_ids_and_peaks() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -21148,6 +21538,92 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(
             runtime.snapshot().audio_drivers.switch.status,
             AudioDriverSwitchStatus::Completed
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dynamic_buses_keep_visual_order_shapes_and_controls_across_driver_switch() {
+        let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        for (request_id, name, channels) in [(1, "Mono", 1), (2, "Surround", 6)] {
+            runtime
+                .dispatch(AppIntent::AddBus(BusSpec {
+                    name: name.to_owned(),
+                    channel_count: channels,
+                    creation_request_id: Some(request_id),
+                }))
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        }
+        let snapshot = runtime.snapshot();
+        assert_eq!(snapshot.buses.len(), 3);
+        let master = snapshot.buses[0].id;
+        let mono = snapshot.buses[1].id;
+        let surround = snapshot.buses[2].id;
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: surround,
+                action: BusAction::MoveBefore(Some(master)),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: mono,
+                action: BusAction::GainChanged(-5.0),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime
+                .snapshot()
+                .buses
+                .iter()
+                .map(|bus| bus.id)
+                .collect::<Vec<_>>(),
+            [surround, master, mono]
+        );
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 24_000,
+                    buffer_size: 64,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..4 {
+            runtime.tick(Duration::ZERO);
+        }
+        let switched = runtime.snapshot();
+        assert_eq!(switched.status.sample_rate, 24_000);
+        assert_eq!(
+            switched.buses.iter().map(|bus| bus.id).collect::<Vec<_>>(),
+            [surround, master, mono]
+        );
+        assert_eq!(
+            switched
+                .buses
+                .iter()
+                .map(|bus| (bus.name.as_str(), bus.channels.len()))
+                .collect::<Vec<_>>(),
+            [("Surround", 6), ("Master", 2), ("Mono", 1)]
+        );
+        assert_eq!(
+            switched
+                .buses
+                .iter()
+                .find(|bus| bus.id == mono)
+                .unwrap()
+                .gain_db,
+            -5.0
         );
     }
 
@@ -21936,7 +22412,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn scripts_export_exact_source_and_convert_session_ownership() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let source = "shoop_announce_api_version(1, 6)\nprint('future')";
+        let source = "shoop_announce_api_version(1, 7)\nprint('future')";
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
@@ -22152,23 +22628,23 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             aliased_master.document.buses[0].channels[0].output_port_id;
         assert!(session_bundle_to_backend(&aliased_master, &[])
             .unwrap_err()
-            .contains("Master bus shape"));
+            .contains("share one output port"));
         let mut noncanonical_master = saved.clone();
         noncanonical_master.document.buses[0].ports[0].gain = 0.5;
         assert!(session_bundle_to_backend(&noncanonical_master, &[])
             .unwrap_err()
-            .contains("Master channel shape"));
+            .contains("not canonical"));
         let mut invalid_controls = saved.clone();
         invalid_controls.document.buses[0].gain_db = 100.0;
         assert!(session_bundle_to_backend(&invalid_controls, &[])
             .unwrap_err()
-            .contains("controls are out of range"));
+            .contains("bus gain"));
         let mut colliding_global = saved.clone();
         colliding_global.document.global_ports[0].id =
             colliding_global.document.buses[0].ports[0].id;
         assert!(session_bundle_to_backend(&colliding_global, &[])
             .unwrap_err()
-            .contains("conflicts with another port"));
+            .contains("duplicate port ID"));
 
         let resampled = resample_session(&saved, 32_000).unwrap();
         let bytes = encode_session(&resampled, "test").unwrap();

@@ -190,6 +190,7 @@ mod tests {
             }],
             selected_loop_ids: vec![10],
             targeted_loop_id: Some(10),
+            bus_display_order: buses.iter().map(|bus| bus.id).collect(),
             buses,
             mixer_routes: Vec::new(),
             global_ports: Vec::new(),
@@ -447,8 +448,26 @@ mod tests {
         bundle.document.buses = vec![BusDocument {
             id: 5_000,
             name: "Main bus".to_owned(),
-            channels: Vec::new(),
-            ports: Vec::new(),
+            channels: vec![BusChannelDocument {
+                id: 5_002,
+                label: "Mono".to_owned(),
+                output_port_id: 5_003,
+            }],
+            ports: vec![PortDocument {
+                id: 5_003,
+                name: "bus_5000_out_1".to_owned(),
+                data_type: DataTypeDocument::Audio,
+                direction: PortDirectionDocument::Output,
+                role: PortRoleDocument::AudioOutput,
+                input_connectability: vec![ConnectabilityDocument::Internal],
+                output_connectability: vec![ConnectabilityDocument::External],
+                gain: 1.0,
+                muted: false,
+                passthrough_muted: false,
+                internal_connections: Vec::new(),
+                external_connections: Vec::new(),
+                ringbuffer_frames: 0,
+            }],
             fx_chain: Some(FxChainDocument {
                 id: 802,
                 title: "Bus FX".to_owned(),
@@ -462,6 +481,7 @@ mod tests {
             balance: 0.0,
             muted: true,
         }];
+        bundle.document.bus_display_order = vec![5_000];
         bundle.document.global_ports = vec![PortDocument {
             id: 5_001,
             name: "global midi".to_owned(),
@@ -541,7 +561,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 13] {
+        for unsupported in [5, 14] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -981,14 +1001,26 @@ mod tests {
     fn version_nine_buses_migrate_default_controls_and_invalid_controls_are_rejected() {
         let bundle = deferred_feature_bundle();
         let encoded = encode_session(&bundle, "bus-control-migration").unwrap();
-        for count in [0, 2] {
-            let mut malformed = SessionBundle::new(SessionDocument::empty(48_000));
-            malformed.document.buses = vec![malformed.document.buses[0].clone(); count];
-            assert!(matches!(
-                encode_session(&malformed, "invalid-bus-count"),
-                Err(SessionError::Validation(_))
-            ));
-        }
+        let mut zero_buses = SessionBundle::new(SessionDocument::empty(48_000));
+        zero_buses.document.buses.clear();
+        zero_buses.document.bus_display_order.clear();
+        let encoded_zero = encode_session(&zero_buses, "zero-buses").unwrap();
+        assert!(decode_session(&encoded_zero)
+            .unwrap()
+            .document
+            .buses
+            .is_empty());
+
+        let mut duplicate_bus = SessionBundle::new(SessionDocument::empty(48_000));
+        duplicate_bus
+            .document
+            .buses
+            .push(duplicate_bus.document.buses[0].clone());
+        duplicate_bus.document.bus_display_order.push(1);
+        assert!(matches!(
+            encode_session(&duplicate_bus, "duplicate-bus"),
+            Err(SessionError::Validation(_))
+        ));
         let version_nine = rewrite_manifest(encoded.clone(), |manifest| {
             manifest["document_version"] = serde_json::json!(9);
             let bus = &mut manifest["document"]["buses"][0];
@@ -1001,6 +1033,7 @@ mod tests {
         assert_eq!(bus.gain_db, 0.0);
         assert_eq!(bus.balance, 0.0);
         assert!(!bus.muted);
+        assert_eq!(migrated.document.bus_display_order, [bus.id]);
 
         for missing in ["gain_db", "balance", "muted"] {
             let malformed = rewrite_manifest(encoded.clone(), |manifest| {
@@ -1015,13 +1048,13 @@ mod tests {
             ));
         }
 
-        for version in [SESSION_DOCUMENT_VERSION] {
+        for required in ["mixer_routes", "bus_display_order"] {
             let malformed = rewrite_manifest(encoded.clone(), |manifest| {
-                manifest["document_version"] = serde_json::json!(version);
+                manifest["document_version"] = serde_json::json!(SESSION_DOCUMENT_VERSION);
                 manifest["document"]
                     .as_object_mut()
                     .unwrap()
-                    .remove("mixer_routes");
+                    .remove(required);
             });
             assert!(matches!(
                 decode_session(&malformed),
@@ -1042,14 +1075,12 @@ mod tests {
             .is_empty());
 
         for version in [SESSION_DOCUMENT_VERSION] {
-            let missing_bus = rewrite_manifest(encoded.clone(), |manifest| {
+            let zero_bus = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(version);
                 manifest["document"]["buses"] = serde_json::json!([]);
+                manifest["document"]["bus_display_order"] = serde_json::json!([]);
             });
-            assert!(matches!(
-                decode_session(&missing_bus),
-                Err(SessionError::Manifest(_))
-            ));
+            assert!(decode_session(&zero_bus).unwrap().document.buses.is_empty());
             let malformed = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(version);
                 manifest["document"]["buses"][0]
@@ -1069,18 +1100,18 @@ mod tests {
                 .unwrap()
                 .remove("channels");
         });
-        assert!(decode_session(&version_eight).unwrap().document.buses[0]
-            .channels
-            .is_empty());
+        assert!(matches!(
+            decode_session(&version_eight),
+            Err(SessionError::Validation(_))
+        ));
         let version_eight = rewrite_manifest(encoded.clone(), |manifest| {
             manifest["document_version"] = serde_json::json!(8);
             manifest["document"]["buses"] = serde_json::json!([]);
         });
-        assert!(decode_session(&version_eight)
-            .unwrap()
-            .document
-            .buses
-            .is_empty());
+        let migrated = decode_session(&version_eight).unwrap();
+        assert_eq!(migrated.document.buses.len(), 1);
+        assert_eq!(migrated.document.buses[0].name, "Master");
+        assert_eq!(migrated.document.bus_display_order, [1]);
 
         for invalid in [f32::NAN, f32::INFINITY, -31.0, 21.0] {
             let mut malformed = deferred_feature_bundle();
@@ -1095,6 +1126,105 @@ mod tests {
         assert!(matches!(
             encode_session(&malformed, "invalid-bus-balance"),
             Err(SessionError::Validation(_))
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn arbitrary_buses_and_visual_order_round_trip_and_validate_exactly() {
+        fn bus(
+            id: u64,
+            channel_start: u64,
+            port_start: u64,
+            name: &str,
+            count: usize,
+        ) -> BusDocument {
+            let labels = match count {
+                1 => vec!["Mono".to_owned()],
+                2 => vec!["Left".to_owned(), "Right".to_owned()],
+                _ => (1..=count)
+                    .map(|index| format!("Channel {index}"))
+                    .collect(),
+            };
+            BusDocument {
+                id,
+                name: name.to_owned(),
+                channels: labels
+                    .iter()
+                    .enumerate()
+                    .map(|(index, label)| BusChannelDocument {
+                        id: channel_start + index as u64,
+                        label: label.clone(),
+                        output_port_id: port_start + index as u64,
+                    })
+                    .collect(),
+                ports: labels
+                    .iter()
+                    .enumerate()
+                    .map(|(index, _)| PortDocument {
+                        id: port_start + index as u64,
+                        name: format!("bus_{id}_out_{}", index + 1),
+                        data_type: DataTypeDocument::Audio,
+                        direction: PortDirectionDocument::Output,
+                        role: PortRoleDocument::AudioOutput,
+                        input_connectability: vec![ConnectabilityDocument::Internal],
+                        output_connectability: vec![ConnectabilityDocument::External],
+                        gain: 1.0,
+                        muted: false,
+                        passthrough_muted: false,
+                        internal_connections: Vec::new(),
+                        external_connections: (index == 0)
+                            .then(|| vec![format!("system:output_{id}")])
+                            .unwrap_or_default(),
+                        ringbuffer_frames: 0,
+                    })
+                    .collect(),
+                fx_chain: None,
+                gain_db: if id == 2 { -6.0 } else { 0.0 },
+                balance: if count == 2 { 0.25 } else { 0.0 },
+                muted: id == 3,
+            }
+        }
+
+        let mut bundle = SessionBundle::new(SessionDocument::empty(48_000));
+        bundle.document.buses = vec![
+            bus(1, 1, 101, "Duplicate", 2),
+            bus(2, 3, 103, "Duplicate", 1),
+            bus(3, 4, 104, "Surround", 6),
+        ];
+        bundle.document.bus_display_order = vec![3, 1, 2];
+        let encoded = encode_session(&bundle, "dynamic-buses").unwrap();
+        assert_eq!(decode_session(&encoded).unwrap(), bundle);
+        assert_eq!(encoded, encode_session(&bundle, "dynamic-buses").unwrap());
+
+        let mut zero = bundle.clone();
+        zero.document.buses.clear();
+        zero.document.bus_display_order.clear();
+        assert!(decode_session(&encode_session(&zero, "zero").unwrap())
+            .unwrap()
+            .document
+            .buses
+            .is_empty());
+
+        for order in [vec![1, 2], vec![1, 2, 2], vec![1, 2, 99]] {
+            let mut malformed = bundle.clone();
+            malformed.document.bus_display_order = order;
+            assert!(matches!(
+                encode_session(&malformed, "bad-order"),
+                Err(SessionError::Validation(message)) if message.contains("display order")
+            ));
+        }
+        let mut malformed = bundle.clone();
+        malformed.document.buses[1].channels.clear();
+        malformed.document.buses[1].ports.clear();
+        assert!(matches!(
+            encode_session(&malformed, "zero-channel"),
+            Err(SessionError::Validation(message)) if message.contains("channel count")
+        ));
+        let mut malformed = bundle;
+        malformed.document.buses[2].channels[0].label = "Left".to_owned();
+        assert!(matches!(
+            encode_session(&malformed, "bad-label"),
+            Err(SessionError::Validation(message)) if message.contains("noncanonical label")
         ));
     }
 
@@ -1825,7 +1955,7 @@ mod tests {
             name: "Master".to_owned(),
             channels: vec![BusChannelDocument {
                 id: 8_001,
-                label: "Left".to_owned(),
+                label: "Mono".to_owned(),
                 output_port_id: 8_002,
             }],
             ports: vec![PortDocument {
@@ -1848,6 +1978,7 @@ mod tests {
             balance: 0.0,
             muted: false,
         }];
+        bundle.document.bus_display_order = vec![8_000];
         bundle.document.mixer_routes = vec![MixerRouteDocument {
             source_port_id,
             destination_channel_id: 999_999,

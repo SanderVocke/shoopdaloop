@@ -1,12 +1,20 @@
 use crate::{
     colors, dial::paint_dial, meter_ballistics::PeakMeterAnimation,
-    optimistic_value::OptimisticValue, BusAction, BusState, MAX_BUS_GAIN_DB, MIN_BUS_GAIN_DB,
+    optimistic_value::OptimisticValue, BusAction, BusId, BusState, StructuralState,
+    MAX_BUS_GAIN_DB, MIN_BUS_GAIN_DB,
 };
-use egui_material_icons::icons::{ICON_VOLUME_MUTE, ICON_VOLUME_UP};
+use egui_material_icons::icons::{
+    ICON_DELETE, ICON_DRAG_INDICATOR, ICON_VOLUME_MUTE, ICON_VOLUME_UP,
+};
 
 const METER_MIN_DB: f32 = -50.0;
 const CONTROL_HEIGHT: f32 = 24.0;
 const BALANCE_SIZE: f32 = 18.0;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct BusDragPayload {
+    pub bus_id: BusId,
+}
 
 #[derive(Debug, Default)]
 pub struct BusControls {
@@ -15,6 +23,7 @@ pub struct BusControls {
     balance: OptimisticValue<f32>,
     balance_drag_start: Option<f32>,
     peaks: Vec<PeakMeterAnimation>,
+    remove_confirmation_open: bool,
     #[cfg(test)]
     test_rects: TestBusControlRects,
 }
@@ -23,6 +32,9 @@ pub struct BusControls {
 #[derive(Debug, Default)]
 struct TestBusControlRects {
     block: Option<egui::Rect>,
+    drag: Option<egui::Rect>,
+    remove: Option<egui::Rect>,
+    confirm_remove: Option<egui::Rect>,
     meter: Option<egui::Rect>,
     mute: Option<egui::Rect>,
     gain: Option<egui::Rect>,
@@ -30,7 +42,17 @@ struct TestBusControlRects {
 }
 
 impl BusControls {
-    pub fn show(&mut self, ui: &mut egui::Ui, state: &BusState) -> Vec<BusAction> {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &BusState,
+        incoming_routes: usize,
+        outgoing_links: usize,
+    ) -> Vec<BusAction> {
+        #[cfg(test)]
+        {
+            self.test_rects = TestBusControlRects::default();
+        }
         let _span = tracing::trace_span!(
             "frontend.egui.bus_controls",
             bus_id = state.id.raw(),
@@ -49,25 +71,99 @@ impl BusControls {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    let color = if state.control_error.is_some() {
+                    let (drag_rect, drag) = ui.allocate_exact_size(
+                        egui::vec2(18.0, 20.0),
+                        if state.structural_state == StructuralState::Confirmed {
+                            egui::Sense::drag()
+                        } else {
+                            egui::Sense::hover()
+                        },
+                    );
+                    if state.structural_state == StructuralState::Confirmed {
+                        drag.dnd_set_drag_payload(BusDragPayload { bus_id: state.id });
+                    }
+                    #[cfg(test)]
+                    {
+                        self.test_rects.drag = Some(drag_rect);
+                    }
+                    ui.painter().text(
+                        drag_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        ICON_DRAG_INDICATOR.codepoint,
+                        egui::FontId::new(16.0, ICON_DRAG_INDICATOR.font_family()),
+                        colors::MUTED_FOREGROUND,
+                    );
+                    let color = if state.control_error.is_some() || state.structural_error.is_some()
+                    {
                         colors::ERROR
                     } else {
                         colors::FOREGROUND
                     };
-                    let response = ui.label(egui::RichText::new(&state.name).strong().color(color));
-                    if let Some(error) = &state.control_error {
+                    let response = ui.add_sized(
+                        [ui.available_width().max(24.0) - 24.0, 20.0],
+                        egui::Label::new(egui::RichText::new(&state.name).strong().color(color))
+                            .truncate(),
+                    );
+                    if let Some(error) = state
+                        .structural_error
+                        .as_ref()
+                        .or(state.control_error.as_ref())
+                    {
                         response.on_hover_text(error);
                     }
-                    if state.control_pending {
+                    if state.structural_state != StructuralState::Confirmed || state.control_pending
+                    {
                         ui.spinner();
+                    } else {
+                        let remove = ui
+                            .add(egui::Button::new(ICON_DELETE.rich_text().size(15.0)).frame(false))
+                            .on_hover_text("Remove bus");
+                        #[cfg(test)]
+                        {
+                            self.test_rects.remove = Some(remove.rect);
+                        }
+                        if remove.clicked() {
+                            self.remove_confirmation_open = true;
+                        }
                     }
                 });
-                self.show_control_row(ui, state, &mut actions);
+                ui.add_enabled_ui(state.structural_state == StructuralState::Confirmed, |ui| {
+                    self.show_control_row(ui, state, &mut actions)
+                });
             })
             .response;
         #[cfg(test)]
         {
             self.test_rects.block = Some(_response.rect);
+        }
+        if self.remove_confirmation_open {
+            let mut open = true;
+            let mut remove = false;
+            let mut cancel = false;
+            egui::Window::new("Remove bus?")
+                .id(egui::Id::new(("remove_bus", state.id.raw())))
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .show(ui.ctx(), |ui| {
+                    ui.label(format!(
+                        "Remove '{}' and {} incoming route(s) and {} system link(s)?",
+                        state.name, incoming_routes, outgoing_links
+                    ));
+                    ui.horizontal(|ui| {
+                        let remove_button = ui.button("Remove");
+                        #[cfg(test)]
+                        {
+                            self.test_rects.confirm_remove = Some(remove_button.rect);
+                        }
+                        remove = remove_button.clicked();
+                        cancel = ui.button("Cancel").clicked();
+                    });
+                });
+            if remove {
+                actions.push(BusAction::Remove);
+            }
+            self.remove_confirmation_open = open && !remove && !cancel;
         }
         actions
     }
@@ -266,6 +362,8 @@ mod tests {
         BusState {
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
+            structural_state: crate::StructuralState::Confirmed,
+            structural_error: None,
             channels: (0..channels)
                 .map(|index| BusChannelState {
                     id: BusChannelId::from_raw(index as u64 + 1),
@@ -294,12 +392,12 @@ mod tests {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(140.0, 80.0),
+                    egui::vec2(240.0, 220.0),
                 )),
                 events,
                 ..Default::default()
             },
-            |ui| actions = controls.show(ui, state),
+            |ui| actions = controls.show(ui, state, 0, 0),
         );
         output.textures_delta.clear();
         actions
@@ -456,5 +554,96 @@ mod tests {
             ],
         );
         assert_eq!(actions, [BusAction::MuteChanged(true)]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn drag_payload_and_confirmation_gated_remove_use_stable_bus_identity() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut controls = BusControls::default();
+        let state = state(4);
+        frame(&context, &mut controls, &state, Vec::new());
+        let drag = controls.test_rects.drag.unwrap().center();
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(drag),
+                egui::Event::PointerButton {
+                    pos: drag,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerMoved(drag + egui::vec2(0.0, 12.0)),
+            ],
+        );
+        assert_eq!(
+            egui::DragAndDrop::payload::<BusDragPayload>(&context).as_deref(),
+            Some(&BusDragPayload { bus_id: state.id })
+        );
+        egui::DragAndDrop::clear_payload(&context);
+
+        let remove = controls.test_rects.remove.unwrap().center();
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(remove),
+                egui::Event::PointerButton {
+                    pos: remove,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(remove),
+                egui::Event::PointerButton {
+                    pos: remove,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(&context, &mut controls, &state, Vec::new());
+        let confirm = controls.test_rects.confirm_remove.unwrap().center();
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(confirm),
+                egui::Event::PointerButton {
+                    pos: confirm,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let actions = frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(confirm),
+                egui::Event::PointerButton {
+                    pos: confirm,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(actions, [BusAction::Remove]);
     }
 }

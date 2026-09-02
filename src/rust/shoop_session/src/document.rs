@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 12;
+pub const SESSION_DOCUMENT_VERSION: u16 = 13;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -57,6 +57,8 @@ pub struct SessionDocument {
     pub selected_loop_ids: Vec<u64>,
     pub targeted_loop_id: Option<u64>,
     pub buses: Vec<BusDocument>,
+    #[serde(default)]
+    pub bus_display_order: Vec<u64>,
     #[serde(default)]
     pub mixer_routes: Vec<MixerRouteDocument>,
     pub global_ports: Vec<PortDocument>,
@@ -116,6 +118,7 @@ impl SessionDocument {
                 balance: 0.0,
                 muted: false,
             }],
+            bus_display_order: vec![1],
             mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             fx_states: Vec::new(),

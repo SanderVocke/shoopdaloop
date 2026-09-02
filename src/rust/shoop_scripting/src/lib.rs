@@ -1510,15 +1510,15 @@ dialog.simple('Help', {dialog.markdown_file('content/help.md')})
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.5",
+                "script requests 2.0, host supports 1.6",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.5",
+                "script requests 0.0, host supports 1.6",
             ),
             (
-                "shoop_announce_api_version(1, 6)",
-                "script requests 1.6, host supports 1.5",
+                "shoop_announce_api_version(1, 7)",
+                "script requests 1.7, host supports 1.6",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
@@ -2408,7 +2408,7 @@ if not c.get_solo() then error('solo') end
         let id = manager
             .add(
                 "future.lua",
-                "shoop_announce_api_version(1, 6)",
+                "shoop_announce_api_version(1, 7)",
                 ScriptKind::Ephemeral,
                 true,
             )
@@ -2421,7 +2421,7 @@ if not c.get_solo() then error('solo') end
             .latest_error
             .as_deref()
             .unwrap()
-            .contains("script requests 1.6, host supports 1.5"));
+            .contains("script requests 1.7, host supports 1.6"));
 
         assert!(manager.start(id).is_err());
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Incompatible);

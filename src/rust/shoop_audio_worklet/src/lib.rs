@@ -22,16 +22,17 @@ use shoop_audio_protocol::{
 #[cfg(test)]
 use shoop_backend::BuiltInFxState;
 use shoop_backend::{
-    Backend, BackendBusChannelId, BackendBusControl, BackendBusId, BackendCompositeConfig,
-    BackendCompositeEntry, BackendCompositeId, BackendCompositeKind, BackendCompositeTarget,
-    BackendDefaultPlaybackMode, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
-    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, BuiltInFxControl, BuiltInFxDriveType,
-    BuiltInFxMidiCcAssignment, BuiltInFxModulationType, BuiltInFxParameter, BuiltInFxReverbType,
-    BuiltInFxStage, EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter,
-    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendBusChannelId, BackendBusControl, BackendBusId, BackendBusRequest,
+    BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId, BackendCompositeKind,
+    BackendCompositeTarget, BackendDefaultPlaybackMode, BackendGrabRequest,
+    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
+    BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, BuiltInFxControl,
+    BuiltInFxDriveType, BuiltInFxMidiCcAssignment, BuiltInFxModulationType, BuiltInFxParameter,
+    BuiltInFxReverbType, BuiltInFxStage, EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment,
+    OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest,
+    MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -493,6 +494,45 @@ impl WorkletHost {
                         BackendTrackId::from_raw(track_id),
                         from_wire_track_control(control),
                     )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::CreateBus {
+                expected_bus_id,
+                expected_channel_ids,
+                expected_output_port_ids,
+                name,
+                channel_count,
+            } => {
+                let created = self
+                    .backend
+                    .create_bus(BackendBusRequest {
+                        name,
+                        channel_count,
+                    })
+                    .map_err(|error| error.to_string())?;
+                let actual_channel_ids = created
+                    .channels
+                    .iter()
+                    .map(|channel| channel.id.raw())
+                    .collect::<Vec<_>>();
+                let actual_output_ids = created
+                    .channels
+                    .iter()
+                    .map(|channel| channel.output_port_id.raw())
+                    .collect::<Vec<_>>();
+                if created.bus_id.raw() != expected_bus_id
+                    || actual_channel_ids != expected_channel_ids
+                    || actual_output_ids != expected_output_port_ids
+                {
+                    let _ = self.backend.remove_bus(created.bus_id);
+                    return Err("created bus identities did not match the reservation".to_owned());
+                }
+                Ok(Event::Ack)
+            }
+            Command::RemoveBus { bus_id } => {
+                self.backend
+                    .remove_bus(BackendBusId::from_raw(bus_id))
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
@@ -3306,6 +3346,57 @@ mod tests {
             command(&mut host, 10, Command::Poll).event,
             Event::Snapshot(_)
         ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_creates_and_removes_exact_multichannel_bus_identities() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateBus {
+                    expected_bus_id: 2,
+                    expected_channel_ids: vec![3, 4, 5, 6],
+                    expected_output_port_ids: vec![1, 2, 3, 4],
+                    name: "Surround".to_owned(),
+                    channel_count: 4,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 2, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.buses.len(), 2);
+        let surround = snapshot.buses.iter().find(|bus| bus.id == 2).unwrap();
+        assert_eq!(surround.name, "Surround");
+        assert_eq!(
+            surround
+                .channels
+                .iter()
+                .map(|channel| channel.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Channel 1", "Channel 2", "Channel 3", "Channel 4"]
+        );
+        assert!(snapshot.confirmed_mixer_links.is_empty());
+        assert!(matches!(
+            command(&mut host, 3, Command::RemoveBus { bus_id: 1 }).event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 4, Command::RemoveBus { bus_id: 2 }).event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 5, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert!(snapshot.buses.is_empty());
+        assert!(snapshot
+            .application_ports
+            .iter()
+            .all(|port| { !matches!(port.owner, WireApplicationPortOwner::Bus { .. }) }));
     }
 
     #[shoop_wasm_test_support::shoop_test]

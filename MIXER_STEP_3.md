@@ -118,18 +118,18 @@ Verification:
 
 Depends on Stage 0.
 
-- [ ] Add normalized typed bus-creation and bus-removal requests/results/failures to the backend boundary, including stable channel/output mappings and explicit capacity/validation errors.
-- [ ] Extend application APIs with typed create, remove, and `MoveBefore(Option<BusId>)` intents plus structural pending/error state; keep gain/balance/mute actions keyed by `BusId`.
-- [ ] Add an explicit application display-order model independent of the backend bus map and semantic/Lua selector order.
-- [ ] Replace fixed Master constants in general contracts with a default-bus constructor policy while retaining reserved legacy IDs only for migration compatibility.
-- [ ] Bump the audio protocol and add bounded create/remove commands, acknowledgements/failures, snapshots, stable mapping data, and journal classifications needed by remote backends.
-- [ ] Update fake backend operation capture and configurable failures so tests can prove exact definitions, IDs, ordering isolation, rejection, saturation, and rollback.
+- [x] Add normalized typed bus-creation and bus-removal requests/results/failures to the backend boundary, including stable channel/output mappings and explicit capacity/validation errors.
+- [x] Extend application APIs with typed create, remove, and `MoveBefore(Option<BusId>)` intents plus structural pending/error state; keep gain/balance/mute actions keyed by `BusId`.
+- [x] Add an explicit application display-order model independent of the backend bus map and semantic/Lua selector order.
+- [x] Replace fixed Master constants in general contracts with a default-bus constructor policy while retaining reserved legacy IDs only for migration compatibility.
+- [x] Bump the audio protocol and add bounded create/remove commands, acknowledgements/failures, snapshots, stable mapping data, and journal classifications needed by remote backends.
+- [x] Update fake backend operation capture and configurable failures so tests can prove exact definitions, IDs, ordering isolation, rejection, saturation, and rollback.
 
 Verification:
 
-- [ ] Add contract tests for valid mono/stereo/multichannel definitions, deterministic labels, duplicate names, empty/oversized names, zero/excessive counts, identity collision/exhaustion, stale remove, and exact fake operations.
-- [ ] Prove display moves accept only current stable IDs, handle self/end moves deterministically, and emit no backend operation.
-- [ ] Run focused `shoop_backend`, `shoop_app_api`, `shoop_audio_protocol`, and fake-backend tests.
+- [x] Add contract tests for valid mono/stereo/multichannel definitions, deterministic labels, duplicate names, empty/oversized names, zero/excessive counts, identity collision/exhaustion, stale remove, and exact fake operations.
+- [x] Prove display moves accept only current stable IDs, handle self/end moves deterministically, and emit no backend operation.
+- [x] Run focused `shoop_backend`, `shoop_app_api`, `shoop_audio_protocol`, and fake-backend tests.
 
 ### Stage 2 — Generalize engine and native backends to arbitrary bus collections
 
