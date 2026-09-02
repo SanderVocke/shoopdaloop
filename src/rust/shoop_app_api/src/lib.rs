@@ -245,9 +245,236 @@ pub struct OxiSynthState {
     pub midi_cc_assignments: Arc<[OxiSynthMidiCcAssignment]>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BuiltInFxStage {
+    Compressor,
+    Drive,
+    Eq,
+    Chorus,
+    Modulation,
+    Reverb,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BuiltInFxDriveType {
+    #[default]
+    Saturation,
+    Overdrive,
+    Distortion,
+    Fuzz,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BuiltInFxModulationType {
+    #[default]
+    Tremolo,
+    Flanger,
+    Phaser,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BuiltInFxReverbType {
+    #[default]
+    Room,
+    Hall,
+    Plate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BuiltInFxParameter {
+    CompressorThreshold,
+    CompressorRatio,
+    CompressorAttack,
+    CompressorRelease,
+    CompressorMakeup,
+    Drive,
+    DriveTone,
+    DriveMix,
+    DriveOutput,
+    EqLow,
+    EqMid,
+    EqHigh,
+    ChorusRate,
+    ChorusDepth,
+    ChorusMix,
+    ChorusWidth,
+    ModulationRate,
+    ModulationDepth,
+    ModulationMix,
+    ModulationFeedback,
+    ModulationSpread,
+    ReverbAmount,
+    ReverbTone,
+}
+
+impl BuiltInFxParameter {
+    pub const ALL: [Self; 23] = [
+        Self::CompressorThreshold,
+        Self::CompressorRatio,
+        Self::CompressorAttack,
+        Self::CompressorRelease,
+        Self::CompressorMakeup,
+        Self::Drive,
+        Self::DriveTone,
+        Self::DriveMix,
+        Self::DriveOutput,
+        Self::EqLow,
+        Self::EqMid,
+        Self::EqHigh,
+        Self::ChorusRate,
+        Self::ChorusDepth,
+        Self::ChorusMix,
+        Self::ChorusWidth,
+        Self::ModulationRate,
+        Self::ModulationDepth,
+        Self::ModulationMix,
+        Self::ModulationFeedback,
+        Self::ModulationSpread,
+        Self::ReverbAmount,
+        Self::ReverbTone,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::CompressorThreshold => "Compressor — Threshold",
+            Self::CompressorRatio => "Compressor — Ratio",
+            Self::CompressorAttack => "Compressor — Attack",
+            Self::CompressorRelease => "Compressor — Release",
+            Self::CompressorMakeup => "Compressor — Makeup",
+            Self::Drive => "Drive — Drive",
+            Self::DriveTone => "Drive — Tone",
+            Self::DriveMix => "Drive — Mix",
+            Self::DriveOutput => "Drive — Output",
+            Self::EqLow => "EQ — Low",
+            Self::EqMid => "EQ — Mid",
+            Self::EqHigh => "EQ — High",
+            Self::ChorusRate => "Chorus — Rate",
+            Self::ChorusDepth => "Chorus — Depth",
+            Self::ChorusMix => "Chorus — Mix",
+            Self::ChorusWidth => "Chorus — Stereo Width",
+            Self::ModulationRate => "Modulation — Rate",
+            Self::ModulationDepth => "Modulation — Depth",
+            Self::ModulationMix => "Modulation — Mix",
+            Self::ModulationFeedback => "Modulation — Feedback",
+            Self::ModulationSpread => "Modulation — Stereo Spread",
+            Self::ReverbAmount => "Reverb — Amount",
+            Self::ReverbTone => "Reverb — Tone",
+        }
+    }
+
+    pub const fn range(self) -> (f32, f32) {
+        match self {
+            Self::CompressorThreshold => (-48.0, 0.0),
+            Self::CompressorRatio => (1.0, 20.0),
+            Self::CompressorAttack => (0.5, 100.0),
+            Self::CompressorRelease => (20.0, 1_000.0),
+            Self::CompressorMakeup => (0.0, 18.0),
+            Self::Drive => (0.0, 36.0),
+            Self::DriveOutput => (-18.0, 6.0),
+            Self::EqLow | Self::EqMid | Self::EqHigh => (-12.0, 12.0),
+            Self::ChorusRate | Self::ModulationRate => (0.05, 5.0),
+            Self::ModulationFeedback => (-0.95, 0.95),
+            Self::DriveTone
+            | Self::DriveMix
+            | Self::ChorusDepth
+            | Self::ChorusMix
+            | Self::ChorusWidth
+            | Self::ModulationDepth
+            | Self::ModulationMix
+            | Self::ModulationSpread
+            | Self::ReverbAmount
+            | Self::ReverbTone => (0.0, 1.0),
+        }
+    }
+
+    pub fn is_valid(self, value: f32) -> bool {
+        let (minimum, maximum) = self.range();
+        value.is_finite() && (minimum..=maximum).contains(&value)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BuiltInFxMidiCcAssignment {
+    pub parameter: BuiltInFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct BuiltInFxState {
+    pub compressor_enabled: bool,
+    pub compressor_threshold_db: f32,
+    pub compressor_ratio: f32,
+    pub compressor_attack_ms: f32,
+    pub compressor_release_ms: f32,
+    pub compressor_makeup_db: f32,
+    pub drive_enabled: bool,
+    pub drive_type: BuiltInFxDriveType,
+    pub drive_db: f32,
+    pub drive_tone: f32,
+    pub drive_mix: f32,
+    pub drive_output_db: f32,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
+    pub chorus_enabled: bool,
+    pub chorus_rate_hz: f32,
+    pub chorus_depth: f32,
+    pub chorus_mix: f32,
+    pub chorus_width: f32,
+    pub modulation_enabled: bool,
+    pub modulation_type: BuiltInFxModulationType,
+    pub modulation_rate_hz: f32,
+    pub modulation_depth: f32,
+    pub modulation_mix: f32,
+    pub modulation_feedback: f32,
+    pub modulation_spread: f32,
     pub reverb_enabled: bool,
+    pub reverb_type: BuiltInFxReverbType,
+    pub reverb_amount: f32,
+    pub reverb_tone: f32,
+    pub midi_cc_assignments: Arc<[BuiltInFxMidiCcAssignment]>,
+}
+
+impl Default for BuiltInFxState {
+    fn default() -> Self {
+        Self {
+            compressor_enabled: false,
+            compressor_threshold_db: -18.0,
+            compressor_ratio: 4.0,
+            compressor_attack_ms: 10.0,
+            compressor_release_ms: 150.0,
+            compressor_makeup_db: 0.0,
+            drive_enabled: false,
+            drive_type: BuiltInFxDriveType::Saturation,
+            drive_db: 12.0,
+            drive_tone: 0.5,
+            drive_mix: 1.0,
+            drive_output_db: 0.0,
+            eq_enabled: false,
+            eq_low_db: 0.0,
+            eq_mid_db: 0.0,
+            eq_high_db: 0.0,
+            chorus_enabled: false,
+            chorus_rate_hz: 0.3,
+            chorus_depth: 0.5,
+            chorus_mix: 0.3,
+            chorus_width: 1.0,
+            modulation_enabled: false,
+            modulation_type: BuiltInFxModulationType::Tremolo,
+            modulation_rate_hz: 0.5,
+            modulation_depth: 0.5,
+            modulation_mix: 0.5,
+            modulation_feedback: 0.25,
+            modulation_spread: 1.0,
+            reverb_enabled: true,
+            reverb_type: BuiltInFxReverbType::Room,
+            reverb_amount: 0.2,
+            reverb_tone: 0.5,
+            midi_cc_assignments: Arc::from([]),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1601,8 +1828,16 @@ pub enum LoopAction {
 
 pub type LoopWidgetAction = LoopAction;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BuiltInFxControl {
+    SetStageEnabled(BuiltInFxStage, bool),
+    SetDriveType(BuiltInFxDriveType),
+    SetModulationType(BuiltInFxModulationType),
+    SetReverbType(BuiltInFxReverbType),
+    SetParameter(BuiltInFxParameter, f32),
+    AssignMidiCc(BuiltInFxMidiCcAssignment),
+    RemoveMidiCc(BuiltInFxParameter),
+    ClearMidiCcAssignments,
     SetReverbEnabled(bool),
 }
 
@@ -1934,6 +2169,14 @@ impl LoopAction {
 impl BuiltInFxControl {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetStageEnabled(_, _) => "track.builtin_fx.stage_enabled",
+            Self::SetDriveType(_) => "track.builtin_fx.drive_type",
+            Self::SetModulationType(_) => "track.builtin_fx.modulation_type",
+            Self::SetReverbType(_) => "track.builtin_fx.reverb_type",
+            Self::SetParameter(_, _) => "track.builtin_fx.parameter",
+            Self::AssignMidiCc(_) => "track.builtin_fx.midi_cc_assign",
+            Self::RemoveMidiCc(_) => "track.builtin_fx.midi_cc_remove",
+            Self::ClearMidiCcAssignments => "track.builtin_fx.midi_cc_clear",
             Self::SetReverbEnabled(_) => "track.builtin_fx.reverb_enabled",
         }
     }
@@ -2422,10 +2665,57 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn builtin_fx_controls_have_stable_intent_kinds() {
-        assert_eq!(
-            TrackAction::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)).kind(),
-            "track.builtin_fx.reverb_enabled"
-        );
+        for (control, kind) in [
+            (
+                BuiltInFxControl::SetStageEnabled(BuiltInFxStage::Drive, true),
+                "track.builtin_fx.stage_enabled",
+            ),
+            (
+                BuiltInFxControl::SetDriveType(BuiltInFxDriveType::Fuzz),
+                "track.builtin_fx.drive_type",
+            ),
+            (
+                BuiltInFxControl::SetModulationType(BuiltInFxModulationType::Phaser),
+                "track.builtin_fx.modulation_type",
+            ),
+            (
+                BuiltInFxControl::SetReverbType(BuiltInFxReverbType::Plate),
+                "track.builtin_fx.reverb_type",
+            ),
+            (
+                BuiltInFxControl::SetParameter(BuiltInFxParameter::Drive, 12.0),
+                "track.builtin_fx.parameter",
+            ),
+            (
+                BuiltInFxControl::AssignMidiCc(BuiltInFxMidiCcAssignment {
+                    parameter: BuiltInFxParameter::Drive,
+                    channel: 2,
+                    controller: 17,
+                }),
+                "track.builtin_fx.midi_cc_assign",
+            ),
+            (
+                BuiltInFxControl::RemoveMidiCc(BuiltInFxParameter::Drive),
+                "track.builtin_fx.midi_cc_remove",
+            ),
+            (
+                BuiltInFxControl::ClearMidiCcAssignments,
+                "track.builtin_fx.midi_cc_clear",
+            ),
+            (
+                BuiltInFxControl::SetReverbEnabled(false),
+                "track.builtin_fx.reverb_enabled",
+            ),
+        ] {
+            assert_eq!(TrackAction::BuiltInFx(control).kind(), kind);
+        }
+        assert_eq!(BuiltInFxParameter::ALL.len(), 23);
+        let labels = BuiltInFxParameter::ALL
+            .into_iter()
+            .map(BuiltInFxParameter::label)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(labels.len(), BuiltInFxParameter::ALL.len());
+        assert_eq!(BuiltInFxState::default().midi_cc_assignments.len(), 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
