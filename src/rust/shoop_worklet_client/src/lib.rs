@@ -919,14 +919,16 @@ impl RemoteWorkletBackend {
             .map(|id| id.raw())
             .max()
             .unwrap_or(0)
-            .saturating_add(1);
+            .saturating_add(1)
+            .max(2);
         self.next_bus_channel_id = replacement
             .bus_channels
             .values()
             .map(|id| id.raw())
             .max()
             .unwrap_or(0)
-            .saturating_add(1);
+            .saturating_add(1)
+            .max(3);
         self.next_port_id = replacement
             .tracks
             .values()
@@ -3005,6 +3007,7 @@ impl Backend for RemoteWorkletBackend {
             self.poll_elapsed = Duration::ZERO;
         }
         let events = self.transport.borrow_mut().drain_events();
+        let mut rejected_bus_creations = BTreeSet::new();
         for received in events {
             let sequence = received.envelope.sequence;
             let generation = received.generation;
@@ -3066,10 +3069,21 @@ impl Backend for RemoteWorkletBackend {
                     if retry_media_read {
                         continue;
                     }
-                    self.transport.borrow_mut().restore_rejected_journal(
-                        &received.command,
-                        received.journal_mutation.clone(),
-                    );
+                    let mut journal_mutation = received.journal_mutation.clone();
+                    if let Command::RemoveBus { bus_id } = &received.command {
+                        if rejected_bus_creations.contains(&BackendBusId::from_raw(*bus_id)) {
+                            if let Some(crate::transport::JournalMutation::PrunedForBusRemoval {
+                                removed,
+                                ..
+                            }) = journal_mutation.as_mut()
+                            {
+                                removed.clear();
+                            }
+                        }
+                    }
+                    self.transport
+                        .borrow_mut()
+                        .restore_rejected_journal(&received.command, journal_mutation);
                     match &received.command {
                         Command::CreateTrack {
                             expected_track_id, ..
@@ -3086,8 +3100,10 @@ impl Backend for RemoteWorkletBackend {
                         Command::CreateBus {
                             expected_bus_id, ..
                         } => {
-                            self.bus_resources
-                                .remove(&BackendBusId::from_raw(*expected_bus_id));
+                            let bus_id = BackendBusId::from_raw(*expected_bus_id);
+                            rejected_bus_creations.insert(bus_id);
+                            self.bus_resources.remove(&bus_id);
+                            self.pending_removed_buses.remove(&bus_id);
                         }
                         Command::RemoveBus { bus_id } => {
                             let bus_id = BackendBusId::from_raw(*bus_id);
@@ -4684,6 +4700,7 @@ mod tests {
             .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
             .unwrap();
         deliver(&control, 1, 1, Event::Ack);
+        backend.remove_bus(rejected.bus_id).unwrap();
         deliver(
             &control,
             1,
@@ -4692,12 +4709,27 @@ mod tests {
                 message: "bus create rejected".to_owned(),
             },
         );
+        deliver(
+            &control,
+            1,
+            3,
+            Event::Error {
+                message: "unknown removed bus".to_owned(),
+            },
+        );
         let snapshot = backend.poll().unwrap();
         assert_eq!(
             snapshot.mutation_failures[0].detail,
             Some(BackendMutationDetail::BusCreation)
         );
+        assert_eq!(
+            snapshot.mutation_failures[1].detail,
+            Some(BackendMutationDetail::BusRemoval)
+        );
         assert!(!backend.bus_resources.contains_key(&rejected.bus_id));
+        assert!(!backend.pending_removed_buses.contains_key(&rejected.bus_id));
+        assert!(!backend.bus_resources.contains_key(&rejected.bus_id));
+        assert!(!backend.pending_removed_buses.contains_key(&rejected.bus_id));
         assert!(backend
             .transport
             .borrow()
@@ -4711,12 +4743,12 @@ mod tests {
                 channel_count: 2,
             })
             .unwrap();
-        deliver(&control, 1, 3, Event::Ack);
+        deliver(&control, 1, 4, Event::Ack);
         backend.remove_bus(retained.bus_id).unwrap();
         deliver(
             &control,
             1,
-            4,
+            5,
             Event::Error {
                 message: "bus remove rejected".to_owned(),
             },
@@ -5521,6 +5553,32 @@ mod tests {
         assert_eq!(
             backend.snapshot.connections.application_ports[&GLOBAL_FX_PORT_ID].owner,
             BackendPortOwner::GlobalFxControl
+        );
+
+        let mut empty = session;
+        empty.buses.clear();
+        let empty_replacement = browser_replacement_mapping(&empty);
+        let empty_bytes: Arc<[u8]> = Arc::from(encode_binary(&empty).unwrap());
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_replay(8, empty_bytes)
+            .unwrap();
+        backend.apply_replaced_session(&empty, &empty_replacement, 10);
+        assert_eq!(backend.next_bus_id, 2);
+        assert_eq!(backend.next_bus_channel_id, 3);
+        assert_eq!(backend.next_port_id, 1);
+        let created = backend
+            .create_bus(BackendBusRequest {
+                name: "After zero".to_owned(),
+                channel_count: 1,
+            })
+            .unwrap();
+        assert_eq!(created.bus_id, BackendBusId::from_raw(2));
+        assert_eq!(created.channels[0].id, BackendBusChannelId::from_raw(3));
+        assert_eq!(
+            created.channels[0].output_port_id,
+            BackendPortId::from_raw(1)
         );
     }
 

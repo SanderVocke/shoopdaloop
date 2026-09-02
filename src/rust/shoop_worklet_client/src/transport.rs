@@ -9,9 +9,9 @@ use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, COMMAND_CAPACITY, PROTOCOL_VERSION,
     SESSION_TRANSFER_CHUNK_BYTES,
 };
-use shoop_backend::BackendDriverState;
+use shoop_backend::{BackendDriverState, MAX_BUS_HOST_LINKS, MAX_MIXER_ROUTES};
 
-const DURABLE_COMMAND_CAPACITY: usize = COMMAND_CAPACITY - 1;
+const DURABLE_COMMAND_CAPACITY: usize = MAX_MIXER_ROUTES + MAX_BUS_HOST_LINKS + COMMAND_CAPACITY;
 
 pub trait MessageEndpoint {
     fn post_message(&self, message: &str) -> Result<()>;
@@ -314,6 +314,23 @@ impl TransportCore {
         command: &Command,
         mutation: Option<JournalMutation>,
     ) {
+        if let Command::CreateBus {
+            expected_bus_id, ..
+        } = command
+        {
+            for pending in self.pending.values_mut() {
+                let Some(JournalMutation::PrunedForBusRemoval { removed, .. }) =
+                    pending.journal_mutation.as_mut()
+                else {
+                    continue;
+                };
+                if removed.iter().any(|(_, candidate)| {
+                    matches!(candidate, Command::CreateBus { expected_bus_id: candidate_id, .. } if candidate_id == expected_bus_id)
+                }) {
+                    removed.clear();
+                }
+            }
+        }
         let fallback = mutation.clone();
         for pending in self.pending.values_mut() {
             if pending
@@ -1200,6 +1217,39 @@ mod tests {
         assert_eq!(sent.borrow().len(), total_commands);
         assert!(transport.borrow().inbound.len() <= 1);
         assert_eq!(transport.borrow().readiness().replay, ReplayState::Complete);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn journal_holds_every_supported_mixer_and_bus_host_link() {
+        let mut transport = TransportCore::default();
+        for index in 0..MAX_MIXER_ROUTES as u64 {
+            transport
+                .journal(Command::SetMixerRoute {
+                    source_port_id: index + 1,
+                    destination_channel_id: index + 1,
+                    connected: true,
+                })
+                .unwrap();
+        }
+        for index in 0..MAX_BUS_HOST_LINKS as u64 {
+            transport
+                .journal(Command::SetPortConnected {
+                    application_port_id: index + 1,
+                    host_port_id: format!("system:output_{index}"),
+                    connected: true,
+                })
+                .unwrap();
+        }
+        assert_eq!(
+            transport.journal.len(),
+            MAX_MIXER_ROUTES + MAX_BUS_HOST_LINKS
+        );
+        transport
+            .journal(Command::SetBusControl {
+                bus_id: 1,
+                control: shoop_audio_protocol::WireBusControl::Mute(true),
+            })
+            .unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]

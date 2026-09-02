@@ -265,7 +265,10 @@ pub fn decode_session_with_limits(
         migrate_pre_expanded_builtin_fx_document(&mut manifest.document)?;
     }
     if manifest.document_version <= PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION {
-        migrate_pre_dynamic_bus_document(&mut manifest.document)?;
+        migrate_pre_dynamic_bus_document(
+            &mut manifest.document,
+            manifest.document_version <= PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION,
+        )?;
     }
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -351,7 +354,14 @@ fn migrate_pre_alignment_document(document: &mut SessionDocument) {
     }
 }
 
-fn migrate_pre_dynamic_bus_document(document: &mut SessionDocument) -> Result<(), SessionError> {
+fn migrate_pre_dynamic_bus_document(
+    document: &mut SessionDocument,
+    replace_pre_mixer_buses: bool,
+) -> Result<(), SessionError> {
+    if replace_pre_mixer_buses {
+        document.buses.clear();
+        document.mixer_routes.clear();
+    }
     if document.buses.is_empty() {
         let mut used_port_ids = document
             .track_groups

@@ -1117,10 +1117,10 @@ mod tests {
                 .unwrap()
                 .remove("channels");
         });
-        assert!(matches!(
-            decode_session(&version_eight),
-            Err(SessionError::Validation(_))
-        ));
+        let migrated_nonempty = decode_session(&version_eight).unwrap();
+        assert_eq!(migrated_nonempty.document.buses.len(), 1);
+        assert_eq!(migrated_nonempty.document.buses[0].name, "Master");
+        assert_eq!(migrated_nonempty.document.bus_display_order, [1]);
         let version_eight = rewrite_manifest(encoded.clone(), |manifest| {
             manifest["document_version"] = serde_json::json!(8);
             manifest["document"]["buses"] = serde_json::json!([]);
