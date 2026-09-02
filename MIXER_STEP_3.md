@@ -104,7 +104,7 @@ Dependencies are linear unless a stage explicitly says otherwise. Each stage mus
 
 - [x] Record the final exact head, merge base, all-green checks, and no-major-issues Codex result of PR #843; confirm `MIXER_STEP_2.md` and `MIXER_MASTER_GOAL.md` have no unchecked items.
 - [x] Create `shoopdaloop-mixer-step-3` from the final step-2 head, not from `master`, so the new branch contains the complete prior mixer implementation. Keep its eventual PR base as `master`.
-- [ ] Verify the initial `origin/master...HEAD` diff is exactly the completed mixer foundation/step-2 work plus this plan, with no unrelated changes.
+- [x] Verify the initial `origin/master...HEAD` diff is exactly the completed mixer foundation/step-2 work plus this plan, with no unrelated changes.
 - [x] Inventory fixed-Master assumptions across backend, native runtime, engine graph, application model, protocol/worklet replay, session validation, Lua snapshots, sidebar, Connections graph, and documentation before replacing them.
 - [x] Record the concrete name-length, bus-count, per-bus channel-count, total-channel/output-port, graph-capacity, command-capacity, and session-budget limits selected from existing bounded infrastructure. Any newly necessary limit must be justified as a resource bound rather than a functional mono/stereo restriction.
 - [x] Record the resolved lifecycle semantics from the immutable criteria: Master is removable, zero buses persist, names are chosen only at creation and may duplicate, existing buses are not resized, visual order is separate from Lua/backend order, and Connections modes are presentation-only.
@@ -112,7 +112,7 @@ Dependencies are linear unless a stage explicitly says otherwise. Each stage mus
 Verification:
 
 - [x] Confirm the branch points at the recorded step-2 SHA and its merge base with `master` is understood before implementation.
-- [ ] Run the existing fixed-Master routing, control, session, sidebar, Connections, Lua, and native/browser focused tests as the regression baseline.
+- [x] Run the existing fixed-Master routing, control, session, sidebar, Connections, Lua, and native/browser focused tests as the regression baseline.
 
 ### Stage 1 — Define dynamic bus lifecycle, identity, order, and protocol contracts
 
