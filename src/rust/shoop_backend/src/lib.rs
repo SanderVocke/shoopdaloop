@@ -10785,7 +10785,7 @@ impl Backend for FakeBackend {
                 .iter()
                 .any(|channel| channel.id == destination_channel_id)
         }) {
-            return Err(anyhow!("unknown Master bus channel"));
+            return Err(anyhow!("unknown bus channel"));
         }
         let link = BackendMixerLink {
             source_port_id,
@@ -11131,17 +11131,75 @@ mod tests {
         backend
             .set_bus_control(surround.bus_id, BackendBusControl::GainDb(-6.0))
             .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "fanout".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        load_direct_loop(&mut backend, track.loops[0], 1.0);
+        let track_output = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap()
+            .id;
+        backend
+            .set_mixer_route(track_output, surround.channels[0].id, true)
+            .unwrap();
+        backend
+            .set_port_connected(track_output, "system:playback_1", true)
+            .unwrap();
+        backend
+            .set_port_connected(
+                surround.channels[0].output_port_id,
+                "system:playback_1",
+                true,
+            )
+            .unwrap();
+        let surround_output = backend.buses[&surround.bus_id].channels[0].output;
+        backend
+            .session
+            .port_mut(surround_output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        backend.advance_frames(4);
+        let rendered = backend
+            .session
+            .port_mut(surround_output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        let expected = db_gain(-6.0);
+        assert!(rendered
+            .iter()
+            .all(|sample| (*sample - expected).abs() < 1.0e-6));
         backend.remove_bus(mono.bus_id).unwrap();
         backend.remove_bus(MASTER_BUS_ID).unwrap();
         let removed = backend.poll().unwrap();
         assert_eq!(removed.mixer.buses.len(), 1);
         assert!(removed.mixer.buses.contains_key(&surround.bus_id));
         assert_eq!(removed.mixer.buses[&surround.bus_id].gain_db, -6.0);
+        assert!(removed.mixer.buses[&surround.bus_id].output_peaks_db[0] > -7.0);
         assert!(mono.channels.iter().all(|channel| {
             !removed
                 .connections
                 .application_ports
                 .contains_key(&channel.output_port_id)
+        }));
+        assert_eq!(removed.mixer.confirmed_links.len(), 1);
+        backend.remove_bus(surround.bus_id).unwrap();
+        let empty = backend.poll().unwrap();
+        assert!(empty.mixer.buses.is_empty());
+        assert!(empty.mixer.confirmed_links.is_empty());
+        assert!(empty.connections.confirmed_links.iter().any(|link| {
+            link.application_port_id == track_output && link.host_port_id == "system:playback_1"
         }));
     }
 

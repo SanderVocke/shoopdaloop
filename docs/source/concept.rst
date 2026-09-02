@@ -45,10 +45,18 @@ rather than loaded partially.
 Connections
 -----------
 
-The Connections window shows compatible application and host audio/MIDI ports.
-Native host ports come from JACK or CPAL+midir. Browser host ports come from
-Web Audio and permission-gated Web MIDI. Connection state is explicit and is
-kept separate from pending changes.
+The Connections window has a Tracks tab for System inputs to tracks and either
+bus inputs or System outputs, plus a Bus outputs tab for buses to System
+outputs. The Tracks destination toggle changes presentation only; direct and
+bus-mediated routes may coexist. Native host ports come from JACK or
+CPAL+midir. Browser host ports come from Web Audio and permission-gated Web
+MIDI. Connection state is explicit and kept separate from pending changes.
+
+A new session starts with a disconnected stereo Master. The right sidebar can
+add named buses with mono, stereo, or larger channel shapes, drag them into a
+persisted visual order, and remove them after confirmation. Master is removable
+and zero buses is valid. Bus order is presentation-only; all routes remain
+explicit.
 
 Recording and grabbing
 ----------------------

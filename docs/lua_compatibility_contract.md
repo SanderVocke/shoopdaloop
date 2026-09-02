@@ -7,7 +7,7 @@ This document defines the Shoop Lua compatibility target for the native and brow
 - A loop coordinate is a two-integer Lua sequence `{track, row}`. Main tracks are zero-based; the sync loop is `{-1, 0}`.
 - A loop selector is one coordinate, a sequence of coordinates, or `nil`. Missing coordinates select no object. Results follow current track/row order.
 - A track selector is a zero-based integer, a sequence of integers, or `nil`; track `-1` is the sync track. Missing indices select no object.
-- A bus selector is a zero-based integer, a sequence of integers, or `nil`. Bus `0` is the fixed Master in the current capability; missing indices select no object.
+- A bus selector is a zero-based integer, a sequence of integers, or `nil`. Buses are enumerated by ascending stable bus ID, independently from visual order; Master is bus `0` while it exists. Missing indices select no object, and a zero-bus session selects nothing.
 - Setters accept exactly one of their documented argument counts. Unsupported selector/value types are errors. Setters return `nil` unless noted.
 - Multi-object getters return Lua sequences in selector order. A singular-looking selector still produces a sequence for getters documented as `list[...]`.
 - Mode, event, key, and modifier values are integers. `nil` represents an absent queued transition or target.

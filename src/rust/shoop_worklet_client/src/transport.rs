@@ -89,6 +89,10 @@ pub struct TransportDiagnostics {
 pub(crate) enum JournalMutation {
     Appended,
     Replaced(Command),
+    PrunedForBusRemoval {
+        removed: Vec<(usize, Command)>,
+        appended_removal: bool,
+    },
 }
 
 struct PendingCommand {
@@ -102,6 +106,13 @@ fn is_global_journal_command(command: &Command) -> bool {
         command,
         Command::ConfigureMidiEndpoints { .. } | Command::SetLoopSmoothingMs { .. }
     )
+}
+
+fn restore_pruned_commands(journal: &mut Vec<Command>, mut removed: Vec<(usize, Command)>) {
+    removed.sort_by_key(|(index, _)| *index);
+    for (index, command) in removed {
+        journal.insert(index.min(journal.len()), command);
+    }
 }
 
 fn is_session_replay_command(command: &Command) -> bool {
@@ -226,6 +237,73 @@ impl TransportCore {
         Ok(())
     }
 
+    pub(crate) fn journal_bus_removal(
+        &mut self,
+        command: Command,
+        bus_id: u64,
+        channel_ids: &BTreeSet<u64>,
+        output_port_ids: &BTreeSet<u64>,
+    ) -> Result<()> {
+        if self.reserved_session_replay.is_some() {
+            return Err(anyhow!(
+                "session mutation is unavailable during session replacement"
+            ));
+        }
+        let mut removed = Vec::new();
+        let mut retained = Vec::with_capacity(self.journal.len());
+        let mut removed_creation = false;
+        for (index, existing) in self.journal.drain(..).enumerate() {
+            let obsolete = match &existing {
+                Command::CreateBus {
+                    expected_bus_id, ..
+                } => {
+                    let matches = *expected_bus_id == bus_id;
+                    removed_creation |= matches;
+                    matches
+                }
+                Command::SetBusControl {
+                    bus_id: existing, ..
+                }
+                | Command::RemoveBus { bus_id: existing } => *existing == bus_id,
+                Command::SetMixerRoute {
+                    destination_channel_id,
+                    ..
+                } => channel_ids.contains(destination_channel_id),
+                Command::SetPortConnected {
+                    application_port_id,
+                    ..
+                } => output_port_ids.contains(application_port_id),
+                _ => false,
+            };
+            if obsolete {
+                removed.push((index, existing));
+            } else {
+                retained.push(existing);
+            }
+        }
+        self.journal = retained;
+        let appended_removal = !removed_creation;
+        if appended_removal {
+            if self.journal.len() >= DURABLE_COMMAND_CAPACITY {
+                restore_pruned_commands(&mut self.journal, removed);
+                self.overflows = self.overflows.saturating_add(1);
+                return Err(anyhow!("remote worklet command journal is full"));
+            }
+            self.journal.push(command.clone());
+        }
+        let mutation = JournalMutation::PrunedForBusRemoval {
+            removed,
+            appended_removal,
+        };
+        if self.endpoint.is_some() {
+            if let Err(error) = self.send(command.clone(), false, Some(mutation.clone())) {
+                self.restore_rejected_journal(&command, Some(mutation));
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn reject_journaled(&mut self, command: &Command) {
         self.journal.retain(|candidate| candidate != command);
@@ -248,6 +326,23 @@ impl TransportCore {
                 pending.journal_mutation = fallback.clone();
             }
         }
+        if let Some(JournalMutation::PrunedForBusRemoval {
+            removed,
+            appended_removal,
+        }) = mutation
+        {
+            if appended_removal {
+                if let Some(index) = self
+                    .journal
+                    .iter()
+                    .rposition(|candidate| candidate == command)
+                {
+                    self.journal.remove(index);
+                }
+            }
+            restore_pruned_commands(&mut self.journal, removed);
+            return;
+        }
         let Some(index) = self
             .journal
             .iter()
@@ -260,6 +355,7 @@ impl TransportCore {
             Some(JournalMutation::Appended) | None => {
                 self.journal.remove(index);
             }
+            Some(JournalMutation::PrunedForBusRemoval { .. }) => unreachable!(),
         }
     }
 
@@ -806,6 +902,78 @@ mod tests {
             event,
         })
         .unwrap()
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_removal_prunes_only_owned_durable_state_and_restores_on_send_failure() {
+        fn populated() -> TransportCore {
+            let mut transport = TransportCore::default();
+            for command in [
+                Command::CreateBus {
+                    expected_bus_id: 2,
+                    expected_channel_ids: vec![3],
+                    expected_output_port_ids: vec![4],
+                    name: "Mono".to_owned(),
+                    channel_count: 1,
+                },
+                Command::SetBusControl {
+                    bus_id: 2,
+                    control: shoop_audio_protocol::WireBusControl::Mute(true),
+                },
+                Command::SetMixerRoute {
+                    source_port_id: 10,
+                    destination_channel_id: 3,
+                    connected: true,
+                },
+                Command::SetPortConnected {
+                    application_port_id: 4,
+                    host_port_id: "system:out".to_owned(),
+                    connected: true,
+                },
+                Command::SetLoopSmoothingMs { milliseconds: 7 },
+            ] {
+                transport.journal(command).unwrap();
+            }
+            transport
+        }
+
+        let mut transport = populated();
+        transport
+            .journal_bus_removal(
+                Command::RemoveBus { bus_id: 2 },
+                2,
+                &BTreeSet::from([3]),
+                &BTreeSet::from([4]),
+            )
+            .unwrap();
+        assert_eq!(
+            transport.journal,
+            [Command::SetLoopSmoothingMs { milliseconds: 7 }]
+        );
+
+        let mut failed = populated();
+        let original = failed.journal.clone();
+        failed.endpoint = Some(Box::new(FailingEndpoint));
+        assert!(failed
+            .journal_bus_removal(
+                Command::RemoveBus { bus_id: 2 },
+                2,
+                &BTreeSet::from([3]),
+                &BTreeSet::from([4]),
+            )
+            .is_err());
+        assert_eq!(failed.journal, original);
+
+        let mut default_bus = TransportCore::default();
+        default_bus
+            .journal_bus_removal(
+                Command::RemoveBus { bus_id: 1 },
+                1,
+                &BTreeSet::from([1, 2]),
+                &BTreeSet::new(),
+            )
+            .unwrap();
+        assert_eq!(default_bus.journal, [Command::RemoveBus { bus_id: 1 }]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

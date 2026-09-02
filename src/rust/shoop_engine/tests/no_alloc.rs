@@ -291,6 +291,7 @@ fn installed_audio_fan_in_is_allocation_free() {
     let left = session.add_port(internal("left", 4));
     let right = session.add_port(internal("right", 4));
     let sum = session.add_port(internal("sum", 4));
+    let second_sum = session.add_port(internal("second_sum", 4));
     let loop_ = session.create_loop();
     let left_channel = session
         .add_audio_channel(loop_, 4, ChannelMode::Direct)
@@ -304,6 +305,8 @@ fn installed_audio_fan_in_is_allocation_free() {
         .unwrap();
     session.connect_ports_internal(left, sum).unwrap();
     session.connect_ports_internal(right, sum).unwrap();
+    session.connect_ports_internal(left, second_sum).unwrap();
+    session.connect_ports_internal(right, second_sum).unwrap();
     session
         .loop_mut(loop_)
         .unwrap()
@@ -326,6 +329,9 @@ fn installed_audio_fan_in_is_allocation_free() {
             let output = session.port_mut(sum).unwrap().audio_mut().unwrap();
             output.set_gain(0.5 + index as f32 * 0.1);
             output.set_muted(index == 2);
+            let second_output = session.port_mut(second_sum).unwrap().audio_mut().unwrap();
+            second_output.set_gain(0.25 + index as f32 * 0.05);
+            second_output.set_muted(index == 1);
             session.process(4);
         }
     });

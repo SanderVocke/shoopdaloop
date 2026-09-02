@@ -3551,6 +3551,7 @@ impl ApplicationModel {
         config: AudioDriverConfig,
     ) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         if matches!(
             self.audio_drivers.switch.status,
             AudioDriverSwitchStatus::AwaitingConfirmation
@@ -3994,8 +3995,21 @@ impl ApplicationModel {
         }
     }
 
+    fn ensure_bus_structures_settled(&self) -> Result<(), String> {
+        if self
+            .buses
+            .values()
+            .any(|bus| bus.structural_state != StructuralState::Confirmed)
+        {
+            Err("bus creation/removal must settle before session or driver changes".to_owned())
+        } else {
+            Ok(())
+        }
+    }
+
     fn begin_save_session(&mut self) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         if self.loops.values().any(|loop_| {
             matches!(
                 loop_.state.mode,
@@ -4024,6 +4038,7 @@ impl ApplicationModel {
 
     fn begin_new_session(&mut self) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Creating new session");
         let document = new_session_document(self.status.sample_rate);
         self.begin_session_load(
@@ -4035,6 +4050,7 @@ impl ApplicationModel {
 
     fn begin_load_session(&mut self, name: String, bytes: &[u8]) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Validating session");
         let bundle = match decode_session(bytes) {
             Ok(bundle) => bundle,
@@ -4900,9 +4916,6 @@ impl ApplicationModel {
             },
         );
         self.bus_order.push(bus_id);
-        if let Some(request_id) = spec.creation_request_id {
-            self.record_bus_creation_result(request_id, true);
-        }
         Ok(())
     }
 
@@ -9435,6 +9448,7 @@ impl ApplicationModel {
 
     fn apply_mixer_snapshot(&mut self, snapshot: BackendMixerSnapshot) {
         let revision = snapshot.revision;
+        let mut confirmed_creation_requests = Vec::new();
         for backend_bus in snapshot.buses.values() {
             let bus_id = self
                 .buses
@@ -9474,6 +9488,9 @@ impl ApplicationModel {
                 bus.structural_state = StructuralState::Confirmed;
                 bus.structural_error = None;
                 bus.structural_age = Duration::ZERO;
+                if let Some(request_id) = bus.creation_request_id.take() {
+                    confirmed_creation_requests.push(request_id);
+                }
             }
             bus.name.clone_from(&backend_bus.name);
             bus.gain_db = backend_bus.gain_db;
@@ -9506,6 +9523,9 @@ impl ApplicationModel {
                     .iter()
                     .any(|backend| backend.id == channel.backend_id)
             });
+        }
+        for request_id in confirmed_creation_requests {
+            self.record_bus_creation_result(request_id, true);
         }
         self.buses.retain(|_, bus| {
             if snapshot.buses.contains_key(&bus.backend_id) {
@@ -12338,7 +12358,14 @@ fn session_bundle_to_backend(
     processors: &[TrackProcessorDescriptor],
 ) -> Result<BackendSessionData, String> {
     shoop_session::validate_bundle(bundle).map_err(|error| error.to_string())?;
-    if !bundle.document.midi_control.bindings.is_empty() || !bundle.document.settings.is_empty() {
+    if !bundle.document.midi_control.bindings.is_empty()
+        || !bundle.document.settings.is_empty()
+        || bundle
+            .document
+            .buses
+            .iter()
+            .any(|bus| bus.fx_chain.is_some())
+    {
         return Err(
             "session requires a feature not yet available in the application runtime".to_owned(),
         );
@@ -20725,17 +20752,29 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             model.buses[&added].structural_state,
             StructuralState::Creating
         );
+        assert!(model.begin_save_session().is_err());
+        assert!(model.begin_new_session().is_err());
+        assert!(model
+            .request_audio_driver_switch(
+                &mut backend,
+                AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 128,
+                }),
+            )
+            .is_err());
+        assert!(model.bus_creation_results.is_empty());
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Confirmed
+        );
         assert_eq!(
             model.bus_creation_results.back(),
             Some(&BusCreationResult {
                 request_id: 42,
                 success: true,
             })
-        );
-        model.apply_backend_snapshot(backend.poll().unwrap());
-        assert_eq!(
-            model.buses[&added].structural_state,
-            StructuralState::Confirmed
         );
 
         let before_move = backend.operations().len();

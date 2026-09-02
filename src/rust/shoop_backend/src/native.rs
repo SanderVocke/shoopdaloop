@@ -968,21 +968,25 @@ impl NativeRuntime {
             })
             .collect::<Result<Vec<_>>>()?;
         let base = db_gain(gain_db);
-        if let [left_output, right_output] = outputs.as_slice() {
-            let (left, right) = balance_factors(balance);
-            AudioPort::set_pair_gain_and_muted(
-                left_output,
-                base * left,
-                right_output,
-                base * right,
-                muted,
-            )?;
-        } else {
-            for output in &outputs {
-                output.set_gain(base)?;
-                output.set_muted(muted)?;
-            }
-        }
+        let (left, right) = balance_factors(balance);
+        let stereo = outputs.len() == 2;
+        let values = outputs
+            .into_iter()
+            .enumerate()
+            .map(|(index, output)| {
+                let channel_balance = if stereo {
+                    if index == 0 {
+                        left
+                    } else {
+                        right
+                    }
+                } else {
+                    1.0
+                };
+                (output, base * channel_balance)
+            })
+            .collect::<Vec<_>>();
+        AudioPort::set_gains_and_muted(&values, muted)?;
         bus.gain_db = gain_db;
         bus.balance = balance;
         bus.muted = muted;
@@ -4672,8 +4676,15 @@ mod tests {
         assert!(backend
             .set_bus_control(created.bus_id, BackendBusControl::Balance(0.5))
             .is_err());
+        let captured = backend.capture_session().unwrap();
+        let replacement = backend.replace_session(&captured).unwrap();
+        let restored_id = replacement.buses[&created.bus_id.raw()];
+        let restored = backend.poll().unwrap();
+        assert_eq!(restored.mixer.buses[&restored_id].name, "Surround");
+        assert_eq!(restored.mixer.buses[&restored_id].channels.len(), 4);
+        assert_eq!(restored.mixer.buses[&restored_id].gain_db, -5.0);
         backend.remove_bus(MASTER_BUS_ID).unwrap();
-        backend.remove_bus(created.bus_id).unwrap();
+        backend.remove_bus(restored_id).unwrap();
         let empty = backend.poll().unwrap();
         assert!(empty.mixer.buses.is_empty());
         assert!(empty

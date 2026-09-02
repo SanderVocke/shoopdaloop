@@ -1021,6 +1021,23 @@ mod tests {
             encode_session(&duplicate_bus, "duplicate-bus"),
             Err(SessionError::Validation(_))
         ));
+        let fixed_master = SessionBundle::new(SessionDocument::empty(48_000));
+        for version in [10, 12] {
+            let legacy = rewrite_manifest(
+                encode_session(&fixed_master, "fixed-master").unwrap(),
+                |manifest| {
+                    manifest["document_version"] = serde_json::json!(version);
+                    manifest["document"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("bus_display_order");
+                },
+            );
+            let migrated_fixed = decode_session(&legacy).unwrap();
+            assert_eq!(migrated_fixed.document.buses, fixed_master.document.buses);
+            assert_eq!(migrated_fixed.document.bus_display_order, [1]);
+        }
+
         let version_nine = rewrite_manifest(encoded.clone(), |manifest| {
             manifest["document_version"] = serde_json::json!(9);
             let bus = &mut manifest["document"]["buses"][0];
@@ -1195,6 +1212,9 @@ mod tests {
         let encoded = encode_session(&bundle, "dynamic-buses").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
         assert_eq!(encoded, encode_session(&bundle, "dynamic-buses").unwrap());
+        let resampled = resample_session(&bundle, 44_100).unwrap();
+        assert_eq!(resampled.document.bus_display_order, [3, 1, 2]);
+        assert_eq!(resampled.document.buses, bundle.document.buses);
 
         let mut zero = bundle.clone();
         zero.document.buses.clear();

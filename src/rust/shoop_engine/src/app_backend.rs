@@ -5847,6 +5847,44 @@ impl AudioPort {
         }
         result
     }
+    pub fn set_gains_and_muted(
+        values: &[(Self, f32)],
+        muted: bool,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        let Some((first, _)) = values.first() else {
+            return Err(SendError::Disconnected);
+        };
+        if values
+            .iter()
+            .any(|(port, _)| port.control.session_id != first.control.session_id)
+        {
+            return Err(SendError::Disconnected);
+        }
+        let controls = values
+            .iter()
+            .map(|(port, gain)| (Arc::clone(&port.control), *gain))
+            .collect::<Vec<_>>();
+        let result = first.shared.send_control(move |session| {
+            for (control, gain) in &controls {
+                if let Some(audio) = control
+                    .ready_id()
+                    .and_then(|id| session.port_mut(id.index()))
+                    .and_then(|port| port.audio_mut())
+                {
+                    audio.set_gain(*gain);
+                    audio.set_muted(muted);
+                }
+            }
+        });
+        if result.is_ok() {
+            for (port, gain) in values {
+                port.control.mirror.set_gain(*gain);
+                port.control.mirror.set_muted(muted);
+            }
+        }
+        result
+    }
+
     pub fn set_pair_gain_and_muted(
         first: &Self,
         first_gain: f32,
@@ -7739,6 +7777,39 @@ mod tests {
         let second_state = second.get_state().expect("second state");
         assert_eq!((first_state.gain, first_state.muted), (0.25, true));
         assert_eq!((second_state.gain, second_state.muted), (0.5, true));
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn multichannel_audio_port_parameters_use_one_control_command() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let ports = (0..6)
+            .map(|index| {
+                AudioPort::new_internal_port(
+                    &sess,
+                    &format!("bus_{index}"),
+                    &PortDirection::Output,
+                    0,
+                )
+                .expect("bus port")
+            })
+            .collect::<Vec<_>>();
+        let values = ports
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, port)| (port, (index + 1) as f32 / 10.0))
+            .collect::<Vec<_>>();
+        let sequence =
+            AudioPort::set_gains_and_muted(&values, true).expect("multichannel parameters");
+        assert_eq!(sequence.get(), 7);
+        engine.pump();
+        for (index, port) in ports.iter().enumerate() {
+            let state = port.get_state().expect("port state");
+            assert_eq!(state.gain, (index + 1) as f32 / 10.0);
+            assert!(state.muted);
+        }
         sess.shared.return_engine(engine);
     }
 

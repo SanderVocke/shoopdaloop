@@ -3021,6 +3021,19 @@ mod tests {
         Arc::make_mut(&mut state.connections).revision += 1;
         assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
         assert!(dialog.drag.is_none());
+
+        assert!(frame(&context, &mut dialog, &state, vec![release(source)]).is_empty());
+        assert!(frame(
+            &context,
+            &mut dialog,
+            &state,
+            vec![egui::Event::PointerMoved(source), press(source)]
+        )
+        .is_empty());
+        assert!(dialog.drag.is_some());
+        dialog.presentation.tab = ConnectionTab::BusOutputs;
+        assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+        assert!(dialog.drag.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]

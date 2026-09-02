@@ -99,16 +99,17 @@ Shared mixer descriptions and validation rules should be lowered into backend-sp
 
 ## Connections presentation
 
-The Connections dialog is a view of both host-boundary connections and mixer routes. Its logical output side is:
+The Connections dialog is a focused view of host-boundary connections and mixer routes. It has two tabs and one presentation-only destination toggle:
 
 ```text
-ShoopDaLoop track sources -> Buses -> System sinks
-                         \----------> System sinks
+Tracks / Buses:         System inputs -> Tracks -> Buses
+Tracks / System outputs: System inputs -> Tracks -> System outputs
+Bus outputs:                            Buses -> System outputs
 ```
 
-A bus column therefore contains sink facets on its left and source facets on its right. The dialog emits typed route intents, displays only backend-confirmed links as confirmed, preserves pending/error presentation, and allows direct track-to-system routes to bypass the bus column.
+The Tracks tab never presents buses and system outputs simultaneously. In its Buses mode a bus channel is a sink facet; on the Bus outputs tab the same channel is represented by its separate source/output-port facet. Switching a tab or mode hides endpoints, routes, pending state, and errors that belong to another view without mutating them. Direct and bus-mediated routes may coexist.
 
-Track-scoped filtering limits visible track endpoints and routes but does not change bus identity or routing state. Audio/MIDI filters hide presentation only; buses are audio entities.
+The dialog emits typed route intents and displays only backend-confirmed links as confirmed. Track-scoped filtering limits the Tracks tab's track endpoints and routes but does not change bus identity, global Bus outputs state, or routing. Audio/MIDI filters hide presentation only; buses are audio entities.
 
 ## Persistence
 
@@ -131,3 +132,13 @@ The second implementation increment retains the fixed stereo Master and adds one
 Each bus output channel publishes a post-gain, post-balance, post-mute peak. Meter values are transient telemetry; gain, balance, and mute are session state and survive replacement, resampling, and compatible driver switching. Native, dummy, Worker, and AudioWorklet snapshots use the same normalized control and meter contract.
 
 The main UI presents one vertically ordered bus block per bus in the right sidebar above the logo. A block contains the bus name, channel-aware peak meter, mute, volume fader, and a balance dial only for stereo buses. Lua exposes the same control state and mutations through the application intent/backend authority path. This increment still adds no bus management, bus-to-bus routing, route levels, solos, or editable insert processors.
+
+## User-managed bus increment
+
+The third implementation increment makes buses user-managed. A new session still begins with the disconnected stereo Master, but Master follows the same lifecycle as every bus and may be removed; zero buses is valid. Users create a bus with a non-empty bounded display name and any positive channel count within checked resource limits. Names may duplicate and never identify a bus. Channel labels are deterministic presentation metadata: `Mono`, `Left`/`Right`, or `Channel N`.
+
+Creation reserves globally unique stable bus, channel, and output-port identities and publishes a neutral disconnected bus only with its matching active graph. Removal transactionally removes that bus, its incoming mixer routes, output host links, pending state, controls, and meters without changing other buses or direct track output. Existing gain/mute behavior applies to every channel; balance remains stereo-only.
+
+The sidebar supports stable-identity drag ordering and confirmation-gated removal. Display order is persisted as an explicit permutation separate from canonical bus records. It controls every UI bus listing but has no DSP, route, backend schedule, control, meter, or Lua-selector meaning. Lua 1.6 enumerates buses by ascending stable identity, so display reordering cannot retarget automation.
+
+The normalized capability is bounded to 64 buses, 64 channels per bus, 256 aggregate bus channels/output ports, 4,096 mixer routes, 4,096 bus host links, and 128 UTF-8 bytes per trimmed bus name. Exceeding a limit fails before mutation. This increment still adds no bus resizing/renaming after creation, bus-to-bus routing, implicit mapping, route levels, solo, editable inserts, or bus-management Lua API.

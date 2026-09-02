@@ -51,11 +51,14 @@ composites retain an explicit mode on every scheduled event.
 Connections and processors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Open **Connections...** from a track menu for a track-scoped port matrix, or use
-the main-menu Connections action for all tracks. External dry/wet tracks expose
-dry input/send and wet return/output ports. Hosted processors keep their
-internal endpoints private while exposing applicable dry inputs, wet outputs,
-and dry MIDI.
+Open **Connections...** from a track menu for a track-scoped matrix, or use the
+main-menu Connections action for all tracks. The Tracks tab always shows System
+inputs and lets you toggle its destination between Buses and System outputs;
+the two destination sets are never shown together. The Bus outputs tab connects
+bus outputs to System outputs independently of track scope. Switching views
+never changes hidden links. External dry/wet tracks expose dry input/send and
+wet return/output ports. Hosted processors keep their internal endpoints
+private while exposing applicable dry inputs, wet outputs, and dry MIDI.
 
 The all-tracks Connections dialog also exposes **Global FX Control MIDI In**.
 CC 0–119, channel pressure, and pitch bend on all MIDI channels fan out to every

@@ -1224,6 +1224,16 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             "session bus count exceeds the {MAX_BUSES}-bus limit"
         )));
     }
+    if bundle
+        .document
+        .buses
+        .windows(2)
+        .any(|pair| pair[0].id >= pair[1].id)
+    {
+        return Err(SessionError::Validation(
+            "bus records must be in ascending stable-ID order".to_owned(),
+        ));
+    }
     let mut bus_ids = BTreeSet::new();
     let mut bus_channel_ids = BTreeSet::new();
     let mut total_bus_channels = 0_usize;

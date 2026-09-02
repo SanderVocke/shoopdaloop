@@ -2912,9 +2912,26 @@ impl Backend for RemoteWorkletBackend {
             .get(&bus_id)
             .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?
             .clone();
-        self.submit(Command::RemoveBus {
-            bus_id: bus_id.raw(),
-        })?;
+        let channel_ids = resources
+            .creation
+            .channels
+            .iter()
+            .map(|channel| channel.id.raw())
+            .collect::<BTreeSet<_>>();
+        let output_port_ids = resources
+            .creation
+            .channels
+            .iter()
+            .map(|channel| channel.output_port_id.raw())
+            .collect::<BTreeSet<_>>();
+        self.transport.borrow_mut().journal_bus_removal(
+            Command::RemoveBus {
+                bus_id: bus_id.raw(),
+            },
+            bus_id.raw(),
+            &channel_ids,
+            &output_port_ids,
+        )?;
         self.bus_resources.remove(&bus_id);
         self.pending_removed_buses.insert(bus_id, resources);
         Ok(())
@@ -5393,6 +5410,40 @@ mod tests {
             MASTER_BUS_OUTPUT_PORT_IDS[0]
         );
         assert_eq!(replacement.global_ports[&44], GLOBAL_FX_PORT_ID);
+        let mut dynamic = session.clone();
+        dynamic.buses.push(shoop_backend::BackendSessionBus {
+            source_id: 50,
+            name: "Mono".to_owned(),
+            channels: vec![shoop_backend::BackendSessionBusChannel {
+                source_id: 51,
+                label: "Mono".to_owned(),
+                output_port: shoop_backend::BackendSessionPort {
+                    source_id: 52,
+                    descriptor: BackendPortDescriptor {
+                        id: BackendPortId::from_raw(52),
+                        owner: BackendPortOwner::Bus(BackendBusId::from_raw(50)),
+                        name: "bus_50_out_1".to_owned(),
+                        data_type: BackendPortDataType::Audio,
+                        direction: BackendPortDirection::Output,
+                        role: BackendPortRole::AudioOutput,
+                    },
+                    external_connections: Vec::new(),
+                },
+            }],
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
+        });
+        let dynamic_mapping = browser_replacement_mapping(&dynamic);
+        assert_eq!(dynamic_mapping.buses[&50], BackendBusId::from_raw(2));
+        assert_eq!(
+            dynamic_mapping.bus_channels[&51],
+            BackendBusChannelId::from_raw(3)
+        );
+        assert_eq!(
+            dynamic_mapping.bus_output_ports[&51],
+            BackendPortId::from_raw(1)
+        );
         let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend
             .transport
@@ -5503,8 +5554,23 @@ mod tests {
             .transport
             .borrow()
             .journal_commands()
-            .contains(&Command::RemoveBus { bus_id: 2 }));
+            .iter()
+            .all(|command| !matches!(
+                command,
+                Command::CreateBus {
+                    expected_bus_id: 2,
+                    ..
+                } | Command::RemoveBus { bus_id: 2 }
+            )));
         assert!(backend.remove_bus(created.bus_id).is_err());
+        backend.remove_bus(MASTER_BUS_ID).unwrap();
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::RemoveBus {
+                bus_id: MASTER_BUS_ID.raw()
+            }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
