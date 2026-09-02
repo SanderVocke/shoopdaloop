@@ -452,11 +452,6 @@ impl NativeRuntime {
             self.session.remove_processor(&track.port_name_base)?;
         }
         let route_count = self.mixer_routes.len();
-        self.mixer_routes
-            .retain(|link| !track.ports.contains(&link.source_port_id));
-        if self.mixer_routes.len() != route_count {
-            self.mixer_revision = self.mixer_revision.wrapping_add(1);
-        }
         for port_id in &track.ports {
             let Some(port) = self.ports.remove(port_id) else {
                 continue;
@@ -471,6 +466,11 @@ impl NativeRuntime {
                     self.session.remove_midi_port(&port)?;
                 }
             }
+        }
+        self.mixer_routes
+            .retain(|link| !track.ports.contains(&link.source_port_id));
+        if self.mixer_routes.len() != route_count {
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
         }
         self.connection_failures
             .retain(|failure| !track.ports.contains(&failure.port_id));
@@ -837,9 +837,16 @@ impl NativeRuntime {
                 output_port_id,
             });
         }
-        if !self.wait_for_graph()? {
-            self.rollback_unpublished_bus_channels(channels);
-            return Err(anyhow!("bus graph did not become active"));
+        match self.wait_for_graph() {
+            Ok(true) => {}
+            Ok(false) => {
+                self.rollback_unpublished_bus_channels(channels);
+                return Err(anyhow!("bus graph did not become active"));
+            }
+            Err(error) => {
+                self.rollback_unpublished_bus_channels(channels);
+                return Err(anyhow!("bus graph activation failed: {error}"));
+            }
         }
         let creation = BackendBusCreation {
             bus_id,
@@ -940,9 +947,16 @@ impl NativeRuntime {
             .collect::<Vec<_>>();
         all_ports.extend(outputs.iter().cloned());
         self.session.detach_audio_ports(&all_ports)?;
-        if !self.wait_for_graph()? {
-            self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
-            return Err(anyhow!("removed bus graph did not become active"));
+        match self.wait_for_graph() {
+            Ok(true) => {}
+            Ok(false) => {
+                self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
+                return Err(anyhow!("removed bus graph did not become active"));
+            }
+            Err(error) => {
+                self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
+                return Err(anyhow!("removed bus graph activation failed: {error}"));
+            }
         }
         let mut unregistered = Vec::new();
         for (channel, output) in bus.channels.iter().zip(&outputs) {
@@ -1119,14 +1133,19 @@ impl NativeRuntime {
         } else {
             source.disconnect_internal(&destination)?;
         }
-        if !self.wait_for_graph()? {
+        let activation = self.wait_for_graph();
+        if !matches!(activation, Ok(true)) {
             if connected {
                 let _ = source.disconnect_internal(&destination);
             } else {
                 let _ = source.connect_internal(&destination);
             }
             let _ = self.wait_for_graph();
-            let message = "mixer route graph could not be activated".to_owned();
+            let message = match activation {
+                Ok(false) => "mixer route graph could not be activated".to_owned(),
+                Err(error) => format!("mixer route graph activation failed: {error}"),
+                Ok(true) => unreachable!(),
+            };
             self.mixer_failures.push(BackendMixerFailure {
                 link,
                 desired_connected: connected,

@@ -9527,18 +9527,57 @@ impl ApplicationModel {
         for request_id in confirmed_creation_requests {
             self.record_bus_creation_result(request_id, true);
         }
-        self.buses.retain(|_, bus| {
-            if snapshot.buses.contains_key(&bus.backend_id) {
-                return true;
-            }
-            match bus.structural_state {
-                StructuralState::Creating | StructuralState::Removing => {
-                    revision == bus.structural_confirmation_revision
+        let removed_bus_ids = self
+            .buses
+            .iter()
+            .filter_map(|(id, bus)| {
+                if snapshot.buses.contains_key(&bus.backend_id) {
+                    return None;
                 }
-                StructuralState::Confirmed => false,
-            }
-        });
-        self.bus_order.retain(|id| self.buses.contains_key(id));
+                let retain_pending = matches!(
+                    bus.structural_state,
+                    StructuralState::Creating | StructuralState::Removing
+                ) && revision == bus.structural_confirmation_revision;
+                (!retain_pending).then_some(*id)
+            })
+            .collect::<BTreeSet<_>>();
+        let removed_channels = removed_bus_ids
+            .iter()
+            .filter_map(|id| self.buses.get(id))
+            .flat_map(|bus| &bus.channels)
+            .collect::<Vec<_>>();
+        let removed_channel_ids = removed_channels
+            .iter()
+            .map(|channel| channel.id)
+            .collect::<BTreeSet<_>>();
+        let removed_output_ids = removed_channels
+            .iter()
+            .filter_map(|channel| channel.output_port_id)
+            .collect::<BTreeSet<_>>();
+        self.buses.retain(|id, _| !removed_bus_ids.contains(id));
+        self.bus_order.retain(|id| !removed_bus_ids.contains(id));
+        if !removed_output_ids.is_empty() {
+            self.connection_ports
+                .retain(|id, _| !removed_output_ids.contains(id));
+            self.confirmed_connections
+                .retain(|(id, _)| !removed_output_ids.contains(id));
+            self.pending_connections
+                .retain(|(id, _), _| !removed_output_ids.contains(id));
+            self.connection_errors.retain(|error| {
+                error
+                    .port_id
+                    .is_none_or(|id| !removed_output_ids.contains(&id))
+            });
+            self.connection_revision = self.connection_revision.wrapping_add(1);
+        }
+        if !removed_channel_ids.is_empty() {
+            self.confirmed_mixer_routes
+                .retain(|route| !removed_channel_ids.contains(&route.destination_channel_id));
+            self.pending_mixer_routes
+                .retain(|route, _| !removed_channel_ids.contains(&route.destination_channel_id));
+            self.mixer_route_errors
+                .retain(|error| !removed_channel_ids.contains(&error.route.destination_channel_id));
+        }
         for ((backend_id, key), pending) in &mut self.desired_bus_controls {
             if !pending.cancelling {
                 if let Some(bus) = snapshot.buses.get(backend_id) {
@@ -20836,6 +20875,45 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(model.bus_order, [master, added]);
         assert_eq!(backend.operations().len(), before_move);
 
+        let removed_output = model.buses[&added].channels[0].output_port_id.unwrap();
+        let removed_channel = model.buses[&added].channels[0].id;
+        model
+            .confirmed_connections
+            .insert((removed_output, "pending:host".to_owned()));
+        model.pending_connections.insert(
+            (removed_output, "pending:host".to_owned()),
+            PendingConnection {
+                desired_connected: true,
+                cancelling: false,
+                confirmation_revision: None,
+                age: Duration::ZERO,
+            },
+        );
+        model.connection_errors.push(ConnectionErrorState {
+            port_id: Some(removed_output),
+            external_port: Some("pending:host".to_owned()),
+            kind: ConnectionErrorKind::TimedOut,
+            message: "stale bus output".to_owned(),
+        });
+        let removed_route = MixerRouteState {
+            source_port_id: PortId::from_raw(999),
+            destination_channel_id: removed_channel,
+        };
+        model.confirmed_mixer_routes.insert(removed_route);
+        model.pending_mixer_routes.insert(
+            removed_route,
+            PendingConnection {
+                desired_connected: true,
+                cancelling: false,
+                confirmation_revision: None,
+                age: Duration::ZERO,
+            },
+        );
+        model.mixer_route_errors.push(MixerRouteErrorState {
+            route: removed_route,
+            message: "stale bus route".to_owned(),
+        });
+
         model
             .handle_bus_action(&mut backend, added, BusAction::Remove)
             .unwrap();
@@ -20846,6 +20924,31 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model.apply_backend_snapshot(backend.poll().unwrap());
         assert!(!model.buses.contains_key(&added));
         assert_eq!(model.bus_order, [master]);
+        assert!(!model.connection_ports.contains_key(&removed_output));
+        assert!(model
+            .confirmed_connections
+            .iter()
+            .all(|(port, _)| *port != removed_output));
+        assert!(model
+            .pending_connections
+            .keys()
+            .all(|(port, _)| *port != removed_output));
+        assert!(model
+            .connection_errors
+            .iter()
+            .all(|error| error.port_id != Some(removed_output)));
+        assert!(model
+            .confirmed_mixer_routes
+            .iter()
+            .all(|route| route.destination_channel_id != removed_channel));
+        assert!(model
+            .pending_mixer_routes
+            .keys()
+            .all(|route| route.destination_channel_id != removed_channel));
+        assert!(model
+            .mixer_route_errors
+            .iter()
+            .all(|error| error.route.destination_channel_id != removed_channel));
         model
             .handle_bus_action(&mut backend, master, BusAction::Remove)
             .unwrap();
