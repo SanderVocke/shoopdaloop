@@ -509,7 +509,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 10] {
+        for unsupported in [5, 11] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -568,6 +568,10 @@ mod tests {
         let bundle = builtin_fx_bundle();
         let encoded = encode_session(&bundle, "builtin-fx-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
+        let immediate_predecessor = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(9);
+        });
+        assert_eq!(decode_session(&immediate_predecessor).unwrap(), bundle);
 
         let previous_bundle = SessionBundle::new(SessionDocument::empty(48_000));
         let previous = rewrite_manifest(

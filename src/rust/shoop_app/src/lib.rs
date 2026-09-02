@@ -10591,7 +10591,7 @@ fn runtime_track_topology(
                     dry_midi: false,
                     processor_type: processor,
                 },
-                2,
+                4,
                 false,
             ))
         }
@@ -13412,6 +13412,12 @@ mod tests {
         let saved = decode_session(&output.bytes).unwrap();
         let saved_track = &saved.document.track_groups[1].tracks[0];
         assert_eq!(saved_track.topology, TrackTopologyDocument::BuiltInFx);
+        assert_eq!(
+            runtime_track_topology(saved_track, &runtime.snapshot().track_processors)
+                .unwrap()
+                .2,
+            4
+        );
         let chain = saved_track.fx_chain.as_ref().unwrap();
         assert_eq!(chain.chain_type, FxChainTypeDocument::BuiltInFx);
         assert_eq!(chain.internal_state, "shoop-builtin-fx:1:0");

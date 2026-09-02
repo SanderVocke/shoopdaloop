@@ -2100,7 +2100,11 @@ impl EngineBackend {
         self.input_peak = 0.0;
         for track in self.tracks.values() {
             for (channel, session_port) in track.audio_inputs.iter().enumerate() {
-                let backend_port_id = track.ports[channel * 2];
+                let backend_port_id = if track.builtin_fx.is_some() {
+                    track.ports[channel]
+                } else {
+                    track.ports[channel * 2]
+                };
                 let registry_id = self.connection_ports[&backend_port_id].registry_id;
                 let mut source_count = 0;
                 self.route_scratch[..n_frames].fill(0.0);
@@ -2158,7 +2162,11 @@ impl EngineBackend {
         self.output_peak = 0.0;
         for track in self.tracks.values() {
             for (channel, session_port) in track.audio_outputs.iter().enumerate() {
-                let backend_port_id = track.ports[channel * 2 + 1];
+                let backend_port_id = if track.builtin_fx.is_some() {
+                    track.ports[track.audio_inputs.len() + channel]
+                } else {
+                    track.ports[channel * 2 + 1]
+                };
                 let registry_id = self.connection_ports[&backend_port_id].registry_id;
                 let samples = self
                     .session
@@ -2626,13 +2634,6 @@ impl EngineBackend {
             }
             self.connection_revision = self.connection_revision.wrapping_add(1);
         }
-        let ports = vec![
-            ports[0].clone(),
-            ports[2].clone(),
-            ports[1].clone(),
-            ports[3].clone(),
-        ];
-
         let control = shoop_engine::builtin_fx::BuiltInFxControlState::default();
         let processor =
             control.prepare_processor(self.sample_rate as f32, self.buffer_size as usize);
@@ -11922,6 +11923,19 @@ mod tests {
             initial_loops: 1,
         };
         let created = backend.create_track(request.clone()).unwrap();
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .map(|port| port.role)
+                .collect::<Vec<_>>(),
+            [
+                BackendPortRole::AudioInput,
+                BackendPortRole::AudioInput,
+                BackendPortRole::AudioOutput,
+                BackendPortRole::AudioOutput,
+            ]
+        );
         for (index, port) in created
             .ports
             .iter()
