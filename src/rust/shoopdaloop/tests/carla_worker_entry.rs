@@ -9,6 +9,8 @@ use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration};
 use std::sync::Arc;
 
+const SYSTEM_EPIANO_STATE: &str = "shoop-carla-native-state:2:rack:PD94bWwgdmVyc2lvbj0nMS4wJyBlbmNvZGluZz0nVVRGLTgnPz4KPCFET0NUWVBFIENBUkxBLVBST0pFQ1Q+CjxDQVJMQS1QUk9KRUNUIFZFUlNJT049JzIuNSc+CiA8RW5naW5lU2V0dGluZ3M+CiAgPEZvcmNlU3RlcmVvPnRydWU8L0ZvcmNlU3RlcmVvPgogIDxQcmVmZXJQbHVnaW5CcmlkZ2VzPmZhbHNlPC9QcmVmZXJQbHVnaW5CcmlkZ2VzPgogIDxQcmVmZXJVaUJyaWRnZXM+ZmFsc2U8L1ByZWZlclVpQnJpZGdlcz4KIDwvRW5naW5lU2V0dGluZ3M+CiA8UGx1Z2luPgogIDxJbmZvPgogICA8VHlwZT5MVjI8L1R5cGU+CiAgIDxOYW1lPk1EQSBlUGlhbm88L05hbWU+CiAgIDxVUkk+aHR0cDovL2Ryb2JpbGxhLm5ldC9wbHVnaW5zL21kYS9FUGlhbm88L1VSST4KICA8L0luZm8+CiAgPERhdGE+CiAgIDxBY3RpdmU+WWVzPC9BY3RpdmU+CiAgIDxDb250cm9sQ2hhbm5lbD4xPC9Db250cm9sQ2hhbm5lbD4KICAgPE9wdGlvbnM+MHgwPC9PcHRpb25zPgogIDwvRGF0YT4KIDwvUGx1Z2luPgo8L0NBUkxBLVBST0pFQ1Q+";
+
 #[shoop_wasm_test_support::shoop_test]
 fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
@@ -135,27 +137,49 @@ fn application_worker_processes_while_real_carla_ui_changes() {
         ProcessGeneration(1),
     )
     .expect("application executable should host Carla Native in its worker");
+    worker.restore_state(SYSTEM_EPIANO_STATE).unwrap();
     worker.set_active(true);
     let ui = worker.external_ui().expect("Carla worker UI handle");
+    let mut heard = false;
+    let mut first_block = true;
     for visible in [true, false, true, false] {
         let operation_ui = Arc::clone(&ui);
         let operation = std::thread::spawn(move || operation_ui.set_visible(visible));
         let mut completed = 0;
         while !operation.is_finished() {
-            worker.audio_input_mut(0).unwrap()[..64].fill(0.125);
+            let events: &[(u32, &[u8])] = if first_block {
+                first_block = false;
+                &[(0, &[0x90, 60, 100])]
+            } else {
+                &[]
+            };
+            worker.set_midi_input_events(0, events).unwrap();
             worker.process(64).unwrap();
+            heard |= worker.audio_output(0).unwrap()[..64]
+                .iter()
+                .any(|sample| sample.abs() > 0.001);
             completed += 1;
         }
         operation.join().unwrap().unwrap();
         for _ in 0..10 {
-            worker.audio_input_mut(0).unwrap()[..64].fill(0.125);
+            let events: &[(u32, &[u8])] = if first_block {
+                first_block = false;
+                &[(0, &[0x90, 60, 100])]
+            } else {
+                &[]
+            };
+            worker.set_midi_input_events(0, events).unwrap();
             worker.process(64).unwrap();
+            heard |= worker.audio_output(0).unwrap()[..64]
+                .iter()
+                .any(|sample| sample.abs() > 0.001);
             completed += 1;
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
         assert!(completed > 0);
         assert_eq!(ui.is_visible(), visible);
     }
+    assert!(heard, "subprocess MDA ePiano produced no audio from MIDI");
     assert!(worker.is_ready());
 }
 

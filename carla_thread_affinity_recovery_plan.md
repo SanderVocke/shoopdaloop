@@ -135,15 +135,17 @@ Stage evidence: the continuous-DSP real Carla UI probe passed for all three desc
 
 ## Stage 5 — Final end-to-end validation
 
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests are changed.
-- [ ] Run focused Carla native, bridge, shared-memory, subprocess supervisor, backend, app, egui, worker-entry, realtime-allocation, and lock-safety tests.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run the complete Rust suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] With real Carla/JACK/display facilities, repeat the original gain-effect and MIDI-piano scenarios in both hosting modes, including repeated UI open/close cycles, and verify uninterrupted processing, automatic recovery, and truthful UI states.
-- [ ] Capture a short coarse Perfetto trace for the final reproduction and verify no data loss, UI callbacks on their intended track, continued DSP completions, and expected lifecycle transitions.
-- [ ] Confirm no deadline-fallback dry bypass was introduced.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests are changed.
+- [x] Run focused Carla native, bridge, shared-memory, subprocess supervisor, backend, app, egui, worker-entry, realtime-allocation, and lock-safety tests.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run the complete Rust suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] With real Carla/JACK/display facilities, repeat the original gain-effect and MIDI-piano scenarios in both hosting modes, including repeated UI open/close cycles, and verify uninterrupted processing, automatic recovery, and truthful UI states.
+- [x] Capture a short coarse Perfetto trace for the final reproduction and verify no data loss, UI callbacks on their intended track, continued DSP completions, and expected lifecycle transitions.
+- [x] Confirm no deadline-fallback dry bypass was introduced.
+
+Validation evidence: test attribute policy, formatting, warning-denying workspace build, and tracing coverage all passed. The complete CI-profile Rust run passed all 1,712 executed tests (four skipped). Real in-process and subprocess Carla UI/DSP probes passed on this system; the internal Audio Gain fixture covers the effect path, and opted-in in-process plus subprocess regressions loaded the system MDA ePiano, opened/closed Carla UI, injected MIDI, and verified audible-level generated samples without a crash or manual recovery. The final coarse trace had no loss/error stats and separated all UI callbacks from 7,240 DSP slices. Inspection confirms both deadline branches still zero wet/MIDI output and do not copy dry input.
 
 ## Stage 6 — Delivery
 

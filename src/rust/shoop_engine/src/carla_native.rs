@@ -1789,6 +1789,75 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn system_epiano_generates_audio_from_midi_when_opted_in() {
+        if std::env::var_os("SHOOP_TEST_CARLA_EPIANO").is_none() {
+            eprintln!("skipping system ePiano regression; set SHOOP_TEST_CARLA_EPIANO=1");
+            return;
+        }
+        let _exclusive = lock_carla_test();
+        let project = br#"<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE CARLA-PROJECT>
+<CARLA-PROJECT VERSION='2.5'>
+ <EngineSettings>
+  <ForceStereo>true</ForceStereo>
+  <PreferPluginBridges>false</PreferPluginBridges>
+  <PreferUiBridges>false</PreferUiBridges>
+ </EngineSettings>
+ <Plugin>
+  <Info>
+   <Type>LV2</Type>
+   <Name>MDA ePiano</Name>
+   <URI>http://drobilla.net/plugins/mda/EPiano</URI>
+  </Info>
+  <Data>
+   <Active>Yes</Active>
+   <ControlChannel>1</ControlChannel>
+   <Options>0x0</Options>
+  </Data>
+ </Plugin>
+</CARLA-PROJECT>"#;
+        let state = encode_state(FXChainType::CarlaRack, project).unwrap();
+        let (mut ui_service, ui_dispatcher) = CarlaMainThreadUiService::new();
+        let mut host = CarlaNativeHost::instantiate_with_ui_dispatcher(
+            FXChainType::CarlaRack,
+            48_000,
+            64,
+            ui_dispatcher,
+        )
+        .unwrap();
+        host.restore_state(&state).unwrap();
+        let (control, mut endpoint) =
+            crate::carla_processor::spawn_processor_bridge(Box::new(host), 48_000, 64).unwrap();
+        control.set_active(true);
+        control.set_visible(true).unwrap();
+        let mut heard = false;
+        for block in 0..200 {
+            let events: &[(u32, &[u8])] = if block == 0 {
+                &[(0, &[0x90, 60, 100])]
+            } else {
+                &[]
+            };
+            endpoint.set_midi_input_events(0, events).unwrap();
+            endpoint.process(64).unwrap();
+            ui_service.pump();
+            if endpoint.audio_output(0).unwrap()[..64]
+                .iter()
+                .any(|sample| sample.abs() > 0.001)
+            {
+                heard = true;
+                break;
+            }
+        }
+        assert!(heard, "MDA ePiano produced no audio from MIDI");
+        assert!(control.lifecycle().is_operational());
+        assert!(control.is_visible());
+        control.set_visible(false).unwrap();
+        drop(endpoint);
+        drop(control);
+        ui_service.pump();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn probes_and_runs_installed_carla_when_available() {
         let _exclusive = lock_carla_test();
         let fixtures = [
