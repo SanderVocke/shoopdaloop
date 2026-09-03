@@ -237,7 +237,7 @@ Verification:
 - [x] Add graph-model tests asserting exact endpoint/route sets for all three visible layouts and proving buses and system outputs never coexist on the Tracks tab, including pending/error cases.
 - [x] Add interaction tests for tab/mode switching, stale-drag cancellation, route creation/disconnection in each view, hidden-route retention/reappearance, duplicate bus names, visual bus order, filters, and per-track scope.
 - [x] Verify existing direct, mixer, bus-output, additive fan-in/fan-out, MIDI/global-control, authority, clipping, and no-overlap behavior does not regress.
-- [ ] Run focused Connections-dialog, AppWidget, native headless, Chromium, and packaged-browser tests.
+- [x] Run focused Connections-dialog, AppWidget, native headless, Chromium, and packaged-browser tests.
 
 ### Stage 8 — Preserve Lua behavior and update documentation
 
@@ -262,33 +262,33 @@ Depends on all implementation stages.
 - [x] Run the equivalent Worker/AudioWorklet scenario, including restart/replay and session replacement, and verify authoritative snapshots/audio before and after every structural operation.
 - [x] Exercise all three Connections layouts and prove switching tabs/modes neither mutates nor loses hidden confirmed/pending routes.
 - [x] Verify new, version-10-migrated, zero-bus, duplicate-name, reordered, resampled, maximum-supported, over-limit, malformed, cancelled, and failed-replacement sessions.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace` in the environment selected by `.agents/info/build.md`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests will change.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Build `shoopdaloop --no-default-features --target wasm32-unknown-unknown` and `shoop_audio_worklet --target wasm32-unknown-unknown --release`.
-- [ ] Run the complete Node Wasm suite with `python3 scripts/run_wasm_tests.py --runtime node --profile dev`, relevant Chromium suites, `trunk build`, smoke-budget checks, and packaged Chromium/Firefox smokes when available.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace` in the environment selected by `.agents/info/build.md`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests will change.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Build `shoopdaloop --no-default-features --target wasm32-unknown-unknown` and `shoop_audio_worklet --target wasm32-unknown-unknown --release`.
+- [x] Run the complete Node Wasm suite with `python3 scripts/run_wasm_tests.py --runtime node --profile dev`, relevant Chromium suites, `trunk build`, smoke-budget checks, and packaged Chromium/Firefox smokes when available.
 - [x] Run native headless startup/rendering validation and any real-host tests available without weakening unavailable-host behavior into success.
-- [ ] Build a prompt-to-artifact checklist mapping every scope bullet, immutable criterion, named file/contract, command, test, target, migration, PR requirement, and Codex finding to concrete exact-head evidence; inspect the evidence and leave no unchecked or weakly covered requirement.
+- [x] Build a prompt-to-artifact checklist mapping every scope bullet, immutable criterion, named file/contract, command, test, target, migration, PR requirement, and Codex finding to concrete exact-head evidence; inspect the evidence and leave no unchecked or weakly covered requirement.
 
 ### Stage 10 — New unified PR, CI, review, and replacement closure
 
 Depends on Stage 9 local gates.
 
-- [ ] Ensure every completed stage or meaningful milestone has a focused commit, the worktree is clean, and `origin/master...HEAD` contains only the complete mixer foundation plus steps 2 and 3.
-- [ ] Push `shoopdaloop-mixer-step-3` and open a new non-draft PR directly against `master`; clearly state that it replaces #843 and include architecture boundaries, lifecycle/order semantics, Connections layouts, version changes, and exact local verification results.
-- [ ] Fetch current `master`, rebase the unified branch when needed, resolve conflicts without weakening acceptance criteria, rerun affected gates, and verify the new PR remains merge-clean and contains all prior mixer work. Never retarget it to #843 or another feature branch.
-- [ ] Monitor `gh pr checks` for the exact current head SHA. For every failure, inspect run attempt, matrix job, logs, and artifacts using `.agents/info/ci-debug.md`; reproduce deterministic failures locally and use `.agents/info/ci-repro.md` before classifying timing behavior.
-- [ ] Fix every real CI defect, rerun affected local suites, commit/push, and restart the exact-head audit. Do not rely on checks from an earlier SHA, omitted matrix jobs, or proxy green statuses.
-- [ ] Enumerate every root automated Codex finding, assess it against architecture and code, implement each valid fix with focused regression coverage, and reply with commit/evidence. Reply to invalid findings with concrete evidence rather than silently dismissing them.
-- [ ] Request fresh Codex review after each fix batch and continue until the exact final head has no unresolved findings and an explicit no-major-issues result.
-- [ ] Once the replacement PR itself is complete and exact-head green/reviewed, close PR #843 as superseded with a link to the replacement; verify #843 was not merged or used as the replacement PR's base.
-- [ ] Perform the final audit: local/remote heads match, worktree is clean, merge base is current `master`, replacement PR is open/non-draft/merge-clean, all required checks are successful or legitimately skipped, all findings have evidence-backed replies, latest Codex review covers the exact SHA, old PR is closed as superseded, and every plan checkbox/criterion has concrete evidence.
+- [x] Ensure every completed stage or meaningful milestone has a focused commit, the worktree is clean, and `origin/master...HEAD` contains only the complete mixer foundation plus steps 2 and 3.
+- [x] Push `shoopdaloop-mixer-step-3` and open a new non-draft PR directly against `master`; clearly state that it replaces #843 and include architecture boundaries, lifecycle/order semantics, Connections layouts, version changes, and exact local verification results.
+- [x] Fetch current `master`, rebase the unified branch when needed, resolve conflicts without weakening acceptance criteria, rerun affected gates, and verify the new PR remains merge-clean and contains all prior mixer work. Never retarget it to #843 or another feature branch.
+- [x] Monitor `gh pr checks` for the exact current head SHA. For every failure, inspect run attempt, matrix job, logs, and artifacts using `.agents/info/ci-debug.md`; reproduce deterministic failures locally and use `.agents/info/ci-repro.md` before classifying timing behavior.
+- [x] Fix every real CI defect, rerun affected local suites, commit/push, and restart the exact-head audit. Do not rely on checks from an earlier SHA, omitted matrix jobs, or proxy green statuses.
+- [x] Enumerate every root automated Codex finding, assess it against architecture and code, implement each valid fix with focused regression coverage, and reply with commit/evidence. Reply to invalid findings with concrete evidence rather than silently dismissing them.
+- [x] Request fresh Codex review after each fix batch and continue until the exact final head has no unresolved findings and an explicit no-major-issues result.
+- [x] Once the replacement PR itself is complete and exact-head green/reviewed, close PR #843 as superseded with a link to the replacement; verify #843 was not merged or used as the replacement PR's base.
+- [x] Perform the final audit: local/remote heads match, worktree is clean, merge base is current `master`, replacement PR is open/non-draft/merge-clean, all required checks are successful or legitimately skipped, all findings have evidence-backed replies, latest Codex review covers the exact SHA, old PR is closed as superseded, and every plan checkbox/criterion has concrete evidence.
 
 Verification:
 
-- [ ] Record the final branch SHA, replacement PR URL, current `master`/merge-base SHA, all-green exact-head check rollup, Codex result and finding/reply counts, #843 closure link, and full prompt-to-artifact audit before declaring step 3 complete.
+- [x] Record the final branch SHA, replacement PR URL, current `master`/merge-base SHA, all-green exact-head check rollup, Codex result and finding/reply counts, #843 closure link, and full prompt-to-artifact audit before declaring step 3 complete.
 
 ## Prompt-to-artifact acceptance audit
 
