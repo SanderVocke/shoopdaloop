@@ -73,66 +73,72 @@ impl BusControls {
             .corner_radius(4.0)
             .inner_margin(egui::Margin::same(4))
             .show(ui, |ui| {
-                ui.set_width(MIXER_STRIP_WIDTH);
-                ui.horizontal(|ui| {
-                    let (drag_rect, drag) = ui.allocate_exact_size(
-                        egui::vec2(18.0, 20.0),
+                ui.vertical(|ui| {
+                    ui.set_width(MIXER_STRIP_WIDTH);
+                    ui.horizontal(|ui| {
+                        let (drag_rect, drag) = ui.allocate_exact_size(
+                            egui::vec2(18.0, 20.0),
+                            if state.structural_state == StructuralState::Confirmed {
+                                egui::Sense::drag()
+                            } else {
+                                egui::Sense::hover()
+                            },
+                        );
                         if state.structural_state == StructuralState::Confirmed {
-                            egui::Sense::drag()
-                        } else {
-                            egui::Sense::hover()
-                        },
-                    );
-                    if state.structural_state == StructuralState::Confirmed {
-                        drag.dnd_set_drag_payload(BusDragPayload { bus_id: state.id });
-                    }
-                    #[cfg(test)]
-                    {
-                        self.test_rects.drag = Some(drag_rect);
-                    }
-                    ui.painter().text(
-                        drag_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        ICON_DRAG_INDICATOR.codepoint,
-                        egui::FontId::new(16.0, ICON_DRAG_INDICATOR.font_family()),
-                        colors::MUTED_FOREGROUND,
-                    );
-                    let color = if state.control_error.is_some() || state.structural_error.is_some()
-                    {
-                        colors::ERROR
-                    } else {
-                        colors::FOREGROUND
-                    };
-                    let response = ui.add_sized(
-                        [(ui.available_width() - 24.0).max(20.0), 20.0],
-                        egui::Label::new(egui::RichText::new(&state.name).strong().color(color))
-                            .truncate(),
-                    );
-                    if let Some(error) = state
-                        .structural_error
-                        .as_ref()
-                        .or(state.control_error.as_ref())
-                    {
-                        response.on_hover_text(error);
-                    }
-                    if state.structural_state != StructuralState::Confirmed || state.control_pending
-                    {
-                        ui.spinner();
-                    } else {
-                        let remove = ui
-                            .add(egui::Button::new(ICON_DELETE.rich_text().size(15.0)).frame(false))
-                            .on_hover_text("Remove bus");
+                            drag.dnd_set_drag_payload(BusDragPayload { bus_id: state.id });
+                        }
                         #[cfg(test)]
                         {
-                            self.test_rects.remove = Some(remove.rect);
+                            self.test_rects.drag = Some(drag_rect);
                         }
-                        if remove.clicked() {
-                            self.remove_confirmation_open = true;
+                        ui.painter().text(
+                            drag_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            ICON_DRAG_INDICATOR.codepoint,
+                            egui::FontId::new(16.0, ICON_DRAG_INDICATOR.font_family()),
+                            colors::MUTED_FOREGROUND,
+                        );
+                        let color =
+                            if state.control_error.is_some() || state.structural_error.is_some() {
+                                colors::ERROR
+                            } else {
+                                colors::FOREGROUND
+                            };
+                        let response = ui.add_sized(
+                            [(ui.available_width() - 24.0).max(20.0), 20.0],
+                            egui::Label::new(
+                                egui::RichText::new(&state.name).strong().color(color),
+                            )
+                            .truncate(),
+                        );
+                        if let Some(error) = state
+                            .structural_error
+                            .as_ref()
+                            .or(state.control_error.as_ref())
+                        {
+                            response.on_hover_text(error);
                         }
-                    }
-                });
-                ui.add_enabled_ui(state.structural_state == StructuralState::Confirmed, |ui| {
-                    self.show_control_row(ui, state, &mut actions)
+                        if state.structural_state != StructuralState::Confirmed {
+                            ui.spinner();
+                        } else {
+                            let remove = ui
+                                .add(
+                                    egui::Button::new(ICON_DELETE.rich_text().size(15.0))
+                                        .frame(false),
+                                )
+                                .on_hover_text("Remove bus");
+                            #[cfg(test)]
+                            {
+                                self.test_rects.remove = Some(remove.rect);
+                            }
+                            if remove.clicked() {
+                                self.remove_confirmation_open = true;
+                            }
+                        }
+                    });
+                    ui.add_enabled_ui(state.structural_state == StructuralState::Confirmed, |ui| {
+                        self.show_control_row(ui, state, &mut actions)
+                    });
                 });
             })
             .response;
@@ -456,6 +462,49 @@ mod tests {
         frame(&context, &mut controls, &state(3), Vec::new());
         assert!(controls.test_rects.balance.is_none());
         assert_eq!(controls.peaks.len(), 3);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn strip_keeps_vertical_mixer_layout_inside_a_horizontal_bus_list() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut controls = BusControls::default();
+        let state = state(2);
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(480.0, 300.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                ui.horizontal(|ui| {
+                    controls.show(ui, &state, 0, 0);
+                });
+            },
+        );
+        output.textures_delta.clear();
+
+        let drag = controls.test_rects.drag.unwrap();
+        let balance = controls.test_rects.balance.unwrap();
+        let meter = controls.test_rects.meter.unwrap();
+        let gain = controls.test_rects.gain.unwrap();
+        assert!(balance.top() >= drag.bottom());
+        assert!(meter.top() >= balance.bottom());
+        assert!(gain.top() >= balance.bottom());
+        assert!(controls.test_rects.block.unwrap().width() < 140.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn pending_control_change_keeps_remove_action_available() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut controls = BusControls::default();
+        let mut state = state(2);
+        state.control_pending = true;
+        frame(&context, &mut controls, &state, Vec::new());
+        assert!(controls.test_rects.remove.is_some());
     }
 
     #[shoop_wasm_test_support::shoop_test]
