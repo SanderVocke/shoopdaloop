@@ -7,8 +7,10 @@ use shoop_engine::carla_subprocess::{
 };
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration};
+#[cfg(feature = "carla-system-tests")]
 use std::sync::Arc;
 
+#[cfg(feature = "carla-system-tests")]
 const SYSTEM_EPIANO_STATE: &str = "shoop-carla-native-state:2:rack:PD94bWwgdmVyc2lvbj0nMS4wJyBlbmNvZGluZz0nVVRGLTgnPz4KPCFET0NUWVBFIENBUkxBLVBST0pFQ1Q+CjxDQVJMQS1QUk9KRUNUIFZFUlNJT049JzIuNSc+CiA8RW5naW5lU2V0dGluZ3M+CiAgPEZvcmNlU3RlcmVvPnRydWU8L0ZvcmNlU3RlcmVvPgogIDxQcmVmZXJQbHVnaW5CcmlkZ2VzPmZhbHNlPC9QcmVmZXJQbHVnaW5CcmlkZ2VzPgogIDxQcmVmZXJVaUJyaWRnZXM+ZmFsc2U8L1ByZWZlclVpQnJpZGdlcz4KIDwvRW5naW5lU2V0dGluZ3M+CiA8UGx1Z2luPgogIDxJbmZvPgogICA8VHlwZT5MVjI8L1R5cGU+CiAgIDxOYW1lPk1EQSBlUGlhbm88L05hbWU+CiAgIDxVUkk+aHR0cDovL2Ryb2JpbGxhLm5ldC9wbHVnaW5zL21kYS9FUGlhbm88L1VSST4KICA8L0luZm8+CiAgPERhdGE+CiAgIDxBY3RpdmU+WWVzPC9BY3RpdmU+CiAgIDxDb250cm9sQ2hhbm5lbD4xPC9Db250cm9sQ2hhbm5lbD4KICAgPE9wdGlvbnM+MHgwPC9PcHRpb25zPgogIDwvRGF0YT4KIDwvUGx1Z2luPgo8L0NBUkxBLVBST0pFQ1Q+";
 
 #[shoop_wasm_test_support::shoop_test]
@@ -28,7 +30,9 @@ fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     .expect("application executable should complete the worker handshake");
     assert!(worker.is_ready());
     worker.set_active(true);
-    worker.set_visible(true).unwrap();
+    let ui = worker.external_ui().expect("fake worker UI handle");
+    ui.set_visible(true).unwrap();
+    assert!(ui.is_visible());
     assert!(worker.is_visible());
     assert_eq!(worker.save_state().unwrap(), "{}");
 }
@@ -96,6 +100,9 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     .unwrap();
     worker.restore_state("checkpoint").unwrap();
     worker.set_active(true);
+    let ui = worker.external_ui().expect("supervised worker UI handle");
+    ui.set_visible(true).unwrap();
+    assert!(ui.is_visible());
     worker.terminate_worker_for_test().unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     while worker.is_ready() && std::time::Instant::now() < deadline {
@@ -119,6 +126,7 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
         .all(|log| log.stdout.is_empty() && log.stderr.is_empty()));
 }
 
+#[cfg(feature = "carla-system-tests")]
 #[shoop_wasm_test_support::shoop_test]
 fn application_worker_processes_while_real_carla_ui_changes() {
     if std::env::var_os("SHOOP_TEST_CARLA_UI").is_none() {

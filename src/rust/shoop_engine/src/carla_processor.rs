@@ -1315,6 +1315,10 @@ mod tests {
         }
         ui_operation.join().unwrap();
         assert!(processed.load(Ordering::Relaxed) > before);
+        assert!(control.is_visible());
+        control.toggle_or_recover().unwrap();
+        assert!(!control.is_visible());
+        assert_eq!(control.recoveries(), 0);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1369,6 +1373,7 @@ mod tests {
         }
         assert_eq!(control.lifecycle(), CarlaProcessorLifecycle::Running);
         assert!(control.deadline_misses() >= 1);
+        assert_eq!(control.recoveries(), 1);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
