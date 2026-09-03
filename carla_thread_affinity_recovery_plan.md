@@ -153,10 +153,10 @@ Validation evidence: test attribute policy, formatting, warning-denying workspac
 - [x] Ensure every completed stage or meaningful milestone has a focused commit.
 - [x] Push the branch only after the behavior-affecting test suites are green.
 - [x] Open a PR summarizing the Carla v2.5.10 contract, trace evidence, architecture change, recovery state machine, UI behavior, and verification evidence.
-- [ ] Monitor CI and fix failures until all required jobs are green.
-- [ ] Check repeatedly for automated review feedback, address defensible findings with tests, push updates, and continue until the automated reviewer approves or no actionable feedback remains.
+- [x] Monitor CI and fix failures until all required jobs are green.
+- [x] Check repeatedly for automated review feedback, address defensible findings with tests, push updates, and continue until the automated reviewer approves or no actionable feedback remains.
 
-Delivery evidence: reviewed the staged implementation commits on `carlabugs`; all required local gates were green before each push. PR: https://github.com/SanderVocke/shoopdaloop/pull/852. The first automated review identified subprocess UI-close refresh and inner health aggregation gaps; both were addressed with regression coverage.
+Delivery evidence: reviewed the staged implementation commits on `carlabugs`; all required local gates were green before each push. PR: https://github.com/SanderVocke/shoopdaloop/pull/852. Automated review identified subprocess UI-close refresh, inner health aggregation, and cross-restart cumulative-health gaps; all were addressed with regression coverage. The final Codex review of `93eafcb8` reported no major issues, and every PR check—including Linux/macOS/Windows native matrices, WebAssembly matrices, CodeQL, docs, and patch/project coverage—passed.
 
 ## Execution contract
 
