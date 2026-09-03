@@ -858,6 +858,10 @@ mod bridge {
                     snapshot.publish_health(host.as_mut(), external_ui.as_deref());
                 }
                 Ok(Err(error)) => {
+                    tracing::error!(
+                        error = %error,
+                        "engine.fx.bridge.unrecoverable_failure"
+                    );
                     processing_faulted = true;
                     snapshot.ready.store(false, Ordering::Release);
                     snapshot
@@ -873,6 +877,7 @@ mod bridge {
                     std::thread::park_timeout(Duration::from_millis(10));
                 }
                 Err(_) => {
+                    tracing::error!("engine.fx.bridge.unrecoverable_panic");
                     snapshot.ready.store(false, Ordering::Release);
                     snapshot
                         .lifecycle

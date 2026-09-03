@@ -1375,7 +1375,7 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn degraded_processor_is_yellow_and_toggles_visibility_without_recovery() {
-        let fx = crate::TrackFxState {
+        let mut fx = crate::TrackFxState {
             processor_type: crate::TrackProcessorTypeId::new("carla_rack"),
             active: true,
             visible: false,
@@ -1397,6 +1397,26 @@ mod tests {
             fx_primary_action(&fx),
             TrackWidgetAction::FxVisibilityChanged(true)
         );
+
+        for lifecycle in [FxLifecycle::Starting, FxLifecycle::Restarting] {
+            fx.lifecycle = lifecycle;
+            assert_eq!(fx_color(&fx), egui::Color32::YELLOW);
+            assert_eq!(
+                fx_primary_action(&fx),
+                TrackWidgetAction::FxVisibilityChanged(true)
+            );
+        }
+        fx.lifecycle = FxLifecycle::Running;
+        assert_eq!(fx_color(&fx), egui::Color32::LIGHT_GREEN);
+        fx.active = false;
+        assert_eq!(fx_color(&fx), egui::Color32::GRAY);
+        fx.lifecycle = FxLifecycle::Stopped;
+        assert_eq!(fx_color(&fx), egui::Color32::GRAY);
+        for lifecycle in [FxLifecycle::Crashed, FxLifecycle::Unavailable] {
+            fx.lifecycle = lifecycle;
+            assert_eq!(fx_color(&fx), egui::Color32::LIGHT_RED);
+            assert_eq!(fx_primary_action(&fx), TrackWidgetAction::FxToggleOrRecover);
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

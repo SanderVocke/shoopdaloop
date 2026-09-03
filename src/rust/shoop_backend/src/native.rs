@@ -3873,11 +3873,17 @@ fn fx_status_summary(
     deadline_misses: u64,
     stale_completions: u64,
 ) -> Option<String> {
-    (lifecycle == FxLifecycle::Degraded).then(|| {
-        format!(
+    if lifecycle == FxLifecycle::Degraded {
+        Some(format!(
             "Processing deadline missed; retrying automatically ({deadline_misses} deadline misses, {stale_completions} stale completions)"
-        )
-    })
+        ))
+    } else if deadline_misses > 0 || stale_completions > 0 {
+        Some(format!(
+            "Processing recovered ({deadline_misses} deadline misses, {stale_completions} stale completions)"
+        ))
+    } else {
+        None
+    }
 }
 
 fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycle) -> FxLifecycle {
@@ -3949,7 +3955,10 @@ mod tests {
         let summary = fx_status_summary(FxLifecycle::Degraded, 4, 1).unwrap();
         assert!(summary.contains("retrying automatically"));
         assert!(summary.contains("4 deadline misses"));
-        assert!(fx_status_summary(FxLifecycle::Crashed, 4, 1).is_none());
+        assert!(fx_status_summary(FxLifecycle::Crashed, 0, 0).is_none());
+        assert!(fx_status_summary(FxLifecycle::Running, 4, 1)
+            .unwrap()
+            .contains("Processing recovered"));
     }
 
     fn render_dummy_track_audio(
