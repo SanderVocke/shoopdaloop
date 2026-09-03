@@ -9,7 +9,8 @@ use egui_material_icons::icons::{
 
 const METER_MIN_DB: f32 = -50.0;
 const MIXER_STRIP_WIDTH: f32 = 112.0;
-const METER_WIDTH: f32 = 30.0;
+const MIN_METER_WIDTH: f32 = 30.0;
+const MIN_METER_LANE_WIDTH: f32 = 3.0;
 const BALANCE_SIZE: f32 = 26.0;
 const MIN_FADER_HEIGHT: f32 = 52.0;
 const MAX_FADER_HEIGHT: f32 = 260.0;
@@ -74,7 +75,12 @@ impl BusControls {
             .inner_margin(egui::Margin::same(4))
             .show(ui, |ui| {
                 ui.vertical(|ui| {
-                    ui.set_width(MIXER_STRIP_WIDTH);
+                    let meter_width =
+                        MIN_METER_WIDTH.max(state.channels.len() as f32 * MIN_METER_LANE_WIDTH);
+                    let strip_width = MIXER_STRIP_WIDTH.max(
+                        meter_width + ui.spacing().interact_size.x + ui.spacing().item_spacing.x,
+                    );
+                    ui.set_width(strip_width);
                     ui.horizontal(|ui| {
                         let (drag_rect, drag) = ui.allocate_exact_size(
                             egui::vec2(18.0, 20.0),
@@ -137,7 +143,7 @@ impl BusControls {
                         }
                     });
                     ui.add_enabled_ui(state.structural_state == StructuralState::Confirmed, |ui| {
-                        self.show_control_row(ui, state, &mut actions)
+                        self.show_control_row(ui, state, meter_width, &mut actions)
                     });
                 });
             })
@@ -182,6 +188,7 @@ impl BusControls {
         &mut self,
         ui: &mut egui::Ui,
         state: &BusState,
+        meter_width: f32,
         actions: &mut Vec<BusAction>,
     ) {
         let stereo = state.stereo();
@@ -257,10 +264,10 @@ impl BusControls {
         let gain_response = ui
             .horizontal(|ui| {
                 let slider_thickness = ui.spacing().interact_size.x;
-                let group_width = METER_WIDTH + ui.spacing().item_spacing.x + slider_thickness;
+                let group_width = meter_width + ui.spacing().item_spacing.x + slider_thickness;
                 ui.add_space((ui.available_width() - group_width).max(0.0) / 2.0);
                 let (meter_rect, _meter_response) = ui.allocate_exact_size(
-                    egui::vec2(METER_WIDTH, fader_height),
+                    egui::vec2(meter_width, fader_height),
                     egui::Sense::hover(),
                 );
                 #[cfg(test)]
@@ -462,6 +469,10 @@ mod tests {
         frame(&context, &mut controls, &state(3), Vec::new());
         assert!(controls.test_rects.balance.is_none());
         assert_eq!(controls.peaks.len(), 3);
+
+        frame(&context, &mut controls, &state(64), Vec::new());
+        assert!(controls.test_rects.meter.unwrap().width() >= 64.0 * MIN_METER_LANE_WIDTH);
+        assert_eq!(controls.peaks.len(), 64);
     }
 
     #[shoop_wasm_test_support::shoop_test]
