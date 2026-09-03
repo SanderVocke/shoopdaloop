@@ -8,8 +8,12 @@ use egui_material_icons::icons::{
 };
 
 const METER_MIN_DB: f32 = -50.0;
-const CONTROL_HEIGHT: f32 = 24.0;
-const BALANCE_SIZE: f32 = 18.0;
+const MIXER_STRIP_WIDTH: f32 = 112.0;
+const METER_WIDTH: f32 = 30.0;
+const BALANCE_SIZE: f32 = 26.0;
+const MIN_FADER_HEIGHT: f32 = 52.0;
+const MAX_FADER_HEIGHT: f32 = 260.0;
+const FADER_FOOTER_HEIGHT: f32 = 58.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct BusDragPayload {
@@ -69,7 +73,7 @@ impl BusControls {
             .corner_radius(4.0)
             .inner_margin(egui::Margin::same(4))
             .show(ui, |ui| {
-                ui.set_width(ui.available_width());
+                ui.set_width(MIXER_STRIP_WIDTH);
                 ui.horizontal(|ui| {
                     let (drag_rect, drag) = ui.allocate_exact_size(
                         egui::vec2(18.0, 20.0),
@@ -100,7 +104,7 @@ impl BusControls {
                         colors::FOREGROUND
                     };
                     let response = ui.add_sized(
-                        [ui.available_width().max(24.0) - 24.0, 20.0],
+                        [(ui.available_width() - 24.0).max(20.0), 20.0],
                         egui::Label::new(egui::RichText::new(&state.name).strong().color(color))
                             .truncate(),
                     );
@@ -174,75 +178,109 @@ impl BusControls {
         state: &BusState,
         actions: &mut Vec<BusAction>,
     ) {
-        let (rect, _response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), CONTROL_HEIGHT),
-            egui::Sense::hover(),
-        );
-        #[cfg(test)]
-        {
-            self.test_rects.meter = Some(_response.rect);
-        }
-        self.paint_meter(ui, rect, state);
-        let mut row = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt(("bus_controls", state.id.raw()))
-                .max_rect(rect)
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        );
-        let icon = if state.muted {
-            ICON_VOLUME_MUTE
-        } else {
-            ICON_VOLUME_UP
-        };
-        let color = if state.muted {
-            colors::MUTED_FOREGROUND
-        } else {
-            colors::FOREGROUND
-        };
-        let mute = row
-            .add(egui::Button::new(icon.rich_text().size(16.0).color(color)).frame(false))
-            .on_hover_text("Mute/unmute bus");
-        #[cfg(test)]
-        {
-            self.test_rects.mute = Some(mute.rect);
-        }
-        if mute.clicked() {
-            actions.push(BusAction::MuteChanged(!state.muted));
-        }
-
         let stereo = state.stereo();
-        let available = row.available_width().max(0.0);
-        let gap = if stereo {
-            row.spacing().item_spacing.x.min(available)
-        } else {
-            0.0
-        };
-        let balance_size = if stereo {
-            BALANCE_SIZE.min((available - gap).max(0.0))
-        } else {
-            0.0
-        };
-        let gain_width = (available - gap - balance_size).max(0.0);
+        ui.horizontal(|ui| {
+            ui.add_space((ui.available_width() - BALANCE_SIZE).max(0.0) / 2.0);
+            let (balance_rect, balance_response) = ui.allocate_exact_size(
+                egui::vec2(BALANCE_SIZE, BALANCE_SIZE),
+                if stereo {
+                    egui::Sense::click_and_drag()
+                } else {
+                    egui::Sense::hover()
+                },
+            );
+            if stereo {
+                let value = self
+                    .balance
+                    .resolve(state.balance, self.balance_drag_start.is_some());
+                if balance_response.drag_started() {
+                    self.balance_drag_start = Some(value);
+                }
+                let mut balance = value;
+                if balance_response.dragged() {
+                    balance = (self.balance_drag_start.unwrap_or(value)
+                        - balance_response.total_drag_delta().unwrap_or_default().y / 50.0)
+                        .clamp(-1.0, 1.0);
+                }
+                if balance_response.double_clicked() {
+                    balance = 0.0;
+                }
+                if (balance - value).abs() > f32::EPSILON {
+                    self.balance.set(balance);
+                    actions.push(BusAction::BalanceChanged(balance));
+                }
+                if balance_response.drag_stopped() {
+                    self.balance_drag_start = None;
+                }
+                paint_dial(
+                    ui,
+                    &balance_response,
+                    balance_rect,
+                    (balance + 1.0) / 2.0,
+                    "B",
+                );
+                let _balance_response =
+                    balance_response.on_hover_text(format!("Stereo balance: {balance:.2}"));
+                #[cfg(test)]
+                {
+                    self.test_rects.balance = Some(_balance_response.rect);
+                }
+            } else {
+                ui.painter().text(
+                    balance_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "—",
+                    egui::FontId::proportional(12.0),
+                    colors::MUTED_FOREGROUND,
+                );
+                #[cfg(test)]
+                {
+                    self.test_rects.balance = None;
+                }
+            }
+        });
+
+        let fader_height =
+            (ui.available_height() - FADER_FOOTER_HEIGHT).clamp(MIN_FADER_HEIGHT, MAX_FADER_HEIGHT);
         let mut gain = self.gain.resolve(state.gain_db, self.gain_dragging);
-        let slider_width = row.spacing().slider_width;
-        row.spacing_mut().slider_width = gain_width;
         let fill = if state.muted {
             colors::MUTED_SLIDER_FILL
         } else {
             colors::COLORED_HIGHLIGHT
         };
-        let gain_response = row
-            .scope(|ui| {
-                ui.visuals_mut().selection.bg_fill = fill;
-                ui.add(
-                    egui::Slider::new(&mut gain, MIN_BUS_GAIN_DB..=MAX_BUS_GAIN_DB)
-                        .show_value(false)
-                        .trailing_fill(true),
-                )
+        let gain_response = ui
+            .horizontal(|ui| {
+                let slider_thickness = ui.spacing().interact_size.x;
+                let group_width = METER_WIDTH + ui.spacing().item_spacing.x + slider_thickness;
+                ui.add_space((ui.available_width() - group_width).max(0.0) / 2.0);
+                let (meter_rect, _meter_response) = ui.allocate_exact_size(
+                    egui::vec2(METER_WIDTH, fader_height),
+                    egui::Sense::hover(),
+                );
+                #[cfg(test)]
+                {
+                    self.test_rects.meter = Some(_meter_response.rect);
+                }
+                self.paint_meter(ui, meter_rect, state);
+
+                let slider_width = ui.spacing().slider_width;
+                ui.spacing_mut().slider_width = fader_height;
+                let response = ui
+                    .scope(|ui| {
+                        ui.visuals_mut().selection.bg_fill = fill;
+                        ui.add(
+                            egui::Slider::new(&mut gain, MIN_BUS_GAIN_DB..=MAX_BUS_GAIN_DB)
+                                .vertical()
+                                .show_value(false)
+                                .trailing_fill(true),
+                        )
+                    })
+                    .inner;
+                ui.spacing_mut().slider_width = slider_width;
+                response
             })
             .inner
             .on_hover_text(format!("Bus gain: {gain:.1} dB"));
-        row.spacing_mut().slider_width = slider_width;
         #[cfg(test)]
         {
             self.test_rects.gain = Some(gain_response.rect);
@@ -258,52 +296,42 @@ impl BusControls {
             self.gain_dragging = false;
         }
 
-        if stereo {
-            let (balance_rect, balance_response) = row.allocate_exact_size(
-                egui::vec2(balance_size, balance_size),
-                egui::Sense::click_and_drag(),
-            );
-            let value = self
-                .balance
-                .resolve(state.balance, self.balance_drag_start.is_some());
-            if balance_response.drag_started() {
-                self.balance_drag_start = Some(value);
-            }
-            let mut balance = value;
-            if balance_response.dragged() {
-                balance = (self.balance_drag_start.unwrap_or(value)
-                    - balance_response.total_drag_delta().unwrap_or_default().y / 50.0)
-                    .clamp(-1.0, 1.0);
-            }
-            if balance_response.double_clicked() {
-                balance = 0.0;
-            }
-            if (balance - value).abs() > f32::EPSILON {
-                self.balance.set(balance);
-                actions.push(BusAction::BalanceChanged(balance));
-            }
-            if balance_response.drag_stopped() {
-                self.balance_drag_start = None;
-            }
-            paint_dial(
-                &row,
-                &balance_response,
-                balance_rect,
-                (balance + 1.0) / 2.0,
-                "B",
-            );
-            let _balance_response =
-                balance_response.on_hover_text(format!("Stereo balance: {balance:.2}"));
+        ui.vertical_centered(|ui| {
+            ui.label(format!("{gain:.1} dB"));
+            let icon = if state.muted {
+                ICON_VOLUME_MUTE
+            } else {
+                ICON_VOLUME_UP
+            };
+            let color = if state.muted {
+                colors::MUTED_FOREGROUND
+            } else {
+                colors::FOREGROUND
+            };
+            let mute = ui
+                .add_sized(
+                    [64.0, 24.0],
+                    egui::Button::new(icon.rich_text().size(16.0).color(color)),
+                )
+                .on_hover_text("Mute/unmute bus");
             #[cfg(test)]
             {
-                self.test_rects.balance = Some(_balance_response.rect);
+                self.test_rects.mute = Some(mute.rect);
             }
-        } else {
-            #[cfg(test)]
-            {
-                self.test_rects.balance = None;
+            if mute.clicked() {
+                actions.push(BusAction::MuteChanged(!state.muted));
             }
-        }
+        });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn block_rect(&self) -> Option<egui::Rect> {
+        self.test_rects.block
+    }
+
+    #[cfg(test)]
+    pub(crate) fn gain_rect(&self) -> Option<egui::Rect> {
+        self.test_rects.gain
     }
 
     #[cfg(test)]
@@ -338,9 +366,12 @@ impl BusControls {
             )
             .shrink2(egui::vec2(1.0, 0.0));
             ui.painter().rect_filled(
-                egui::Rect::from_min_size(
-                    segment.min,
-                    egui::vec2(segment.width() * fraction, segment.height()),
+                egui::Rect::from_min_max(
+                    egui::pos2(
+                        segment.left(),
+                        segment.bottom() - segment.height() * fraction,
+                    ),
+                    segment.right_bottom(),
                 ),
                 1.0,
                 colors::METER_LEVEL,
@@ -413,6 +444,13 @@ mod tests {
         assert!(controls.test_rects.meter.is_some());
         assert!(controls.test_rects.gain.is_some());
         assert!(controls.test_rects.balance.is_some());
+        assert!(
+            controls.test_rects.gain.unwrap().height() > controls.test_rects.gain.unwrap().width()
+        );
+        assert!(
+            controls.test_rects.meter.unwrap().height()
+                > controls.test_rects.meter.unwrap().width()
+        );
         assert_eq!(controls.peaks.len(), 2);
 
         frame(&context, &mut controls, &state(3), Vec::new());
@@ -448,7 +486,7 @@ mod tests {
             &mut controls,
             &state,
             vec![egui::Event::PointerMoved(
-                gain_start + egui::vec2(30.0, 0.0),
+                gain_start - egui::vec2(0.0, 30.0),
             )],
         );
         let gain = gain_actions
@@ -463,7 +501,7 @@ mod tests {
             &mut controls,
             &state,
             vec![egui::Event::PointerButton {
-                pos: gain_start + egui::vec2(30.0, 0.0),
+                pos: gain_start - egui::vec2(0.0, 30.0),
                 button: egui::PointerButton::Primary,
                 pressed: false,
                 modifiers: egui::Modifiers::NONE,
