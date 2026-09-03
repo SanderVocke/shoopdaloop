@@ -111,7 +111,12 @@ impl BusControls {
                                 colors::FOREGROUND
                             };
                         let response = ui.add_sized(
-                            [(ui.available_width() - 24.0).max(20.0), 20.0],
+                            [
+                                (ui.available_width()
+                                    - if state.control_pending { 42.0 } else { 24.0 })
+                                .max(20.0),
+                                20.0,
+                            ],
                             egui::Label::new(
                                 egui::RichText::new(&state.name).strong().color(color),
                             )
@@ -139,6 +144,9 @@ impl BusControls {
                             }
                             if remove.clicked() {
                                 self.remove_confirmation_open = true;
+                            }
+                            if state.control_pending {
+                                ui.spinner();
                             }
                         }
                     });
