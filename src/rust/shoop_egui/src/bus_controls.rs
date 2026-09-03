@@ -1,7 +1,7 @@
 use crate::{
     colors, dial::paint_dial, meter_ballistics::PeakMeterAnimation,
-    optimistic_value::OptimisticValue, BusAction, BusId, BusState, StructuralState,
-    MAX_BUS_GAIN_DB, MIN_BUS_GAIN_DB,
+    optimistic_value::OptimisticValue, BusAction, BusId, BusState, MAX_BUS_GAIN_DB,
+    MIN_BUS_GAIN_DB,
 };
 use egui_material_icons::icons::{
     ICON_DELETE, ICON_DRAG_INDICATOR, ICON_VOLUME_MUTE, ICON_VOLUME_UP,
@@ -82,17 +82,9 @@ impl BusControls {
                     );
                     ui.set_width(strip_width);
                     ui.horizontal(|ui| {
-                        let (drag_rect, drag) = ui.allocate_exact_size(
-                            egui::vec2(18.0, 20.0),
-                            if state.structural_state == StructuralState::Confirmed {
-                                egui::Sense::drag()
-                            } else {
-                                egui::Sense::hover()
-                            },
-                        );
-                        if state.structural_state == StructuralState::Confirmed {
-                            drag.dnd_set_drag_payload(BusDragPayload { bus_id: state.id });
-                        }
+                        let (drag_rect, drag) =
+                            ui.allocate_exact_size(egui::vec2(18.0, 20.0), egui::Sense::drag());
+                        drag.dnd_set_drag_payload(BusDragPayload { bus_id: state.id });
                         #[cfg(test)]
                         {
                             self.test_rects.drag = Some(drag_rect);
@@ -111,12 +103,7 @@ impl BusControls {
                                 colors::FOREGROUND
                             };
                         let response = ui.add_sized(
-                            [
-                                (ui.available_width()
-                                    - if state.control_pending { 42.0 } else { 24.0 })
-                                .max(20.0),
-                                20.0,
-                            ],
+                            [(ui.available_width() - 24.0).max(20.0), 20.0],
                             egui::Label::new(
                                 egui::RichText::new(&state.name).strong().color(color),
                             )
@@ -129,30 +116,18 @@ impl BusControls {
                         {
                             response.on_hover_text(error);
                         }
-                        if state.structural_state != StructuralState::Confirmed {
-                            ui.spinner();
-                        } else {
-                            let remove = ui
-                                .add(
-                                    egui::Button::new(ICON_DELETE.rich_text().size(15.0))
-                                        .frame(false),
-                                )
-                                .on_hover_text("Remove bus");
-                            #[cfg(test)]
-                            {
-                                self.test_rects.remove = Some(remove.rect);
-                            }
-                            if remove.clicked() {
-                                self.remove_confirmation_open = true;
-                            }
-                            if state.control_pending {
-                                ui.spinner();
-                            }
+                        let remove = ui
+                            .add(egui::Button::new(ICON_DELETE.rich_text().size(15.0)).frame(false))
+                            .on_hover_text("Remove bus");
+                        #[cfg(test)]
+                        {
+                            self.test_rects.remove = Some(remove.rect);
+                        }
+                        if remove.clicked() {
+                            self.remove_confirmation_open = true;
                         }
                     });
-                    ui.add_enabled_ui(state.structural_state == StructuralState::Confirmed, |ui| {
-                        self.show_control_row(ui, state, meter_width, &mut actions)
-                    });
+                    self.show_control_row(ui, state, meter_width, &mut actions);
                 });
             })
             .response;
@@ -516,14 +491,20 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn pending_control_change_keeps_remove_action_available() {
+    fn pending_control_change_keeps_the_optimistic_strip_unchanged() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut controls = BusControls::default();
         let mut state = state(2);
+        frame(&context, &mut controls, &state, Vec::new());
+        let settled_block = controls.test_rects.block.unwrap();
         state.control_pending = true;
         frame(&context, &mut controls, &state, Vec::new());
         assert!(controls.test_rects.remove.is_some());
+        assert_eq!(
+            controls.test_rects.block.unwrap().size(),
+            settled_block.size()
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

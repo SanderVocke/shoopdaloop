@@ -1558,7 +1558,12 @@ impl AppWidget {
             }
         });
         ui.separator();
-        if state.buses.is_empty() {
+        let visible_buses = state
+            .buses
+            .iter()
+            .filter(|bus| bus.structural_state == crate::StructuralState::Confirmed)
+            .collect::<Vec<_>>();
+        if visible_buses.is_empty() {
             ui.label("No buses in this session.");
             return;
         }
@@ -1571,8 +1576,8 @@ impl AppWidget {
             .show(ui, |ui| {
                 ui.set_height(strip_height);
                 ui.horizontal(|ui| {
-                    let bus_ids = state.buses.iter().map(|bus| bus.id).collect::<Vec<_>>();
-                    for bus in state.buses.iter() {
+                    let bus_ids = visible_buses.iter().map(|bus| bus.id).collect::<Vec<_>>();
+                    for bus in visible_buses {
                         show_bus_insert_zone(ui, &bus_ids, Some(bus.id), actions);
                         let channel_ids = bus
                             .channels
@@ -1801,9 +1806,10 @@ impl AppWidget {
                     ui.colored_label(colors::ERROR, error);
                 }
                 ui.horizontal(|ui| {
+                    let pending = self.pending_add_bus_request.is_some();
                     let add = ui.add_enabled(
-                        valid_name && self.pending_add_bus_request.is_none(),
-                        egui::Button::new("Add"),
+                        valid_name && !pending,
+                        egui::Button::new(if pending { "Adding…" } else { "Add" }),
                     );
                     #[cfg(test)]
                     {
@@ -1811,9 +1817,6 @@ impl AppWidget {
                     }
                     submit = add.clicked();
                     cancel = ui.button("Cancel").clicked();
-                    if self.pending_add_bus_request.is_some() {
-                        ui.spinner();
-                    }
                 });
             });
         self.add_bus_open = open && !cancel;
@@ -3435,6 +3438,9 @@ mod tests {
             })]
         );
         assert_eq!(widget.pending_add_bus_request, Some(1));
+        frame(&context, &mut widget, &state, Vec::new());
+        let pending_add = widget.add_bus_accept_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, pending_add).is_empty());
         let completed = AppState {
             bus_creation_results: Arc::from([crate::BusCreationResult {
                 request_id: 1,
@@ -4018,6 +4024,15 @@ mod tests {
                     .unwrap()
                     .width()
         );
+
+        let mut creating = bus(2);
+        creating.structural_state = crate::StructuralState::Creating;
+        let mut removing = bus(3);
+        removing.structural_state = crate::StructuralState::Removing;
+        state.buses = Arc::from([bus(1), creating, removing]);
+        frame(&context, &mut widget, &state, Vec::new());
+        assert!(!widget.bus_controls.contains_key(&crate::BusId::from_raw(2)));
+        assert!(!widget.bus_controls.contains_key(&crate::BusId::from_raw(3)));
 
         state.buses = Arc::from([bus(1), bus(2), bus(3)]);
         frame(&context, &mut widget, &state, Vec::new());
