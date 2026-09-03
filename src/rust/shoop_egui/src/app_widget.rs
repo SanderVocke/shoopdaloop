@@ -1072,10 +1072,6 @@ pub struct AppWidget {
     reset_xruns_rect: Option<egui::Rect>,
     #[cfg(test)]
     bus_area_rect: Option<egui::Rect>,
-    #[cfg(test)]
-    logo_area_rect: Option<egui::Rect>,
-    #[cfg(test)]
-    sync_area_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -1172,10 +1168,6 @@ impl AppWidget {
             reset_xruns_rect: None,
             #[cfg(test)]
             bus_area_rect: None,
-            #[cfg(test)]
-            logo_area_rect: None,
-            #[cfg(test)]
-            sync_area_rect: None,
         }
     }
 
@@ -1364,10 +1356,6 @@ impl AppWidget {
                     egui::pos2(sidebar.left(), sidebar.bottom() - LOGO_AREA_HEIGHT),
                     egui::vec2(sidebar.width(), LOGO_AREA_HEIGHT),
                 );
-                #[cfg(test)]
-                {
-                    self.logo_area_rect = Some(logo_rect);
-                }
                 ui.scope_builder(
                     egui::UiBuilder::new()
                         .id_salt("logo_area")
@@ -1375,18 +1363,14 @@ impl AppWidget {
                         .layout(egui::Layout::top_down(egui::Align::Center)),
                     |ui| self.show_logo(ui, state),
                 );
-
                 if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
-                    let sync_height = SYNC_TRACK_HEIGHT
-                        .min((logo_rect.top() - SIDEBAR_SECTION_GAP - sidebar.top()).max(0.0));
                     let sync_rect = egui::Rect::from_min_size(
-                        sidebar.min,
-                        egui::vec2(sidebar.width(), sync_height),
+                        egui::pos2(
+                            sidebar.left(),
+                            logo_rect.top() - SIDEBAR_SECTION_GAP - SYNC_TRACK_HEIGHT,
+                        ),
+                        egui::vec2(sidebar.width(), SYNC_TRACK_HEIGHT),
                     );
-                    #[cfg(test)]
-                    {
-                        self.sync_area_rect = Some(sync_rect);
-                    }
                     ui.scope_builder(
                         egui::UiBuilder::new()
                             .id_salt("sync_track_area")
@@ -1394,11 +1378,6 @@ impl AppWidget {
                             .layout(egui::Layout::top_down(egui::Align::Min)),
                         |ui| self.show_sync_track(ui, sync, state, &mut actions),
                     );
-                } else {
-                    #[cfg(test)]
-                    {
-                        self.sync_area_rect = None;
-                    }
                 }
             });
 
@@ -4023,7 +4002,6 @@ mod tests {
         assert!(widget.bus_area_rect.is_none());
         assert!(widget.add_bus_open_rect.is_none());
         assert!(widget.bus_controls.is_empty());
-        assert!(widget.sync_area_rect.unwrap().bottom() <= widget.logo_area_rect.unwrap().top());
 
         let buses_toggle = widget.buses_toggle_rect.unwrap().center();
         click(&context, &mut widget, &state, buses_toggle);
