@@ -149,12 +149,14 @@ Validation evidence: test attribute policy, formatting, warning-denying workspac
 
 ## Stage 6 — Delivery
 
-- [ ] Review the complete diff for scope, unsafe-code justification, shutdown ordering, realtime guarantees, and platform-specific main-thread behavior.
-- [ ] Ensure every completed stage or meaningful milestone has a focused commit.
-- [ ] Push the branch only after the behavior-affecting test suites are green.
-- [ ] Open a PR summarizing the Carla v2.5.10 contract, trace evidence, architecture change, recovery state machine, UI behavior, and verification evidence.
+- [x] Review the complete diff for scope, unsafe-code justification, shutdown ordering, realtime guarantees, and platform-specific main-thread behavior.
+- [x] Ensure every completed stage or meaningful milestone has a focused commit.
+- [x] Push the branch only after the behavior-affecting test suites are green.
+- [x] Open a PR summarizing the Carla v2.5.10 contract, trace evidence, architecture change, recovery state machine, UI behavior, and verification evidence.
 - [ ] Monitor CI and fix failures until all required jobs are green.
 - [ ] Check repeatedly for automated review feedback, address defensible findings with tests, push updates, and continue until the automated reviewer approves or no actionable feedback remains.
+
+Delivery evidence: reviewed commits `320a6226`, `eebe5642`, `a5bd21ba`, and `dcd3b2d4` on `carlabugs`; all required local gates were green before push. PR: https://github.com/SanderVocke/shoopdaloop/pull/852
 
 ## Execution contract
 
