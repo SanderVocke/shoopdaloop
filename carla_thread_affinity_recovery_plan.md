@@ -145,7 +145,7 @@ Stage evidence: the continuous-DSP real Carla UI probe passed for all three desc
 - [x] Capture a short coarse Perfetto trace for the final reproduction and verify no data loss, UI callbacks on their intended track, continued DSP completions, and expected lifecycle transitions.
 - [x] Confirm no deadline-fallback dry bypass was introduced.
 
-Validation evidence: test attribute policy, formatting, warning-denying workspace build, and tracing coverage all passed. The final complete CI-profile Rust run passed all 1,714 executed tests (four skipped). Real in-process and subprocess Carla UI/DSP probes passed on this system; the internal Audio Gain fixture covers the effect path, and opted-in in-process plus subprocess regressions loaded the system MDA ePiano, opened/closed Carla UI, injected MIDI, and verified audible-level generated samples without a crash or manual recovery. The final coarse trace had no loss/error stats and separated all UI callbacks from 7,240 DSP slices. Inspection confirms both deadline branches still zero wet/MIDI output and do not copy dry input.
+Validation evidence: test attribute policy, formatting, warning-denying workspace build, and tracing coverage all passed. The final complete CI-profile Rust run passed all 1,715 executed tests (four skipped). Real in-process and subprocess Carla UI/DSP probes passed on this system; the internal Audio Gain fixture covers the effect path, and opted-in in-process plus subprocess regressions loaded the system MDA ePiano, opened/closed Carla UI, injected MIDI, and verified audible-level generated samples without a crash or manual recovery. The final coarse trace had no loss/error stats and separated all UI callbacks from 7,240 DSP slices. Inspection confirms both deadline branches still zero wet/MIDI output and do not copy dry input.
 
 ## Stage 6 — Delivery
 
@@ -156,7 +156,7 @@ Validation evidence: test attribute policy, formatting, warning-denying workspac
 - [ ] Monitor CI and fix failures until all required jobs are green.
 - [ ] Check repeatedly for automated review feedback, address defensible findings with tests, push updates, and continue until the automated reviewer approves or no actionable feedback remains.
 
-Delivery evidence: reviewed commits `320a6226`, `eebe5642`, `a5bd21ba`, and `dcd3b2d4` on `carlabugs`; all required local gates were green before push. PR: https://github.com/SanderVocke/shoopdaloop/pull/852
+Delivery evidence: reviewed the staged implementation commits on `carlabugs`; all required local gates were green before each push. PR: https://github.com/SanderVocke/shoopdaloop/pull/852. The first automated review identified subprocess UI-close refresh and inner health aggregation gaps; both were addressed with regression coverage.
 
 ## Execution contract
 

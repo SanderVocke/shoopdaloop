@@ -90,7 +90,11 @@ impl CarlaMidiBuffer {
 
 pub trait CarlaExternalUi: Send + Sync + Debug {
     fn set_visible(&self, visible: bool) -> Result<()>;
+    fn refresh(&self) {}
     fn is_visible(&self) -> bool;
+    fn ui_was_closed(&self) -> bool {
+        false
+    }
 }
 
 pub trait CarlaProcessor: Send + Debug {
@@ -112,6 +116,15 @@ pub trait CarlaProcessor: Send + Debug {
     }
     fn crash_summary(&self) -> Option<String> {
         None
+    }
+    fn deadline_misses(&self) -> u64 {
+        0
+    }
+    fn stale_completions(&self) -> u64 {
+        0
+    }
+    fn recoveries(&self) -> u64 {
+        0
     }
     fn generation_logs(&self) -> Vec<CarlaGenerationLog> {
         Vec::new()
@@ -177,6 +190,9 @@ mod bridge {
         midi_output_overflows: Arc<AtomicU64>,
         stale_completions: Arc<AtomicU64>,
         recoveries: Arc<AtomicU64>,
+        inner_deadline_misses: AtomicU64,
+        inner_stale_completions: AtomicU64,
+        inner_recoveries: AtomicU64,
         degraded: Arc<AtomicBool>,
         crash_summary: ArcSwapOption<String>,
     }
@@ -195,6 +211,9 @@ mod bridge {
                 midi_output_overflows: Arc::new(AtomicU64::new(0)),
                 stale_completions: Arc::new(AtomicU64::new(0)),
                 recoveries: Arc::new(AtomicU64::new(0)),
+                inner_deadline_misses: AtomicU64::new(host.deadline_misses()),
+                inner_stale_completions: AtomicU64::new(host.stale_completions()),
+                inner_recoveries: AtomicU64::new(host.recoveries()),
                 degraded: Arc::new(AtomicBool::new(false)),
                 crash_summary: ArcSwapOption::from(host.crash_summary().map(Arc::new)),
             }
@@ -217,6 +236,12 @@ mod bridge {
             self.generation.store(host.generation(), Ordering::Release);
             self.exit_kind
                 .store(host.exit_kind() as u8, Ordering::Release);
+            self.inner_deadline_misses
+                .store(host.deadline_misses(), Ordering::Release);
+            self.inner_stale_completions
+                .store(host.stale_completions(), Ordering::Release);
+            self.inner_recoveries
+                .store(host.recoveries(), Ordering::Release);
             self.crash_summary.store(host.crash_summary().map(Arc::new));
         }
     }
@@ -321,6 +346,14 @@ mod bridge {
         }
 
         pub fn exit_kind(&self) -> shoop_plugin_protocol::WorkerExitKind {
+            if self
+                .control
+                .external_ui
+                .as_ref()
+                .is_some_and(|ui| ui.ui_was_closed())
+            {
+                return shoop_plugin_protocol::WorkerExitKind::UiClosed;
+            }
             match self.control.snapshot.exit_kind.load(Ordering::Acquire) {
                 value if value == shoop_plugin_protocol::WorkerExitKind::Requested as u8 => {
                     shoop_plugin_protocol::WorkerExitKind::Requested
@@ -354,6 +387,12 @@ mod bridge {
                 .snapshot
                 .deadline_misses
                 .load(Ordering::Acquire)
+                .saturating_add(
+                    self.control
+                        .snapshot
+                        .inner_deadline_misses
+                        .load(Ordering::Acquire),
+                )
         }
 
         pub fn midi_input_overflows(&self) -> u64 {
@@ -375,10 +414,25 @@ mod bridge {
                 .snapshot
                 .stale_completions
                 .load(Ordering::Acquire)
+                .saturating_add(
+                    self.control
+                        .snapshot
+                        .inner_stale_completions
+                        .load(Ordering::Acquire),
+                )
         }
 
         pub fn recoveries(&self) -> u64 {
-            self.control.snapshot.recoveries.load(Ordering::Acquire)
+            self.control
+                .snapshot
+                .recoveries
+                .load(Ordering::Acquire)
+                .saturating_add(
+                    self.control
+                        .snapshot
+                        .inner_recoveries
+                        .load(Ordering::Acquire),
+                )
         }
 
         pub fn crash_summary(&self) -> Option<String> {
@@ -428,6 +482,7 @@ mod bridge {
 
         pub fn is_visible(&self) -> bool {
             if let Some(ui) = &self.control.external_ui {
+                ui.refresh();
                 let visible = ui.is_visible();
                 self.control
                     .snapshot
@@ -1000,6 +1055,7 @@ pub struct FakeProcessorBehavior {
     pub panic_processing: bool,
     pub fail_state: bool,
     pub fail_visibility: bool,
+    pub close_ui_immediately: bool,
 }
 
 #[derive(Debug)]
@@ -1058,7 +1114,7 @@ impl CarlaProcessor for FakeCarlaProcessor {
         if self.behavior.fail_visibility {
             anyhow::bail!("fake visibility failure");
         }
-        self.visible = visible;
+        self.visible = visible && !self.behavior.close_ui_immediately;
         Ok(())
     }
 
@@ -1163,6 +1219,8 @@ mod tests {
     #[derive(Debug)]
     struct SlowExternalUi {
         visible: AtomicBool,
+        close_on_refresh: AtomicBool,
+        ui_closed: AtomicBool,
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1173,8 +1231,19 @@ mod tests {
             Ok(())
         }
 
+        fn refresh(&self) {
+            if self.close_on_refresh.swap(false, Ordering::AcqRel) {
+                self.visible.store(false, Ordering::Release);
+                self.ui_closed.store(true, Ordering::Release);
+            }
+        }
+
         fn is_visible(&self) -> bool {
             self.visible.load(Ordering::Acquire)
+        }
+
+        fn ui_was_closed(&self) -> bool {
+            self.ui_closed.load(Ordering::Acquire)
         }
     }
 
@@ -1210,6 +1279,18 @@ mod tests {
 
         fn is_visible(&mut self) -> bool {
             self.ui.is_visible()
+        }
+
+        fn deadline_misses(&self) -> u64 {
+            3
+        }
+
+        fn stale_completions(&self) -> u64 {
+            2
+        }
+
+        fn recoveries(&self) -> u64 {
+            1
         }
 
         fn save_state(&mut self) -> Result<String> {
@@ -1298,11 +1379,13 @@ mod tests {
     fn slow_external_ui_does_not_serialize_bridge_processing() {
         let ui = Arc::new(SlowExternalUi {
             visible: AtomicBool::new(false),
+            close_on_refresh: AtomicBool::new(false),
+            ui_closed: AtomicBool::new(false),
         });
         let processed = Arc::new(AtomicU64::new(0));
         let host = UiBackedFakeProcessor {
             inner: FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES),
-            ui,
+            ui: Arc::clone(&ui),
             processed: Arc::clone(&processed),
         };
         let (control, mut endpoint) = spawn_processor_bridge(Box::new(host), 1_000, 100).unwrap();
@@ -1318,7 +1401,16 @@ mod tests {
         assert!(control.is_visible());
         control.toggle_or_recover().unwrap();
         assert!(!control.is_visible());
-        assert_eq!(control.recoveries(), 0);
+        control.set_visible(true).unwrap();
+        ui.close_on_refresh.store(true, Ordering::Release);
+        assert!(!control.is_visible());
+        assert_eq!(
+            control.exit_kind(),
+            shoop_plugin_protocol::WorkerExitKind::UiClosed
+        );
+        assert_eq!(control.deadline_misses(), 3);
+        assert_eq!(control.stale_completions(), 2);
+        assert_eq!(control.recoveries(), 1);
     }
 
     #[cfg(not(target_arch = "wasm32"))]

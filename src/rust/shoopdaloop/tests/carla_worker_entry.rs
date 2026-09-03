@@ -32,9 +32,37 @@ fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     worker.set_active(true);
     let ui = worker.external_ui().expect("fake worker UI handle");
     ui.set_visible(true).unwrap();
+    ui.refresh();
     assert!(ui.is_visible());
     assert!(worker.is_visible());
     assert_eq!(worker.save_state().unwrap(), "{}");
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn application_worker_refreshes_an_external_ui_close() {
+    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
+        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop").into());
+    let worker = SubprocessCarlaProcessor::spawn_test_worker(
+        &executable,
+        FXChainType::CarlaRack,
+        48_000,
+        128,
+        ChainId(46),
+        ProcessGeneration(1),
+        CarlaWorkerTestMode::UiClose,
+    )
+    .unwrap();
+    let ui = worker.external_ui().expect("fake worker UI handle");
+    ui.set_visible(true).unwrap();
+    assert!(ui.is_visible());
+    ui.refresh();
+    assert!(!ui.is_visible());
+    assert!(ui.ui_was_closed());
+    assert_eq!(
+        worker.exit_kind(),
+        shoop_plugin_protocol::WorkerExitKind::UiClosed
+    );
 }
 
 #[shoop_wasm_test_support::shoop_test]
@@ -102,6 +130,7 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     worker.set_active(true);
     let ui = worker.external_ui().expect("supervised worker UI handle");
     ui.set_visible(true).unwrap();
+    ui.refresh();
     assert!(ui.is_visible());
     worker.terminate_worker_for_test().unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
