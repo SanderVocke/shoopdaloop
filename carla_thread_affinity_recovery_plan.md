@@ -63,12 +63,12 @@ Verification:
 
 ## Stage 1 — Encode the Carla threading contract
 
-- [ ] Add the missing native UI-main-thread hint and validate the pinned Rack, Patchbay, and Patchbay16 descriptors against their required UI contract.
-- [ ] Refactor the native host into explicit lifetime-safe facets: a main-thread UI endpoint, a DSP endpoint with audio/MIDI storage, and a control/state path serialized at block boundaries.
-- [ ] Add a main-thread Carla UI service/dispatcher owned and pumped by the native application runtime; integrate an equivalent owner into the Carla subprocess main loop.
-- [ ] Route `ui_show`, bounded-cadence `ui_idle`, UI-close observation, and UI teardown exclusively through those main-thread owners.
-- [ ] Route `process` exclusively through DSP endpoints and remove the Shoop-owned UI/DSP mutex serialization in the subprocess worker.
-- [ ] Define shutdown ordering that quiesces DSP, unregisters UI pumping, hides the UI if needed, and cleans up the descriptor exactly once.
+- [x] Add the missing native UI-main-thread hint and validate the pinned Rack, Patchbay, and Patchbay16 descriptors against their required UI contract.
+- [x] Refactor the native host into explicit lifetime-safe facets: a main-thread UI endpoint, a DSP endpoint with audio/MIDI storage, and a control/state path serialized at block boundaries.
+- [x] Add a main-thread Carla UI service/dispatcher owned and pumped by the native application runtime; integrate an equivalent owner into the Carla subprocess main loop.
+- [x] Route `ui_show`, bounded-cadence `ui_idle`, UI-close observation, and UI teardown exclusively through those main-thread owners.
+- [x] Route `process` exclusively through DSP endpoints and remove the Shoop-owned UI/DSP mutex serialization in the subprocess worker.
+- [x] Define shutdown ordering that quiesces DSP, unregisters UI pumping, hides the UI if needed, and cleans up the descriptor exactly once.
 
 Verification:
 
@@ -76,6 +76,8 @@ Verification:
 - A fake `ui_show`/`ui_idle` delay does not stop successful DSP completions.
 - Rapid show/hide and shutdown tests detect no use-after-free, duplicate cleanup, deadlock, or leaked worker.
 - Run `cargo fmt --all -- --check` and `RUSTFLAGS="-D warnings" cargo build --workspace` in the repository development shell before committing the stage.
+
+Stage evidence: the main-thread UI service tests cover show/idle/cleanup affinity and cadence; the slow external-UI bridge test proves DSP progresses independently. All 29 Carla/shared-memory engine tests and the worker-entry test passed, test-attribute policy passed, formatting was applied, and the warning-denying workspace build passed.
 
 ## Stage 2 — Make deadline and stale completion recovery robust
 

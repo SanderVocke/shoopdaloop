@@ -15,6 +15,14 @@ use shoop_engine::{
 };
 
 #[cfg(feature = "native-fx")]
+pub use shoop_engine::carla_native::{CarlaMainThreadUiDispatcher, CarlaMainThreadUiService};
+
+#[cfg(feature = "native-fx")]
+pub fn configure_carla_ui_dispatcher(dispatcher: Option<CarlaMainThreadUiDispatcher>) {
+    shoop_engine::carla_native::configure_application_ui_dispatcher(dispatcher);
+}
+
+#[cfg(feature = "native-fx")]
 pub fn configure_carla_hosting_mode(mode: shoop_settings::CarlaHostingMode) {
     shoop_engine::app_backend::set_carla_hosting_mode(mode);
 }

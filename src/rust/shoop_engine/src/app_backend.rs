@@ -2954,7 +2954,7 @@ impl BackendSession {
                     let host: Result<Box<dyn engine::carla_processor::CarlaProcessor>> =
                         match carla_hosting_mode() {
                             CarlaHostingMode::InProcess => {
-                                engine::carla_native::CarlaNativeHost::instantiate(
+                                engine::carla_native::CarlaNativeHost::instantiate_for_application(
                                     chain_type,
                                     sample_rate,
                                     buffer_size,

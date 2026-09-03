@@ -311,15 +311,24 @@ impl ApplicationRuntime {
     pub fn startup_script_ids(&self) -> &[Option<ScriptId>] {
         &self.startup_script_ids
     }
+
+    pub fn shutdown_with_idle(&mut self, mut idle: impl FnMut()) {
+        let Some(join) = self.join.take() else {
+            return;
+        };
+        let _span = tracing::info_span!("frontend.app.runtime_shutdown").entered();
+        let _ = self.handle.sender.send(ApplicationMessage::Shutdown);
+        while !join.is_finished() {
+            idle();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let _ = join.join();
+    }
 }
 
 impl Drop for ApplicationRuntime {
     fn drop(&mut self) {
-        let _span = tracing::info_span!("frontend.app.runtime_shutdown").entered();
-        let _ = self.handle.sender.send(ApplicationMessage::Shutdown);
-        if let Some(join) = self.join.take() {
-            let _ = join.join();
-        }
+        self.shutdown_with_idle(|| {});
     }
 }
 

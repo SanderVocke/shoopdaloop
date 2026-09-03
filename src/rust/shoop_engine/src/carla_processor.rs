@@ -1,6 +1,7 @@
 use crate::FXChainType;
 use anyhow::Result;
 use std::fmt::Debug;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -80,8 +81,16 @@ impl CarlaMidiBuffer {
     }
 }
 
+pub trait CarlaExternalUi: Send + Sync + Debug {
+    fn set_visible(&self, visible: bool) -> Result<()>;
+    fn is_visible(&self) -> bool;
+}
+
 pub trait CarlaProcessor: Send + Debug {
     fn info(&self) -> CarlaProcessorInfo;
+    fn external_ui(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+        None
+    }
     fn is_ready(&mut self) -> bool {
         true
     }
@@ -143,7 +152,6 @@ mod bridge {
     };
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
     use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-    use std::sync::Arc;
     use std::thread::JoinHandle;
     use std::time::Instant;
 
@@ -181,9 +189,18 @@ mod bridge {
             }
         }
 
-        fn publish_health(&self, host: &mut dyn CarlaProcessor) {
+        fn publish_health(
+            &self,
+            host: &mut dyn CarlaProcessor,
+            external_ui: Option<&dyn CarlaExternalUi>,
+        ) {
             self.ready.store(host.is_ready(), Ordering::Release);
-            self.visible.store(host.is_visible(), Ordering::Release);
+            self.visible.store(
+                external_ui
+                    .map(CarlaExternalUi::is_visible)
+                    .unwrap_or_else(|| host.is_visible()),
+                Ordering::Release,
+            );
             self.lifecycle
                 .store(host.lifecycle() as u8, Ordering::Release);
             self.generation.store(host.generation(), Ordering::Release);
@@ -213,6 +230,7 @@ mod bridge {
     struct BridgeControl {
         sender: SyncSender<BridgeCommand>,
         snapshot: Arc<BridgeSnapshot>,
+        external_ui: Option<Arc<dyn CarlaExternalUi>>,
         thread: Mutex<Option<JoinHandle<()>>>,
         wake: std::thread::Thread,
     }
@@ -374,7 +392,11 @@ mod bridge {
         }
 
         pub fn set_visible(&self, visible: bool) -> Result<()> {
-            self.request_unit(|reply| BridgeCommand::SetVisible(visible, reply))?;
+            if let Some(ui) = &self.control.external_ui {
+                ui.set_visible(visible)?;
+            } else {
+                self.request_unit(|reply| BridgeCommand::SetVisible(visible, reply))?;
+            }
             self.control
                 .snapshot
                 .visible
@@ -383,11 +405,26 @@ mod bridge {
         }
 
         pub fn is_visible(&self) -> bool {
-            self.control.snapshot.visible.load(Ordering::Acquire)
+            if let Some(ui) = &self.control.external_ui {
+                let visible = ui.is_visible();
+                self.control
+                    .snapshot
+                    .visible
+                    .store(visible, Ordering::Release);
+                visible
+            } else {
+                self.control.snapshot.visible.load(Ordering::Acquire)
+            }
         }
 
         pub fn toggle_or_recover(&self) -> Result<()> {
-            self.request_unit(BridgeCommand::ToggleOrRecover)
+            if self.lifecycle() == CarlaProcessorLifecycle::Running
+                && self.control.external_ui.is_some()
+            {
+                self.set_visible(!self.is_visible())
+            } else {
+                self.request_unit(BridgeCommand::ToggleOrRecover)
+            }
         }
 
         pub fn save_state(&self) -> Result<String> {
@@ -704,6 +741,7 @@ mod bridge {
         mut transport: SharedBlockTransport,
         commands: Receiver<BridgeCommand>,
         snapshot: Arc<BridgeSnapshot>,
+        external_ui: Option<Arc<dyn CarlaExternalUi>>,
     ) {
         let mut midi_inputs = CarlaMidiBuffer::new(
             MAX_MIDI_EVENTS_PER_BLOCK,
@@ -731,7 +769,7 @@ mod bridge {
                         if result.is_ok() {
                             snapshot.visible.store(host.is_visible(), Ordering::Release);
                             processing_faulted = false;
-                            snapshot.publish_health(host.as_mut());
+                            snapshot.publish_health(host.as_mut(), external_ui.as_deref());
                         }
                         let _ = reply.send(result);
                     }
@@ -754,7 +792,7 @@ mod bridge {
             if stopped {
                 break;
             }
-            if host.is_visible() {
+            if external_ui.is_none() && host.is_visible() {
                 host.idle();
             }
             if processing_faulted {
@@ -770,9 +808,9 @@ mod bridge {
                 )
             }));
             match processing {
-                Ok(Ok(true)) => snapshot.publish_health(host.as_mut()),
+                Ok(Ok(true)) => snapshot.publish_health(host.as_mut(), external_ui.as_deref()),
                 Ok(Ok(false)) => {
-                    snapshot.publish_health(host.as_mut());
+                    snapshot.publish_health(host.as_mut(), external_ui.as_deref());
                     std::thread::park_timeout(Duration::from_millis(10));
                 }
                 Ok(Err(error)) => {
@@ -814,6 +852,7 @@ mod bridge {
         nominal_buffer_size: u32,
     ) -> Result<(CarlaControlHandle, Box<dyn CarlaProcessor>)> {
         let info = host.info();
+        let external_ui = host.external_ui();
         let generation = ProcessGeneration(1);
         let nonce = *uuid::Uuid::new_v4().as_bytes();
         let mut full_nonce = [0_u8; 32];
@@ -830,13 +869,23 @@ mod bridge {
         let stale_completions = Arc::clone(&snapshot.stale_completions);
         let (sender, receiver) = sync_channel(BRIDGE_COMMAND_CAPACITY);
         let thread_snapshot = Arc::clone(&snapshot);
+        let thread_external_ui = external_ui.clone();
         let thread = std::thread::Builder::new()
             .name("carla-processor-bridge".to_owned())
-            .spawn(move || bridge_thread(host, worker_transport, receiver, thread_snapshot))?;
+            .spawn(move || {
+                bridge_thread(
+                    host,
+                    worker_transport,
+                    receiver,
+                    thread_snapshot,
+                    thread_external_ui,
+                )
+            })?;
         let wake = thread.thread().clone();
         let control = Arc::new(BridgeControl {
             sender,
             snapshot,
+            external_ui,
             thread: Mutex::new(Some(thread)),
             wake: wake.clone(),
         });
@@ -1048,6 +1097,92 @@ mod tests {
     use super::*;
     #[cfg(not(target_arch = "wasm32"))]
     use shoop_plugin_protocol::MAX_BLOCK_FRAMES;
+    #[cfg(not(target_arch = "wasm32"))]
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[derive(Debug)]
+    struct SlowExternalUi {
+        visible: AtomicBool,
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    impl CarlaExternalUi for SlowExternalUi {
+        fn set_visible(&self, visible: bool) -> Result<()> {
+            std::thread::sleep(Duration::from_millis(50));
+            self.visible.store(visible, Ordering::Release);
+            Ok(())
+        }
+
+        fn is_visible(&self) -> bool {
+            self.visible.load(Ordering::Acquire)
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[derive(Debug)]
+    struct UiBackedFakeProcessor {
+        inner: FakeCarlaProcessor,
+        ui: Arc<SlowExternalUi>,
+        processed: Arc<AtomicU64>,
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    impl CarlaProcessor for UiBackedFakeProcessor {
+        fn info(&self) -> CarlaProcessorInfo {
+            self.inner.info()
+        }
+
+        fn external_ui(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+            Some(Arc::clone(&self.ui) as Arc<dyn CarlaExternalUi>)
+        }
+
+        fn set_active(&mut self, active: bool) {
+            self.inner.set_active(active);
+        }
+
+        fn is_active(&self) -> bool {
+            self.inner.is_active()
+        }
+
+        fn set_visible(&mut self, visible: bool) -> Result<()> {
+            self.ui.set_visible(visible)
+        }
+
+        fn is_visible(&mut self) -> bool {
+            self.ui.is_visible()
+        }
+
+        fn save_state(&mut self) -> Result<String> {
+            self.inner.save_state()
+        }
+
+        fn restore_state(&mut self, state: &str) -> Result<()> {
+            self.inner.restore_state(state)
+        }
+
+        fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+            self.inner.audio_input_mut(index)
+        }
+
+        fn audio_output(&self, index: usize) -> Option<&[f32]> {
+            self.inner.audio_output(index)
+        }
+
+        fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
+            self.inner.set_midi_input_events(index, events)
+        }
+
+        fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+            self.inner.midi_output_events(index)
+        }
+
+        fn process(&mut self, frames: usize) -> Result<()> {
+            self.inner.process(frames)?;
+            self.processed.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn fake_processor_round_trips_audio_midi_state_and_visibility() {
@@ -1097,6 +1232,30 @@ mod tests {
         assert!(endpoint.audio_output(0).unwrap()[..4]
             .iter()
             .all(|sample| sample.is_finite()));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn slow_external_ui_does_not_serialize_bridge_processing() {
+        let ui = Arc::new(SlowExternalUi {
+            visible: AtomicBool::new(false),
+        });
+        let processed = Arc::new(AtomicU64::new(0));
+        let host = UiBackedFakeProcessor {
+            inner: FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES),
+            ui,
+            processed: Arc::clone(&processed),
+        };
+        let (control, mut endpoint) = spawn_processor_bridge(Box::new(host), 1_000, 100).unwrap();
+        control.set_active(true);
+        let ui_control = control.clone();
+        let ui_operation = std::thread::spawn(move || ui_control.set_visible(true).unwrap());
+        let before = processed.load(Ordering::Relaxed);
+        while !ui_operation.is_finished() {
+            endpoint.process(16).unwrap();
+        }
+        ui_operation.join().unwrap();
+        assert!(processed.load(Ordering::Relaxed) > before);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
