@@ -202,6 +202,42 @@ fn track_background(state: &crate::TrackControlState) -> egui::Color32 {
     }
 }
 
+fn fx_color(fx: &crate::TrackFxState) -> egui::Color32 {
+    match fx.lifecycle {
+        FxLifecycle::Running if fx.active => egui::Color32::LIGHT_GREEN,
+        FxLifecycle::Running => egui::Color32::GRAY,
+        FxLifecycle::Starting | FxLifecycle::Degraded | FxLifecycle::Restarting => {
+            egui::Color32::YELLOW
+        }
+        FxLifecycle::Crashed | FxLifecycle::Unavailable => egui::Color32::LIGHT_RED,
+        FxLifecycle::Stopped => egui::Color32::GRAY,
+    }
+}
+
+fn fx_hover_text(fx: &crate::TrackFxState) -> String {
+    format!(
+        "{}: {:?}{}",
+        fx.processor_type,
+        fx.lifecycle,
+        fx.status_summary
+            .as_deref()
+            .or(fx.crash_summary.as_deref())
+            .map(|summary| format!(" — {summary}"))
+            .unwrap_or_default()
+    )
+}
+
+fn fx_primary_action(fx: &crate::TrackFxState) -> TrackWidgetAction {
+    if matches!(
+        fx.lifecycle,
+        FxLifecycle::Crashed | FxLifecycle::Unavailable
+    ) {
+        TrackWidgetAction::FxToggleOrRecover
+    } else {
+        TrackWidgetAction::FxVisibilityChanged(!fx.visible)
+    }
+}
+
 impl TrackWidget {
     pub(crate) fn set_width_resizable(&mut self, resizable: bool) {
         self.width_resizable = resizable;
@@ -854,13 +890,7 @@ impl TrackWidget {
                     }
                 } else if let Some(fx) = &state.fx {
                     let features = processor.map(|value| value.features).unwrap_or_default();
-                    let color = match fx.lifecycle {
-                        FxLifecycle::Running if fx.active => egui::Color32::LIGHT_GREEN,
-                        FxLifecycle::Running => egui::Color32::GRAY,
-                        FxLifecycle::Starting | FxLifecycle::Restarting => egui::Color32::YELLOW,
-                        FxLifecycle::Crashed | FxLifecycle::Unavailable => egui::Color32::LIGHT_RED,
-                        FxLifecycle::Stopped => egui::Color32::GRAY,
-                    };
+                    let color = fx_color(fx);
                     let controllable =
                         features.external_ui || features.embedded_ui || features.recovery;
                     let fx_button = ui
@@ -871,21 +901,13 @@ impl TrackWidget {
                             )
                         })
                         .inner
-                        .on_hover_text(format!(
-                            "{}: {:?}{}",
-                            fx.processor_type,
-                            fx.lifecycle,
-                            fx.crash_summary
-                                .as_deref()
-                                .map(|summary| format!(" — {summary}"))
-                                .unwrap_or_default()
-                        ));
+                        .on_hover_text(fx_hover_text(fx));
                     #[cfg(test)]
                     {
                         self.test_fx_rect = Some(fx_button.rect);
                     }
                     if fx_button.clicked() {
-                        result.actions.push(TrackWidgetAction::FxToggleOrRecover);
+                        result.actions.push(fx_primary_action(fx));
                     }
                     fx_button.context_menu(|ui| {
                         if ui
@@ -1352,6 +1374,32 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn degraded_processor_is_yellow_and_toggles_visibility_without_recovery() {
+        let fx = crate::TrackFxState {
+            processor_type: crate::TrackProcessorTypeId::new("carla_rack"),
+            active: true,
+            visible: false,
+            lifecycle: FxLifecycle::Degraded,
+            generation: 1,
+            deadline_misses: 4,
+            stale_completions: 1,
+            status_summary: Some(
+                "Processing deadline missed; retrying automatically (4 deadline misses, 1 stale completion)"
+                    .to_owned(),
+            ),
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: None,
+        };
+        assert_eq!(fx_color(&fx), egui::Color32::YELLOW);
+        assert!(fx_hover_text(&fx).contains("retrying automatically"));
+        assert_eq!(
+            fx_primary_action(&fx),
+            TrackWidgetAction::FxVisibilityChanged(true)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn processor_facets_render_status_controls_and_logs_without_affecting_direct_tracks() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1379,6 +1427,9 @@ mod tests {
                 visible: false,
                 lifecycle: FxLifecycle::Crashed,
                 generation: 3,
+                deadline_misses: 0,
+                stale_completions: 0,
+                status_summary: None,
                 crash_summary: Some("worker exited".to_owned()),
                 logs: Arc::from([crate::FxGenerationLogState {
                     generation: 3,

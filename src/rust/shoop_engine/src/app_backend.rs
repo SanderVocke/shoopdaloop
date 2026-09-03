@@ -6570,6 +6570,22 @@ impl FXChain {
         }
     }
 
+    pub fn deadline_misses(&self) -> u64 {
+        match &self.backend {
+            #[cfg(feature = "carla")]
+            FXChainBackendKind::Carla(host) => host.deadline_misses(),
+            _ => 0,
+        }
+    }
+
+    pub fn stale_completions(&self) -> u64 {
+        match &self.backend {
+            #[cfg(feature = "carla")]
+            FXChainBackendKind::Carla(host) => host.stale_completions(),
+            _ => 0,
+        }
+    }
+
     pub fn crash_summary(&self) -> Option<String> {
         match &self.backend {
             #[cfg(feature = "carla")]

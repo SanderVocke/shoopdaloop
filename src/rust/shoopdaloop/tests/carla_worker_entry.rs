@@ -7,6 +7,7 @@ use shoop_engine::carla_subprocess::{
 };
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration};
+use std::sync::Arc;
 
 #[shoop_wasm_test_support::shoop_test]
 fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
@@ -28,6 +29,53 @@ fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     worker.set_visible(true).unwrap();
     assert!(worker.is_visible());
     assert_eq!(worker.save_state().unwrap(), "{}");
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn application_worker_recovers_after_a_late_block() {
+    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
+        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop").into());
+    let mut worker = SubprocessCarlaProcessor::spawn_test_worker(
+        &executable,
+        FXChainType::CarlaRack,
+        48_000,
+        32,
+        ChainId(44),
+        ProcessGeneration(1),
+        CarlaWorkerTestMode::DelayOnce,
+    )
+    .unwrap();
+    worker.set_active(true);
+    worker.audio_input_mut(0).unwrap()[..32].fill(0.5);
+    worker.process(32).unwrap();
+    assert!(worker.audio_output(0).unwrap()[..32]
+        .iter()
+        .all(|sample| *sample == 0.0));
+    assert_eq!(
+        worker.lifecycle(),
+        shoop_engine::carla_processor::CarlaProcessorLifecycle::Degraded
+    );
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    loop {
+        worker.audio_input_mut(0).unwrap()[..32].fill(0.5);
+        worker.process(32).unwrap();
+        if worker.audio_output(0).unwrap()[..32]
+            .iter()
+            .all(|sample| *sample == 0.5)
+        {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(worker.is_ready());
+    assert_eq!(
+        worker.lifecycle(),
+        shoop_engine::carla_processor::CarlaProcessorLifecycle::Running
+    );
+    assert!(worker.deadline_misses() >= 1);
 }
 
 #[shoop_wasm_test_support::shoop_test]
@@ -67,6 +115,48 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
         .generation_logs()
         .iter()
         .all(|log| log.stdout.is_empty() && log.stderr.is_empty()));
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn application_worker_processes_while_real_carla_ui_changes() {
+    if std::env::var_os("SHOOP_TEST_CARLA_UI").is_none() {
+        eprintln!("skipping Carla worker UI smoke test; set SHOOP_TEST_CARLA_UI=1");
+        return;
+    }
+    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
+        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop").into());
+    let mut worker = SubprocessCarlaProcessor::spawn(
+        &executable,
+        FXChainType::CarlaRack,
+        48_000,
+        64,
+        ChainId(45),
+        ProcessGeneration(1),
+    )
+    .expect("application executable should host Carla Native in its worker");
+    worker.set_active(true);
+    let ui = worker.external_ui().expect("Carla worker UI handle");
+    for visible in [true, false, true, false] {
+        let operation_ui = Arc::clone(&ui);
+        let operation = std::thread::spawn(move || operation_ui.set_visible(visible));
+        let mut completed = 0;
+        while !operation.is_finished() {
+            worker.audio_input_mut(0).unwrap()[..64].fill(0.125);
+            worker.process(64).unwrap();
+            completed += 1;
+        }
+        operation.join().unwrap().unwrap();
+        for _ in 0..10 {
+            worker.audio_input_mut(0).unwrap()[..64].fill(0.125);
+            worker.process(64).unwrap();
+            completed += 1;
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(completed > 0);
+        assert_eq!(ui.is_visible(), visible);
+    }
+    assert!(worker.is_ready());
 }
 
 #[shoop_wasm_test_support::shoop_test]

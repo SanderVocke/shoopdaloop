@@ -547,20 +547,71 @@ pub fn smoke_test_carla_ui() -> Result<()> {
         FXChainType::CarlaPatchbay,
         FXChainType::CarlaPatchbay16x,
     ] {
-        let mut host = CarlaNativeHost::instantiate(chain_type, 48_000, 64)?;
-        for _ in 0..2 {
-            host.set_visible(true)?;
-            for _ in 0..20 {
-                host.idle();
-                std::thread::sleep(std::time::Duration::from_millis(25));
+        let (mut ui_service, ui_dispatcher) = CarlaMainThreadUiService::new();
+        let mut host =
+            CarlaNativeHost::instantiate_with_ui_dispatcher(chain_type, 48_000, 64, ui_dispatcher)?;
+        let ui = host
+            .external_ui()
+            .ok_or_else(|| anyhow!("{chain_type:?} has no external UI handle"))?;
+        host.set_active(true);
+        let stop = Arc::new(AtomicBool::new(false));
+        let processed = Arc::new(AtomicU64::new(0));
+        let process_stop = Arc::clone(&stop);
+        let process_count = Arc::clone(&processed);
+        let (failure_sender, failure_receiver) = sync_channel(1);
+        let process_thread = std::thread::Builder::new()
+            .name("carla-ui-smoke-dsp".to_owned())
+            .spawn(move || {
+                while !process_stop.load(Ordering::Acquire) {
+                    for input in &mut host.audio_inputs {
+                        input[..64].fill(0.125);
+                    }
+                    if let Err(error) = host.set_midi_input_events(0, &[(0, &[0xb0, 1, 64])]) {
+                        let _ = failure_sender.send(error.to_string());
+                        return;
+                    }
+                    let _span = shoop_tracing::realtime_span!(
+                        "engine.rt.fx.processor",
+                        value = chain_type as u64
+                    );
+                    if let Err(error) = host.process(64) {
+                        let _ = failure_sender.send(error.to_string());
+                        return;
+                    }
+                    process_count.fetch_add(1, Ordering::Relaxed);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            })?;
+        let ui_result = (|| -> Result<()> {
+            for _ in 0..2 {
+                let before = processed.load(Ordering::Acquire);
+                ui.set_visible(true)?;
+                for _ in 0..20 {
+                    ui_service.pump();
+                    std::thread::sleep(UI_IDLE_INTERVAL);
+                }
+                if !ui.is_visible() {
+                    bail!("{chain_type:?} external UI closed during smoke test");
+                }
+                if processed.load(Ordering::Acquire) <= before {
+                    bail!("{chain_type:?} DSP stopped while its external UI was visible");
+                }
+                ui.set_visible(false)?;
+                if ui.is_visible() {
+                    bail!("{chain_type:?} external UI remained visible after hide");
+                }
             }
-            if !host.is_visible() {
-                bail!("{chain_type:?} external UI closed during smoke test");
-            }
-            host.set_visible(false)?;
-            if host.is_visible() {
-                bail!("{chain_type:?} external UI remained visible after hide");
-            }
+            Ok(())
+        })();
+        stop.store(true, Ordering::Release);
+        let process_result = process_thread
+            .join()
+            .map_err(|_| anyhow!("{chain_type:?} UI smoke DSP thread panicked"));
+        ui_service.pump();
+        ui_result?;
+        process_result?;
+        if let Ok(error) = failure_receiver.try_recv() {
+            bail!("{chain_type:?} DSP failed during UI smoke test: {error}");
         }
     }
     Ok(())

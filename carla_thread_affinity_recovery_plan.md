@@ -81,12 +81,12 @@ Stage evidence: the main-thread UI service tests cover show/idle/cleanup affinit
 
 ## Stage 2 — Make deadline and stale completion recovery robust
 
-- [ ] Classify `DeadlineMiss` and `StaleCompletion` as recoverable in the in-process bridge, matching the subprocess policy.
-- [ ] Make cancellation/resynchronization explicit so late workers cannot leave occupied slots that force all future submissions to fail.
-- [ ] Continue accepting the next sequence after recoverable failure; prevent stale output from being published for a newer block.
-- [ ] Preserve bounded silent output for failed blocks without adding dry bypass.
-- [ ] Keep unrecoverable channel-layout, protocol, panic, and process-exit failures on the crash/unavailable path.
-- [ ] Add counters and coarse trace events for deadline miss, stale completion, resynchronization, recovery success, and unrecoverable failure.
+- [x] Classify `DeadlineMiss` and `StaleCompletion` as recoverable in the in-process bridge, matching the subprocess policy.
+- [x] Make cancellation/resynchronization explicit so late workers cannot leave occupied slots that force all future submissions to fail.
+- [x] Continue accepting the next sequence after recoverable failure; prevent stale output from being published for a newer block.
+- [x] Preserve bounded silent output for failed blocks without adding dry bypass.
+- [x] Keep unrecoverable channel-layout, protocol, panic, and process-exit failures on the crash/unavailable path.
+- [x] Add counters and coarse trace events for deadline miss, stale completion, resynchronization, recovery success, and unrecoverable failure.
 
 Verification:
 
@@ -96,14 +96,16 @@ Verification:
 - Realtime allocation/lock guards and existing no-allocation/no-standard-mutex checks remain green.
 - Run `cargo fmt --all -- --check` and `RUSTFLAGS="-D warnings" cargo build --workspace` in the repository development shell before committing the stage.
 
+Stage evidence: deterministic in-process and subprocess delay-once tests observe silent fallback, `Degraded`, later successful output, return to `Running`, cumulative misses, and no recovery click. Existing shared-slot timeout/out-of-order tests verify abandoned-slot reclamation and stale-output rejection; panic and supervisor tests retain crash/restart behavior. Coarse deadline, stale, and recovery counters are registered in native tracing.
+
 ## Stage 3 — Introduce accurate lifecycle and health states
 
-- [ ] Add a `Degraded` lifecycle/state through engine, backend, application API, snapshots, fake backend, and tests.
-- [ ] Publish cumulative deadline-miss/stale-completion health and a non-crash status summary without overloading `crash_summary`.
-- [ ] Implement deterministic transitions: `Running` to `Degraded` on recoverable fallback, `Degraded` to `Running` on the next successful block, restart states only for actual restart activity, and `Crashed` only for unrecoverable failure.
-- [ ] Split visibility toggle from explicit crash recovery in backend/UI actions so button behavior follows lifecycle rather than one ambiguous command.
-- [ ] Render degraded/recovering amber or yellow with an automatic-retry tooltip and health counters; retain green, gray, yellow restart/startup, and red crash/unavailable meanings.
-- [ ] Update accessibility/hover text and focused widget tests for every lifecycle, active state, and available action.
+- [x] Add a `Degraded` lifecycle/state through engine, backend, application API, snapshots, fake backend, and tests.
+- [x] Publish cumulative deadline-miss/stale-completion health and a non-crash status summary without overloading `crash_summary`.
+- [x] Implement deterministic transitions: `Running` to `Degraded` on recoverable fallback, `Degraded` to `Running` on the next successful block, restart states only for actual restart activity, and `Crashed` only for unrecoverable failure.
+- [x] Split visibility toggle from explicit crash recovery in backend/UI actions so button behavior follows lifecycle rather than one ambiguous command.
+- [x] Render degraded/recovering amber or yellow with an automatic-retry tooltip and health counters; retain green, gray, yellow restart/startup, and red crash/unavailable meanings.
+- [x] Update accessibility/hover text and focused widget tests for every lifecycle, active state, and available action.
 
 Verification:
 
@@ -113,12 +115,14 @@ Verification:
 - Existing non-Carla processor rendering and control tests remain unchanged in behavior.
 - Run `cargo fmt --all -- --check` and `RUSTFLAGS="-D warnings" cargo build --workspace` in the repository development shell before committing the stage.
 
+Stage evidence: engine and public lifecycle enums carry `Degraded`; native snapshots include cumulative deadline/stale counts and a separate status summary. Focused backend and egui tests verify mapping, yellow rendering, automatic-retry text, visibility action for degraded state, and explicit recovery for crashes.
+
 ## Stage 4 — Strengthen real-runtime probes and documentation
 
-- [ ] Extend the Carla UI probe to process and validate continuous audio/MIDI while opening, idling, hiding, reopening, and closing each bundled Carla UI.
-- [ ] Assert callback thread identities where observable, no permanent deadline-fault state, successful post-UI blocks, and clean shutdown.
-- [ ] Run the probe for both in-process and subprocess modes where the real runtime and display are available.
-- [ ] Document the supported Carla callback threading model, degraded/recovery semantics, hosting modes, and diagnostic counters for maintainers and users.
+- [x] Extend the Carla UI probe to process and validate continuous audio/MIDI while opening, idling, hiding, reopening, and closing each bundled Carla UI.
+- [x] Assert callback thread identities where observable, no permanent deadline-fault state, successful post-UI blocks, and clean shutdown.
+- [x] Run the probe for both in-process and subprocess modes where the real runtime and display are available.
+- [x] Document the supported Carla callback threading model, degraded/recovery semantics, hosting modes, and diagnostic counters for maintainers and users.
 
 Verification:
 
@@ -126,6 +130,8 @@ Verification:
 - The real-runtime probe passes repeatedly on the development system without FX turning red or requiring manual recovery.
 - A coarse Perfetto capture contains usable UI/recovery events and no unexplained callback discontinuity during the probe; tracing overhead is called out separately from correctness.
 - Run `cargo fmt --all -- --check` and `RUSTFLAGS="-D warnings" cargo build --workspace` in the repository development shell before committing the stage.
+
+Stage evidence: the continuous-DSP real Carla UI probe passed for all three descriptors in-process, and the opted-in real subprocess UI/process test passed. A 7.947-second coarse trace (`traces/0001-application.pftrace`) had no data-loss/error stats and showed 12 UI show/hide slices plus 120 UI idle slices on `shoopdaloop`, while 7,240 processor slices ran on `carla-ui-smoke-`. The README documents affinity, degradation, recovery, counters, and probe behavior.
 
 ## Stage 5 — Final end-to-end validation
 

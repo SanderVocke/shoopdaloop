@@ -11591,6 +11591,9 @@ mod tests {
             visible: true,
             lifecycle: shoop_app_api::FxLifecycle::Running,
             generation: 0,
+            deadline_misses: 0,
+            stale_completions: 0,
+            status_summary: None,
             crash_summary: None,
             logs: Arc::from([]),
             editor: Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(
@@ -13605,6 +13608,9 @@ mod tests {
             visible: true,
             lifecycle: shoop_app_api::FxLifecycle::Running,
             generation: 0,
+            deadline_misses: 0,
+            stale_completions: 0,
+            status_summary: None,
             crash_summary: None,
             logs: Arc::from([]),
             editor: Some(shoop_app_api::TrackProcessorEditorState::BuiltInFx(

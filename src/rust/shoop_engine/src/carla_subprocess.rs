@@ -86,6 +86,7 @@ pub enum CarlaWorkerTestMode {
     Abort,
     ProcessError,
     Hang,
+    DelayOnce,
     FloodLogs,
     MalformedHandshake,
     HangShutdown,
@@ -100,6 +101,7 @@ impl std::str::FromStr for CarlaWorkerTestMode {
             "abort" => Ok(Self::Abort),
             "process-error" => Ok(Self::ProcessError),
             "hang" => Ok(Self::Hang),
+            "delay-once" => Ok(Self::DelayOnce),
             "flood-logs" => Ok(Self::FloodLogs),
             "malformed-handshake" => Ok(Self::MalformedHandshake),
             "hang-shutdown" => Ok(Self::HangShutdown),
@@ -115,6 +117,7 @@ impl fmt::Display for CarlaWorkerTestMode {
             Self::Abort => "abort",
             Self::ProcessError => "process-error",
             Self::Hang => "hang",
+            Self::DelayOnce => "delay-once",
             Self::FloodLogs => "flood-logs",
             Self::MalformedHandshake => "malformed-handshake",
             Self::HangShutdown => "hang-shutdown",
@@ -317,6 +320,11 @@ fn instantiate_worker_host(
             },
             CarlaWorkerTestMode::Hang => FakeProcessorBehavior {
                 process_delay: Duration::from_secs(5),
+                ..Default::default()
+            },
+            CarlaWorkerTestMode::DelayOnce => FakeProcessorBehavior {
+                process_delay: Duration::from_millis(20),
+                process_delay_calls: Some(1),
                 ..Default::default()
             },
             _ => FakeProcessorBehavior::default(),
@@ -809,6 +817,7 @@ pub struct SubprocessCarlaProcessor {
     midi_input_overflows: u64,
     midi_output_overflows: u64,
     stale_completions: u64,
+    degraded: bool,
     serialized_reference_transport: bool,
     exit_kind: WorkerExitKind,
     shutdown_complete: bool,
@@ -1037,6 +1046,7 @@ impl SubprocessCarlaProcessor {
             midi_input_overflows: 0,
             midi_output_overflows: 0,
             stale_completions: 0,
+            degraded: false,
             serialized_reference_transport: false,
             exit_kind: WorkerExitKind::None,
             shutdown_complete: false,
@@ -1246,7 +1256,11 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
 
     fn lifecycle(&self) -> CarlaProcessorLifecycle {
         if self.control_link.ready.load(Ordering::Acquire) {
-            CarlaProcessorLifecycle::Running
+            if self.degraded {
+                CarlaProcessorLifecycle::Degraded
+            } else {
+                CarlaProcessorLifecycle::Running
+            }
         } else {
             CarlaProcessorLifecycle::Crashed
         }
@@ -1429,6 +1443,7 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
             ) => {
                 self.deadline_misses = self.deadline_misses.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 return Ok(());
             }
@@ -1454,6 +1469,7 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
         };
         match result {
             Ok(()) => {
+                self.degraded = false;
                 self.midi_output_counts.fill(0);
                 for (slot, event) in self.midi_outputs[0]
                     .iter_mut()
@@ -1471,16 +1487,19 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
             ) => {
                 self.deadline_misses = self.deadline_misses.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 Ok(())
             }
             Err(crate::carla_shared_memory::SharedBlockError::MidiOverflow) => {
                 self.midi_output_overflows = self.midi_output_overflows.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 Ok(())
             }
             Err(crate::carla_shared_memory::SharedBlockError::StaleCompletion) => {
                 self.stale_completions = self.stale_completions.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 Ok(())
             }
@@ -1758,11 +1777,18 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
                 });
             }
         }
-        self.lifecycle == CarlaProcessorLifecycle::Running
+        self.lifecycle.is_operational()
     }
 
     fn lifecycle(&self) -> CarlaProcessorLifecycle {
-        self.lifecycle
+        if self.lifecycle == CarlaProcessorLifecycle::Running {
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::lifecycle)
+                .unwrap_or(self.lifecycle)
+        } else {
+            self.lifecycle
+        }
     }
 
     fn generation(&self) -> u64 {
@@ -1827,7 +1853,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn is_active(&self) -> bool {
-        self.desired_active && self.lifecycle == CarlaProcessorLifecycle::Running
+        self.desired_active && self.lifecycle().is_operational()
     }
 
     fn set_visible(&mut self, visible: bool) -> Result<()> {
@@ -1850,7 +1876,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn is_visible(&mut self) -> bool {
-        if self.lifecycle != CarlaProcessorLifecycle::Running {
+        if !self.lifecycle().is_operational() {
             return false;
         }
         self.current

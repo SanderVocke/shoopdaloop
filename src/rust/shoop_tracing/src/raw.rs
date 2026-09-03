@@ -122,6 +122,8 @@ pub const REALTIME_METADATA: &[TraceMetadata] = &[
     static_name("span end"),
     static_name("engine.callback"),
     static_name("engine.fx.bridge.deadline_misses"),
+    static_name("engine.fx.bridge.stale_completions"),
+    static_name("engine.fx.bridge.recoveries"),
     static_name("engine.fx.bridge.fallback_reason"),
     static_name("engine.fx.bridge.generation"),
     static_name("engine.fx.bridge.midi_input_overflows"),

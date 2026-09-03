@@ -19,9 +19,16 @@ pub enum CarlaProcessorLifecycle {
     Stopped,
     Starting,
     Running,
+    Degraded,
     Crashed,
     Restarting,
     Unavailable,
+}
+
+impl CarlaProcessorLifecycle {
+    pub fn is_operational(self) -> bool {
+        matches!(self, Self::Running | Self::Degraded)
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -169,6 +176,8 @@ mod bridge {
         midi_input_overflows: Arc<AtomicU64>,
         midi_output_overflows: Arc<AtomicU64>,
         stale_completions: Arc<AtomicU64>,
+        recoveries: Arc<AtomicU64>,
+        degraded: Arc<AtomicBool>,
         crash_summary: ArcSwapOption<String>,
     }
 
@@ -185,6 +194,8 @@ mod bridge {
                 midi_input_overflows: Arc::new(AtomicU64::new(0)),
                 midi_output_overflows: Arc::new(AtomicU64::new(0)),
                 stale_completions: Arc::new(AtomicU64::new(0)),
+                recoveries: Arc::new(AtomicU64::new(0)),
+                degraded: Arc::new(AtomicBool::new(false)),
                 crash_summary: ArcSwapOption::from(host.crash_summary().map(Arc::new)),
             }
         }
@@ -283,7 +294,14 @@ mod bridge {
                     CarlaProcessorLifecycle::Starting
                 }
                 value if value == CarlaProcessorLifecycle::Running as u8 => {
-                    CarlaProcessorLifecycle::Running
+                    if self.control.snapshot.degraded.load(Ordering::Acquire) {
+                        CarlaProcessorLifecycle::Degraded
+                    } else {
+                        CarlaProcessorLifecycle::Running
+                    }
+                }
+                value if value == CarlaProcessorLifecycle::Degraded as u8 => {
+                    CarlaProcessorLifecycle::Degraded
                 }
                 value if value == CarlaProcessorLifecycle::Crashed as u8 => {
                     CarlaProcessorLifecycle::Crashed
@@ -359,6 +377,10 @@ mod bridge {
                 .load(Ordering::Acquire)
         }
 
+        pub fn recoveries(&self) -> u64 {
+            self.control.snapshot.recoveries.load(Ordering::Acquire)
+        }
+
         pub fn crash_summary(&self) -> Option<String> {
             self.control
                 .snapshot
@@ -418,9 +440,7 @@ mod bridge {
         }
 
         pub fn toggle_or_recover(&self) -> Result<()> {
-            if self.lifecycle() == CarlaProcessorLifecycle::Running
-                && self.control.external_ui.is_some()
-            {
+            if self.lifecycle().is_operational() && self.control.external_ui.is_some() {
                 self.set_visible(!self.is_visible())
             } else {
                 self.request_unit(BridgeCommand::ToggleOrRecover)
@@ -488,6 +508,21 @@ mod bridge {
         midi_input_overflows: Arc<AtomicU64>,
         midi_output_overflows: Arc<AtomicU64>,
         stale_completions: Arc<AtomicU64>,
+        recoveries: Arc<AtomicU64>,
+        degraded: Arc<AtomicBool>,
+    }
+
+    impl CarlaRealtimeProcessor {
+        fn mark_degraded(&self) {
+            self.degraded.store(true, Ordering::Release);
+        }
+
+        fn mark_recovered(&self) {
+            if self.degraded.swap(false, Ordering::AcqRel) {
+                let recoveries = self.recoveries.fetch_add(1, Ordering::Relaxed) + 1;
+                shoop_tracing::realtime_plot_i64!("engine.fx.bridge.recoveries", recoveries);
+            }
+        }
     }
 
     impl CarlaProcessor for CarlaRealtimeProcessor {
@@ -602,6 +637,7 @@ mod bridge {
                     token
                 }
                 Err(_) => {
+                    self.mark_degraded();
                     let _fallback_span = shoop_tracing::realtime_span_detail!(
                         "engine.rt.fx.bridge_fallback",
                         value = 1_u64
@@ -611,10 +647,7 @@ mod bridge {
                     }
                     self.midi_output_counts.fill(0);
                     let misses = self.deadline_misses.fetch_add(1, Ordering::Relaxed) + 1;
-                    shoop_tracing::realtime_plot_i64_detail!(
-                        "engine.fx.bridge.deadline_misses",
-                        misses
-                    );
+                    shoop_tracing::realtime_plot_i64!("engine.fx.bridge.deadline_misses", misses);
                     shoop_tracing::realtime_plot_i64_detail!(
                         "engine.fx.bridge.fallback_reason",
                         1_u64
@@ -637,11 +670,13 @@ mod bridge {
                 )
             };
             if let Err(error) = completion {
+                self.mark_degraded();
                 if error == crate::carla_shared_memory::SharedBlockError::MidiOverflow {
                     self.midi_output_overflows.fetch_add(1, Ordering::Relaxed);
                 }
                 if error == crate::carla_shared_memory::SharedBlockError::StaleCompletion {
-                    self.stale_completions.fetch_add(1, Ordering::Relaxed);
+                    let stale = self.stale_completions.fetch_add(1, Ordering::Relaxed) + 1;
+                    shoop_tracing::realtime_plot_i64!("engine.fx.bridge.stale_completions", stale);
                 }
                 let _fallback_span = shoop_tracing::realtime_span_detail!(
                     "engine.rt.fx.bridge_fallback",
@@ -652,13 +687,11 @@ mod bridge {
                 }
                 self.midi_output_counts.fill(0);
                 let misses = self.deadline_misses.fetch_add(1, Ordering::Relaxed) + 1;
-                shoop_tracing::realtime_plot_i64_detail!(
-                    "engine.fx.bridge.deadline_misses",
-                    misses
-                );
+                shoop_tracing::realtime_plot_i64!("engine.fx.bridge.deadline_misses", misses);
                 shoop_tracing::realtime_plot_i64_detail!("engine.fx.bridge.fallback_reason", 2_u64);
                 return Ok(());
             }
+            self.mark_recovered();
             shoop_tracing::realtime_plot_i64_detail!("engine.fx.bridge.fallback_reason", 0_u64);
             shoop_tracing::realtime_plot_i64_detail!(
                 "engine.fx.bridge.slot_occupancy",
@@ -813,6 +846,17 @@ mod bridge {
                     snapshot.publish_health(host.as_mut(), external_ui.as_deref());
                     std::thread::park_timeout(Duration::from_millis(10));
                 }
+                Ok(Err(error))
+                    if matches!(
+                        error.downcast_ref::<crate::carla_shared_memory::SharedBlockError>(),
+                        Some(
+                            crate::carla_shared_memory::SharedBlockError::DeadlineMiss
+                                | crate::carla_shared_memory::SharedBlockError::StaleCompletion
+                        )
+                    ) =>
+                {
+                    snapshot.publish_health(host.as_mut(), external_ui.as_deref());
+                }
                 Ok(Err(error)) => {
                     processing_faulted = true;
                     snapshot.ready.store(false, Ordering::Release);
@@ -867,6 +911,8 @@ mod bridge {
         let midi_input_overflows = Arc::clone(&snapshot.midi_input_overflows);
         let midi_output_overflows = Arc::clone(&snapshot.midi_output_overflows);
         let stale_completions = Arc::clone(&snapshot.stale_completions);
+        let recoveries = Arc::clone(&snapshot.recoveries);
+        let degraded = Arc::clone(&snapshot.degraded);
         let (sender, receiver) = sync_channel(BRIDGE_COMMAND_CAPACITY);
         let thread_snapshot = Arc::clone(&snapshot);
         let thread_external_ui = external_ui.clone();
@@ -931,6 +977,8 @@ mod bridge {
             midi_input_overflows,
             midi_output_overflows,
             stale_completions,
+            recoveries,
+            degraded,
         };
         Ok((handle, Box::new(endpoint)))
     }
@@ -942,6 +990,7 @@ pub use bridge::{spawn_processor_bridge, CarlaControlHandle, CarlaRealtimeProces
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FakeProcessorBehavior {
     pub process_delay: Duration,
+    pub process_delay_calls: Option<usize>,
     pub fail_processing: bool,
     pub panic_processing: bool,
     pub fail_state: bool,
@@ -1072,7 +1121,12 @@ impl CarlaProcessor for FakeCarlaProcessor {
         if self.behavior.panic_processing {
             panic!("fake processor panic");
         }
-        if !self.behavior.process_delay.is_zero() {
+        let should_delay =
+            !self.behavior.process_delay.is_zero() && self.behavior.process_delay_calls != Some(0);
+        if let Some(remaining) = self.behavior.process_delay_calls.as_mut() {
+            *remaining = remaining.saturating_sub(1);
+        }
+        if should_delay {
             std::thread::sleep(self.behavior.process_delay);
         }
         if self.behavior.fail_processing {
@@ -1275,6 +1329,41 @@ mod tests {
         assert!(endpoint.audio_output(0).unwrap()[..32]
             .iter()
             .all(|sample| *sample == 0.0));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn bridge_recovers_after_a_late_completion_without_manual_action() {
+        let mut fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
+        fake.set_behavior(FakeProcessorBehavior {
+            process_delay: Duration::from_millis(20),
+            process_delay_calls: Some(1),
+            ..Default::default()
+        });
+        let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 48_000, 32).unwrap();
+        control.set_active(true);
+        endpoint.audio_input_mut(0).unwrap()[..32].fill(0.75);
+        endpoint.process(32).unwrap();
+        assert!(endpoint.audio_output(0).unwrap()[..32]
+            .iter()
+            .all(|sample| *sample == 0.0));
+        assert_eq!(control.lifecycle(), CarlaProcessorLifecycle::Degraded);
+        std::thread::sleep(Duration::from_millis(25));
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        loop {
+            endpoint.audio_input_mut(0).unwrap()[..32].fill(0.75);
+            endpoint.process(32).unwrap();
+            if endpoint.audio_output(0).unwrap()[..32]
+                .iter()
+                .all(|sample| *sample == 0.75)
+            {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(control.lifecycle(), CarlaProcessorLifecycle::Running);
+        assert!(control.deadline_misses() >= 1);
     }
 
     #[cfg(not(target_arch = "wasm32"))]

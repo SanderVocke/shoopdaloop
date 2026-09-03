@@ -2871,11 +2871,28 @@ fn main() {
     }
     #[cfg(feature = "native-fx")]
     if cli.probe_carla_native || cli.probe_carla_native_ui {
+        let mut probe_tracing = match NativeTracing::initialize(&cli) {
+            Ok(mut tracing) => match tracing.start_requested_capture() {
+                Ok(()) => tracing,
+                Err(error) => {
+                    eprintln!("Could not start tracing for Carla probe: {error:#}");
+                    std::process::exit(1);
+                }
+            },
+            Err(error) => {
+                eprintln!("Could not initialize tracing for Carla probe: {error:#}");
+                std::process::exit(1);
+            }
+        };
         let result = if cli.probe_carla_native_ui {
             shoop_backend::smoke_test_carla_ui()
         } else {
             shoop_backend::smoke_test_carla_runtime()
         };
+        if let Err(error) = probe_tracing.shutdown() {
+            eprintln!("Could not finalize Carla probe trace: {error:#}");
+            std::process::exit(1);
+        }
         match result {
             Ok(()) => {
                 let path = shoop_backend::carla_runtime_path()
