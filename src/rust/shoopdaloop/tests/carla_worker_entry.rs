@@ -113,6 +113,39 @@ fn application_worker_recovers_after_a_late_block() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn application_supervisor_preserves_processing_health_across_restart() {
+    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
+        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop").into());
+    let mut worker = SupervisedCarlaProcessor::launch_test_worker(
+        &executable,
+        FXChainType::CarlaRack,
+        48_000,
+        32,
+        ChainId(47),
+        CarlaWorkerTestMode::DelayOnce,
+    )
+    .unwrap();
+    worker.set_active(true);
+    worker.process(32).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while worker.lifecycle() == shoop_engine::carla_processor::CarlaProcessorLifecycle::Degraded {
+        worker.process(32).unwrap();
+        assert!(std::time::Instant::now() < deadline);
+    }
+    let misses = worker.deadline_misses();
+    let recoveries = worker.recoveries();
+    assert!(misses >= 1);
+    assert!(recoveries >= 1);
+    worker.terminate_worker_for_test().unwrap();
+    assert!(!worker.is_ready());
+    worker.toggle_or_recover().unwrap();
+    assert_eq!(worker.deadline_misses(), misses);
+    assert_eq!(worker.recoveries(), recoveries);
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
         .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))

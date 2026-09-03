@@ -1620,6 +1620,9 @@ pub struct SupervisedCarlaProcessor {
     generation: ProcessGeneration,
     current: Option<SubprocessCarlaProcessor>,
     previous_logs: VecDeque<CarlaGenerationLog>,
+    previous_deadline_misses: u64,
+    previous_stale_completions: u64,
+    previous_recoveries: u64,
     checkpoint: String,
     has_checkpoint: bool,
     desired_active: bool,
@@ -1708,6 +1711,9 @@ impl SupervisedCarlaProcessor {
             generation: ProcessGeneration(0),
             current: None,
             previous_logs: VecDeque::new(),
+            previous_deadline_misses: 0,
+            previous_stale_completions: 0,
+            previous_recoveries: 0,
             checkpoint: String::new(),
             has_checkpoint: false,
             desired_active: false,
@@ -1720,10 +1726,19 @@ impl SupervisedCarlaProcessor {
         Ok(supervisor)
     }
 
-    fn retain_current_logs(&mut self) {
+    fn retain_current_logs_and_health(&mut self) {
         let Some(current) = self.current.as_ref() else {
             return;
         };
+        self.previous_deadline_misses = self
+            .previous_deadline_misses
+            .saturating_add(current.deadline_misses());
+        self.previous_stale_completions = self
+            .previous_stale_completions
+            .saturating_add(current.stale_completions());
+        self.previous_recoveries = self
+            .previous_recoveries
+            .saturating_add(current.recoveries());
         let mut logs = current.generation_logs();
         if let Some(log) = logs.pop() {
             if self.previous_logs.len() == MAX_LOG_GENERATIONS {
@@ -1741,7 +1756,7 @@ impl SupervisedCarlaProcessor {
             CarlaProcessorLifecycle::Restarting
         };
         if self.current.is_some() {
-            self.retain_current_logs();
+            self.retain_current_logs_and_health();
             *self
                 .external_ui
                 .current
@@ -1875,24 +1890,30 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn deadline_misses(&self) -> u64 {
-        self.current
-            .as_ref()
-            .map(CarlaProcessor::deadline_misses)
-            .unwrap_or(0)
+        self.previous_deadline_misses.saturating_add(
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::deadline_misses)
+                .unwrap_or(0),
+        )
     }
 
     fn stale_completions(&self) -> u64 {
-        self.current
-            .as_ref()
-            .map(CarlaProcessor::stale_completions)
-            .unwrap_or(0)
+        self.previous_stale_completions.saturating_add(
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::stale_completions)
+                .unwrap_or(0),
+        )
     }
 
     fn recoveries(&self) -> u64 {
-        self.current
-            .as_ref()
-            .map(CarlaProcessor::recoveries)
-            .unwrap_or(0)
+        self.previous_recoveries.saturating_add(
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::recoveries)
+                .unwrap_or(0),
+        )
     }
 
     fn crash_summary(&self) -> Option<String> {
