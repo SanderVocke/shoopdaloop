@@ -1101,7 +1101,7 @@ impl Session {
     ) -> Result<usize, SessionError> {
         port.audio_mut()
             .ok_or(SessionError::NoSuchPort(self.ports.len()))?
-            .set_state_mirror(state);
+            .adopt_state_mirror(state);
         Ok(self.add_port(port))
     }
 
@@ -1112,7 +1112,7 @@ impl Session {
     ) -> Result<usize, SessionError> {
         port.midi_mut()
             .ok_or(SessionError::NoSuchPort(self.ports.len()))?
-            .set_state_mirror(state);
+            .adopt_state_mirror(state);
         Ok(self.add_port(port))
     }
 
