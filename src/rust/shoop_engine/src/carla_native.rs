@@ -1604,10 +1604,12 @@ mod tests {
         }
 
         fn idle(&self) {
-            self.calls
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .push(("idle", std::thread::current().id()));
+            if self.visible.load(Ordering::Acquire) {
+                self.calls
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .push(("idle", std::thread::current().id()));
+            }
         }
 
         fn cleanup(&self) {
