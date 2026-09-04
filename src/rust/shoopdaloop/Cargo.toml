@@ -11,6 +11,7 @@ no-default-features = true
 [features]
 default = ["native-fx"]
 native-fx = ["shoop_backend/native-fx"]
+carla-system-tests = ["native-fx", "shoop_engine/carla-system-tests"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]

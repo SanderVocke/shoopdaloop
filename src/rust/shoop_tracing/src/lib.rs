@@ -66,6 +66,8 @@ pub(crate) const COUNTER_NAMES: &[StaticName] = &[
     StaticName::new("engine.fx.bridge.slot_occupancy"),
     StaticName::new("engine.fx.bridge.generation"),
     StaticName::new("engine.fx.bridge.deadline_misses"),
+    StaticName::new("engine.fx.bridge.stale_completions"),
+    StaticName::new("engine.fx.bridge.recoveries"),
     StaticName::new("engine.fx.bridge.fallback_reason"),
     StaticName::new("engine.fx.global_midi.rejected"),
     StaticName::new("engine.fx.global_midi.pending_overwrites"),
@@ -321,6 +323,14 @@ macro_rules! realtime_span_detail {
     };
     ($name:literal, value = $value:expr) => {
         $crate::begin_realtime_span(true, $name, Some($value as u64))
+    };
+}
+
+/// Emit a coarse i64 counter plot from a realtime callback.
+#[macro_export]
+macro_rules! realtime_plot_i64 {
+    ($name:literal, $value:expr) => {
+        $crate::emit_plot_i64(false, $name, $value as i64)
     };
 }
 
