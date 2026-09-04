@@ -28,7 +28,7 @@ use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, Event, MidiDataChunk, WaveformChunk,
     WireApplicationPortOwner, WireBuiltInFxDriveType, WireBuiltInFxMidiCcAssignment,
     WireBuiltInFxModulationType, WireBuiltInFxParameter, WireBuiltInFxReverbType,
-    WireBuiltInFxStage, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
+    WireBuiltInFxStage, WireBusControl, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
     WireCompositeKind, WireCompositeTarget, WireDefaultPlaybackMode, WireGrabRequest, WireHostPort,
     WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
     WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
@@ -38,20 +38,24 @@ use shoop_audio_protocol::{
     WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    builtin_fx_descriptor, encode_builtin_fx_state, encode_oxisynth_state, oxisynth_descriptor,
-    Backend, BackendActiveCompositeChild, BackendAsyncResult, BackendAudioChannelData,
-    BackendAudioData, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
+    builtin_fx_descriptor, default_bus_channel_labels, encode_builtin_fx_state,
+    encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
+    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendBusChannelId,
+    BackendBusChannelState, BackendBusControl, BackendBusCreation, BackendBusId, BackendBusRequest,
+    BackendBusState, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
     BackendCompositeKind, BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink,
     BackendConnectionFailure, BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest,
     BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
     BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
-    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
-    TrackProcessorTypeId, TrackRequest,
+    BackendMixerFailure, BackendMixerLink, BackendMutationDetail, BackendMutationFailure,
+    BackendMutationKind, BackendOperationKind, BackendOperationProgress, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
+    TrackProcessorTypeId, TrackRequest, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
+    MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID, MASTER_BUS_OUTPUT_PORT_IDS, MAX_BUSES,
+    MAX_TOTAL_BUS_CHANNELS,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -90,7 +94,8 @@ struct SessionCaptureAssembly {
 
 struct SessionReplaceAssembly {
     generation: u64,
-    bytes: Vec<u8>,
+    mixer_revision: Option<u64>,
+    bytes: Arc<[u8]>,
     next_offset: usize,
     commit_sent: bool,
     complete: bool,
@@ -106,6 +111,11 @@ struct LoopContentReplaceAssembly {
     complete: bool,
 }
 
+#[derive(Clone)]
+struct BrowserBusResources {
+    creation: BackendBusCreation,
+}
+
 #[derive(Default)]
 struct BrowserTrackResources {
     topology: BackendTrackTopology,
@@ -117,12 +127,16 @@ pub struct RemoteWorkletBackend {
     snapshot: BackendSnapshot,
     track_resources: BTreeMap<BackendTrackId, BrowserTrackResources>,
     pending_removed_tracks: BTreeMap<BackendTrackId, BrowserTrackResources>,
+    bus_resources: BTreeMap<BackendBusId, BrowserBusResources>,
+    pending_removed_buses: BTreeMap<BackendBusId, BrowserBusResources>,
     reserved_composites: BTreeSet<BackendCompositeId>,
     acknowledged_composite_removals: BTreeSet<BackendCompositeId>,
     next_track_id: u64,
     next_loop_id: u64,
     next_composite_id: u64,
     next_composite_plan_version: u64,
+    next_bus_id: u64,
+    next_bus_channel_id: u64,
     next_port_id: u64,
     transport_generation: u64,
     poll_elapsed: Duration,
@@ -142,43 +156,121 @@ pub struct RemoteWorkletBackend {
     midi_revision: u64,
 }
 
+#[cfg(test)]
+fn replacement_session_journal(generation: u64, bytes: &[u8]) -> Vec<Command> {
+    let mut commands = Vec::with_capacity(
+        bytes
+            .len()
+            .div_ceil(SESSION_TRANSFER_CHUNK_BYTES)
+            .saturating_add(2),
+    );
+    commands.push(Command::BeginSessionReplace {
+        generation,
+        total_bytes: bytes.len(),
+    });
+    for offset in (0..bytes.len()).step_by(SESSION_TRANSFER_CHUNK_BYTES) {
+        let end = offset
+            .saturating_add(SESSION_TRANSFER_CHUNK_BYTES)
+            .min(bytes.len());
+        commands.push(Command::WriteSessionReplace {
+            generation,
+            offset,
+            bytes: bytes[offset..end].to_vec(),
+        });
+    }
+    commands.push(Command::CommitSessionReplace { generation });
+    commands
+}
+
 impl RemoteWorkletBackend {
     pub fn new(midi: impl HostMidiBridge + 'static) -> (Self, RemoteBackendControl) {
         let (transport, control) = transport_pair();
         control.set_driver_state(BackendDriverState::AwaitingGesture);
+        let mut snapshot = BackendSnapshot {
+            status: BackendStatus {
+                driver_state: BackendDriverState::AwaitingGesture,
+                ..Default::default()
+            },
+            audio_drivers: AudioDriverRuntimeState {
+                supported: false,
+                catalog: Arc::from([AudioDriverDescriptor {
+                    kind: AudioDriverKind::WebAudio,
+                    available: true,
+                    ..Default::default()
+                }]),
+                active: Some(ResolvedAudioDriverConfig {
+                    configured: AudioDriverConfig::WebAudio,
+                    sample_rate: 0,
+                    buffer_size: 0,
+                    instance_name: "Web Audio".to_owned(),
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let channels = MASTER_BUS_CHANNEL_IDS
+            .into_iter()
+            .zip(MASTER_BUS_OUTPUT_PORT_IDS)
+            .zip(MASTER_BUS_CHANNEL_LABELS)
+            .enumerate()
+            .map(|(index, ((id, output_port_id), label))| {
+                snapshot.connections.application_ports.insert(
+                    output_port_id,
+                    BackendPortDescriptor {
+                        id: output_port_id,
+                        owner: BackendPortOwner::Bus(MASTER_BUS_ID),
+                        name: format!("master_out_{}", index + 1),
+                        data_type: BackendPortDataType::Audio,
+                        direction: BackendPortDirection::Output,
+                        role: BackendPortRole::AudioOutput,
+                    },
+                );
+                BackendBusChannelState {
+                    id,
+                    label: label.to_owned(),
+                    output_port_id,
+                }
+            })
+            .collect::<Vec<_>>();
+        snapshot.connections.revision = 1;
+        snapshot.mixer.revision = 1;
+        let master_creation = BackendBusCreation {
+            bus_id: MASTER_BUS_ID,
+            channels: channels.clone(),
+        };
+        snapshot.mixer.buses.insert(
+            MASTER_BUS_ID,
+            BackendBusState {
+                id: MASTER_BUS_ID,
+                name: "Master".to_owned(),
+                output_peaks_db: vec![-200.0; channels.len()],
+                channels,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+            },
+        );
         (
             Self {
                 transport: transport.clone(),
-                snapshot: BackendSnapshot {
-                    status: BackendStatus {
-                        driver_state: BackendDriverState::AwaitingGesture,
-                        ..Default::default()
-                    },
-                    audio_drivers: AudioDriverRuntimeState {
-                        supported: false,
-                        catalog: Arc::from([AudioDriverDescriptor {
-                            kind: AudioDriverKind::WebAudio,
-                            available: true,
-                            ..Default::default()
-                        }]),
-                        active: Some(ResolvedAudioDriverConfig {
-                            configured: AudioDriverConfig::WebAudio,
-                            sample_rate: 0,
-                            buffer_size: 0,
-                            instance_name: "Web Audio".to_owned(),
-                        }),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
+                snapshot,
                 track_resources: BTreeMap::new(),
                 pending_removed_tracks: BTreeMap::new(),
+                bus_resources: BTreeMap::from([(
+                    MASTER_BUS_ID,
+                    BrowserBusResources {
+                        creation: master_creation,
+                    },
+                )]),
+                pending_removed_buses: BTreeMap::new(),
                 reserved_composites: BTreeSet::new(),
                 acknowledged_composite_removals: BTreeSet::new(),
                 next_track_id: 1,
                 next_loop_id: 1,
                 next_composite_id: 1,
                 next_composite_plan_version: 1,
+                next_bus_id: 2,
+                next_bus_channel_id: 3,
                 next_port_id: 1,
                 transport_generation: 0,
                 poll_elapsed: Duration::ZERO,
@@ -223,6 +315,7 @@ impl RemoteWorkletBackend {
     }
 
     fn cancel_transfers(&mut self, reason: &str) {
+        self.transport.borrow_mut().cancel_reserved_session_replay();
         if let Some(capture) = self.session_capture.take() {
             self.session_capture_error = Some(format!(
                 "session capture operation {} was cancelled: {reason}",
@@ -606,6 +699,31 @@ impl RemoteWorkletBackend {
         Ok(())
     }
 
+    fn pump_session_replace_or_abort(&mut self) -> Result<()> {
+        let Err(error) = self.pump_session_replace() else {
+            return Ok(());
+        };
+        let message = format!("session replacement submission failed: {error}");
+        if let Some(generation) = self
+            .session_replace
+            .as_ref()
+            .map(|replace| replace.generation)
+        {
+            let abort_result = self
+                .transport
+                .borrow_mut()
+                .ephemeral(Command::AbortSessionTransfer { generation });
+            if let Err(abort_error) = abort_result {
+                self.transport.borrow_mut().fail(format!(
+                    "{message}; abort submission also failed: {abort_error}"
+                ));
+            }
+        }
+        self.session_replace = None;
+        self.transport.borrow_mut().cancel_reserved_session_replay();
+        Err(anyhow!(message))
+    }
+
     fn pump_loop_content_replace(&mut self) -> Result<()> {
         let Some(replace) = self.loop_content_replace.as_mut() else {
             return Ok(());
@@ -647,7 +765,10 @@ impl RemoteWorkletBackend {
         &mut self,
         session: &BackendSessionData,
         replacement: &BackendSessionReplacement,
+        mixer_revision: u64,
     ) {
+        self.transport.borrow_mut().commit_reserved_session_replay();
+
         self.snapshot.tracks.clear();
         self.snapshot.loops.clear();
         self.snapshot.composites.clear();
@@ -655,8 +776,13 @@ impl RemoteWorkletBackend {
         self.next_composite_plan_version = 1;
         self.snapshot.connections.application_ports.clear();
         self.snapshot.connections.confirmed_links.clear();
+        self.snapshot.mixer.buses.clear();
+        self.snapshot.mixer.confirmed_links.clear();
+        self.snapshot.mixer.failures.clear();
         self.track_resources.clear();
         self.pending_removed_tracks.clear();
+        self.bus_resources.clear();
+        self.pending_removed_buses.clear();
         self.reserved_composites.clear();
         self.acknowledged_composite_removals.clear();
         self.waveforms.clear();
@@ -700,6 +826,79 @@ impl RemoteWorkletBackend {
                 );
             }
         }
+        for source_global in &session.global_ports {
+            let Some(&global_port_id) = replacement.global_ports.get(&source_global.source_id)
+            else {
+                continue;
+            };
+            let mut descriptor = source_global.descriptor.clone();
+            descriptor.id = global_port_id;
+            descriptor.owner = BackendPortOwner::GlobalFxControl;
+            self.snapshot
+                .connections
+                .application_ports
+                .insert(global_port_id, descriptor);
+        }
+        for source_bus in &session.buses {
+            let Some(&bus_id) = replacement.buses.get(&source_bus.source_id) else {
+                continue;
+            };
+            let mut channels = Vec::with_capacity(source_bus.channels.len());
+            for source_channel in &source_bus.channels {
+                let (Some(&channel_id), Some(&output_port_id)) = (
+                    replacement.bus_channels.get(&source_channel.source_id),
+                    replacement.bus_output_ports.get(&source_channel.source_id),
+                ) else {
+                    continue;
+                };
+                let mut output_descriptor = source_channel.output_port.descriptor.clone();
+                output_descriptor.id = output_port_id;
+                output_descriptor.owner = BackendPortOwner::Bus(bus_id);
+                self.snapshot
+                    .connections
+                    .application_ports
+                    .insert(output_port_id, output_descriptor);
+                channels.push(BackendBusChannelState {
+                    id: channel_id,
+                    label: source_channel.label.clone(),
+                    output_port_id,
+                });
+            }
+            self.bus_resources.insert(
+                bus_id,
+                BrowserBusResources {
+                    creation: BackendBusCreation {
+                        bus_id,
+                        channels: channels.clone(),
+                    },
+                },
+            );
+            self.snapshot.mixer.buses.insert(
+                bus_id,
+                BackendBusState {
+                    id: bus_id,
+                    name: source_bus.name.clone(),
+                    output_peaks_db: vec![-200.0; channels.len()],
+                    channels,
+                    gain_db: source_bus.gain_db,
+                    balance: source_bus.balance,
+                    muted: source_bus.muted,
+                },
+            );
+        }
+        self.snapshot.mixer.confirmed_links = session
+            .mixer_routes
+            .iter()
+            .filter_map(|route| {
+                Some(BackendMixerLink {
+                    source_port_id: *replacement.ports.get(&route.source_port_id)?,
+                    destination_channel_id: *replacement
+                        .bus_channels
+                        .get(&route.destination_channel_id)?,
+                })
+            })
+            .collect();
+        self.snapshot.mixer.revision = mixer_revision;
         self.next_track_id = replacement
             .tracks
             .values()
@@ -714,10 +913,34 @@ impl RemoteWorkletBackend {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
-        self.next_port_id = replacement
-            .ports
+        self.next_bus_id = replacement
+            .buses
             .values()
             .map(|id| id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
+            .max(2);
+        self.next_bus_channel_id = replacement
+            .bus_channels
+            .values()
+            .map(|id| id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
+            .max(3);
+        self.next_port_id = replacement
+            .tracks
+            .values()
+            .flat_map(|created| &created.ports)
+            .map(|port| port.id.raw())
+            .chain(
+                replacement
+                    .bus_output_ports
+                    .values()
+                    .filter(|id| !MASTER_BUS_OUTPUT_PORT_IDS.contains(id))
+                    .map(|id| id.raw()),
+            )
             .max()
             .unwrap_or(0)
             .saturating_add(1);
@@ -768,6 +991,9 @@ impl RemoteWorkletBackend {
                         id,
                         owner: match port.owner {
                             WireApplicationPortOwner::Track => BackendPortOwner::Track,
+                            WireApplicationPortOwner::Bus { bus_id } => {
+                                BackendPortOwner::Bus(BackendBusId::from_raw(bus_id))
+                            }
                             WireApplicationPortOwner::GlobalFxControl => {
                                 BackendPortOwner::GlobalFxControl
                             }
@@ -803,7 +1029,93 @@ impl RemoteWorkletBackend {
                 host_port_id: link.host_port_id,
             })
             .collect();
+        self.snapshot
+            .connections
+            .failures
+            .extend(
+                wire.connection_failures
+                    .into_iter()
+                    .map(|failure| BackendConnectionFailure {
+                        port_id: BackendPortId::from_raw(failure.application_port_id),
+                        external_port: failure.host_port_id,
+                        desired_connected: failure.desired_connected,
+                        message: failure.message,
+                    }),
+            );
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
+        self.snapshot.mixer.buses = wire
+            .buses
+            .into_iter()
+            .map(|bus| {
+                let id = BackendBusId::from_raw(bus.id);
+                let channels = bus
+                    .channels
+                    .into_iter()
+                    .map(|channel| BackendBusChannelState {
+                        id: BackendBusChannelId::from_raw(channel.id),
+                        label: channel.label,
+                        output_port_id: BackendPortId::from_raw(channel.output_port_id),
+                    })
+                    .collect::<Vec<_>>();
+                (
+                    id,
+                    BackendBusState {
+                        id,
+                        name: bus.name,
+                        channels,
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                        output_peaks_db: bus.output_peaks_db,
+                    },
+                )
+            })
+            .collect();
+        let observed_bus_ids = self
+            .snapshot
+            .mixer
+            .buses
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        self.pending_removed_buses
+            .retain(|bus_id, _| observed_bus_ids.contains(bus_id));
+        for (bus_id, bus) in &self.snapshot.mixer.buses {
+            self.bus_resources
+                .entry(*bus_id)
+                .or_insert_with(|| BrowserBusResources {
+                    creation: BackendBusCreation {
+                        bus_id: *bus_id,
+                        channels: bus.channels.clone(),
+                    },
+                });
+        }
+        self.snapshot.mixer.confirmed_links = wire
+            .confirmed_mixer_links
+            .into_iter()
+            .map(|link| BackendMixerLink {
+                source_port_id: BackendPortId::from_raw(link.source_port_id),
+                destination_channel_id: BackendBusChannelId::from_raw(link.destination_channel_id),
+            })
+            .collect();
+        self.snapshot
+            .mixer
+            .failures
+            .extend(
+                wire.mixer_failures
+                    .into_iter()
+                    .map(|failure| BackendMixerFailure {
+                        link: BackendMixerLink {
+                            source_port_id: BackendPortId::from_raw(failure.link.source_port_id),
+                            destination_channel_id: BackendBusChannelId::from_raw(
+                                failure.link.destination_channel_id,
+                            ),
+                        },
+                        desired_connected: failure.desired_connected,
+                        message: failure.message,
+                    }),
+            );
+        self.snapshot.mixer.revision = wire.mixer_revision;
         let observed_track_ids = wire
             .tracks
             .iter()
@@ -1014,11 +1326,49 @@ fn browser_replacement_mapping(session: &BackendSessionData) -> BackendSessionRe
     for global in &session.global_ports {
         replacement
             .global_ports
-            .insert(global.source_id, global.descriptor.id);
+            .insert(global.source_id, GLOBAL_FX_PORT_ID);
+    }
+    let mut next_bus_id = 2_u64;
+    let mut next_bus_channel_id = 3_u64;
+    let mut next_port_id = 1_u64;
+    for source_bus in &session.buses {
+        let canonical_master = source_bus.source_id == MASTER_BUS_ID.raw()
+            && source_bus.name == "Master"
+            && source_bus.channels.len() == 2;
+        let bus_id = if canonical_master {
+            MASTER_BUS_ID
+        } else {
+            let id = BackendBusId::from_raw(next_bus_id);
+            next_bus_id = next_bus_id.saturating_add(1);
+            id
+        };
+        replacement.buses.insert(source_bus.source_id, bus_id);
+        for (index, source_channel) in source_bus.channels.iter().enumerate() {
+            let (channel_id, output_port_id) = if canonical_master {
+                (
+                    MASTER_BUS_CHANNEL_IDS[index],
+                    MASTER_BUS_OUTPUT_PORT_IDS[index],
+                )
+            } else {
+                let channel_id = BackendBusChannelId::from_raw(next_bus_channel_id);
+                next_bus_channel_id = next_bus_channel_id.saturating_add(1);
+                let output_port_id = BackendPortId::from_raw(next_port_id);
+                next_port_id = next_port_id.saturating_add(1);
+                (channel_id, output_port_id)
+            };
+            replacement
+                .bus_channels
+                .insert(source_channel.source_id, channel_id);
+            replacement
+                .bus_output_ports
+                .insert(source_channel.source_id, output_port_id);
+            replacement
+                .ports
+                .insert(source_channel.output_port.source_id, output_port_id);
+        }
     }
     let mut next_track_id = 1_u64;
     let mut next_loop_id = 1_u64;
-    let mut next_port_id = 1_u64;
     for source_track in &session.tracks {
         let track_id = BackendTrackId::from_raw(next_track_id);
         next_track_id = next_track_id.saturating_add(1);
@@ -1243,6 +1593,11 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::SetTrackLatency { track_id, .. } => {
             (BackendMutationKind::TrackControl, Some(*track_id))
         }
+        Command::CreateBus {
+            expected_bus_id, ..
+        } => (BackendMutationKind::BusStructure, Some(*expected_bus_id)),
+        Command::RemoveBus { bus_id } => (BackendMutationKind::BusStructure, Some(*bus_id)),
+        Command::SetBusControl { bus_id, .. } => (BackendMutationKind::BusControl, Some(*bus_id)),
         Command::SetTrackFxControl { track_id, .. } => {
             (BackendMutationKind::TrackFxControl, Some(*track_id))
         }
@@ -1276,6 +1631,9 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
             application_port_id,
             ..
         } => (BackendMutationKind::Connection, Some(*application_port_id)),
+        Command::SetMixerRoute { source_port_id, .. } => {
+            (BackendMutationKind::MixerRoute, Some(*source_port_id))
+        }
         Command::BeginSessionCapture { .. }
         | Command::ReadSessionCapture { .. }
         | Command::BeginSessionReplace { .. }
@@ -1390,6 +1748,15 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
                 WireTrackControl::InputMonitoring(value) => {
                     BackendTrackControl::InputMonitoring(*value)
                 }
+            }))
+        }
+        Command::CreateBus { .. } => Some(BackendMutationDetail::BusCreation),
+        Command::RemoveBus { .. } => Some(BackendMutationDetail::BusRemoval),
+        Command::SetBusControl { control, .. } => {
+            Some(BackendMutationDetail::BusControl(match control {
+                WireBusControl::GainDb(value) => BackendBusControl::GainDb(*value),
+                WireBusControl::Balance(value) => BackendBusControl::Balance(*value),
+                WireBusControl::Mute(value) => BackendBusControl::Mute(*value),
             }))
         }
         Command::SetTrackDefaultPlaybackMode { mode, .. } => Some(
@@ -2344,8 +2711,11 @@ impl Backend for RemoteWorkletBackend {
         }
         if let Some(replace) = &self.session_replace {
             if replace.complete {
+                let mixer_revision = replace
+                    .mixer_revision
+                    .ok_or_else(|| anyhow!("session replacement omitted mixer revision"))?;
                 let replacement = browser_replacement_mapping(session);
-                self.apply_replaced_session(session, &replacement);
+                self.apply_replaced_session(session, &replacement, mixer_revision);
                 self.session_replace = None;
                 return Ok(BackendAsyncResult::Ready(replacement));
             }
@@ -2355,37 +2725,64 @@ impl Backend for RemoteWorkletBackend {
                 completed: replace.next_offset,
                 total: Some(replace.bytes.len()),
             };
-            self.pump_session_replace()?;
+            self.pump_session_replace_or_abort()?;
             return Ok(BackendAsyncResult::Pending(progress));
         }
-        let bytes = encode_binary(session)?;
+        let bytes: Arc<[u8]> = Arc::from(encode_binary(session)?);
         if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
             return Err(anyhow!("prepared session exceeds browser transfer limit"));
         }
         let generation = self.next_session_generation;
+        self.transport
+            .borrow_mut()
+            .reserve_session_replay(generation, Arc::clone(&bytes))?;
         self.next_session_generation = self.next_session_generation.saturating_add(1);
         self.transport_generation = self.transport.borrow().diagnostics().generation;
-        self.transport
+        if let Err(error) = self
+            .transport
             .borrow_mut()
             .ephemeral(Command::BeginSessionReplace {
                 generation,
                 total_bytes: bytes.len(),
-            })?;
+            })
+        {
+            self.transport.borrow_mut().cancel_reserved_session_replay();
+            return Err(error);
+        }
         let total = bytes.len();
         self.session_replace = Some(SessionReplaceAssembly {
             generation,
+            mixer_revision: None,
             bytes,
             next_offset: 0,
             commit_sent: false,
             complete: false,
         });
-        self.pump_session_replace()?;
+        self.pump_session_replace_or_abort()?;
         Ok(BackendAsyncResult::Pending(BackendOperationProgress {
             key: generation,
             kind: BackendOperationKind::SessionReplacement,
             completed: 0,
             total: Some(total),
         }))
+    }
+
+    fn cancel_session_replacement(&mut self) -> Result<()> {
+        let Some(replace) = self.session_replace.as_ref() else {
+            self.transport.borrow_mut().cancel_reserved_session_replay();
+            return Ok(());
+        };
+        if replace.commit_sent {
+            return Err(anyhow!("session replacement commit is already in flight"));
+        }
+        let generation = replace.generation;
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::AbortSessionTransfer { generation })?;
+        self.session_replace = None;
+        self.session_replace_error = None;
+        self.transport.borrow_mut().cancel_reserved_session_replay();
+        Ok(())
     }
 
     fn set_port_connected(
@@ -2418,6 +2815,153 @@ impl Backend for RemoteWorkletBackend {
         })
     }
 
+    fn set_mixer_route(
+        &mut self,
+        source_port_id: BackendPortId,
+        destination_channel_id: BackendBusChannelId,
+        connected: bool,
+    ) -> Result<()> {
+        let source = self
+            .snapshot
+            .connections
+            .application_ports
+            .get(&source_port_id)
+            .ok_or_else(|| anyhow!("unknown browser mixer source {source_port_id:?}"))?;
+        if source.owner != BackendPortOwner::Track
+            || source.data_type != BackendPortDataType::Audio
+            || source.direction != BackendPortDirection::Output
+            || source.role != BackendPortRole::AudioOutput
+        {
+            return Err(anyhow!("browser mixer source is not a track audio output"));
+        }
+        if !self.snapshot.mixer.buses.values().any(|bus| {
+            bus.channels
+                .iter()
+                .any(|channel| channel.id == destination_channel_id)
+        }) {
+            return Err(anyhow!(
+                "unknown browser mixer destination {destination_channel_id:?}"
+            ));
+        }
+        self.submit(Command::SetMixerRoute {
+            source_port_id: source_port_id.raw(),
+            destination_channel_id: destination_channel_id.raw(),
+            connected,
+        })
+    }
+
+    fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
+        let request = request.normalized()?;
+        if self.bus_resources.len() >= MAX_BUSES {
+            return Err(anyhow!("bus count exceeds the {MAX_BUSES}-bus limit"));
+        }
+        let channel_count = request.channel_count as usize;
+        let total_channels = self
+            .bus_resources
+            .values()
+            .map(|resources| resources.creation.channels.len())
+            .sum::<usize>();
+        if total_channels.saturating_add(channel_count) > MAX_TOTAL_BUS_CHANNELS {
+            return Err(anyhow!(
+                "total bus channels exceed the {MAX_TOTAL_BUS_CHANNELS}-channel limit"
+            ));
+        }
+        let next_bus_id = self
+            .next_bus_id
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("bus identity space is exhausted"))?;
+        let next_channel_id = self
+            .next_bus_channel_id
+            .checked_add(channel_count as u64)
+            .ok_or_else(|| anyhow!("bus channel identity space is exhausted"))?;
+        let next_port_id = self
+            .next_port_id
+            .checked_add(channel_count as u64)
+            .ok_or_else(|| anyhow!("port identity space is exhausted"))?;
+        let bus_id = BackendBusId::from_raw(self.next_bus_id);
+        let labels = default_bus_channel_labels(channel_count)?;
+        let channels = labels
+            .into_iter()
+            .enumerate()
+            .map(|(index, label)| BackendBusChannelState {
+                id: BackendBusChannelId::from_raw(self.next_bus_channel_id + index as u64),
+                label,
+                output_port_id: BackendPortId::from_raw(self.next_port_id + index as u64),
+            })
+            .collect::<Vec<_>>();
+        let creation = BackendBusCreation { bus_id, channels };
+        self.submit(Command::CreateBus {
+            expected_bus_id: bus_id.raw(),
+            expected_channel_ids: creation
+                .channels
+                .iter()
+                .map(|channel| channel.id.raw())
+                .collect(),
+            expected_output_port_ids: creation
+                .channels
+                .iter()
+                .map(|channel| channel.output_port_id.raw())
+                .collect(),
+            name: request.name,
+            channel_count: request.channel_count,
+        })?;
+        self.next_bus_id = next_bus_id;
+        self.next_bus_channel_id = next_channel_id;
+        self.next_port_id = next_port_id;
+        self.bus_resources.insert(
+            bus_id,
+            BrowserBusResources {
+                creation: creation.clone(),
+            },
+        );
+        Ok(creation)
+    }
+
+    fn remove_bus(&mut self, bus_id: BackendBusId) -> Result<()> {
+        let resources = self
+            .bus_resources
+            .get(&bus_id)
+            .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?
+            .clone();
+        let channel_ids = resources
+            .creation
+            .channels
+            .iter()
+            .map(|channel| channel.id.raw())
+            .collect::<BTreeSet<_>>();
+        let output_port_ids = resources
+            .creation
+            .channels
+            .iter()
+            .map(|channel| channel.output_port_id.raw())
+            .collect::<BTreeSet<_>>();
+        self.transport.borrow_mut().journal_bus_removal(
+            Command::RemoveBus {
+                bus_id: bus_id.raw(),
+            },
+            bus_id.raw(),
+            &channel_ids,
+            &output_port_ids,
+        )?;
+        self.bus_resources.remove(&bus_id);
+        self.pending_removed_buses.insert(bus_id, resources);
+        Ok(())
+    }
+
+    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        let bus = self
+            .snapshot
+            .mixer
+            .buses
+            .get(&bus_id)
+            .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?;
+        let control = control.normalized(bus.channels.len())?;
+        self.submit(Command::SetBusControl {
+            bus_id: bus_id.raw(),
+            control: to_wire_bus_control(control),
+        })
+    }
+
     fn advance(&mut self, elapsed: Duration) {
         self.poll_elapsed = self.poll_elapsed.saturating_add(elapsed);
     }
@@ -2427,10 +2971,12 @@ impl Backend for RemoteWorkletBackend {
         let connection = self.transport.borrow().readiness().connection;
         if self.transport_generation != 0 && transport.generation != self.transport_generation {
             self.cancel_transfers("driver generation changed");
-        } else if connection == ConnectionState::Detached
-            && (self.session_capture.is_some()
-                || self.session_replace.is_some()
-                || self.loop_content_replace.is_some())
+        } else if matches!(
+            connection,
+            ConnectionState::Detached | ConnectionState::Failed
+        ) && (self.session_capture.is_some()
+            || self.session_replace.is_some()
+            || self.loop_content_replace.is_some())
         {
             self.cancel_transfers("transport detached");
         }
@@ -2464,6 +3010,7 @@ impl Backend for RemoteWorkletBackend {
             self.poll_elapsed = Duration::ZERO;
         }
         let events = self.transport.borrow_mut().drain_events();
+        let mut rejected_bus_creations = BTreeSet::new();
         for received in events {
             let sequence = received.envelope.sequence;
             let generation = received.generation;
@@ -2476,6 +3023,18 @@ impl Backend for RemoteWorkletBackend {
                 }
                 Event::Stopped => {}
                 Event::Error { message } => {
+                    if received.replay
+                        && matches!(
+                            &received.command,
+                            Command::BeginSessionReplace { .. }
+                                | Command::WriteSessionReplace { .. }
+                                | Command::CommitSessionReplace { .. }
+                        )
+                    {
+                        let message = format!("session replay failed: {message}");
+                        self.transport.borrow_mut().fail(message.clone());
+                        return Err(anyhow!(message));
+                    }
                     let retry_media_read = match &received.command {
                         Command::RequestWaveform {
                             loop_id,
@@ -2513,9 +3072,21 @@ impl Backend for RemoteWorkletBackend {
                     if retry_media_read {
                         continue;
                     }
+                    let mut journal_mutation = received.journal_mutation.clone();
+                    if let Command::RemoveBus { bus_id } = &received.command {
+                        if rejected_bus_creations.contains(&BackendBusId::from_raw(*bus_id)) {
+                            if let Some(crate::transport::JournalMutation::PrunedForBusRemoval {
+                                removed,
+                                ..
+                            }) = journal_mutation.as_mut()
+                            {
+                                removed.clear();
+                            }
+                        }
+                    }
                     self.transport
                         .borrow_mut()
-                        .reject_journaled(&received.command);
+                        .restore_rejected_journal(&received.command, journal_mutation);
                     match &received.command {
                         Command::CreateTrack {
                             expected_track_id, ..
@@ -2527,6 +3098,20 @@ impl Backend for RemoteWorkletBackend {
                             let track_id = BackendTrackId::from_raw(*track_id);
                             if let Some(resources) = self.pending_removed_tracks.remove(&track_id) {
                                 self.track_resources.insert(track_id, resources);
+                            }
+                        }
+                        Command::CreateBus {
+                            expected_bus_id, ..
+                        } => {
+                            let bus_id = BackendBusId::from_raw(*expected_bus_id);
+                            rejected_bus_creations.insert(bus_id);
+                            self.bus_resources.remove(&bus_id);
+                            self.pending_removed_buses.remove(&bus_id);
+                        }
+                        Command::RemoveBus { bus_id } => {
+                            let bus_id = BackendBusId::from_raw(*bus_id);
+                            if let Some(resources) = self.pending_removed_buses.remove(&bus_id) {
+                                self.bus_resources.insert(bus_id, resources);
                             }
                         }
                         Command::AddLoop {
@@ -2573,6 +3158,7 @@ impl Backend for RemoteWorkletBackend {
                             }
                             BackendOperationKind::SessionReplacement => {
                                 self.session_replace = None;
+                                self.transport.borrow_mut().cancel_reserved_session_replay();
                                 self.session_replace_error = Some(message.clone());
                             }
                             BackendOperationKind::LoopContentReplacement => {
@@ -2623,16 +3209,42 @@ impl Backend for RemoteWorkletBackend {
                     host_port_id,
                     desired_connected,
                     message,
-                } => self
-                    .snapshot
-                    .connections
-                    .failures
-                    .push(BackendConnectionFailure {
-                        port_id: BackendPortId::from_raw(application_port_id),
-                        external_port: host_port_id,
+                } => {
+                    self.transport.borrow_mut().restore_rejected_journal(
+                        &received.command,
+                        received.journal_mutation.clone(),
+                    );
+                    self.snapshot
+                        .connections
+                        .failures
+                        .push(BackendConnectionFailure {
+                            port_id: BackendPortId::from_raw(application_port_id),
+                            external_port: host_port_id,
+                            desired_connected,
+                            message,
+                        });
+                }
+                Event::MixerMutationFailed {
+                    source_port_id,
+                    destination_channel_id,
+                    desired_connected,
+                    message,
+                } => {
+                    self.transport.borrow_mut().restore_rejected_journal(
+                        &received.command,
+                        received.journal_mutation.clone(),
+                    );
+                    self.snapshot.mixer.failures.push(BackendMixerFailure {
+                        link: BackendMixerLink {
+                            source_port_id: BackendPortId::from_raw(source_port_id),
+                            destination_channel_id: BackendBusChannelId::from_raw(
+                                destination_channel_id,
+                            ),
+                        },
                         desired_connected,
                         message,
-                    }),
+                    });
+                }
                 Event::MidiOutput {
                     events,
                     dropped,
@@ -2680,9 +3292,13 @@ impl Backend for RemoteWorkletBackend {
                     final_chunk,
                     bytes,
                 )?,
-                Event::SessionReplaceComplete { generation } => {
+                Event::SessionReplaceComplete {
+                    generation,
+                    mixer_revision,
+                } => {
                     if let Some(replace) = self.session_replace.as_mut() {
                         if replace.generation == generation {
+                            replace.mixer_revision = Some(mixer_revision);
                             replace.complete = true;
                         }
                     }
@@ -2711,6 +3327,7 @@ impl Backend for RemoteWorkletBackend {
                         .is_some_and(|replace| replace.generation == generation)
                     {
                         self.session_replace = None;
+                        self.transport.borrow_mut().cancel_reserved_session_replay();
                         self.session_replace_error = Some(format!(
                             "session replacement operation {generation} was cancelled"
                         ));
@@ -2728,13 +3345,15 @@ impl Backend for RemoteWorkletBackend {
                 }
             }
         }
-        self.pump_session_replace()?;
+        self.pump_session_replace_or_abort()?;
         self.pump_loop_content_replace()?;
         if let Some(error) = self.transport.borrow_mut().take_error() {
             return Err(anyhow!(error));
         }
         let snapshot = self.snapshot.clone();
         self.snapshot.status.xruns = 0;
+        self.snapshot.connections.failures.clear();
+        self.snapshot.mixer.failures.clear();
         self.snapshot.mutation_failures.clear();
         self.snapshot.removed_composites.clear();
         Ok(snapshot)
@@ -2777,6 +3396,14 @@ fn to_wire_track_control(control: BackendTrackControl) -> WireTrackControl {
         BackendTrackControl::InputGainDb(value) => WireTrackControl::InputGainDb(value),
         BackendTrackControl::InputBalance(value) => WireTrackControl::InputBalance(value),
         BackendTrackControl::InputMonitoring(value) => WireTrackControl::InputMonitoring(value),
+    }
+}
+
+fn to_wire_bus_control(control: BackendBusControl) -> WireBusControl {
+    match control {
+        BackendBusControl::GainDb(value) => WireBusControl::GainDb(value),
+        BackendBusControl::Balance(value) => WireBusControl::Balance(value),
+        BackendBusControl::Mute(value) => WireBusControl::Mute(value),
     }
 }
 
@@ -3068,7 +3695,7 @@ fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
 }
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
     use shoop_audio_protocol::{CommandEnvelope, EventEnvelope, PROTOCOL_VERSION};
@@ -3257,6 +3884,21 @@ mod tests {
     impl MessageEndpoint for MemoryEndpoint {
         fn post_message(&self, message: &str) -> Result<()> {
             self.sent.borrow_mut().push(message.to_owned());
+            Ok(())
+        }
+    }
+
+    struct FailAfterEndpoint {
+        successful_posts_remaining: Rc<Cell<usize>>,
+    }
+
+    impl MessageEndpoint for FailAfterEndpoint {
+        fn post_message(&self, _message: &str) -> Result<()> {
+            let remaining = self.successful_posts_remaining.get();
+            if remaining == 0 {
+                return Err(anyhow!("injected transfer submission failure"));
+            }
+            self.successful_posts_remaining.set(remaining - 1);
             Ok(())
         }
     }
@@ -3660,6 +4302,7 @@ mod tests {
                 command_overflows: 6,
                 storage_low_channels: 7,
                 storage_exhaustions: 8,
+                mixer_revision: 9,
                 tracks: vec![
                     track(
                         1,
@@ -3798,6 +4441,30 @@ mod tests {
                     application_port_id: 1,
                     host_port_id: "audio-in".to_owned(),
                 }],
+                connection_failures: vec![shoop_audio_protocol::WireConnectionFailure {
+                    application_port_id: 1,
+                    host_port_id: "missing-output".to_owned(),
+                    desired_connected: true,
+                    message: "unavailable".to_owned(),
+                }],
+                buses: vec![shoop_audio_protocol::WireBus {
+                    id: 1,
+                    name: "Master".to_owned(),
+                    channels: vec![shoop_audio_protocol::WireBusChannel {
+                        id: 1,
+                        label: "Left".to_owned(),
+                        output_port_id: 2,
+                    }],
+                    gain_db: -3.0,
+                    balance: 0.0,
+                    muted: false,
+                    output_peaks_db: vec![-12.0],
+                }],
+                confirmed_mixer_links: vec![shoop_audio_protocol::WireMixerLink {
+                    source_port_id: 2,
+                    destination_channel_id: 1,
+                }],
+                mixer_failures: Vec::new(),
             }),
         );
         let snapshot = backend.poll().unwrap();
@@ -3875,7 +4542,30 @@ mod tests {
         assert_eq!(snapshot.connections.application_ports.len(), roles.len());
         assert_eq!(snapshot.connections.host_ports.len(), 2);
         assert_eq!(snapshot.connections.confirmed_links.len(), 1);
+        assert_eq!(snapshot.connections.failures.len(), 1);
+        assert!(backend.poll().unwrap().connections.failures.is_empty());
+        assert_eq!(snapshot.mixer.buses.len(), 1);
+        let bus = &snapshot.mixer.buses[&BackendBusId::from_raw(1)];
+        assert_eq!(bus.gain_db, -3.0);
+        assert_eq!(bus.balance, 0.0);
+        assert!(!bus.muted);
+        assert_eq!(bus.output_peaks_db, [-12.0]);
+        assert_eq!(snapshot.mixer.confirmed_links.len(), 1);
+        backend
+            .set_bus_control(BackendBusId::from_raw(1), BackendBusControl::GainDb(-6.0))
+            .unwrap();
+        assert!(backend
+            .set_bus_control(BackendBusId::from_raw(1), BackendBusControl::Balance(0.25),)
+            .is_err());
+        backend
+            .set_mixer_route(
+                BackendPortId::from_raw(2),
+                BackendBusChannelId::from_raw(1),
+                false,
+            )
+            .unwrap();
         assert_eq!(snapshot.status.storage_exhaustions, 8);
+        assert_eq!(snapshot.mixer.revision, 9);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -4000,6 +4690,94 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn rejected_bus_create_and_remove_restore_resources_and_replay() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let rejected = backend
+            .create_bus(BackendBusRequest {
+                name: "Rejected".to_owned(),
+                channel_count: 1,
+            })
+            .unwrap();
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        backend.remove_bus(rejected.bus_id).unwrap();
+        deliver(
+            &control,
+            1,
+            2,
+            Event::Error {
+                message: "bus create rejected".to_owned(),
+            },
+        );
+        deliver(
+            &control,
+            1,
+            3,
+            Event::Error {
+                message: "unknown removed bus".to_owned(),
+            },
+        );
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.mutation_failures[0].detail,
+            Some(BackendMutationDetail::BusCreation)
+        );
+        assert_eq!(
+            snapshot.mutation_failures[1].detail,
+            Some(BackendMutationDetail::BusRemoval)
+        );
+        assert!(!backend.bus_resources.contains_key(&rejected.bus_id));
+        assert!(!backend.pending_removed_buses.contains_key(&rejected.bus_id));
+        assert!(!backend.bus_resources.contains_key(&rejected.bus_id));
+        assert!(!backend.pending_removed_buses.contains_key(&rejected.bus_id));
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .iter()
+            .all(|command| !matches!(command, Command::CreateBus { .. })));
+
+        let retained = backend
+            .create_bus(BackendBusRequest {
+                name: "Retained".to_owned(),
+                channel_count: 2,
+            })
+            .unwrap();
+        deliver(&control, 1, 4, Event::Ack);
+        backend.remove_bus(retained.bus_id).unwrap();
+        deliver(
+            &control,
+            1,
+            5,
+            Event::Error {
+                message: "bus remove rejected".to_owned(),
+            },
+        );
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.mutation_failures[0].detail,
+            Some(BackendMutationDetail::BusRemoval)
+        );
+        assert!(backend.bus_resources.contains_key(&retained.bus_id));
+        assert!(!backend.pending_removed_buses.contains_key(&retained.bus_id));
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .iter()
+            .any(|command| matches!(command, Command::CreateBus { expected_bus_id, .. } if *expected_bus_id == retained.bus_id.raw())));
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .iter()
+            .all(|command| !matches!(command, Command::RemoveBus { bus_id } if *bus_id == retained.bus_id.raw())));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn delayed_command_rejection_is_typed_correlated_and_does_not_fail_polling() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -4032,6 +4810,23 @@ mod tests {
                     gain: 1.0,
                     ..Default::default()
                 }],
+                buses: vec![shoop_audio_protocol::WireBus {
+                    id: MASTER_BUS_ID.raw(),
+                    name: "Master".to_owned(),
+                    channels: MASTER_BUS_CHANNEL_IDS
+                        .into_iter()
+                        .zip(MASTER_BUS_OUTPUT_PORT_IDS)
+                        .map(|(channel, output)| shoop_audio_protocol::WireBusChannel {
+                            id: channel.raw(),
+                            label: channel.raw().to_string(),
+                            output_port_id: output.raw(),
+                        })
+                        .collect(),
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
+                    output_peaks_db: vec![-200.0; 2],
+                }],
                 ..Default::default()
             }),
         );
@@ -4059,12 +4854,42 @@ mod tests {
         assert!(backend.poll().unwrap().mutation_failures.is_empty());
 
         backend
-            .set_track_default_playback_mode(creation.track_id, BackendDefaultPlaybackMode::Regular)
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-3.0))
             .unwrap();
         deliver(
             &control,
             11,
             5,
+            Event::Error {
+                message: "bus gain rejected".to_owned(),
+            },
+        );
+        let rejected = backend.poll().unwrap();
+        let failure = &rejected.mutation_failures[0];
+        assert_eq!(failure.kind, BackendMutationKind::BusControl);
+        assert_eq!(failure.entity, Some(MASTER_BUS_ID.raw()));
+        assert_eq!(
+            failure.detail,
+            Some(BackendMutationDetail::BusControl(
+                BackendBusControl::GainDb(-3.0)
+            ))
+        );
+        assert_eq!(failure.message, "bus gain rejected");
+        assert!(!backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::GainDb(-3.0),
+            }));
+        backend
+            .set_track_default_playback_mode(creation.track_id, BackendDefaultPlaybackMode::Regular)
+            .unwrap();
+        deliver(
+            &control,
+            11,
+            6,
             Event::Error {
                 message: "default playback rejected".to_owned(),
             },
@@ -4081,6 +4906,63 @@ mod tests {
                 ..
             }] if *entity == creation.track_id.raw()
         ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn chained_rejections_restore_the_last_accepted_bus_control() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-1.0))
+            .unwrap();
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        deliver(&control, 1, 2, Event::Ack);
+        backend.poll().unwrap();
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-2.0))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-3.0))
+            .unwrap();
+        deliver(
+            &control,
+            1,
+            3,
+            Event::Error {
+                message: "first gain rejected".to_owned(),
+            },
+        );
+        backend.poll().unwrap();
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::GainDb(-3.0),
+            }));
+
+        deliver(
+            &control,
+            1,
+            4,
+            Event::Error {
+                message: "second gain rejected".to_owned(),
+            },
+        );
+        backend.poll().unwrap();
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::GainDb(-1.0),
+            }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -4204,6 +5086,8 @@ mod tests {
         let session = BackendSessionData {
             sample_rate: 48_000,
             tracks: Vec::new(),
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             use_legacy_browser_default_routes: false,
         };
@@ -4270,6 +5154,656 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn large_session_replay_reservation_does_not_consume_command_capacity() {
+        let (backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        let bytes: Arc<[u8]> = Arc::from(vec![0; 9 * 1024 * 1024]);
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_replay(1, Arc::clone(&bytes))
+            .unwrap();
+        assert!(backend.transport.borrow().has_reserved_session_replay());
+        assert_eq!(backend.transport.borrow().pending_len(), 0);
+        backend
+            .transport
+            .borrow_mut()
+            .cancel_reserved_session_replay();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_session_transfer_submission_releases_state_and_reservation() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(
+                Box::new(FailAfterEndpoint {
+                    successful_posts_remaining: Rc::new(Cell::new(2)),
+                }),
+                1,
+                0,
+                2,
+            )
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: Vec::new(),
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+
+        let error = backend.replace_session_async(&session).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("session replacement submission failed"));
+        assert!(backend.session_replace.is_none());
+        assert!(!backend.transport.borrow().has_reserved_session_replay());
+        assert_eq!(
+            backend.transport.borrow().readiness().connection,
+            ConnectionState::Failed
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_replacement_cancel_aborts_before_commit_and_refuses_after_commit() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_replay(7, Arc::from([]))
+            .unwrap();
+        backend.session_replace = Some(SessionReplaceAssembly {
+            generation: 7,
+            mixer_revision: None,
+            bytes: Arc::from([1_u8]),
+            next_offset: 0,
+            commit_sent: false,
+            complete: false,
+        });
+
+        backend.cancel_session_replacement().unwrap();
+        assert!(backend.session_replace.is_none());
+        assert!(!backend.transport.borrow().has_reserved_session_replay());
+        let command = serde_json::from_str::<CommandEnvelope>(sent.borrow().last().unwrap())
+            .unwrap()
+            .command;
+        assert_eq!(command, Command::AbortSessionTransfer { generation: 7 });
+
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_replay(8, Arc::from([]))
+            .unwrap();
+        backend.session_replace = Some(SessionReplaceAssembly {
+            generation: 8,
+            mixer_revision: None,
+            bytes: Arc::from([1_u8]),
+            next_offset: 1,
+            commit_sent: true,
+            complete: false,
+        });
+        assert!(backend.cancel_session_replacement().is_err());
+        assert!(backend.session_replace.is_some());
+        assert!(backend.transport.borrow().has_reserved_session_replay());
+        backend.cancel_transfers("test cleanup");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn replacement_replay_records_the_complete_session() {
+        let input = shoop_backend::BackendSessionPort {
+            source_id: 10,
+            descriptor: BackendPortDescriptor {
+                id: BackendPortId::from_raw(10),
+                owner: BackendPortOwner::Track,
+                name: "track_audio_in_1".to_owned(),
+                data_type: BackendPortDataType::Audio,
+                direction: BackendPortDirection::Input,
+                role: BackendPortRole::AudioInput,
+            },
+            external_connections: Vec::new(),
+        };
+        let output = shoop_backend::BackendSessionPort {
+            source_id: 11,
+            descriptor: BackendPortDescriptor {
+                id: BackendPortId::from_raw(11),
+                owner: BackendPortOwner::Track,
+                name: "track_audio_out_1".to_owned(),
+                data_type: BackendPortDataType::Audio,
+                direction: BackendPortDirection::Output,
+                role: BackendPortRole::AudioOutput,
+            },
+            external_connections: Vec::new(),
+        };
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: vec![shoop_backend::BackendSessionTrack {
+                source_id: 1,
+                port_name_base: "track".to_owned(),
+                topology: BackendTrackTopology::Direct {
+                    audio_channels: 1,
+                    midi: false,
+                },
+                state: BackendTrackState::default(),
+                loops: Vec::new(),
+                ports: vec![input, output],
+                processor_state: None,
+                oxisynth_midi_cc_assignments: Vec::new(),
+                builtin_fx_midi_cc_assignments: Vec::new(),
+            }],
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+        let bytes = encode_binary(&session).unwrap();
+        let commands = replacement_session_journal(7, &bytes);
+        assert_eq!(
+            commands.first(),
+            Some(&Command::BeginSessionReplace {
+                generation: 7,
+                total_bytes: bytes.len(),
+            })
+        );
+        assert_eq!(
+            commands.last(),
+            Some(&Command::CommitSessionReplace { generation: 7 })
+        );
+        let replayed_bytes = commands
+            .iter()
+            .filter_map(|command| match command {
+                Command::WriteSessionReplace { bytes, .. } => Some(bytes.as_slice()),
+                _ => None,
+            })
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            decode_binary::<BackendSessionData>(&replayed_bytes).unwrap(),
+            session
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_session_replay_retains_the_complete_transaction() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let replay_bytes: Arc<[u8]> = Arc::from([1_u8, 2]);
+        let replay = replacement_session_journal(7, &replay_bytes);
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_replay(7, Arc::clone(&replay_bytes))
+            .unwrap();
+        backend
+            .transport
+            .borrow_mut()
+            .commit_reserved_session_replay();
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        deliver(
+            &control,
+            1,
+            2,
+            Event::Error {
+                message: "injected replay failure".to_owned(),
+            },
+        );
+        assert!(backend.poll().is_err());
+        assert_eq!(
+            backend.transport.borrow().session_replay(),
+            Some((7, Arc::clone(&replay_bytes)))
+        );
+        assert_eq!(
+            backend.transport.borrow().readiness().connection,
+            ConnectionState::Failed
+        );
+
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 2, 0, 2).unwrap();
+        let replayed = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            replayed,
+            [
+                vec![Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                }],
+                replay,
+            ]
+            .concat()
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fixed_bus_mappings_do_not_advance_the_next_track_port_identity() {
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: Vec::new(),
+            buses: vec![shoop_backend::BackendSessionBus {
+                source_id: 1,
+                name: "Master".to_owned(),
+                channels: vec![
+                    shoop_backend::BackendSessionBusChannel {
+                        source_id: 42,
+                        label: "Left".to_owned(),
+                        output_port: shoop_backend::BackendSessionPort {
+                            source_id: 43,
+                            descriptor: BackendPortDescriptor {
+                                id: BackendPortId::from_raw(43),
+                                owner: BackendPortOwner::Bus(BackendBusId::from_raw(1)),
+                                name: "master_out_1".to_owned(),
+                                data_type: BackendPortDataType::Audio,
+                                direction: BackendPortDirection::Output,
+                                role: BackendPortRole::AudioOutput,
+                            },
+                            external_connections: vec!["system:playback_1".to_owned()],
+                        },
+                    },
+                    shoop_backend::BackendSessionBusChannel {
+                        source_id: 45,
+                        label: "Right".to_owned(),
+                        output_port: shoop_backend::BackendSessionPort {
+                            source_id: 46,
+                            descriptor: BackendPortDescriptor {
+                                id: BackendPortId::from_raw(46),
+                                owner: BackendPortOwner::Bus(BackendBusId::from_raw(1)),
+                                name: "master_out_2".to_owned(),
+                                data_type: BackendPortDataType::Audio,
+                                direction: BackendPortDirection::Output,
+                                role: BackendPortRole::AudioOutput,
+                            },
+                            external_connections: Vec::new(),
+                        },
+                    },
+                ],
+                gain_db: -3.0,
+                balance: 0.0,
+                muted: true,
+            }],
+            mixer_routes: Vec::new(),
+            global_ports: vec![shoop_backend::BackendSessionPort {
+                source_id: 44,
+                descriptor: BackendPortDescriptor {
+                    id: BackendPortId::from_raw(44),
+                    owner: BackendPortOwner::GlobalFxControl,
+                    name: "Global FX Control MIDI In".to_owned(),
+                    data_type: BackendPortDataType::Midi,
+                    direction: BackendPortDirection::Input,
+                    role: BackendPortRole::MidiInput,
+                },
+                external_connections: Vec::new(),
+            }],
+            use_legacy_browser_default_routes: false,
+        };
+        let replacement = browser_replacement_mapping(&session);
+        assert_eq!(
+            replacement.bus_output_ports[&42],
+            MASTER_BUS_OUTPUT_PORT_IDS[0]
+        );
+        assert_eq!(replacement.global_ports[&44], GLOBAL_FX_PORT_ID);
+        let mut dynamic = session.clone();
+        dynamic.buses.push(shoop_backend::BackendSessionBus {
+            source_id: 50,
+            name: "Mono".to_owned(),
+            channels: vec![shoop_backend::BackendSessionBusChannel {
+                source_id: 51,
+                label: "Mono".to_owned(),
+                output_port: shoop_backend::BackendSessionPort {
+                    source_id: 52,
+                    descriptor: BackendPortDescriptor {
+                        id: BackendPortId::from_raw(52),
+                        owner: BackendPortOwner::Bus(BackendBusId::from_raw(50)),
+                        name: "bus_50_out_1".to_owned(),
+                        data_type: BackendPortDataType::Audio,
+                        direction: BackendPortDirection::Output,
+                        role: BackendPortRole::AudioOutput,
+                    },
+                    external_connections: Vec::new(),
+                },
+            }],
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
+        });
+        let dynamic_mapping = browser_replacement_mapping(&dynamic);
+        assert_eq!(dynamic_mapping.buses[&50], BackendBusId::from_raw(2));
+        assert_eq!(
+            dynamic_mapping.bus_channels[&51],
+            BackendBusChannelId::from_raw(3)
+        );
+        assert_eq!(
+            dynamic_mapping.bus_output_ports[&51],
+            BackendPortId::from_raw(1)
+        );
+        let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetPortConnected {
+                application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+                host_port_id: "old:playback".to_owned(),
+                connected: true,
+            })
+            .unwrap();
+        backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetBusControl {
+                bus_id: MASTER_BUS_ID.raw(),
+                control: WireBusControl::Mute(false),
+            })
+            .unwrap();
+        backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetMixerRoute {
+                source_port_id: 99,
+                destination_channel_id: 99,
+                connected: true,
+            })
+            .unwrap();
+        backend
+            .snapshot
+            .mixer
+            .confirmed_links
+            .insert(BackendMixerLink {
+                source_port_id: BackendPortId::from_raw(99),
+                destination_channel_id: BackendBusChannelId::from_raw(99),
+            });
+        let encoded_session: Arc<[u8]> = Arc::from(encode_binary(&session).unwrap());
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_replay(7, Arc::clone(&encoded_session))
+            .unwrap();
+        backend.apply_replaced_session(&session, &replacement, 9);
+        assert_eq!(backend.next_port_id, 1);
+        assert_eq!(backend.snapshot.mixer.buses.len(), 1);
+        assert_eq!(backend.snapshot.mixer.revision, 9);
+        let master = &backend.snapshot.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.gain_db, -3.0);
+        assert_eq!(master.balance, 0.0);
+        assert!(master.muted);
+        assert_eq!(master.output_peaks_db, [-200.0, -200.0]);
+        assert!(backend.snapshot.mixer.confirmed_links.is_empty());
+        assert!(backend.transport.borrow().journal_commands().is_empty());
+        assert_eq!(
+            backend.transport.borrow().session_replay(),
+            Some((7, encoded_session))
+        );
+        assert_eq!(
+            backend.snapshot.connections.application_ports[&MASTER_BUS_OUTPUT_PORT_IDS[0]].owner,
+            BackendPortOwner::Bus(MASTER_BUS_ID)
+        );
+        assert_eq!(
+            backend.snapshot.connections.application_ports[&GLOBAL_FX_PORT_ID].owner,
+            BackendPortOwner::GlobalFxControl
+        );
+
+        let mut empty = session;
+        empty.buses.clear();
+        let empty_replacement = browser_replacement_mapping(&empty);
+        let empty_bytes: Arc<[u8]> = Arc::from(encode_binary(&empty).unwrap());
+        backend
+            .transport
+            .borrow_mut()
+            .reserve_session_replay(8, empty_bytes)
+            .unwrap();
+        backend.apply_replaced_session(&empty, &empty_replacement, 10);
+        assert_eq!(backend.next_bus_id, 2);
+        assert_eq!(backend.next_bus_channel_id, 3);
+        assert_eq!(backend.next_port_id, 1);
+        let created = backend
+            .create_bus(BackendBusRequest {
+                name: "After zero".to_owned(),
+                channel_count: 1,
+            })
+            .unwrap();
+        assert_eq!(created.bus_id, BackendBusId::from_raw(2));
+        assert_eq!(created.channels[0].id, BackendBusChannelId::from_raw(3));
+        assert_eq!(
+            created.channels[0].output_port_id,
+            BackendPortId::from_raw(1)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn remote_bus_lifecycle_reserves_exact_ids_and_is_durable() {
+        let (mut backend, _control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let created = backend
+            .create_bus(BackendBusRequest {
+                name: "Surround".to_owned(),
+                channel_count: 4,
+            })
+            .unwrap();
+        assert_eq!(created.bus_id, BackendBusId::from_raw(2));
+        assert_eq!(
+            created
+                .channels
+                .iter()
+                .map(|channel| channel.id.raw())
+                .collect::<Vec<_>>(),
+            [3, 4, 5, 6]
+        );
+        assert_eq!(
+            created
+                .channels
+                .iter()
+                .map(|channel| channel.output_port_id.raw())
+                .collect::<Vec<_>>(),
+            [1, 2, 3, 4]
+        );
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::CreateBus {
+                expected_bus_id: 2,
+                expected_channel_ids: vec![3, 4, 5, 6],
+                expected_output_port_ids: vec![1, 2, 3, 4],
+                name: "Surround".to_owned(),
+                channel_count: 4,
+            }));
+        backend.remove_bus(created.bus_id).unwrap();
+        assert!(!backend.bus_resources.contains_key(&created.bus_id));
+        assert!(backend.pending_removed_buses.contains_key(&created.bus_id));
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .iter()
+            .all(|command| !matches!(
+                command,
+                Command::CreateBus {
+                    expected_bus_id: 2,
+                    ..
+                } | Command::RemoveBus { bus_id: 2 }
+            )));
+        assert!(backend.remove_bus(created.bus_id).is_err());
+        backend.remove_bus(MASTER_BUS_ID).unwrap();
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&Command::RemoveBus {
+                bus_id: MASTER_BUS_ID.raw()
+            }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn detached_remote_snapshot_seeds_fixed_master_and_replays_early_control() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let snapshot = backend.poll().unwrap();
+        let master = &snapshot.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.name, "Master");
+        assert_eq!(master.channels.len(), 2);
+        assert_eq!(master.output_peaks_db, [-200.0, -200.0]);
+        assert_eq!(
+            (master.gain_db, master.balance, master.muted),
+            (0.0, 0.0, false)
+        );
+        for output_port_id in MASTER_BUS_OUTPUT_PORT_IDS {
+            assert_eq!(
+                snapshot.connections.application_ports[&output_port_id].owner,
+                BackendPortOwner::Bus(MASTER_BUS_ID)
+            );
+        }
+
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-6.0))
+            .unwrap();
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            vec![
+                Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                },
+                Command::SetBusControl {
+                    bus_id: MASTER_BUS_ID.raw(),
+                    control: WireBusControl::GainDb(-6.0),
+                },
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn rejected_connection_commands_restore_prior_replay_state() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+
+        let old_route = Command::SetMixerRoute {
+            source_port_id: 2,
+            destination_channel_id: 1,
+            connected: false,
+        };
+        backend
+            .transport
+            .borrow_mut()
+            .journal(old_route.clone())
+            .unwrap();
+        deliver(&control, 1, 2, Event::Ack);
+        backend.poll().unwrap();
+        let rejected_route = Command::SetMixerRoute {
+            source_port_id: 2,
+            destination_channel_id: 1,
+            connected: true,
+        };
+        backend
+            .transport
+            .borrow_mut()
+            .journal(rejected_route)
+            .unwrap();
+        deliver(
+            &control,
+            1,
+            3,
+            Event::MixerMutationFailed {
+                source_port_id: 2,
+                destination_channel_id: 1,
+                desired_connected: true,
+                message: "route rejected".to_owned(),
+            },
+        );
+        assert_eq!(backend.poll().unwrap().mixer.failures.len(), 1);
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&old_route));
+
+        let old_host_link = Command::SetPortConnected {
+            application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+            host_port_id: "system:playback_1".to_owned(),
+            connected: false,
+        };
+        backend
+            .transport
+            .borrow_mut()
+            .journal(old_host_link.clone())
+            .unwrap();
+        deliver(&control, 1, 4, Event::Ack);
+        backend.poll().unwrap();
+        backend
+            .transport
+            .borrow_mut()
+            .journal(Command::SetPortConnected {
+                application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+                host_port_id: "system:playback_1".to_owned(),
+                connected: true,
+            })
+            .unwrap();
+        deliver(
+            &control,
+            1,
+            5,
+            Event::ConnectionMutationFailed {
+                application_port_id: MASTER_BUS_OUTPUT_PORT_IDS[0].raw(),
+                host_port_id: "system:playback_1".to_owned(),
+                desired_connected: true,
+                message: "link rejected".to_owned(),
+            },
+        );
+        assert_eq!(backend.poll().unwrap().connections.failures.len(), 1);
+        assert!(backend
+            .transport
+            .borrow()
+            .journal_commands()
+            .contains(&old_host_link));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mixer_failures_are_published_once_then_drained() {
+        let (mut backend, _) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.snapshot.mixer.failures.push(BackendMixerFailure {
+            link: BackendMixerLink {
+                source_port_id: BackendPortId::from_raw(1),
+                destination_channel_id: BackendBusChannelId::from_raw(1),
+            },
+            desired_connected: true,
+            message: "rejected".to_owned(),
+        });
+        assert_eq!(backend.poll().unwrap().mixer.failures.len(), 1);
+        assert!(backend.poll().unwrap().mixer.failures.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn active_session_replacement_is_polled_without_reencoding_or_restarting() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -4281,6 +5815,8 @@ mod tests {
         let session = BackendSessionData {
             sample_rate: 48_000,
             tracks: Vec::new(),
+            buses: Vec::new(),
+            mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             use_legacy_browser_default_routes: false,
         };

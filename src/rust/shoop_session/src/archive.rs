@@ -8,6 +8,10 @@ use crate::document::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use shoop_app_api::{
+    MAX_BUSES, MAX_BUS_CHANNELS, MAX_BUS_HOST_LINKS, MAX_BUS_NAME_BYTES, MAX_MIXER_ROUTES,
+    MAX_TOTAL_BUS_CHANNELS,
+};
 use shoop_script_resources::{
     NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource, ScriptResourceBundle,
 };
@@ -24,6 +28,10 @@ const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
 const PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION: u16 = 8;
 const PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 9;
 const PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 10;
+const PRE_CURRENT_COMBINED_SESSION_DOCUMENT_VERSION: u16 = 11;
+const PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION: u16 = 12;
+const MIN_BUS_GAIN_DB: f32 = -30.0;
+const MAX_BUS_GAIN_DB: f32 = 20.0;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -227,6 +235,8 @@ pub fn decode_session_with_limits(
                 | PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION
                 | PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION
                 | PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION
+                | PRE_CURRENT_COMBINED_SESSION_DOCUMENT_VERSION
+                | PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -235,6 +245,10 @@ pub fn decode_session_with_limits(
             major: header.format_version.major,
             minor: header.format_version.minor,
         });
+    }
+    if header.document_version == SESSION_DOCUMENT_VERSION {
+        require_mixer_document_fields(&manifest_value)?;
+        require_current_bus_control_fields(&manifest_value)?;
     }
     let mut manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
@@ -249,6 +263,12 @@ pub fn decode_session_with_limits(
     }
     if manifest.document_version <= PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION {
         migrate_pre_expanded_builtin_fx_document(&mut manifest.document)?;
+    }
+    if manifest.document_version <= PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION {
+        migrate_pre_dynamic_bus_document(
+            &mut manifest.document,
+            manifest.document_version <= PRE_DEFAULT_PLAYBACK_SESSION_DOCUMENT_VERSION,
+        )?;
     }
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -332,6 +352,54 @@ fn migrate_pre_alignment_document(document: &mut SessionDocument) {
             }
         }
     }
+}
+
+fn migrate_pre_dynamic_bus_document(
+    document: &mut SessionDocument,
+    replace_pre_mixer_buses: bool,
+) -> Result<(), SessionError> {
+    if replace_pre_mixer_buses {
+        document.buses.clear();
+        document.mixer_routes.clear();
+    }
+    if document.buses.is_empty() {
+        let mut used_port_ids = document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.ports)
+            .chain(&document.global_ports)
+            .map(|port| port.id)
+            .collect::<BTreeSet<_>>();
+        let mut default_bus = SessionDocument::empty(document.sample_rate)
+            .buses
+            .pop()
+            .expect("empty session contains the default bus");
+        let mut next_port_id = 1_u64;
+        for (channel, port) in default_bus.channels.iter_mut().zip(&mut default_bus.ports) {
+            let preferred = channel.output_port_id;
+            let id = if used_port_ids.insert(preferred) {
+                preferred
+            } else {
+                while next_port_id == 0 || used_port_ids.contains(&next_port_id) {
+                    next_port_id = next_port_id.checked_add(1).ok_or_else(|| {
+                        SessionError::Validation("port identity space is exhausted".to_owned())
+                    })?;
+                }
+                let id = next_port_id;
+                used_port_ids.insert(id);
+                next_port_id = next_port_id.checked_add(1).ok_or_else(|| {
+                    SessionError::Validation("port identity space is exhausted".to_owned())
+                })?;
+                id
+            };
+            channel.output_port_id = id;
+            port.id = id;
+        }
+        document.buses.push(default_bus);
+    }
+    document.bus_display_order = document.buses.iter().map(|bus| bus.id).collect();
+    Ok(())
 }
 
 fn migrate_pre_default_playback_document(document: &mut SessionDocument) {
@@ -899,6 +967,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     let mut loop_composite_kinds = BTreeMap::new();
     let mut sync_length = 1_u64;
     let mut port_ids = BTreeSet::new();
+    let mut mixer_source_port_ids = BTreeSet::new();
     let mut channel_ids = BTreeSet::new();
     let mut fx_chain_ids = BTreeSet::new();
     let mut fx_state_types = BTreeMap::new();
@@ -1030,6 +1099,12 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         port.id
                     )));
                 }
+                if port.data_type == DataTypeDocument::Audio
+                    && port.direction == PortDirectionDocument::Output
+                    && port.role == PortRoleDocument::AudioOutput
+                {
+                    mixer_source_port_ids.insert(port.id);
+                }
                 validate_finite(port.gain, "port gain")?;
             }
             for loop_ in &track.loops {
@@ -1142,6 +1217,192 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     }
                 }
             }
+        }
+    }
+    for port in &bundle.document.global_ports {
+        require_id(port.id, "global port")?;
+        if !port_ids.insert(port.id) {
+            return Err(SessionError::Validation(format!(
+                "duplicate port ID {}",
+                port.id
+            )));
+        }
+        validate_finite(port.gain, "global port gain")?;
+    }
+    if bundle.document.buses.len() > MAX_BUSES {
+        return Err(SessionError::Validation(format!(
+            "session bus count exceeds the {MAX_BUSES}-bus limit"
+        )));
+    }
+    if bundle
+        .document
+        .buses
+        .windows(2)
+        .any(|pair| pair[0].id >= pair[1].id)
+    {
+        return Err(SessionError::Validation(
+            "bus records must be in ascending stable-ID order".to_owned(),
+        ));
+    }
+    let mut bus_ids = BTreeSet::new();
+    let mut bus_channel_ids = BTreeSet::new();
+    let mut total_bus_channels = 0_usize;
+    let mut total_bus_host_links = 0_usize;
+    for bus in &bundle.document.buses {
+        require_id(bus.id, "bus")?;
+        if !bus_ids.insert(bus.id) {
+            return Err(SessionError::Validation(format!(
+                "duplicate bus ID {}",
+                bus.id
+            )));
+        }
+        if bus.name.trim() != bus.name
+            || bus.name.is_empty()
+            || bus.name.len() > MAX_BUS_NAME_BYTES
+            || bus.name.chars().any(char::is_control)
+        {
+            return Err(SessionError::Validation(format!(
+                "bus {} has an invalid name",
+                bus.id
+            )));
+        }
+        if bus.channels.is_empty() || bus.channels.len() > MAX_BUS_CHANNELS {
+            return Err(SessionError::Validation(format!(
+                "bus {} channel count must be in 1..={MAX_BUS_CHANNELS}",
+                bus.id
+            )));
+        }
+        total_bus_channels = total_bus_channels.saturating_add(bus.channels.len());
+        if total_bus_channels > MAX_TOTAL_BUS_CHANNELS {
+            return Err(SessionError::Validation(format!(
+                "total bus channels exceed the {MAX_TOTAL_BUS_CHANNELS}-channel limit"
+            )));
+        }
+        if bus.ports.len() != bus.channels.len() {
+            return Err(SessionError::Validation(format!(
+                "bus {} has an invalid output-port shape",
+                bus.id
+            )));
+        }
+        validate_finite(bus.gain_db, "bus gain")?;
+        validate_finite(bus.balance, "bus balance")?;
+        if !(MIN_BUS_GAIN_DB..=MAX_BUS_GAIN_DB).contains(&bus.gain_db) {
+            return Err(SessionError::Validation(format!(
+                "bus gain must be in {MIN_BUS_GAIN_DB}..={MAX_BUS_GAIN_DB} dB"
+            )));
+        }
+        if !(-1.0..=1.0).contains(&bus.balance) {
+            return Err(SessionError::Validation(
+                "bus balance must be in -1..=1".to_owned(),
+            ));
+        }
+        if bus.channels.len() != 2 && bus.balance != 0.0 {
+            return Err(SessionError::Validation(
+                "non-stereo buses cannot have nonzero balance".to_owned(),
+            ));
+        }
+        for port in &bus.ports {
+            require_id(port.id, "bus port")?;
+            if !port_ids.insert(port.id) {
+                return Err(SessionError::Validation(format!(
+                    "duplicate port ID {}",
+                    port.id
+                )));
+            }
+            validate_finite(port.gain, "bus port gain")?;
+            if port.data_type != DataTypeDocument::Audio
+                || port.direction != PortDirectionDocument::Output
+                || port.role != PortRoleDocument::AudioOutput
+                || port.input_connectability != [ConnectabilityDocument::Internal]
+                || port.output_connectability != [ConnectabilityDocument::External]
+                || port.gain != 1.0
+                || port.muted
+                || port.passthrough_muted
+                || !port.internal_connections.is_empty()
+                || port.ringbuffer_frames != 0
+            {
+                return Err(SessionError::Validation(format!(
+                    "bus output port {} is not canonical",
+                    port.id
+                )));
+            }
+            total_bus_host_links =
+                total_bus_host_links.saturating_add(port.external_connections.len());
+            if total_bus_host_links > MAX_BUS_HOST_LINKS {
+                return Err(SessionError::Validation(format!(
+                    "bus host links exceed the {MAX_BUS_HOST_LINKS}-link limit"
+                )));
+            }
+        }
+        let expected_labels = match bus.channels.len() {
+            1 => vec!["Mono".to_owned()],
+            2 => vec!["Left".to_owned(), "Right".to_owned()],
+            count => (1..=count)
+                .map(|index| format!("Channel {index}"))
+                .collect(),
+        };
+        let mut channel_output_ids = BTreeSet::new();
+        for (channel, expected_label) in bus.channels.iter().zip(expected_labels) {
+            require_id(channel.id, "bus channel")?;
+            if !bus_channel_ids.insert(channel.id) {
+                return Err(SessionError::Validation(format!(
+                    "duplicate bus channel ID {}",
+                    channel.id
+                )));
+            }
+            if channel.label != expected_label {
+                return Err(SessionError::Validation(format!(
+                    "bus channel {} has a noncanonical label",
+                    channel.id
+                )));
+            }
+            if !channel_output_ids.insert(channel.output_port_id) {
+                return Err(SessionError::Validation(
+                    "bus channels share one output port".to_owned(),
+                ));
+            }
+            if !bus
+                .ports
+                .iter()
+                .any(|port| port.id == channel.output_port_id)
+            {
+                return Err(SessionError::Validation(format!(
+                    "bus channel {} references a stale output port",
+                    channel.id
+                )));
+            }
+        }
+    }
+    let display_order = bundle
+        .document
+        .bus_display_order
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if bundle.document.bus_display_order.len() != bus_ids.len() || display_order != bus_ids {
+        return Err(SessionError::Validation(
+            "bus display order must contain every bus ID exactly once".to_owned(),
+        ));
+    }
+    if bundle.document.mixer_routes.len() > MAX_MIXER_ROUTES {
+        return Err(SessionError::Validation(format!(
+            "mixer route count exceeds the {MAX_MIXER_ROUTES}-route limit"
+        )));
+    }
+    let mut mixer_routes = BTreeSet::new();
+    for route in &bundle.document.mixer_routes {
+        if !mixer_routes.insert((route.source_port_id, route.destination_channel_id)) {
+            return Err(SessionError::Validation("duplicate mixer route".to_owned()));
+        }
+        if !mixer_source_port_ids.contains(&route.source_port_id) {
+            return Err(SessionError::Validation(
+                "mixer route source is not a track audio output".to_owned(),
+            ));
+        }
+        if !bus_channel_ids.contains(&route.destination_channel_id) {
+            return Err(SessionError::Validation(
+                "mixer route references a stale endpoint".to_owned(),
+            ));
         }
     }
     for selected in &bundle.document.selected_loop_ids {
@@ -1547,6 +1808,58 @@ fn validate_finite(value: f32, field: &str) -> Result<(), SessionError> {
     } else {
         Err(SessionError::Validation(format!("{field} is not finite")))
     }
+}
+
+fn require_mixer_document_fields(manifest: &serde_json::Value) -> Result<(), SessionError> {
+    let document = manifest
+        .get("document")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| SessionError::Manifest("session document must be an object".to_owned()))?;
+    for field in ["mixer_routes", "bus_display_order"] {
+        if !document.contains_key(field) {
+            return Err(SessionError::Manifest(format!(
+                "session document is missing required {field}"
+            )));
+        }
+    }
+    let buses = document
+        .get("buses")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| SessionError::Manifest("session buses must be an array".to_owned()))?;
+    for (index, bus) in buses.iter().enumerate() {
+        let bus = bus.as_object().ok_or_else(|| {
+            SessionError::Manifest(format!("session bus {index} must be an object"))
+        })?;
+        if !bus.contains_key("channels") {
+            return Err(SessionError::Manifest(format!(
+                "session bus {index} is missing required channels"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn require_current_bus_control_fields(manifest: &serde_json::Value) -> Result<(), SessionError> {
+    let buses = manifest
+        .get("document")
+        .and_then(|document| document.get("buses"))
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| SessionError::Manifest("session buses must be an array".to_owned()))?;
+    for (index, bus) in buses.iter().enumerate() {
+        let Some(bus) = bus.as_object() else {
+            return Err(SessionError::Manifest(format!(
+                "session bus {index} must be an object"
+            )));
+        };
+        for field in ["gain_db", "balance", "muted"] {
+            if !bus.contains_key(field) {
+                return Err(SessionError::Manifest(format!(
+                    "session bus {index} is missing required {field}"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_media_id(id: &str) -> Result<(), SessionError> {

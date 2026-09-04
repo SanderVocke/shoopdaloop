@@ -14,6 +14,7 @@ src/rust/shoop_common/src/tracing_capture.rs,non_realtime_support,instrumented_d
 src/rust/shoop_common/src/tracing_helpers.rs,non_realtime_support,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_egui/src/app_widget.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_egui/src/builtin_fx_editor.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_egui/src/bus_controls.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_egui/src/click_track_dialog.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/colors.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/composite_loop_widget.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

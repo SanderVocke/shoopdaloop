@@ -127,12 +127,18 @@ pub struct NativeBackend {
 struct NativeRuntime {
     tracks: BTreeMap<BackendTrackId, NativeTrack>,
     global_fx_port: BackendPortId,
+    buses: BTreeMap<BackendBusId, NativeBus>,
+    mixer_routes: BTreeSet<BackendMixerLink>,
+    mixer_failures: Vec<BackendMixerFailure>,
+    mixer_revision: u64,
     loops: BTreeMap<BackendLoopId, NativeLoop>,
     composites: BTreeMap<BackendCompositeId, NativeComposite>,
     ports: BTreeMap<BackendPortId, NativePort>,
     next_track_id: u64,
     next_loop_id: u64,
     next_composite_id: u64,
+    next_bus_id: u64,
+    next_bus_channel_id: u64,
     next_port_id: u64,
     connection_revision: u64,
     connection_failures: Vec<BackendConnectionFailure>,
@@ -164,6 +170,24 @@ struct NativeFx {
     chain: FXChain,
     active: bool,
     last_confirmed_state: Option<String>,
+}
+
+#[derive(Clone)]
+struct NativeBus {
+    id: BackendBusId,
+    name: String,
+    channels: Vec<NativeBusChannel>,
+    gain_db: f32,
+    balance: f32,
+    muted: bool,
+}
+
+#[derive(Clone)]
+struct NativeBusChannel {
+    id: BackendBusChannelId,
+    label: String,
+    input: AudioPort,
+    output_port_id: BackendPortId,
 }
 
 struct NativeComposite {
@@ -370,9 +394,13 @@ impl NativeRuntime {
             direction: BackendPortDirection::Input,
             role: BackendPortRole::MidiInput,
         };
-        Ok(Self {
+        let mut runtime = Self {
             tracks: BTreeMap::new(),
             global_fx_port,
+            buses: BTreeMap::new(),
+            mixer_routes: BTreeSet::new(),
+            mixer_failures: Vec::new(),
+            mixer_revision: 1,
             loops: BTreeMap::new(),
             composites: BTreeMap::new(),
             ports: BTreeMap::from([(
@@ -385,6 +413,8 @@ impl NativeRuntime {
             next_track_id: 1,
             next_loop_id: 1,
             next_composite_id: 1,
+            next_bus_id: 2,
+            next_bus_channel_id: 3,
             next_port_id: 1,
             connection_revision: 1,
             connection_failures: Vec::new(),
@@ -392,11 +422,27 @@ impl NativeRuntime {
             resolved,
             driver,
             session,
-        })
+        };
+        runtime.initialize_default_master_bus()?;
+        Ok(runtime)
     }
 
     fn wait(&self) {
         self.driver.wait_process();
+    }
+
+    fn wait_for_graph(&self) -> Result<bool> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            self.wait();
+            if self.session.graph_up_to_date()? {
+                return Ok(true);
+            }
+            if std::time::Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::yield_now();
+        }
     }
 
     fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
@@ -413,6 +459,7 @@ impl NativeRuntime {
         } else {
             self.session.remove_processor(&track.port_name_base)?;
         }
+        let route_count = self.mixer_routes.len();
         for port_id in &track.ports {
             let Some(port) = self.ports.remove(port_id) else {
                 continue;
@@ -427,6 +474,11 @@ impl NativeRuntime {
                     self.session.remove_midi_port(&port)?;
                 }
             }
+        }
+        self.mixer_routes
+            .retain(|link| !track.ports.contains(&link.source_port_id));
+        if self.mixer_routes.len() != route_count {
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
         }
         self.connection_failures
             .retain(|failure| !track.ports.contains(&failure.port_id));
@@ -555,15 +607,48 @@ impl NativeRuntime {
         role: BackendPortRole,
         handle: NativePortHandle,
     ) -> BackendPortDescriptor {
+        self.next_owned_port(
+            BackendPortOwner::Track,
+            name,
+            data_type,
+            direction,
+            role,
+            handle,
+        )
+    }
+
+    fn next_owned_port(
+        &mut self,
+        owner: BackendPortOwner,
+        name: String,
+        data_type: BackendPortDataType,
+        direction: BackendPortDirection,
+        role: BackendPortRole,
+        handle: NativePortHandle,
+    ) -> BackendPortDescriptor {
+        let id = BackendPortId::from_raw(self.next_port_id);
+        self.next_port_id = self.next_port_id.saturating_add(1);
+        self.next_owned_port_with_id(id, owner, name, data_type, direction, role, handle)
+    }
+
+    fn next_owned_port_with_id(
+        &mut self,
+        id: BackendPortId,
+        owner: BackendPortOwner,
+        name: String,
+        data_type: BackendPortDataType,
+        direction: BackendPortDirection,
+        role: BackendPortRole,
+        handle: NativePortHandle,
+    ) -> BackendPortDescriptor {
         let descriptor = BackendPortDescriptor {
-            id: BackendPortId::from_raw(self.next_port_id),
-            owner: BackendPortOwner::Track,
+            id,
+            owner,
             name,
             data_type,
             direction,
             role,
         };
-        self.next_port_id = self.next_port_id.saturating_add(1);
         self.ports.insert(
             descriptor.id,
             NativePort {
@@ -573,6 +658,566 @@ impl NativeRuntime {
         );
         self.connection_revision = self.connection_revision.wrapping_add(1);
         descriptor
+    }
+
+    fn initialize_default_master_bus(&mut self) -> Result<()> {
+        self.create_bus_with_ids(
+            BackendBusRequest {
+                name: MASTER_BUS_NAME.to_owned(),
+                channel_count: 2,
+            },
+            MASTER_BUS_ID,
+            MASTER_BUS_CHANNEL_IDS.to_vec(),
+            MASTER_BUS_OUTPUT_PORT_IDS.to_vec(),
+        )?;
+        Ok(())
+    }
+
+    fn allocate_bus_id(&mut self) -> Result<BackendBusId> {
+        loop {
+            let raw = self.next_bus_id;
+            self.next_bus_id = self
+                .next_bus_id
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("bus identity space is exhausted"))?;
+            let id = BackendBusId::from_raw(raw);
+            if !self.buses.contains_key(&id) {
+                return Ok(id);
+            }
+        }
+    }
+
+    fn allocate_bus_channel_id(&mut self) -> Result<BackendBusChannelId> {
+        loop {
+            let raw = self.next_bus_channel_id;
+            self.next_bus_channel_id = self
+                .next_bus_channel_id
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("bus channel identity space is exhausted"))?;
+            let id = BackendBusChannelId::from_raw(raw);
+            if self
+                .buses
+                .values()
+                .all(|bus| bus.channels.iter().all(|channel| channel.id != id))
+            {
+                return Ok(id);
+            }
+        }
+    }
+
+    fn allocate_bus_output_port_id(&mut self) -> Result<BackendPortId> {
+        loop {
+            let raw = self.next_port_id;
+            self.next_port_id = self
+                .next_port_id
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("port identity space is exhausted"))?;
+            let id = BackendPortId::from_raw(raw);
+            if !self.ports.contains_key(&id) {
+                return Ok(id);
+            }
+        }
+    }
+
+    fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
+        let request = request.normalized()?;
+        let channel_count = request.channel_count as usize;
+        let bus_id = self.allocate_bus_id()?;
+        let channel_ids = (0..channel_count)
+            .map(|_| self.allocate_bus_channel_id())
+            .collect::<Result<Vec<_>>>()?;
+        let output_port_ids = (0..channel_count)
+            .map(|_| self.allocate_bus_output_port_id())
+            .collect::<Result<Vec<_>>>()?;
+        self.create_bus_with_ids(request, bus_id, channel_ids, output_port_ids)
+    }
+
+    fn rollback_unpublished_bus_channels(&mut self, channels: Vec<NativeBusChannel>) {
+        for channel in channels {
+            if let Some(port) = self.ports.remove(&channel.output_port_id) {
+                if let NativePortHandle::Audio(output) = port.handle {
+                    let _ = self.driver.unregister_audio_port(&output);
+                    let _ = self.session.remove_audio_port(&output);
+                }
+            }
+            let _ = self.session.remove_audio_port(&channel.input);
+        }
+        let _ = self.wait_for_graph();
+    }
+
+    fn create_bus_with_ids(
+        &mut self,
+        request: BackendBusRequest,
+        bus_id: BackendBusId,
+        channel_ids: Vec<BackendBusChannelId>,
+        output_port_ids: Vec<BackendPortId>,
+    ) -> Result<BackendBusCreation> {
+        let request = request.normalized()?;
+        let channel_count = request.channel_count as usize;
+        if self.buses.contains_key(&bus_id)
+            || channel_ids.len() != channel_count
+            || output_port_ids.len() != channel_count
+            || channel_ids.iter().collect::<BTreeSet<_>>().len() != channel_count
+            || output_port_ids.iter().collect::<BTreeSet<_>>().len() != channel_count
+            || channel_ids.iter().any(|id| {
+                self.buses
+                    .values()
+                    .any(|bus| bus.channels.iter().any(|channel| channel.id == *id))
+            })
+            || output_port_ids.iter().any(|id| self.ports.contains_key(id))
+        {
+            return Err(anyhow!(
+                "bus creation identities are invalid or already in use"
+            ));
+        }
+        if self.buses.len() >= MAX_BUSES {
+            return Err(anyhow!("bus count exceeds the {MAX_BUSES}-bus limit"));
+        }
+        let total_channels = self
+            .buses
+            .values()
+            .map(|bus| bus.channels.len())
+            .sum::<usize>();
+        if total_channels.saturating_add(channel_count) > MAX_TOTAL_BUS_CHANNELS {
+            return Err(anyhow!(
+                "total bus channels exceed the {MAX_TOTAL_BUS_CHANNELS}-channel limit"
+            ));
+        }
+        let labels = default_bus_channel_labels(channel_count)?;
+        let mut channels = Vec::with_capacity(channel_count);
+        for (index, ((id, output_port_id), label)) in channel_ids
+            .into_iter()
+            .zip(output_port_ids)
+            .zip(labels)
+            .enumerate()
+        {
+            let input = match AudioPort::new_internal_port(
+                &self.session,
+                &format!("bus_{}:input_{}", bus_id.raw(), index + 1),
+                &PortDirection::Input,
+                0,
+            ) {
+                Ok(input) => input,
+                Err(error) => {
+                    self.rollback_unpublished_bus_channels(channels);
+                    return Err(error);
+                }
+            };
+            let output_name = if bus_id == MASTER_BUS_ID {
+                format!("master_out_{}", index + 1)
+            } else {
+                format!("bus_{}_out_{}", bus_id.raw(), index + 1)
+            };
+            let output = match AudioPort::new_driver_port(
+                &self.session,
+                &self.driver,
+                &output_name,
+                &PortDirection::Output,
+                self.resolved.buffer_size,
+            ) {
+                Ok(output) => output,
+                Err(error) => {
+                    let _ = self.session.remove_audio_port(&input);
+                    self.rollback_unpublished_bus_channels(channels);
+                    return Err(error);
+                }
+            };
+            if let Err(error) = input.connect_internal(&output) {
+                let _ = self.driver.unregister_audio_port(&output);
+                let _ = self.session.remove_audio_port(&input);
+                let _ = self.session.remove_audio_port(&output);
+                self.rollback_unpublished_bus_channels(channels);
+                return Err(error.into());
+            }
+            self.next_owned_port_with_id(
+                output_port_id,
+                BackendPortOwner::Bus(bus_id),
+                output_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Output,
+                BackendPortRole::AudioOutput,
+                NativePortHandle::Audio(output),
+            );
+            channels.push(NativeBusChannel {
+                id,
+                label,
+                input,
+                output_port_id,
+            });
+        }
+        match self.wait_for_graph() {
+            Ok(true) => {}
+            Ok(false) => {
+                self.rollback_unpublished_bus_channels(channels);
+                return Err(anyhow!("bus graph did not become active"));
+            }
+            Err(error) => {
+                self.rollback_unpublished_bus_channels(channels);
+                return Err(anyhow!("bus graph activation failed: {error}"));
+            }
+        }
+        let creation = BackendBusCreation {
+            bus_id,
+            channels: channels
+                .iter()
+                .map(|channel| BackendBusChannelState {
+                    id: channel.id,
+                    label: channel.label.clone(),
+                    output_port_id: channel.output_port_id,
+                })
+                .collect(),
+        };
+        self.buses.insert(
+            bus_id,
+            NativeBus {
+                id: bus_id,
+                name: request.name,
+                channels,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+            },
+        );
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        Ok(creation)
+    }
+
+    fn restore_detached_bus_graph(
+        &self,
+        bus: &NativeBus,
+        outputs: &[AudioPort],
+        affected_routes: &[BackendMixerLink],
+    ) -> Result<()> {
+        for (channel, output) in bus.channels.iter().zip(outputs) {
+            channel.input.connect_internal(output)?;
+        }
+        for route in affected_routes {
+            let source = self
+                .ports
+                .get(&route.source_port_id)
+                .and_then(|port| match &port.handle {
+                    NativePortHandle::Audio(source) => Some(source),
+                    NativePortHandle::Midi(_) => None,
+                })
+                .ok_or_else(|| anyhow!("missing mixer source during bus rollback"))?;
+            let destination = bus
+                .channels
+                .iter()
+                .find(|channel| channel.id == route.destination_channel_id)
+                .ok_or_else(|| anyhow!("missing mixer destination during bus rollback"))?;
+            source.connect_internal(&destination.input)?;
+        }
+        if !self.wait_for_graph()? {
+            return Err(anyhow!("bus rollback graph did not become active"));
+        }
+        Ok(())
+    }
+
+    fn remove_bus_internal(&mut self, bus_id: BackendBusId) -> Result<()> {
+        let bus = self
+            .buses
+            .get(&bus_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("unknown native bus {bus_id:?}"))?;
+        let channel_ids = bus
+            .channels
+            .iter()
+            .map(|channel| channel.id)
+            .collect::<BTreeSet<_>>();
+        let output_ids = bus
+            .channels
+            .iter()
+            .map(|channel| channel.output_port_id)
+            .collect::<BTreeSet<_>>();
+        let outputs = bus
+            .channels
+            .iter()
+            .map(|channel| {
+                self.ports
+                    .get(&channel.output_port_id)
+                    .and_then(|port| match &port.handle {
+                        NativePortHandle::Audio(output) => Some(output.clone()),
+                        NativePortHandle::Midi(_) => None,
+                    })
+                    .ok_or_else(|| anyhow!("missing native bus output port"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let output_connections = outputs
+            .iter()
+            .map(|output| {
+                output
+                    .get_connections_state_now()
+                    .into_iter()
+                    .filter_map(|(endpoint, connected)| connected.then_some(endpoint))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let affected_routes = self
+            .mixer_routes
+            .iter()
+            .filter(|link| channel_ids.contains(&link.destination_channel_id))
+            .copied()
+            .collect::<Vec<_>>();
+        let mut all_ports = bus
+            .channels
+            .iter()
+            .map(|channel| channel.input.clone())
+            .collect::<Vec<_>>();
+        all_ports.extend(outputs.iter().cloned());
+        self.session.detach_audio_ports(&all_ports)?;
+        match self.wait_for_graph() {
+            Ok(true) => {}
+            Ok(false) => {
+                self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
+                return Err(anyhow!("removed bus graph did not become active"));
+            }
+            Err(error) => {
+                self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)?;
+                return Err(anyhow!("removed bus graph activation failed: {error}"));
+            }
+        }
+        let mut unregistered = Vec::new();
+        for (index, (channel, output)) in bus.channels.iter().zip(&outputs).enumerate() {
+            unregistered.push((index, channel.output_port_id, output.clone()));
+            if let Err(error) = self.driver.unregister_audio_port(output) {
+                let mut rollback_errors = Vec::new();
+                for (restored_index, restored_channel, restored_output) in &unregistered {
+                    if let Err(restore_error) = self.driver.register_existing_audio_port(
+                        restored_output,
+                        &self.ports[restored_channel].descriptor.name,
+                        PortDirection::Output,
+                    ) {
+                        rollback_errors.push(restore_error.to_string());
+                        continue;
+                    }
+                    for endpoint in &output_connections[*restored_index] {
+                        restored_output.connect_external_port(endpoint);
+                    }
+                }
+                self.wait();
+                for (restored_index, _, restored_output) in &unregistered {
+                    let observed = restored_output.get_connections_state_now();
+                    for endpoint in &output_connections[*restored_index] {
+                        if !observed.get(endpoint).copied().unwrap_or(false) {
+                            rollback_errors.push(format!(
+                                "output {} did not reconnect to {endpoint}",
+                                restored_index + 1
+                            ));
+                        }
+                    }
+                }
+                if let Err(restore_error) =
+                    self.restore_detached_bus_graph(&bus, &outputs, &affected_routes)
+                {
+                    rollback_errors.push(restore_error.to_string());
+                }
+                if rollback_errors.is_empty() {
+                    return Err(error);
+                }
+                return Err(anyhow!(
+                    "bus removal failed: {error}; rollback failed: {}",
+                    rollback_errors.join("; ")
+                ));
+            }
+        }
+        self.buses.remove(&bus_id);
+        for output_id in &output_ids {
+            self.ports.remove(output_id);
+        }
+        self.mixer_routes
+            .retain(|link| !channel_ids.contains(&link.destination_channel_id));
+        self.mixer_failures
+            .retain(|failure| !channel_ids.contains(&failure.link.destination_channel_id));
+        self.connection_failures
+            .retain(|failure| !output_ids.contains(&failure.port_id));
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        Ok(())
+    }
+
+    fn mixer_snapshot(&mut self) -> BackendMixerSnapshot {
+        let buses = self
+            .buses
+            .iter()
+            .map(|(id, bus)| {
+                let output_peaks_db = bus
+                    .channels
+                    .iter()
+                    .map(|channel| {
+                        self.ports
+                            .get(&channel.output_port_id)
+                            .and_then(|port| match &port.handle {
+                                NativePortHandle::Audio(port) => port.poll_state(),
+                                NativePortHandle::Midi(_) => None,
+                            })
+                            .map(|state| amplitude_db(state.output_peak))
+                            .unwrap_or(-200.0)
+                    })
+                    .collect::<Vec<_>>();
+                let channels = bus
+                    .channels
+                    .iter()
+                    .map(|channel| BackendBusChannelState {
+                        id: channel.id,
+                        label: channel.label.clone(),
+                        output_port_id: channel.output_port_id,
+                    })
+                    .collect::<Vec<_>>();
+                (
+                    *id,
+                    BackendBusState {
+                        id: *id,
+                        name: bus.name.clone(),
+                        channels,
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                        output_peaks_db,
+                    },
+                )
+            })
+            .collect();
+        BackendMixerSnapshot {
+            revision: self.mixer_revision,
+            buses,
+            confirmed_links: self.mixer_routes.clone(),
+            failures: std::mem::take(&mut self.mixer_failures),
+        }
+    }
+
+    fn apply_bus_control(
+        &mut self,
+        bus_id: BackendBusId,
+        control: BackendBusControl,
+    ) -> Result<()> {
+        let bus = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| anyhow!("unknown native bus {bus_id:?}"))?;
+        let control = control.normalized(bus.channels.len())?;
+        let (gain_db, balance, muted) = match control {
+            BackendBusControl::GainDb(value) => (value, bus.balance, bus.muted),
+            BackendBusControl::Balance(value) => (bus.gain_db, value, bus.muted),
+            BackendBusControl::Mute(value) => (bus.gain_db, bus.balance, value),
+        };
+        let outputs = bus
+            .channels
+            .iter()
+            .map(|channel| {
+                self.ports
+                    .get(&channel.output_port_id)
+                    .and_then(|port| match &port.handle {
+                        NativePortHandle::Audio(port) => Some(port.clone()),
+                        NativePortHandle::Midi(_) => None,
+                    })
+                    .ok_or_else(|| anyhow!("missing native bus output port"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let base = db_gain(gain_db);
+        let (left, right) = balance_factors(balance);
+        let stereo = outputs.len() == 2;
+        let values = outputs
+            .into_iter()
+            .enumerate()
+            .map(|(index, output)| {
+                let channel_balance = if stereo {
+                    if index == 0 {
+                        left
+                    } else {
+                        right
+                    }
+                } else {
+                    1.0
+                };
+                (output, base * channel_balance)
+            })
+            .collect::<Vec<_>>();
+        AudioPort::set_gains_and_muted(&values, muted)?;
+        bus.gain_db = gain_db;
+        bus.balance = balance;
+        bus.muted = muted;
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        Ok(())
+    }
+
+    fn apply_mixer_route(
+        &mut self,
+        source_port_id: BackendPortId,
+        destination_channel_id: BackendBusChannelId,
+        connected: bool,
+    ) -> Result<()> {
+        let source = self
+            .ports
+            .get(&source_port_id)
+            .ok_or_else(|| anyhow!("unknown mixer source port {source_port_id:?}"))?;
+        validate_mixer_source_descriptor(&source.descriptor)?;
+        let NativePortHandle::Audio(source) = &source.handle else {
+            return Err(anyhow!("mixer source is not audio"));
+        };
+        let source = source.clone();
+        let destination = self
+            .buses
+            .values()
+            .flat_map(|bus| &bus.channels)
+            .find(|channel| channel.id == destination_channel_id)
+            .map(|channel| channel.input.clone())
+            .ok_or_else(|| anyhow!("unknown bus channel {destination_channel_id:?}"))?;
+        let link = BackendMixerLink {
+            source_port_id,
+            destination_channel_id,
+        };
+        if self.mixer_routes.contains(&link) == connected {
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
+            return Ok(());
+        }
+        if connected && self.mixer_routes.len() >= MAX_MIXER_ROUTES {
+            return Err(anyhow!(
+                "mixer route count exceeds the {MAX_MIXER_ROUTES}-route limit"
+            ));
+        }
+        if connected {
+            source.connect_internal(&destination)?;
+        } else {
+            source.disconnect_internal(&destination)?;
+        }
+        let activation = self.wait_for_graph();
+        if !matches!(activation, Ok(true)) {
+            let inverse = if connected {
+                source.disconnect_internal(&destination)
+            } else {
+                source.connect_internal(&destination)
+            };
+            let rollback =
+                inverse
+                    .map_err(anyhow::Error::from)
+                    .and_then(|_| match self.wait_for_graph() {
+                        Ok(true) => Ok(()),
+                        Ok(false) => Err(anyhow!("rollback graph did not become active")),
+                        Err(error) => Err(error),
+                    });
+            let mut message = match activation {
+                Ok(false) => "mixer route graph could not be activated".to_owned(),
+                Err(error) => format!("mixer route graph activation failed: {error}"),
+                Ok(true) => unreachable!(),
+            };
+            if let Err(error) = rollback {
+                message.push_str(&format!("; rollback failed: {error}"));
+            }
+            self.mixer_failures.push(BackendMixerFailure {
+                link,
+                desired_connected: connected,
+                message: message.clone(),
+            });
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
+            return Err(anyhow!(message));
+        }
+        if connected {
+            self.mixer_routes.insert(link);
+        } else {
+            self.mixer_routes.remove(&link);
+        }
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        Ok(())
     }
 
     fn create_track_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
@@ -927,9 +1572,48 @@ impl NativeRuntime {
                 .map(|link| link.host_port_id.clone())
                 .collect(),
         }];
+        let buses = self
+            .buses
+            .values()
+            .map(|bus| BackendSessionBus {
+                source_id: bus.id.raw(),
+                name: bus.name.clone(),
+                channels: bus
+                    .channels
+                    .iter()
+                    .map(|channel| BackendSessionBusChannel {
+                        source_id: channel.id.raw(),
+                        label: channel.label.clone(),
+                        output_port: BackendSessionPort {
+                            source_id: channel.output_port_id.raw(),
+                            descriptor: self.ports[&channel.output_port_id].descriptor.clone(),
+                            external_connections: connections
+                                .confirmed_links
+                                .iter()
+                                .filter(|link| link.application_port_id == channel.output_port_id)
+                                .map(|link| link.host_port_id.clone())
+                                .collect(),
+                        },
+                    })
+                    .collect(),
+                gain_db: bus.gain_db,
+                balance: bus.balance,
+                muted: bus.muted,
+            })
+            .collect();
+        let mixer_routes = self
+            .mixer_routes
+            .iter()
+            .map(|link| BackendSessionMixerRoute {
+                source_port_id: link.source_port_id.raw(),
+                destination_channel_id: link.destination_channel_id.raw(),
+            })
+            .collect();
         Ok(BackendSessionData {
             sample_rate: self.resolved.sample_rate,
             tracks,
+            buses,
+            mixer_routes,
             global_ports,
             use_legacy_browser_default_routes: false,
         })
@@ -957,6 +1641,100 @@ impl NativeRuntime {
         replacement
             .global_ports
             .insert(source_global.source_id, self.global_fx_port);
+        self.remove_bus_internal(MASTER_BUS_ID)?;
+        for source_bus in &data.buses {
+            let request = BackendBusRequest {
+                name: source_bus.name.clone(),
+                channel_count: u32::try_from(source_bus.channels.len())
+                    .map_err(|_| anyhow!("session bus channel count exceeds u32"))?,
+            }
+            .normalized()?;
+            let expected_labels = default_bus_channel_labels(source_bus.channels.len())?;
+            if source_bus
+                .channels
+                .iter()
+                .zip(&expected_labels)
+                .any(|(channel, label)| {
+                    channel.label != *label
+                        || channel.output_port.descriptor.owner
+                            != BackendPortOwner::Bus(BackendBusId::from_raw(source_bus.source_id))
+                        || channel.output_port.descriptor.data_type != BackendPortDataType::Audio
+                        || channel.output_port.descriptor.direction != BackendPortDirection::Output
+                        || channel.output_port.descriptor.role != BackendPortRole::AudioOutput
+                })
+            {
+                return Err(anyhow!("prepared bus shape is invalid"));
+            }
+            let created = if source_bus.source_id == MASTER_BUS_ID.raw()
+                && source_bus.name == MASTER_BUS_NAME
+                && source_bus.channels.len() == 2
+            {
+                self.create_bus_with_ids(
+                    request,
+                    MASTER_BUS_ID,
+                    MASTER_BUS_CHANNEL_IDS.to_vec(),
+                    MASTER_BUS_OUTPUT_PORT_IDS.to_vec(),
+                )?
+            } else {
+                self.create_bus(request)?
+            };
+            replacement
+                .buses
+                .insert(source_bus.source_id, created.bus_id);
+            let current_connections = self.connection_snapshot();
+            for (source_channel, native_channel) in
+                source_bus.channels.iter().zip(&created.channels)
+            {
+                replacement
+                    .bus_channels
+                    .insert(source_channel.source_id, native_channel.id);
+                replacement
+                    .bus_output_ports
+                    .insert(source_channel.source_id, native_channel.output_port_id);
+                replacement.ports.insert(
+                    source_channel.output_port.source_id,
+                    native_channel.output_port_id,
+                );
+                for external in &source_channel.output_port.external_connections {
+                    if !current_connections.host_ports.contains_key(external) {
+                        self.connection_failures.push(BackendConnectionFailure {
+                            port_id: native_channel.output_port_id,
+                            external_port: external.clone(),
+                            desired_connected: true,
+                            message: format!(
+                                "external endpoint {external} is unavailable during session restoration"
+                            ),
+                        });
+                        continue;
+                    }
+                    if let Err(error) =
+                        self.set_port_connected(native_channel.output_port_id, external, true)
+                    {
+                        self.connection_failures.push(BackendConnectionFailure {
+                            port_id: native_channel.output_port_id,
+                            external_port: external.clone(),
+                            desired_connected: true,
+                            message: format!(
+                                "could not restore external endpoint {external}: {error}"
+                            ),
+                        });
+                    }
+                }
+            }
+            self.apply_bus_control(
+                created.bus_id,
+                BackendBusControl::GainDb(source_bus.gain_db),
+            )?;
+            if source_bus.channels.len() == 2 {
+                self.apply_bus_control(
+                    created.bus_id,
+                    BackendBusControl::Balance(source_bus.balance),
+                )?;
+            } else if source_bus.balance != 0.0 {
+                return Err(anyhow!("non-stereo session bus balance must be centered"));
+            }
+            self.apply_bus_control(created.bus_id, BackendBusControl::Mute(source_bus.muted))?;
+        }
         for external in &source_global.external_connections {
             if let Err(error) = self.set_port_connected(self.global_fx_port, external, true) {
                 self.connection_failures.push(BackendConnectionFailure {
@@ -1159,6 +1937,19 @@ impl NativeRuntime {
                 }
             }
             replacement.tracks.insert(source_track.source_id, created);
+        }
+        for route in &data.mixer_routes {
+            let source_port_id = replacement
+                .ports
+                .get(&route.source_port_id)
+                .copied()
+                .ok_or_else(|| anyhow!("prepared mixer route has a stale source"))?;
+            let destination_channel_id = replacement
+                .bus_channels
+                .get(&route.destination_channel_id)
+                .copied()
+                .ok_or_else(|| anyhow!("prepared mixer route has a stale destination"))?;
+            self.apply_mixer_route(source_port_id, destination_channel_id, true)?;
         }
         self.wait();
         Ok(replacement)
@@ -2379,6 +3170,10 @@ impl NativeRuntime {
         if !self.connection_snapshot().host_ports.contains_key(endpoint) {
             return Err(anyhow!("external port disappeared: {endpoint}"));
         }
+        let bus_owned = self
+            .ports
+            .get(&port_id)
+            .is_some_and(|port| matches!(port.descriptor.owner, BackendPortOwner::Bus(_)));
         let port = self
             .ports
             .get(&port_id)
@@ -2395,6 +3190,34 @@ impl NativeRuntime {
             }
         }
         port.handle.wait_ready(&self.session)?;
+        if connected
+            && bus_owned
+            && !port
+                .handle
+                .connections_now()
+                .get(endpoint)
+                .copied()
+                .unwrap_or(false)
+        {
+            let bus_links = self
+                .ports
+                .values()
+                .filter(|candidate| matches!(candidate.descriptor.owner, BackendPortOwner::Bus(_)))
+                .map(|candidate| {
+                    candidate
+                        .handle
+                        .connections_now()
+                        .values()
+                        .filter(|connected| **connected)
+                        .count()
+                })
+                .sum::<usize>();
+            if bus_links >= MAX_BUS_HOST_LINKS {
+                return Err(anyhow!(
+                    "bus host links exceed the {MAX_BUS_HOST_LINKS}-link limit"
+                ));
+            }
+        }
         if connected {
             port.handle.connect(endpoint);
         } else {
@@ -3441,6 +4264,28 @@ impl Backend for NativeBackend {
             .set_port_connected(port_id, external_port, connected)
     }
 
+    fn set_mixer_route(
+        &mut self,
+        source_port_id: BackendPortId,
+        destination_channel_id: BackendBusChannelId,
+        connected: bool,
+    ) -> Result<()> {
+        self.runtime_mut()?
+            .apply_mixer_route(source_port_id, destination_channel_id, connected)
+    }
+
+    fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
+        self.runtime_mut()?.create_bus(request)
+    }
+
+    fn remove_bus(&mut self, bus_id: BackendBusId) -> Result<()> {
+        self.runtime_mut()?.remove_bus_internal(bus_id)
+    }
+
+    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        self.runtime_mut()?.apply_bus_control(bus_id, control)
+    }
+
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -3677,6 +4522,7 @@ impl Backend for NativeBackend {
             composites,
             removed_composites: Vec::new(),
             connections: runtime.take_connection_snapshot(),
+            mixer: runtime.mixer_snapshot(),
             mutation_failures: Vec::new(),
         })
     }
@@ -3945,6 +4791,98 @@ fn from_native_mode(mode: shoop_engine::LoopMode) -> BackendLoopMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_dummy_exposes_a_disconnected_stereo_master() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }))
+        .unwrap();
+        let snapshot = backend.poll().unwrap();
+        let master = snapshot.mixer.buses.values().next().unwrap();
+        assert_eq!(master.name, "Master");
+        assert_eq!(master.channels.len(), 2);
+        assert!(snapshot.mixer.confirmed_links.is_empty());
+        assert!(snapshot.connections.confirmed_links.iter().all(|link| {
+            !master
+                .channels
+                .iter()
+                .any(|channel| channel.output_port_id == link.application_port_id)
+        }));
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-9.0))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Balance(-0.25))
+            .unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Mute(true))
+            .unwrap();
+        let controlled = backend.poll().unwrap();
+        let master = &controlled.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.gain_db, -9.0);
+        assert_eq!(master.balance, -0.25);
+        assert!(master.muted);
+        assert_eq!(master.output_peaks_db.len(), 2);
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.buses[0].gain_db, -9.0);
+        assert_eq!(captured.buses[0].balance, -0.25);
+        assert!(captured.buses[0].muted);
+        backend.replace_session(&captured).unwrap();
+        let restored = backend.poll().unwrap();
+        let master = &restored.mixer.buses[&MASTER_BUS_ID];
+        assert_eq!(master.gain_db, -9.0);
+        assert_eq!(master.balance, -0.25);
+        assert!(master.muted);
+        assert!(backend
+            .set_bus_control(BackendBusId::from_raw(99), BackendBusControl::Mute(false))
+            .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_dummy_supports_dynamic_multichannel_and_zero_bus_states() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }))
+        .unwrap();
+        let created = backend
+            .create_bus(BackendBusRequest {
+                name: "Surround".to_owned(),
+                channel_count: 4,
+            })
+            .unwrap();
+        assert_eq!(created.channels.len(), 4);
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.mixer.buses.len(), 2);
+        assert_eq!(
+            snapshot.mixer.buses[&created.bus_id].output_peaks_db.len(),
+            4
+        );
+        backend
+            .set_bus_control(created.bus_id, BackendBusControl::GainDb(-5.0))
+            .unwrap();
+        assert!(backend
+            .set_bus_control(created.bus_id, BackendBusControl::Balance(0.5))
+            .is_err());
+        let captured = backend.capture_session().unwrap();
+        let replacement = backend.replace_session(&captured).unwrap();
+        let restored_id = replacement.buses[&created.bus_id.raw()];
+        let restored = backend.poll().unwrap();
+        assert_eq!(restored.mixer.buses[&restored_id].name, "Surround");
+        assert_eq!(restored.mixer.buses[&restored_id].channels.len(), 4);
+        assert_eq!(restored.mixer.buses[&restored_id].gain_db, -5.0);
+        backend.remove_bus(MASTER_BUS_ID).unwrap();
+        backend.remove_bus(restored_id).unwrap();
+        let empty = backend.poll().unwrap();
+        assert!(empty.mixer.buses.is_empty());
+        assert!(empty
+            .connections
+            .application_ports
+            .values()
+            .all(|port| !matches!(port.owner, BackendPortOwner::Bus(_))));
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn degraded_fx_status_is_distinct_from_a_crash() {

@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 11;
+pub const SESSION_DOCUMENT_VERSION: u16 = 13;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -57,6 +57,10 @@ pub struct SessionDocument {
     pub selected_loop_ids: Vec<u64>,
     pub targeted_loop_id: Option<u64>,
     pub buses: Vec<BusDocument>,
+    #[serde(default)]
+    pub bus_display_order: Vec<u64>,
+    #[serde(default)]
+    pub mixer_routes: Vec<MixerRouteDocument>,
     pub global_ports: Vec<PortDocument>,
     pub fx_states: Vec<FxStateDocument>,
     pub scripts: Vec<ScriptDocument>,
@@ -73,7 +77,49 @@ impl SessionDocument {
             track_groups: Vec::new(),
             selected_loop_ids: Vec::new(),
             targeted_loop_id: None,
-            buses: Vec::new(),
+            buses: vec![BusDocument {
+                id: 1,
+                name: "Master".to_owned(),
+                channels: vec![
+                    BusChannelDocument {
+                        id: 1,
+                        label: "Left".to_owned(),
+                        output_port_id: 9_007_199_254_740_989,
+                    },
+                    BusChannelDocument {
+                        id: 2,
+                        label: "Right".to_owned(),
+                        output_port_id: 9_007_199_254_740_990,
+                    },
+                ],
+                ports: [
+                    (9_007_199_254_740_989, "master_out_1"),
+                    (9_007_199_254_740_990, "master_out_2"),
+                ]
+                .into_iter()
+                .map(|(id, name)| PortDocument {
+                    id,
+                    name: name.to_owned(),
+                    data_type: DataTypeDocument::Audio,
+                    direction: PortDirectionDocument::Output,
+                    role: PortRoleDocument::AudioOutput,
+                    input_connectability: vec![ConnectabilityDocument::Internal],
+                    output_connectability: vec![ConnectabilityDocument::External],
+                    gain: 1.0,
+                    muted: false,
+                    passthrough_muted: false,
+                    internal_connections: Vec::new(),
+                    external_connections: Vec::new(),
+                    ringbuffer_frames: 0,
+                })
+                .collect(),
+                fx_chain: None,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+            }],
+            bus_display_order: vec![1],
+            mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             fx_states: Vec::new(),
             scripts: Vec::new(),
@@ -317,8 +363,29 @@ pub enum ConnectabilityDocument {
 pub struct BusDocument {
     pub id: u64,
     pub name: String,
+    #[serde(default)]
+    pub channels: Vec<BusChannelDocument>,
     pub ports: Vec<PortDocument>,
     pub fx_chain: Option<FxChainDocument>,
+    #[serde(default)]
+    pub gain_db: f32,
+    #[serde(default)]
+    pub balance: f32,
+    #[serde(default)]
+    pub muted: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct BusChannelDocument {
+    pub id: u64,
+    pub label: String,
+    pub output_port_id: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct MixerRouteDocument {
+    pub source_port_id: u64,
+    pub destination_channel_id: u64,
 }
 
 fn default_builtin_fx_audio_channels() -> u32 {

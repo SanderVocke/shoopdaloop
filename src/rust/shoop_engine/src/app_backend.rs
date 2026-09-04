@@ -2165,6 +2165,11 @@ impl BackendSession {
         self.shared.wait_for_command(sequence, timeout)
     }
 
+    pub fn graph_up_to_date(&self) -> Result<bool> {
+        self.shared
+            .query_graph_scheduler_response(|session| session.graph_up_to_date())
+    }
+
     pub fn get_state(&self) -> BackendSessionState {
         let handle = self.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
         let stats = handle.stats();
@@ -2283,6 +2288,26 @@ impl BackendSession {
                 let _ = session.remove_loop(index);
             }
             control.mark_closed();
+        })?)
+    }
+
+    pub fn detach_audio_ports(&self, ports: &[AudioPort]) -> Result<CommandSequence> {
+        if ports
+            .iter()
+            .any(|port| !Arc::ptr_eq(&self.shared, &port.shared))
+        {
+            return Err(anyhow!("audio port belongs to another session"));
+        }
+        let controls = ports
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        Ok(self.shared.send_topology(move |session| {
+            for control in &controls {
+                if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                    let _ = session.remove_port(index);
+                }
+            }
         })?)
     }
 
@@ -3554,6 +3579,15 @@ impl AudioDriver {
         }
         Ok(())
     }
+    pub fn register_existing_audio_port(
+        &self,
+        port: &AudioPort,
+        name: &str,
+        direction: PortDirection,
+    ) -> Result<()> {
+        self.register_audio_port(name, direction, Arc::clone(&port.control))
+    }
+
     pub fn unregister_audio_port(&self, port: &AudioPort) -> Result<()> {
         let Some(jack) = self.jack() else {
             return Ok(());
@@ -5678,6 +5712,69 @@ impl AudioPort {
         })
     }
 
+    pub fn new_internal_port(
+        sess: &BackendSession,
+        name: &str,
+        direction: &PortDirection,
+        ringbuffer_n_samples: usize,
+    ) -> Result<Self> {
+        Self::new_internal(
+            Arc::clone(&sess.shared),
+            name.to_string(),
+            *direction,
+            ringbuffer_n_samples,
+        )
+    }
+
+    fn new_internal(
+        shared: Arc<SharedSession>,
+        name: String,
+        direction: PortDirection,
+        ringbuffer_n_samples: usize,
+    ) -> Result<Self> {
+        let control = Arc::new(
+            ObjectControl::<AudioPortId, engine::AudioPortStateMirror>::pending(shared.session_id),
+        );
+        let weak = Arc::downgrade(&control);
+        let mut owned = Some(name.clone());
+        let sequence = shared.send_topology(move |session| {
+            let Some(control) = weak.upgrade() else {
+                return;
+            };
+            let Some(owned) = owned.take() else { return };
+            let n_frames = session.buffer_size().max(1) as usize;
+            let ringbuffer_buffer_size = if ringbuffer_n_samples == 0 {
+                0
+            } else {
+                ringbuffer_n_samples.div_ceil(32).max(n_frames)
+            };
+            let mut port = engine::InternalAudioPort::new(
+                owned,
+                n_frames,
+                engine::PortConnectability::INTERNAL,
+                engine::PortConnectability::INTERNAL,
+                ringbuffer_buffer_size,
+            );
+            port.audio_mut()
+                .set_ringbuffer_n_samples(ringbuffer_n_samples);
+            match session.add_audio_port_with_state(
+                engine::session::Port::Internal(port),
+                Arc::clone(&control.mirror),
+            ) {
+                Ok(index) => control.mark_ready(AudioPortId(index)),
+                Err(error) => control.mark_failed(error.to_string()),
+            }
+        })?;
+        control.set_creation_sequence(sequence);
+        Ok(Self {
+            shared,
+            control,
+            dummy_output: Arc::new(Mutex::new(Vec::new())),
+            direction,
+            name,
+        })
+    }
+
     pub fn automatic_recording_offset_frames(&self) -> Option<i32> {
         let jack = self.shared.jack()?;
         let backend = jack.lock().unwrap_or_else(|error| error.into_inner());
@@ -5779,6 +5876,76 @@ impl AudioPort {
         }
         result
     }
+    pub fn set_gains_and_muted(
+        values: &[(Self, f32)],
+        muted: bool,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        let Some((first, _)) = values.first() else {
+            return Err(SendError::Disconnected);
+        };
+        if values
+            .iter()
+            .any(|(port, _)| port.control.session_id != first.control.session_id)
+        {
+            return Err(SendError::Disconnected);
+        }
+        let controls = values
+            .iter()
+            .map(|(port, gain)| (Arc::clone(&port.control), *gain))
+            .collect::<Vec<_>>();
+        let result = first.shared.send_control(move |session| {
+            for (control, gain) in &controls {
+                if let Some(audio) = control
+                    .ready_id()
+                    .and_then(|id| session.port_mut(id.index()))
+                    .and_then(|port| port.audio_mut())
+                {
+                    audio.set_gain(*gain);
+                    audio.set_muted(muted);
+                }
+            }
+        });
+        if result.is_ok() {
+            for (port, gain) in values {
+                port.control.mirror.set_gain(*gain);
+                port.control.mirror.set_muted(muted);
+            }
+        }
+        result
+    }
+
+    pub fn set_pair_gain_and_muted(
+        first: &Self,
+        first_gain: f32,
+        second: &Self,
+        second_gain: f32,
+        muted: bool,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        if first.control.session_id != second.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (first_control, second_control) =
+            (Arc::clone(&first.control), Arc::clone(&second.control));
+        let result = first.shared.send_control(move |session| {
+            for (control, gain) in [(&first_control, first_gain), (&second_control, second_gain)] {
+                if let Some(audio) = control
+                    .ready_id()
+                    .and_then(|id| session.port_mut(id.index()))
+                    .and_then(|port| port.audio_mut())
+                {
+                    audio.set_gain(gain);
+                    audio.set_muted(muted);
+                }
+            }
+        });
+        if result.is_ok() {
+            first.control.mirror.set_gain(first_gain);
+            first.control.mirror.set_muted(muted);
+            second.control.mirror.set_gain(second_gain);
+            second.control.mirror.set_muted(muted);
+        }
+        result
+    }
     pub fn set_passthrough_muted(
         &self,
         muted: bool,
@@ -5800,6 +5967,20 @@ impl AudioPort {
         self.shared.send_topology(move |s: &mut engine::Session| {
             if let (Some(from), Some(to)) = (from.ready_id(), to.ready_id()) {
                 let _ = s.connect_ports_internal(from.index(), to.index());
+            }
+        })
+    }
+    pub fn disconnect_internal(
+        &self,
+        other: &AudioPort,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        if self.control.session_id != other.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (from, to) = (Arc::clone(&self.control), Arc::clone(&other.control));
+        self.shared.send_topology(move |session| {
+            if let (Some(from), Some(to)) = (from.ready_id(), to.ready_id()) {
+                let _ = session.disconnect_ports_internal(from.index(), to.index());
             }
         })
     }
@@ -6983,57 +7164,19 @@ impl FXChain {
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
-    /// Queues an internal chain port and immediately returns its pending handle.
     fn make_audio_port(
         &self,
         name: String,
         direction: PortDirection,
         ringbuffer_n_samples: usize,
     ) -> Option<AudioPort> {
-        let control = Arc::new(
-            ObjectControl::<AudioPortId, engine::AudioPortStateMirror>::pending(
-                self.shared.session_id,
-            ),
-        );
-        let weak = Arc::downgrade(&control);
-        let mut owned = Some(name.clone());
-        let sequence = self
-            .shared
-            .send_topology(move |s: &mut engine::Session| {
-                let Some(control) = weak.upgrade() else {
-                    return;
-                };
-                let Some(owned) = owned.take() else { return };
-                let n_frames = s.buffer_size().max(1) as usize;
-                let ringbuffer_buffer_size = if ringbuffer_n_samples == 0 {
-                    0
-                } else {
-                    ringbuffer_n_samples.div_ceil(32).max(n_frames)
-                };
-                let mut port = engine::InternalAudioPort::new(
-                    owned,
-                    n_frames,
-                    engine::PortConnectability::INTERNAL,
-                    engine::PortConnectability::INTERNAL,
-                    ringbuffer_buffer_size,
-                );
-                port.audio_mut()
-                    .set_ringbuffer_n_samples(ringbuffer_n_samples);
-                let port = engine::session::Port::Internal(port);
-                match s.add_audio_port_with_state(port, Arc::clone(&control.mirror)) {
-                    Ok(idx) => control.mark_ready(AudioPortId(idx)),
-                    Err(error) => control.mark_failed(error.to_string()),
-                }
-            })
-            .ok()?;
-        control.set_creation_sequence(sequence);
-        Some(AudioPort {
-            shared: self.shared.clone(),
-            control,
-            dummy_output: Arc::new(Mutex::new(Vec::new())),
-            direction,
+        AudioPort::new_internal(
+            Arc::clone(&self.shared),
             name,
-        })
+            direction,
+            ringbuffer_n_samples,
+        )
+        .ok()
     }
 
     fn make_midi_port(&self, name: String, direction: PortDirection) -> Option<MidiPort> {
@@ -7663,6 +7806,81 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn paired_audio_port_parameters_use_one_control_command() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let first = AudioPort::new_internal_port(&sess, "first", &PortDirection::Output, 0)
+            .expect("first port");
+        let second = AudioPort::new_internal_port(&sess, "second", &PortDirection::Output, 0)
+            .expect("second port");
+        let sequence = AudioPort::set_pair_gain_and_muted(&first, 0.25, &second, 0.5, true)
+            .expect("paired parameters");
+        assert_eq!(sequence.get(), 3);
+
+        engine.pump();
+        let first_state = first.get_state().expect("first state");
+        let second_state = second.get_state().expect("second state");
+        assert_eq!((first_state.gain, first_state.muted), (0.25, true));
+        assert_eq!((second_state.gain, second_state.muted), (0.5, true));
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn batch_detach_keeps_audio_handles_live_for_transactional_rollback() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let input =
+            AudioPort::new_internal_port(&sess, "input", &PortDirection::Input, 0).expect("input");
+        let output = AudioPort::new_internal_port(&sess, "output", &PortDirection::Output, 0)
+            .expect("output");
+        input.connect_internal(&output).expect("connect");
+        engine.pump();
+        sess.detach_audio_ports(&[input.clone(), output.clone()])
+            .expect("batch detach");
+        engine.pump();
+        assert_eq!(input.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(output.lifecycle(), ObjectLifecycle::Ready);
+        input.connect_internal(&output).expect("rollback connect");
+        engine.pump();
+        assert_eq!(input.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(output.lifecycle(), ObjectLifecycle::Ready);
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn multichannel_audio_port_parameters_use_one_control_command() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let ports = (0..6)
+            .map(|index| {
+                AudioPort::new_internal_port(
+                    &sess,
+                    &format!("bus_{index}"),
+                    &PortDirection::Output,
+                    0,
+                )
+                .expect("bus port")
+            })
+            .collect::<Vec<_>>();
+        let values = ports
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, port)| (port, (index + 1) as f32 / 10.0))
+            .collect::<Vec<_>>();
+        let sequence =
+            AudioPort::set_gains_and_muted(&values, true).expect("multichannel parameters");
+        assert_eq!(sequence.get(), 7);
+        engine.pump();
+        for (index, port) in ports.iter().enumerate() {
+            let state = port.get_state().expect("port state");
+            assert_eq!(state.gain, (index + 1) as f32 / 10.0);
+            assert!(state.muted);
+        }
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_channels_resolve_after_their_parent_and_apply_followups() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7841,6 +8059,24 @@ mod tests {
         assert_eq!(output.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(input.get_state().expect("state").gain, 0.25);
         assert_eq!(engine.session().n_ports(), 2);
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn reusable_internal_audio_ports_publish_normal_port_state() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let port = AudioPort::new_internal_port(&sess, "internal", &PortDirection::Input, 16)
+            .expect("internal port");
+        assert_eq!(port.lifecycle(), ObjectLifecycle::Pending);
+
+        engine.pump();
+        assert_eq!(port.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(port.get_state().expect("state").name, "internal");
+        assert!(matches!(
+            engine.session().port(0),
+            Some(engine::session::Port::Internal(_))
+        ));
         sess.shared.return_engine(engine);
     }
 

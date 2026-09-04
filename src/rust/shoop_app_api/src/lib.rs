@@ -34,6 +34,8 @@ macro_rules! entity_id {
 }
 
 entity_id!(TrackId);
+entity_id!(BusId);
+entity_id!(BusChannelId);
 entity_id!(LoopId);
 entity_id!(PortId);
 entity_id!(ChannelId);
@@ -501,6 +503,8 @@ pub struct TrackFxState {
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
+pub const MIN_BUS_GAIN_DB: f32 = MIN_TRACK_GAIN_DB;
+pub const MAX_BUS_GAIN_DB: f32 = MAX_TRACK_GAIN_DB;
 pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
@@ -1015,6 +1019,9 @@ pub enum TrackPortOwnerKind {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ApplicationPortOwner {
     GlobalFxControl,
+    Bus {
+        bus_id: BusId,
+    },
     Track {
         track_id: TrackId,
         kind: TrackPortOwnerKind,
@@ -1048,6 +1055,59 @@ pub struct HostPortState {
     pub name: String,
     pub data_type: PortDataType,
     pub direction: PortDirection,
+}
+
+pub const MAX_BUS_NAME_BYTES: usize = 128;
+pub const MAX_BUSES: usize = 64;
+pub const MAX_BUS_CHANNELS: usize = 64;
+pub const MAX_TOTAL_BUS_CHANNELS: usize = 256;
+pub const MAX_MIXER_ROUTES: usize = 4_096;
+pub const MAX_BUS_HOST_LINKS: usize = 4_096;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BusChannelState {
+    pub id: BusChannelId,
+    pub label: String,
+    pub output_port_id: PortId,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BusState {
+    pub id: BusId,
+    pub name: String,
+    pub structural_state: StructuralState,
+    pub structural_error: Option<String>,
+    pub channels: Arc<[BusChannelState]>,
+    pub gain_db: f32,
+    pub balance: f32,
+    pub muted: bool,
+    pub output_peaks_db: Arc<[f32]>,
+    pub control_pending: bool,
+    pub control_error: Option<String>,
+}
+
+impl BusState {
+    pub fn stereo(&self) -> bool {
+        self.channels.len() == 2
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct MixerRouteState {
+    pub source_port_id: PortId,
+    pub destination_channel_id: BusChannelId,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PendingMixerRouteState {
+    pub route: MixerRouteState,
+    pub desired_connected: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MixerRouteErrorState {
+    pub route: MixerRouteState,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1091,6 +1151,9 @@ pub struct ConnectionViewState {
     pub host_ports: Arc<[HostPortState]>,
     pub confirmed_links: Arc<[ConfirmedConnectionState]>,
     pub pending_links: Arc<[PendingConnectionState]>,
+    pub mixer_links: Arc<[MixerRouteState]>,
+    pub pending_mixer_links: Arc<[PendingMixerRouteState]>,
+    pub mixer_errors: Arc<[MixerRouteErrorState]>,
     pub errors: Arc<[ConnectionErrorState]>,
 }
 
@@ -1104,6 +1167,9 @@ impl Default for ConnectionViewState {
             host_ports: Arc::from([]),
             confirmed_links: Arc::from([]),
             pending_links: Arc::from([]),
+            mixer_links: Arc::from([]),
+            pending_mixer_links: Arc::from([]),
+            mixer_errors: Arc::from([]),
             errors: Arc::from([]),
         }
     }
@@ -1336,7 +1402,7 @@ impl LuaApiVersion {
     }
 }
 
-pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 5 };
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 6 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
@@ -1575,12 +1641,27 @@ pub struct TrackCreationResult {
     pub success: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BusCreationResult {
+    pub request_id: u64,
+    pub success: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BusSpec {
+    pub name: String,
+    pub channel_count: u32,
+    pub creation_request_id: Option<u64>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
     pub revision: u64,
     pub tracks: Vec<TrackState>,
+    pub buses: Arc<[BusState]>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
     pub track_creation_results: Arc<[TrackCreationResult]>,
+    pub bus_creation_results: Arc<[BusCreationResult]>,
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
@@ -1883,6 +1964,15 @@ pub enum TrackAction {
 pub type TrackWidgetAction = TrackAction;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BusAction {
+    Remove,
+    MoveBefore(Option<BusId>),
+    GainChanged(f32),
+    BalanceChanged(f32),
+    MuteChanged(bool),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GlobalControlAction {
     StopAll,
     MidiPanic,
@@ -1940,6 +2030,10 @@ pub enum AppIntent {
         track_id: TrackId,
         action: TrackAction,
     },
+    Bus {
+        bus_id: BusId,
+        action: BusAction,
+    },
     SetTrackLatency {
         track_id: TrackId,
         adjustment: RecordingOffsetAdjustmentState,
@@ -1959,6 +2053,7 @@ pub enum AppIntent {
     Piano(PianoAction),
     AddTrack(DirectTrackSpec),
     AddTrackWithTopology(TrackSpec),
+    AddBus(BusSpec),
     AddLoop {
         track_id: TrackId,
     },
@@ -2053,6 +2148,11 @@ pub enum AppIntent {
     SetPortConnected {
         port_id: PortId,
         host_port_id: HostPortId,
+        connected: bool,
+    },
+    SetMixerRouteConnected {
+        source_port_id: PortId,
+        destination_channel_id: BusChannelId,
         connected: bool,
     },
     RefreshAudioDriverDiscovery {
@@ -2224,6 +2324,18 @@ impl TrackAction {
     }
 }
 
+impl BusAction {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Remove => "bus.remove",
+            Self::MoveBefore(_) => "bus.move_before",
+            Self::GainChanged(_) => "bus.gain",
+            Self::BalanceChanged(_) => "bus.balance",
+            Self::MuteChanged(_) => "bus.mute",
+        }
+    }
+}
+
 impl GlobalControlAction {
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -2260,6 +2372,7 @@ impl AppIntent {
             Self::SetLoopTimeline { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),
+            Self::Bus { action, .. } => action.kind(),
             Self::SetTrackLatency { .. } => "track.latency",
             Self::SetTakeAlignment { .. } => "loop.capture_alignment",
             Self::SetTakeProcessorAlignment { .. } => "loop.processor_alignment",
@@ -2267,6 +2380,7 @@ impl AppIntent {
             Self::Piano(action) => action.kind(),
             Self::AddTrack(_) => "track.add_direct",
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
+            Self::AddBus(_) => "bus.add",
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",
@@ -2290,6 +2404,7 @@ impl AppIntent {
             Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
             Self::SetPortConnected { .. } => "connection.set",
+            Self::SetMixerRouteConnected { .. } => "mixer.connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
             Self::RequestAudioDriverSwitch { .. } => "audio_driver.request_switch",
             Self::ConfirmAudioDriverSwitch { .. } => "audio_driver.confirm_switch",
@@ -2326,6 +2441,34 @@ pub type AppAction = AppIntent;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_state_derives_stereo_capability_from_ordered_channel_count() {
+        let channel = |id| BusChannelState {
+            id: BusChannelId::from_raw(id),
+            label: id.to_string(),
+            output_port_id: PortId::from_raw(id),
+        };
+        let mut state = BusState {
+            id: BusId::from_raw(1),
+            name: "Master".to_owned(),
+            structural_state: StructuralState::Confirmed,
+            structural_error: None,
+            channels: Arc::from([channel(1)]),
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
+            output_peaks_db: Arc::from([-200.0]),
+            control_pending: false,
+            control_error: None,
+        };
+        assert!(!state.stereo());
+        state.channels = Arc::from([channel(1), channel(2)]);
+        state.output_peaks_db = Arc::from([-12.0, -6.0]);
+        assert!(state.stereo());
+        state.channels = Arc::from([channel(1), channel(2), channel(3)]);
+        assert!(!state.stereo());
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn ephemeral_script_names_track_source_versions_without_colliding() {
@@ -2780,7 +2923,7 @@ mod tests {
         assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
         assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
         assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
-        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 5 });
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 6 });
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2916,6 +3059,12 @@ mod tests {
                 connected: true,
             }
         );
+        let mixer_intent = AppIntent::SetMixerRouteConnected {
+            source_port_id: port_id,
+            destination_channel_id: BusChannelId::from_raw(2),
+            connected: true,
+        };
+        assert_eq!(mixer_intent.kind(), "mixer.connection.set");
         assert_eq!(
             PortRole::ORDERED.map(PortRole::label),
             [
@@ -2942,6 +3091,9 @@ mod tests {
                 host_ports: Arc::from([]),
                 confirmed_links: Arc::from([]),
                 pending_links: Arc::from([]),
+                mixer_links: Arc::from([]),
+                pending_mixer_links: Arc::from([]),
+                mixer_errors: Arc::from([]),
                 errors: Arc::from([]),
             }),
             ..Default::default()

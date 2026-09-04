@@ -17,15 +17,16 @@ use shoop_app_api::TrackLatencySpec;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, AudioChannelMappingState,
     AudioChannelSelectionState, AudioDriverConfig, AudioDriverRuntimeState, AudioDriverState,
-    AudioDriverSwitchState, AudioDriverSwitchStatus, ChannelId, ClickSoundDescriptor,
-    ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest, ClickTrackState,
-    CompositeDetailsState, CompositeEventDetailsState, CompositeEventId,
-    CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
-    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultPlaybackMode,
-    DefaultRecordingAction, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
-    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
-    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
-    MidiSequenceChannelState, PendingConnectionState, PianoAction, PortDataType, PortDirection,
+    AudioDriverSwitchState, AudioDriverSwitchStatus, BusAction, BusChannelId, BusChannelState,
+    BusCreationResult, BusId, BusSpec, BusState, ChannelId, ClickSoundDescriptor, ClickTrackKind,
+    ClickTrackPreviewStatus, ClickTrackRequest, ClickTrackState, CompositeDetailsState,
+    CompositeEventDetailsState, CompositeEventId, CompositeTrackDetailsState,
+    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
+    ConnectionViewState, DefaultPlaybackMode, DefaultRecordingAction, DirectTrackSpec,
+    GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState, IoTaskStatus,
+    KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode,
+    LoopState, MidiEventState, MidiSequenceChannelState, MixerRouteErrorState, MixerRouteState,
+    PendingConnectionState, PendingMixerRouteState, PianoAction, PortDataType, PortDirection,
     PortId, PortRole, ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState,
     SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
     ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
@@ -34,42 +35,44 @@ use shoop_app_api::{
     WaveformChannelState,
 };
 use shoop_backend::{
-    canonical_midi_start_state, Backend, BackendAsyncResult, BackendAudioChannelUpdate,
-    BackendAudioContent, BackendAudioData, BackendBuiltInFxMidiCcAssignment,
-    BackendBuiltInFxParameter, BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry,
-    BackendCompositeId, BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot,
-    BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
-    BackendMidiEvent, BackendMutationDetail, BackendOperationProgress,
-    BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionData,
-    BackendSessionPort, BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
-    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    canonical_midi_start_state, default_bus_channel_labels, Backend, BackendAsyncResult,
+    BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData,
+    BackendBuiltInFxMidiCcAssignment, BackendBuiltInFxParameter, BackendBusChannelId,
+    BackendBusControl, BackendBusId, BackendBusRequest, BackendChannelMode, BackendCompositeConfig,
+    BackendCompositeEntry, BackendCompositeId, BackendCompositeKind, BackendCompositeTarget,
+    BackendConnectionSnapshot, BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate,
+    BackendMidiContent, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
+    BackendMutationDetail, BackendOperationProgress, BackendOxiSynthMidiCcAssignment,
+    BackendOxiSynthParameter, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortOwner, BackendPortRole, BackendProcessorLatencyAdjustment,
+    BackendRecordingOffsetAdjustment, BackendSessionBus, BackendSessionBusChannel,
+    BackendSessionData, BackendSessionMixerRoute, BackendSessionPort, BackendSessionReplacement,
+    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
+    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
 use shoop_scripting::{
-    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NullMidiService, ScriptKeyEvent,
-    ScriptLoopEvent, ScriptManager, SessionScriptSource,
+    ControlBus, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NullMidiService,
+    ScriptKeyEvent, ScriptLoopEvent, ScriptManager, SessionScriptSource,
 };
 use shoop_session::{
     click_sound_ids, decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi,
     decode_wav, encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session,
     encode_standard_midi, generate_audio_click_track, generate_midi_click_track,
     resample_exact_midi, resample_loop_audio, resample_session, AudioClickTrackSpec, AudioPayload,
-    BuiltInFxMidiCcAssignmentDocument, BuiltInFxParameterDocument, ChannelDocument,
-    ChannelModeDocument, ClickTrackTimingSpec, CompositeDocument, CompositeKindDocument,
-    CompositeLoopInstanceDocument, ConnectabilityDocument, DataTypeDocument,
+    BuiltInFxMidiCcAssignmentDocument, BuiltInFxParameterDocument, BusChannelDocument, BusDocument,
+    ChannelDocument, ChannelModeDocument, ClickTrackTimingSpec, CompositeDocument,
+    CompositeKindDocument, CompositeLoopInstanceDocument, ConnectabilityDocument, DataTypeDocument,
     DefaultPlaybackModeDocument, ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument,
     FxStateDocument, GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument,
-    MediaPayload, MidiClickTrackSpec, MidiControlDocument, OxiSynthMidiCcAssignmentDocument,
-    OxiSynthParameterDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    ProcessorLatencyAdjustmentDocument, RecordingActionDocument, RecordingOffsetAdjustmentDocument,
-    ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument,
-    TrackGroupDocument, TrackLatencyDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS,
-    MAX_CLICK_TRACK_FRAMES,
+    MediaPayload, MidiClickTrackSpec, MidiControlDocument, MixerRouteDocument,
+    OxiSynthMidiCcAssignmentDocument, OxiSynthParameterDocument, PortDirectionDocument,
+    PortDocument, PortRoleDocument, ProcessorLatencyAdjustmentDocument, RecordingActionDocument,
+    RecordingOffsetAdjustmentDocument, ScriptDocument, SessionBundle, SessionDocument,
+    TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackLatencyDocument,
+    TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS, MAX_CLICK_TRACK_FRAMES,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -108,11 +111,16 @@ pub struct ApplicationAudioPreview {
     pub samples: Arc<[f32]>,
 }
 
+enum SaturatedConnection {
+    Host(PortId, String),
+    Mixer(MixerRouteState),
+}
+
 #[derive(Clone)]
 pub struct ApplicationHandle {
     sender: SyncSender<ApplicationMessage>,
     snapshot: Arc<RwLock<Arc<AppSnapshot>>>,
-    saturated_connection: Arc<Mutex<Option<(PortId, String)>>>,
+    saturated_connection: Arc<Mutex<Option<SaturatedConnection>>>,
     file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
     preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
 }
@@ -146,7 +154,27 @@ impl ApplicationHandle {
                     .saturated_connection
                     .lock()
                     .unwrap_or_else(|error| error.into_inner()) =
-                    Some((port_id, host_port_id.to_string()));
+                    Some(SaturatedConnection::Host(port_id, host_port_id.to_string()));
+                Err(DispatchError::Full)
+            }
+            Err(TrySendError::Full(ApplicationMessage::Intent(QueuedIntent {
+                intent:
+                    AppIntent::SetMixerRouteConnected {
+                        source_port_id,
+                        destination_channel_id,
+                        ..
+                    },
+                ..
+            }))) => {
+                span.record("outcome", "full");
+                *self
+                    .saturated_connection
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) =
+                    Some(SaturatedConnection::Mixer(MixerRouteState {
+                        source_port_id,
+                        destination_channel_id,
+                    }));
                 Err(DispatchError::Full)
             }
             Err(error) => {
@@ -484,7 +512,7 @@ fn run_actor(
     mut backend: Box<dyn Backend + Send>,
     receiver: Receiver<ApplicationMessage>,
     published: Arc<RwLock<Arc<AppSnapshot>>>,
-    saturated_connection: Arc<Mutex<Option<(PortId, String)>>>,
+    saturated_connection: Arc<Mutex<Option<SaturatedConnection>>>,
 ) {
     let mut last_update = Instant::now();
     loop {
@@ -499,12 +527,17 @@ fn run_actor(
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
-        if let Some((port_id, external_port)) = saturated_connection
+        if let Some(saturated) = saturated_connection
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .take()
         {
-            model.report_connection_saturation(port_id, external_port);
+            match saturated {
+                SaturatedConnection::Host(port_id, external_port) => {
+                    model.report_connection_saturation(port_id, external_port)
+                }
+                SaturatedConnection::Mixer(route) => model.report_mixer_saturation(route),
+            }
         }
         let now = Instant::now();
         let elapsed = now.saturating_duration_since(last_update);
@@ -546,7 +579,7 @@ fn update_application(
         let _span = tracing::trace_span!("frontend.app.backend_advance").entered();
         backend.advance(elapsed);
     }
-    model.age_pending_connections(elapsed);
+    model.age_pending_connections(backend, elapsed);
     match backend.poll() {
         Ok(snapshot) => {
             model.clear_periodic_failure("backend.poll");
@@ -579,6 +612,7 @@ fn update_application(
     let scripting_result = model.advance_scripting(backend, elapsed);
     model.report_periodic_result("scripting.advance", scripting_result);
     model.revision = model.revision.wrapping_add(1);
+    model.refresh_bus_view();
     {
         let _span = tracing::trace_span!(
             "frontend.app.snapshot_publish",
@@ -595,25 +629,37 @@ fn update_application(
 struct ApplicationModel {
     revision: u64,
     next_track_id: u64,
+    next_bus_id: u64,
+    next_bus_channel_id: u64,
     next_loop_id: u64,
     next_port_id: u64,
     tracks: Vec<TrackModel>,
+    buses: BTreeMap<BusId, BusModel>,
+    bus_order: Vec<BusId>,
+    bus_view: Arc<[BusState]>,
     loops: BTreeMap<LoopId, LoopModel>,
     connection_ports: BTreeMap<PortId, ConnectionPortModel>,
     host_ports: BTreeMap<String, HostPortState>,
     confirmed_connections: BTreeSet<(PortId, String)>,
     pending_connections: BTreeMap<(PortId, String), PendingConnection>,
+    confirmed_mixer_routes: BTreeSet<MixerRouteState>,
+    pending_mixer_routes: BTreeMap<MixerRouteState, PendingConnection>,
+    mixer_route_errors: Vec<MixerRouteErrorState>,
+    desired_bus_controls: BTreeMap<(BackendBusId, BusControlKey), PendingBusControl>,
     desired_track_controls: BTreeMap<(BackendTrackId, TrackControlKey), BackendTrackControl>,
     desired_track_default_playback_modes: BTreeMap<BackendTrackId, BackendDefaultPlaybackMode>,
     desired_fx_controls: BTreeMap<(BackendTrackId, FxControlKey), BackendTrackFxControl>,
     desired_loop_controls: BTreeMap<(BackendLoopId, LoopControlKey), f32>,
     connection_errors: Vec<ConnectionErrorState>,
     connection_revision: u64,
+    backend_connection_revision: u64,
+    backend_mixer_revision: u64,
     connection_backend_available: bool,
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
     track_processors: Arc<[TrackProcessorDescriptor]>,
     track_creation_results: VecDeque<TrackCreationResult>,
+    bus_creation_results: VecDeque<BusCreationResult>,
     script_manager: ScriptManager,
     script_last_snapshot: ControlSnapshot,
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
@@ -649,6 +695,90 @@ struct PendingScriptConversion {
     expected_source: String,
     expected_generation: u64,
     receiver: Receiver<Result<Arc<shoop_scripting::ScriptResourceBundle>, String>>,
+}
+
+struct BusModel {
+    id: BusId,
+    backend_id: BackendBusId,
+    name: String,
+    structural_state: StructuralState,
+    structural_error: Option<String>,
+    structural_confirmation_revision: u64,
+    structural_age: Duration,
+    creation_request_id: Option<u64>,
+    channels: Vec<BusChannelModel>,
+    gain_db: f32,
+    balance: f32,
+    muted: bool,
+    output_peaks_db: Vec<f32>,
+    control_pending: bool,
+    control_error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum BusControlKey {
+    Gain,
+    Balance,
+    Mute,
+}
+
+struct PendingBusControl {
+    desired: BackendBusControl,
+    rollback: BackendBusControl,
+    cancelling: bool,
+    confirmation_revision: Option<u64>,
+    age: Duration,
+}
+
+fn bus_control_key(control: BackendBusControl) -> BusControlKey {
+    match control {
+        BackendBusControl::GainDb(_) => BusControlKey::Gain,
+        BackendBusControl::Balance(_) => BusControlKey::Balance,
+        BackendBusControl::Mute(_) => BusControlKey::Mute,
+    }
+}
+
+fn backend_bus_control(
+    bus: &shoop_backend::BackendBusState,
+    key: BusControlKey,
+) -> BackendBusControl {
+    match key {
+        BusControlKey::Gain => BackendBusControl::GainDb(bus.gain_db),
+        BusControlKey::Balance => BackendBusControl::Balance(bus.balance),
+        BusControlKey::Mute => BackendBusControl::Mute(bus.muted),
+    }
+}
+
+fn model_bus_control(bus: &BusModel, key: BusControlKey) -> BackendBusControl {
+    match key {
+        BusControlKey::Gain => BackendBusControl::GainDb(bus.gain_db),
+        BusControlKey::Balance => BackendBusControl::Balance(bus.balance),
+        BusControlKey::Mute => BackendBusControl::Mute(bus.muted),
+    }
+}
+
+fn bus_control_matches(bus: &shoop_backend::BackendBusState, control: BackendBusControl) -> bool {
+    match control {
+        BackendBusControl::GainDb(value) => (bus.gain_db - value).abs() <= f32::EPSILON,
+        BackendBusControl::Balance(value) => (bus.balance - value).abs() <= f32::EPSILON,
+        BackendBusControl::Mute(value) => bus.muted == value,
+    }
+}
+
+fn apply_bus_control(bus: &mut BusModel, control: BackendBusControl) {
+    match control {
+        BackendBusControl::GainDb(value) => bus.gain_db = value,
+        BackendBusControl::Balance(value) => bus.balance = value,
+        BackendBusControl::Mute(value) => bus.muted = value,
+    }
+}
+
+struct BusChannelModel {
+    id: BusChannelId,
+    backend_id: BackendBusChannelId,
+    label: String,
+    output_backend_port_id: BackendPortId,
+    output_port_id: Option<PortId>,
 }
 
 struct TrackModel {
@@ -1043,6 +1173,8 @@ struct ConnectionPortModel {
 
 struct PendingConnection {
     desired_connected: bool,
+    cancelling: bool,
+    confirmation_revision: Option<u64>,
     age: Duration,
 }
 
@@ -1396,13 +1528,14 @@ impl ApplicationModel {
             &mut next_port_id,
             &mut connection_ports,
         );
-        let global_ports = backend.poll()?.connections.application_ports;
-        for descriptor in global_ports
+        let initial_backend = backend.poll()?;
+        for descriptor in initial_backend
+            .connections
+            .application_ports
             .values()
             .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
         {
-            let id = PortId::from_raw(next_port_id);
-            next_port_id = next_port_id.saturating_add(1);
+            let id = allocate_connection_port_id(&connection_ports, &mut next_port_id);
             connection_ports.insert(
                 id,
                 ConnectionPortModel {
@@ -1414,6 +1547,67 @@ impl ApplicationModel {
                     direction: PortDirection::Input,
                     role: PortRole::MidiInput,
                     candidates: BTreeMap::new(),
+                },
+            );
+        }
+        let mut buses = BTreeMap::new();
+        let mut bus_order = Vec::new();
+        let mut next_bus_id = 1_u64;
+        let mut next_bus_channel_id = 1_u64;
+        for backend_bus in initial_backend.mixer.buses.values() {
+            let bus_id = BusId::from_raw(next_bus_id);
+            next_bus_id = next_bus_id.saturating_add(1);
+            let mut channels = Vec::with_capacity(backend_bus.channels.len());
+            for backend_channel in &backend_bus.channels {
+                let output = initial_backend
+                    .connections
+                    .application_ports
+                    .get(&backend_channel.output_port_id)
+                    .ok_or_else(|| anyhow!("backend omitted Master output port"))?;
+                let output_port_id =
+                    allocate_connection_port_id(&connection_ports, &mut next_port_id);
+                connection_ports.insert(
+                    output_port_id,
+                    ConnectionPortModel {
+                        id: output_port_id,
+                        backend_id: output.id,
+                        owner: ApplicationPortOwner::Bus { bus_id },
+                        name: output.name.clone(),
+                        data_type: PortDataType::Audio,
+                        direction: PortDirection::Output,
+                        role: PortRole::AudioOutput,
+                        candidates: BTreeMap::new(),
+                    },
+                );
+                let channel_id = BusChannelId::from_raw(next_bus_channel_id);
+                next_bus_channel_id = next_bus_channel_id.saturating_add(1);
+                channels.push(BusChannelModel {
+                    id: channel_id,
+                    backend_id: backend_channel.id,
+                    label: backend_channel.label.clone(),
+                    output_backend_port_id: output.id,
+                    output_port_id: Some(output_port_id),
+                });
+            }
+            bus_order.push(bus_id);
+            buses.insert(
+                bus_id,
+                BusModel {
+                    id: bus_id,
+                    backend_id: backend_bus.id,
+                    name: backend_bus.name.clone(),
+                    structural_state: StructuralState::Confirmed,
+                    structural_error: None,
+                    structural_confirmation_revision: initial_backend.mixer.revision,
+                    structural_age: Duration::ZERO,
+                    creation_request_id: None,
+                    channels,
+                    gain_db: backend_bus.gain_db,
+                    balance: backend_bus.balance,
+                    muted: backend_bus.muted,
+                    output_peaks_db: backend_bus.output_peaks_db.clone(),
+                    control_pending: false,
+                    control_error: None,
                 },
             );
         }
@@ -1459,6 +1653,8 @@ impl ApplicationModel {
         let model = Self {
             revision: 1,
             next_track_id: 2,
+            next_bus_id,
+            next_bus_channel_id,
             next_loop_id: 2,
             next_port_id,
             tracks: vec![TrackModel {
@@ -1478,17 +1674,26 @@ impl ApplicationModel {
                 latency: Default::default(),
                 creation_request_id: None,
             }],
+            buses,
+            bus_order,
+            bus_view: Arc::from([]),
             loops: BTreeMap::from([(loop_id, loop_model)]),
             connection_ports,
             host_ports: BTreeMap::new(),
             confirmed_connections: BTreeSet::new(),
             pending_connections: BTreeMap::new(),
+            confirmed_mixer_routes: BTreeSet::new(),
+            pending_mixer_routes: BTreeMap::new(),
+            mixer_route_errors: Vec::new(),
+            desired_bus_controls: BTreeMap::new(),
             desired_track_controls: BTreeMap::new(),
             desired_track_default_playback_modes: BTreeMap::new(),
             desired_fx_controls: BTreeMap::new(),
             desired_loop_controls: BTreeMap::new(),
             connection_errors: Vec::new(),
             connection_revision: 1,
+            backend_connection_revision: 0,
+            backend_mixer_revision: initial_backend.mixer.revision,
             connection_backend_available: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
@@ -1499,6 +1704,7 @@ impl ApplicationModel {
                 .track_processor_catalog()
                 .unwrap_or_else(|_| Arc::from([])),
             track_creation_results: VecDeque::new(),
+            bus_creation_results: VecDeque::new(),
             script_manager,
             script_last_snapshot: ControlSnapshot::default(),
             script_composition_playback: BTreeMap::new(),
@@ -1540,6 +1746,7 @@ impl ApplicationModel {
         };
         let mut model = model;
         model.script_last_snapshot = model.script_control_snapshot();
+        model.refresh_bus_view();
         Ok(model)
     }
 
@@ -1607,6 +1814,7 @@ impl ApplicationModel {
             AppIntent::Track { track_id, action } => {
                 self.handle_track_action(backend, track_id, action)
             }
+            AppIntent::Bus { bus_id, action } => self.handle_bus_action(backend, bus_id, action),
             AppIntent::SetTrackLatency {
                 track_id,
                 adjustment,
@@ -1698,6 +1906,16 @@ impl ApplicationModel {
                 }
                 result
             }
+            AppIntent::AddBus(spec) => {
+                let request_id = spec.creation_request_id;
+                let result = self.add_bus(backend, spec);
+                if result.is_err() {
+                    if let Some(request_id) = request_id {
+                        self.record_bus_creation_result(request_id, false);
+                    }
+                }
+                result
+            }
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
             AppIntent::ComposeLoopSerial {
                 target_loop_id,
@@ -1785,6 +2003,16 @@ impl ApplicationModel {
                 host_port_id,
                 connected,
             } => self.set_port_connected(backend, port_id, host_port_id.to_string(), connected),
+            AppIntent::SetMixerRouteConnected {
+                source_port_id,
+                destination_channel_id,
+                connected,
+            } => self.set_mixer_route_connected(
+                backend,
+                source_port_id,
+                destination_channel_id,
+                connected,
+            ),
             AppIntent::RefreshAudioDriverDiscovery { config } => backend
                 .refresh_audio_driver_discovery(&config)
                 .map(|runtime| {
@@ -1825,7 +2053,7 @@ impl ApplicationModel {
             AppIntent::ConfirmAudioChannelSelection { task_id, channels } => {
                 self.confirm_audio_channel_selection(task_id, channels)
             }
-            AppIntent::CancelIoTask { task_id } => self.cancel_io_task(task_id),
+            AppIntent::CancelIoTask { task_id } => self.cancel_io_task(backend, task_id),
             AppIntent::FailIoTask { task_id, message } => {
                 if self.io_task.as_ref().is_some_and(|task| task.id == task_id) {
                     tracing::error!(task_id = task_id.raw(), error = %message, "frontend.app.io_task_failed");
@@ -2476,9 +2704,23 @@ impl ApplicationModel {
                 });
             }
         }
+        let buses = self
+            .buses
+            .values()
+            .enumerate()
+            .map(|(index, bus)| ControlBus {
+                id: bus.id,
+                index: index as i64,
+                channel_count: bus.channels.len(),
+                gain_db: bus.gain_db,
+                balance: bus.balance,
+                muted: bus.muted,
+            })
+            .collect();
         ControlSnapshot {
             loops,
             tracks,
+            buses,
             apply_n_cycles: self.global.apply_n_cycles,
             solo: self.global.solo,
             sync_active: self.global.sync,
@@ -2893,6 +3135,15 @@ impl ApplicationModel {
                 muted,
                 respect_auto_mute,
             } => self.handle_track_input_monitoring(backend, &tracks, !muted, respect_auto_mute),
+            ControlOperation::SetBusGain { buses, gain_db } => {
+                self.apply_script_bus_action(backend, buses, BusAction::GainChanged(gain_db))
+            }
+            ControlOperation::SetBusBalance { buses, balance } => {
+                self.apply_script_bus_action(backend, buses, BusAction::BalanceChanged(balance))
+            }
+            ControlOperation::SetBusMuted { buses, muted } => {
+                self.apply_script_bus_action(backend, buses, BusAction::MuteChanged(muted))
+            }
             ControlOperation::SetApplyNCycles(value) => {
                 self.handle_global_action(backend, GlobalControlAction::SetApplyNCycles(value))
             }
@@ -2914,6 +3165,18 @@ impl ApplicationModel {
                 GlobalControlAction::SetDefaultRecordingAction(value),
             ),
         }
+    }
+
+    fn apply_script_bus_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        buses: Vec<BusId>,
+        action: BusAction,
+    ) -> Result<(), String> {
+        for id in buses {
+            self.handle_bus_action(backend, id, action)?;
+        }
+        Ok(())
     }
 
     fn apply_script_track_action(
@@ -3297,6 +3560,7 @@ impl ApplicationModel {
         config: AudioDriverConfig,
     ) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         if matches!(
             self.audio_drivers.switch.status,
             AudioDriverSwitchStatus::AwaitingConfirmation
@@ -3740,8 +4004,21 @@ impl ApplicationModel {
         }
     }
 
+    fn ensure_bus_structures_settled(&self) -> Result<(), String> {
+        if self
+            .buses
+            .values()
+            .any(|bus| bus.structural_state != StructuralState::Confirmed)
+        {
+            Err("bus creation/removal must settle before session or driver changes".to_owned())
+        } else {
+            Ok(())
+        }
+    }
+
     fn begin_save_session(&mut self) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         if self.loops.values().any(|loop_| {
             matches!(
                 loop_.state.mode,
@@ -3770,6 +4047,7 @@ impl ApplicationModel {
 
     fn begin_new_session(&mut self) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Creating new session");
         let document = new_session_document(self.status.sample_rate);
         self.begin_session_load(
@@ -3781,6 +4059,7 @@ impl ApplicationModel {
 
     fn begin_load_session(&mut self, name: String, bytes: &[u8]) -> Result<(), String> {
         self.ensure_io_idle()?;
+        self.ensure_bus_structures_settled()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Validating session");
         let bundle = match decode_session(bytes) {
             Ok(bundle) => bundle,
@@ -4052,9 +4331,14 @@ impl ApplicationModel {
         Ok(())
     }
 
-    fn cancel_io_task(&mut self, task_id: TaskId) -> Result<(), String> {
+    fn cancel_io_task(&mut self, backend: &mut dyn Backend, task_id: TaskId) -> Result<(), String> {
         if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
             return Err(format!("stale I/O task {task_id}"));
+        }
+        if matches!(self.pending_io, Some(PendingIo::CommitSessionLoad { .. })) {
+            backend
+                .cancel_session_replacement()
+                .map_err(|error| format!("could not cancel session replacement: {error}"))?;
         }
         self.pending_io = None;
         self.finish_io(IoTaskStatus::Cancelled, "I/O cancelled");
@@ -4535,6 +4819,115 @@ impl ApplicationModel {
         }
     }
 
+    fn record_bus_creation_result(&mut self, request_id: u64, success: bool) {
+        const MAX_RESULTS: usize = 64;
+        self.bus_creation_results.push_back(BusCreationResult {
+            request_id,
+            success,
+        });
+        while self.bus_creation_results.len() > MAX_RESULTS {
+            self.bus_creation_results.pop_front();
+        }
+    }
+
+    fn add_bus(&mut self, backend: &mut dyn Backend, spec: BusSpec) -> Result<(), String> {
+        let request = BackendBusRequest {
+            name: spec.name,
+            channel_count: spec.channel_count,
+        }
+        .normalized()
+        .map_err(|error| format!("invalid bus: {error}"))?;
+        let bus_raw = self.next_bus_id;
+        let next_bus_id = bus_raw
+            .checked_add(1)
+            .ok_or_else(|| "application bus identity space is exhausted".to_owned())?;
+        let channel_start = self.next_bus_channel_id;
+        let next_bus_channel_id = channel_start
+            .checked_add(u64::from(request.channel_count))
+            .ok_or_else(|| "application bus channel identity space is exhausted".to_owned())?;
+        let bus_id = BusId::from_raw(bus_raw);
+        if self.buses.contains_key(&bus_id)
+            || (0..u64::from(request.channel_count)).any(|offset| {
+                let id = BusChannelId::from_raw(channel_start + offset);
+                self.buses
+                    .values()
+                    .any(|bus| bus.channels.iter().any(|channel| channel.id == id))
+            })
+        {
+            return Err("application bus identity reservation collides".to_owned());
+        }
+        let creation = backend
+            .create_bus(request.clone())
+            .map_err(|error| format!("could not create bus: {error}"))?;
+        let channel_ids = creation
+            .channels
+            .iter()
+            .map(|channel| channel.id)
+            .collect::<BTreeSet<_>>();
+        let output_ids = creation
+            .channels
+            .iter()
+            .map(|channel| channel.output_port_id)
+            .collect::<BTreeSet<_>>();
+        let mapping_invalid = creation.bus_id.raw() == 0
+            || self
+                .buses
+                .values()
+                .any(|bus| bus.backend_id == creation.bus_id)
+            || creation.channels.len() != request.channel_count as usize
+            || channel_ids.len() != creation.channels.len()
+            || output_ids.len() != creation.channels.len()
+            || creation.channels.iter().any(|channel| {
+                channel.id.raw() == 0
+                    || channel.output_port_id.raw() == 0
+                    || self.buses.values().any(|bus| {
+                        bus.channels.iter().any(|existing| {
+                            existing.backend_id == channel.id
+                                || existing.output_backend_port_id == channel.output_port_id
+                        })
+                    })
+            });
+        if mapping_invalid {
+            let _ = backend.remove_bus(creation.bus_id);
+            return Err("backend returned an invalid bus identity mapping".to_owned());
+        }
+        self.next_bus_id = next_bus_id;
+        self.next_bus_channel_id = next_bus_channel_id;
+        let mut channels = Vec::with_capacity(creation.channels.len());
+        for (index, backend_channel) in creation.channels.into_iter().enumerate() {
+            let channel_id = BusChannelId::from_raw(channel_start + index as u64);
+            channels.push(BusChannelModel {
+                id: channel_id,
+                backend_id: backend_channel.id,
+                label: backend_channel.label,
+                output_backend_port_id: backend_channel.output_port_id,
+                output_port_id: None,
+            });
+        }
+        self.buses.insert(
+            bus_id,
+            BusModel {
+                id: bus_id,
+                backend_id: creation.bus_id,
+                name: request.name,
+                structural_state: StructuralState::Creating,
+                structural_error: None,
+                structural_confirmation_revision: self.backend_mixer_revision,
+                structural_age: Duration::ZERO,
+                creation_request_id: spec.creation_request_id,
+                channels,
+                gain_db: 0.0,
+                balance: 0.0,
+                muted: false,
+                output_peaks_db: vec![-200.0; request.channel_count as usize],
+                control_pending: false,
+                control_error: None,
+            },
+        );
+        self.bus_order.push(bus_id);
+        Ok(())
+    }
+
     fn add_track(
         &mut self,
         backend: &mut dyn Backend,
@@ -4873,6 +5266,105 @@ impl ApplicationModel {
             .map(|index| index - usize::from(source_index < index))
             .unwrap_or(self.tracks.len());
         self.tracks.insert(target_index, track);
+        Ok(())
+    }
+
+    fn handle_bus_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        bus_id: BusId,
+        action: BusAction,
+    ) -> Result<(), String> {
+        if action == BusAction::Remove {
+            let bus = self
+                .buses
+                .get_mut(&bus_id)
+                .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+            backend.remove_bus(bus.backend_id).map_err(|error| {
+                let message = format!("could not remove bus {bus_id}: {error}");
+                bus.structural_error = Some(message.clone());
+                message
+            })?;
+            bus.structural_state = StructuralState::Removing;
+            bus.structural_error = None;
+            bus.structural_confirmation_revision = self.backend_mixer_revision;
+            bus.structural_age = Duration::ZERO;
+            return Ok(());
+        }
+        if let BusAction::MoveBefore(target) = action {
+            if !self.buses.contains_key(&bus_id) {
+                return Err(format!("stale or unknown bus {bus_id}"));
+            }
+            if let Some(target) = target {
+                if !self.buses.contains_key(&target) {
+                    return Err(format!("stale or unknown bus {target}"));
+                }
+            }
+            if target == Some(bus_id) {
+                return Ok(());
+            }
+            let source_index = self
+                .bus_order
+                .iter()
+                .position(|id| *id == bus_id)
+                .ok_or_else(|| format!("bus {bus_id} is absent from display order"))?;
+            let target_index = target
+                .map(|target| {
+                    self.bus_order
+                        .iter()
+                        .position(|id| *id == target)
+                        .ok_or_else(|| format!("bus {target} is absent from display order"))
+                })
+                .transpose()?;
+            let moved = self.bus_order.remove(source_index);
+            let target_index = target_index
+                .map(|index| index - usize::from(source_index < index))
+                .unwrap_or(self.bus_order.len());
+            self.bus_order.insert(target_index, moved);
+            return Ok(());
+        }
+        let bus = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        let requested = match action {
+            BusAction::GainChanged(value) => BackendBusControl::GainDb(value),
+            BusAction::BalanceChanged(value) => BackendBusControl::Balance(value),
+            BusAction::MuteChanged(value) => BackendBusControl::Mute(value),
+            BusAction::Remove | BusAction::MoveBefore(_) => unreachable!(),
+        };
+        let control = match requested.normalized(bus.channels.len()) {
+            Ok(control) => control,
+            Err(error) => {
+                let message = error.to_string();
+                bus.control_error = Some(message.clone());
+                return Err(message);
+            }
+        };
+        if let Err(error) = backend.set_bus_control(bus.backend_id, control) {
+            let message = format!("could not update bus {bus_id}: {error}");
+            bus.control_error = Some(message.clone());
+            return Err(message);
+        }
+        let key = (bus.backend_id, bus_control_key(control));
+        let rollback = self
+            .desired_bus_controls
+            .get(&key)
+            .map(|pending| pending.rollback)
+            .unwrap_or_else(|| model_bus_control(bus, key.1));
+        self.desired_bus_controls.insert(
+            key,
+            PendingBusControl {
+                desired: control,
+                rollback,
+                cancelling: false,
+                confirmation_revision: None,
+                age: Duration::ZERO,
+            },
+        );
+        bus.control_pending = true;
+        bus.control_error = None;
+        apply_bus_control(bus, control);
         Ok(())
     }
 
@@ -7783,13 +8275,198 @@ impl ApplicationModel {
             key,
             PendingConnection {
                 desired_connected: connected,
+                cancelling: false,
+                confirmation_revision: None,
                 age: Duration::ZERO,
             },
         );
         Ok(())
     }
 
-    fn age_pending_connections(&mut self, elapsed: Duration) {
+    fn set_mixer_route_connected(
+        &mut self,
+        backend: &mut dyn Backend,
+        source_port_id: PortId,
+        destination_channel_id: BusChannelId,
+        connected: bool,
+    ) -> Result<(), String> {
+        let route = MixerRouteState {
+            source_port_id,
+            destination_channel_id,
+        };
+        let Some(source) = self.connection_ports.get(&source_port_id) else {
+            let message = format!("stale mixer source port {source_port_id}");
+            self.push_mixer_route_error(route, message.clone());
+            return Err(message);
+        };
+        if !matches!(source.owner, ApplicationPortOwner::Track { .. })
+            || source.data_type != PortDataType::Audio
+            || source.direction != PortDirection::Output
+            || source.role != PortRole::AudioOutput
+        {
+            let message = "mixer source is not a track audio output".to_owned();
+            self.push_mixer_route_error(route, message.clone());
+            return Err(message);
+        }
+        let Some(destination) = self
+            .buses
+            .values()
+            .flat_map(|bus| &bus.channels)
+            .find(|channel| channel.id == destination_channel_id)
+        else {
+            let message = format!("stale mixer destination channel {destination_channel_id}");
+            self.push_mixer_route_error(route, message.clone());
+            return Err(message);
+        };
+        let confirmed = self.confirmed_mixer_routes.contains(&route);
+        if self
+            .pending_mixer_routes
+            .get(&route)
+            .is_some_and(|pending| pending.desired_connected == connected)
+            || confirmed == connected && !self.pending_mixer_routes.contains_key(&route)
+        {
+            return Ok(());
+        }
+        if let Err(error) =
+            backend.set_mixer_route(source.backend_id, destination.backend_id, connected)
+        {
+            let message = format!("mixer route request rejected: {error}");
+            self.push_mixer_route_error(route, message.clone());
+            return Err(message);
+        }
+        self.mixer_route_errors.retain(|error| error.route != route);
+        self.pending_mixer_routes.insert(
+            route,
+            PendingConnection {
+                desired_connected: connected,
+                cancelling: false,
+                confirmation_revision: None,
+                age: Duration::ZERO,
+            },
+        );
+        Ok(())
+    }
+
+    fn age_pending_connections(&mut self, backend: &mut dyn Backend, elapsed: Duration) {
+        if !matches!(
+            self.status.audio_driver,
+            AudioDriverState::Dummy | AudioDriverState::Running
+        ) {
+            return;
+        }
+        let structural_timed_out = self
+            .buses
+            .iter_mut()
+            .filter_map(|(id, bus)| {
+                if bus.structural_state == StructuralState::Confirmed {
+                    return None;
+                }
+                bus.structural_age = bus.structural_age.saturating_add(elapsed);
+                (bus.structural_age >= CONNECTION_TIMEOUT).then_some((
+                    *id,
+                    bus.backend_id,
+                    bus.structural_state,
+                    bus.creation_request_id,
+                ))
+            })
+            .collect::<Vec<_>>();
+        for (id, backend_id, state, request_id) in structural_timed_out {
+            match state {
+                StructuralState::Creating => match backend.remove_bus(backend_id) {
+                    Ok(()) => {
+                        if let Some(bus) = self.buses.get_mut(&id) {
+                            bus.structural_state = StructuralState::Removing;
+                            bus.structural_error =
+                                Some("bus creation timed out; cancellation is pending".to_owned());
+                            bus.structural_confirmation_revision = self.backend_mixer_revision;
+                            bus.structural_age = Duration::ZERO;
+                        }
+                        if let Some(request_id) = request_id {
+                            self.record_bus_creation_result(request_id, false);
+                        }
+                        self.report_error(
+                            "bus creation timed out; cancellation is pending".to_owned(),
+                        );
+                    }
+                    Err(error) => {
+                        if let Some(bus) = self.buses.get_mut(&id) {
+                            bus.structural_error = Some(format!(
+                                "bus creation timed out; cancellation will retry: {error}"
+                            ));
+                            bus.structural_age = Duration::ZERO;
+                        }
+                    }
+                },
+                StructuralState::Removing => {
+                    if let Some(bus) = self.buses.get_mut(&id) {
+                        bus.structural_state = StructuralState::Confirmed;
+                        bus.structural_error = Some(
+                            "bus removal timed out; the confirmed bus remains authoritative"
+                                .to_owned(),
+                        );
+                        bus.structural_age = Duration::ZERO;
+                    }
+                    self.report_error(
+                        "bus removal timed out; the confirmed bus remains authoritative".to_owned(),
+                    );
+                }
+                StructuralState::Confirmed => {}
+            }
+        }
+
+        let bus_timed_out = self
+            .desired_bus_controls
+            .iter_mut()
+            .filter_map(|(key, pending)| {
+                pending.age = pending.age.saturating_add(elapsed);
+                (pending.age >= CONNECTION_TIMEOUT).then_some((*key, pending.rollback))
+            })
+            .collect::<Vec<_>>();
+        for ((backend_id, control_key), rollback) in bus_timed_out {
+            let message = match backend.set_bus_control(backend_id, rollback) {
+                Ok(()) => {
+                    if let Some(pending) = self
+                        .desired_bus_controls
+                        .get_mut(&(backend_id, control_key))
+                    {
+                        pending.desired = rollback;
+                        pending.cancelling = true;
+                        pending.confirmation_revision = Some(self.backend_mixer_revision);
+                        pending.age = Duration::ZERO;
+                    }
+                    if let Some(bus) = self
+                        .buses
+                        .values_mut()
+                        .find(|bus| bus.backend_id == backend_id)
+                    {
+                        apply_bus_control(bus, rollback);
+                    }
+                    "bus control request timed out; cancellation is pending".to_owned()
+                }
+                Err(error) => {
+                    if let Some(pending) = self
+                        .desired_bus_controls
+                        .get_mut(&(backend_id, control_key))
+                    {
+                        pending.age = Duration::ZERO;
+                    }
+                    format!("bus control request timed out; cancellation will retry: {error}")
+                }
+            };
+            let still_pending = self
+                .desired_bus_controls
+                .keys()
+                .any(|(candidate, _)| *candidate == backend_id);
+            if let Some(bus) = self
+                .buses
+                .values_mut()
+                .find(|bus| bus.backend_id == backend_id)
+            {
+                bus.control_pending = still_pending;
+                bus.control_error = Some(message.clone());
+            }
+            self.report_error(message);
+        }
         let timed_out: Vec<_> = self
             .pending_connections
             .iter_mut()
@@ -7799,14 +8476,91 @@ impl ApplicationModel {
             })
             .collect();
         for (port_id, external_port) in timed_out {
-            self.pending_connections
-                .remove(&(port_id, external_port.clone()));
+            let key = (port_id, external_port.clone());
+            let rollback = self.confirmed_connections.contains(&key);
+            let message = match self.connection_ports.get(&port_id) {
+                Some(port) => {
+                    match backend.set_port_connected(port.backend_id, &external_port, rollback) {
+                        Ok(()) => {
+                            if let Some(pending) = self.pending_connections.get_mut(&key) {
+                                pending.desired_connected = rollback;
+                                pending.cancelling = true;
+                                pending.confirmation_revision =
+                                    Some(self.backend_connection_revision);
+                                pending.age = Duration::ZERO;
+                            }
+                            format!(
+                                "connection request timed out; cancellation is pending: {external_port}"
+                            )
+                        }
+                        Err(error) => {
+                            if let Some(pending) = self.pending_connections.get_mut(&key) {
+                                pending.age = Duration::ZERO;
+                            }
+                            format!(
+                            "connection request timed out; cancellation will retry for {external_port}: {error}"
+                        )
+                        }
+                    }
+                }
+                None => {
+                    self.pending_connections.remove(&key);
+                    format!(
+                        "connection request timed out; cancellation target became stale: {external_port}"
+                    )
+                }
+            };
             self.push_connection_error(ConnectionErrorState {
                 port_id: Some(port_id),
                 external_port: Some(external_port.clone()),
                 kind: ConnectionErrorKind::TimedOut,
-                message: format!("connection request timed out: {external_port}"),
+                message,
             });
+        }
+        let mixer_timed_out = self
+            .pending_mixer_routes
+            .iter_mut()
+            .filter_map(|(route, pending)| {
+                pending.age = pending.age.saturating_add(elapsed);
+                (pending.age >= CONNECTION_TIMEOUT).then_some(*route)
+            })
+            .collect::<Vec<_>>();
+        for route in mixer_timed_out {
+            let rollback = self.confirmed_mixer_routes.contains(&route);
+            let source = self.connection_ports.get(&route.source_port_id);
+            let destination = self
+                .buses
+                .values()
+                .flat_map(|bus| &bus.channels)
+                .find(|channel| channel.id == route.destination_channel_id);
+            let message = match (source, destination) {
+                (Some(source), Some(destination)) => match backend.set_mixer_route(
+                    source.backend_id,
+                    destination.backend_id,
+                    rollback,
+                ) {
+                    Ok(()) => {
+                        if let Some(pending) = self.pending_mixer_routes.get_mut(&route) {
+                            pending.desired_connected = rollback;
+                            pending.cancelling = true;
+                            pending.confirmation_revision = Some(self.backend_mixer_revision);
+                            pending.age = Duration::ZERO;
+                        }
+                        "mixer route request timed out; cancellation is pending".to_owned()
+                    }
+                    Err(error) => {
+                        if let Some(pending) = self.pending_mixer_routes.get_mut(&route) {
+                            pending.age = Duration::ZERO;
+                        }
+                        format!("mixer route request timed out; cancellation will retry: {error}")
+                    }
+                },
+                _ => {
+                    self.pending_mixer_routes.remove(&route);
+                    "mixer route request timed out; cancellation target became stale".to_owned()
+                }
+            };
+            self.push_mixer_route_error(route, message);
         }
     }
 
@@ -7944,6 +8698,41 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::BusCreation) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendBusId::from_raw(entity);
+                        if let Some(id) = self
+                            .buses
+                            .iter()
+                            .find_map(|(id, bus)| (bus.backend_id == backend_id).then_some(*id))
+                        {
+                            let request_id = self
+                                .buses
+                                .remove(&id)
+                                .and_then(|bus| bus.creation_request_id);
+                            self.bus_order.retain(|candidate| *candidate != id);
+                            self.desired_bus_controls
+                                .retain(|(candidate, _), _| *candidate != backend_id);
+                            if let Some(request_id) = request_id {
+                                self.record_bus_creation_result(request_id, false);
+                            }
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::BusRemoval) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendBusId::from_raw(entity);
+                        if let Some(bus) = self
+                            .buses
+                            .values_mut()
+                            .find(|bus| bus.backend_id == backend_id)
+                        {
+                            bus.structural_state = StructuralState::Confirmed;
+                            bus.structural_error = Some(failure.message.clone());
+                            bus.structural_age = Duration::ZERO;
+                        }
+                    }
+                }
                 Some(BackendMutationDetail::LoopCreation { loop_id }) => {
                     if let Some((id, track_id)) = self.loops.iter().find_map(|(id, model)| {
                         (model.backend_id == *loop_id).then_some((*id, model.track_id))
@@ -8029,6 +8818,8 @@ impl ApplicationModel {
                 Some(
                     BackendMutationDetail::TrackCreation
                     | BackendMutationDetail::TrackRemoval
+                    | BackendMutationDetail::BusCreation
+                    | BackendMutationDetail::BusRemoval
                     | BackendMutationDetail::LoopCreation { .. }
                     | BackendMutationDetail::CompositeConfiguration { .. },
                 ) => {}
@@ -8040,6 +8831,44 @@ impl ApplicationModel {
                         );
                         if self.desired_track_controls.get(&key) == Some(rejected) {
                             self.desired_track_controls.remove(&key);
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::BusControl(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendBusId::from_raw(entity);
+                        let key = (backend_id, bus_control_key(*rejected));
+                        let state = self.desired_bus_controls.get(&key).and_then(|pending| {
+                            (pending.desired == *rejected).then_some(pending.cancelling)
+                        });
+                        if let Some(cancelling) = state {
+                            if cancelling {
+                                if let Some(pending) = self.desired_bus_controls.get_mut(&key) {
+                                    pending.confirmation_revision = None;
+                                    pending.age = Duration::ZERO;
+                                }
+                            } else {
+                                self.desired_bus_controls.remove(&key);
+                            }
+                            let still_pending = self
+                                .desired_bus_controls
+                                .keys()
+                                .any(|(candidate, _)| *candidate == backend_id);
+                            if let Some(bus) = self
+                                .buses
+                                .values_mut()
+                                .find(|bus| bus.backend_id == backend_id)
+                            {
+                                bus.control_pending = still_pending;
+                                bus.control_error = Some(if cancelling {
+                                    format!(
+                                        "bus cancellation was rejected and will retry: {}",
+                                        failure.message
+                                    )
+                                } else {
+                                    failure.message.clone()
+                                });
+                            }
                         }
                     }
                 }
@@ -8622,10 +9451,275 @@ impl ApplicationModel {
                 }
             }
         }
+        self.apply_mixer_snapshot(snapshot.mixer);
         self.apply_connection_snapshot(snapshot.connections);
     }
 
+    fn apply_mixer_snapshot(&mut self, snapshot: BackendMixerSnapshot) {
+        let revision = snapshot.revision;
+        let mut confirmed_creation_requests = Vec::new();
+        for backend_bus in snapshot.buses.values() {
+            let bus_id = self
+                .buses
+                .values()
+                .find(|bus| bus.backend_id == backend_bus.id)
+                .map(|bus| bus.id)
+                .unwrap_or_else(|| {
+                    let id = BusId::from_raw(self.next_bus_id);
+                    self.next_bus_id = self.next_bus_id.saturating_add(1);
+                    self.bus_order.push(id);
+                    self.buses.insert(
+                        id,
+                        BusModel {
+                            id,
+                            backend_id: backend_bus.id,
+                            name: backend_bus.name.clone(),
+                            structural_state: StructuralState::Confirmed,
+                            structural_error: None,
+                            structural_confirmation_revision: revision,
+                            structural_age: Duration::ZERO,
+                            creation_request_id: None,
+                            channels: Vec::new(),
+                            gain_db: backend_bus.gain_db,
+                            balance: backend_bus.balance,
+                            muted: backend_bus.muted,
+                            output_peaks_db: backend_bus.output_peaks_db.clone(),
+                            control_pending: false,
+                            control_error: None,
+                        },
+                    );
+                    id
+                });
+            let bus = self.buses.get_mut(&bus_id).expect("bus was inserted");
+            if bus.structural_state == StructuralState::Creating
+                && revision != bus.structural_confirmation_revision
+            {
+                bus.structural_state = StructuralState::Confirmed;
+                bus.structural_error = None;
+                bus.structural_age = Duration::ZERO;
+                if let Some(request_id) = bus.creation_request_id.take() {
+                    confirmed_creation_requests.push(request_id);
+                }
+            }
+            bus.name.clone_from(&backend_bus.name);
+            bus.gain_db = backend_bus.gain_db;
+            bus.balance = backend_bus.balance;
+            bus.muted = backend_bus.muted;
+            bus.output_peaks_db.clone_from(&backend_bus.output_peaks_db);
+            for backend_channel in &backend_bus.channels {
+                if let Some(channel) = bus
+                    .channels
+                    .iter_mut()
+                    .find(|channel| channel.backend_id == backend_channel.id)
+                {
+                    channel.label.clone_from(&backend_channel.label);
+                    channel.output_backend_port_id = backend_channel.output_port_id;
+                } else {
+                    let id = BusChannelId::from_raw(self.next_bus_channel_id);
+                    self.next_bus_channel_id = self.next_bus_channel_id.saturating_add(1);
+                    bus.channels.push(BusChannelModel {
+                        id,
+                        backend_id: backend_channel.id,
+                        label: backend_channel.label.clone(),
+                        output_backend_port_id: backend_channel.output_port_id,
+                        output_port_id: None,
+                    });
+                }
+            }
+            bus.channels.retain(|channel| {
+                backend_bus
+                    .channels
+                    .iter()
+                    .any(|backend| backend.id == channel.backend_id)
+            });
+        }
+        for request_id in confirmed_creation_requests {
+            self.record_bus_creation_result(request_id, true);
+        }
+        let removed_bus_ids = self
+            .buses
+            .iter()
+            .filter_map(|(id, bus)| {
+                if snapshot.buses.contains_key(&bus.backend_id) {
+                    return None;
+                }
+                let retain_pending = matches!(
+                    bus.structural_state,
+                    StructuralState::Creating | StructuralState::Removing
+                ) && revision == bus.structural_confirmation_revision;
+                (!retain_pending).then_some(*id)
+            })
+            .collect::<BTreeSet<_>>();
+        let removed_channels = removed_bus_ids
+            .iter()
+            .filter_map(|id| self.buses.get(id))
+            .flat_map(|bus| &bus.channels)
+            .collect::<Vec<_>>();
+        let removed_channel_ids = removed_channels
+            .iter()
+            .map(|channel| channel.id)
+            .collect::<BTreeSet<_>>();
+        let removed_output_ids = removed_channels
+            .iter()
+            .filter_map(|channel| channel.output_port_id)
+            .collect::<BTreeSet<_>>();
+        self.buses.retain(|id, _| !removed_bus_ids.contains(id));
+        self.bus_order.retain(|id| !removed_bus_ids.contains(id));
+        if !removed_output_ids.is_empty() {
+            self.connection_ports
+                .retain(|id, _| !removed_output_ids.contains(id));
+            self.confirmed_connections
+                .retain(|(id, _)| !removed_output_ids.contains(id));
+            self.pending_connections
+                .retain(|(id, _), _| !removed_output_ids.contains(id));
+            self.connection_errors.retain(|error| {
+                error
+                    .port_id
+                    .is_none_or(|id| !removed_output_ids.contains(&id))
+            });
+            self.connection_revision = self.connection_revision.wrapping_add(1);
+        }
+        if !removed_channel_ids.is_empty() {
+            self.confirmed_mixer_routes
+                .retain(|route| !removed_channel_ids.contains(&route.destination_channel_id));
+            self.pending_mixer_routes
+                .retain(|route, _| !removed_channel_ids.contains(&route.destination_channel_id));
+            self.mixer_route_errors
+                .retain(|error| !removed_channel_ids.contains(&error.route.destination_channel_id));
+        }
+        for ((backend_id, key), pending) in &mut self.desired_bus_controls {
+            if !pending.cancelling {
+                if let Some(bus) = snapshot.buses.get(backend_id) {
+                    pending.rollback = backend_bus_control(bus, *key);
+                }
+            }
+        }
+        self.desired_bus_controls
+            .retain(|(backend_id, _), pending| {
+                snapshot.buses.get(backend_id).is_some_and(|bus| {
+                    let matched = bus_control_matches(bus, pending.desired);
+                    let confirmed = !pending.cancelling
+                        || pending
+                            .confirmation_revision
+                            .is_some_and(|baseline| revision != baseline);
+                    !(matched && confirmed)
+                })
+            });
+        for ((backend_id, _), pending) in &self.desired_bus_controls {
+            if let Some(bus) = self
+                .buses
+                .values_mut()
+                .find(|bus| bus.backend_id == *backend_id)
+            {
+                apply_bus_control(bus, pending.desired);
+            }
+        }
+        for bus in self.buses.values_mut() {
+            bus.control_pending = self
+                .desired_bus_controls
+                .keys()
+                .any(|(backend_id, _)| *backend_id == bus.backend_id);
+        }
+
+        self.confirmed_mixer_routes = snapshot
+            .confirmed_links
+            .iter()
+            .filter_map(|link| {
+                let source_port_id = self
+                    .connection_ports
+                    .values()
+                    .find(|port| port.backend_id == link.source_port_id)?
+                    .id;
+                let destination_channel_id = self
+                    .buses
+                    .values()
+                    .flat_map(|bus| &bus.channels)
+                    .find(|channel| channel.backend_id == link.destination_channel_id)?
+                    .id;
+                Some(MixerRouteState {
+                    source_port_id,
+                    destination_channel_id,
+                })
+            })
+            .collect();
+        for failure in snapshot.failures {
+            let Some(source_port_id) = self
+                .connection_ports
+                .values()
+                .find(|port| port.backend_id == failure.link.source_port_id)
+                .map(|port| port.id)
+            else {
+                continue;
+            };
+            let Some(destination_channel_id) = self
+                .buses
+                .values()
+                .flat_map(|bus| &bus.channels)
+                .find(|channel| channel.backend_id == failure.link.destination_channel_id)
+                .map(|channel| channel.id)
+            else {
+                continue;
+            };
+            let route = MixerRouteState {
+                source_port_id,
+                destination_channel_id,
+            };
+            let cancelling = self.pending_mixer_routes.get(&route).and_then(|pending| {
+                (pending.desired_connected == failure.desired_connected)
+                    .then_some(pending.cancelling)
+            });
+            if let Some(cancelling) = cancelling {
+                if cancelling {
+                    if let Some(pending) = self.pending_mixer_routes.get_mut(&route) {
+                        pending.confirmation_revision = None;
+                        pending.age = Duration::ZERO;
+                    }
+                } else {
+                    self.pending_mixer_routes.remove(&route);
+                }
+            }
+            self.push_mixer_route_error(
+                route,
+                if cancelling == Some(true) {
+                    format!(
+                        "mixer route cancellation was rejected and will retry: {}",
+                        failure.message
+                    )
+                } else {
+                    failure.message
+                },
+            );
+        }
+        let pending = self
+            .pending_mixer_routes
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for route in pending {
+            let source_exists = self.connection_ports.contains_key(&route.source_port_id);
+            let destination_exists = self
+                .buses
+                .values()
+                .flat_map(|bus| &bus.channels)
+                .any(|channel| channel.id == route.destination_channel_id);
+            let confirmed = self.confirmed_mixer_routes.contains(&route);
+            let pending = &self.pending_mixer_routes[&route];
+            let cancellation_confirmed = !pending.cancelling
+                || pending
+                    .confirmation_revision
+                    .is_some_and(|baseline| revision != baseline);
+            if !source_exists
+                || !destination_exists
+                || pending.desired_connected == confirmed && cancellation_confirmed
+            {
+                self.pending_mixer_routes.remove(&route);
+            }
+        }
+        self.backend_mixer_revision = revision;
+    }
+
     fn apply_connection_snapshot(&mut self, snapshot: BackendConnectionSnapshot) {
+        let revision = snapshot.revision;
         self.connection_backend_available = snapshot.available;
         for descriptor in snapshot
             .application_ports
@@ -8637,8 +9731,8 @@ impl ApplicationModel {
                 .values()
                 .all(|port| port.backend_id != descriptor.id)
             {
-                let id = PortId::from_raw(self.next_port_id);
-                self.next_port_id = self.next_port_id.saturating_add(1);
+                let id =
+                    allocate_connection_port_id(&self.connection_ports, &mut self.next_port_id);
                 self.connection_ports.insert(
                     id,
                     ConnectionPortModel {
@@ -8654,6 +9748,52 @@ impl ApplicationModel {
                 );
             }
         }
+        for descriptor in snapshot.application_ports.values() {
+            let BackendPortOwner::Bus(backend_bus_id) = descriptor.owner else {
+                continue;
+            };
+            let Some((bus_id, channel_id)) = self.buses.values().find_map(|bus| {
+                if bus.backend_id != backend_bus_id {
+                    return None;
+                }
+                bus.channels
+                    .iter()
+                    .find(|channel| channel.output_backend_port_id == descriptor.id)
+                    .map(|channel| (bus.id, channel.id))
+            }) else {
+                continue;
+            };
+            let port_id = self
+                .connection_ports
+                .values()
+                .find(|port| port.backend_id == descriptor.id)
+                .map(|port| port.id)
+                .unwrap_or_else(|| {
+                    let id =
+                        allocate_connection_port_id(&self.connection_ports, &mut self.next_port_id);
+                    self.connection_ports.insert(
+                        id,
+                        ConnectionPortModel {
+                            id,
+                            backend_id: descriptor.id,
+                            owner: ApplicationPortOwner::Bus { bus_id },
+                            name: descriptor.name.clone(),
+                            data_type: map_port_data_type(descriptor.data_type),
+                            direction: map_port_direction(descriptor.direction),
+                            role: PortRole::AudioOutput,
+                            candidates: BTreeMap::new(),
+                        },
+                    );
+                    id
+                });
+            if let Some(channel) = self.buses.get_mut(&bus_id).and_then(|bus| {
+                bus.channels
+                    .iter_mut()
+                    .find(|channel| channel.id == channel_id)
+            }) {
+                channel.output_port_id = Some(port_id);
+            }
+        }
         for failure in snapshot.failures {
             let Some(port_id) = self
                 .connection_ports
@@ -8663,13 +9803,33 @@ impl ApplicationModel {
             else {
                 continue;
             };
-            self.pending_connections
-                .remove(&(port_id, failure.external_port.clone()));
+            let key = (port_id, failure.external_port.clone());
+            let cancelling = self.pending_connections.get(&key).and_then(|pending| {
+                (pending.desired_connected == failure.desired_connected)
+                    .then_some(pending.cancelling)
+            });
+            if let Some(cancelling) = cancelling {
+                if cancelling {
+                    if let Some(pending) = self.pending_connections.get_mut(&key) {
+                        pending.confirmation_revision = None;
+                        pending.age = Duration::ZERO;
+                    }
+                } else {
+                    self.pending_connections.remove(&key);
+                }
+            }
             self.push_connection_error(ConnectionErrorState {
                 port_id: Some(port_id),
                 external_port: Some(failure.external_port.clone()),
                 kind: ConnectionErrorKind::BackendRejected,
-                message: failure.message,
+                message: if cancelling == Some(true) {
+                    format!(
+                        "connection cancellation was rejected and will retry: {}",
+                        failure.message
+                    )
+                } else {
+                    failure.message
+                },
             });
         }
         self.host_ports = snapshot
@@ -8727,11 +9887,17 @@ impl ApplicationModel {
             let connected = self
                 .confirmed_connections
                 .contains(&(port_id, host_port_id.clone()));
-            let desired = self.pending_connections[&key].desired_connected;
-            if host_present && connected == desired {
+            let pending = &self.pending_connections[&key];
+            let cancellation_confirmed = !pending.cancelling
+                || pending
+                    .confirmation_revision
+                    .is_some_and(|baseline| revision != baseline);
+            if host_present && connected == pending.desired_connected && cancellation_confirmed {
                 self.pending_connections.remove(&key);
             } else if !host_present {
-                self.pending_connections.remove(&key);
+                if !pending.cancelling {
+                    self.pending_connections.remove(&key);
+                }
                 self.push_connection_error(ConnectionErrorState {
                     port_id: Some(port_id),
                     external_port: Some(host_port_id.clone()),
@@ -8740,6 +9906,7 @@ impl ApplicationModel {
                 });
             }
         }
+        self.backend_connection_revision = revision;
         self.rebuild_connection_view();
     }
 
@@ -8842,6 +10009,22 @@ impl ApplicationModel {
             )
             .collect::<Vec<_>>()
             .into();
+        let mixer_links: Arc<[MixerRouteState]> = self
+            .confirmed_mixer_routes
+            .iter()
+            .copied()
+            .collect::<Vec<_>>()
+            .into();
+        let pending_mixer_links: Arc<[PendingMixerRouteState]> = self
+            .pending_mixer_routes
+            .iter()
+            .map(|(route, pending)| PendingMixerRouteState {
+                route: *route,
+                desired_connected: pending.desired_connected,
+            })
+            .collect::<Vec<_>>()
+            .into();
+        let mixer_errors: Arc<[MixerRouteErrorState]> = self.mixer_route_errors.clone().into();
         let errors: Arc<[ConnectionErrorState]> = self.connection_errors.clone().into();
         let changed = self.connection_view.loading
             || self.connection_view.backend_available != self.connection_backend_available
@@ -8849,6 +10032,9 @@ impl ApplicationModel {
             || self.connection_view.host_ports.as_ref() != host_ports.as_ref()
             || self.connection_view.confirmed_links.as_ref() != confirmed_links.as_ref()
             || self.connection_view.pending_links.as_ref() != pending_links.as_ref()
+            || self.connection_view.mixer_links.as_ref() != mixer_links.as_ref()
+            || self.connection_view.pending_mixer_links.as_ref() != pending_mixer_links.as_ref()
+            || self.connection_view.mixer_errors.as_ref() != mixer_errors.as_ref()
             || self.connection_view.errors.as_ref() != errors.as_ref();
         if changed {
             self.connection_revision = self.connection_revision.wrapping_add(1);
@@ -8860,6 +10046,9 @@ impl ApplicationModel {
                 host_ports,
                 confirmed_links,
                 pending_links,
+                mixer_links,
+                pending_mixer_links,
+                mixer_errors,
                 errors,
             });
         }
@@ -8874,6 +10063,22 @@ impl ApplicationModel {
             message: message.clone(),
         });
         self.report_error(message);
+    }
+
+    fn report_mixer_saturation(&mut self, route: MixerRouteState) {
+        self.pending_mixer_routes.remove(&route);
+        self.push_mixer_route_error(route, "mixer route command queue is full".to_owned());
+    }
+
+    fn push_mixer_route_error(&mut self, route: MixerRouteState, message: String) {
+        self.mixer_route_errors.retain(|error| error.route != route);
+        self.mixer_route_errors
+            .push(MixerRouteErrorState { route, message });
+        const MAX_MIXER_ROUTE_ERRORS: usize = 16;
+        if self.mixer_route_errors.len() > MAX_MIXER_ROUTE_ERRORS {
+            self.mixer_route_errors
+                .drain(..self.mixer_route_errors.len() - MAX_MIXER_ROUTE_ERRORS);
+        }
     }
 
     fn push_connection_error(&mut self, error: ConnectionErrorState) {
@@ -9263,6 +10468,86 @@ impl ApplicationModel {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
+        let mut buses = capture
+            .buses
+            .iter()
+            .map(|captured_bus| {
+                let bus = self
+                    .buses
+                    .values()
+                    .find(|bus| bus.backend_id.raw() == captured_bus.source_id)
+                    .ok_or_else(|| "backend omitted Master bus mapping".to_owned())?;
+                let mut ports = Vec::with_capacity(captured_bus.channels.len());
+                let mut channels = Vec::with_capacity(captured_bus.channels.len());
+                for captured_channel in &captured_bus.channels {
+                    let channel = bus
+                        .channels
+                        .iter()
+                        .find(|channel| channel.backend_id.raw() == captured_channel.source_id)
+                        .ok_or_else(|| "backend omitted Master channel mapping".to_owned())?;
+                    let output_port_id = channel
+                        .output_port_id
+                        .ok_or_else(|| "Master output port is unavailable".to_owned())?;
+                    ports.push(PortDocument {
+                        id: output_port_id.raw(),
+                        name: captured_channel.output_port.descriptor.name.clone(),
+                        data_type: DataTypeDocument::Audio,
+                        direction: PortDirectionDocument::Output,
+                        role: PortRoleDocument::AudioOutput,
+                        input_connectability: vec![ConnectabilityDocument::Internal],
+                        output_connectability: vec![ConnectabilityDocument::External],
+                        gain: 1.0,
+                        muted: false,
+                        passthrough_muted: false,
+                        internal_connections: Vec::new(),
+                        external_connections: captured_channel
+                            .output_port
+                            .external_connections
+                            .clone(),
+                        ringbuffer_frames: 0,
+                    });
+                    channels.push(BusChannelDocument {
+                        id: channel.id.raw(),
+                        label: channel.label.clone(),
+                        output_port_id: output_port_id.raw(),
+                    });
+                }
+                Ok(BusDocument {
+                    id: bus.id.raw(),
+                    name: bus.name.clone(),
+                    channels,
+                    ports,
+                    fx_chain: None,
+                    gain_db: captured_bus.gain_db,
+                    balance: captured_bus.balance,
+                    muted: captured_bus.muted,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        buses.sort_by_key(|bus| bus.id);
+        let mixer_routes = capture
+            .mixer_routes
+            .iter()
+            .map(|route| {
+                let source_port_id = self
+                    .connection_ports
+                    .values()
+                    .find(|port| port.backend_id.raw() == route.source_port_id)
+                    .map(|port| port.id.raw())
+                    .ok_or_else(|| "backend omitted mixer source mapping".to_owned())?;
+                let destination_channel_id = self
+                    .buses
+                    .values()
+                    .flat_map(|bus| &bus.channels)
+                    .find(|channel| channel.backend_id.raw() == route.destination_channel_id)
+                    .map(|channel| channel.id.raw())
+                    .ok_or_else(|| "backend omitted mixer destination mapping".to_owned())?;
+                Ok(MixerRouteDocument {
+                    source_port_id,
+                    destination_channel_id,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         let (script_documents, scripts) = self.session_script_documents();
         let document = SessionDocument {
             sample_rate: capture.sample_rate,
@@ -9302,7 +10587,9 @@ impl ApplicationModel {
                 .values()
                 .find(|loop_| loop_.state.targeted)
                 .map(|loop_| loop_.id.raw()),
-            buses: Vec::new(),
+            buses,
+            bus_display_order: self.bus_order.iter().map(|id| id.raw()).collect(),
+            mixer_routes,
             global_ports,
             fx_states,
             scripts: script_documents,
@@ -9606,13 +10893,96 @@ impl ApplicationModel {
                 },
             );
         }
-        self.next_port_id = connection_ports
+        let mut buses = BTreeMap::new();
+        for bus_document in &bundle.document.buses {
+            let backend_bus_id = replacement
+                .buses
+                .get(&bus_document.id)
+                .copied()
+                .ok_or_else(|| "backend omitted loaded bus".to_owned())?;
+            let bus_id = BusId::from_raw(bus_document.id);
+            let mut channels = Vec::with_capacity(bus_document.channels.len());
+            for channel_document in &bus_document.channels {
+                let backend_channel_id = replacement
+                    .bus_channels
+                    .get(&channel_document.id)
+                    .copied()
+                    .ok_or_else(|| "backend omitted loaded bus channel".to_owned())?;
+                let output_backend_port_id = replacement
+                    .bus_output_ports
+                    .get(&channel_document.id)
+                    .copied()
+                    .ok_or_else(|| "backend omitted loaded bus output".to_owned())?;
+                let port_document = bus_document
+                    .ports
+                    .iter()
+                    .find(|port| port.id == channel_document.output_port_id)
+                    .ok_or_else(|| "loaded bus output document is stale".to_owned())?;
+                let output_port_id = PortId::from_raw(port_document.id);
+                connection_ports.insert(
+                    output_port_id,
+                    ConnectionPortModel {
+                        id: output_port_id,
+                        backend_id: output_backend_port_id,
+                        owner: ApplicationPortOwner::Bus { bus_id },
+                        name: port_document.name.clone(),
+                        data_type: PortDataType::Audio,
+                        direction: PortDirection::Output,
+                        role: PortRole::AudioOutput,
+                        candidates: BTreeMap::new(),
+                    },
+                );
+                channels.push(BusChannelModel {
+                    id: BusChannelId::from_raw(channel_document.id),
+                    backend_id: backend_channel_id,
+                    label: channel_document.label.clone(),
+                    output_backend_port_id,
+                    output_port_id: Some(output_port_id),
+                });
+            }
+            buses.insert(
+                bus_id,
+                BusModel {
+                    id: bus_id,
+                    backend_id: backend_bus_id,
+                    name: bus_document.name.clone(),
+                    structural_state: StructuralState::Confirmed,
+                    structural_error: None,
+                    structural_confirmation_revision: self.backend_mixer_revision,
+                    structural_age: Duration::ZERO,
+                    creation_request_id: None,
+                    output_peaks_db: vec![-200.0; channels.len()],
+                    channels,
+                    gain_db: bus_document.gain_db,
+                    balance: bus_document.balance,
+                    muted: bus_document.muted,
+                    control_pending: false,
+                    control_error: None,
+                },
+            );
+        }
+        self.next_port_id = 1;
+        self.next_bus_id = buses
             .keys()
             .map(|id| id.raw())
             .max()
             .unwrap_or(0)
             .saturating_add(1);
+        self.next_bus_channel_id = buses
+            .values()
+            .flat_map(|bus| &bus.channels)
+            .map(|channel| channel.id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
         self.tracks = tracks;
+        self.bus_order = bundle
+            .document
+            .bus_display_order
+            .iter()
+            .map(|id| BusId::from_raw(*id))
+            .collect();
+        self.buses = buses;
         self.loops = loops;
         self.restore_backend_composites(backend)?;
         self.script_composition_playback.clear();
@@ -9621,6 +10991,10 @@ impl ApplicationModel {
         self.active_piano_notes.clear();
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
+        self.confirmed_mixer_routes.clear();
+        self.pending_mixer_routes.clear();
+        self.mixer_route_errors.clear();
+        self.desired_bus_controls.clear();
         self.desired_track_controls.clear();
         self.desired_track_default_playback_modes = self
             .tracks
@@ -9654,6 +11028,41 @@ impl ApplicationModel {
             .map_err(|error| error.to_string())?;
         self.refresh_scripting_view();
         Ok(())
+    }
+
+    fn refresh_bus_view(&mut self) {
+        let next = self
+            .bus_order
+            .iter()
+            .filter_map(|id| self.buses.get(id))
+            .map(|bus| BusState {
+                id: bus.id,
+                name: bus.name.clone(),
+                structural_state: bus.structural_state,
+                structural_error: bus.structural_error.clone(),
+                channels: bus
+                    .channels
+                    .iter()
+                    .filter_map(|channel| {
+                        Some(BusChannelState {
+                            id: channel.id,
+                            label: channel.label.clone(),
+                            output_port_id: channel.output_port_id?,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+                    .into(),
+                gain_db: bus.gain_db,
+                balance: bus.balance,
+                muted: bus.muted,
+                output_peaks_db: bus.output_peaks_db.clone().into(),
+                control_pending: bus.control_pending,
+                control_error: bus.control_error.clone(),
+            })
+            .collect::<Vec<_>>();
+        if self.bus_view.as_ref() != next.as_slice() {
+            self.bus_view = next.into();
+        }
     }
 
     fn snapshot(&self) -> AppSnapshot {
@@ -9707,9 +11116,16 @@ impl ApplicationModel {
                     port_ids: Arc::clone(&track.port_ids),
                 })
                 .collect(),
+            buses: Arc::clone(&self.bus_view),
             track_processors: Arc::clone(&self.track_processors),
             track_creation_results: self
                 .track_creation_results
+                .iter()
+                .copied()
+                .collect::<Vec<_>>()
+                .into(),
+            bus_creation_results: self
+                .bus_creation_results
                 .iter()
                 .copied()
                 .collect::<Vec<_>>()
@@ -10989,9 +12405,14 @@ fn session_bundle_to_backend(
     bundle: &SessionBundle,
     processors: &[TrackProcessorDescriptor],
 ) -> Result<BackendSessionData, String> {
-    if !bundle.document.buses.is_empty()
-        || !bundle.document.midi_control.bindings.is_empty()
+    shoop_session::validate_bundle(bundle).map_err(|error| error.to_string())?;
+    if !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
+        || bundle
+            .document
+            .buses
+            .iter()
+            .any(|bus| bus.fx_chain.is_some())
     {
         return Err(
             "session requires a feature not yet available in the application runtime".to_owned(),
@@ -11003,6 +12424,13 @@ fn session_bundle_to_backend(
         .iter()
         .flat_map(|group| &group.tracks)
         .flat_map(|track| track.ports.iter().map(|port| port.id))
+        .chain(
+            bundle
+                .document
+                .buses
+                .iter()
+                .flat_map(|bus| bus.ports.iter().map(|port| port.id)),
+        )
         .collect::<BTreeSet<_>>();
     let global_document = match bundle.document.global_ports.as_slice() {
         [] => None,
@@ -11020,7 +12448,7 @@ fn session_bundle_to_backend(
             id
         });
     if used_ids.contains(&global_id) {
-        return Err("session global FX control port ID conflicts with a track port".to_owned());
+        return Err("session global FX control port ID conflicts with another port".to_owned());
     }
     let global_ports = vec![BackendSessionPort {
         source_id: global_id,
@@ -11251,9 +12679,110 @@ fn session_bundle_to_backend(
                 .collect(),
         });
     }
+    let track_output_ids = tracks
+        .iter()
+        .flat_map(|track| &track.ports)
+        .filter(|port| {
+            port.descriptor.data_type == BackendPortDataType::Audio
+                && port.descriptor.direction == BackendPortDirection::Output
+                && port.descriptor.role == BackendPortRole::AudioOutput
+        })
+        .map(|port| port.source_id)
+        .collect::<BTreeSet<_>>();
+    let mut bus_channel_ids = BTreeSet::new();
+    let buses = bundle
+        .document
+        .buses
+        .iter()
+        .map(|bus| {
+            BackendBusRequest {
+                name: bus.name.clone(),
+                channel_count: u32::try_from(bus.channels.len())
+                    .map_err(|_| "session bus channel count exceeds u32".to_owned())?,
+            }
+            .normalized()
+            .map_err(|error| error.to_string())?;
+            let normalized_gain = BackendBusControl::GainDb(bus.gain_db)
+                .normalized(bus.channels.len())
+                .map_err(|error| error.to_string())?;
+            if normalized_gain != BackendBusControl::GainDb(bus.gain_db) {
+                return Err("session bus gain is out of range".to_owned());
+            }
+            if bus.channels.len() == 2 {
+                let normalized_balance = BackendBusControl::Balance(bus.balance)
+                    .normalized(bus.channels.len())
+                    .map_err(|error| error.to_string())?;
+                if normalized_balance != BackendBusControl::Balance(bus.balance) {
+                    return Err("session bus balance is out of range".to_owned());
+                }
+            } else if bus.balance != 0.0 {
+                return Err("non-stereo session bus balance must be centered".to_owned());
+            }
+            let expected_labels = default_bus_channel_labels(bus.channels.len())
+                .map_err(|error| error.to_string())?;
+            let backend_bus_id = BackendBusId::from_raw(bus.id);
+            let channels = bus
+                .channels
+                .iter()
+                .zip(expected_labels)
+                .map(|(channel, expected_label)| {
+                    if channel.label != expected_label || !bus_channel_ids.insert(channel.id) {
+                        return Err("session bus channel shape is invalid".to_owned());
+                    }
+                    let port = bus
+                        .ports
+                        .iter()
+                        .find(|port| port.id == channel.output_port_id)
+                        .ok_or_else(|| "bus channel output port is stale".to_owned())?;
+                    Ok(BackendSessionBusChannel {
+                        source_id: channel.id,
+                        label: channel.label.clone(),
+                        output_port: BackendSessionPort {
+                            source_id: port.id,
+                            descriptor: BackendPortDescriptor {
+                                id: BackendPortId::from_raw(port.id),
+                                owner: BackendPortOwner::Bus(backend_bus_id),
+                                name: port.name.clone(),
+                                data_type: BackendPortDataType::Audio,
+                                direction: BackendPortDirection::Output,
+                                role: BackendPortRole::AudioOutput,
+                            },
+                            external_connections: port.external_connections.clone(),
+                        },
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(BackendSessionBus {
+                source_id: bus.id,
+                name: bus.name.clone(),
+                channels,
+                gain_db: bus.gain_db,
+                balance: bus.balance,
+                muted: bus.muted,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mixer_routes = bundle
+        .document
+        .mixer_routes
+        .iter()
+        .map(|route| {
+            if !track_output_ids.contains(&route.source_port_id)
+                || !bus_channel_ids.contains(&route.destination_channel_id)
+            {
+                return Err("session mixer route is incompatible".to_owned());
+            }
+            Ok(BackendSessionMixerRoute {
+                source_port_id: route.source_port_id,
+                destination_channel_id: route.destination_channel_id,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(BackendSessionData {
         sample_rate: bundle.document.sample_rate,
         tracks,
+        buses,
+        mixer_routes,
         global_ports,
         use_legacy_browser_default_routes: false,
     })
@@ -11366,6 +12895,34 @@ fn script_midi_host_id(direction: PortDirection, endpoint: &str) -> HostPortId {
     HostPortId::new(shoop_scripting::midi_endpoint_host_id(direction, endpoint))
 }
 
+fn allocate_connection_port_id(
+    ports: &BTreeMap<PortId, ConnectionPortModel>,
+    next: &mut u64,
+) -> PortId {
+    let mut used = ports.keys().map(|id| id.raw()).collect::<BTreeSet<_>>();
+    allocate_unused_port_id(&mut used, next)
+        .expect("bounded application port inventory cannot exhaust u64 identities")
+}
+
+fn allocate_unused_port_id(used: &mut BTreeSet<u64>, next: &mut u64) -> Result<PortId, String> {
+    if *next == 0 {
+        *next = 1;
+    }
+    let start = *next;
+    loop {
+        if !used.contains(next) {
+            let id = *next;
+            used.insert(id);
+            *next = next.checked_add(1).unwrap_or(1);
+            return Ok(PortId::from_raw(id));
+        }
+        *next = next.checked_add(1).unwrap_or(1);
+        if *next == start {
+            return Err("no application port identities remain".to_owned());
+        }
+    }
+}
+
 fn map_port_data_type(value: BackendPortDataType) -> PortDataType {
     match value {
         BackendPortDataType::Audio => PortDataType::Audio,
@@ -11389,8 +12946,7 @@ fn register_backend_ports(
 ) -> Arc<[PortId]> {
     let mut ids = Vec::with_capacity(descriptors.len());
     for descriptor in descriptors {
-        let id = PortId::from_raw(*next_port_id);
-        *next_port_id = next_port_id.saturating_add(1);
+        let id = allocate_connection_port_id(ports, next_port_id);
         ports.insert(
             id,
             ConnectionPortModel {
@@ -11398,6 +12954,9 @@ fn register_backend_ports(
                 backend_id: descriptor.id,
                 owner: match descriptor.owner {
                     BackendPortOwner::Track => ApplicationPortOwner::Track { track_id, kind },
+                    BackendPortOwner::Bus(bus_id) => ApplicationPortOwner::Bus {
+                        bus_id: BusId::from_raw(bus_id.raw()),
+                    },
                     BackendPortOwner::GlobalFxControl => ApplicationPortOwner::GlobalFxControl,
                 },
                 name: descriptor.name.clone(),
@@ -14744,7 +16303,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 6); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 7); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -14762,7 +16321,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.6, host supports 1.5"));
+        assert!(error.contains("script requests 1.7, host supports 1.6"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -14856,11 +16415,15 @@ c.track_set_input_muted(1, false, true)
                 name: "control.lua".to_owned(),
                 source: Arc::from(
                     r#"
-shoop_announce_api_version(1, 0)
+shoop_announce_api_version(1, 5)
 local c = require('shoop_control')
 c.set_solo(true)
 c.loop_select({-1, 0}, true)
 c.loop_set_gain({-1, 0}, 0.25)
+c.bus_set_gain_fader(0, 0.5)
+c.bus_set_balance(0, -0.4)
+c.bus_set_muted(0, true)
+if #c.bus_get_gain(0) ~= 1 or c.bus_get_muted(0)[1] ~= true then error('bus shadow') end
 "#,
                 ),
                 kind: ScriptKind::User,
@@ -14871,6 +16434,9 @@ c.loop_set_gain({-1, 0}, 0.25)
             snapshot.global_controls.solo
                 && snapshot.tracks[0].loops[0].selected
                 && (snapshot.tracks[0].loops[0].gain - 0.25).abs() < f32::EPSILON
+                && snapshot.buses[0].muted
+                && (snapshot.buses[0].balance + 0.4).abs() < f32::EPSILON
+                && (snapshot.buses[0].gain_db + 5.0).abs() < f32::EPSILON
         });
         assert_eq!(snapshot.scripting.scripts.len(), 1);
         assert_eq!(
@@ -18161,6 +19727,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             }));
         assert!(snapshot.connections.application_ports.iter().all(|port| {
             port.owner == ApplicationPortOwner::GlobalFxControl
+                || matches!(port.owner, ApplicationPortOwner::Bus { .. })
                 || matches!(
                     port.owner,
                     ApplicationPortOwner::Track { track_id, .. }
@@ -19212,6 +20779,488 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         )));
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_lifecycle_and_visual_order_use_stable_identity_without_backend_reorder() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let master = model.bus_order[0];
+        let stale_before_create = backend.poll().unwrap();
+        model.handle_intent(
+            &mut backend,
+            AppIntent::AddBus(BusSpec {
+                name: "  Duplicate  ".to_owned(),
+                channel_count: 4,
+                creation_request_id: Some(42),
+            }),
+        );
+        let added = *model.bus_order.last().unwrap();
+        assert_ne!(added, master);
+        assert_eq!(model.buses[&added].name, "Duplicate");
+        assert_eq!(model.buses[&added].channels.len(), 4);
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Creating
+        );
+        assert!(model.begin_save_session().is_err());
+        assert!(model.begin_new_session().is_err());
+        assert!(model
+            .request_audio_driver_switch(
+                &mut backend,
+                AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 128,
+                }),
+            )
+            .is_err());
+        assert!(model.bus_creation_results.is_empty());
+        model.apply_backend_snapshot(stale_before_create);
+        assert!(model.buses.contains_key(&added));
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Creating
+        );
+        assert!(model.bus_creation_results.is_empty());
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Confirmed
+        );
+        assert_eq!(
+            model.bus_creation_results.back(),
+            Some(&BusCreationResult {
+                request_id: 42,
+                success: true,
+            })
+        );
+
+        let before_move = backend.operations().len();
+        assert!(model
+            .handle_bus_action(
+                &mut backend,
+                BusId::from_raw(999),
+                BusAction::MoveBefore(Some(master)),
+            )
+            .is_err());
+        assert!(model
+            .handle_bus_action(
+                &mut backend,
+                added,
+                BusAction::MoveBefore(Some(BusId::from_raw(999))),
+            )
+            .is_err());
+        model
+            .handle_bus_action(&mut backend, added, BusAction::MoveBefore(Some(added)))
+            .unwrap();
+        assert_eq!(model.bus_order, [master, added]);
+        model
+            .handle_bus_action(&mut backend, added, BusAction::MoveBefore(Some(master)))
+            .unwrap();
+        assert_eq!(model.bus_order, [added, master]);
+        assert_eq!(backend.operations().len(), before_move);
+        assert_eq!(
+            model
+                .script_control_snapshot()
+                .buses
+                .iter()
+                .map(|bus| (bus.index, bus.id))
+                .collect::<Vec<_>>(),
+            [(0, master), (1, added)]
+        );
+        let captured = backend.capture_session().unwrap();
+        let bundle = model.session_bundle_from_backend(&captured).unwrap();
+        assert_eq!(
+            bundle
+                .document
+                .buses
+                .iter()
+                .map(|bus| bus.id)
+                .collect::<Vec<_>>(),
+            [master.raw(), added.raw()]
+        );
+        assert_eq!(
+            bundle.document.bus_display_order,
+            [added.raw(), master.raw()]
+        );
+        let round_trip = decode_session(&encode_session(&bundle, "bus-order").unwrap()).unwrap();
+        assert_eq!(
+            round_trip.document.bus_display_order,
+            [added.raw(), master.raw()]
+        );
+        model
+            .handle_bus_action(&mut backend, added, BusAction::MoveBefore(None))
+            .unwrap();
+        assert_eq!(model.bus_order, [master, added]);
+        assert_eq!(backend.operations().len(), before_move);
+
+        let removed_output = model.buses[&added].channels[0].output_port_id.unwrap();
+        let removed_channel = model.buses[&added].channels[0].id;
+        model
+            .confirmed_connections
+            .insert((removed_output, "pending:host".to_owned()));
+        model.pending_connections.insert(
+            (removed_output, "pending:host".to_owned()),
+            PendingConnection {
+                desired_connected: true,
+                cancelling: false,
+                confirmation_revision: None,
+                age: Duration::ZERO,
+            },
+        );
+        model.connection_errors.push(ConnectionErrorState {
+            port_id: Some(removed_output),
+            external_port: Some("pending:host".to_owned()),
+            kind: ConnectionErrorKind::TimedOut,
+            message: "stale bus output".to_owned(),
+        });
+        let removed_route = MixerRouteState {
+            source_port_id: PortId::from_raw(999),
+            destination_channel_id: removed_channel,
+        };
+        model.confirmed_mixer_routes.insert(removed_route);
+        model.pending_mixer_routes.insert(
+            removed_route,
+            PendingConnection {
+                desired_connected: true,
+                cancelling: false,
+                confirmation_revision: None,
+                age: Duration::ZERO,
+            },
+        );
+        model.mixer_route_errors.push(MixerRouteErrorState {
+            route: removed_route,
+            message: "stale bus route".to_owned(),
+        });
+
+        model
+            .handle_bus_action(&mut backend, added, BusAction::Remove)
+            .unwrap();
+        assert_eq!(
+            model.buses[&added].structural_state,
+            StructuralState::Removing
+        );
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(!model.buses.contains_key(&added));
+        assert_eq!(model.bus_order, [master]);
+        assert!(!model.connection_ports.contains_key(&removed_output));
+        assert!(model
+            .confirmed_connections
+            .iter()
+            .all(|(port, _)| *port != removed_output));
+        assert!(model
+            .pending_connections
+            .keys()
+            .all(|(port, _)| *port != removed_output));
+        assert!(model
+            .connection_errors
+            .iter()
+            .all(|error| error.port_id != Some(removed_output)));
+        assert!(model
+            .confirmed_mixer_routes
+            .iter()
+            .all(|route| route.destination_channel_id != removed_channel));
+        assert!(model
+            .pending_mixer_routes
+            .keys()
+            .all(|route| route.destination_channel_id != removed_channel));
+        assert!(model
+            .mixer_route_errors
+            .iter()
+            .all(|error| error.route.destination_channel_id != removed_channel));
+        model
+            .handle_bus_action(&mut backend, master, BusAction::Remove)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(model.buses.is_empty());
+        assert!(model.bus_order.is_empty());
+        let captured = backend.capture_session().unwrap();
+        let zero_bundle = model.session_bundle_from_backend(&captured).unwrap();
+        assert!(zero_bundle.document.buses.is_empty());
+        assert!(zero_bundle.document.bus_display_order.is_empty());
+        let decoded = decode_session(&encode_session(&zero_bundle, "zero-buses").unwrap()).unwrap();
+        assert!(decoded.document.buses.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_structure_rejection_and_timeout_reconcile_without_false_state() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let master = model.bus_order[0];
+        backend.fail_next_bus_structure("remove rejected");
+        assert!(model
+            .handle_bus_action(&mut backend, master, BusAction::Remove)
+            .is_err());
+        assert_eq!(
+            model.buses[&master].structural_state,
+            StructuralState::Confirmed
+        );
+        assert!(model.buses[&master]
+            .structural_error
+            .as_deref()
+            .unwrap()
+            .contains("remove rejected"));
+
+        model.handle_intent(
+            &mut backend,
+            AppIntent::AddBus(BusSpec {
+                name: "Timeout".to_owned(),
+                channel_count: 1,
+                creation_request_id: Some(77),
+            }),
+        );
+        let pending = *model.bus_order.last().unwrap();
+        assert_eq!(
+            model.buses[&pending].structural_state,
+            StructuralState::Creating
+        );
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        assert_eq!(
+            model.buses[&pending].structural_state,
+            StructuralState::Removing
+        );
+        assert!(model.buses[&pending]
+            .structural_error
+            .as_deref()
+            .unwrap()
+            .contains("cancellation is pending"));
+        assert_eq!(
+            model.bus_creation_results.back(),
+            Some(&BusCreationResult {
+                request_id: 77,
+                success: false,
+            })
+        );
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(!model.buses.contains_key(&pending));
+        assert!(model.buses.contains_key(&master));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_controls_reconcile_confirmation_failure_timeout_stale_ids_and_peaks() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let bus_id = *model.buses.keys().next().unwrap();
+        let backend_id = model.buses[&bus_id].backend_id;
+
+        model
+            .handle_bus_action(&mut backend, bus_id, BusAction::GainChanged(-6.0))
+            .unwrap();
+        assert_eq!(model.buses[&bus_id].gain_db, -6.0);
+        assert!(model.buses[&bus_id].control_pending);
+        assert!(model
+            .desired_bus_controls
+            .contains_key(&(backend_id, BusControlKey::Gain)));
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert!(!model.buses[&bus_id].control_pending);
+        assert!(model.desired_bus_controls.is_empty());
+
+        model
+            .handle_bus_action(&mut backend, bus_id, BusAction::BalanceChanged(0.5))
+            .unwrap();
+        let mut rejected = backend.poll().unwrap();
+        let bus = rejected.mixer.buses.get_mut(&backend_id).unwrap();
+        bus.balance = 0.0;
+        bus.output_peaks_db = vec![-18.0, -12.0];
+        rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 1,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::BusControl,
+                entity: Some(backend_id.raw()),
+                detail: Some(BackendMutationDetail::BusControl(
+                    BackendBusControl::Balance(0.5),
+                )),
+                message: "balance rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(rejected);
+        let bus = &model.buses[&bus_id];
+        assert_eq!(bus.balance, 0.0);
+        assert_eq!(bus.output_peaks_db, [-18.0, -12.0]);
+        assert!(!bus.control_pending);
+        assert_eq!(bus.control_error.as_deref(), Some("balance rejected"));
+
+        model
+            .handle_bus_action(&mut backend, bus_id, BusAction::MuteChanged(true))
+            .unwrap();
+        let operations_before_wait = backend.operations().len();
+        model.status.audio_driver = AudioDriverState::AwaitingGesture;
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT.saturating_mul(2));
+        assert!(model.buses[&bus_id].control_pending);
+        assert_eq!(backend.operations().len(), operations_before_wait);
+        model.status.audio_driver = AudioDriverState::Dummy;
+        backend.fail_next_bus_control("rollback queue is full");
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        assert!(model.buses[&bus_id].control_pending);
+        assert!(model.buses[&bus_id]
+            .control_error
+            .as_deref()
+            .is_some_and(|error| error.contains("cancellation will retry")));
+        assert!(!model.desired_bus_controls.is_empty());
+        assert_eq!(backend.operations().len(), operations_before_wait);
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        assert!(model.buses[&bus_id].control_pending);
+        assert!(!model.buses[&bus_id].muted);
+        assert_eq!(
+            model.buses[&bus_id].control_error.as_deref(),
+            Some("bus control request timed out; cancellation is pending")
+        );
+        let mut rollback_rejected = backend.poll().unwrap();
+        rollback_rejected
+            .mixer
+            .buses
+            .get_mut(&backend_id)
+            .unwrap()
+            .muted = true;
+        rollback_rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 2,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::BusControl,
+                entity: Some(backend_id.raw()),
+                detail: Some(BackendMutationDetail::BusControl(BackendBusControl::Mute(
+                    false,
+                ))),
+                message: "rollback rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(rollback_rejected);
+        assert!(model.buses[&bus_id].control_pending);
+        assert!(!model.buses[&bus_id].muted);
+        assert!(model.buses[&bus_id]
+            .control_error
+            .as_deref()
+            .is_some_and(|error| error.contains("cancellation was rejected and will retry")));
+
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert!(!model.buses[&bus_id].control_pending);
+        assert!(!model.buses[&bus_id].muted);
+        assert!(model.desired_bus_controls.is_empty());
+        assert!(matches!(
+            backend.operations().last(),
+            Some(shoop_backend::FakeOperation::SetBusControl(
+                candidate,
+                BackendBusControl::Mute(false)
+            )) if *candidate == backend_id
+        ));
+
+        model.buses.remove(&bus_id);
+        assert!(model
+            .handle_bus_action(&mut backend, bus_id, BusAction::MuteChanged(false))
+            .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mixer_route_pending_timeout_and_stale_validation_are_explicit() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let source_port_id = model.tracks[0]
+            .port_ids
+            .iter()
+            .find(|id| model.connection_ports[id].role == PortRole::AudioOutput)
+            .copied()
+            .unwrap();
+        let destination_channel_id = model.buses.values().next().unwrap().channels[0].id;
+        model
+            .set_mixer_route_connected(&mut backend, source_port_id, destination_channel_id, true)
+            .unwrap();
+        let route = MixerRouteState {
+            source_port_id,
+            destination_channel_id,
+        };
+        assert!(model.pending_mixer_routes.contains_key(&route));
+        model.age_pending_connections(&mut backend, CONNECTION_TIMEOUT);
+        assert!(model.pending_mixer_routes.contains_key(&route));
+        assert!(model
+            .mixer_route_errors
+            .iter()
+            .any(|error| error.route == route
+                && error.message == "mixer route request timed out; cancellation is pending"));
+        assert!(matches!(
+            backend.operations().last(),
+            Some(shoop_backend::FakeOperation::SetMixerRoute(link, false))
+                if link.source_port_id == model.connection_ports[&source_port_id].backend_id
+                    && link.destination_channel_id
+                        == model.buses.values().next().unwrap().channels[0].backend_id
+        ));
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert!(!model.pending_mixer_routes.contains_key(&route));
+        model
+            .set_mixer_route_connected(&mut backend, source_port_id, destination_channel_id, true)
+            .unwrap();
+        assert!(model.pending_mixer_routes.contains_key(&route));
+        model.connection_ports.remove(&source_port_id);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert!(!model.pending_mixer_routes.contains_key(&route));
+        assert!(model
+            .set_mixer_route_connected(&mut backend, PortId::INVALID, destination_channel_id, true,)
+            .is_err());
+
+        model.mixer_route_errors.clear();
+        for raw in 1..=20 {
+            model.push_mixer_route_error(
+                MixerRouteState {
+                    source_port_id: PortId::from_raw(raw),
+                    destination_channel_id,
+                },
+                format!("failure {raw}"),
+            );
+        }
+        assert_eq!(model.mixer_route_errors.len(), 16);
+        let repeated = MixerRouteState {
+            source_port_id: PortId::from_raw(20),
+            destination_channel_id,
+        };
+        model.push_mixer_route_error(repeated, "replacement".to_owned());
+        assert_eq!(model.mixer_route_errors.len(), 16);
+        assert_eq!(
+            model
+                .mixer_route_errors
+                .iter()
+                .find(|error| error.route == repeated)
+                .unwrap()
+                .message,
+            "replacement"
+        );
+
+        let mut used = BTreeSet::from([1, u64::MAX - 1, u64::MAX]);
+        let mut next = 1;
+        assert_eq!(
+            allocate_unused_port_id(&mut used, &mut next).unwrap(),
+            PortId::from_raw(2)
+        );
+        assert_eq!(
+            allocate_unused_port_id(&mut used, &mut next).unwrap(),
+            PortId::from_raw(3)
+        );
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn snapshot_reads_are_independent_of_actor_progress() {
@@ -19234,11 +21283,19 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let runtime = ApplicationRuntime::start(Box::new(backend)).unwrap();
         let handle = runtime.handle();
         let initial = wait_for(&handle, |snapshot| {
-            !snapshot.connections.loading && !snapshot.connections.application_ports.is_empty()
+            !snapshot.connections.loading
+                && !snapshot.connections.application_ports.is_empty()
+                && snapshot.buses.len() == 1
+                && snapshot.buses[0].channels.len() == 2
         });
         assert!(initial.connections.backend_available);
+        assert_eq!(initial.buses.len(), 1);
+        assert_eq!(initial.buses[0].name, "Master");
+        assert_eq!(initial.buses[0].channels.len(), 2);
+        assert!(initial.connections.mixer_links.is_empty());
         assert!(initial.connections.application_ports.iter().all(|port| {
             port.owner == ApplicationPortOwner::GlobalFxControl
+                || matches!(port.owner, ApplicationPortOwner::Bus { .. })
                 || (matches!(
                     port.owner,
                     ApplicationPortOwner::Track { track_id, .. }
@@ -19284,6 +21341,45 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         let input_id = input.id;
         let input_name = input.name.clone();
+        let output_id = snapshot
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. } if track_id == track.id
+                ) && port.role == PortRole::AudioOutput
+            })
+            .unwrap()
+            .id;
+        let master_left = snapshot.buses[0].channels[0].id;
+        handle
+            .dispatch(AppIntent::SetMixerRouteConnected {
+                source_port_id: output_id,
+                destination_channel_id: master_left,
+                connected: true,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            snapshot.connections.mixer_links.contains(&MixerRouteState {
+                source_port_id: output_id,
+                destination_channel_id: master_left,
+            })
+        });
+        handle
+            .dispatch(AppIntent::SetMixerRouteConnected {
+                source_port_id: output_id,
+                destination_channel_id: master_left,
+                connected: false,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            !snapshot.connections.mixer_links.contains(&MixerRouteState {
+                source_port_id: output_id,
+                destination_channel_id: master_left,
+            })
+        });
         assert!(snapshot
             .connections
             .host_ports
@@ -19428,9 +21524,40 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!timed_out.connections.confirmed_links.iter().any(|link| {
             link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
         }));
-        assert!(!timed_out.connections.pending_links.iter().any(|link| {
-            link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
+        assert!(timed_out.connections.pending_links.iter().any(|link| {
+            link.application_port_id == port_id
+                && link.host_port_id.as_str() == "system:capture_1"
+                && !link.desired_connected
         }));
+        control.complete_pending(false);
+        control.remove_external_port("system:capture_1");
+        runtime.tick(Duration::ZERO);
+        assert!(runtime
+            .snapshot()
+            .connections
+            .pending_links
+            .iter()
+            .any(|link| {
+                link.application_port_id == port_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+                    && !link.desired_connected
+            }));
+        control.add_external_port(
+            "system:capture_1",
+            BackendPortDirection::Output,
+            BackendPortDataType::Audio,
+        );
+        control.defer_mutations(false);
+        runtime.tick(CONNECTION_TIMEOUT);
+        assert!(!runtime
+            .snapshot()
+            .connections
+            .pending_links
+            .iter()
+            .any(|link| {
+                link.application_port_id == port_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+            }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -19446,6 +21573,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             &first.connections.application_ports,
             &second.connections.application_ports
         ));
+        assert!(Arc::ptr_eq(&first.buses, &second.buses));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -19479,6 +21607,18 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: initial.buses[0].id,
+                action: BusAction::GainChanged(-5.0),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: initial.buses[0].id,
+                action: BusAction::BalanceChanged(-0.4),
+            })
             .unwrap();
         runtime.tick(Duration::ZERO);
         let before = runtime.snapshot();
@@ -19540,6 +21680,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
         assert_eq!(switched.tracks[0].name, "preserved sync track");
         assert_eq!(switched.tracks[0].controls.output_gain_db, -7.5);
+        assert_eq!(switched.buses[0].gain_db, -5.0);
+        assert_eq!(switched.buses[0].balance, -0.4);
+        assert!(!switched.buses[0].muted);
         assert!(switched.global_controls.solo);
         assert_eq!(switched.scripting.scripts[0].id, script.id);
         assert_eq!(switched.scripting.scripts[0].name, script.name);
@@ -19560,6 +21703,92 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(
             runtime.snapshot().audio_drivers.switch.status,
             AudioDriverSwitchStatus::Completed
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dynamic_buses_keep_visual_order_shapes_and_controls_across_driver_switch() {
+        let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        for (request_id, name, channels) in [(1, "Mono", 1), (2, "Surround", 6)] {
+            runtime
+                .dispatch(AppIntent::AddBus(BusSpec {
+                    name: name.to_owned(),
+                    channel_count: channels,
+                    creation_request_id: Some(request_id),
+                }))
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        }
+        let snapshot = runtime.snapshot();
+        assert_eq!(snapshot.buses.len(), 3);
+        let master = snapshot.buses[0].id;
+        let mono = snapshot.buses[1].id;
+        let surround = snapshot.buses[2].id;
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: surround,
+                action: BusAction::MoveBefore(Some(master)),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: mono,
+                action: BusAction::GainChanged(-5.0),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime
+                .snapshot()
+                .buses
+                .iter()
+                .map(|bus| bus.id)
+                .collect::<Vec<_>>(),
+            [surround, master, mono]
+        );
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 24_000,
+                    buffer_size: 64,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..4 {
+            runtime.tick(Duration::ZERO);
+        }
+        let switched = runtime.snapshot();
+        assert_eq!(switched.status.sample_rate, 24_000);
+        assert_eq!(
+            switched.buses.iter().map(|bus| bus.id).collect::<Vec<_>>(),
+            [surround, master, mono]
+        );
+        assert_eq!(
+            switched
+                .buses
+                .iter()
+                .map(|bus| (bus.name.as_str(), bus.channels.len()))
+                .collect::<Vec<_>>(),
+            [("Surround", 6), ("Master", 2), ("Mono", 1)]
+        );
+        assert_eq!(
+            switched
+                .buses
+                .iter()
+                .find(|bus| bus.id == mono)
+                .unwrap()
+                .gain_db,
+            -5.0
         );
     }
 
@@ -19713,6 +21942,37 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             shoop_app_api::AudioDriverKind::Dummy
         );
         assert!(cancelled.audio_drivers.switch.message.contains("cancelled"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn cancelling_committing_session_load_releases_backend_replacement() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let backend_data = backend.capture_session().unwrap();
+        let bundle = model.session_bundle_from_backend(&backend_data).unwrap();
+        let task_id = model.start_io_task(IoTaskKind::LoadSession, "Loading");
+        model.pending_io = Some(PendingIo::CommitSessionLoad {
+            name: "cancelled.shoop".to_owned(),
+            bundle,
+            backend_data,
+        });
+
+        model.cancel_io_task(&mut backend, task_id).unwrap();
+        assert!(matches!(
+            backend.operations().last(),
+            Some(shoop_backend::FakeOperation::CancelSessionReplacement)
+        ));
+        assert!(model.pending_io.is_none());
+        assert_eq!(
+            model.io_task.as_ref().unwrap().status,
+            IoTaskStatus::Cancelled
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -20317,7 +22577,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn scripts_export_exact_source_and_convert_session_ownership() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let source = "shoop_announce_api_version(1, 6)\nprint('future')";
+        let source = "shoop_announce_api_version(1, 7)\nprint('future')";
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
@@ -20423,6 +22683,49 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
             .unwrap();
+        let routing_snapshot = runtime.snapshot();
+        let master_id = routing_snapshot.buses[0].id;
+        for action in [
+            BusAction::GainChanged(-7.0),
+            BusAction::BalanceChanged(0.3),
+            BusAction::MuteChanged(true),
+        ] {
+            runtime
+                .dispatch(AppIntent::Bus {
+                    bus_id: master_id,
+                    action,
+                })
+                .unwrap();
+        }
+        let track_output = routing_snapshot
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. }
+                        if track_id == persistent_track
+                ) && port.role == PortRole::AudioOutput
+            })
+            .unwrap()
+            .id;
+        let master_left = routing_snapshot.buses[0].channels[0].clone();
+        runtime
+            .dispatch(AppIntent::SetMixerRouteConnected {
+                source_port_id: track_output,
+                destination_channel_id: master_left.id,
+                connected: true,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::SetPortConnected {
+                port_id: master_left.output_port_id,
+                host_port_id: HostPortId::new("system:playback_1"),
+                connected: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         let loop_id = runtime
             .snapshot()
             .tracks
@@ -20475,6 +22778,38 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             },
             12
         );
+        assert_eq!(saved.document.buses.len(), 1);
+        assert_eq!(saved.document.buses[0].name, "Master");
+        assert_eq!(saved.document.buses[0].channels.len(), 2);
+        assert_eq!(saved.document.buses[0].gain_db, -7.0);
+        assert_eq!(saved.document.buses[0].balance, 0.3);
+        assert!(saved.document.buses[0].muted);
+        assert_eq!(saved.document.mixer_routes.len(), 1);
+        assert!(saved.document.buses[0].ports[0]
+            .external_connections
+            .contains(&"system:playback_1".to_owned()));
+        let mut aliased_master = saved.clone();
+        aliased_master.document.buses[0].channels[1].output_port_id =
+            aliased_master.document.buses[0].channels[0].output_port_id;
+        assert!(session_bundle_to_backend(&aliased_master, &[])
+            .unwrap_err()
+            .contains("share one output port"));
+        let mut noncanonical_master = saved.clone();
+        noncanonical_master.document.buses[0].ports[0].gain = 0.5;
+        assert!(session_bundle_to_backend(&noncanonical_master, &[])
+            .unwrap_err()
+            .contains("not canonical"));
+        let mut invalid_controls = saved.clone();
+        invalid_controls.document.buses[0].gain_db = 100.0;
+        assert!(session_bundle_to_backend(&invalid_controls, &[])
+            .unwrap_err()
+            .contains("bus gain"));
+        let mut colliding_global = saved.clone();
+        colliding_global.document.global_ports[0].id =
+            colliding_global.document.buses[0].ports[0].id;
+        assert!(session_bundle_to_backend(&colliding_global, &[])
+            .unwrap_err()
+            .contains("duplicate port ID"));
 
         let resampled = resample_session(&saved, 32_000).unwrap();
         let bytes = encode_session(&resampled, "test").unwrap();
@@ -20538,10 +22873,20 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 break;
             }
         }
+        runtime.tick(Duration::ZERO);
         let loaded = runtime.snapshot();
         assert!(loaded.global_controls.solo);
         assert!(loaded.tracks.iter().any(|track| {
             track.name == "Persistent" && (track.controls.output_gain_db + 6.0).abs() < 0.001
+        }));
+        assert_eq!(loaded.buses.len(), 1);
+        assert_eq!(loaded.buses[0].gain_db, -7.0);
+        assert_eq!(loaded.buses[0].balance, 0.3);
+        assert!(loaded.buses[0].muted);
+        assert_eq!(loaded.connections.mixer_links.len(), 1);
+        assert!(loaded.connections.confirmed_links.iter().any(|link| {
+            link.application_port_id == loaded.buses[0].channels[0].output_port_id
+                && link.host_port_id.as_str() == "system:playback_1"
         }));
 
         let before = loaded.tracks.len();
@@ -20643,10 +22988,24 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .map(|track| track.id)
             .collect::<Vec<_>>();
         let mut malformed = bundle;
-        malformed
+        let mut second_global = malformed.document.global_ports[0].clone();
+        second_global.id = malformed
             .document
-            .global_ports
-            .push(malformed.document.global_ports[0].clone());
+            .buses
+            .iter()
+            .flat_map(|bus| bus.ports.iter().map(|port| port.id))
+            .chain(
+                malformed
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|group| &group.tracks)
+                    .flat_map(|track| track.ports.iter().map(|port| port.id)),
+            )
+            .max()
+            .unwrap_or(second_global.id)
+            .saturating_add(1);
+        malformed.document.global_ports.push(second_global);
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "malformed.shoop".to_owned(),

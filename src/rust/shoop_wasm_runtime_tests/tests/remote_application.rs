@@ -8,10 +8,10 @@ use std::time::Duration;
 use js_sys::{Array, Function, Promise};
 use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
-    AppIntent, AppSnapshot, ClickTrackRequest, DefaultPlaybackMode, DirectTrackSpec,
-    GlobalControlAction, IoTaskKind, IoTaskStatus, LoopAction, LoopMode, OxiSynthControl,
-    OxiSynthMidiCcAssignment, OxiSynthParameter, TrackAction, TrackProcessorEditorState,
-    TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
+    AppIntent, AppSnapshot, BusAction, BusSpec, ClickTrackRequest, DefaultPlaybackMode,
+    DirectTrackSpec, GlobalControlAction, IoTaskKind, IoTaskStatus, LoopAction, LoopMode,
+    OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter, ScriptKind, TrackAction,
+    TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
 };
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
@@ -483,7 +483,7 @@ async fn remote_peak_publication_resets_after_silence() {
 #[shoop_wasm_test_support::shoop_test(
     wasm_only = "requires the production WebAssembly Worker runtime"
 )]
-async fn remote_session_round_trips_track_controls() {
+async fn remote_session_round_trips_track_controls_and_dynamic_buses() {
     let mut harness = RemoteAppHarness::start().await;
     let track = add_audio_track(&mut harness).await;
     harness.dispatch(AppIntent::Track {
@@ -494,10 +494,26 @@ async fn remote_session_round_trips_track_controls() {
         track_id: track.id,
         action: TrackAction::OutputGainChanged(-7.0),
     });
+    let master_id = harness.snapshot().buses[0].id;
+    harness.dispatch(AppIntent::Bus {
+        bus_id: master_id,
+        action: BusAction::GainChanged(-5.0),
+    });
+    harness.dispatch(AppIntent::AddScriptSource {
+        name: "remote-bus-control.lua".to_owned(),
+        source: Arc::from(
+            "shoop_announce_api_version(1, 5)\nlocal c=require('shoop_control')\nc.bus_set_balance(0, 0.25)\nc.bus_set_muted(0, true)",
+        ),
+        kind: ScriptKind::Ephemeral,
+        enabled: true,
+    });
     harness
         .drive_until("published session controls", |snapshot| {
             snapshot.tracks[1].name == "Saved remote track"
                 && (snapshot.tracks[1].controls.output_gain_db + 7.0).abs() < f32::EPSILON
+                && (snapshot.buses[0].gain_db + 5.0).abs() < f32::EPSILON
+                && (snapshot.buses[0].balance - 0.25).abs() < f32::EPSILON
+                && snapshot.buses[0].muted
         })
         .await;
     let saved = save_session(&mut harness).await;
@@ -509,10 +525,85 @@ async fn remote_session_round_trips_track_controls() {
         track_id: track.id,
         action: TrackAction::OutputGainChanged(3.0),
     });
+    for action in [
+        BusAction::GainChanged(0.0),
+        BusAction::BalanceChanged(0.0),
+        BusAction::MuteChanged(false),
+    ] {
+        harness.dispatch(AppIntent::Bus {
+            bus_id: master_id,
+            action,
+        });
+    }
     load_session(&mut harness, saved).await;
     let loaded = harness.snapshot();
     assert_eq!(loaded.tracks[1].name, "Saved remote track");
     assert!((loaded.tracks[1].controls.output_gain_db + 7.0).abs() < f32::EPSILON);
+    assert!((loaded.buses[0].gain_db + 5.0).abs() < f32::EPSILON);
+    assert!((loaded.buses[0].balance - 0.25).abs() < f32::EPSILON);
+    assert!(loaded.buses[0].muted);
+
+    harness.dispatch(AppIntent::AddBus(BusSpec {
+        name: "Surround".to_owned(),
+        channel_count: 6,
+        creation_request_id: Some(99),
+    }));
+    harness
+        .drive_until("created multichannel bus", |snapshot| {
+            snapshot.buses.len() == 2
+                && snapshot
+                    .buses
+                    .iter()
+                    .any(|bus| bus.name == "Surround" && bus.channels.len() == 6)
+        })
+        .await;
+    let surround_id = harness
+        .snapshot()
+        .buses
+        .iter()
+        .find(|bus| bus.name == "Surround")
+        .unwrap()
+        .id;
+    harness.dispatch(AppIntent::Bus {
+        bus_id: surround_id,
+        action: BusAction::MoveBefore(Some(master_id)),
+    });
+    harness
+        .drive_until("reordered buses visually", |snapshot| {
+            snapshot
+                .buses
+                .first()
+                .is_some_and(|bus| bus.id == surround_id)
+        })
+        .await;
+    let dynamic_saved = save_session(&mut harness).await;
+    harness.dispatch(AppIntent::Bus {
+        bus_id: surround_id,
+        action: BusAction::Remove,
+    });
+    harness
+        .drive_until("removed multichannel bus", |snapshot| {
+            snapshot.buses.len() == 1
+        })
+        .await;
+    load_session(&mut harness, dynamic_saved).await;
+    let restored = harness.snapshot();
+    assert_eq!(restored.buses.len(), 2);
+    assert_eq!(restored.buses[0].name, "Surround");
+    assert_eq!(restored.buses[0].channels.len(), 6);
+    let ids = restored.buses.iter().map(|bus| bus.id).collect::<Vec<_>>();
+    for bus_id in ids {
+        harness.dispatch(AppIntent::Bus {
+            bus_id,
+            action: BusAction::Remove,
+        });
+    }
+    harness
+        .drive_until("removed all buses", |snapshot| snapshot.buses.is_empty())
+        .await;
+    let zero_saved = save_session(&mut harness).await;
+    load_session(&mut harness, zero_saved).await;
+    assert!(harness.snapshot().buses.is_empty());
     harness.shutdown().await;
 }
 

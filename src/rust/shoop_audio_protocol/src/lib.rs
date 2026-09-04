@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 22;
+pub const PROTOCOL_VERSION: u16 = 25;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -119,6 +119,20 @@ pub enum Command {
         track_id: u64,
         control: WireTrackControl,
     },
+    CreateBus {
+        expected_bus_id: u64,
+        expected_channel_ids: Vec<u64>,
+        expected_output_port_ids: Vec<u64>,
+        name: String,
+        channel_count: u32,
+    },
+    RemoveBus {
+        bus_id: u64,
+    },
+    SetBusControl {
+        bus_id: u64,
+        control: WireBusControl,
+    },
     SetTrackDefaultPlaybackMode {
         track_id: u64,
         mode: WireDefaultPlaybackMode,
@@ -194,6 +208,11 @@ pub enum Command {
         host_port_id: String,
         connected: bool,
     },
+    SetMixerRoute {
+        source_port_id: u64,
+        destination_channel_id: u64,
+        connected: bool,
+    },
     RequestWaveform {
         loop_id: u64,
         revision: u64,
@@ -260,6 +279,20 @@ impl Command {
                 },
             ) => {
                 existing_track == replacement_track
+                    && std::mem::discriminant(existing_control)
+                        == std::mem::discriminant(replacement_control)
+            }
+            (
+                Self::SetBusControl {
+                    bus_id: existing_bus,
+                    control: existing_control,
+                },
+                Self::SetBusControl {
+                    bus_id: replacement_bus,
+                    control: replacement_control,
+                },
+            ) => {
+                existing_bus == replacement_bus
                     && std::mem::discriminant(existing_control)
                         == std::mem::discriminant(replacement_control)
             }
@@ -370,6 +403,21 @@ impl Command {
                     ..
                 },
             ) => existing_port == replacement_port && existing_host == replacement_host,
+            (
+                Self::SetMixerRoute {
+                    source_port_id: existing_source,
+                    destination_channel_id: existing_destination,
+                    ..
+                },
+                Self::SetMixerRoute {
+                    source_port_id: replacement_source,
+                    destination_channel_id: replacement_destination,
+                    ..
+                },
+            ) => {
+                existing_source == replacement_source
+                    && existing_destination == replacement_destination
+            }
             _ => false,
         }
     }
@@ -384,6 +432,14 @@ pub enum WireTrackControl {
     InputGainDb(f32),
     InputBalance(f32),
     InputMonitoring(bool),
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "control", content = "value", rename_all = "snake_case")]
+pub enum WireBusControl {
+    GainDb(f32),
+    Balance(f32),
+    Mute(bool),
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -536,6 +592,12 @@ pub enum Event {
         desired_connected: bool,
         message: String,
     },
+    MixerMutationFailed {
+        source_port_id: u64,
+        destination_channel_id: u64,
+        desired_connected: bool,
+        message: String,
+    },
     MidiOutput {
         events: Vec<WireMidiOutputEvent>,
         dropped: u32,
@@ -558,6 +620,7 @@ pub enum Event {
     },
     SessionReplaceComplete {
         generation: u64,
+        mixer_revision: u64,
     },
     LoopContentReplaceComplete {
         generation: u64,
@@ -590,6 +653,11 @@ pub struct WireSnapshot {
     pub application_ports: Vec<WireApplicationPort>,
     pub host_ports: Vec<WireHostPort>,
     pub confirmed_links: Vec<WireConfirmedLink>,
+    pub connection_failures: Vec<WireConnectionFailure>,
+    pub mixer_revision: u64,
+    pub buses: Vec<WireBus>,
+    pub confirmed_mixer_links: Vec<WireMixerLink>,
+    pub mixer_failures: Vec<WireMixerFailure>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -632,6 +700,7 @@ pub struct WireApplicationPort {
 #[serde(rename_all = "snake_case")]
 pub enum WireApplicationPortOwner {
     Track,
+    Bus { bus_id: u64 },
     GlobalFxControl,
 }
 
@@ -647,6 +716,45 @@ pub struct WireHostPort {
 pub struct WireConfirmedLink {
     pub application_port_id: u64,
     pub host_port_id: String,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireConnectionFailure {
+    pub application_port_id: u64,
+    pub host_port_id: String,
+    pub desired_connected: bool,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireBus {
+    pub id: u64,
+    pub name: String,
+    pub channels: Vec<WireBusChannel>,
+    pub gain_db: f32,
+    pub balance: f32,
+    pub muted: bool,
+    pub output_peaks_db: Vec<f32>,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireBusChannel {
+    pub id: u64,
+    pub label: String,
+    pub output_port_id: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireMixerLink {
+    pub source_port_id: u64,
+    pub destination_channel_id: u64,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireMixerFailure {
+    pub link: WireMixerLink,
+    pub desired_connected: bool,
+    pub message: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -1105,6 +1213,26 @@ mod tests {
         assert!(!other_control.supersedes_in_journal(&first));
         assert!(!other_track.supersedes_in_journal(&first));
 
+        let bus_gain = Command::SetBusControl {
+            bus_id: 1,
+            control: WireBusControl::GainDb(-3.0),
+        };
+        let replacement_bus_gain = Command::SetBusControl {
+            bus_id: 1,
+            control: WireBusControl::GainDb(-9.0),
+        };
+        let bus_mute = Command::SetBusControl {
+            bus_id: 1,
+            control: WireBusControl::Mute(true),
+        };
+        let other_bus_gain = Command::SetBusControl {
+            bus_id: 2,
+            control: WireBusControl::GainDb(-9.0),
+        };
+        assert!(replacement_bus_gain.supersedes_in_journal(&bus_gain));
+        assert!(!bus_mute.supersedes_in_journal(&bus_gain));
+        assert!(!other_bus_gain.supersedes_in_journal(&bus_gain));
+
         let route = Command::SetPortConnected {
             application_port_id: 9,
             host_port_id: "webaudio:destination_1".to_owned(),
@@ -1122,6 +1250,23 @@ mod tests {
         };
         assert!(same_route.supersedes_in_journal(&route));
         assert!(!other_route.supersedes_in_journal(&route));
+        let mixer_route = Command::SetMixerRoute {
+            source_port_id: 7,
+            destination_channel_id: 1,
+            connected: false,
+        };
+        assert!(Command::SetMixerRoute {
+            source_port_id: 7,
+            destination_channel_id: 1,
+            connected: true,
+        }
+        .supersedes_in_journal(&mixer_route));
+        assert!(!Command::SetMixerRoute {
+            source_port_id: 7,
+            destination_channel_id: 2,
+            connected: true,
+        }
+        .supersedes_in_journal(&mixer_route));
         assert!(Command::ConfigureDeviceChannels {
             input_channels: 1,
             output_channels: 2,
@@ -1272,6 +1417,55 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn bus_structure_commands_round_trip_without_cross_kind_supersession() {
+        let create = Command::CreateBus {
+            expected_bus_id: 7,
+            expected_channel_ids: vec![11, 12, 13, 14],
+            expected_output_port_ids: vec![21, 22, 23, 24],
+            name: "Surround".to_owned(),
+            channel_count: 4,
+        };
+        let remove = Command::RemoveBus { bus_id: 7 };
+        for (sequence, command) in [(1, create.clone()), (2, remove.clone())] {
+            let envelope = CommandEnvelope::new(sequence, command);
+            let encoded = serde_json::to_vec(&envelope).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+                envelope
+            );
+            assert!(encoded.len() <= COMMAND_MAX_BYTES);
+        }
+        assert!(!create.supersedes_in_journal(&remove));
+        assert!(!remove.supersedes_in_journal(&create));
+        assert!(!remove.supersedes_in_journal(&Command::SetBusControl {
+            bus_id: 7,
+            control: WireBusControl::Mute(true),
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_control_commands_round_trip_with_stable_identity_and_values() {
+        for (sequence, control) in [
+            WireBusControl::GainDb(-6.0),
+            WireBusControl::Balance(0.25),
+            WireBusControl::Mute(true),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let envelope = CommandEnvelope::new(
+                sequence as u64 + 1,
+                Command::SetBusControl { bus_id: 7, control },
+            );
+            let encoded = serde_json::to_vec(&envelope).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+                envelope
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn global_application_port_owner_round_trips_explicitly() {
         let port = WireApplicationPort {
             id: 99,
@@ -1384,7 +1578,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":22,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":25,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1395,7 +1589,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":22,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":25,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 
@@ -1426,6 +1620,7 @@ mod tests {
         let payload = WireSnapshot {
             sample_rate: 48_000,
             quantum: 128,
+            mixer_revision: 37,
             ..Default::default()
         };
         let binary = encode_binary(&payload).unwrap();

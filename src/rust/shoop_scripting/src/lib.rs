@@ -26,7 +26,7 @@ mod midi;
 use api_version::{install_api_version_announcement, ApiVersionState};
 use control::{install_control_api, MidiRuleRuntimeDirection, ScriptCallbacks};
 pub use control::{
-    ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
+    ControlBridge, ControlBus, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
     MidiRuntimeDiagnostics, ScriptActivityDiagnostics, ScriptKeyEvent, ScriptLoopEvent,
     SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
@@ -1510,15 +1510,15 @@ dialog.simple('Help', {dialog.markdown_file('content/help.md')})
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.5",
+                "script requests 2.0, host supports 1.6",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.5",
+                "script requests 0.0, host supports 1.6",
             ),
             (
-                "shoop_announce_api_version(1, 6)",
-                "script requests 1.6, host supports 1.5",
+                "shoop_announce_api_version(1, 7)",
+                "script requests 1.7, host supports 1.6",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
@@ -1849,6 +1849,24 @@ d.open('Simple')
                         targeted: false,
                     },
                 ],
+                buses: vec![
+                    ControlBus {
+                        id: shoop_app_api::BusId::from_raw(1),
+                        index: 0,
+                        channel_count: 2,
+                        gain_db: -3.0,
+                        balance: 0.25,
+                        muted: false,
+                    },
+                    ControlBus {
+                        id: shoop_app_api::BusId::from_raw(2),
+                        index: 1,
+                        channel_count: 1,
+                        gain_db: 0.0,
+                        balance: 0.0,
+                        muted: true,
+                    },
+                ],
                 tracks: vec![
                     ControlTrack {
                         id: TrackId::from_raw(1),
@@ -1967,6 +1985,17 @@ c.track_set_input_gain_fader({0,1}, 0.25)
 c.track_set_input_balance({0,1}, 2)
 eq(c.track_get_input_balance(0)[1], 1, 'clamped input balance')
 
+local buses = {0, 1}
+eq(#c.bus_get_gain(buses), 2, 'bus gain shape')
+eq(#c.bus_get_gain_fader(buses), 2, 'bus fader shape')
+eq(c.bus_get_balance(0)[1], 0.25, 'bus balance')
+eq(c.bus_get_muted(1)[1], true, 'bus muted')
+c.bus_set_gain(buses, 0.5)
+c.bus_set_gain_fader(buses, 0.75)
+c.bus_set_balance(0, -2)
+c.bus_set_muted(buses, false)
+eq(c.bus_get_balance(0)[1], -1, 'clamped bus balance')
+
 eq(c.get_apply_n_cycles(), 3, 'cycles')
 c.set_apply_n_cycles(5)
 eq(c.get_solo(), false, 'solo')
@@ -2000,7 +2029,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
             .map(|name| (*name).to_owned())
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(called, expected);
-        assert_eq!(bridge.borrow().operations.len(), 33);
+        assert_eq!(bridge.borrow().operations.len(), 37);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2094,6 +2123,14 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
                     input_balance: 0.0,
                     input_muted: false,
                 }],
+                buses: vec![ControlBus {
+                    id: shoop_app_api::BusId::from_raw(1),
+                    index: 0,
+                    channel_count: 1,
+                    gain_db: 0.0,
+                    balance: 0.0,
+                    muted: false,
+                }],
                 ..Default::default()
             },
             operations: Vec::new(),
@@ -2114,6 +2151,9 @@ fails('loop coordinate', function() c.loop_count({{0}}) end)
 fails('invalid loop mode', function() c.loop_trigger({0,0}, 99) end)
 fails('non-negative', function() c.loop_transition({0,0}, c.constants.LoopMode_Playing, -2, -1) end)
 fails('track selector', function() c.track_get_gain('bad') end)
+fails('bus selector', function() c.bus_get_gain('bad') end)
+fails('finite', function() c.bus_set_gain(0, 0/0) end)
+fails('stereo buses', function() c.bus_set_balance(0, 0.5) end)
 fails('2 or 3 arguments', function() c.track_set_input_muted(0) end)
 fails('muted must be boolean', function() c.track_set_input_muted(0, 'false') end)
 fails('respect_auto_mute must be boolean', function() c.track_set_input_muted(0, false, 1) end)
@@ -2368,7 +2408,7 @@ if not c.get_solo() then error('solo') end
         let id = manager
             .add(
                 "future.lua",
-                "shoop_announce_api_version(1, 6)",
+                "shoop_announce_api_version(1, 7)",
                 ScriptKind::Ephemeral,
                 true,
             )
@@ -2381,7 +2421,7 @@ if not c.get_solo() then error('solo') end
             .latest_error
             .as_deref()
             .unwrap()
-            .contains("script requests 1.6, host supports 1.5"));
+            .contains("script requests 1.7, host supports 1.6"));
 
         assert!(manager.start(id).is_err());
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Incompatible);

@@ -5,6 +5,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod app_widget;
 mod builtin_fx_editor;
+mod bus_controls;
 mod click_track_dialog;
 pub mod colors;
 mod composite_loop_widget;
@@ -44,6 +45,7 @@ pub use app_widget::{
     DUMMY_SAMPLE_RATE, JACK_CLIENT_NAME, KEYBOARD_SCRIPT_ENABLED, LOOP_EDGE_SMOOTHING_MS,
     SELECTED_AUDIO_DRIVER, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
 };
+pub use bus_controls::BusControls;
 pub use composite_loop_widget::CompositeLoopWidget;
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;

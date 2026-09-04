@@ -8,9 +8,10 @@ use shoop_audio_protocol::{
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
     WireBuiltInFxDriveType, WireBuiltInFxMidiCcAssignment, WireBuiltInFxModulationType,
     WireBuiltInFxParameter, WireBuiltInFxReverbType, WireBuiltInFxStage, WireBuiltInFxState,
-    WireChannelMode, WireCompositeConfig, WireCompositeKind, WireCompositeState,
-    WireCompositeTarget, WireConfirmedLink, WireDefaultPlaybackMode, WireHostPort,
-    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WireBus, WireBusChannel, WireBusControl, WireChannelMode, WireCompositeConfig,
+    WireCompositeKind, WireCompositeState, WireCompositeTarget, WireConfirmedLink,
+    WireConnectionFailure, WireDefaultPlaybackMode, WireHostPort, WireLatestMidiMessage,
+    WireLoopMode, WireLoopState, WireMidiOutputEvent, WireMixerFailure, WireMixerLink,
     WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState, WirePortDataType,
     WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
     WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyState,
@@ -21,8 +22,9 @@ use shoop_audio_protocol::{
 #[cfg(test)]
 use shoop_backend::BuiltInFxState;
 use shoop_backend::{
-    Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeTarget, BackendDefaultPlaybackMode, BackendGrabRequest,
+    Backend, BackendBusChannelId, BackendBusControl, BackendBusId, BackendBusRequest,
+    BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId, BackendCompositeKind,
+    BackendCompositeTarget, BackendDefaultPlaybackMode, BackendGrabRequest,
     BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
     BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
     BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
@@ -495,6 +497,54 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
+            Command::CreateBus {
+                expected_bus_id,
+                expected_channel_ids,
+                expected_output_port_ids,
+                name,
+                channel_count,
+            } => {
+                let created = self
+                    .backend
+                    .create_bus(BackendBusRequest {
+                        name,
+                        channel_count,
+                    })
+                    .map_err(|error| error.to_string())?;
+                let actual_channel_ids = created
+                    .channels
+                    .iter()
+                    .map(|channel| channel.id.raw())
+                    .collect::<Vec<_>>();
+                let actual_output_ids = created
+                    .channels
+                    .iter()
+                    .map(|channel| channel.output_port_id.raw())
+                    .collect::<Vec<_>>();
+                if created.bus_id.raw() != expected_bus_id
+                    || actual_channel_ids != expected_channel_ids
+                    || actual_output_ids != expected_output_port_ids
+                {
+                    let _ = self.backend.remove_bus(created.bus_id);
+                    return Err("created bus identities did not match the reservation".to_owned());
+                }
+                Ok(Event::Ack)
+            }
+            Command::RemoveBus { bus_id } => {
+                self.backend
+                    .remove_bus(BackendBusId::from_raw(bus_id))
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetBusControl { bus_id, control } => {
+                self.backend
+                    .set_bus_control(
+                        BackendBusId::from_raw(bus_id),
+                        from_wire_bus_control(control),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::SetTrackDefaultPlaybackMode { track_id, mode } => {
                 self.backend
                     .set_track_default_playback_mode(
@@ -733,6 +783,25 @@ impl WorkletHost {
                     }),
                 }
             }
+            Command::SetMixerRoute {
+                source_port_id,
+                destination_channel_id,
+                connected,
+            } => {
+                match self.backend.set_mixer_route(
+                    BackendPortId::from_raw(source_port_id),
+                    BackendBusChannelId::from_raw(destination_channel_id),
+                    connected,
+                ) {
+                    Ok(()) => Ok(Event::Ack),
+                    Err(error) => Ok(Event::MixerMutationFailed {
+                        source_port_id,
+                        destination_channel_id,
+                        desired_connected: connected,
+                        message: error.to_string(),
+                    }),
+                }
+            }
             Command::RequestWaveform {
                 loop_id,
                 revision,
@@ -906,13 +975,17 @@ impl WorkletHost {
                 self.backend
                     .replace_session(&session)
                     .map_err(|error| error.to_string())?;
+                let mixer_revision = self.backend.mixer_revision();
                 self.replace_generation = None;
                 self.replace_expected_bytes = 0;
                 self.replace_bytes.clear();
                 self.capture_generation = None;
                 self.capture_bytes.clear();
                 self.composite_plan_versions.clear();
-                Ok(Event::SessionReplaceComplete { generation })
+                Ok(Event::SessionReplaceComplete {
+                    generation,
+                    mixer_revision,
+                })
             }
             Command::AbortSessionTransfer { generation } => {
                 if self.capture_generation == Some(generation) {
@@ -977,6 +1050,14 @@ fn from_wire_track_control(control: WireTrackControl) -> BackendTrackControl {
         WireTrackControl::InputGainDb(value) => BackendTrackControl::InputGainDb(value),
         WireTrackControl::InputBalance(value) => BackendTrackControl::InputBalance(value),
         WireTrackControl::InputMonitoring(value) => BackendTrackControl::InputMonitoring(value),
+    }
+}
+
+fn from_wire_bus_control(control: WireBusControl) -> BackendBusControl {
+    match control {
+        WireBusControl::GainDb(value) => BackendBusControl::GainDb(value),
+        WireBusControl::Balance(value) => BackendBusControl::Balance(value),
+        WireBusControl::Mute(value) => BackendBusControl::Mute(value),
     }
 }
 
@@ -1350,6 +1431,7 @@ fn to_wire_role(value: BackendPortRole) -> WirePortRole {
 }
 
 fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
+    let mixer_revision = snapshot.mixer.revision;
     let application_ports = snapshot
         .connections
         .application_ports
@@ -1358,6 +1440,9 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             id: port.id.raw(),
             owner: match port.owner {
                 BackendPortOwner::Track => WireApplicationPortOwner::Track,
+                BackendPortOwner::Bus(bus_id) => WireApplicationPortOwner::Bus {
+                    bus_id: bus_id.raw(),
+                },
                 BackendPortOwner::GlobalFxControl => WireApplicationPortOwner::GlobalFxControl,
             },
             name: port.name,
@@ -1384,6 +1469,61 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         .map(|link| WireConfirmedLink {
             application_port_id: link.application_port_id.raw(),
             host_port_id: link.host_port_id,
+        })
+        .collect();
+    let connection_failures = snapshot
+        .connections
+        .failures
+        .into_iter()
+        .map(|failure| WireConnectionFailure {
+            application_port_id: failure.port_id.raw(),
+            host_port_id: failure.external_port,
+            desired_connected: failure.desired_connected,
+            message: failure.message,
+        })
+        .collect();
+    let buses = snapshot
+        .mixer
+        .buses
+        .into_values()
+        .map(|bus| WireBus {
+            id: bus.id.raw(),
+            name: bus.name,
+            channels: bus
+                .channels
+                .into_iter()
+                .map(|channel| WireBusChannel {
+                    id: channel.id.raw(),
+                    label: channel.label,
+                    output_port_id: channel.output_port_id.raw(),
+                })
+                .collect(),
+            gain_db: bus.gain_db,
+            balance: bus.balance,
+            muted: bus.muted,
+            output_peaks_db: bus.output_peaks_db,
+        })
+        .collect();
+    let confirmed_mixer_links = snapshot
+        .mixer
+        .confirmed_links
+        .into_iter()
+        .map(|link| WireMixerLink {
+            source_port_id: link.source_port_id.raw(),
+            destination_channel_id: link.destination_channel_id.raw(),
+        })
+        .collect();
+    let mixer_failures = snapshot
+        .mixer
+        .failures
+        .into_iter()
+        .map(|failure| WireMixerFailure {
+            link: WireMixerLink {
+                source_port_id: failure.link.source_port_id.raw(),
+                destination_channel_id: failure.link.destination_channel_id.raw(),
+            },
+            desired_connected: failure.desired_connected,
+            message: failure.message,
         })
         .collect();
     WireSnapshot {
@@ -1598,6 +1738,11 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         application_ports,
         host_ports,
         confirmed_links,
+        connection_failures,
+        mixer_revision,
+        buses,
+        confirmed_mixer_links,
+        mixer_failures,
     }
 }
 
@@ -3044,6 +3189,24 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn backend_snapshot_connection_failures_cross_the_wire() {
+        let mut snapshot = BackendSnapshot::default();
+        snapshot
+            .connections
+            .failures
+            .push(shoop_backend::BackendConnectionFailure {
+                port_id: BackendPortId::from_raw(7),
+                external_port: "missing-output".to_owned(),
+                desired_connected: true,
+                message: "unavailable".to_owned(),
+            });
+        let wire = to_wire_snapshot(snapshot);
+        assert_eq!(wire.connection_failures.len(), 1);
+        assert_eq!(wire.connection_failures[0].application_port_id, 7);
+        assert_eq!(wire.connection_failures[0].host_port_id, "missing-output");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn normalized_routes_mutate_authoritatively_without_stopping_audio() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -3090,9 +3253,13 @@ mod tests {
         let Event::Snapshot(snapshot) = command(&mut host, 4, Command::Poll).event else {
             panic!("expected snapshot");
         };
-        assert_eq!(snapshot.application_ports.len(), 5);
+        assert_eq!(snapshot.application_ports.len(), 7);
         assert_eq!(snapshot.host_ports.len(), 4);
         assert_eq!(snapshot.confirmed_links.len(), 4);
+        assert_eq!(snapshot.buses.len(), 1);
+        assert_eq!(snapshot.buses[0].name, "Master");
+        assert_eq!(snapshot.buses[0].channels.len(), 2);
+        assert!(snapshot.confirmed_mixer_links.is_empty());
 
         host.input()[..128].fill(0.2);
         host.input()[128..256].fill(0.4);
@@ -3122,17 +3289,56 @@ mod tests {
         assert!(host.output()[128..256]
             .iter()
             .all(|sample| (*sample - 0.4).abs() < 1.0e-6));
-        let Event::Snapshot(snapshot) = command(&mut host, 6, Command::Poll).event else {
+
+        let master_left = snapshot.buses[0].channels[0].clone();
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::SetMixerRoute {
+                    source_port_id: 2,
+                    destination_channel_id: master_left.id,
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::SetPortConnected {
+                    application_port_id: master_left.output_port_id,
+                    host_port_id: "webaudio:destination_1".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(2, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.2).abs() < 1.0e-6));
+        let Event::Snapshot(snapshot) = command(&mut host, 8, Command::Poll).event else {
             panic!("expected snapshot");
         };
         assert!(!snapshot.confirmed_links.iter().any(|link| {
             link.application_port_id == 2 && link.host_port_id == "webaudio:destination_1"
         }));
+        assert_eq!(
+            snapshot.confirmed_mixer_links,
+            [WireMixerLink {
+                source_port_id: 2,
+                destination_channel_id: master_left.id,
+            }]
+        );
 
         assert!(matches!(
             command(
                 &mut host,
-                7,
+                9,
                 Command::SetPortConnected {
                     application_port_id: 2,
                     host_port_id: "webaudio:capture_1".to_owned(),
@@ -3143,9 +3349,351 @@ mod tests {
             Event::ConnectionMutationFailed { .. }
         ));
         assert!(matches!(
-            command(&mut host, 8, Command::Poll).event,
+            command(&mut host, 10, Command::Poll).event,
             Event::Snapshot(_)
         ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_creates_and_removes_exact_multichannel_bus_identities() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateBus {
+                    expected_bus_id: 2,
+                    expected_channel_ids: vec![3, 4, 5, 6],
+                    expected_output_port_ids: vec![1, 2, 3, 4],
+                    name: "Surround".to_owned(),
+                    channel_count: 4,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "fanout".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 3, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.buses.len(), 2);
+        let surround = snapshot.buses.iter().find(|bus| bus.id == 2).unwrap();
+        assert_eq!(surround.name, "Surround");
+        assert_eq!(
+            surround
+                .channels
+                .iter()
+                .map(|channel| channel.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Channel 1", "Channel 2", "Channel 3", "Channel 4"]
+        );
+        assert!(snapshot.confirmed_mixer_links.is_empty());
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::SetMixerRoute {
+                    source_port_id: 6,
+                    destination_channel_id: 3,
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::SetPortConnected {
+                    application_port_id: 1,
+                    host_port_id: "webaudio:destination_1".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::SetPortConnected {
+                    application_port_id: 6,
+                    host_port_id: "webaudio:destination_1".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 8, Command::RemoveBus { bus_id: 1 }).event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 9, Command::RemoveBus { bus_id: 2 }).event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 10, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert!(snapshot.buses.is_empty());
+        assert!(snapshot
+            .application_ports
+            .iter()
+            .all(|port| { !matches!(port.owner, WireApplicationPortOwner::Bus { .. }) }));
+        assert!(snapshot.confirmed_mixer_links.is_empty());
+        assert!(snapshot.confirmed_links.iter().any(|link| {
+            link.application_port_id == 6 && link.host_port_id == "webaudio:destination_1"
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn master_bus_sums_two_tracks_fans_out_and_disconnects_in_the_worklet() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 1,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (sequence, track_id, loop_id, name) in [(2, 1, 1, "first"), (3, 2, 2, "second")] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::CreateTrack {
+                        expected_track_id: track_id,
+                        expected_loop_ids: vec![loop_id],
+                        port_name_base: name.to_owned(),
+                        topology: WireTrackTopology::Direct {
+                            audio_channels: 1,
+                            midi: false,
+                        },
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        for (sequence, track_id) in [(4, 1), (5, 2)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetTrackControl {
+                        track_id,
+                        control: WireTrackControl::InputMonitoring(true),
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        let Event::Snapshot(snapshot) = command(&mut host, 6, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        let master = &snapshot.buses[0];
+        let left = master.channels[0].clone();
+        let right = master.channels[1].clone();
+        for (sequence, source_port_id, destination_channel_id) in
+            [(7, 2, left.id), (8, 4, left.id), (9, 2, right.id)]
+        {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetMixerRoute {
+                        source_port_id,
+                        destination_channel_id,
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        let mut sequence = 10;
+        for source_port_id in [2, 4] {
+            for destination in ["webaudio:destination_1", "webaudio:destination_2"] {
+                assert!(matches!(
+                    command(
+                        &mut host,
+                        sequence,
+                        Command::SetPortConnected {
+                            application_port_id: source_port_id,
+                            host_port_id: destination.to_owned(),
+                            connected: false,
+                        },
+                    )
+                    .event,
+                    Event::Ack
+                ));
+                sequence += 1;
+            }
+        }
+        for (output_port_id, destination) in [
+            (left.output_port_id, "webaudio:destination_1"),
+            (right.output_port_id, "webaudio:destination_2"),
+        ] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetPortConnected {
+                        application_port_id: output_port_id,
+                        host_port_id: destination.to_owned(),
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+            sequence += 1;
+        }
+
+        host.input()[..128].fill(0.25);
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.5).abs() < 1.0e-6));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.25).abs() < 1.0e-6));
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::SetMixerRoute {
+                    source_port_id: 2,
+                    destination_channel_id: left.id,
+                    connected: false,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.25).abs() < 1.0e-6));
+        let Event::Snapshot(snapshot) = command(&mut host, sequence + 1, Command::Poll).event
+        else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.confirmed_mixer_links.len(), 2);
+
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 2,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::GainDb(-6.0),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 3,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::Balance(0.5),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        let base = 10.0_f32.powf(-6.0 / 20.0);
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base * 0.5).abs() < 1.0e-6));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base).abs() < 1.0e-6));
+        let Event::Snapshot(controlled) = command(&mut host, sequence + 4, Command::Poll).event
+        else {
+            panic!("expected snapshot");
+        };
+        let master = &controlled.buses[0];
+        assert_eq!(master.gain_db, -6.0);
+        assert_eq!(master.balance, 0.5);
+        assert!(!master.muted);
+        assert!((master.output_peaks_db[0] - 20.0 * (0.25 * base * 0.5).log10()).abs() < 1.0e-4);
+        assert!((master.output_peaks_db[1] - 20.0 * (0.25 * base).log10()).abs() < 1.0e-4);
+
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 5,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::Mute(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..256].iter().all(|sample| *sample == 0.0));
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence + 6,
+                Command::SetBusControl {
+                    bus_id: master.id,
+                    control: WireBusControl::Mute(false),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base * 0.5).abs() < 1.0e-6));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.25 * base).abs() < 1.0e-6));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3886,15 +4434,20 @@ mod tests {
         };
         assert!(before_commit.callback_count > 1);
         sequence += 1;
-        assert!(matches!(
-            command(
-                &mut host,
-                sequence,
-                Command::CommitSessionReplace { generation: 8 },
-            )
-            .event,
-            Event::SessionReplaceComplete { generation: 8 }
-        ));
+        let Event::SessionReplaceComplete {
+            generation,
+            mixer_revision,
+        } = command(
+            &mut host,
+            sequence,
+            Command::CommitSessionReplace { generation: 8 },
+        )
+        .event
+        else {
+            panic!("expected session replacement completion")
+        };
+        assert_eq!(generation, 8);
+        assert!(mixer_revision > 0);
         sequence += 1;
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
         let Event::Snapshot(snapshot) = command(&mut host, sequence, Command::Poll).event else {

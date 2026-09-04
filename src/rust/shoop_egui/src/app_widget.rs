@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::{
-    click_track_dialog::ClickTrackDialog, colors, ephemeral_script_display_name,
-    is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
-    AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
-    DefaultPlaybackMode, DetailsPane, DummyAudioDriverConfig, GlobalControls,
-    JackAudioDriverConfig, PianoPane, ProcessorLatencyAdjustmentState,
-    RecordingOffsetAdjustmentState, SettingsAction, SettingsDialog, TracingStatus, TracingStopped,
-    TrackLatencySpec, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
-    TrackWidget, TracksWidget,
+    bus_controls::BusDragPayload, click_track_dialog::ClickTrackDialog, colors,
+    ephemeral_script_display_name, is_ephemeral_script_version, script_dialogs::ScriptDialogs,
+    AppAction, AppState, AudioDriverConfig, AudioDriverKind, BusControls, ConnectionDialog,
+    ConnectionScope, CpalAudioDriverConfig, DefaultPlaybackMode, DetailsPane,
+    DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
+    ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState, SettingsAction,
+    SettingsDialog, TracingStatus, TracingStopped, TrackLatencySpec, TrackProcessorDescriptor,
+    TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsDraftError,
@@ -20,7 +20,57 @@ use std::sync::Arc;
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
 const LOGO_AREA_HEIGHT: f32 = 112.0;
 const SYNC_TRACK_HEIGHT: f32 = 118.0;
+const BUS_MIXER_DEFAULT_HEIGHT: f32 = 290.0;
+const BUS_MIXER_MIN_HEIGHT: f32 = 220.0;
+const BUS_MIXER_MAX_HEIGHT: f32 = 460.0;
+const BUS_INSERT_ZONE_WIDTH: f32 = 12.0;
 const SIDEBAR_SECTION_GAP: f32 = 8.0;
+
+fn bus_move_changes_order(
+    bus_ids: &[crate::BusId],
+    source: crate::BusId,
+    target: Option<crate::BusId>,
+) -> bool {
+    let Some(source_index) = bus_ids.iter().position(|id| *id == source) else {
+        return false;
+    };
+    let target_index = target
+        .and_then(|target| bus_ids.iter().position(|id| *id == target))
+        .unwrap_or(bus_ids.len());
+    source_index != target_index && source_index + 1 != target_index
+}
+
+fn show_bus_insert_zone(
+    ui: &mut egui::Ui,
+    bus_ids: &[crate::BusId],
+    target: Option<crate::BusId>,
+    actions: &mut Vec<AppAction>,
+) {
+    let payload = egui::DragAndDrop::payload::<BusDragPayload>(ui.ctx());
+    let valid = payload
+        .as_ref()
+        .is_some_and(|payload| bus_move_changes_order(bus_ids, payload.bus_id, target));
+    let (_, response) = ui.allocate_exact_size(
+        egui::vec2(BUS_INSERT_ZONE_WIDTH, ui.available_height()),
+        egui::Sense::hover(),
+    );
+    if valid && response.contains_pointer() {
+        ui.painter().vline(
+            response.rect.center().x,
+            response.rect.y_range(),
+            egui::Stroke::new(2.0, egui::Color32::WHITE),
+        );
+    }
+    if let Some(payload) = response
+        .dnd_release_payload::<BusDragPayload>()
+        .filter(|payload| bus_move_changes_order(bus_ids, payload.bus_id, target))
+    {
+        actions.push(AppAction::Bus {
+            bus_id: payload.bus_id,
+            action: crate::BusAction::MoveBefore(target),
+        });
+    }
+}
 
 pub const DEFAULT_NEW_TRACK_MODE: SettingKey<String> = SettingKey::new("tracks.new.default_mode");
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
@@ -917,6 +967,7 @@ fn processor_adjustment_label(value: ProcessorLatencyAdjustmentState) -> &'stati
 enum BottomPane {
     Details,
     Piano,
+    Buses,
 }
 
 pub struct AppWidgetResponse {
@@ -945,6 +996,7 @@ pub struct AppWidget {
     details: DetailsPane,
     piano: PianoPane,
     sync_track: TrackWidget,
+    bus_controls: BTreeMap<crate::BusId, BusControls>,
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
@@ -964,6 +1016,12 @@ pub struct AppWidget {
     add_track_processor_frames: i32,
     add_track_make_default: bool,
     next_add_track_request_id: u64,
+    add_bus_open: bool,
+    add_bus_name: String,
+    add_bus_channels: u32,
+    next_add_bus_request_id: u64,
+    pending_add_bus_request: Option<u64>,
+    add_bus_error: Option<String>,
     pending_track_defaults: BTreeMap<u64, SettingsDraft>,
     confirmed_track_defaults: BTreeSet<u64>,
     accepted_track_defaults: BTreeMap<u64, SettingsDraft>,
@@ -987,6 +1045,10 @@ pub struct AppWidget {
     #[cfg(test)]
     ephemeral_script_cancel_rect: Option<egui::Rect>,
     #[cfg(test)]
+    add_bus_accept_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    add_bus_open_rect: Option<egui::Rect>,
+    #[cfg(test)]
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_cancel_rect: Option<egui::Rect>,
@@ -1003,9 +1065,13 @@ pub struct AppWidget {
     #[cfg(test)]
     piano_toggle_rect: Option<egui::Rect>,
     #[cfg(test)]
+    buses_toggle_rect: Option<egui::Rect>,
+    #[cfg(test)]
     xrun_menu_rect: Option<egui::Rect>,
     #[cfg(test)]
     reset_xruns_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    bus_area_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -1026,6 +1092,7 @@ impl AppWidget {
             details: DetailsPane::default(),
             piano: PianoPane::default(),
             sync_track,
+            bus_controls: BTreeMap::new(),
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
@@ -1045,6 +1112,12 @@ impl AppWidget {
             add_track_processor_frames: 0,
             add_track_make_default: false,
             next_add_track_request_id: 1,
+            add_bus_open: false,
+            add_bus_name: String::new(),
+            add_bus_channels: 2,
+            next_add_bus_request_id: 1,
+            pending_add_bus_request: None,
+            add_bus_error: None,
             pending_track_defaults: BTreeMap::new(),
             confirmed_track_defaults: BTreeSet::new(),
             accepted_track_defaults: BTreeMap::new(),
@@ -1068,6 +1141,10 @@ impl AppWidget {
             #[cfg(test)]
             ephemeral_script_cancel_rect: None,
             #[cfg(test)]
+            add_bus_accept_rect: None,
+            #[cfg(test)]
+            add_bus_open_rect: None,
+            #[cfg(test)]
             add_track_accept_rect: None,
             #[cfg(test)]
             add_track_cancel_rect: None,
@@ -1084,9 +1161,13 @@ impl AppWidget {
             #[cfg(test)]
             piano_toggle_rect: None,
             #[cfg(test)]
+            buses_toggle_rect: None,
+            #[cfg(test)]
             xrun_menu_rect: None,
             #[cfg(test)]
             reset_xruns_rect: None,
+            #[cfg(test)]
+            bus_area_rect: None,
         }
     }
 
@@ -1237,12 +1318,14 @@ impl AppWidget {
                     for (pane, label) in [
                         (BottomPane::Details, "details"),
                         (BottomPane::Piano, "piano"),
+                        (BottomPane::Buses, "buses"),
                     ] {
                         let response = ui.selectable_label(self.bottom_pane == Some(pane), label);
                         #[cfg(test)]
                         match pane {
                             BottomPane::Details => self.details_toggle_rect = Some(response.rect),
                             BottomPane::Piano => self.piano_toggle_rect = Some(response.rect),
+                            BottomPane::Buses => self.buses_toggle_rect = Some(response.rect),
                         }
                         if response.clicked() {
                             let next = (self.bottom_pane != Some(pane)).then_some(pane);
@@ -1254,6 +1337,9 @@ impl AppWidget {
                     });
                 });
             });
+
+        self.bus_controls
+            .retain(|bus_id, _| state.buses.iter().any(|bus| bus.id == *bus_id));
 
         egui::Panel::right("logo_and_sync")
             .resizable(false)
@@ -1295,6 +1381,11 @@ impl AppWidget {
                 }
             });
 
+        #[cfg(test)]
+        {
+            self.bus_area_rect = None;
+            self.add_bus_open_rect = None;
+        }
         match self.bottom_pane {
             Some(BottomPane::Details) => {
                 egui::Panel::bottom("details")
@@ -1332,6 +1423,23 @@ impl AppWidget {
                                 .map(AppAction::Piano),
                         );
                     });
+            }
+            Some(BottomPane::Buses) => {
+                let _panel = egui::Panel::bottom("buses")
+                    .resizable(true)
+                    .default_size(BUS_MIXER_DEFAULT_HEIGHT)
+                    .min_size(BUS_MIXER_MIN_HEIGHT)
+                    .max_size(BUS_MIXER_MAX_HEIGHT)
+                    .frame(
+                        egui::Frame::new()
+                            .fill(colors::RAISED_BACKGROUND)
+                            .inner_margin(egui::Margin::same(6)),
+                    )
+                    .show(ui, |ui| self.show_bus_mixer(ui, state, &mut actions));
+                #[cfg(test)]
+                {
+                    self.bus_area_rect = Some(_panel.response.rect);
+                }
             }
             None => {}
         }
@@ -1386,6 +1494,7 @@ impl AppWidget {
             settings_state,
             &mut actions,
         );
+        self.show_add_bus_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
@@ -1429,6 +1538,83 @@ impl AppWidget {
             settings_actions,
             about_requested,
         }
+    }
+
+    fn show_bus_mixer(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        ui.horizontal(|ui| {
+            ui.heading("Buses");
+            let add_bus = ui.button("+ Add bus");
+            #[cfg(test)]
+            {
+                self.add_bus_open_rect = Some(add_bus.rect);
+            }
+            if add_bus.clicked() {
+                self.open_add_bus_dialog(state.buses.len());
+            }
+        });
+        ui.separator();
+        let visible_buses = state
+            .buses
+            .iter()
+            .filter(|bus| bus.structural_state == crate::StructuralState::Confirmed)
+            .collect::<Vec<_>>();
+        if visible_buses.is_empty() {
+            ui.label("No buses in this session.");
+            return;
+        }
+
+        let strip_height = ui.available_height();
+        egui::ScrollArea::horizontal()
+            .id_salt("bus_control_scroll")
+            .scroll_source(crate::control_safe_scroll_source())
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_height(strip_height);
+                ui.horizontal(|ui| {
+                    let bus_ids = visible_buses.iter().map(|bus| bus.id).collect::<Vec<_>>();
+                    for bus in visible_buses {
+                        show_bus_insert_zone(ui, &bus_ids, Some(bus.id), actions);
+                        let channel_ids = bus
+                            .channels
+                            .iter()
+                            .map(|channel| channel.id)
+                            .collect::<BTreeSet<_>>();
+                        let output_ids = bus
+                            .channels
+                            .iter()
+                            .map(|channel| channel.output_port_id)
+                            .collect::<BTreeSet<_>>();
+                        let incoming_routes = state
+                            .connections
+                            .mixer_links
+                            .iter()
+                            .filter(|route| channel_ids.contains(&route.destination_channel_id))
+                            .count();
+                        let outgoing_links = state
+                            .connections
+                            .confirmed_links
+                            .iter()
+                            .filter(|link| output_ids.contains(&link.application_port_id))
+                            .count();
+                        let controls = self.bus_controls.entry(bus.id).or_default();
+                        actions.extend(
+                            controls
+                                .show(ui, bus, incoming_routes, outgoing_links)
+                                .into_iter()
+                                .map(|action| AppAction::Bus {
+                                    bus_id: bus.id,
+                                    action,
+                                }),
+                        );
+                    }
+                    show_bus_insert_zone(ui, &bus_ids, None, actions);
+                });
+            });
     }
 
     fn show_ephemeral_script_confirmation(
@@ -1546,6 +1732,105 @@ impl AppWidget {
                 source: pending.source,
                 source_path: pending.source_path,
             })
+    }
+
+    fn open_add_bus_dialog(&mut self, bus_count: usize) {
+        self.add_bus_name = format!("Bus {}", bus_count + 1);
+        self.add_bus_channels = 2;
+        self.pending_add_bus_request = None;
+        self.add_bus_error = None;
+        self.add_bus_open = true;
+    }
+
+    fn show_add_bus_dialog(
+        &mut self,
+        context: &egui::Context,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        if !self.add_bus_open {
+            return;
+        }
+        if let Some(request_id) = self.pending_add_bus_request {
+            if let Some(result) = state
+                .bus_creation_results
+                .iter()
+                .rev()
+                .find(|result| result.request_id == request_id)
+            {
+                self.pending_add_bus_request = None;
+                if result.success {
+                    self.add_bus_open = false;
+                    self.add_bus_error = None;
+                    return;
+                }
+                self.add_bus_error = Some("The bus could not be created.".to_owned());
+            }
+        }
+        let mut open = self.add_bus_open;
+        let mut submit = false;
+        let mut cancel = false;
+        egui::Window::new("Add bus")
+            .id(egui::Id::new("add_bus_dialog"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                egui::Grid::new("add_bus_fields")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label("Name");
+                        ui.text_edit_singleline(&mut self.add_bus_name);
+                        ui.end_row();
+                        ui.label("Channels");
+                        ui.add(
+                            egui::DragValue::new(&mut self.add_bus_channels)
+                                .range(1..=crate::MAX_BUS_CHANNELS as u32),
+                        );
+                        ui.end_row();
+                    });
+                let trimmed = self.add_bus_name.trim();
+                let valid_name = !trimmed.is_empty()
+                    && trimmed.len() <= crate::MAX_BUS_NAME_BYTES
+                    && !trimmed.chars().any(char::is_control);
+                if !valid_name {
+                    ui.colored_label(
+                        colors::ERROR,
+                        format!(
+                            "Name must contain 1–{} UTF-8 bytes and no control characters.",
+                            crate::MAX_BUS_NAME_BYTES
+                        ),
+                    );
+                }
+                if let Some(error) = &self.add_bus_error {
+                    ui.colored_label(colors::ERROR, error);
+                }
+                ui.horizontal(|ui| {
+                    let pending = self.pending_add_bus_request.is_some();
+                    let add = ui.add_enabled(
+                        valid_name && !pending,
+                        egui::Button::new(if pending { "Adding…" } else { "Add" }),
+                    );
+                    #[cfg(test)]
+                    {
+                        self.add_bus_accept_rect = Some(add.rect);
+                    }
+                    submit = add.clicked();
+                    cancel = ui.button("Cancel").clicked();
+                });
+            });
+        self.add_bus_open = open && !cancel;
+        if submit {
+            let request_id = self.next_add_bus_request_id;
+            self.next_add_bus_request_id = self.next_add_bus_request_id.wrapping_add(1).max(1);
+            self.pending_add_bus_request = Some(request_id);
+            self.add_bus_error = None;
+            actions.push(AppAction::AddBus(crate::BusSpec {
+                name: self.add_bus_name.trim().to_owned(),
+                channel_count: self.add_bus_channels,
+                creation_request_id: Some(request_id),
+            }));
+        }
     }
 
     fn open_add_track_dialog(&mut self, main_track_count: usize, defaults: &SettingsDraft) {
@@ -3129,7 +3414,84 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn details_and_piano_toggle_one_bottom_pane_without_stacking() {
+    fn add_bus_dialog_emits_valid_bounded_spec_and_tracks_result() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        let buses = widget.buses_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, buses);
+        let open = widget.add_bus_open_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, open).is_empty());
+        assert!(widget.add_bus_open);
+        widget.add_bus_name = "  Surround  ".to_owned();
+        widget.add_bus_channels = 6;
+        frame(&context, &mut widget, &state, Vec::new());
+        let add = widget.add_bus_accept_rect.unwrap().center();
+        assert_eq!(
+            click(&context, &mut widget, &state, add),
+            [AppAction::AddBus(crate::BusSpec {
+                name: "Surround".to_owned(),
+                channel_count: 6,
+                creation_request_id: Some(1),
+            })]
+        );
+        assert_eq!(widget.pending_add_bus_request, Some(1));
+        frame(&context, &mut widget, &state, Vec::new());
+        let pending_add = widget.add_bus_accept_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, pending_add).is_empty());
+        let completed = AppState {
+            bus_creation_results: Arc::from([crate::BusCreationResult {
+                request_id: 1,
+                success: true,
+            }]),
+            ..Default::default()
+        };
+        frame(&context, &mut widget, &completed, Vec::new());
+        assert!(!widget.add_bus_open);
+        assert_eq!(widget.pending_add_bus_request, None);
+
+        widget.open_add_bus_dialog(1);
+        widget.pending_add_bus_request = Some(2);
+        let failed = AppState {
+            bus_creation_results: Arc::from([crate::BusCreationResult {
+                request_id: 2,
+                success: false,
+            }]),
+            ..Default::default()
+        };
+        frame(&context, &mut widget, &failed, Vec::new());
+        assert!(widget.add_bus_open);
+        assert!(widget.add_bus_error.is_some());
+
+        widget.open_add_bus_dialog(0);
+        widget.add_bus_name = " ".to_owned();
+        frame(&context, &mut widget, &state, Vec::new());
+        let disabled = widget.add_bus_accept_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, disabled).is_empty());
+        assert!(widget.add_bus_open);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_move_order_predicate_uses_stable_insertion_targets() {
+        let first = crate::BusId::from_raw(1);
+        let second = crate::BusId::from_raw(2);
+        let third = crate::BusId::from_raw(3);
+        let ids = [first, second, third];
+        assert!(bus_move_changes_order(&ids, third, Some(first)));
+        assert!(bus_move_changes_order(&ids, first, None));
+        assert!(!bus_move_changes_order(&ids, first, Some(first)));
+        assert!(!bus_move_changes_order(&ids, first, Some(second)));
+        assert!(!bus_move_changes_order(
+            &ids,
+            crate::BusId::from_raw(99),
+            Some(first)
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn details_piano_and_buses_toggle_one_bottom_pane_without_stacking() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let state = AppState::default();
@@ -3138,6 +3500,10 @@ mod tests {
         let piano = widget.piano_toggle_rect.unwrap().center();
         click(&context, &mut widget, &state, piano);
         assert_eq!(widget.bottom_pane, Some(BottomPane::Piano));
+
+        let buses = widget.buses_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, buses);
+        assert_eq!(widget.bottom_pane, Some(BottomPane::Buses));
 
         let details = widget.details_toggle_rect.unwrap().center();
         click(&context, &mut widget, &state, details);
@@ -3593,6 +3959,114 @@ mod tests {
         assert!(widget.add_track_cancel_rect.is_some());
         widget.cancel_add_track();
         assert!(!widget.add_track_open);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn buses_are_hidden_until_the_horizontal_mixer_pane_opens() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let bus = |id| crate::BusState {
+            id: crate::BusId::from_raw(id),
+            name: if id == 1 {
+                "Master".to_owned()
+            } else {
+                format!("Bus {id}")
+            },
+            structural_state: crate::StructuralState::Confirmed,
+            structural_error: None,
+            channels: Arc::from([
+                crate::BusChannelState {
+                    id: crate::BusChannelId::from_raw(id * 2 - 1),
+                    label: "Left".to_owned(),
+                    output_port_id: crate::PortId::from_raw(id * 2 - 1),
+                },
+                crate::BusChannelState {
+                    id: crate::BusChannelId::from_raw(id * 2),
+                    label: "Right".to_owned(),
+                    output_port_id: crate::PortId::from_raw(id * 2),
+                },
+            ]),
+            gain_db: 0.0,
+            balance: 0.0,
+            muted: false,
+            output_peaks_db: Arc::from([-20.0, -10.0]),
+            control_pending: false,
+            control_error: None,
+        };
+        let mut state = AppState {
+            tracks: vec![TrackState {
+                id: crate::TrackId::from_raw(1),
+                name: "Sync".to_owned(),
+                is_sync: true,
+                ..Default::default()
+            }],
+            buses: Arc::from([bus(1)]),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        assert!(widget.bus_area_rect.is_none());
+        assert!(widget.add_bus_open_rect.is_none());
+        assert!(widget.bus_controls.is_empty());
+
+        let buses_toggle = widget.buses_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, buses_toggle);
+        assert_eq!(widget.bottom_pane, Some(BottomPane::Buses));
+        assert!(widget.bus_area_rect.is_some());
+        assert_eq!(widget.bus_controls.len(), 1);
+        assert!(
+            widget.bus_controls[&crate::BusId::from_raw(1)]
+                .gain_rect()
+                .unwrap()
+                .height()
+                > widget.bus_controls[&crate::BusId::from_raw(1)]
+                    .gain_rect()
+                    .unwrap()
+                    .width()
+        );
+
+        let mut creating = bus(2);
+        creating.structural_state = crate::StructuralState::Creating;
+        let mut removing = bus(3);
+        removing.structural_state = crate::StructuralState::Removing;
+        state.buses = Arc::from([bus(1), creating, removing]);
+        frame(&context, &mut widget, &state, Vec::new());
+        assert!(!widget.bus_controls.contains_key(&crate::BusId::from_raw(2)));
+        assert!(!widget.bus_controls.contains_key(&crate::BusId::from_raw(3)));
+
+        state.buses = Arc::from([bus(1), bus(2), bus(3)]);
+        frame(&context, &mut widget, &state, Vec::new());
+        let strips = [1, 2, 3].map(|id| {
+            widget.bus_controls[&crate::BusId::from_raw(id)]
+                .block_rect()
+                .unwrap()
+        });
+        assert!(strips[0].right() < strips[1].left());
+        assert!(strips[1].right() < strips[2].left());
+        assert!((strips[0].top() - strips[2].top()).abs() < 0.01);
+
+        let mute = widget.bus_controls[&crate::BusId::from_raw(1)]
+            .mute_rect()
+            .unwrap()
+            .center();
+        assert!(click(&context, &mut widget, &state, mute)
+            .iter()
+            .any(|action| matches!(
+                action,
+                AppAction::Bus {
+                    bus_id,
+                    action: crate::BusAction::MuteChanged(true)
+                } if *bus_id == crate::BusId::from_raw(1)
+            )));
+
+        let details = widget.details_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, details);
+        assert_eq!(widget.bottom_pane, Some(BottomPane::Details));
+        assert!(widget.bus_area_rect.is_none());
+
+        state.buses = Arc::from([bus(1)]);
+        frame(&context, &mut widget, &state, Vec::new());
+        assert_eq!(widget.bus_controls.len(), 1);
     }
 
     #[shoop_wasm_test_support::shoop_test]
