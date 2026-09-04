@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>For Developers / Advanced Users &#8212; ShoopDaLoop  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Usage" href="usage.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="for-developers-advanced-users">
+<h1>For Developers / Advanced Users<a class="headerlink" href="#for-developers-advanced-users" title="Link to this heading">¶</a></h1>
+<section id="states-and-connections">
+<h2>States And Connections<a class="headerlink" href="#states-and-connections" title="Link to this heading">¶</a></h2>
+<p>The basic principles of muting, monitoring, recording, playing back etc. are straightforward.
+However, in the case of a dry/wet combined looping setup, these principles can get confusing and/or impossible to implement perfectly, given that only a single FX processor exists.</p>
+<p>For example, it is not possible to re-record the dry audio of multiple loops into their respective wet audio channels if they are sharing the same track (and thus the same FX processor). Their wet audio would be combined.
+Likewise, it is not possible to monitor the input while re-recording a loop.</p>
+<p>Therefore some compromises have been made to select what is probably the most desirable wiring for each state of loop(s) and monitoring.</p>
+<p>The following diagrams show the internal wiring of ShoopDaLoop’s ports and loops, including which signal paths are disabled / silent in different track/loop states.</p>
+<figure class="align-default" id="id2">
+<a class="reference internal image-reference" href="_images/connections_states.drawio.svg"><img alt="Connections in different states" src="_images/connections_states.drawio.svg" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Connections in different states.</span><a class="headerlink" href="#id2" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="lua-scripting">
+<h2>Lua scripting<a class="headerlink" href="#lua-scripting" title="Link to this heading">¶</a></h2>
+<section id="runtime-and-ownership">
+<span id="id1"></span><h3>Runtime and ownership<a class="headerlink" href="#runtime-and-ownership" title="Link to this heading">¶</a></h3>
+<p>ShoopDaLoop embeds pinned omniLua with Lua 5.4 semantics. Native and browser
+builds run the same embedded host API libraries and externally packaged application scripts.
+Each script has an isolated state owned by the application runtime. Stopping or
+restarting a script removes its callbacks, timers, logical MIDI ports,
+connections, queued output, and script-owned dialogs.</p>
+<p>Every script must make <code class="docutils literal notranslate"><span class="pre">shoop_announce_api_version(major,</span> <span class="pre">minor)</span></code> its first
+Shoop API call. The current version is <code class="docutils literal notranslate"><span class="pre">1.6</span></code>. A script runs only when its major
+equals the host major and its minor is no newer than the host minor. Missing,
+malformed, repeated, or incompatible announcements cancel initial execution
+before versioned side effects. The global two-integer signature is independent
+of modules and reserved to remain stable across future API versions. See
+<code class="docutils literal notranslate"><span class="pre">docs/lua_dialog_api.md</span></code> for the compatibility and migration contract.
+Lua API compatibility is independent of the <code class="docutils literal notranslate"><span class="pre">.shoop</span></code> session format version.
+An incompatible source remains inspectable and exportable, but cannot be
+started.</p>
+<p>The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
+It prevents ordinary module access and restricts file access to normalized paths in each script’s filesystem or in-memory provider, but should still be treated as a compatibility boundary for trusted local scripts, not as a hardened security boundary.</p>
+</section>
+<section id="script-management">
+<h3>Script management<a class="headerlink" href="#script-management" title="Link to this heading">¶</a></h3>
+<p>Open <strong>Settings → Scripts</strong> to inspect lifecycle, errors, help, activity, logs,
+and MIDI diagnostics. Native builds can add, reload, and remove user script
+files. Browser builds fetch the generated external built-ins catalog and manage sources bundled in sessions, without machine path actions. Both targets can load a UTF-8 <code class="docutils literal notranslate"><span class="pre">.lua</span></code> file from
+the run-once picker or by OS drag and drop after confirmation. Run-once sources
+remain restartable in memory, are independent of session replacement and
+serialization, and disappear when the app closes. Loading a same-named version
+stops the active version and retains both entries under unique display names.
+Every listed script can be exported as its exact <code class="docutils literal notranslate"><span class="pre">.lua</span></code> source. A built-in,
+example, user, or run-once script can be included in the session; this transfers
+the current source plus supported Markdown/PNG companions to atomic session-bundle ownership. A session script can instead be converted to run once or removed from the session; converting it back reuses the in-memory bundle.</p>
+<p>Built-ins are discovered recursively by normalized relative identity. New identities are disabled until explicitly enabled. The Scripts tab can rescan after additions, changes, removals, or a location change. Persistent changes apply after <strong>Save</strong>; runtime Stop,
+Restart, and Reload do not alter the settings draft. Bundled scripts in a <code class="docutils literal notranslate"><span class="pre">.shoop</span></code> session are resource/hash/syntax-checked before transactional session commit and round-trip without machine paths.</p>
+<p>Browser builds target <code class="docutils literal notranslate"><span class="pre">wasm32-unknown-unknown</span></code> and run the same pure-Rust
+omniLua scripting manager cooperatively. Version checks, script-owned dialogs,
+keyboard callbacks, session scripts, and permission-gated Web MIDI control use
+the shared cross-target contracts.</p>
+</section>
+<section id="midi-rules">
+<h3>MIDI rules<a class="headerlink" href="#midi-rules" title="Link to this heading">¶</a></h3>
+<p>Scripts create logical input/output ports with full-name regular expressions.
+Discovery is hotplug-aware, queues are bounded, and positive output rates are
+paced without catch-up bursts. Native services use JACK or midir. Browser
+services use explicitly enabled Web MIDI. Per-rule endpoint and failure state is
+published to the Scripts tab.</p>
+</section>
+<section id="global-apis">
+<h3>Global APIs<a class="headerlink" href="#global-apis" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_announce_api_version(major,</span> <span class="pre">minor)</span></code></dt><dd><p>Mandatory first Shoop API call. Announces the non-negative integer major and
+minor version for which the script was designed.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">print(msg)</span></code>, <code class="docutils literal notranslate"><span class="pre">print_debug(msg)</span></code>, <code class="docutils literal notranslate"><span class="pre">print_error(msg)</span></code>, <code class="docutils literal notranslate"><span class="pre">print_info(msg)</span></code></dt><dd><p>Add a message at the corresponding level to the script log.</p>
+</dd>
+</dl>
+</section>
+<section id="built-in-modules">
+<h3>Built-in modules<a class="headerlink" href="#built-in-modules" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_dialog</span></code></dt><dd><p>Script-owned simple and paged dialogs. Contents are ordered portable rich text
+and labeled buttons, and buttons may retain script callbacks. Scripts may
+request opening at startup or from callbacks; users retain window visibility
+and current-page control. Dialogs are destroyed with their owning runtime.
+See <code class="docutils literal notranslate"><span class="pre">docs/lua_dialog_api.md</span></code> for constructors, style fields, examples,
+errors, and lifecycle behavior.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_control</span></code></dt><dd><p>Synchronous queries and typed mutations for loops, tracks, global controls,
+callbacks, timers, and logical MIDI ports. Stable <code class="docutils literal notranslate"><span class="pre">Key_*</span></code>,
+<code class="docutils literal notranslate"><span class="pre">KeyModifier_*</span></code>, loop-mode, event-type, and sentinel constants are exposed
+for bundled and user scripts.</p>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">shoop_coords</span></code></p>
+<p><ul>
+<li><strong>shoop_coords.move(coords, direction_key) -&gt; coords</strong><p>Take a single coordinates list and return coordinates if they were moved to the direction indicated by the given keyboard key.</p>
+</li>
+<li><strong>shoop_coords.extreme(all_coords, direction_key, highest) -&gt; coord</strong><p>Look for the highest (if highest == true) or lowest index (row/col) in the given direction</p>
+</li>
+</ul>
+</p>
+<p><code class="docutils literal notranslate"><span class="pre">shoop_helpers</span></code></p>
+<p><ul>
+<li><strong>shoop_helpers.expand_selection(direction_key)</strong><p>Given a direction key, expand the current selection of loops by adding the loop(s) in the given direction.</p>
+</li>
+<li><strong>shoop_helpers.shrink_selection(direction_key)</strong><p>Given a direction key, shrink the current selection of loops by removing loops “coming from” that direction.</p>
+</li>
+<li><strong>shoop_helpers.move_selection(direction_key)</strong><p>Given a direction key, move the selection of loops to that direction if none of the loops would be out of bounds.</p>
+</li>
+<li><strong>shoop_helpers.default_loop_action(loop_selector, dry)</strong><p>Perform the “default loop action” on a set of loop coordinates. The default loop action is designed to cycle intuitively from empty to recording/grabbing, playing and stopping. If “dry” is set to true, going to playback will go to playing dry through wet instead.</p>
+</li>
+<li><strong>shoop_helpers.record_into_first_empty(overdub)</strong><p>In the track(s) of all selected loop(s) (or recording loop(s) of none selected), find the first empty loop and start recording into it. If overdub is true, already recording loops will transition to Playing. Otherwise, they will transition to Stopped.</p>
+</li>
+<li><strong>shoop_helpers.create_click_hold_detector(timeout_ms, on_click, on_hold_start, on_hold_stop)</strong><p>Create an independent button click/hold detector. Call press() and release() on the returned value for button transitions. A release before timeout_ms calls on_click; otherwise on_hold_start is called at the timeout and on_hold_stop at release.</p>
+</li>
+<li><strong>shoop_helpers.toggle_solo()</strong><p>Toggle the global “solo” control</p>
+</li>
+<li><strong>shoop_helpers.toggle_sync_active()</strong><p>Toggle the global “sync active” control</p>
+</li>
+<li><strong>shoop_helpers.toggle_play_after_record()</strong><p>Toggle the global “sync active” control</p>
+</li>
+<li><strong>shoop_helpers.track_toggle_muted(index)</strong><p>Toggle the muted state of the given track. -1 is the sync track.</p>
+</li>
+<li><strong>shoop_helpers.track_toggle_input_muted(selector, respect_auto_mute)</strong><p>Toggle input mutedness for the selected tracks as a group. -1 is the sync track. When respect_auto_mute is true, unmuting respects the global auto-mute control.</p>
+</li>
+<li><strong>shoop_helpers.start_sampler(loops)</strong><p>Start “sampler mode” on the given loops. This just means to transition them to recording (if empty) or playing (if non-empty) immediately, without regard for sync with other loops. They will immediately exit the mode when stop_sampler() is called.</p>
+</li>
+<li><strong>shoop_helpers.stop_sampler()</strong><p>Stop “sampler mode”. This means that any loop which was started with “start_sampler(…)” will immediately stop.</p>
+</li>
+</ul>
+</p>
+<p><code class="docutils literal notranslate"><span class="pre">shoop_format</span></code></p>
+<p><ul>
+<li><strong>shoop_format.format_table(table, recursive) -&gt; string</strong><p>Format a table such that all elements can be inspected.</p>
+</li>
+</ul>
+</p>
+</section>
+</section>
+<section id="software-design">
+<h2>Software design<a class="headerlink" href="#software-design" title="Link to this heading">¶</a></h2>
+<section id="architecture">
+<h3>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h3>
+<p>ShoopDaLoop is a Rust workspace with one application composition root:
+<code class="docutils literal notranslate"><span class="pre">shoopdaloop</span></code>.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_egui</span></code></dt><dd><p>Presentation widgets consume immutable API snapshots and emit typed intents.
+It does not own audio drivers or session persistence.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_app_api</span></code> and <code class="docutils literal notranslate"><span class="pre">shoop_app</span></code></dt><dd><p>Stable application values plus the actor/cooperative runtime that validates
+intents, owns model state, and publishes revisions.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_backend</span></code> and <code class="docutils literal notranslate"><span class="pre">shoop_engine</span></code></dt><dd><p>Backend adaptation, native JACK/CPAL+midir/dummy drivers, graph scheduling,
+realtime audio/MIDI processing, processors, and bounded state publication.
+Native driver composition uses <code class="docutils literal notranslate"><span class="pre">shoop_engine/app_backend</span></code>; the browser uses
+a dedicated AudioWorklet protocol.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_session</span></code> and <code class="docutils literal notranslate"><span class="pre">shoop_settings</span></code></dt><dd><p>Versioned session/media codecs, deterministic resampling, typed settings,
+native atomic storage, and browser storage values.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_scripting</span></code></dt><dd><p>The omniLua runtime, control API, provider-backed resources, callbacks/timers,
+and logical MIDI service.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">shoop_audio_protocol</span></code> and <code class="docutils literal notranslate"><span class="pre">shoop_audio_worklet</span></code></dt><dd><p>Bounded browser control/audio/MIDI messages and the realtime Web Audio engine.</p>
+</dd>
+</dl>
+</section>
+<section id="realtime-ownership">
+<h3>Realtime ownership<a class="headerlink" href="#realtime-ownership" title="Link to this heading">¶</a></h3>
+<p>Timing-authoritative state machines run in the engine. UI refreshes only observe
+published state. Topology and content replacements are prepared off the audio
+thread and committed through bounded callback-boundary operations. Realtime
+allocation and lock guards cover engine and AudioWorklet paths.</p>
+</section>
+<section id="carla-hosting">
+<h3>Carla hosting<a class="headerlink" href="#carla-hosting" title="Link to this heading">¶</a></h3>
+<p>Carla processors implement one frontend-independent processor contract. A
+pinned <code class="docutils literal notranslate"><span class="pre">libcarla_native-plugin</span></code> is loaded by absolute path and Rack/Patchbay
+descriptors are instantiated through <code class="docutils literal notranslate"><span class="pre">CarlaNative.h</span></code>; ShoopDaLoop does not
+host Carla through LV2 or another plugin wrapper. In-process hosting owns Carla
+on a non-realtime bridge thread. Subprocess mode gives each chain an
+authenticated worker generation and bounded shared-memory block transport. The
+same executable dispatches hidden worker mode before creating the GUI.</p>
+</section>
+<section id="build-and-packaging">
+<h3>Build and packaging<a class="headerlink" href="#build-and-packaging" title="Link to this heading">¶</a></h3>
+<p>Cargo builds the native workspace. Trunk builds the browser UI and dedicated
+AudioWorklet with matching profiles. The application artifact script emits
+unsigned native archives, a complete hosted web archive, and a core-only HTML file.
+Native archives include a manifest- and checksum-verified Carla runtime
+component with UI/discovery/bridge helpers, licenses, and corresponding-source
+metadata. Native and hosted-web archives include the external built-ins tree;
+the core-only HTML explicitly does not. Browser artifacts contain no Carla component.</p>
+</section>
+<section id="testing">
+<h3>Testing<a class="headerlink" href="#testing" title="Link to this heading">¶</a></h3>
+<p>The main gates are:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cargo</span> <span class="n">fmt</span> <span class="o">--</span><span class="nb">all</span> <span class="o">--</span> <span class="o">--</span><span class="n">check</span>
+<span class="n">RUSTFLAGS</span><span class="o">=</span><span class="s2">&quot;-D warnings&quot;</span> <span class="n">cargo</span> <span class="n">build</span> <span class="o">--</span><span class="n">workspace</span>
+<span class="n">SHOOP_ALLOW_MISSING_BACKENDS</span><span class="o">=</span><span class="mi">1</span> \
+  <span class="n">cargo</span> <span class="n">nextest</span> <span class="n">run</span> <span class="o">--</span><span class="n">workspace</span> <span class="o">--</span><span class="n">features</span> <span class="n">shoop_engine</span><span class="o">/</span><span class="n">app_backend</span> <span class="o">--</span><span class="n">profile</span> <span class="n">ci</span>
+<span class="n">python3</span> <span class="n">scripts</span><span class="o">/</span><span class="n">check_tracing_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">require</span><span class="o">-</span><span class="n">closed</span>
+</pre></div>
+</div>
+<p>Web verification additionally builds both Wasm packages, checks browser
+dependency isolation, verifies hosted/self-contained artifacts, and runs Chrome
+and Firefox workflows where available. The GitHub workflow is authoritative for
+Linux, Windows, macOS, and browser release surfaces.</p>
+</section>
+</section>
+<section id="perfetto-profiling-and-capture">
+<h2>Perfetto profiling and capture<a class="headerlink" href="#perfetto-profiling-and-capture" title="Link to this heading">¶</a></h2>
+<p>ShoopDaLoop emits standard Perfetto <code class="docutils literal notranslate"><span class="pre">.pftrace</span></code> data through the private
+<code class="docutils literal notranslate"><span class="pre">shoop_tracing</span></code> facade on native, Window, Engine Worker, and AudioWorklet
+realms.</p>
+<section id="modes">
+<h3>Modes<a class="headerlink" href="#modes" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>Disabled</dt><dd><p>Omit tracing options. Gated realtime helpers do not call a backend.</p>
+</dd>
+<dt>Coarse</dt><dd><p>Use <code class="docutils literal notranslate"><span class="pre">--tracing</span></code> or <strong>Settings &gt; Developer</strong>. This includes GUI/application
+spans, engine control/graph work, and bounded callback/session categories.</p>
+</dd>
+<dt>Engine detail</dt><dd><p>Add <code class="docutils literal notranslate"><span class="pre">--tracing-engine-detail</span></code> for per-stage realtime records. This increases
+callback overhead and capture size.</p>
+</dd>
+</dl>
+<p>Capture natively:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cargo</span> <span class="n">run</span> <span class="o">-</span><span class="n">p</span> <span class="n">shoopdaloop</span> <span class="o">--</span> \
+  <span class="o">--</span><span class="n">tracing</span> \
+  <span class="o">--</span><span class="n">tracing</span><span class="o">-</span><span class="n">engine</span><span class="o">-</span><span class="n">detail</span>
+</pre></div>
+</div>
+<p>A normal Save or application shutdown atomically publishes a numbered
+<code class="docutils literal notranslate"><span class="pre">.pftrace</span></code> below <code class="docutils literal notranslate"><span class="pre">traces/</span></code>. Discard writes no file, and sequential captures
+are supported. Use the pinned <code class="docutils literal notranslate"><span class="pre">scripts/trace_processor</span></code> wrapper for queries.</p>
+<p>Hosted Chromium exposes the same controls and downloads application-owned trace
+bytes. One capture combines Window with the active Engine Worker or
+AudioWorklet. Multirealm audio tracing transfers recyclable <code class="docutils literal notranslate"><span class="pre">ArrayBuffer</span></code>
+chunks and does not require cross-origin isolation. Unsupported browser APIs
+remain functional and report why tracing is unavailable.</p>
+</section>
+<section id="trace-structure">
+<h3>Trace structure<a class="headerlink" href="#trace-structure" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">frontend.egui.*</span></code></dt><dd><p>GUI initialization, updates, rendering, settings actions, and intent creation.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">frontend.app.*</span></code></dt><dd><p>Intent dispatch/handling/application, backend advancement, snapshot
+application/publication, and runtime lifecycle. <code class="docutils literal notranslate"><span class="pre">intent_id</span></code> correlates
+submission with actor-side handling.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">engine.control.*</span></code> and <code class="docutils literal notranslate"><span class="pre">engine.graph.*</span></code></dt><dd><p>Bounded commands, waits, topology construction, scheduling, and graph apply.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">engine.rt.*</span></code></dt><dd><p>Driver/callback/cycle/session hierarchy. Detail mode adds fixed port, channel,
+composite, MIDI, routing, and processor stages.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">worker.*</span></code> and <code class="docutils literal notranslate"><span class="pre">engine.plugin.*</span></code></dt><dd><p>Background application/graph/plugin work and native processor operations.</p>
+</dd>
+</dl>
+<p>Counter tracks retain integer counts, identifiers, occupancy, and reason codes;
+fractional loads/ratios use floating counters. Structured logs preserve level,
+target, message, and typed fields as Perfetto arguments.</p>
+<p>AudioWorklet timestamps are exact logical sample frames, not callback CPU
+entry/exit measurements. Browser realms rotate preallocated transferable
+<code class="docutils literal notranslate"><span class="pre">ArrayBuffer</span></code> chunks and the Window recycles each buffer after consumption,
+so capture duration is not limited by the producer pool size. The collector
+retains consumed trace data until save, with a 512 MiB safety quota per realm;
+quota, allocation, or storage failure aborts the capture rather than silently
+producing a complete-looking trace. Always inspect
+clock calibration, producer drops, discontinuities, and health data when
+interpreting a browser trace.</p>
+<p>Tracing is diagnostic instrumentation, not a transparent realtime measurement.
+Start with coarse mode, compare equivalent workloads/modes, and use native CPU
+tracks for callback-duration analysis.</p>
+<p>The repository Perfetto skill at <code class="docutils literal notranslate"><span class="pre">.agents/skills/perfetto/SKILL.md</span></code> documents
+capture, CI artifact, query, clock, and interpretation workflows.</p>
+</section>
+</section>
+</section>
+<section id="rust-tracing-coverage-inventory">
+<h1>Rust tracing coverage inventory<a class="headerlink" href="#rust-tracing-coverage-inventory" title="Link to this heading">¶</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">docs/tracing_coverage.csv</span></code> accounts for every production Rust module in the
+retained workspace. Cargo integration tests and example/benchmark binaries are
+validation tools and are intentionally outside the production inventory.</p>
+<section id="classifications">
+<h2>Classifications<a class="headerlink" href="#classifications" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">instrumented_direct</span></code></dt><dd><p>The module contains gated tracing at a meaningful runtime boundary.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">instrumented_indirect</span></code></dt><dd><p>The module executes inside a named application, UI, engine, worklet, or
+persistence boundary; another span would duplicate the owning operation.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">excluded</span></code></dt><dd><p>Build-time or logging-declaration code for which runtime instrumentation does
+not apply or would recurse.</p>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">planned_direct</span></code> and <code class="docutils literal notranslate"><span class="pre">planned_indirect</span></code> are temporary classifications. The
+final check rejects them.</p>
+</section>
+<section id="validation">
+<h2>Validation<a class="headerlink" href="#validation" title="Link to this heading">¶</a></h2>
+<p>Run during source changes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python3</span> <span class="n">scripts</span><span class="o">/</span><span class="n">check_tracing_coverage</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>The merge gate requires a closed inventory:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python3</span> <span class="n">scripts</span><span class="o">/</span><span class="n">check_tracing_coverage</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">require</span><span class="o">-</span><span class="n">closed</span>
+</pre></div>
+</div>
+<p>The verifier compares exact tracked Rust module paths, rejects duplicate or
+stale rows, requires a context and rationale, validates classifications, and in
+closed mode rejects planned rows. Instrumentation behavior is additionally
+covered by tracing gates, realtime allocation tests, native capture lifecycle
+tests, and manual capture/parser checks; inventory completeness alone is not a
+performance or realtime-safety proof.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">ShoopDaLoop</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concepts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">For Developers / Advanced Users</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#states-and-connections">States And Connections</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#lua-scripting">Lua scripting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#software-design">Software design</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#perfetto-profiling-and-capture">Perfetto profiling and capture</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#rust-tracing-coverage-inventory">Rust tracing coverage inventory</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#classifications">Classifications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#validation">Validation</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="usage.html" title="previous chapter">Usage</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2023, Sander Vocke.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/developers.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
