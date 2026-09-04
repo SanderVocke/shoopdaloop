@@ -584,6 +584,7 @@ fn update_application(
         Ok(snapshot) => {
             model.clear_periodic_failure("backend.poll");
             model.apply_backend_snapshot(snapshot);
+            model.try_bootstrap_master(backend);
             let auto_arm_result = model.reconcile_auto_arm(backend);
             model.report_periodic_result("tracks.auto_arm", auto_arm_result);
         }
@@ -640,6 +641,7 @@ struct ApplicationModel {
     loops: BTreeMap<LoopId, LoopModel>,
     connection_ports: BTreeMap<PortId, ConnectionPortModel>,
     host_ports: BTreeMap<String, HostPortState>,
+    preferred_playback_ports: BTreeSet<String>,
     confirmed_connections: BTreeSet<(PortId, String)>,
     pending_connections: BTreeMap<(PortId, String), PendingConnection>,
     confirmed_mixer_routes: BTreeSet<MixerRouteState>,
@@ -655,6 +657,8 @@ struct ApplicationModel {
     backend_connection_revision: u64,
     backend_mixer_revision: u64,
     connection_backend_available: bool,
+    master_bootstrap_pending: bool,
+    master_bootstrap_after_load: bool,
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
     track_processors: Arc<[TrackProcessorDescriptor]>,
@@ -1680,6 +1684,13 @@ impl ApplicationModel {
             loops: BTreeMap::from([(loop_id, loop_model)]),
             connection_ports,
             host_ports: BTreeMap::new(),
+            preferred_playback_ports: initial_backend
+                .connections
+                .host_ports
+                .values()
+                .filter(|port| port.preferred_playback)
+                .map(|port| port.id.clone())
+                .collect(),
             confirmed_connections: BTreeSet::new(),
             pending_connections: BTreeMap::new(),
             confirmed_mixer_routes: BTreeSet::new(),
@@ -1695,6 +1706,8 @@ impl ApplicationModel {
             backend_connection_revision: 0,
             backend_mixer_revision: initial_backend.mixer.revision,
             connection_backend_available: false,
+            master_bootstrap_pending: true,
+            master_bootstrap_after_load: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
                 supported: true,
@@ -4049,6 +4062,8 @@ impl ApplicationModel {
         self.ensure_io_idle()?;
         self.ensure_bus_structures_settled()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Creating new session");
+        self.master_bootstrap_pending = false;
+        self.master_bootstrap_after_load = true;
         let document = new_session_document(self.status.sample_rate);
         self.begin_session_load(
             "new session".to_owned(),
@@ -4060,6 +4075,8 @@ impl ApplicationModel {
     fn begin_load_session(&mut self, name: String, bytes: &[u8]) -> Result<(), String> {
         self.ensure_io_idle()?;
         self.ensure_bus_structures_settled()?;
+        self.master_bootstrap_pending = false;
+        self.master_bootstrap_after_load = false;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Validating session");
         let bundle = match decode_session(bytes) {
             Ok(bundle) => bundle,
@@ -4341,6 +4358,7 @@ impl ApplicationModel {
                 .map_err(|error| format!("could not cancel session replacement: {error}"))?;
         }
         self.pending_io = None;
+        self.master_bootstrap_after_load = false;
         self.finish_io(IoTaskStatus::Cancelled, "I/O cancelled");
         Ok(())
     }
@@ -4398,6 +4416,7 @@ impl ApplicationModel {
     }
 
     fn fail_io(&mut self, message: String) {
+        self.master_bootstrap_after_load = false;
         self.finish_io(IoTaskStatus::Failed, &message);
         self.report_error(message);
     }
@@ -4490,6 +4509,8 @@ impl ApplicationModel {
                 Ok(BackendAsyncResult::Ready(replacement)) => {
                     match self.apply_loaded_session(backend, &bundle, &replacement) {
                         Ok(()) => {
+                            self.master_bootstrap_pending = self.master_bootstrap_after_load;
+                            self.master_bootstrap_after_load = false;
                             self.finish_io(
                                 IoTaskStatus::Completed,
                                 &format!("Loaded session {name}"),
@@ -5082,6 +5103,7 @@ impl ApplicationModel {
             created.track_id,
             backend_default_playback_mode(default_playback_mode),
         );
+        let initial_output_bus_name = spec.initial_output_bus_name.clone();
         self.tracks.push(TrackModel {
             id: track_id,
             backend_id: created.track_id,
@@ -5112,7 +5134,57 @@ impl ApplicationModel {
             },
             creation_request_id: spec.creation_request_id,
         });
+        if let Some(bus_name) = initial_output_bus_name {
+            self.connect_new_track_to_bus(backend, track_id, &bus_name);
+        }
         Ok(())
+    }
+
+    fn connect_new_track_to_bus(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        bus_name: &str,
+    ) {
+        let sources: Vec<_> = self
+            .connection_ports
+            .values()
+            .filter(|port| {
+                port.owner
+                    == (ApplicationPortOwner::Track {
+                        track_id,
+                        kind: TrackPortOwnerKind::Main,
+                    })
+                    && port.data_type == PortDataType::Audio
+                    && port.direction == PortDirection::Output
+                    && port.role == PortRole::AudioOutput
+            })
+            .map(|port| port.id)
+            .collect();
+        let destinations = self.bus_order.iter().find_map(|id| {
+            let bus = self.buses.get(id)?;
+            let compatible = sources.len() == bus.channels.len() || sources.len() == 1;
+            (bus.name == bus_name && compatible).then(|| {
+                bus.channels
+                    .iter()
+                    .map(|channel| channel.id)
+                    .collect::<Vec<_>>()
+            })
+        });
+        let Some(destinations) = destinations else {
+            return;
+        };
+        let routes = if sources.len() == 1 {
+            destinations
+                .into_iter()
+                .map(|destination| (sources[0], destination))
+                .collect::<Vec<_>>()
+        } else {
+            sources.into_iter().zip(destinations).collect()
+        };
+        for (source, destination) in routes {
+            let _ = self.set_mixer_route_connected(backend, source, destination, true);
+        }
     }
 
     fn add_aligned_loop_row(
@@ -8347,6 +8419,63 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn try_bootstrap_master(&mut self, backend: &mut dyn Backend) {
+        if !self.master_bootstrap_pending {
+            return;
+        }
+        let Some(bus) = self
+            .bus_order
+            .iter()
+            .filter_map(|id| self.buses.get(id))
+            .find(|bus| bus.name == "Master" && bus.channels.len() == 2)
+        else {
+            return;
+        };
+        let output_ports: Vec<_> = bus
+            .channels
+            .iter()
+            .filter_map(|channel| channel.output_port_id)
+            .collect();
+        if output_ports.len() != bus.channels.len() {
+            return;
+        }
+        let mut candidates: Vec<_> = self
+            .preferred_playback_ports
+            .iter()
+            .filter_map(|id| self.host_ports.get(id))
+            .filter(|port| {
+                port.data_type == PortDataType::Audio && port.direction == PortDirection::Input
+            })
+            .map(|port| port.id.clone())
+            .collect();
+        candidates.sort_by(|left, right| {
+            playback_port_sort_key(left.as_str()).cmp(&playback_port_sort_key(right.as_str()))
+        });
+        let mut groups: BTreeMap<String, Vec<HostPortId>> = BTreeMap::new();
+        for candidate in candidates {
+            groups
+                .entry(playback_port_group(candidate.as_str()).to_owned())
+                .or_default()
+                .push(candidate);
+        }
+        let Some(targets) = groups
+            .into_values()
+            .find(|group| group.len() >= output_ports.len())
+        else {
+            return;
+        };
+        let mut connected = true;
+        for (port_id, host_port_id) in output_ports.into_iter().zip(targets) {
+            if self
+                .set_port_connected(backend, port_id, host_port_id.as_str().to_owned(), true)
+                .is_err()
+            {
+                connected = false;
+            }
+        }
+        self.master_bootstrap_pending = !connected;
+    }
+
     fn age_pending_connections(&mut self, backend: &mut dyn Backend, elapsed: Duration) {
         if !matches!(
             self.status.audio_driver,
@@ -9832,6 +9961,12 @@ impl ApplicationModel {
                 },
             });
         }
+        self.preferred_playback_ports = snapshot
+            .host_ports
+            .values()
+            .filter(|host| host.preferred_playback)
+            .map(|host| host.id.clone())
+            .collect();
         self.host_ports = snapshot
             .host_ports
             .values()
@@ -11982,6 +12117,21 @@ fn safe_file_stem(name: &str) -> String {
     } else {
         stem
     }
+}
+
+fn playback_port_group(name: &str) -> &str {
+    let numeric = name.trim_end_matches(|character: char| character.is_ascii_digit());
+    if numeric.len() != name.len() {
+        numeric
+    } else {
+        name.split_once(':').map_or(name, |(client, _)| client)
+    }
+}
+
+fn playback_port_sort_key(name: &str) -> (String, u32, String) {
+    let group = playback_port_group(name);
+    let channel = name[group.len()..].parse().unwrap_or(u32::MAX);
+    (group.to_owned(), channel, name.to_owned())
 }
 
 fn document_builtin_fx_midi_cc_assignment(
@@ -14645,6 +14795,7 @@ mod tests {
 
         runtime.dispatch(AppIntent::RequestNewSession).unwrap();
         runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
 
         let snapshot = runtime.snapshot();
         assert_eq!(snapshot.tracks.len(), 1);
@@ -14656,6 +14807,7 @@ mod tests {
             snapshot.io_task.as_ref().unwrap().status,
             IoTaskStatus::Completed
         );
+        assert_eq!(snapshot.connections.pending_links.len(), 2);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -15063,6 +15215,7 @@ mod tests {
                     processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
                     processor_manual_frames: 11,
                 },
+                initial_output_bus_name: None,
                 creation_request_id: Some(41),
             }))
             .unwrap();
@@ -15259,6 +15412,7 @@ mod tests {
                     default_playback_mode: shoop_app_api::DefaultPlaybackMode::Regular,
                 },
                 latency: shoop_app_api::TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15429,6 +15583,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15688,6 +15843,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15834,6 +15990,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }))
             .unwrap();
@@ -19714,6 +19871,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     midi: false,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: Some(42),
             }))
             .unwrap();
@@ -20033,6 +20191,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }),
         );
@@ -21261,6 +21420,87 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_tracks_route_to_named_bus_with_equal_channels_and_mono_fanout() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let add =
+            |model: &mut ApplicationModel, backend: &mut FakeBackend, name: &str, channels| {
+                model
+                    .add_track_spec(
+                        backend,
+                        TrackSpec {
+                            name: name.to_owned(),
+                            topology: TrackSpecTopology::Direct {
+                                audio_channels: channels,
+                                midi: false,
+                            },
+                            latency: TrackLatencySpec::default(),
+                            initial_output_bus_name: Some("Master".to_owned()),
+                            creation_request_id: None,
+                        },
+                    )
+                    .unwrap();
+            };
+        add(&mut model, &mut backend, "Stereo", 2);
+        assert_eq!(model.pending_mixer_routes.len(), 2);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert_eq!(model.confirmed_mixer_routes.len(), 2);
+
+        add(&mut model, &mut backend, "Mono", 1);
+        assert_eq!(model.pending_mixer_routes.len(), 2);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert_eq!(model.confirmed_mixer_routes.len(), 4);
+
+        add(&mut model, &mut backend, "Mismatch", 3);
+        assert!(model.pending_mixer_routes.is_empty());
+        assert_eq!(model.confirmed_mixer_routes.len(), 4);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fresh_model_bootstraps_master_to_preferred_playback_once() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        let master = model
+            .buses
+            .values()
+            .find(|bus| bus.name == "Master")
+            .unwrap();
+        let outputs: BTreeSet<_> = master
+            .channels
+            .iter()
+            .filter_map(|channel| channel.output_port_id)
+            .collect();
+        assert_eq!(outputs.len(), 2);
+        assert!(outputs.iter().all(|output| model
+            .pending_connections
+            .keys()
+            .any(|(port, host)| port == output && host.starts_with("system:playback_"))));
+        assert!(!model.master_bootstrap_pending);
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        assert_eq!(
+            model
+                .confirmed_connections
+                .iter()
+                .filter(|(port, _)| outputs.contains(port))
+                .count(),
+            2
+        );
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn snapshot_reads_are_independent_of_actor_progress() {
@@ -21564,6 +21804,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn unchanged_connection_views_are_structurally_shared_across_polls() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
         runtime.tick(Duration::ZERO);
         let first = runtime.snapshot();
         runtime.tick(Duration::from_millis(16));
@@ -23596,6 +23837,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }))
             .unwrap();
@@ -24698,6 +24940,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }))
             .unwrap();
@@ -24896,6 +25139,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         default_playback_mode: DefaultPlaybackMode::Regular,
                     },
                     latency: TrackLatencySpec::default(),
+                    initial_output_bus_name: None,
                     creation_request_id: None,
                 },
             )

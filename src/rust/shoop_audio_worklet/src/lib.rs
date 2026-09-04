@@ -316,6 +316,7 @@ impl WorkletHost {
                         name: endpoint.name,
                         data_type: from_wire_data_type(endpoint.data_type),
                         direction: from_wire_direction(endpoint.direction),
+                        preferred_playback: false,
                     })
                     .collect();
                 self.backend
@@ -1973,6 +1974,41 @@ mod tests {
         serde_json::from_str(host.handle_json(&json)).unwrap()
     }
 
+    fn connect_track_outputs(host: &mut WorkletHost, _track_id: BackendTrackId) {
+        let snapshot = host.backend.poll().unwrap();
+        let outputs: Vec<_> = snapshot
+            .connections
+            .application_ports
+            .values()
+            .filter(|port| {
+                port.owner == shoop_backend::BackendPortOwner::Track
+                    && port.role == BackendPortRole::AudioOutput
+            })
+            .map(|port| port.id)
+            .collect();
+        if outputs.len() == 1 {
+            for destination in ["webaudio:destination_1", "webaudio:destination_2"] {
+                host.backend
+                    .set_port_connected(outputs[0], destination, true)
+                    .unwrap();
+            }
+        } else {
+            for (index, output) in outputs.into_iter().enumerate() {
+                host.backend
+                    .set_port_connected(
+                        output,
+                        if index == 0 {
+                            "webaudio:destination_1"
+                        } else {
+                            "webaudio:destination_2"
+                        },
+                        true,
+                    )
+                    .unwrap();
+            }
+        }
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn immediate_worklet_play_repeats_before_its_sync_source() {
         let mut host = WorkletHost::new(1_000, 8).unwrap();
@@ -2338,6 +2374,7 @@ mod tests {
             },
         );
         assert!(matches!(created.event, Event::Ack));
+        connect_track_outputs(&mut host, BackendTrackId::from_raw(1));
         assert!(matches!(
             command(
                 &mut host,
@@ -2569,6 +2606,7 @@ mod tests {
             .event,
             Event::Ack
         ));
+        connect_track_outputs(&mut host, BackendTrackId::from_raw(1));
         let Event::Snapshot(snapshot) = command(&mut host, 3, Command::Poll).event else {
             panic!("expected snapshot");
         };
@@ -2999,6 +3037,7 @@ mod tests {
             .event,
             Event::Ack
         ));
+        connect_track_outputs(&mut host, BackendTrackId::from_raw(1));
         assert!(matches!(
             command(
                 &mut host,
@@ -3238,6 +3277,7 @@ mod tests {
             .event,
             Event::Ack
         ));
+        connect_track_outputs(&mut host, BackendTrackId::from_raw(1));
         assert!(matches!(
             command(
                 &mut host,

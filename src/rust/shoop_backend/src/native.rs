@@ -1359,6 +1359,8 @@ impl NativeRuntime {
                     shoop_engine::PortDataType::Midi => BackendPortDataType::Midi,
                     shoop_engine::PortDataType::Any => return None,
                 };
+                let preferred_playback = port.physical
+                    || port.name.starts_with("cpal:") && port.name.contains(":playback_");
                 Some((
                     port.name.clone(),
                     BackendHostPortDescriptor {
@@ -1366,6 +1368,7 @@ impl NativeRuntime {
                         name: port.name,
                         data_type,
                         direction,
+                        preferred_playback,
                     },
                 ))
             })
@@ -1385,6 +1388,7 @@ impl NativeRuntime {
                         name: endpoint.clone(),
                         data_type: port.descriptor.data_type,
                         direction: opposite_backend_direction(port.descriptor.direction),
+                        preferred_playback: false,
                     });
                 if connected {
                     confirmed_links.insert(BackendConfirmedLink {

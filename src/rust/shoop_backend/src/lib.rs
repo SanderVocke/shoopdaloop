@@ -165,6 +165,7 @@ pub struct BackendHostPortDescriptor {
     pub name: String,
     pub data_type: BackendPortDataType,
     pub direction: BackendPortDirection,
+    pub preferred_playback: bool,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -3565,6 +3566,9 @@ impl EngineBackend {
                             name: port.name.clone(),
                             data_type: backend_data_type(port.data_type),
                             direction: backend_direction(port.direction),
+                            preferred_playback: port.name.starts_with("webaudio:destination_")
+                                || port.name.starts_with("cpal:")
+                                    && port.name.contains(":playback_"),
                         },
                     ),
                 )
@@ -3846,24 +3850,6 @@ impl EngineBackend {
             audio_outputs.push(output);
             audio_returns.push(receive);
         }
-        if self.port_model == EnginePortModel::Physical {
-            let output_channels = WEB_AUDIO_DESTINATION_PORTS
-                .iter()
-                .filter(|host| {
-                    self.external_connections
-                        .mock_ports()
-                        .iter()
-                        .any(|port| port.name == **host)
-                })
-                .count();
-            for channel in 0..output_channels.min(audio_channels).min(2) {
-                let registry =
-                    self.connection_ports[&ports[audio_channels + channel].id].registry_id;
-                self.external_connections
-                    .connect(registry, WEB_AUDIO_DESTINATION_PORTS[channel])?;
-            }
-            self.connection_revision = self.connection_revision.wrapping_add(1);
-        }
         let midi_name = format!("{}_dry_midi_in", request.port_name_base);
         let midi_registry_id = self.next_port_id();
         let midi_input = if self.port_model == EnginePortModel::Physical {
@@ -4065,23 +4051,6 @@ impl EngineBackend {
             ));
             audio_outputs.push(output);
             audio_returns.push(receive);
-        }
-        if self.port_model == EnginePortModel::Physical {
-            let output_channels = WEB_AUDIO_DESTINATION_PORTS
-                .iter()
-                .filter(|host| {
-                    self.external_connections
-                        .mock_ports()
-                        .iter()
-                        .any(|port| port.name == **host)
-                })
-                .count();
-            for channel in 0..output_channels.min(2) {
-                let registry = self.connection_ports[&ports[2 + channel].id].registry_id;
-                self.external_connections
-                    .connect(registry, WEB_AUDIO_DESTINATION_PORTS[channel])?;
-            }
-            self.connection_revision = self.connection_revision.wrapping_add(1);
         }
         let midi_name = format!("{}_dry_midi_in", request.port_name_base);
         let midi_registry_id = self.next_port_id();
@@ -5735,32 +5704,12 @@ impl Backend for EngineBackend {
                         .any(|p| p.name == **host)
                 })
                 .count();
-            let output_channels = WEB_AUDIO_DESTINATION_PORTS
-                .iter()
-                .take_while(|host| {
-                    self.external_connections
-                        .mock_ports()
-                        .iter()
-                        .any(|p| p.name == **host)
-                })
-                .count();
             for channel in 0..audio_channels {
                 let input_registry = self.connection_ports[&ports[channel * 2].id].registry_id;
                 if input_channels > 0 {
                     self.external_connections.connect(
                         input_registry,
                         WEB_AUDIO_CAPTURE_PORTS[channel.min(input_channels - 1)],
-                    )?;
-                }
-                let output_registry = self.connection_ports[&ports[channel * 2 + 1].id].registry_id;
-                if audio_channels == 1 {
-                    for host in WEB_AUDIO_DESTINATION_PORTS.iter().take(output_channels) {
-                        self.external_connections.connect(output_registry, host)?;
-                    }
-                } else if output_channels > 0 {
-                    self.external_connections.connect(
-                        output_registry,
-                        WEB_AUDIO_DESTINATION_PORTS[channel.min(output_channels - 1)],
                     )?;
                 }
             }
@@ -8410,6 +8359,9 @@ impl FakeBackend {
                             name: id.clone(),
                             data_type: *data_type,
                             direction: *direction,
+                            preferred_playback: id.starts_with("system:playback_")
+                                || id.starts_with("webaudio:destination_")
+                                || id.starts_with("cpal:") && id.contains(":playback_"),
                         },
                     )
                 })
@@ -11020,6 +10972,32 @@ impl Backend for FakeBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn connect_web_audio_outputs(backend: &mut EngineBackend, created: &BackendTrackCreation) {
+        let outputs: Vec<_> = created
+            .ports
+            .iter()
+            .filter(|port| port.role == BackendPortRole::AudioOutput)
+            .collect();
+        if outputs.len() == 1 {
+            for destination in WEB_AUDIO_DESTINATION_PORTS {
+                backend
+                    .set_port_connected(outputs[0].id, destination, true)
+                    .unwrap();
+            }
+        } else {
+            for (index, output) in outputs.iter().enumerate() {
+                backend
+                    .set_port_connected(
+                        output.id,
+                        WEB_AUDIO_DESTINATION_PORTS
+                            [index.min(WEB_AUDIO_DESTINATION_PORTS.len() - 1)],
+                        true,
+                    )
+                    .unwrap();
+            }
+        }
+    }
 
     fn load_direct_loop(backend: &mut EngineBackend, loop_id: BackendLoopId, value: f32) {
         let engine_loop = backend.engine_loop_index(loop_id).unwrap();
@@ -14217,12 +14195,14 @@ mod tests {
                 name: "Controller input".to_owned(),
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
+                preferred_playback: false,
             },
             BackendHostPortDescriptor {
                 id: "webmidi:sink:controller".to_owned(),
                 name: "Controller output".to_owned(),
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Input,
+                preferred_playback: false,
             },
         ];
         backend
@@ -14380,6 +14360,7 @@ mod tests {
             name: "Dual route".to_owned(),
             data_type: BackendPortDataType::Midi,
             direction: BackendPortDirection::Output,
+            preferred_playback: false,
         };
         backend
             .configure_web_midi_endpoints(vec![endpoint.clone()])
@@ -14457,6 +14438,7 @@ mod tests {
             name: "Global hotplug".to_owned(),
             data_type: BackendPortDataType::Midi,
             direction: BackendPortDirection::Output,
+            preferred_playback: false,
         };
         backend
             .configure_web_midi_endpoints(vec![endpoint.clone()])
@@ -14504,6 +14486,7 @@ mod tests {
                 name: "Shared input".to_owned(),
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
+                preferred_playback: false,
             }])
             .unwrap();
         let mut tracks = Vec::new();
@@ -14568,18 +14551,21 @@ mod tests {
                     name: "Controller input".to_owned(),
                     data_type: BackendPortDataType::Midi,
                     direction: BackendPortDirection::Output,
+                    preferred_playback: false,
                 },
                 BackendHostPortDescriptor {
                     id: "webmidi:sink:first".to_owned(),
                     name: "First output".to_owned(),
                     data_type: BackendPortDataType::Midi,
                     direction: BackendPortDirection::Input,
+                    preferred_playback: false,
                 },
                 BackendHostPortDescriptor {
                     id: "webmidi:sink:second".to_owned(),
                     name: "Second output".to_owned(),
                     data_type: BackendPortDataType::Midi,
                     direction: BackendPortDirection::Input,
+                    preferred_playback: false,
                 },
             ])
             .unwrap();
@@ -14643,6 +14629,7 @@ mod tests {
                 name: "Dense input".to_owned(),
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
+                preferred_playback: false,
             }])
             .unwrap();
         let track = backend
@@ -14771,6 +14758,7 @@ mod tests {
             initial_loops: 1,
         };
         let created = backend.create_track(request.clone()).unwrap();
+        connect_web_audio_outputs(&mut backend, &created);
         assert_eq!(
             created
                 .ports
@@ -15060,6 +15048,7 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
+        connect_web_audio_outputs(&mut backend, &created);
         backend
             .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
             .unwrap();
@@ -15317,6 +15306,34 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn web_audio_new_tracks_connect_inputs_but_not_outputs() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(2, 2).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "default-routes".to_owned(),
+                audio_channels: 2,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        for port in created.ports {
+            let links = snapshot
+                .connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == port.id)
+                .count();
+            match port.role {
+                BackendPortRole::AudioInput => assert_eq!(links, 1),
+                BackendPortRole::AudioOutput => assert_eq!(links, 0),
+                _ => {}
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_backend_records_monitors_and_plays_non_zero_full_duplex_audio() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -15328,6 +15345,7 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
+        connect_web_audio_outputs(&mut backend, &track);
         backend
             .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
             .unwrap();
@@ -15418,7 +15436,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn web_audio_session_replacement_preserves_user_route_changes_over_defaults() {
+    fn web_audio_session_replacement_preserves_only_explicit_output_routes() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
         let created = backend
@@ -15429,6 +15447,7 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
+        connect_web_audio_outputs(&mut backend, &created);
         let output = created
             .ports
             .iter()
@@ -15461,7 +15480,7 @@ mod tests {
         let migrated_output = migrated.ports[&output.id.raw()];
         let links = backend.poll().unwrap().connections.confirmed_links;
         assert!(WEB_AUDIO_DESTINATION_PORTS.iter().all(|host| {
-            links.contains(&BackendConfirmedLink {
+            !links.contains(&BackendConfirmedLink {
                 application_port_id: migrated_output,
                 host_port_id: (*host).to_owned(),
             })
@@ -15477,7 +15496,7 @@ mod tests {
     fn web_audio_playback_deterministically_mixes_more_loop_channels_than_device_channels() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 2).unwrap();
-        backend
+        let created = backend
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "wide_web".to_owned(),
                 audio_channels: 4,
@@ -15485,6 +15504,7 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
+        connect_web_audio_outputs(&mut backend, &created);
         let mut session = backend.capture_session().unwrap();
         let loop_ = &mut session.tracks[0].loops[0];
         loop_.length = 128;
@@ -15520,6 +15540,7 @@ mod tests {
                 name: "Grab MIDI input".to_owned(),
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
+                preferred_playback: false,
             }])
             .unwrap();
         let sync = backend

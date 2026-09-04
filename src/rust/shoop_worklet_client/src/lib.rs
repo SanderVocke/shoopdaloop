@@ -380,6 +380,7 @@ impl RemoteWorkletBackend {
                         HostMidiDirection::Input => BackendPortDirection::Input,
                         HostMidiDirection::Output => BackendPortDirection::Output,
                     },
+                    preferred_playback: false,
                 },
             );
         }
@@ -1013,6 +1014,7 @@ impl RemoteWorkletBackend {
                 (
                     port.id.clone(),
                     BackendHostPortDescriptor {
+                        preferred_playback: port.id.starts_with("webaudio:destination_"),
                         id: port.id,
                         name: port.name,
                         data_type: from_wire_data_type(port.data_type),

@@ -275,6 +275,7 @@ pub struct ExternalPortDescriptor {
     pub name: String,
     pub direction: PortDirection,
     pub data_type: PortDataType,
+    pub physical: bool,
 }
 
 pub type BackendSessionState = engine::BackendSessionState;
@@ -3886,10 +3887,31 @@ impl AudioDriver {
                 .client()
                 .ports(pat, ty, flags)
                 .into_iter()
-                .map(|name| ExternalPortDescriptor {
-                    name,
-                    direction: dir,
-                    data_type: dt,
+                .filter_map(|name| {
+                    let port = j.client().port_by_name(&name)?;
+                    let flags = port.flags();
+                    let direction = if flags.contains(jack::PortFlags::IS_INPUT) {
+                        PortDirection::Input
+                    } else if flags.contains(jack::PortFlags::IS_OUTPUT) {
+                        PortDirection::Output
+                    } else {
+                        PortDirection::Any
+                    };
+                    let data_type = if dt == PortDataType::Any {
+                        match port.port_type().ok()?.as_str() {
+                            "32 bit float mono audio" => PortDataType::Audio,
+                            "8 bit raw midi" => PortDataType::Midi,
+                            _ => return None,
+                        }
+                    } else {
+                        dt
+                    };
+                    Some(ExternalPortDescriptor {
+                        name,
+                        direction,
+                        data_type,
+                        physical: flags.contains(jack::PortFlags::IS_PHYSICAL),
+                    })
                 })
                 .collect();
         }
@@ -3909,6 +3931,7 @@ impl AudioDriver {
                     engine::PortDataType::Midi => PortDataType::Midi,
                     engine::PortDataType::Any => PortDataType::Any,
                 },
+                physical: false,
             })
             .collect()
     }
