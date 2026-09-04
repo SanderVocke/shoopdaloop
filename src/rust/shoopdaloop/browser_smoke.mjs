@@ -14,7 +14,8 @@ const debugPort = Number(process.env.DEBUG_PORT || 9222);
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
 const selfContained = process.env.SELF_CONTAINED === '1';
-const protocolTimeout = Number(process.env.CDP_TIMEOUT_MS || (selfContained ? 30_000 : 15_000));
+const protocolTimeout = Number(process.env.CDP_TIMEOUT_MS || 15_000);
+const pageLoadTimeout = Number(process.env.PAGE_LOAD_TIMEOUT_MS || (selfContained ? 90_000 : 30_000));
 const outputOnly = process.env.OUTPUT_ONLY === '1';
 const workerEngine = process.env.WORKER_ENGINE === '1';
 const directFileMicrophone = process.env.DIRECT_FILE_MIC === '1';
@@ -168,6 +169,7 @@ try {
 
   let nextId = 1;
   const pending = new Map();
+  const eventWaiters = new Map();
   const failures = [];
   websocket.onmessage = event => {
     const message = JSON.parse(event.data);
@@ -177,6 +179,12 @@ try {
       request.resolve(message);
       pending.delete(message.id);
       return;
+    }
+    if (eventWaiters.has(message.method)) {
+      const waiter = eventWaiters.get(message.method);
+      clearTimeout(waiter.timer);
+      waiter.resolve(message);
+      eventWaiters.delete(message.method);
     }
     if (message.method === 'Runtime.exceptionThrown') failures.push(message);
     if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
@@ -189,6 +197,11 @@ try {
       request.reject(new Error('Chrome DevTools WebSocket closed'));
     }
     pending.clear();
+    for (const waiter of eventWaiters.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error('Chrome DevTools WebSocket closed'));
+    }
+    eventWaiters.clear();
   };
 
   function call(method, params = {}) {
@@ -206,6 +219,16 @@ try {
         pending.delete(id);
         reject(error);
       }
+    });
+  }
+
+  function waitForEvent(method, timeoutMilliseconds) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        eventWaiters.delete(method);
+        reject(new Error(`timed out waiting for Chrome DevTools ${method}`));
+      }, timeoutMilliseconds);
+      eventWaiters.set(method, { resolve, reject, timer });
     });
   }
 
@@ -390,7 +413,10 @@ try {
             ? `${origin}/?web-midi-test=1`
             : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
   }
-  await call('Page.navigate', { url: entryUrl });
+  await Promise.all([
+    waitForEvent('Page.loadEventFired', pageLoadTimeout),
+    call('Page.navigate', { url: entryUrl }),
+  ]);
 
   const statusExpression = `({
     url: location.href,
