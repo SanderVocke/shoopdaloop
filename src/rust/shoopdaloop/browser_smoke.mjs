@@ -15,7 +15,7 @@ const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
 const selfContained = process.env.SELF_CONTAINED === '1';
 const protocolTimeout = Number(process.env.CDP_TIMEOUT_MS || 15_000);
-const pageLoadTimeout = Number(process.env.PAGE_LOAD_TIMEOUT_MS || (selfContained ? 90_000 : 30_000));
+const pageLoadTimeout = Number(process.env.PAGE_LOAD_TIMEOUT_MS || (selfContained ? 180_000 : 30_000));
 const outputOnly = process.env.OUTPUT_ONLY === '1';
 const workerEngine = process.env.WORKER_ENGINE === '1';
 const directFileMicrophone = process.env.DIRECT_FILE_MIC === '1';
