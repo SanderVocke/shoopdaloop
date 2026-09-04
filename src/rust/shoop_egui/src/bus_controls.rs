@@ -37,6 +37,7 @@ pub struct BusControls {
 #[derive(Debug, Default)]
 struct TestBusControlRects {
     block: Option<egui::Rect>,
+    name: Option<egui::Rect>,
     drag: Option<egui::Rect>,
     menu: Option<egui::Rect>,
     remove: Option<egui::Rect>,
@@ -83,6 +84,28 @@ impl BusControls {
                         meter_width + ui.spacing().interact_size.x + ui.spacing().item_spacing.x,
                     );
                     ui.set_width(strip_width);
+                    let color = if state.control_error.is_some() || state.structural_error.is_some()
+                    {
+                        colors::ERROR
+                    } else {
+                        colors::FOREGROUND
+                    };
+                    let name = ui.add_sized(
+                        [ui.available_width(), 20.0],
+                        egui::Label::new(egui::RichText::new(&state.name).strong().color(color))
+                            .truncate(),
+                    );
+                    #[cfg(test)]
+                    {
+                        self.test_rects.name = Some(name.rect);
+                    }
+                    if let Some(error) = state
+                        .structural_error
+                        .as_ref()
+                        .or(state.control_error.as_ref())
+                    {
+                        name.on_hover_text(error);
+                    }
                     ui.horizontal(|ui| {
                         let (drag_rect, drag) =
                             ui.allocate_exact_size(egui::vec2(18.0, 20.0), egui::Sense::drag());
@@ -98,41 +121,24 @@ impl BusControls {
                             egui::FontId::new(16.0, ICON_DRAG_INDICATOR.font_family()),
                             colors::MUTED_FOREGROUND,
                         );
-                        let color =
-                            if state.control_error.is_some() || state.structural_error.is_some() {
-                                colors::ERROR
-                            } else {
-                                colors::FOREGROUND
-                            };
-                        let response = ui.add_sized(
-                            [(ui.available_width() - 28.0).max(20.0), 20.0],
-                            egui::Label::new(
-                                egui::RichText::new(&state.name).strong().color(color),
-                            )
-                            .truncate(),
-                        );
-                        if let Some(error) = state
-                            .structural_error
-                            .as_ref()
-                            .or(state.control_error.as_ref())
-                        {
-                            response.on_hover_text(error);
-                        }
-                        let _menu = ui.menu_button(ICON_MORE_VERT.rich_text().size(17.0), |ui| {
-                            let remove = ui.button("Delete bus");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let _menu =
+                                ui.menu_button(ICON_MORE_VERT.rich_text().size(17.0), |ui| {
+                                    let remove = ui.button("Delete bus");
+                                    #[cfg(test)]
+                                    {
+                                        self.test_rects.remove = Some(remove.rect);
+                                    }
+                                    if remove.clicked() {
+                                        self.remove_confirmation_open = true;
+                                        ui.close();
+                                    }
+                                });
                             #[cfg(test)]
                             {
-                                self.test_rects.remove = Some(remove.rect);
-                            }
-                            if remove.clicked() {
-                                self.remove_confirmation_open = true;
-                                ui.close();
+                                self.test_rects.menu = Some(_menu.response.rect);
                             }
                         });
-                        #[cfg(test)]
-                        {
-                            self.test_rects.menu = Some(_menu.response.rect);
-                        }
                     });
                     self.show_control_row(ui, state, meter_width, &mut actions);
                 });
@@ -487,10 +493,15 @@ mod tests {
         output.textures_delta.clear();
 
         let drag = controls.test_rects.drag.unwrap();
+        let name = controls.test_rects.name.unwrap();
+        let menu = controls.test_rects.menu.unwrap();
         let balance = controls.test_rects.balance.unwrap();
         let meter = controls.test_rects.meter.unwrap();
         let gain = controls.test_rects.gain.unwrap();
         let mute = controls.test_rects.mute.unwrap();
+        assert!(drag.top() >= name.bottom());
+        assert!(menu.top() >= name.bottom());
+        assert!(name.width() > drag.width() + menu.width());
         assert!(meter.top() >= drag.bottom());
         assert!(gain.top() >= drag.bottom());
         assert!(balance.top() >= meter.bottom());
