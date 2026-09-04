@@ -4,17 +4,17 @@ use crate::{
     MIN_BUS_GAIN_DB,
 };
 use egui_material_icons::icons::{
-    ICON_DELETE, ICON_DRAG_INDICATOR, ICON_VOLUME_MUTE, ICON_VOLUME_UP,
+    ICON_DRAG_INDICATOR, ICON_MORE_VERT, ICON_VOLUME_MUTE, ICON_VOLUME_UP,
 };
 
 const METER_MIN_DB: f32 = -50.0;
-const MIXER_STRIP_WIDTH: f32 = 112.0;
-const MIN_METER_WIDTH: f32 = 30.0;
+const MIXER_STRIP_WIDTH: f32 = 92.0;
+const MIN_METER_WIDTH: f32 = 24.0;
 const MIN_METER_LANE_WIDTH: f32 = 3.0;
 const BALANCE_SIZE: f32 = 26.0;
-const MIN_FADER_HEIGHT: f32 = 52.0;
+const MIN_FADER_HEIGHT: f32 = 88.0;
 const MAX_FADER_HEIGHT: f32 = 260.0;
-const FADER_FOOTER_HEIGHT: f32 = 58.0;
+const FADER_FOOTER_HEIGHT: f32 = 76.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct BusDragPayload {
@@ -37,7 +37,9 @@ pub struct BusControls {
 #[derive(Debug, Default)]
 struct TestBusControlRects {
     block: Option<egui::Rect>,
+    name: Option<egui::Rect>,
     drag: Option<egui::Rect>,
+    menu: Option<egui::Rect>,
     remove: Option<egui::Rect>,
     confirm_remove: Option<egui::Rect>,
     meter: Option<egui::Rect>,
@@ -71,6 +73,7 @@ impl BusControls {
         let mut actions = Vec::new();
         let _response = egui::Frame::new()
             .fill(colors::RAISED_BACKGROUND)
+            .stroke(egui::Stroke::new(1.0, egui::Color32::WHITE))
             .corner_radius(4.0)
             .inner_margin(egui::Margin::same(4))
             .show(ui, |ui| {
@@ -81,6 +84,28 @@ impl BusControls {
                         meter_width + ui.spacing().interact_size.x + ui.spacing().item_spacing.x,
                     );
                     ui.set_width(strip_width);
+                    let color = if state.control_error.is_some() || state.structural_error.is_some()
+                    {
+                        colors::ERROR
+                    } else {
+                        colors::FOREGROUND
+                    };
+                    let name = ui.add_sized(
+                        [ui.available_width(), 20.0],
+                        egui::Label::new(egui::RichText::new(&state.name).strong().color(color))
+                            .truncate(),
+                    );
+                    #[cfg(test)]
+                    {
+                        self.test_rects.name = Some(name.rect);
+                    }
+                    if let Some(error) = state
+                        .structural_error
+                        .as_ref()
+                        .or(state.control_error.as_ref())
+                    {
+                        name.on_hover_text(error);
+                    }
                     ui.horizontal(|ui| {
                         let (drag_rect, drag) =
                             ui.allocate_exact_size(egui::vec2(18.0, 20.0), egui::Sense::drag());
@@ -96,36 +121,24 @@ impl BusControls {
                             egui::FontId::new(16.0, ICON_DRAG_INDICATOR.font_family()),
                             colors::MUTED_FOREGROUND,
                         );
-                        let color =
-                            if state.control_error.is_some() || state.structural_error.is_some() {
-                                colors::ERROR
-                            } else {
-                                colors::FOREGROUND
-                            };
-                        let response = ui.add_sized(
-                            [(ui.available_width() - 24.0).max(20.0), 20.0],
-                            egui::Label::new(
-                                egui::RichText::new(&state.name).strong().color(color),
-                            )
-                            .truncate(),
-                        );
-                        if let Some(error) = state
-                            .structural_error
-                            .as_ref()
-                            .or(state.control_error.as_ref())
-                        {
-                            response.on_hover_text(error);
-                        }
-                        let remove = ui
-                            .add(egui::Button::new(ICON_DELETE.rich_text().size(15.0)).frame(false))
-                            .on_hover_text("Remove bus");
-                        #[cfg(test)]
-                        {
-                            self.test_rects.remove = Some(remove.rect);
-                        }
-                        if remove.clicked() {
-                            self.remove_confirmation_open = true;
-                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let _menu =
+                                ui.menu_button(ICON_MORE_VERT.rich_text().size(17.0), |ui| {
+                                    let remove = ui.button("Delete bus");
+                                    #[cfg(test)]
+                                    {
+                                        self.test_rects.remove = Some(remove.rect);
+                                    }
+                                    if remove.clicked() {
+                                        self.remove_confirmation_open = true;
+                                        ui.close();
+                                    }
+                                });
+                            #[cfg(test)]
+                            {
+                                self.test_rects.menu = Some(_menu.response.rect);
+                            }
+                        });
                     });
                     self.show_control_row(ui, state, meter_width, &mut actions);
                 });
@@ -175,8 +188,64 @@ impl BusControls {
         actions: &mut Vec<BusAction>,
     ) {
         let stereo = state.stereo();
-        ui.horizontal(|ui| {
-            ui.add_space((ui.available_width() - BALANCE_SIZE).max(0.0) / 2.0);
+        let slider_thickness = ui.spacing().interact_size.x;
+        let group_width = meter_width + ui.spacing().item_spacing.x + slider_thickness;
+        let fader_height =
+            (ui.available_height() - FADER_FOOTER_HEIGHT).clamp(MIN_FADER_HEIGHT, MAX_FADER_HEIGHT);
+        let mut gain = self.gain.resolve(state.gain_db, self.gain_dragging);
+        let fill = if state.muted {
+            colors::MUTED_SLIDER_FILL
+        } else {
+            colors::COLORED_HIGHLIGHT
+        };
+        let gain_response = ui
+            .horizontal(|ui| {
+                ui.add_space((ui.available_width() - group_width).max(0.0) / 2.0);
+                let (meter_rect, _meter_response) = ui.allocate_exact_size(
+                    egui::vec2(meter_width, fader_height),
+                    egui::Sense::hover(),
+                );
+                #[cfg(test)]
+                {
+                    self.test_rects.meter = Some(_meter_response.rect);
+                }
+                self.paint_meter(ui, meter_rect, state);
+
+                let slider_width = ui.spacing().slider_width;
+                ui.spacing_mut().slider_width = fader_height;
+                let response = ui
+                    .scope(|ui| {
+                        ui.visuals_mut().selection.bg_fill = fill;
+                        ui.add(
+                            egui::Slider::new(&mut gain, MIN_BUS_GAIN_DB..=MAX_BUS_GAIN_DB)
+                                .vertical()
+                                .show_value(false)
+                                .trailing_fill(true),
+                        )
+                    })
+                    .inner;
+                ui.spacing_mut().slider_width = slider_width;
+                response
+            })
+            .inner
+            .on_hover_text(format!("Bus gain: {gain:.1} dB"));
+        #[cfg(test)]
+        {
+            self.test_rects.gain = Some(gain_response.rect);
+        }
+        if gain_response.drag_started() || gain_response.dragged() {
+            self.gain_dragging = true;
+        }
+        if gain_response.changed() {
+            self.gain.set(gain);
+            actions.push(BusAction::GainChanged(gain));
+        }
+        if gain_response.drag_stopped() {
+            self.gain_dragging = false;
+        }
+
+        ui.vertical_centered(|ui| {
+            ui.label(format!("{gain:.1} dB"));
             let (balance_rect, balance_response) = ui.allocate_exact_size(
                 egui::vec2(BALANCE_SIZE, BALANCE_SIZE),
                 if stereo {
@@ -235,65 +304,8 @@ impl BusControls {
                 }
             }
         });
-
-        let fader_height =
-            (ui.available_height() - FADER_FOOTER_HEIGHT).clamp(MIN_FADER_HEIGHT, MAX_FADER_HEIGHT);
-        let mut gain = self.gain.resolve(state.gain_db, self.gain_dragging);
-        let fill = if state.muted {
-            colors::MUTED_SLIDER_FILL
-        } else {
-            colors::COLORED_HIGHLIGHT
-        };
-        let gain_response = ui
-            .horizontal(|ui| {
-                let slider_thickness = ui.spacing().interact_size.x;
-                let group_width = meter_width + ui.spacing().item_spacing.x + slider_thickness;
-                ui.add_space((ui.available_width() - group_width).max(0.0) / 2.0);
-                let (meter_rect, _meter_response) = ui.allocate_exact_size(
-                    egui::vec2(meter_width, fader_height),
-                    egui::Sense::hover(),
-                );
-                #[cfg(test)]
-                {
-                    self.test_rects.meter = Some(_meter_response.rect);
-                }
-                self.paint_meter(ui, meter_rect, state);
-
-                let slider_width = ui.spacing().slider_width;
-                ui.spacing_mut().slider_width = fader_height;
-                let response = ui
-                    .scope(|ui| {
-                        ui.visuals_mut().selection.bg_fill = fill;
-                        ui.add(
-                            egui::Slider::new(&mut gain, MIN_BUS_GAIN_DB..=MAX_BUS_GAIN_DB)
-                                .vertical()
-                                .show_value(false)
-                                .trailing_fill(true),
-                        )
-                    })
-                    .inner;
-                ui.spacing_mut().slider_width = slider_width;
-                response
-            })
-            .inner
-            .on_hover_text(format!("Bus gain: {gain:.1} dB"));
-        #[cfg(test)]
-        {
-            self.test_rects.gain = Some(gain_response.rect);
-        }
-        if gain_response.drag_started() || gain_response.dragged() {
-            self.gain_dragging = true;
-        }
-        if gain_response.changed() {
-            self.gain.set(gain);
-            actions.push(BusAction::GainChanged(gain));
-        }
-        if gain_response.drag_stopped() {
-            self.gain_dragging = false;
-        }
-
-        ui.vertical_centered(|ui| {
-            ui.label(format!("{gain:.1} dB"));
+        ui.horizontal(|ui| {
+            ui.add_space((ui.available_width() - group_width).max(0.0) / 2.0);
             let icon = if state.muted {
                 ICON_VOLUME_MUTE
             } else {
@@ -306,7 +318,7 @@ impl BusControls {
             };
             let mute = ui
                 .add_sized(
-                    [64.0, 24.0],
+                    [group_width, 24.0],
                     egui::Button::new(icon.rich_text().size(16.0).color(color)),
                 )
                 .on_hover_text("Mute/unmute bus");
@@ -481,13 +493,23 @@ mod tests {
         output.textures_delta.clear();
 
         let drag = controls.test_rects.drag.unwrap();
+        let name = controls.test_rects.name.unwrap();
+        let menu = controls.test_rects.menu.unwrap();
         let balance = controls.test_rects.balance.unwrap();
         let meter = controls.test_rects.meter.unwrap();
         let gain = controls.test_rects.gain.unwrap();
-        assert!(balance.top() >= drag.bottom());
-        assert!(meter.top() >= balance.bottom());
-        assert!(gain.top() >= balance.bottom());
-        assert!(controls.test_rects.block.unwrap().width() < 140.0);
+        let mute = controls.test_rects.mute.unwrap();
+        assert!(drag.top() >= name.bottom());
+        assert!(menu.top() >= name.bottom());
+        assert!(name.width() > drag.width() + menu.width());
+        assert!(meter.top() >= drag.bottom());
+        assert!(gain.top() >= drag.bottom());
+        assert!(balance.top() >= meter.bottom());
+        assert!(mute.top() >= balance.bottom());
+        assert!((mute.left() - meter.left()).abs() < 1.0);
+        assert!(mute.right() >= gain.right());
+        assert!(meter.height() >= MIN_FADER_HEIGHT);
+        assert!(controls.test_rects.block.unwrap().width() < 120.0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -500,7 +522,7 @@ mod tests {
         let settled_block = controls.test_rects.block.unwrap();
         state.control_pending = true;
         frame(&context, &mut controls, &state, Vec::new());
-        assert!(controls.test_rects.remove.is_some());
+        assert!(controls.test_rects.menu.is_some());
         assert_eq!(
             controls.test_rects.block.unwrap().size(),
             settled_block.size()
@@ -672,6 +694,36 @@ mod tests {
         );
         egui::DragAndDrop::clear_payload(&context);
 
+        let menu = controls.test_rects.menu.unwrap().center();
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(menu),
+                egui::Event::PointerButton {
+                    pos: menu,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(menu),
+                egui::Event::PointerButton {
+                    pos: menu,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(&context, &mut controls, &state, Vec::new());
         let remove = controls.test_rects.remove.unwrap().center();
         frame(
             &context,
