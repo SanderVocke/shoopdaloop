@@ -27,10 +27,12 @@ use web_time::Instant;
 
 use eframe::egui;
 use settings::SettingsManager;
-#[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
-use shoop_backend::configure_carla_hosting_mode;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_backend::NativeBackend;
+#[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
+use shoop_backend::{
+    configure_carla_hosting_mode, configure_carla_ui_dispatcher, CarlaMainThreadUiService,
+};
 #[cfg(target_arch = "wasm32")]
 use shoop_egui::register_bundled_script_settings;
 #[cfg(all(not(target_arch = "wasm32"), any(feature = "native-fx", test)))]
@@ -1859,6 +1861,8 @@ fn reconcile_loop_smoothing_settings(
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
+    #[cfg(feature = "native-fx")]
+    carla_ui_service: CarlaMainThreadUiService,
     script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
     pending_script_paths: std::collections::VecDeque<(String, ScriptKind, String)>,
     catalog_scan_generation: u64,
@@ -1875,9 +1879,23 @@ type CatalogScanCompletion = (
     Result<(Vec<StartupScript>, Vec<String>, Vec<String>, bool), String>,
 );
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        let service = &mut self.carla_ui_service;
+        self._runtime.shutdown_with_idle(|| service.pump());
+        configure_carla_ui_dispatcher(None);
+        service.pump();
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
+        #[cfg(feature = "native-fx")]
+        let (carla_ui_service, carla_ui_dispatcher) = CarlaMainThreadUiService::new();
+        #[cfg(feature = "native-fx")]
+        configure_carla_ui_dispatcher(Some(carla_ui_dispatcher));
         #[cfg(feature = "native-fx")]
         let carla_configuration_warning = {
             let (carla_hosting_mode, warning) =
@@ -1934,6 +1952,8 @@ impl Runtime {
         Ok(Self {
             _runtime: runtime,
             handle,
+            #[cfg(feature = "native-fx")]
+            carla_ui_service,
             script_paths,
             pending_script_paths: std::collections::VecDeque::new(),
             catalog_scan_generation: 1,
@@ -1946,6 +1966,8 @@ impl Runtime {
     }
 
     fn tick(&mut self, _elapsed: Duration) {
+        #[cfg(feature = "native-fx")]
+        self.carla_ui_service.pump();
         while let Ok((generation, result)) = self.catalog_scan_rx.try_recv() {
             if generation != self.catalog_scan_generation {
                 continue;
@@ -2849,11 +2871,28 @@ fn main() {
     }
     #[cfg(feature = "native-fx")]
     if cli.probe_carla_native || cli.probe_carla_native_ui {
+        let mut probe_tracing = match NativeTracing::initialize(&cli) {
+            Ok(mut tracing) => match tracing.start_requested_capture() {
+                Ok(()) => tracing,
+                Err(error) => {
+                    eprintln!("Could not start tracing for Carla probe: {error:#}");
+                    std::process::exit(1);
+                }
+            },
+            Err(error) => {
+                eprintln!("Could not initialize tracing for Carla probe: {error:#}");
+                std::process::exit(1);
+            }
+        };
         let result = if cli.probe_carla_native_ui {
             shoop_backend::smoke_test_carla_ui()
         } else {
             shoop_backend::smoke_test_carla_runtime()
         };
+        if let Err(error) = probe_tracing.shutdown() {
+            eprintln!("Could not finalize Carla probe trace: {error:#}");
+            std::process::exit(1);
+        }
         match result {
             Ok(()) => {
                 let path = shoop_backend::carla_runtime_path()

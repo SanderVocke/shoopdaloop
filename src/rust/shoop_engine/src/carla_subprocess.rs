@@ -1,6 +1,6 @@
 use crate::carla_native::CarlaNativeHost;
 use crate::carla_processor::{
-    CarlaGenerationLog, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
+    CarlaExternalUi, CarlaGenerationLog, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
     CarlaProcessorLifecycle, FakeCarlaProcessor, FakeProcessorBehavior,
 };
 use crate::carla_shared_memory::SharedBlockTransport;
@@ -86,6 +86,8 @@ pub enum CarlaWorkerTestMode {
     Abort,
     ProcessError,
     Hang,
+    DelayOnce,
+    UiClose,
     FloodLogs,
     MalformedHandshake,
     HangShutdown,
@@ -100,6 +102,8 @@ impl std::str::FromStr for CarlaWorkerTestMode {
             "abort" => Ok(Self::Abort),
             "process-error" => Ok(Self::ProcessError),
             "hang" => Ok(Self::Hang),
+            "delay-once" => Ok(Self::DelayOnce),
+            "ui-close" => Ok(Self::UiClose),
             "flood-logs" => Ok(Self::FloodLogs),
             "malformed-handshake" => Ok(Self::MalformedHandshake),
             "hang-shutdown" => Ok(Self::HangShutdown),
@@ -115,6 +119,8 @@ impl fmt::Display for CarlaWorkerTestMode {
             Self::Abort => "abort",
             Self::ProcessError => "process-error",
             Self::Hang => "hang",
+            Self::DelayOnce => "delay-once",
+            Self::UiClose => "ui-close",
             Self::FloodLogs => "flood-logs",
             Self::MalformedHandshake => "malformed-handshake",
             Self::HangShutdown => "hang-shutdown",
@@ -298,6 +304,7 @@ fn instantiate_worker_host(
     chain_type: CarlaChainType,
     sample_rate: u32,
     nominal_buffer_size: u32,
+    ui_dispatcher: crate::carla_native::CarlaMainThreadUiDispatcher,
 ) -> Result<WorkerHost> {
     if let Some(mode) = options.test_mode {
         let mut fake = FakeCarlaProcessor::new(
@@ -318,21 +325,32 @@ fn instantiate_worker_host(
                 process_delay: Duration::from_secs(5),
                 ..Default::default()
             },
+            CarlaWorkerTestMode::DelayOnce => FakeProcessorBehavior {
+                process_delay: Duration::from_millis(20),
+                process_delay_calls: Some(1),
+                ..Default::default()
+            },
+            CarlaWorkerTestMode::UiClose => FakeProcessorBehavior {
+                close_ui_immediately: true,
+                ..Default::default()
+            },
             _ => FakeProcessorBehavior::default(),
         };
         fake.set_behavior(behavior);
         Ok(Box::new(fake))
     } else {
-        CarlaNativeHost::instantiate(
+        CarlaNativeHost::instantiate_with_ui_dispatcher(
             engine_chain_type(chain_type),
             sample_rate,
             nominal_buffer_size,
+            ui_dispatcher,
         )
         .map(|host| Box::new(host) as WorkerHost)
     }
 }
 
 pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
+    let (mut ui_service, ui_dispatcher) = crate::carla_native::CarlaMainThreadUiService::new();
     let mut stream = TcpStream::connect_timeout(&options.address, STARTUP_TIMEOUT)
         .context("worker could not connect to parent")?;
     stream.set_nodelay(true)?;
@@ -368,6 +386,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
     )?;
     let _shared_memory_cleanup = SharedMemoryCleanup(options.shared_memory_path.clone());
     let host: Arc<Mutex<Option<WorkerHost>>> = Arc::new(Mutex::new(None));
+    let mut external_ui: Option<Arc<dyn CarlaExternalUi>> = None;
     let stop = Arc::new(AtomicBool::new(false));
     let processed_blocks = Arc::new(AtomicU64::new(0));
     let shared_thread = thread::Builder::new()
@@ -400,15 +419,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
         ..Default::default()
     };
     loop {
-        if let Some(host) = host
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .as_mut()
-        {
-            if host.is_visible() {
-                host.idle();
-            }
-        }
+        ui_service.pump();
         let mut available = [0_u8; 1];
         match stream.peek(&mut available) {
             Ok(0) => return Ok(()),
@@ -467,6 +478,19 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     continue;
                 }
                 let request_id = request.request_id;
+                if let (ControlRequestKind::SetVisible(visible), Some(ui)) =
+                    (&request.kind, external_ui.as_ref())
+                {
+                    let kind = match ui.set_visible(*visible) {
+                        Ok(()) => {
+                            status.visible = ui.is_visible();
+                            ControlResponseKind::Ack
+                        }
+                        Err(error) => protocol_error(error),
+                    };
+                    write_frame(&mut stream, &response(&options, request_id, kind))?;
+                    continue;
+                }
                 let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
                 let kind = match request.kind {
                     ControlRequestKind::Instantiate {
@@ -478,8 +502,10 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                         chain_type,
                         sample_rate,
                         nominal_buffer_size,
+                        ui_dispatcher.clone(),
                     ) {
                         Ok(created) => {
+                            external_ui = created.external_ui();
                             *host = Some(created);
                             status.lifecycle = LifecycleState::Running;
                             status.ready = true;
@@ -499,16 +525,28 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                         }
                         None => protocol_error("Carla host is not instantiated"),
                     },
-                    ControlRequestKind::SetVisible(visible) => match host.as_mut() {
-                        Some(host) => match host.set_visible(visible) {
-                            Ok(()) => {
-                                status.visible = host.is_visible();
-                                ControlResponseKind::Ack
+                    ControlRequestKind::SetVisible(visible) => {
+                        if let Some(ui) = &external_ui {
+                            match ui.set_visible(visible) {
+                                Ok(()) => {
+                                    status.visible = ui.is_visible();
+                                    ControlResponseKind::Ack
+                                }
+                                Err(error) => protocol_error(error),
                             }
-                            Err(error) => protocol_error(error),
-                        },
-                        None => protocol_error("Carla host is not instantiated"),
-                    },
+                        } else {
+                            match host.as_mut() {
+                                Some(host) => match host.set_visible(visible) {
+                                    Ok(()) => {
+                                        status.visible = host.is_visible();
+                                        ControlResponseKind::Ack
+                                    }
+                                    Err(error) => protocol_error(error),
+                                },
+                                None => protocol_error("Carla host is not instantiated"),
+                            }
+                        }
+                    }
                     ControlRequestKind::SaveState => match host.as_mut() {
                         Some(host) => match host.save_state() {
                             Ok(state) => ControlResponseKind::State(state),
@@ -526,7 +564,10 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     ControlRequestKind::Status => {
                         if let Some(host) = host.as_mut() {
                             status.active = host.is_active();
-                            status.visible = host.is_visible();
+                            status.visible = external_ui
+                                .as_ref()
+                                .map(|ui| ui.is_visible())
+                                .unwrap_or_else(|| host.is_visible());
                         }
                         status.processed_blocks = processed_blocks.load(Ordering::Relaxed);
                         ControlResponseKind::Status(status.clone())
@@ -684,13 +725,107 @@ fn drain_pipe(
         .expect("worker log thread must start")
 }
 
+#[derive(Debug)]
+struct SubprocessControlLink {
+    chain_id: ChainId,
+    generation: ProcessGeneration,
+    request_id: AtomicU64,
+    stream: Mutex<TcpStream>,
+    visible: AtomicBool,
+    ui_closed: AtomicBool,
+    ready: AtomicBool,
+}
+
+#[derive(Debug)]
+struct SubprocessExternalUi {
+    control: Arc<SubprocessControlLink>,
+}
+
+impl CarlaExternalUi for SubprocessExternalUi {
+    fn set_visible(&self, visible: bool) -> Result<()> {
+        control_exchange(
+            &self.control,
+            ControlRequestKind::SetVisible(visible),
+            UI_CONTROL_TIMEOUT,
+        )?;
+        self.control.visible.store(visible, Ordering::Release);
+        if visible {
+            self.control.ui_closed.store(false, Ordering::Release);
+        }
+        Ok(())
+    }
+
+    fn refresh(&self) {
+        match control_exchange(&self.control, ControlRequestKind::Status, CONTROL_TIMEOUT) {
+            Ok(ControlResponseKind::Status(status)) => {
+                let was_visible = self.control.visible.swap(status.visible, Ordering::AcqRel);
+                if was_visible && !status.visible {
+                    self.control.ui_closed.store(true, Ordering::Release);
+                }
+                self.control.ready.store(status.ready, Ordering::Release);
+            }
+            Ok(_) => {}
+            Err(_) => {
+                self.control.ready.store(false, Ordering::Release);
+            }
+        }
+    }
+
+    fn is_visible(&self) -> bool {
+        self.control.visible.load(Ordering::Acquire)
+    }
+
+    fn ui_was_closed(&self) -> bool {
+        self.control.ui_closed.load(Ordering::Acquire)
+    }
+}
+
+fn control_exchange(
+    control: &SubprocessControlLink,
+    kind: ControlRequestKind,
+    timeout: Duration,
+) -> Result<ControlResponseKind> {
+    let mut stream = control
+        .stream
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    stream.set_read_timeout(Some(timeout))?;
+    let request_id = RequestId(control.request_id.fetch_add(1, Ordering::Relaxed) + 1);
+    let request = ControlRequest {
+        request_id,
+        chain_id: control.chain_id,
+        generation: control.generation,
+        kind,
+    };
+    request.validate()?;
+    write_frame(&mut *stream, &ParentToWorker::Control(request))?;
+    let response: WorkerToParent = read_frame(&mut *stream)?;
+    match response {
+        WorkerToParent::Control(response)
+            if response.request_id == request_id
+                && response.chain_id == control.chain_id
+                && response.generation == control.generation =>
+        {
+            response.validate()?;
+            match response.kind {
+                ControlResponseKind::Error(error) => Err(anyhow!(
+                    "Carla worker error {:?}: {}",
+                    error.code,
+                    error.message
+                )),
+                kind => Ok(kind),
+            }
+        }
+        other => Err(anyhow!("unexpected Carla worker response: {other:?}")),
+    }
+}
+
 pub struct SubprocessCarlaProcessor {
     info: CarlaProcessorInfo,
     chain_id: ChainId,
     generation: ProcessGeneration,
-    request_id: u64,
+    control_link: Arc<SubprocessControlLink>,
     block_sequence: u64,
-    stream: TcpStream,
     notification: UdpSocket,
     notification_token: [u8; 16],
     shared_transport: SharedBlockTransport,
@@ -707,14 +842,14 @@ pub struct SubprocessCarlaProcessor {
     shared_midi_outputs: Vec<MidiEvent>,
     shared_midi_output_count: usize,
     active: bool,
-    visible: bool,
-    ready: bool,
     checkpoint: String,
     process_timeout: Duration,
     deadline_misses: u64,
     midi_input_overflows: u64,
     midi_output_overflows: u64,
     stale_completions: u64,
+    recoveries: u64,
+    degraded: bool,
     serialized_reference_transport: bool,
     exit_kind: WorkerExitKind,
     shutdown_complete: bool,
@@ -728,8 +863,11 @@ impl fmt::Debug for SubprocessCarlaProcessor {
             .field("chain_id", &self.chain_id)
             .field("generation", &self.generation)
             .field("active", &self.active)
-            .field("visible", &self.visible)
-            .field("ready", &self.ready)
+            .field(
+                "visible",
+                &self.control_link.visible.load(Ordering::Acquire),
+            )
+            .field("ready", &self.control_link.ready.load(Ordering::Acquire))
             .finish_non_exhaustive()
     }
 }
@@ -888,7 +1026,7 @@ impl SubprocessCarlaProcessor {
         let notification_token = nonce[..16].try_into().expect("nonce prefix has fixed size");
 
         let channels = protocol_type.audio_channels() as usize;
-        let mut processor = Self {
+        let processor = Self {
             info: CarlaProcessorInfo {
                 chain_type,
                 audio_inputs: channels,
@@ -898,9 +1036,16 @@ impl SubprocessCarlaProcessor {
             },
             chain_id,
             generation,
-            request_id: 1,
+            control_link: Arc::new(SubprocessControlLink {
+                chain_id,
+                generation,
+                request_id: AtomicU64::new(1),
+                stream: Mutex::new(stream),
+                visible: AtomicBool::new(false),
+                ui_closed: AtomicBool::new(false),
+                ready: AtomicBool::new(false),
+            }),
             block_sequence: 0,
-            stream,
             notification,
             notification_token,
             shared_transport,
@@ -926,8 +1071,6 @@ impl SubprocessCarlaProcessor {
                 .collect(),
             shared_midi_output_count: 0,
             active: false,
-            visible: false,
-            ready: false,
             checkpoint: "{}".to_owned(),
             process_timeout: Duration::from_secs_f64(
                 (nominal_buffer_size.max(1) as f64 / sample_rate.max(1) as f64).max(0.000_5),
@@ -936,6 +1079,8 @@ impl SubprocessCarlaProcessor {
             midi_input_overflows: 0,
             midi_output_overflows: 0,
             stale_completions: 0,
+            recoveries: 0,
+            degraded: false,
             serialized_reference_transport: false,
             exit_kind: WorkerExitKind::None,
             shutdown_complete: false,
@@ -945,7 +1090,7 @@ impl SubprocessCarlaProcessor {
             sample_rate,
             nominal_buffer_size,
         })?;
-        processor.ready = true;
+        processor.control_link.ready.store(true, Ordering::Release);
         Ok(processor)
     }
 
@@ -953,49 +1098,8 @@ impl SubprocessCarlaProcessor {
         std::env::current_exe().context("could not locate current executable for Carla worker")
     }
 
-    fn next_request_id(&mut self) -> RequestId {
-        self.request_id = self.request_id.saturating_add(1);
-        RequestId(self.request_id)
-    }
-
-    fn control(&mut self, kind: ControlRequestKind) -> Result<ControlResponseKind> {
-        self.control_with_timeout(kind, CONTROL_TIMEOUT)
-    }
-
-    fn control_with_timeout(
-        &mut self,
-        kind: ControlRequestKind,
-        timeout: Duration,
-    ) -> Result<ControlResponseKind> {
-        self.stream.set_read_timeout(Some(timeout))?;
-        let request_id = self.next_request_id();
-        let request = ControlRequest {
-            request_id,
-            chain_id: self.chain_id,
-            generation: self.generation,
-            kind,
-        };
-        request.validate()?;
-        write_frame(&mut self.stream, &ParentToWorker::Control(request))?;
-        let response: WorkerToParent = read_frame(&mut self.stream)?;
-        match response {
-            WorkerToParent::Control(response)
-                if response.request_id == request_id
-                    && response.chain_id == self.chain_id
-                    && response.generation == self.generation =>
-            {
-                response.validate()?;
-                match response.kind {
-                    ControlResponseKind::Error(error) => Err(anyhow!(
-                        "Carla worker error {:?}: {}",
-                        error.code,
-                        error.message
-                    )),
-                    kind => Ok(kind),
-                }
-            }
-            other => Err(anyhow!("unexpected Carla worker response: {other:?}")),
-        }
+    fn control(&self, kind: ControlRequestKind) -> Result<ControlResponseKind> {
+        control_exchange(&self.control_link, kind, CONTROL_TIMEOUT)
     }
 
     pub fn status(&mut self) -> Result<WorkerStatus> {
@@ -1074,8 +1178,13 @@ impl SubprocessCarlaProcessor {
                 .collect(),
         };
         block.validate()?;
-        write_frame(&mut self.stream, &ParentToWorker::Process(block))?;
-        let response: WorkerToParent = read_frame(&mut self.stream)?;
+        let mut stream = self
+            .control_link
+            .stream
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        write_frame(&mut *stream, &ParentToWorker::Process(block))?;
+        let response: WorkerToParent = read_frame(&mut *stream)?;
         let WorkerToParent::Process(result) = response else {
             return Err(anyhow!(
                 "worker returned control traffic for reference block"
@@ -1129,7 +1238,7 @@ impl SubprocessCarlaProcessor {
                 }
             }
         }
-        self.ready = false;
+        self.control_link.ready.store(false, Ordering::Release);
         self.shutdown_complete = true;
         self.exit_kind
     }
@@ -1137,7 +1246,7 @@ impl SubprocessCarlaProcessor {
     pub fn terminate_worker_for_test(&mut self) -> Result<()> {
         self.child.kill()?;
         self.child.wait()?;
-        self.ready = false;
+        self.control_link.ready.store(false, Ordering::Release);
         Ok(())
     }
 
@@ -1166,13 +1275,26 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
         self.info
     }
 
+    fn external_ui(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+        Some(Arc::new(SubprocessExternalUi {
+            control: Arc::clone(&self.control_link),
+        }))
+    }
+
     fn is_ready(&mut self) -> bool {
-        self.ready && self.child.try_wait().ok().flatten().is_none()
+        let ready = self.control_link.ready.load(Ordering::Acquire)
+            && self.child.try_wait().ok().flatten().is_none();
+        self.control_link.ready.store(ready, Ordering::Release);
+        ready
     }
 
     fn lifecycle(&self) -> CarlaProcessorLifecycle {
-        if self.ready {
-            CarlaProcessorLifecycle::Running
+        if self.control_link.ready.load(Ordering::Acquire) {
+            if self.degraded {
+                CarlaProcessorLifecycle::Degraded
+            } else {
+                CarlaProcessorLifecycle::Running
+            }
         } else {
             CarlaProcessorLifecycle::Crashed
         }
@@ -1183,7 +1305,23 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
     }
 
     fn exit_kind(&self) -> WorkerExitKind {
-        self.exit_kind
+        if self.control_link.ui_closed.load(Ordering::Acquire) {
+            WorkerExitKind::UiClosed
+        } else {
+            self.exit_kind
+        }
+    }
+
+    fn deadline_misses(&self) -> u64 {
+        self.deadline_misses
+    }
+
+    fn stale_completions(&self) -> u64 {
+        self.stale_completions
+    }
+
+    fn recoveries(&self) -> u64 {
+        self.recoveries
     }
 
     fn generation_logs(&self) -> Vec<CarlaGenerationLog> {
@@ -1206,35 +1344,41 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
         if self.control(ControlRequestKind::SetActive(active)).is_ok() {
             self.active = active;
         } else {
-            self.ready = false;
+            self.control_link.ready.store(false, Ordering::Release);
         }
     }
 
     fn is_active(&self) -> bool {
-        self.active && self.ready
+        self.active && self.control_link.ready.load(Ordering::Acquire)
     }
 
     fn set_visible(&mut self, visible: bool) -> Result<()> {
-        self.control_with_timeout(ControlRequestKind::SetVisible(visible), UI_CONTROL_TIMEOUT)?;
-        self.visible = visible;
-        Ok(())
+        let ui = SubprocessExternalUi {
+            control: Arc::clone(&self.control_link),
+        };
+        ui.set_visible(visible)
     }
 
     fn is_visible(&mut self) -> bool {
         match self.status() {
             Ok(status) => {
-                if self.visible && !status.visible {
+                let was_visible = self.control_link.visible.load(Ordering::Acquire);
+                if was_visible && !status.visible {
                     self.exit_kind = WorkerExitKind::UiClosed;
                 }
-                self.visible = status.visible;
-                self.ready = status.ready;
+                self.control_link
+                    .visible
+                    .store(status.visible, Ordering::Release);
+                self.control_link
+                    .ready
+                    .store(status.ready, Ordering::Release);
             }
             Err(_) => {
-                self.visible = false;
-                self.ready = false;
+                self.control_link.visible.store(false, Ordering::Release);
+                self.control_link.ready.store(false, Ordering::Release);
             }
         }
-        self.visible
+        self.control_link.visible.load(Ordering::Acquire)
     }
 
     fn save_state(&mut self) -> Result<String> {
@@ -1338,7 +1482,7 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 if self.notification.send(&self.notification_token)?
                     != self.notification_token.len()
                 {
-                    self.ready = false;
+                    self.control_link.ready.store(false, Ordering::Release);
                     self.clear_outputs(frames);
                     return Err(anyhow!("short Carla worker notification datagram"));
                 }
@@ -1349,11 +1493,12 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
             ) => {
                 self.deadline_misses = self.deadline_misses.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 return Ok(());
             }
             Err(error) => {
-                self.ready = false;
+                self.control_link.ready.store(false, Ordering::Release);
                 self.clear_outputs(frames);
                 return Err(error.into());
             }
@@ -1374,6 +1519,9 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
         };
         match result {
             Ok(()) => {
+                if std::mem::replace(&mut self.degraded, false) {
+                    self.recoveries = self.recoveries.saturating_add(1);
+                }
                 self.midi_output_counts.fill(0);
                 for (slot, event) in self.midi_outputs[0]
                     .iter_mut()
@@ -1391,25 +1539,74 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
             ) => {
                 self.deadline_misses = self.deadline_misses.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 Ok(())
             }
             Err(crate::carla_shared_memory::SharedBlockError::MidiOverflow) => {
                 self.midi_output_overflows = self.midi_output_overflows.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 Ok(())
             }
             Err(crate::carla_shared_memory::SharedBlockError::StaleCompletion) => {
                 self.stale_completions = self.stale_completions.saturating_add(1);
+                self.degraded = true;
                 self.clear_outputs(frames);
                 Ok(())
             }
             Err(error) => {
-                self.ready = false;
+                self.control_link.ready.store(false, Ordering::Release);
                 self.clear_outputs(frames);
                 Err(error.into())
             }
         }
+    }
+}
+
+#[derive(Debug, Default)]
+struct SupervisedExternalUi {
+    current: Mutex<Option<Arc<dyn CarlaExternalUi>>>,
+    desired_visible: AtomicBool,
+}
+
+impl CarlaExternalUi for SupervisedExternalUi {
+    fn set_visible(&self, visible: bool) -> Result<()> {
+        self.desired_visible.store(visible, Ordering::Release);
+        let current = self
+            .current
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+            .ok_or_else(|| anyhow!("Carla worker UI is unavailable"))?;
+        current.set_visible(visible)
+    }
+
+    fn refresh(&self) {
+        if let Some(current) = self
+            .current
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+        {
+            current.refresh();
+        }
+    }
+
+    fn is_visible(&self) -> bool {
+        self.current
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .is_some_and(|current| current.is_visible())
+    }
+
+    fn ui_was_closed(&self) -> bool {
+        self.current
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .is_some_and(|current| current.ui_was_closed())
     }
 }
 
@@ -1423,10 +1620,13 @@ pub struct SupervisedCarlaProcessor {
     generation: ProcessGeneration,
     current: Option<SubprocessCarlaProcessor>,
     previous_logs: VecDeque<CarlaGenerationLog>,
+    previous_deadline_misses: u64,
+    previous_stale_completions: u64,
+    previous_recoveries: u64,
     checkpoint: String,
     has_checkpoint: bool,
     desired_active: bool,
-    desired_visible: bool,
+    external_ui: Arc<SupervisedExternalUi>,
     lifecycle: CarlaProcessorLifecycle,
     exit_kind: WorkerExitKind,
     crash_summary: Option<String>,
@@ -1441,7 +1641,10 @@ impl fmt::Debug for SupervisedCarlaProcessor {
             .field("generation", &self.generation)
             .field("lifecycle", &self.lifecycle)
             .field("desired_active", &self.desired_active)
-            .field("desired_visible", &self.desired_visible)
+            .field(
+                "desired_visible",
+                &self.external_ui.desired_visible.load(Ordering::Acquire),
+            )
             .field("crash_summary", &self.crash_summary)
             .finish_non_exhaustive()
     }
@@ -1508,10 +1711,13 @@ impl SupervisedCarlaProcessor {
             generation: ProcessGeneration(0),
             current: None,
             previous_logs: VecDeque::new(),
+            previous_deadline_misses: 0,
+            previous_stale_completions: 0,
+            previous_recoveries: 0,
             checkpoint: String::new(),
             has_checkpoint: false,
             desired_active: false,
-            desired_visible: false,
+            external_ui: Arc::new(SupervisedExternalUi::default()),
             lifecycle: CarlaProcessorLifecycle::Stopped,
             exit_kind: WorkerExitKind::None,
             crash_summary: None,
@@ -1520,10 +1726,19 @@ impl SupervisedCarlaProcessor {
         Ok(supervisor)
     }
 
-    fn retain_current_logs(&mut self) {
+    fn retain_current_logs_and_health(&mut self) {
         let Some(current) = self.current.as_ref() else {
             return;
         };
+        self.previous_deadline_misses = self
+            .previous_deadline_misses
+            .saturating_add(current.deadline_misses());
+        self.previous_stale_completions = self
+            .previous_stale_completions
+            .saturating_add(current.stale_completions());
+        self.previous_recoveries = self
+            .previous_recoveries
+            .saturating_add(current.recoveries());
         let mut logs = current.generation_logs();
         if let Some(log) = logs.pop() {
             if self.previous_logs.len() == MAX_LOG_GENERATIONS {
@@ -1541,7 +1756,12 @@ impl SupervisedCarlaProcessor {
             CarlaProcessorLifecycle::Restarting
         };
         if self.current.is_some() {
-            self.retain_current_logs();
+            self.retain_current_logs_and_health();
+            *self
+                .external_ui
+                .current
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = None;
             drop(self.current.take());
         }
         self.generation = ProcessGeneration(self.generation.0.saturating_add(1));
@@ -1581,8 +1801,15 @@ impl SupervisedCarlaProcessor {
                 self.current = Some(current);
                 return;
             }
-            self.desired_visible = true;
+            self.external_ui
+                .desired_visible
+                .store(true, Ordering::Release);
         }
+        *self
+            .external_ui
+            .current
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = current.external_ui();
         self.current = Some(current);
         self.lifecycle = CarlaProcessorLifecycle::Running;
         self.exit_kind = WorkerExitKind::None;
@@ -1620,6 +1847,10 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
         self.info
     }
 
+    fn external_ui(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+        Some(Arc::clone(&self.external_ui) as Arc<dyn CarlaExternalUi>)
+    }
+
     fn is_ready(&mut self) -> bool {
         if let Some(current) = self.current.as_mut() {
             if !current.is_ready() && self.lifecycle == CarlaProcessorLifecycle::Running {
@@ -1632,11 +1863,18 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
                 });
             }
         }
-        self.lifecycle == CarlaProcessorLifecycle::Running
+        self.lifecycle.is_operational()
     }
 
     fn lifecycle(&self) -> CarlaProcessorLifecycle {
-        self.lifecycle
+        if self.lifecycle == CarlaProcessorLifecycle::Running {
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::lifecycle)
+                .unwrap_or(self.lifecycle)
+        } else {
+            self.lifecycle
+        }
     }
 
     fn generation(&self) -> u64 {
@@ -1644,7 +1882,38 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn exit_kind(&self) -> WorkerExitKind {
-        self.exit_kind
+        if self.external_ui.ui_was_closed() {
+            WorkerExitKind::UiClosed
+        } else {
+            self.exit_kind
+        }
+    }
+
+    fn deadline_misses(&self) -> u64 {
+        self.previous_deadline_misses.saturating_add(
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::deadline_misses)
+                .unwrap_or(0),
+        )
+    }
+
+    fn stale_completions(&self) -> u64 {
+        self.previous_stale_completions.saturating_add(
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::stale_completions)
+                .unwrap_or(0),
+        )
+    }
+
+    fn recoveries(&self) -> u64 {
+        self.previous_recoveries.saturating_add(
+            self.current
+                .as_ref()
+                .map(CarlaProcessor::recoveries)
+                .unwrap_or(0),
+        )
     }
 
     fn crash_summary(&self) -> Option<String> {
@@ -1701,11 +1970,13 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn is_active(&self) -> bool {
-        self.desired_active && self.lifecycle == CarlaProcessorLifecycle::Running
+        self.desired_active && self.lifecycle().is_operational()
     }
 
     fn set_visible(&mut self, visible: bool) -> Result<()> {
-        self.desired_visible = visible;
+        self.external_ui
+            .desired_visible
+            .store(visible, Ordering::Release);
         if visible
             && matches!(
                 self.lifecycle,
@@ -1722,7 +1993,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn is_visible(&mut self) -> bool {
-        if self.lifecycle != CarlaProcessorLifecycle::Running {
+        if !self.lifecycle().is_operational() {
             return false;
         }
         self.current
