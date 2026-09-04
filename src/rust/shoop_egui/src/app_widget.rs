@@ -82,6 +82,8 @@ pub const DEFAULT_NEW_TRACK_PROCESSOR: SettingKey<String> =
     SettingKey::new("tracks.new.default_processor");
 pub const DEFAULT_NEW_TRACK_PLAYBACK_MODE: SettingKey<String> =
     SettingKey::new("tracks.new.default_playback_mode");
+pub const DEFAULT_NEW_TRACK_OUTPUT_BUS: SettingKey<String> =
+    SettingKey::new("tracks.new.default_output_bus");
 pub const DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT: SettingKey<String> =
     SettingKey::new("tracks.new.default_recording_adjustment");
 pub const DEFAULT_NEW_TRACK_RECORDING_FRAMES: SettingKey<i32> =
@@ -183,6 +185,18 @@ pub fn register_settings_with_appearance_defaults(
     ui_scale_default: f64,
     touch_mode_default: bool,
 ) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_OUTPUT_BUS,
+            "Master".to_owned(),
+            "Track defaults",
+            "Output bus",
+            "Bus name used to route a new track when its channel count is compatible.",
+        )
+        .category_order(10)
+        .setting_order(29)
+        .effect(SettingEffect::NextUse),
+    )?;
     builder.register(
         SettingDefinition::new(
             DEFAULT_NEW_TRACK_MODE,
@@ -879,6 +893,7 @@ pub(crate) struct NewTrackConfiguration {
     pub dry_midi: bool,
     pub processor: Option<TrackProcessorTypeId>,
     pub default_playback_mode: DefaultPlaybackMode,
+    pub output_bus_name: String,
     pub recording_adjustment: RecordingOffsetAdjustmentState,
     pub recording_frames: i32,
     pub processor_adjustment: ProcessorLatencyAdjustmentState,
@@ -901,6 +916,7 @@ impl NewTrackConfiguration {
                 "dry_through_wet" => DefaultPlaybackMode::DryThroughWet,
                 _ => return None,
             },
+            output_bus_name: draft.get(DEFAULT_NEW_TRACK_OUTPUT_BUS).ok()?,
             recording_adjustment: recording_adjustment_from_value(
                 &draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).ok()?,
             )?,
@@ -934,6 +950,7 @@ impl NewTrackConfiguration {
             }
             .to_owned(),
         );
+        draft.set(DEFAULT_NEW_TRACK_OUTPUT_BUS, self.output_bus_name.clone());
         draft.set(
             DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
             recording_adjustment_value(self.recording_adjustment).to_owned(),
@@ -1010,6 +1027,7 @@ pub struct AppWidget {
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
     add_track_default_playback_mode: DefaultPlaybackMode,
+    add_track_output_bus_name: String,
     add_track_recording_adjustment: RecordingOffsetAdjustmentState,
     add_track_recording_frames: i32,
     add_track_processor_adjustment: ProcessorLatencyAdjustmentState,
@@ -1106,6 +1124,7 @@ impl AppWidget {
             add_track_dry_midi: false,
             add_track_processor: None,
             add_track_default_playback_mode: DefaultPlaybackMode::Regular,
+            add_track_output_bus_name: "Master".to_owned(),
             add_track_recording_adjustment: RecordingOffsetAdjustmentState::default(),
             add_track_recording_frames: 0,
             add_track_processor_adjustment: ProcessorLatencyAdjustmentState::default(),
@@ -1843,6 +1862,7 @@ impl AppWidget {
         self.add_track_dry_midi = configuration.dry_midi;
         self.add_track_processor = configuration.processor;
         self.add_track_default_playback_mode = configuration.default_playback_mode;
+        self.add_track_output_bus_name = configuration.output_bus_name;
         self.add_track_recording_adjustment = configuration.recording_adjustment;
         self.add_track_recording_frames = configuration.recording_frames;
         self.add_track_processor_adjustment = configuration.processor_adjustment;
@@ -2182,6 +2202,7 @@ impl AppWidget {
                     dry_midi: self.add_track_dry_midi,
                     processor: self.add_track_processor.clone(),
                     default_playback_mode: self.add_track_default_playback_mode,
+                    output_bus_name: self.add_track_output_bus_name.clone(),
                     recording_adjustment: self.add_track_recording_adjustment,
                     recording_frames: self.add_track_recording_frames,
                     processor_adjustment: self.add_track_processor_adjustment,
@@ -2199,6 +2220,7 @@ impl AppWidget {
                 self.add_track_dry_midi = configuration.dry_midi;
                 self.add_track_processor = configuration.processor;
                 self.add_track_default_playback_mode = configuration.default_playback_mode;
+                self.add_track_output_bus_name = configuration.output_bus_name;
                 self.add_track_recording_adjustment = configuration.recording_adjustment;
                 self.add_track_recording_frames = configuration.recording_frames;
                 self.add_track_processor_adjustment = configuration.processor_adjustment;
@@ -2300,6 +2322,8 @@ impl AppWidget {
                 processor_adjustment: self.add_track_processor_adjustment,
                 processor_manual_frames: self.add_track_processor_frames,
             },
+            initial_output_bus_name: (!self.add_track_output_bus_name.trim().is_empty())
+                .then(|| self.add_track_output_bus_name.trim().to_owned()),
             creation_request_id: None,
         })
     }
@@ -2313,6 +2337,7 @@ impl AppWidget {
             dry_midi: self.add_track_dry_midi,
             processor: self.add_track_processor.clone(),
             default_playback_mode: self.add_track_default_playback_mode,
+            output_bus_name: self.add_track_output_bus_name.clone(),
             recording_adjustment: self.add_track_recording_adjustment,
             recording_frames: self.add_track_recording_frames,
             processor_adjustment: self.add_track_processor_adjustment,
@@ -2814,6 +2839,10 @@ pub(crate) fn show_new_track_configuration(
                 if playback_enabled {
                     configuration.default_playback_mode = displayed_playback;
                 }
+                ui.end_row();
+
+                ui.label("Output bus:");
+                ui.text_edit_singleline(&mut configuration.output_bus_name);
                 ui.end_row();
 
                 let audio_enabled = configuration.mode != AddTrackMode::Trigger;
@@ -3775,6 +3804,7 @@ mod tests {
                     processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
                     processor_manual_frames: 256,
                 },
+                initial_output_bus_name: Some("Master".to_owned()),
                 creation_request_id: None,
             }))
         );
@@ -3829,6 +3859,7 @@ mod tests {
                     midi: false,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: Some("Master".to_owned()),
                 creation_request_id: None,
             }))
         );
@@ -3889,6 +3920,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: Some("Master".to_owned()),
                 creation_request_id: None,
             }))
         );
@@ -3942,6 +3974,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
+                initial_output_bus_name: Some("Master".to_owned()),
                 creation_request_id: None,
             }))
         );
@@ -4329,6 +4362,7 @@ mod tests {
             DEFAULT_NEW_TRACK_PLAYBACK_MODE,
             "dry_through_wet".to_owned(),
         );
+        draft.set(DEFAULT_NEW_TRACK_OUTPUT_BUS, "Cue".to_owned());
         draft.set(
             DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
             "automatic_plus_trim".to_owned(),
@@ -4376,6 +4410,7 @@ mod tests {
             widget.add_track_default_playback_mode,
             DefaultPlaybackMode::DryThroughWet
         );
+        assert_eq!(widget.add_track_output_bus_name, "Cue");
         assert_eq!(widget.add_track_recording_frames, -24);
         assert_eq!(
             widget.add_track_processor_adjustment,
@@ -4406,6 +4441,7 @@ mod tests {
         widget.add_track_dry_midi = true;
         widget.add_track_processor = Some(TrackProcessorTypeId::new("processor"));
         widget.add_track_default_playback_mode = DefaultPlaybackMode::DryThroughWet;
+        widget.add_track_output_bus_name = "Monitor".to_owned();
         widget.add_track_recording_adjustment = RecordingOffsetAdjustmentState::Automatic;
         widget.add_track_recording_frames = -9;
         widget.add_track_processor_adjustment = ProcessorLatencyAdjustmentState::AutomaticPlusTrim;
@@ -4479,6 +4515,7 @@ mod tests {
             draft.get(DEFAULT_NEW_TRACK_PLAYBACK_MODE).unwrap(),
             "dry_through_wet"
         );
+        assert_eq!(draft.get(DEFAULT_NEW_TRACK_OUTPUT_BUS).unwrap(), "Monitor");
         assert_eq!(
             draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).unwrap(),
             "automatic"

@@ -75,85 +75,85 @@ The goal is to make output routing consistent across native and browser runtimes
 
 ### Stage 0 — branch and baseline
 
-- [ ] Create a focused feature branch from the intended current base and record the baseline SHA.
-- [ ] Run focused existing settings, track-creation, mixer-route, new-session, CPAL, WebAudio, and
+- [x] Create a focused feature branch from the intended current base and record the baseline SHA.
+- [x] Run focused existing settings, track-creation, mixer-route, new-session, CPAL, WebAudio, and
       JACK discovery tests before changing behavior.
-- [ ] Verification: document baseline pass/fail/skip counts and distinguish unavailable real audio
+- [x] Verification: document baseline pass/fail/skip counts and distinguish unavailable real audio
       facilities from product failures.
 
 ### Stage 1 — preference and Add Track contract
 
-- [ ] Register a `tracks.new.default_output_bus` string setting with factory value `Master`,
+- [x] Register a `tracks.new.default_output_bus` string setting with factory value `Master`,
       `NextUse` effect, and Track defaults presentation.
-- [ ] Add the value to `NewTrackConfiguration`, its settings draft read/write paths, dialog state,
+- [x] Add the value to `NewTrackConfiguration`, its settings draft read/write paths, dialog state,
       shared configuration grid, and **make default** rebasing/save flow.
-- [ ] Extend `TrackSpec` with normalized optional creation-time bus intent and update constructors,
+- [x] Extend `TrackSpec` with normalized optional creation-time bus intent and update constructors,
       script/test fixtures, and validation as required.
-- [ ] Verification: unit/UI tests cover factory default, empty opt-out, dialog initialization,
+- [x] Verification: unit/UI tests cover factory default, empty opt-out, dialog initialization,
       editing, settings-window editing, and successful/failed make-default persistence.
-- [ ] Commit the completed preference/UI/API stage.
+- [x] Commit the completed preference/UI/API stage.
 
 ### Stage 2 — creation-time track-to-bus routing
 
-- [ ] After a track's application output ports are registered, resolve the first compatible named
+- [x] After a track's application output ports are registered, resolve the first compatible named
       bus and construct the deterministic one-to-one or mono fan-out route set.
-- [ ] Submit those routes through the same backend and pending/confirmation machinery used by
+- [x] Submit those routes through the same backend and pending/confirmation machinery used by
       `SetMixerRouteConnected`; make partial submission impossible or roll it back before reporting
       track creation success.
-- [ ] Ensure dry/wet topology selects only wet audible outputs and trigger/zero-audio tracks are a
+- [x] Ensure dry/wet topology selects only wet audible outputs and trigger/zero-audio tracks are a
       no-op.
-- [ ] Verification: application/backend tests cover mono-to-mono, mono-to-stereo/N, stereo-to-stereo,
+- [x] Verification: application/backend tests cover mono-to-mono, mono-to-stereo/N, stereo-to-stereo,
       equal N-to-N, mismatches, missing names, duplicate names/order, dry/wet role selection, backend
       rejection, route persistence, and no late routing after a bus appears or is renamed.
-- [ ] Commit the completed creation-policy stage.
+- [x] Commit the completed creation-policy stage.
 
 ### Stage 3 — preferred playback-target discovery
 
-- [ ] Introduce an ordered playback-target/group descriptor at the backend boundary, distinct from
+- [x] Introduce an ordered playback-target/group descriptor at the backend boundary, distinct from
       the flattened host-port list used by the connection dialog.
-- [ ] Populate it directly from active CPAL output channels and WebAudio destination channels.
-- [ ] Enhance JACK discovery to query JACK port flags/metadata, exclude the application's own ports,
+- [x] Populate it directly from active CPAL output channels and WebAudio destination channels.
+- [x] Enhance JACK discovery to query JACK port flags/metadata, exclude the application's own ports,
       retain only audio input sinks, rank physical terminal groups ahead of other clients, and return
       deterministic ordered channels.
-- [ ] Verification: pure ranking tests cover common JACK names, multiple devices/clients, monitors,
+- [x] Verification: pure ranking tests cover common JACK names, multiple devices/clients, monitors,
       non-physical sinks, insufficient channel groups, and deterministic ties; backend tests cover
       CPAL mock and WebAudio groups; retain an optional real-JACK integration smoke test.
-- [ ] Commit the completed discovery stage.
+- [x] Commit the completed discovery stage.
 
 ### Stage 4 — new-session Master bootstrap
 
-- [ ] Tag fresh-session creation separately from ordinary session load/replacement and arm a
+- [x] Tag fresh-session creation separately from ordinary session load/replacement and arm a
       one-shot Master-output bootstrap only for that path (also for initial startup).
-- [ ] Once both Master ports and a complete preferred playback group are known, issue ordinary
+- [x] Once both Master ports and a complete preferred playback group are known, issue ordinary
       `SetPortConnected` operations pairing channels by order.
-- [ ] Persist the resulting explicit Master host links normally. Do not bootstrap loaded sessions,
+- [x] Persist the resulting explicit Master host links normally. Do not bootstrap loaded sessions,
       legacy migrations, or driver switches, and do not reconnect after a manual disconnect.
-- [ ] Verification: tests cover initial startup, New Session, delayed discovery, no target,
+- [x] Verification: tests cover initial startup, New Session, delayed discovery, no target,
       incomplete target, connection rejection, save/reload, manual disconnect, loaded empty routes,
       and driver replacement.
-- [ ] Commit the completed new-session stage.
+- [x] Commit the completed new-session stage.
 
 ### Stage 5 — remove direct output defaults without changing inputs
 
-- [ ] Delete WebAudio's per-track destination auto-connect branch while retaining WebAudio capture
+- [x] Delete WebAudio's per-track destination auto-connect branch while retaining WebAudio capture
       auto-connect behavior exactly as-is.
-- [ ] Audit native, CPAL, JACK, Worker, and AudioWorklet creation paths to ensure no other direct
+- [x] Audit native, CPAL, JACK, Worker, and AudioWorklet creation paths to ensure no other direct
       output defaults remain or bypass the application policy.
-- [ ] Update legacy browser migration deliberately: preserve already-persisted direct links, but do
+- [x] Update legacy browser migration deliberately: preserve already-persisted direct links, but do
       not manufacture new direct output routes for fresh/current documents. If legacy compatibility
       must remain, constrain it to the existing explicit legacy marker and document that exception.
-- [ ] Verification: cross-runtime tests assert zero automatic direct track-output links, default
+- [x] Verification: cross-runtime tests assert zero automatic direct track-output links, default
       track-to-Master links, default Master-to-device links for fresh sessions, manual direct routing,
       and unchanged input capture defaults.
-- [ ] Commit the completed policy-unification stage.
+- [x] Commit the completed policy-unification stage.
 
 ### Stage 6 — end-to-end validation and delivery
 
-- [ ] Run Rust formatting, warning-denying builds, relevant policy scripts, the complete native test
+- [x] Run Rust formatting, warning-denying builds, relevant policy scripts, the complete native test
       suite, all Wasm/Node packages, locked Wasm app/worklet builds, and browser smoke tests.
-- [ ] Run a native CPAL smoke, browser smoke, and JACK smoke where devices are available; inspect the
+- [x] Run a native CPAL smoke, browser smoke, and JACK smoke where devices are available; inspect the
       Connections UI and verify the saved session contains only the explicit links shown there.
-- [ ] For the perceptible UI change, capture screenshots of Track defaults and Add Track showing the
+- [x] For the perceptible UI change, capture screenshots of Track defaults and Add Track showing the
       new control.
 - [ ] Push the branch, open a PR describing behavior, migrations, backend target-selection rules,
       and exact validation results, and drive CI green.

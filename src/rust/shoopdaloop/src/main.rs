@@ -3610,6 +3610,7 @@ impl BrowserSelfTest {
                             default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
+                        initial_output_bus_name: None,
                         creation_request_id: None,
                     }))
                 })
@@ -4093,6 +4094,7 @@ impl BrowserSelfTest {
                             default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
+                        initial_output_bus_name: None,
                         creation_request_id: None,
                     }))
                 })
@@ -4109,6 +4111,7 @@ impl BrowserSelfTest {
                             default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                         },
                         latency: shoop_egui::TrackLatencySpec::default(),
+                        initial_output_bus_name: None,
                         creation_request_id: None,
                     }))
                 })
@@ -5751,6 +5754,7 @@ mod tests {
                     default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
                 },
                 latency: shoop_egui::TrackLatencySpec::default(),
+                initial_output_bus_name: None,
                 creation_request_id: None,
             }))
             .unwrap();
