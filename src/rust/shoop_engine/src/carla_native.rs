@@ -1,15 +1,22 @@
 //! Direct hosting of Carla Rack and Patchbay through the Carla Native C ABI.
 
-use crate::carla_processor::{CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo};
+use crate::carla_processor::{
+    CarlaExternalUi, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
+};
 use crate::FXChainType;
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
 use libloading::Library;
+use std::cell::UnsafeCell;
+use std::collections::BTreeMap;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError};
+use std::sync::{Arc, OnceLock, RwLock};
+use std::thread::ThreadId;
+use std::time::{Duration, Instant};
 
 #[cfg(test)]
 use crate::realtime_lock_guard::Mutex;
@@ -32,7 +39,10 @@ const STATE_PREFIX_V2: &str = "shoop-carla-native-state:2:";
 const LEGACY_CHUNK_URI: &str = "http://kxstudio.sf.net/ns/carla/chunk";
 const LEGACY_ATOM_STRING_URI: &str = "http://lv2plug.in/ns/ext/atom#String";
 const NATIVE_PLUGIN_HAS_UI: c_int = 1 << 2;
+const NATIVE_PLUGIN_NEEDS_UI_MAIN_THREAD: c_int = 1 << 4;
 const NATIVE_PLUGIN_USES_STATE: c_int = 1 << 9;
+const UI_COMMAND_CAPACITY: usize = 64;
+const UI_IDLE_INTERVAL: Duration = Duration::from_millis(25);
 const NATIVE_HOST_OPCODE_UI_UNAVAILABLE: c_int = 6;
 const NATIVE_HOST_OPCODE_INTERNAL_PLUGIN: c_int = 8;
 const NATIVE_PLUGIN_OPCODE_HOST_OPTION: c_int = 9;
@@ -402,10 +412,10 @@ fn validate_descriptor(
     {
         bail!("Carla descriptor {label} has an incompatible port layout");
     }
-    if descriptor.hints & (NATIVE_PLUGIN_HAS_UI | NATIVE_PLUGIN_USES_STATE)
-        != NATIVE_PLUGIN_HAS_UI | NATIVE_PLUGIN_USES_STATE
-    {
-        bail!("Carla descriptor {label} lacks required UI/state hints");
+    let required_hints =
+        NATIVE_PLUGIN_HAS_UI | NATIVE_PLUGIN_NEEDS_UI_MAIN_THREAD | NATIVE_PLUGIN_USES_STATE;
+    if descriptor.hints & required_hints != required_hints {
+        bail!("Carla descriptor {label} lacks required UI/main-thread/state hints");
     }
     if descriptor.instantiate.is_none()
         || descriptor.cleanup.is_none()
@@ -532,25 +542,83 @@ pub fn smoke_test_carla_runtime() -> Result<()> {
 }
 
 pub fn smoke_test_carla_ui() -> Result<()> {
+    smoke_test_carla_ui_with(|chain_type, ui_dispatcher| {
+        CarlaNativeHost::instantiate_with_ui_dispatcher(chain_type, 48_000, 64, ui_dispatcher)
+    })
+}
+
+fn smoke_test_carla_ui_with(
+    mut create_host: impl FnMut(FXChainType, CarlaMainThreadUiDispatcher) -> Result<CarlaNativeHost>,
+) -> Result<()> {
     for chain_type in [
         FXChainType::CarlaRack,
         FXChainType::CarlaPatchbay,
         FXChainType::CarlaPatchbay16x,
     ] {
-        let mut host = CarlaNativeHost::instantiate(chain_type, 48_000, 64)?;
-        for _ in 0..2 {
-            host.set_visible(true)?;
-            for _ in 0..20 {
-                host.idle();
-                std::thread::sleep(std::time::Duration::from_millis(25));
+        let (mut ui_service, ui_dispatcher) = CarlaMainThreadUiService::new();
+        let mut host = create_host(chain_type, ui_dispatcher)?;
+        let ui = host
+            .external_ui()
+            .ok_or_else(|| anyhow!("{chain_type:?} has no external UI handle"))?;
+        host.set_active(true);
+        let stop = Arc::new(AtomicBool::new(false));
+        let processed = Arc::new(AtomicU64::new(0));
+        let process_stop = Arc::clone(&stop);
+        let process_count = Arc::clone(&processed);
+        let (failure_sender, failure_receiver) = sync_channel(1);
+        let process_thread = std::thread::Builder::new()
+            .name("carla-ui-smoke-dsp".to_owned())
+            .spawn(move || {
+                while !process_stop.load(Ordering::Acquire) {
+                    for input in &mut host.audio_inputs {
+                        input[..64].fill(0.125);
+                    }
+                    if let Err(error) = host.set_midi_input_events(0, &[(0, &[0xb0, 1, 64])]) {
+                        let _ = failure_sender.send(error.to_string());
+                        return;
+                    }
+                    let _span = shoop_tracing::realtime_span!(
+                        "engine.rt.fx.processor",
+                        value = chain_type as u64
+                    );
+                    if let Err(error) = host.process(64) {
+                        let _ = failure_sender.send(error.to_string());
+                        return;
+                    }
+                    process_count.fetch_add(1, Ordering::Relaxed);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            })?;
+        let ui_result = (|| -> Result<()> {
+            for _ in 0..2 {
+                let before = processed.load(Ordering::Acquire);
+                ui.set_visible(true)?;
+                for _ in 0..20 {
+                    ui_service.pump();
+                    std::thread::sleep(UI_IDLE_INTERVAL);
+                }
+                if !ui.is_visible() {
+                    bail!("{chain_type:?} external UI closed during smoke test");
+                }
+                if processed.load(Ordering::Acquire) <= before {
+                    bail!("{chain_type:?} DSP stopped while its external UI was visible");
+                }
+                ui.set_visible(false)?;
+                if ui.is_visible() {
+                    bail!("{chain_type:?} external UI remained visible after hide");
+                }
             }
-            if !host.is_visible() {
-                bail!("{chain_type:?} external UI closed during smoke test");
-            }
-            host.set_visible(false)?;
-            if host.is_visible() {
-                bail!("{chain_type:?} external UI remained visible after hide");
-            }
+            Ok(())
+        })();
+        stop.store(true, Ordering::Release);
+        let process_result = process_thread
+            .join()
+            .map_err(|_| anyhow!("{chain_type:?} UI smoke DSP thread panicked"));
+        ui_service.pump();
+        ui_result?;
+        process_result?;
+        if let Ok(error) = failure_receiver.try_recv() {
+            bail!("{chain_type:?} DSP failed during UI smoke test: {error}");
         }
     }
     Ok(())
@@ -560,15 +628,20 @@ struct HostContext {
     sample_rate: f64,
     buffer_size: u32,
     time_info: NativeTimeInfo,
-    midi_output: Vec<NativeMidiEvent>,
-    midi_output_count: usize,
-    process_frames: u32,
-    file_dialog_result: Option<CString>,
+    midi_output: UnsafeCell<Vec<NativeMidiEvent>>,
+    midi_output_count: AtomicUsize,
+    process_frames: AtomicU32,
+    file_dialog_result: UnsafeCell<Option<CString>>,
     visible: AtomicBool,
 }
 
-unsafe fn context<'a>(handle: NativeHostHandle) -> Option<&'a mut HostContext> {
-    (handle as *mut HostContext).as_mut()
+// Carla's Native API permits process and main-thread UI callbacks to overlap.
+// The mutable cells are each confined to one of those callback domains; fields
+// shared across domains are immutable or atomic.
+unsafe impl Sync for HostContext {}
+
+unsafe fn context<'a>(handle: NativeHostHandle) -> Option<&'a HostContext> {
+    (handle as *const HostContext).as_ref()
 }
 
 unsafe extern "C" fn host_get_buffer_size(handle: NativeHostHandle) -> u32 {
@@ -600,16 +673,18 @@ unsafe extern "C" fn host_write_midi_event(
     let (Some(host), Some(event)) = (unsafe { context(handle) }, unsafe { event.as_ref() }) else {
         return false;
     };
+    let midi_output = unsafe { &mut *host.midi_output.get() };
+    let count = host.midi_output_count.load(Ordering::Relaxed);
     if event.port != 0
         || event.size == 0
         || event.size > 4
-        || event.time >= host.process_frames
-        || host.midi_output_count >= host.midi_output.len()
+        || event.time >= host.process_frames.load(Ordering::Relaxed)
+        || count >= midi_output.len()
     {
         return false;
     }
-    host.midi_output[host.midi_output_count] = *event;
-    host.midi_output_count += 1;
+    midi_output[count] = *event;
+    host.midi_output_count.store(count + 1, Ordering::Relaxed);
     true
 }
 
@@ -658,7 +733,8 @@ unsafe fn host_file_dialog(
 ) -> *const c_char {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let host = unsafe { context(handle) }?;
-        host.file_dialog_result = None;
+        let file_dialog_result = unsafe { &mut *host.file_dialog_result.get() };
+        *file_dialog_result = None;
         let dialog = rfd::FileDialog::new().set_title(file_dialog_title(title));
         let selected = if is_dir {
             dialog.pick_folder()
@@ -668,8 +744,8 @@ unsafe fn host_file_dialog(
             dialog.pick_file()
         }?;
         let selected = CString::new(selected.to_string_lossy().as_bytes()).ok()?;
-        host.file_dialog_result = Some(selected);
-        host.file_dialog_result.as_ref().map(|path| path.as_ptr())
+        *file_dialog_result = Some(selected);
+        file_dialog_result.as_ref().map(|path| path.as_ptr())
     }));
     result.ok().flatten().unwrap_or(std::ptr::null())
 }
@@ -788,8 +864,15 @@ fn decode_state(state: &str, expected_chain_type: FXChainType) -> Result<Vec<u8>
     Ok(decoded)
 }
 
-pub struct CarlaNativeHost {
-    runtime: Arc<CarlaRuntime>,
+trait MainThreadUiTarget: Send + Sync {
+    fn set_visible(&self, visible: bool) -> Result<()>;
+    fn is_visible(&self) -> bool;
+    fn idle(&self);
+    fn cleanup(&self);
+}
+
+struct NativeInstance {
+    runtime: Option<Arc<CarlaRuntime>>,
     descriptor: NonNull<NativePluginDescriptor>,
     handle: NonNull<c_void>,
     host_context: Box<HostContext>,
@@ -797,6 +880,292 @@ pub struct CarlaNativeHost {
     _binary_dir: CString,
     _ui_name: CString,
     host_descriptor: Box<NativeHostDescriptor>,
+    cleaned: AtomicBool,
+}
+
+// The Carla Native contract explicitly allows DSP and main-thread UI callbacks
+// to overlap. NativeInstance exposes only those two callback domains, while
+// HostContext isolates their mutable callback state.
+unsafe impl Send for NativeInstance {}
+unsafe impl Sync for NativeInstance {}
+
+impl NativeInstance {
+    fn descriptor(&self) -> &NativePluginDescriptor {
+        unsafe { self.descriptor.as_ref() }
+    }
+}
+
+impl MainThreadUiTarget for NativeInstance {
+    fn set_visible(&self, visible: bool) -> Result<()> {
+        if self.cleaned.load(Ordering::Acquire) {
+            bail!("Carla Native UI has already been cleaned up");
+        }
+        let show = self
+            .descriptor()
+            .ui_show
+            .ok_or_else(|| anyhow!("Carla Native plugin has no external UI"))?;
+        self.host_context.visible.store(visible, Ordering::Release);
+        let _span = tracing::info_span!("engine.fx.ui.show", visible).entered();
+        unsafe { show(self.handle.as_ptr(), visible) };
+        if visible && !self.host_context.visible.load(Ordering::Acquire) {
+            bail!("Carla external UI is unavailable");
+        }
+        Ok(())
+    }
+
+    fn is_visible(&self) -> bool {
+        self.host_context.visible.load(Ordering::Acquire)
+    }
+
+    fn idle(&self) {
+        if self.cleaned.load(Ordering::Acquire) || !self.is_visible() {
+            return;
+        }
+        if let Some(idle) = self.descriptor().ui_idle {
+            let _span = tracing::trace_span!("engine.fx.ui.idle").entered();
+            unsafe { idle(self.handle.as_ptr()) };
+        }
+    }
+
+    fn cleanup(&self) {
+        if self.cleaned.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if self.host_context.visible.swap(false, Ordering::AcqRel) {
+            if let Some(show) = self.descriptor().ui_show {
+                unsafe { show(self.handle.as_ptr(), false) };
+            }
+        }
+        if let Some(cleanup) = self.descriptor().cleanup {
+            unsafe { cleanup(self.handle.as_ptr()) };
+        }
+        let _ = &self.host_descriptor;
+    }
+}
+
+impl Drop for NativeInstance {
+    fn drop(&mut self) {
+        debug_assert!(self.cleaned.load(Ordering::Acquire));
+    }
+}
+
+enum UiCommand {
+    Register(u64, Arc<dyn MainThreadUiTarget>),
+    SetVisible {
+        id: u64,
+        target: Arc<dyn MainThreadUiTarget>,
+        visible: bool,
+        reply: SyncSender<std::result::Result<(), String>>,
+    },
+    Destroy {
+        id: u64,
+        target: Arc<dyn MainThreadUiTarget>,
+    },
+    Forget(u64),
+}
+
+#[derive(Clone)]
+pub struct CarlaMainThreadUiDispatcher {
+    sender: SyncSender<UiCommand>,
+    owner: ThreadId,
+}
+
+impl std::fmt::Debug for CarlaMainThreadUiDispatcher {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CarlaMainThreadUiDispatcher")
+            .field("owner", &self.owner)
+            .finish_non_exhaustive()
+    }
+}
+
+pub struct CarlaMainThreadUiService {
+    receiver: Receiver<UiCommand>,
+    owner: ThreadId,
+    targets: BTreeMap<u64, Arc<dyn MainThreadUiTarget>>,
+    last_idle: Instant,
+}
+
+impl CarlaMainThreadUiService {
+    pub fn new() -> (Self, CarlaMainThreadUiDispatcher) {
+        let (sender, receiver) = sync_channel(UI_COMMAND_CAPACITY);
+        let owner = std::thread::current().id();
+        (
+            Self {
+                receiver,
+                owner,
+                targets: BTreeMap::new(),
+                last_idle: Instant::now(),
+            },
+            CarlaMainThreadUiDispatcher { sender, owner },
+        )
+    }
+
+    pub fn pump(&mut self) {
+        assert_eq!(std::thread::current().id(), self.owner);
+        loop {
+            match self.receiver.try_recv() {
+                Ok(UiCommand::Register(id, target)) => {
+                    self.targets.insert(id, target);
+                }
+                Ok(UiCommand::SetVisible {
+                    id,
+                    target,
+                    visible,
+                    reply,
+                }) => {
+                    self.targets
+                        .entry(id)
+                        .or_insert_with(|| Arc::clone(&target));
+                    let result = target
+                        .set_visible(visible)
+                        .map_err(|error| error.to_string());
+                    let _ = reply.send(result);
+                }
+                Ok(UiCommand::Destroy { id, target }) => {
+                    self.targets.remove(&id);
+                    target.cleanup();
+                }
+                Ok(UiCommand::Forget(id)) => {
+                    self.targets.remove(&id);
+                }
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
+            }
+        }
+        if self.last_idle.elapsed() >= UI_IDLE_INTERVAL {
+            for target in self.targets.values() {
+                target.idle();
+            }
+            self.last_idle = Instant::now();
+        }
+    }
+}
+
+impl Drop for CarlaMainThreadUiService {
+    fn drop(&mut self) {
+        assert_eq!(std::thread::current().id(), self.owner);
+        while let Ok(command) = self.receiver.try_recv() {
+            match command {
+                UiCommand::Register(id, target) => {
+                    self.targets.insert(id, target);
+                }
+                UiCommand::SetVisible { reply, .. } => {
+                    let _ = reply.send(Err("Carla UI service is shutting down".to_owned()));
+                }
+                UiCommand::Destroy { id, target } => {
+                    self.targets.remove(&id);
+                    target.cleanup();
+                }
+                UiCommand::Forget(id) => {
+                    self.targets.remove(&id);
+                }
+            }
+        }
+        for target in std::mem::take(&mut self.targets).into_values() {
+            target.cleanup();
+        }
+    }
+}
+
+static NEXT_UI_ID: AtomicU64 = AtomicU64::new(1);
+static APPLICATION_UI_DISPATCHER: OnceLock<RwLock<Option<CarlaMainThreadUiDispatcher>>> =
+    OnceLock::new();
+
+pub fn configure_application_ui_dispatcher(dispatcher: Option<CarlaMainThreadUiDispatcher>) {
+    *APPLICATION_UI_DISPATCHER
+        .get_or_init(|| RwLock::new(None))
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = dispatcher;
+}
+
+fn application_ui_dispatcher() -> Result<CarlaMainThreadUiDispatcher> {
+    APPLICATION_UI_DISPATCHER
+        .get_or_init(|| RwLock::new(None))
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+        .ok_or_else(|| anyhow!("Carla main-thread UI dispatcher is not configured"))
+}
+
+#[derive(Clone)]
+struct CarlaNativeUiHandle {
+    id: u64,
+    target: Arc<dyn MainThreadUiTarget>,
+    dispatcher: CarlaMainThreadUiDispatcher,
+}
+
+impl std::fmt::Debug for CarlaNativeUiHandle {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CarlaNativeUiHandle")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl CarlaNativeUiHandle {
+    fn new(
+        target: Arc<dyn MainThreadUiTarget>,
+        dispatcher: CarlaMainThreadUiDispatcher,
+    ) -> Result<Self> {
+        let id = NEXT_UI_ID.fetch_add(1, Ordering::Relaxed).max(1);
+        dispatcher
+            .sender
+            .send(UiCommand::Register(id, Arc::clone(&target)))
+            .map_err(|_| anyhow!("Carla main-thread UI service stopped"))?;
+        Ok(Self {
+            id,
+            target,
+            dispatcher,
+        })
+    }
+
+    fn destroy(&self) -> Result<()> {
+        if std::thread::current().id() == self.dispatcher.owner {
+            self.target.cleanup();
+            let _ = self.dispatcher.sender.send(UiCommand::Forget(self.id));
+            return Ok(());
+        }
+        self.dispatcher
+            .sender
+            .send(UiCommand::Destroy {
+                id: self.id,
+                target: Arc::clone(&self.target),
+            })
+            .map_err(|_| anyhow!("Carla main-thread UI service stopped"))
+    }
+}
+
+impl CarlaExternalUi for CarlaNativeUiHandle {
+    fn set_visible(&self, visible: bool) -> Result<()> {
+        if std::thread::current().id() == self.dispatcher.owner {
+            return self.target.set_visible(visible);
+        }
+        let (sender, receiver) = sync_channel(1);
+        self.dispatcher
+            .sender
+            .send(UiCommand::SetVisible {
+                id: self.id,
+                target: Arc::clone(&self.target),
+                visible,
+                reply: sender,
+            })
+            .map_err(|_| anyhow!("Carla main-thread UI service stopped"))?;
+        receiver
+            .recv()
+            .map_err(|_| anyhow!("Carla main-thread UI service stopped"))?
+            .map_err(anyhow::Error::msg)
+    }
+
+    fn is_visible(&self) -> bool {
+        self.target.is_visible()
+    }
+}
+
+pub struct CarlaNativeHost {
+    instance: Arc<NativeInstance>,
+    ui: Option<CarlaNativeUiHandle>,
+    direct_ui_owner: ThreadId,
     info: CarlaProcessorInfo,
     audio_inputs: Vec<Vec<f32>>,
     audio_outputs: Vec<Vec<f32>>,
@@ -814,21 +1183,59 @@ impl std::fmt::Debug for CarlaNativeHost {
             .debug_struct("CarlaNativeHost")
             .field("info", &self.info)
             .field("active", &self.active)
-            .field("resource_dir", &self.runtime.resource_dir)
+            .field(
+                "resource_dir",
+                &self
+                    .instance
+                    .runtime
+                    .as_ref()
+                    .map(|runtime| &runtime.resource_dir),
+            )
             .finish_non_exhaustive()
     }
 }
 
 impl CarlaNativeHost {
+    pub fn instantiate(
+        chain_type: FXChainType,
+        sample_rate: u32,
+        buffer_size: u32,
+    ) -> Result<Self> {
+        Self::instantiate_inner(chain_type, sample_rate, buffer_size, None)
+    }
+
+    pub fn instantiate_for_application(
+        chain_type: FXChainType,
+        sample_rate: u32,
+        buffer_size: u32,
+    ) -> Result<Self> {
+        Self::instantiate_inner(
+            chain_type,
+            sample_rate,
+            buffer_size,
+            Some(application_ui_dispatcher()?),
+        )
+    }
+
+    pub(crate) fn instantiate_with_ui_dispatcher(
+        chain_type: FXChainType,
+        sample_rate: u32,
+        buffer_size: u32,
+        dispatcher: CarlaMainThreadUiDispatcher,
+    ) -> Result<Self> {
+        Self::instantiate_inner(chain_type, sample_rate, buffer_size, Some(dispatcher))
+    }
+
     #[tracing::instrument(
         name = "engine.plugin.instantiate",
         skip_all,
         fields(chain_type = chain_type as u32, sample_rate, buffer_size)
     )]
-    pub fn instantiate(
+    fn instantiate_inner(
         chain_type: FXChainType,
         sample_rate: u32,
         buffer_size: u32,
+        dispatcher: Option<CarlaMainThreadUiDispatcher>,
     ) -> Result<Self> {
         let runtime = runtime()?;
         let (descriptor, channels) = match chain_type {
@@ -844,10 +1251,13 @@ impl CarlaNativeHost {
             sample_rate: sample_rate.max(1) as f64,
             buffer_size: buffer_size.max(1),
             time_info: NativeTimeInfo::default(),
-            midi_output: vec![NativeMidiEvent::default(); CARLA_MIDI_BUFFER_CAPACITY],
-            midi_output_count: 0,
-            process_frames: 0,
-            file_dialog_result: None,
+            midi_output: UnsafeCell::new(vec![
+                NativeMidiEvent::default();
+                CARLA_MIDI_BUFFER_CAPACITY
+            ]),
+            midi_output_count: AtomicUsize::new(0),
+            process_frames: AtomicU32::new(0),
+            file_dialog_result: UnsafeCell::new(None),
             visible: AtomicBool::new(false),
         });
         let mut host_descriptor = Box::new(NativeHostDescriptor {
@@ -898,8 +1308,8 @@ impl CarlaNativeHost {
         let mut audio_outputs = vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; channels];
         let input_pointers = audio_inputs.iter_mut().map(Vec::as_mut_ptr).collect();
         let output_pointers = audio_outputs.iter_mut().map(Vec::as_mut_ptr).collect();
-        Ok(Self {
-            runtime,
+        let instance = Arc::new(NativeInstance {
+            runtime: Some(runtime),
             descriptor,
             handle,
             host_context,
@@ -907,6 +1317,20 @@ impl CarlaNativeHost {
             _binary_dir: binary_dir,
             _ui_name: ui_name,
             host_descriptor,
+            cleaned: AtomicBool::new(false),
+        });
+        let ui = dispatcher
+            .map(|dispatcher| {
+                CarlaNativeUiHandle::new(
+                    Arc::clone(&instance) as Arc<dyn MainThreadUiTarget>,
+                    dispatcher,
+                )
+            })
+            .transpose()?;
+        Ok(Self {
+            instance,
+            ui,
+            direct_ui_owner: std::thread::current().id(),
             info,
             audio_inputs,
             audio_outputs,
@@ -918,47 +1342,49 @@ impl CarlaNativeHost {
     }
 
     fn descriptor(&self) -> &NativePluginDescriptor {
-        unsafe { self.descriptor.as_ref() }
+        self.instance.descriptor()
+    }
+
+    fn assert_direct_ui_thread(&self) {
+        assert_eq!(std::thread::current().id(), self.direct_ui_owner);
     }
 
     fn idle(&mut self) {
-        if let Some(idle) = self.descriptor().ui_idle {
-            unsafe { idle(self.handle.as_ptr()) };
+        if self.ui.is_none() {
+            self.assert_direct_ui_thread();
+            self.instance.idle();
         }
     }
 }
 
 impl Drop for CarlaNativeHost {
     fn drop(&mut self) {
-        let (show, deactivate, cleanup) = {
-            let descriptor = self.descriptor();
-            (
-                descriptor.ui_show,
-                descriptor.deactivate,
-                descriptor.cleanup,
-            )
-        };
-        if self.host_context.visible.swap(false, Ordering::AcqRel) {
-            if let Some(show) = show {
-                unsafe { show(self.handle.as_ptr(), false) };
-            }
-        }
         if self.active {
-            if let Some(deactivate) = deactivate {
-                unsafe { deactivate(self.handle.as_ptr()) };
+            if let Some(deactivate) = self.descriptor().deactivate {
+                unsafe { deactivate(self.instance.handle.as_ptr()) };
             }
             self.active = false;
         }
-        if let Some(cleanup) = cleanup {
-            unsafe { cleanup(self.handle.as_ptr()) };
+        if let Some(ui) = &self.ui {
+            if ui.destroy().is_err() {
+                std::mem::forget(Arc::clone(&self.instance));
+            }
+        } else {
+            self.assert_direct_ui_thread();
+            self.instance.cleanup();
         }
-        let _ = &self.host_descriptor;
     }
 }
 
 impl CarlaProcessor for CarlaNativeHost {
     fn info(&self) -> CarlaProcessorInfo {
         self.info
+    }
+
+    fn external_ui(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+        self.ui
+            .as_ref()
+            .map(|ui| Arc::new(ui.clone()) as Arc<dyn CarlaExternalUi>)
     }
 
     fn idle(&mut self) {
@@ -971,10 +1397,10 @@ impl CarlaProcessor for CarlaNativeHost {
         }
         if active {
             if let Some(activate) = self.descriptor().activate {
-                unsafe { activate(self.handle.as_ptr()) };
+                unsafe { activate(self.instance.handle.as_ptr()) };
             }
         } else if let Some(deactivate) = self.descriptor().deactivate {
-            unsafe { deactivate(self.handle.as_ptr()) };
+            unsafe { deactivate(self.instance.handle.as_ptr()) };
         }
         self.active = active;
     }
@@ -984,20 +1410,16 @@ impl CarlaProcessor for CarlaNativeHost {
     }
 
     fn set_visible(&mut self, visible: bool) -> Result<()> {
-        let show = self
-            .descriptor()
-            .ui_show
-            .ok_or_else(|| anyhow!("Carla Native plugin has no external UI"))?;
-        self.host_context.visible.store(visible, Ordering::Release);
-        unsafe { show(self.handle.as_ptr(), visible) };
-        if visible && !self.host_context.visible.load(Ordering::Acquire) {
-            bail!("Carla external UI is unavailable");
+        if let Some(ui) = &self.ui {
+            ui.set_visible(visible)
+        } else {
+            self.assert_direct_ui_thread();
+            self.instance.set_visible(visible)
         }
-        Ok(())
     }
 
     fn is_visible(&mut self) -> bool {
-        self.host_context.visible.load(Ordering::Acquire)
+        self.instance.is_visible()
     }
 
     #[tracing::instrument(name = "engine.plugin.save_state", skip_all)]
@@ -1006,12 +1428,17 @@ impl CarlaProcessor for CarlaNativeHost {
             .descriptor()
             .get_state
             .ok_or_else(|| anyhow!("Carla Native plugin has no state getter"))?;
-        let state = unsafe { get_state(self.handle.as_ptr()) };
+        let state = unsafe { get_state(self.instance.handle.as_ptr()) };
         let state = NonNull::new(state).ok_or_else(|| anyhow!("Carla state save failed"))?;
         let bytes = unsafe { CStr::from_ptr(state.as_ptr()) }
             .to_bytes()
             .to_vec();
-        unsafe { (self.runtime.state_free)(state.as_ptr().cast()) };
+        let runtime = self
+            .instance
+            .runtime
+            .as_ref()
+            .expect("a production Carla instance retains its runtime");
+        unsafe { (runtime.state_free)(state.as_ptr().cast()) };
         encode_state(self.info.chain_type, &bytes)
     }
 
@@ -1027,7 +1454,7 @@ impl CarlaProcessor for CarlaNativeHost {
             .descriptor()
             .set_state
             .ok_or_else(|| anyhow!("Carla Native plugin has no state setter"))?;
-        unsafe { set_state(self.handle.as_ptr(), state.as_ptr()) };
+        unsafe { set_state(self.instance.handle.as_ptr(), state.as_ptr()) };
         Ok(())
     }
 
@@ -1067,17 +1494,22 @@ impl CarlaProcessor for CarlaNativeHost {
         if index != 0 {
             bail!("No Carla MIDI output port {index}");
         }
-        Ok(
-            self.host_context.midi_output[..self.host_context.midi_output_count]
-                .iter()
-                .map(|event| {
-                    (
-                        event.time,
-                        event.data[..event.size.min(4) as usize].to_vec(),
-                    )
-                })
-                .collect(),
-        )
+        let output = unsafe { &*self.instance.host_context.midi_output.get() };
+        let count = self
+            .instance
+            .host_context
+            .midi_output_count
+            .load(Ordering::Relaxed)
+            .min(output.len());
+        Ok(output[..count]
+            .iter()
+            .map(|event| {
+                (
+                    event.time,
+                    event.data[..event.size.min(4) as usize].to_vec(),
+                )
+            })
+            .collect())
     }
 
     fn fill_midi_output_events(
@@ -1089,7 +1521,14 @@ impl CarlaProcessor for CarlaNativeHost {
             bail!("No Carla MIDI output port {index}");
         }
         destination.clear();
-        for event in &self.host_context.midi_output[..self.host_context.midi_output_count] {
+        let output = unsafe { &*self.instance.host_context.midi_output.get() };
+        let count = self
+            .instance
+            .host_context
+            .midi_output_count
+            .load(Ordering::Relaxed)
+            .min(output.len());
+        for event in &output[..count] {
             destination.push(event.time, &event.data[..event.size.min(4) as usize])?;
         }
         Ok(())
@@ -1109,8 +1548,14 @@ impl CarlaProcessor for CarlaNativeHost {
         {
             bail!("Carla MIDI event lies outside the process block");
         }
-        self.host_context.midi_output_count = 0;
-        self.host_context.process_frames = frames as u32;
+        self.instance
+            .host_context
+            .midi_output_count
+            .store(0, Ordering::Relaxed);
+        self.instance
+            .host_context
+            .process_frames
+            .store(frames as u32, Ordering::Relaxed);
         let process = self
             .descriptor()
             .process
@@ -1119,7 +1564,7 @@ impl CarlaProcessor for CarlaNativeHost {
             shoop_tracing::realtime_span_detail!("engine.rt.fx.plugin_process", value = frames);
         unsafe {
             process(
-                self.handle.as_ptr(),
+                self.instance.handle.as_ptr(),
                 self.input_pointers.as_mut_ptr(),
                 self.output_pointers.as_mut_ptr(),
                 frames as u32,
@@ -1134,6 +1579,332 @@ impl CarlaProcessor for CarlaNativeHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct RecordingUiTarget {
+        calls: Mutex<Vec<(&'static str, ThreadId)>>,
+        visible: AtomicBool,
+    }
+
+    impl MainThreadUiTarget for RecordingUiTarget {
+        fn set_visible(&self, visible: bool) -> Result<()> {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push((
+                    if visible { "show" } else { "hide" },
+                    std::thread::current().id(),
+                ));
+            self.visible.store(visible, Ordering::Release);
+            Ok(())
+        }
+
+        fn is_visible(&self) -> bool {
+            self.visible.load(Ordering::Acquire)
+        }
+
+        fn idle(&self) {
+            if self.visible.load(Ordering::Acquire) {
+                self.calls
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .push(("idle", std::thread::current().id()));
+            }
+        }
+
+        fn cleanup(&self) {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(("cleanup", std::thread::current().id()));
+        }
+    }
+
+    struct NativeCallbackState {
+        calls: Mutex<Vec<(&'static str, ThreadId)>>,
+    }
+
+    unsafe fn native_callback_state<'a>(handle: NativePluginHandle) -> &'a NativeCallbackState {
+        unsafe { &*handle.cast::<NativeCallbackState>() }
+    }
+
+    unsafe extern "C" fn test_ui_show(handle: NativePluginHandle, visible: bool) {
+        unsafe { native_callback_state(handle) }
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push((
+                if visible { "show" } else { "hide" },
+                std::thread::current().id(),
+            ));
+    }
+
+    unsafe extern "C" fn test_ui_idle(handle: NativePluginHandle) {
+        unsafe { native_callback_state(handle) }
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(("idle", std::thread::current().id()));
+    }
+
+    unsafe extern "C" fn test_cleanup(handle: NativePluginHandle) {
+        unsafe { native_callback_state(handle) }
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(("cleanup", std::thread::current().id()));
+    }
+
+    unsafe extern "C" fn test_process(
+        _handle: NativePluginHandle,
+        _inputs: *mut *mut f32,
+        _outputs: *mut *mut f32,
+        _frames: u32,
+        _events: *const NativeMidiEvent,
+        _event_count: u32,
+    ) {
+    }
+
+    fn test_native_instance() -> (
+        Arc<NativeInstance>,
+        Box<NativePluginDescriptor>,
+        Box<NativeCallbackState>,
+    ) {
+        let mut descriptor: Box<NativePluginDescriptor> = Box::new(unsafe { std::mem::zeroed() });
+        descriptor.ui_show = Some(test_ui_show);
+        descriptor.ui_idle = Some(test_ui_idle);
+        descriptor.cleanup = Some(test_cleanup);
+        descriptor.process = Some(test_process);
+        let descriptor_pointer = NonNull::from(&mut *descriptor);
+        let mut callback_state = Box::new(NativeCallbackState {
+            calls: Mutex::new(Vec::new()),
+        });
+        let handle = NonNull::from(&mut *callback_state).cast();
+        let host_context = Box::new(HostContext {
+            sample_rate: 48_000.0,
+            buffer_size: 64,
+            time_info: NativeTimeInfo::default(),
+            midi_output: UnsafeCell::new(Vec::new()),
+            midi_output_count: AtomicUsize::new(0),
+            process_frames: AtomicU32::new(0),
+            file_dialog_result: UnsafeCell::new(None),
+            visible: AtomicBool::new(false),
+        });
+        let host_descriptor = Box::new(unsafe { std::mem::zeroed() });
+        let instance = Arc::new(NativeInstance {
+            runtime: None,
+            descriptor: descriptor_pointer,
+            handle,
+            host_context,
+            _resource_dir: CString::new("resources").unwrap(),
+            _binary_dir: CString::new("bin").unwrap(),
+            _ui_name: CString::new("test").unwrap(),
+            host_descriptor,
+            cleaned: AtomicBool::new(false),
+        });
+        (instance, descriptor, callback_state)
+    }
+
+    fn test_native_host(
+        chain_type: FXChainType,
+        dispatcher: CarlaMainThreadUiDispatcher,
+        descriptors: &mut Vec<Box<NativePluginDescriptor>>,
+        states: &mut Vec<Box<NativeCallbackState>>,
+    ) -> Result<CarlaNativeHost> {
+        let (instance, descriptor, state) = test_native_instance();
+        descriptors.push(descriptor);
+        states.push(state);
+        let channels = if chain_type == FXChainType::CarlaPatchbay16x {
+            16
+        } else {
+            2
+        };
+        let mut audio_inputs = vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; channels];
+        let mut audio_outputs = vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; channels];
+        let input_pointers = audio_inputs.iter_mut().map(Vec::as_mut_ptr).collect();
+        let output_pointers = audio_outputs.iter_mut().map(Vec::as_mut_ptr).collect();
+        let ui = CarlaNativeUiHandle::new(
+            Arc::clone(&instance) as Arc<dyn MainThreadUiTarget>,
+            dispatcher,
+        )?;
+        Ok(CarlaNativeHost {
+            instance,
+            ui: Some(ui),
+            direct_ui_owner: std::thread::current().id(),
+            info: CarlaProcessorInfo {
+                chain_type,
+                audio_inputs: channels,
+                audio_outputs: channels,
+                midi_inputs: 1,
+                midi_outputs: 1,
+            },
+            audio_inputs,
+            audio_outputs,
+            input_pointers,
+            output_pointers,
+            midi_inputs: Vec::with_capacity(CARLA_MIDI_BUFFER_CAPACITY),
+            active: false,
+        })
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn ui_smoke_flow_keeps_fake_native_dsp_running() {
+        let mut descriptors = Vec::new();
+        let mut states = Vec::new();
+        smoke_test_carla_ui_with(|chain_type, dispatcher| {
+            test_native_host(chain_type, dispatcher, &mut descriptors, &mut states)
+        })
+        .unwrap();
+        assert_eq!(states.len(), 3);
+        assert!(states.iter().all(|state| {
+            let calls = state
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            calls.iter().filter(|(call, _)| *call == "show").count() == 2
+                && calls.iter().filter(|(call, _)| *call == "hide").count() == 2
+                && calls.iter().any(|(call, _)| *call == "idle")
+                && calls.iter().filter(|(call, _)| *call == "cleanup").count() == 1
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_instance_ui_callbacks_run_only_through_the_main_service() {
+        let owner = std::thread::current().id();
+        let (mut service, dispatcher) = CarlaMainThreadUiService::new();
+        let (instance, _descriptor, state) = test_native_instance();
+        let target = Arc::clone(&instance) as Arc<dyn MainThreadUiTarget>;
+        let ui = CarlaNativeUiHandle::new(target, dispatcher).unwrap();
+        let worker_ui = ui.clone();
+        let operation = std::thread::spawn(move || worker_ui.set_visible(true));
+        while !operation.is_finished() {
+            service.pump();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        operation.join().unwrap().unwrap();
+        assert!(ui.is_visible());
+        std::thread::sleep(UI_IDLE_INTERVAL + Duration::from_millis(2));
+        service.pump();
+        ui.destroy().unwrap();
+        service.pump();
+        assert!(instance.set_visible(true).is_err());
+        let calls = state
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert_eq!(calls[0], ("show", owner));
+        assert!(calls.contains(&("idle", owner)));
+        assert_eq!(
+            calls[calls.len() - 2..],
+            [("hide", owner), ("cleanup", owner)]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn ui_service_shutdown_resolves_queued_commands_and_cleans_targets() {
+        let (service, dispatcher) = CarlaMainThreadUiService::new();
+        assert!(format!("{dispatcher:?}").contains("CarlaMainThreadUiDispatcher"));
+        let target = Arc::new(RecordingUiTarget::default());
+        let ui = CarlaNativeUiHandle::new(
+            Arc::clone(&target) as Arc<dyn MainThreadUiTarget>,
+            dispatcher,
+        )
+        .unwrap();
+        assert!(format!("{ui:?}").contains("CarlaNativeUiHandle"));
+        let operation = std::thread::spawn(move || ui.set_visible(true));
+        drop(service);
+        assert!(operation.join().unwrap().is_err());
+        assert!(target
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .any(|(call, _)| *call == "cleanup"));
+
+        let (service, dispatcher) = CarlaMainThreadUiService::new();
+        let target = Arc::new(RecordingUiTarget::default());
+        let ui = CarlaNativeUiHandle::new(
+            Arc::clone(&target) as Arc<dyn MainThreadUiTarget>,
+            dispatcher,
+        )
+        .unwrap();
+        std::thread::spawn(move || ui.destroy().unwrap())
+            .join()
+            .unwrap();
+        drop(service);
+        assert!(target
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .any(|(call, _)| *call == "cleanup"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn main_thread_ui_service_owns_show_idle_and_cleanup() {
+        let owner = std::thread::current().id();
+        let (mut service, dispatcher) = CarlaMainThreadUiService::new();
+        let target = Arc::new(RecordingUiTarget::default());
+        let ui = CarlaNativeUiHandle::new(
+            Arc::clone(&target) as Arc<dyn MainThreadUiTarget>,
+            dispatcher,
+        )
+        .unwrap();
+        let operation = std::thread::spawn(move || {
+            ui.set_visible(true).unwrap();
+            ui.destroy().unwrap();
+        });
+        while !operation.is_finished() {
+            service.pump();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        operation.join().unwrap();
+        service.pump();
+        let calls = target
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert_eq!(calls.first(), Some(&("show", owner)));
+        assert_eq!(calls.last(), Some(&("cleanup", owner)));
+        assert!(calls.iter().all(|(_, thread)| *thread == owner));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn main_thread_ui_idle_has_a_bounded_cadence() {
+        let (mut service, dispatcher) = CarlaMainThreadUiService::new();
+        let target = Arc::new(RecordingUiTarget::default());
+        let ui = CarlaNativeUiHandle::new(
+            Arc::clone(&target) as Arc<dyn MainThreadUiTarget>,
+            dispatcher,
+        )
+        .unwrap();
+        ui.set_visible(true).unwrap();
+        for _ in 0..10 {
+            service.pump();
+        }
+        assert!(!target
+            .calls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .any(|(call, _)| *call == "idle"));
+        std::thread::sleep(UI_IDLE_INTERVAL + Duration::from_millis(2));
+        service.pump();
+        assert_eq!(
+            target
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .iter()
+                .filter(|(call, _)| *call == "idle")
+                .count(),
+            1
+        );
+        ui.destroy().unwrap();
+        service.pump();
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn runtime_overrides_must_be_absolute() {
@@ -1255,8 +2026,78 @@ mod tests {
         smoke_test_carla_ui().expect("Carla runtime required for opted-in UI smoke test");
         let mut host = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64).unwrap();
         host.set_visible(true).unwrap();
-        unsafe { host_ui_closed(host.host_descriptor.handle) };
+        unsafe { host_ui_closed(host.instance.host_descriptor.handle) };
         assert!(!host.is_visible());
+    }
+
+    #[cfg(feature = "carla-system-tests")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn system_epiano_generates_audio_from_midi_when_opted_in() {
+        if std::env::var_os("SHOOP_TEST_CARLA_EPIANO").is_none() {
+            eprintln!("skipping system ePiano regression; set SHOOP_TEST_CARLA_EPIANO=1");
+            return;
+        }
+        let _exclusive = lock_carla_test();
+        let project = br#"<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE CARLA-PROJECT>
+<CARLA-PROJECT VERSION='2.5'>
+ <EngineSettings>
+  <ForceStereo>true</ForceStereo>
+  <PreferPluginBridges>false</PreferPluginBridges>
+  <PreferUiBridges>false</PreferUiBridges>
+ </EngineSettings>
+ <Plugin>
+  <Info>
+   <Type>LV2</Type>
+   <Name>MDA ePiano</Name>
+   <URI>http://drobilla.net/plugins/mda/EPiano</URI>
+  </Info>
+  <Data>
+   <Active>Yes</Active>
+   <ControlChannel>1</ControlChannel>
+   <Options>0x0</Options>
+  </Data>
+ </Plugin>
+</CARLA-PROJECT>"#;
+        let state = encode_state(FXChainType::CarlaRack, project).unwrap();
+        let (mut ui_service, ui_dispatcher) = CarlaMainThreadUiService::new();
+        let mut host = CarlaNativeHost::instantiate_with_ui_dispatcher(
+            FXChainType::CarlaRack,
+            48_000,
+            64,
+            ui_dispatcher,
+        )
+        .unwrap();
+        host.restore_state(&state).unwrap();
+        let (control, mut endpoint) =
+            crate::carla_processor::spawn_processor_bridge(Box::new(host), 48_000, 64).unwrap();
+        control.set_active(true);
+        control.set_visible(true).unwrap();
+        let mut heard = false;
+        for block in 0..200 {
+            let events: &[(u32, &[u8])] = if block == 0 {
+                &[(0, &[0x90, 60, 100])]
+            } else {
+                &[]
+            };
+            endpoint.set_midi_input_events(0, events).unwrap();
+            endpoint.process(64).unwrap();
+            ui_service.pump();
+            if endpoint.audio_output(0).unwrap()[..64]
+                .iter()
+                .any(|sample| sample.abs() > 0.001)
+            {
+                heard = true;
+                break;
+            }
+        }
+        assert!(heard, "MDA ePiano produced no audio from MIDI");
+        assert!(control.lifecycle().is_operational());
+        assert!(control.is_visible());
+        control.set_visible(false).unwrap();
+        drop(endpoint);
+        drop(control);
+        ui_service.pump();
     }
 
     #[shoop_wasm_test_support::shoop_test]

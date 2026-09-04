@@ -2979,7 +2979,7 @@ impl BackendSession {
                     let host: Result<Box<dyn engine::carla_processor::CarlaProcessor>> =
                         match carla_hosting_mode() {
                             CarlaHostingMode::InProcess => {
-                                engine::carla_native::CarlaNativeHost::instantiate(
+                                engine::carla_native::CarlaNativeHost::instantiate_for_application(
                                     chain_type,
                                     sample_rate,
                                     buffer_size,
@@ -6747,6 +6747,22 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.generation(),
+            _ => 0,
+        }
+    }
+
+    pub fn deadline_misses(&self) -> u64 {
+        match &self.backend {
+            #[cfg(feature = "carla")]
+            FXChainBackendKind::Carla(host) => host.deadline_misses(),
+            _ => 0,
+        }
+    }
+
+    pub fn stale_completions(&self) -> u64 {
+        match &self.backend {
+            #[cfg(feature = "carla")]
+            FXChainBackendKind::Carla(host) => host.stale_completions(),
             _ => 0,
         }
     }

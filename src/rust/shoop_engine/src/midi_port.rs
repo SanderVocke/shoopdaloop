@@ -74,6 +74,12 @@ impl MidiPort {
         self.publish_state();
     }
 
+    pub(crate) fn adopt_state_mirror(&mut self, state: Arc<MidiPortStateMirror>) {
+        (self.muted, self.passthrough_muted) = state.control_values();
+        self.state = state;
+        self.publish_runtime_state();
+    }
+
     fn publish_state(&self) {
         self.state.publish_values(
             self.n_notes_active(),
@@ -82,6 +88,11 @@ impl MidiPort {
             self.passthrough_muted,
             self.ringbuffer_n_samples(),
         );
+    }
+
+    fn publish_runtime_state(&self) {
+        self.state
+            .publish_runtime_values(self.n_notes_active(), 0, self.ringbuffer_n_samples());
     }
 
     pub fn data_type(&self) -> PortDataType {
@@ -93,7 +104,7 @@ impl MidiPort {
     }
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
-        self.publish_state();
+        self.state.set_muted(muted);
     }
     pub fn passthrough_muted(&self) -> bool {
         self.passthrough_muted
@@ -105,7 +116,7 @@ impl MidiPort {
             self.passthrough_cleanup_pending = !self.passthrough_cleanup.is_empty();
         }
         self.passthrough_muted = muted;
-        self.publish_state();
+        self.state.set_passthrough_muted(muted);
     }
 
     pub(crate) fn record_passthrough(&mut self, events: &[MidiStorageElem]) {
@@ -166,7 +177,7 @@ impl MidiPort {
         if let Some(r) = self.ringbuffer.as_mut() {
             r.set_n_samples(n);
         }
-        self.publish_state();
+        self.publish_runtime_state();
     }
 
     /// Copies the capture window into `target`, rebased to start at zero.
@@ -198,7 +209,7 @@ impl MidiPort {
         }
 
         let Some(events) = input else {
-            self.publish_state();
+            self.publish_runtime_state();
             return;
         };
         if let Some(message) = events
@@ -224,7 +235,7 @@ impl MidiPort {
 
         if self.muted {
             self.state.record_events(input_count, 0);
-            self.publish_state();
+            self.publish_runtime_state();
             return;
         }
         let mut output_count = 0;
@@ -236,7 +247,7 @@ impl MidiPort {
             }
         }
         self.state.record_events(input_count, output_count);
-        self.publish_state();
+        self.publish_runtime_state();
     }
 }
 
@@ -248,6 +259,25 @@ mod tests {
 
     fn port() -> MidiPort {
         MidiPort::with_ringbuffer_capacity(TrackWhat::ALL, 64)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn adopted_control_state_survives_stale_runtime_publication() {
+        let state = Arc::new(MidiPortStateMirror::default());
+        state.set_muted(true);
+        state.set_passthrough_muted(true);
+        let mut p = port();
+        p.adopt_state_mirror(Arc::clone(&state));
+
+        check!(p.muted());
+        check!(p.passthrough_muted());
+
+        state.set_muted(false);
+        state.set_passthrough_muted(false);
+        p.process(1, None, None);
+        let published = state.read(String::new());
+        check!(!published.muted);
+        check!(!published.passthrough_muted);
     }
 
     fn ev(time: u32, data: &[u8]) -> MidiStorageElem {

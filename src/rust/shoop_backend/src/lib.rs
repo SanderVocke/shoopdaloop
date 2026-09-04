@@ -7,8 +7,9 @@ mod native;
 pub use native::NativeBackend;
 #[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
 pub use native::{
-    carla_runtime_path, configure_carla_hosting_mode, configured_carla_hosting_mode,
-    run_carla_worker_if_requested, smoke_test_carla_runtime, smoke_test_carla_ui,
+    carla_runtime_path, configure_carla_hosting_mode, configure_carla_ui_dispatcher,
+    configured_carla_hosting_mode, run_carla_worker_if_requested, smoke_test_carla_runtime,
+    smoke_test_carla_ui, CarlaMainThreadUiDispatcher, CarlaMainThreadUiService,
 };
 pub use shoop_app_api::{
     BuiltInFxControl, BuiltInFxDriveType, BuiltInFxMidiCcAssignment, BuiltInFxModulationType,
@@ -5314,6 +5315,9 @@ fn engine_builtin_fx_state(fx: &EngineBuiltInFx) -> TrackFxState {
         visible: fx.visible,
         lifecycle: FxLifecycle::Running,
         generation: 0,
+        deadline_misses: 0,
+        stale_completions: 0,
+        status_summary: None,
         crash_summary: None,
         logs: Arc::from([]),
         editor: Some(TrackProcessorEditorState::BuiltInFx(app_builtin_fx_state(
@@ -5331,6 +5335,9 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
         visible: fx.visible,
         lifecycle: FxLifecycle::Running,
         generation: 0,
+        deadline_misses: 0,
+        stale_completions: 0,
+        status_summary: None,
         crash_summary: None,
         logs: Arc::from([]),
         editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
@@ -8571,6 +8578,9 @@ impl FakeBackend {
                         visible: false,
                         lifecycle: FxLifecycle::Running,
                         generation: 1,
+                        deadline_misses: 0,
+                        stale_completions: 0,
+                        status_summary: None,
                         crash_summary: None,
                         logs: Arc::from([]),
                         editor: None,

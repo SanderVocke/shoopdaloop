@@ -706,6 +706,19 @@ impl AudioPortStateMirror {
             .store(ring as u32, Ordering::Relaxed);
     }
 
+    pub(crate) fn control_values(&self) -> (f32, bool, bool) {
+        (
+            f32::from_bits(self.gain.load(Ordering::Relaxed)),
+            self.muted.load(Ordering::Relaxed),
+            self.passthrough_muted.load(Ordering::Relaxed),
+        )
+    }
+
+    pub(crate) fn publish_runtime_values(&self, ring: usize) {
+        self.ringbuffer_n_samples
+            .store(ring as u32, Ordering::Relaxed);
+    }
+
     pub fn set_gain(&self, gain: f32) {
         self.gain.store(gain.to_bits(), Ordering::Relaxed);
     }
@@ -764,6 +777,21 @@ impl MidiPortStateMirror {
         self.muted.store(muted, Ordering::Relaxed);
         self.passthrough_muted
             .store(passthrough_muted, Ordering::Relaxed);
+        self.ringbuffer_n_samples.store(ring, Ordering::Relaxed);
+    }
+
+    pub(crate) fn control_values(&self) -> (bool, bool) {
+        (
+            self.muted.load(Ordering::Relaxed),
+            self.passthrough_muted.load(Ordering::Relaxed),
+        )
+    }
+
+    pub(crate) fn publish_runtime_values(&self, input_notes: u32, output_notes: u32, ring: u32) {
+        self.n_input_notes_active
+            .store(input_notes, Ordering::Relaxed);
+        self.n_output_notes_active
+            .store(output_notes, Ordering::Relaxed);
         self.ringbuffer_n_samples.store(ring, Ordering::Relaxed);
     }
 

@@ -485,6 +485,9 @@ mod tests {
                 visible: true,
                 lifecycle: FxLifecycle::Running,
                 generation: 0,
+                deadline_misses: 0,
+                stale_completions: 0,
+                status_summary: None,
                 crash_summary: None,
                 logs: Arc::from([]),
                 editor: Some(TrackProcessorEditorState::BuiltInFx(
