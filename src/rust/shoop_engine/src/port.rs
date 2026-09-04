@@ -112,6 +112,12 @@ impl AudioPort {
         self.publish_state();
     }
 
+    pub(crate) fn adopt_state_mirror(&mut self, state: Arc<AudioPortStateMirror>) {
+        (self.gain, self.muted, self.passthrough_muted) = state.control_values();
+        self.state = state;
+        self.publish_runtime_state();
+    }
+
     fn publish_state(&self) {
         self.state.publish_values(
             self.gain,
@@ -119,6 +125,11 @@ impl AudioPort {
             self.passthrough_muted,
             self.ringbuffer.n_samples(),
         );
+    }
+
+    fn publish_runtime_state(&self) {
+        self.state
+            .publish_runtime_values(self.ringbuffer.n_samples());
     }
 
     pub fn data_type(&self) -> PortDataType {
@@ -130,21 +141,21 @@ impl AudioPort {
     }
     pub fn set_gain(&mut self, gain: f32) {
         self.gain = gain;
-        self.publish_state();
+        self.state.set_gain(gain);
     }
     pub fn muted(&self) -> bool {
         self.muted
     }
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
-        self.publish_state();
+        self.state.set_muted(muted);
     }
     pub fn passthrough_muted(&self) -> bool {
         self.passthrough_muted
     }
     pub fn set_passthrough_muted(&mut self, muted: bool) {
         self.passthrough_muted = muted;
-        self.publish_state();
+        self.state.set_passthrough_muted(muted);
     }
 
     pub fn input_peak(&self) -> f32 {
@@ -169,7 +180,7 @@ impl AudioPort {
     }
     pub fn set_ringbuffer_n_samples(&mut self, n: usize) {
         self.ringbuffer.set_min_n_samples(n);
-        self.publish_state();
+        self.publish_runtime_state();
     }
     pub fn ringbuffer_contents(&self) -> Snapshot {
         self.ringbuffer.snapshot()
@@ -258,7 +269,7 @@ impl AudioPort {
         if self.ringbuffer.max_buffers() > 0 {
             self.ringbuffer.put(buf);
         }
-        self.publish_state();
+        self.publish_runtime_state();
     }
 }
 
@@ -334,6 +345,29 @@ mod tests {
 
     fn port() -> AudioPort {
         AudioPort::new(4)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn adopted_control_state_survives_stale_runtime_publication() {
+        let state = Arc::new(AudioPortStateMirror::default());
+        state.set_gain(0.25);
+        state.set_muted(true);
+        state.set_passthrough_muted(true);
+        let mut p = port();
+        p.adopt_state_mirror(Arc::clone(&state));
+
+        check!(p.gain() == 0.25);
+        check!(p.muted());
+        check!(p.passthrough_muted());
+
+        state.set_gain(0.5);
+        state.set_muted(false);
+        state.set_passthrough_muted(false);
+        p.process(&mut [1.0]);
+        let published = state.read(String::new());
+        check!(published.gain == 0.5);
+        check!(!published.muted);
+        check!(!published.passthrough_muted);
     }
 
     #[shoop_wasm_test_support::shoop_test]

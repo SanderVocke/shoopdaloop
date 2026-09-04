@@ -13,6 +13,7 @@ const webPort = Number(process.env.WEB_PORT || 8765);
 const debugPort = Number(process.env.DEBUG_PORT || 9222);
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
+const protocolTimeout = Number(process.env.CDP_TIMEOUT_MS || 15_000);
 const selfContained = process.env.SELF_CONTAINED === '1';
 const outputOnly = process.env.OUTPUT_ONLY === '1';
 const workerEngine = process.env.WORKER_ENGINE === '1';
@@ -56,11 +57,22 @@ function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
+function withTimeout(promise, timeoutMilliseconds, description) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`timed out waiting for ${description}`)),
+      timeoutMilliseconds,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function waitForHttp(url, timeoutMilliseconds) {
   const deadline = Date.now() + timeoutMilliseconds;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
       if (response.ok) return;
     } catch (_) {
       // The process is still starting.
@@ -74,7 +86,7 @@ async function waitForJson(url, timeoutMilliseconds, accept = () => true) {
   const deadline = Date.now() + timeoutMilliseconds;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
       if (response.ok) {
         const value = await response.json();
         if (accept(value)) return value;
@@ -149,10 +161,10 @@ try {
   if (!target) throw new Error('Chrome exposed no page target');
 
   websocket = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
+  await withTimeout(new Promise((resolve, reject) => {
     websocket.onopen = resolve;
     websocket.onerror = reject;
-  });
+  }), protocolTimeout, 'Chrome DevTools WebSocket connection');
 
   let nextId = 1;
   const pending = new Map();
@@ -160,7 +172,9 @@ try {
   websocket.onmessage = event => {
     const message = JSON.parse(event.data);
     if (message.id && pending.has(message.id)) {
-      pending.get(message.id)(message);
+      const request = pending.get(message.id);
+      clearTimeout(request.timer);
+      request.resolve(message);
       pending.delete(message.id);
       return;
     }
@@ -169,11 +183,30 @@ try {
       failures.push(message);
     }
   };
+  websocket.onclose = () => {
+    for (const request of pending.values()) {
+      clearTimeout(request.timer);
+      request.reject(new Error('Chrome DevTools WebSocket closed'));
+    }
+    pending.clear();
+  };
 
   function call(method, params = {}) {
     const id = nextId++;
-    websocket.send(JSON.stringify({ id, method, params }));
-    return new Promise(resolve => pending.set(id, resolve));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`timed out waiting for Chrome DevTools ${method}`));
+      }, protocolTimeout);
+      pending.set(id, { resolve, reject, timer });
+      try {
+        websocket.send(JSON.stringify({ id, method, params }));
+      } catch (error) {
+        clearTimeout(timer);
+        pending.delete(id);
+        reject(error);
+      }
+    });
   }
 
   async function evaluate(expression) {

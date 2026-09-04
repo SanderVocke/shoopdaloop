@@ -15,6 +15,14 @@ use shoop_engine::{
 };
 
 #[cfg(feature = "native-fx")]
+pub use shoop_engine::carla_native::{CarlaMainThreadUiDispatcher, CarlaMainThreadUiService};
+
+#[cfg(feature = "native-fx")]
+pub fn configure_carla_ui_dispatcher(dispatcher: Option<CarlaMainThreadUiDispatcher>) {
+    shoop_engine::carla_native::configure_application_ui_dispatcher(dispatcher);
+}
+
+#[cfg(feature = "native-fx")]
 pub fn configure_carla_hosting_mode(mode: shoop_settings::CarlaHostingMode) {
     shoop_engine::app_backend::set_carla_hosting_mode(mode);
 }
@@ -4296,12 +4304,22 @@ impl Backend for NativeBackend {
             let mut state = track.state.clone();
             state.fx = track.fx.as_ref().map(|fx| {
                 let chain_state = fx.chain.get_state().unwrap_or_default();
+                let lifecycle = fx_lifecycle(fx.chain.lifecycle());
+                let deadline_misses = fx.chain.deadline_misses();
+                let stale_completions = fx.chain.stale_completions();
                 TrackFxState {
                     processor_type: fx.processor_type.clone(),
                     active: chain_state.active != 0,
                     visible: chain_state.visible != 0,
-                    lifecycle: fx_lifecycle(fx.chain.lifecycle()),
+                    lifecycle,
                     generation: fx.chain.generation(),
+                    deadline_misses,
+                    stale_completions,
+                    status_summary: fx_status_summary(
+                        lifecycle,
+                        deadline_misses,
+                        stale_completions,
+                    ),
                     crash_summary: fx.chain.crash_summary(),
                     logs: fx
                         .chain
@@ -4696,11 +4714,30 @@ fn amplitude_db(amplitude: f32) -> f32 {
     }
 }
 
+fn fx_status_summary(
+    lifecycle: FxLifecycle,
+    deadline_misses: u64,
+    stale_completions: u64,
+) -> Option<String> {
+    if lifecycle == FxLifecycle::Degraded {
+        Some(format!(
+            "Processing deadline missed; retrying automatically ({deadline_misses} deadline misses, {stale_completions} stale completions)"
+        ))
+    } else if deadline_misses > 0 || stale_completions > 0 {
+        Some(format!(
+            "Processing recovered ({deadline_misses} deadline misses, {stale_completions} stale completions)"
+        ))
+    } else {
+        None
+    }
+}
+
 fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycle) -> FxLifecycle {
     match lifecycle {
         shoop_engine::carla_processor::CarlaProcessorLifecycle::Stopped => FxLifecycle::Stopped,
         shoop_engine::carla_processor::CarlaProcessorLifecycle::Starting => FxLifecycle::Starting,
         shoop_engine::carla_processor::CarlaProcessorLifecycle::Running => FxLifecycle::Running,
+        shoop_engine::carla_processor::CarlaProcessorLifecycle::Degraded => FxLifecycle::Degraded,
         shoop_engine::carla_processor::CarlaProcessorLifecycle::Crashed => FxLifecycle::Crashed,
         shoop_engine::carla_processor::CarlaProcessorLifecycle::Restarting => {
             FxLifecycle::Restarting
@@ -4845,6 +4882,21 @@ mod tests {
             .application_ports
             .values()
             .all(|port| !matches!(port.owner, BackendPortOwner::Bus(_))));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn degraded_fx_status_is_distinct_from_a_crash() {
+        assert_eq!(
+            fx_lifecycle(shoop_engine::carla_processor::CarlaProcessorLifecycle::Degraded),
+            FxLifecycle::Degraded
+        );
+        let summary = fx_status_summary(FxLifecycle::Degraded, 4, 1).unwrap();
+        assert!(summary.contains("retrying automatically"));
+        assert!(summary.contains("4 deadline misses"));
+        assert!(fx_status_summary(FxLifecycle::Crashed, 0, 0).is_none());
+        assert!(fx_status_summary(FxLifecycle::Running, 4, 1)
+            .unwrap()
+            .contains("Processing recovered"));
     }
 
     fn render_dummy_track_audio(
