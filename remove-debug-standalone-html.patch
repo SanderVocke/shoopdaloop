@@ -1,0 +1,175 @@
+diff --git a/.github/workflows/build_and_test.yml b/.github/workflows/build_and_test.yml
+index 2d63a0ab112169275ad2125dc00fe03830d88215..e96087530bd50eeb93499f36147ecd660a73c680 100644
+--- a/.github/workflows/build_and_test.yml
++++ b/.github/workflows/build_and_test.yml
+@@ -159,7 +159,6 @@ jobs:
+             trunk_args: ""
+             rust_targets: wasm32-unknown-unknown
+             artifact: shoopdaloop-web-wasm32-debug.zip
+-            html_artifact: shoopdaloop-web-wasm32-debug.html
+           - target: web
+             os: ubuntu-24.04
+             arch: wasm32
+@@ -526,6 +525,7 @@ jobs:
+         shell: bash
+         env:
+           TARGET: ${{ matrix.target }}
++          PROFILE: ${{ matrix.profile }}
+         run: |
+           python3 - <<'PY'
+           import os
+@@ -536,8 +536,10 @@ jobs:
+           html = [path for path in artifacts if path.suffix == ".html"]
+           if len(archives) != 1:
+               raise RuntimeError(f"expected one packaged archive, found: {archives}")
+-          if os.environ["TARGET"] == "web" and len(html) != 1:
+-              raise RuntimeError(f"expected one packaged HTML file, found: {html}")
++          if os.environ["TARGET"] == "web" and os.environ["PROFILE"] == "release" and len(html) != 1:
++              raise RuntimeError(f"expected one release HTML file, found: {html}")
++          if os.environ["TARGET"] == "web" and os.environ["PROFILE"] == "debug" and html:
++              raise RuntimeError(f"unexpected debug HTML files: {html}")
+           if os.environ["TARGET"] != "web" and html:
+               raise RuntimeError(f"unexpected packaged HTML files: {html}")
+           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as environment:
+@@ -561,7 +563,7 @@ jobs:
+           archive: false
+ 
+       - name: Upload core-only single-file web application
+-        if: matrix.target == 'web' && env.ACT != 'true'
++        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
+         uses: actions/upload-artifact@v7
+         with:
+           name: ${{ matrix.html_artifact }}
+@@ -572,7 +574,7 @@ jobs:
+         if: env.ACT == 'true'
+         run: |
+           test -s "$SHOOP_ARTIFACT"
+-          if [ "${{ matrix.target }}" = "web" ]; then
++          if [ "${{ matrix.target }}" = "web" ] && [ "${{ matrix.profile }}" = "release" ]; then
+             test -s "$SHOOP_HTML_ARTIFACT"
+           fi
+           ls -lh artifacts
+@@ -796,11 +798,12 @@ jobs:
+ 
+       - name: Verify web application artifacts
+         if: matrix.target == 'web'
+-        run: >-
+-          python3 src/rust/shoopdaloop/package_artifacts.py verify
+-          --platform web
+-          --artifact "$SHOOP_ARTIFACT"
+-          --html "$SHOOP_HTML_ARTIFACT"
++        run: |
++          args=(--platform web --artifact "$SHOOP_ARTIFACT")
++          if [ -n "${SHOOP_HTML_ARTIFACT:-}" ]; then
++            args+=(--html "$SHOOP_HTML_ARTIFACT")
++          fi
++          python3 src/rust/shoopdaloop/package_artifacts.py verify "${args[@]}"
+ 
+       - name: Check WebAssembly packages
+         if: matrix.target == 'web'
+@@ -940,7 +943,7 @@ jobs:
+           done
+ 
+       - name: Run retained self-contained Chrome AudioWorklet smoke
+-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
++        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
+         working-directory: src/rust/shoopdaloop
+         env:
+           SELF_CONTAINED_PATH: ${{ env.SHOOP_HTML_ARTIFACT }}
+diff --git a/src/rust/shoopdaloop/README.md b/src/rust/shoopdaloop/README.md
+index 539d6dbce420ab8a584f22911c622425e708a8b0..e7f78de1a589ef2773966443b1d5194f0f096d55 100644
+--- a/src/rust/shoopdaloop/README.md
++++ b/src/rust/shoopdaloop/README.md
+@@ -147,12 +147,12 @@ python3 src/rust/shoopdaloop/package_artifacts.py native \
+   --binary target/debug/shoopdaloop --carla-runtime /path/to/normalized-carla \
+   --output-dir artifacts
+ 
+-# From src/rust/shoopdaloop after a Trunk debug build.
++# From src/rust/shoopdaloop after a Trunk release build.
+ python3 package_artifacts.py web \
+-  --profile debug --dist dist --output-dir ../../../artifacts
++  --profile release --dist dist --output-dir ../../../artifacts
+ ```
+ 
+-Native CI outputs are unsigned application archives rather than installers. They include the normalized, manifest-verified Carla runtime component; `scripts/carla_runtime.py` creates and verifies that component from the pinned upstream payload. The hosted web archive supports physical browser audio and contains the complete UI, external built-ins catalog/tree, shared raw Wasm host bridge, AudioWorklet, and Worker assets. The separately generated profile-named HTML embeds those executable assets and the built-ins tree, and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` (or `?worker=1`) to select the remote Worker dummy instead. It runs the same import-free Wasm engine and production protocol/client as the AudioWorklet, uses 48 kHz/128-frame realtime-paced quanta, and requests no physical audio permission.
++Native CI outputs are unsigned application archives rather than installers. They include the normalized, manifest-verified Carla runtime component; `scripts/carla_runtime.py` creates and verifies that component from the pinned upstream payload. The hosted web archive supports physical browser audio and contains the complete UI, external built-ins catalog/tree, shared raw Wasm host bridge, AudioWorklet, and Worker assets. The separately generated release HTML embeds those executable assets and the built-ins tree, and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` (or `?worker=1`) to select the remote Worker dummy instead. It runs the same import-free Wasm engine and production protocol/client as the AudioWorklet, uses 48 kHz/128-frame realtime-paced quanta, and requests no physical audio permission. Debug web builds produce only the hosted archive to avoid materializing their large symbol-bearing Wasm modules as base64 strings in a browser page.
+ 
+ `raw_wasm_host.js` is the single owner of module instantiation, ABI buffers, command/response bytes, process calls, memory-view recovery, and destruction. The AudioWorklet adapter supplies physical callbacks. The Worker adapter has isolated engine/timer/port ownership and supports realtime-paced production operation plus explicit and cooperative modes only through an explicitly transferred fixture-control port. Fixture batches and realtime catch-up are bounded and yield to command/shutdown delivery.
+ 
+@@ -160,7 +160,7 @@ Generated `dist`, worklet, staging, and artifact files are not committed.
+ 
+ ## Cross-target CI
+ 
+-`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a complete hosted bundle archive and a separately downloadable core-only HTML file that is explicitly not a built-ins distribution. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
++`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives, both web cells upload a complete hosted bundle archive, and web release additionally uploads a core-only single-file HTML artifact. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
+ 
+ For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
+ 
+@@ -214,7 +214,7 @@ cd src/rust/shoopdaloop
+ OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
+ SELF_CONTAINED=1 OUTPUT_ONLY=1 \
+   SELF_CONTAINED_PATH=$(find ../../../artifacts -maxdepth 1 -type f \
+-    -name 'shoopdaloop-web-wasm32-debug-*.html' -print -quit) \
++    -name 'shoopdaloop-web-wasm32-release-*.html' -print -quit) \
+   node --experimental-websocket browser_smoke.mjs
+ xvfb-run -a python3 browser_firefox_smoke.py
+ ```
+diff --git a/src/rust/shoopdaloop/package_artifacts.py b/src/rust/shoopdaloop/package_artifacts.py
+index 805d8070658288add4b4745f8c6c143af9da103c..eaca7e98fe329bc7268bad99a62d791ba1bfdc17 100644
+--- a/src/rust/shoopdaloop/package_artifacts.py
++++ b/src/rust/shoopdaloop/package_artifacts.py
+@@ -204,10 +204,12 @@ def package_web(args: argparse.Namespace) -> list[Path]:
+     args.output_dir.mkdir(parents=True, exist_ok=True)
+     stem = artifact_stem("web", "wasm32", args.profile)
+     bundle = args.output_dir / f"{stem}.zip"
+-    html = args.output_dir / f"{stem}.html"
+     bundle.unlink(missing_ok=True)
+-    html.unlink(missing_ok=True)
+-    build_single_file(dist, html)
++    html = None
++    if args.profile == "release":
++        html = args.output_dir / f"{stem}.html"
++        html.unlink(missing_ok=True)
++        build_single_file(dist, html)
+ 
+     with tempfile.TemporaryDirectory(prefix="shoop-web-") as temporary:
+         root = Path(temporary) / ARCHIVE_ROOT
+@@ -219,7 +221,7 @@ def package_web(args: argparse.Namespace) -> list[Path]:
+         write_zip(root, bundle)
+ 
+     verify_web(bundle, html)
+-    return [bundle, html]
++    return [bundle, *([html] if html is not None else [])]
+ 
+ 
+ def archive_names(path: Path) -> tuple[set[str], dict[str, int]]:
+@@ -450,7 +452,7 @@ def verify_native(path: Path, platform: str) -> None:
+     reject_application_script_payload(binary, "native executable")
+ 
+ 
+-def verify_web(bundle: Path, html: Path) -> None:
++def verify_web(bundle: Path, html: Path | None) -> None:
+     names, _ = archive_names(bundle)
+     root = f"{ARCHIVE_ROOT}/"
+     fixed = {f"{root}{relative}" for relative in WEB_REQUIRED_FILES}
+@@ -472,6 +474,8 @@ def verify_web(bundle: Path, html: Path) -> None:
+     reject_carla_native_payload(hosted_application, "hosted application Wasm")
+     reject_application_script_payload(hosted_application, "hosted application Wasm")
+     reject_carla_native_payload(hosted_worklet, "hosted AudioWorklet Wasm")
++    if html is None:
++        return
+     text = html.read_text(encoding="utf-8")
+     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
+         raise RuntimeError("self-contained HTML does not contain the embedded application")
+@@ -536,10 +540,8 @@ def verify(args: argparse.Namespace) -> list[Path]:
+     if args.artifact == Path(".") and os.environ.get("SHOOP_ARTIFACT"):
+         args.artifact = Path(os.environ["SHOOP_ARTIFACT"])
+     if args.platform == "web":
+-        if args.html is None:
+-            raise RuntimeError("--html is required when verifying a web artifact")
+         verify_web(args.artifact, args.html)
+-        return [args.artifact, args.html]
++        return [args.artifact, *([args.html] if args.html is not None else [])]
+     verify_native(args.artifact, args.platform)
+     return [args.artifact]
+ 
