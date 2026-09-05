@@ -5183,7 +5183,7 @@ impl ApplicationModel {
             created.track_id,
             backend_default_playback_mode(default_playback_mode),
         );
-        let initial_output_bus_name = spec.initial_output_bus_name.clone();
+        let initial_output_bus_names = spec.initial_output_bus_names.clone();
         self.tracks.push(TrackModel {
             id: track_id,
             backend_id: created.track_id,
@@ -5214,8 +5214,8 @@ impl ApplicationModel {
             },
             creation_request_id: spec.creation_request_id,
         });
-        if let Some(bus_name) = initial_output_bus_name {
-            self.connect_new_track_to_bus(backend, track_id, &bus_name);
+        for bus_name in &initial_output_bus_names {
+            self.connect_new_track_to_bus(backend, track_id, bus_name);
         }
         Ok(())
     }
@@ -15301,7 +15301,7 @@ mod tests {
                     processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
                     processor_manual_frames: 11,
                 },
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: Some(41),
             }))
             .unwrap();
@@ -15498,7 +15498,7 @@ mod tests {
                     default_playback_mode: shoop_app_api::DefaultPlaybackMode::Regular,
                 },
                 latency: shoop_app_api::TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15669,7 +15669,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15929,7 +15929,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -16076,7 +16076,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -19965,7 +19965,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     midi: false,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: Some(42),
             }))
             .unwrap();
@@ -20288,7 +20288,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }),
         );
@@ -21551,7 +21551,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                                 midi: false,
                             },
                             latency: TrackLatencySpec::default(),
-                            initial_output_bus_name: Some("Master".to_owned()),
+                            initial_output_bus_names: vec!["Master".to_owned()],
                             creation_request_id: None,
                         },
                     )
@@ -21570,6 +21570,39 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         add(&mut model, &mut backend, "Mismatch", 3);
         assert!(model.pending_mixer_routes.is_empty());
         assert_eq!(model.confirmed_mixer_routes.len(), 4);
+
+        model
+            .add_bus(
+                &mut backend,
+                BusSpec {
+                    name: "Cue".to_owned(),
+                    channel_count: 2,
+                    creation_request_id: None,
+                },
+            )
+            .unwrap();
+        model
+            .add_track_spec(
+                &mut backend,
+                TrackSpec {
+                    name: "Fanout".to_owned(),
+                    topology: TrackSpecTopology::Direct {
+                        audio_channels: 2,
+                        midi: false,
+                    },
+                    latency: TrackLatencySpec::default(),
+                    initial_output_bus_names: vec![
+                        "Master".to_owned(),
+                        "Cue".to_owned(),
+                        "Missing".to_owned(),
+                    ],
+                    creation_request_id: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(model.pending_mixer_routes.len(), 4);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert_eq!(model.confirmed_mixer_routes.len(), 8);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -23972,7 +24005,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -25083,7 +25116,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -25283,7 +25316,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         default_playback_mode: DefaultPlaybackMode::Regular,
                     },
                     latency: TrackLatencySpec::default(),
-                    initial_output_bus_name: None,
+                    initial_output_bus_names: Vec::new(),
                     creation_request_id: None,
                 },
             )

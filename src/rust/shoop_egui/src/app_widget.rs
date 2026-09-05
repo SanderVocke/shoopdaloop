@@ -191,8 +191,8 @@ pub fn register_settings_with_appearance_defaults(
             DEFAULT_NEW_TRACK_OUTPUT_BUS,
             "Master".to_owned(),
             "Track defaults",
-            "Output bus",
-            "Bus name used to route a new track when its channel count is compatible.",
+            "Output buses",
+            "Comma-separated bus names used to route a new track when channel counts are compatible.",
         )
         .category_order(10)
         .setting_order(29)
@@ -846,7 +846,7 @@ pub fn register_script_settings(
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum AddTrackMode {
+pub enum AddTrackMode {
     #[default]
     Regular,
     Trigger,
@@ -905,18 +905,34 @@ fn processor_adjustment_from_value(value: &str) -> Option<ProcessorLatencyAdjust
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct NewTrackConfiguration {
+pub struct NewTrackConfiguration {
     pub mode: AddTrackMode,
     pub audio_channels: u32,
     pub midi: bool,
     pub dry_midi: bool,
     pub processor: Option<TrackProcessorTypeId>,
     pub default_playback_mode: DefaultPlaybackMode,
-    pub output_bus_name: String,
+    pub output_bus_names: Vec<String>,
+    pub output_bus_text: String,
     pub recording_adjustment: RecordingOffsetAdjustmentState,
     pub recording_frames: i32,
     pub processor_adjustment: ProcessorLatencyAdjustmentState,
     pub processor_frames: i32,
+}
+
+pub fn parse_output_bus_names(value: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for name in value.split(',') {
+        let name = name.trim().to_owned();
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
+pub fn format_output_bus_names(names: &[String]) -> String {
+    names.join(", ")
 }
 
 impl NewTrackConfiguration {
@@ -935,7 +951,10 @@ impl NewTrackConfiguration {
                 "dry_through_wet" => DefaultPlaybackMode::DryThroughWet,
                 _ => return None,
             },
-            output_bus_name: draft.get(DEFAULT_NEW_TRACK_OUTPUT_BUS).ok()?,
+            output_bus_names: parse_output_bus_names(
+                &draft.get(DEFAULT_NEW_TRACK_OUTPUT_BUS).ok()?,
+            ),
+            output_bus_text: String::new(),
             recording_adjustment: recording_adjustment_from_value(
                 &draft.get(DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT).ok()?,
             )?,
@@ -969,7 +988,10 @@ impl NewTrackConfiguration {
             }
             .to_owned(),
         );
-        draft.set(DEFAULT_NEW_TRACK_OUTPUT_BUS, self.output_bus_name.clone());
+        draft.set(
+            DEFAULT_NEW_TRACK_OUTPUT_BUS,
+            format_output_bus_names(&self.output_bus_names),
+        );
         draft.set(
             DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
             recording_adjustment_value(self.recording_adjustment).to_owned(),
@@ -1046,7 +1068,8 @@ pub struct AppWidget {
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
     add_track_default_playback_mode: DefaultPlaybackMode,
-    add_track_output_bus_name: String,
+    add_track_output_bus_names: Vec<String>,
+    add_track_output_bus_text: String,
     add_track_recording_adjustment: RecordingOffsetAdjustmentState,
     add_track_recording_frames: i32,
     add_track_processor_adjustment: ProcessorLatencyAdjustmentState,
@@ -1143,7 +1166,8 @@ impl AppWidget {
             add_track_dry_midi: false,
             add_track_processor: None,
             add_track_default_playback_mode: DefaultPlaybackMode::Regular,
-            add_track_output_bus_name: "Master".to_owned(),
+            add_track_output_bus_names: vec!["Master".to_owned()],
+            add_track_output_bus_text: String::new(),
             add_track_recording_adjustment: RecordingOffsetAdjustmentState::default(),
             add_track_recording_frames: 0,
             add_track_processor_adjustment: ProcessorLatencyAdjustmentState::default(),
@@ -1548,6 +1572,7 @@ impl AppWidget {
             &state.audio_drivers,
             &state.track_processors,
             script_paths,
+            &settings_bus_options(state),
         );
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
@@ -1881,7 +1906,8 @@ impl AppWidget {
         self.add_track_dry_midi = configuration.dry_midi;
         self.add_track_processor = configuration.processor;
         self.add_track_default_playback_mode = configuration.default_playback_mode;
-        self.add_track_output_bus_name = configuration.output_bus_name;
+        self.add_track_output_bus_names = configuration.output_bus_names;
+        self.add_track_output_bus_text = String::new();
         self.add_track_recording_adjustment = configuration.recording_adjustment;
         self.add_track_recording_frames = configuration.recording_frames;
         self.add_track_processor_adjustment = configuration.processor_adjustment;
@@ -2221,25 +2247,29 @@ impl AppWidget {
                     dry_midi: self.add_track_dry_midi,
                     processor: self.add_track_processor.clone(),
                     default_playback_mode: self.add_track_default_playback_mode,
-                    output_bus_name: self.add_track_output_bus_name.clone(),
+                    output_bus_names: self.add_track_output_bus_names.clone(),
+                    output_bus_text: std::mem::take(&mut self.add_track_output_bus_text),
                     recording_adjustment: self.add_track_recording_adjustment,
                     recording_frames: self.add_track_recording_frames,
                     processor_adjustment: self.add_track_processor_adjustment,
                     processor_frames: self.add_track_processor_frames,
                 };
+                let bus_choices = bus_options(state, &configuration);
                 let _configuration_ui = show_new_track_configuration(
                     ui,
                     "add_track_configuration",
                     &mut configuration,
                     processors,
+                    &bus_choices,
                 );
+                self.add_track_output_bus_text = configuration.output_bus_text.clone();
                 self.add_track_mode = configuration.mode;
                 self.add_track_audio_channels = configuration.audio_channels;
                 self.add_track_midi = configuration.midi;
                 self.add_track_dry_midi = configuration.dry_midi;
                 self.add_track_processor = configuration.processor;
                 self.add_track_default_playback_mode = configuration.default_playback_mode;
-                self.add_track_output_bus_name = configuration.output_bus_name;
+                self.add_track_output_bus_names = configuration.output_bus_names;
                 self.add_track_recording_adjustment = configuration.recording_adjustment;
                 self.add_track_recording_frames = configuration.recording_frames;
                 self.add_track_processor_adjustment = configuration.processor_adjustment;
@@ -2341,8 +2371,7 @@ impl AppWidget {
                 processor_adjustment: self.add_track_processor_adjustment,
                 processor_manual_frames: self.add_track_processor_frames,
             },
-            initial_output_bus_name: (!self.add_track_output_bus_name.trim().is_empty())
-                .then(|| self.add_track_output_bus_name.trim().to_owned()),
+            initial_output_bus_names: self.add_track_output_bus_names.clone(),
             creation_request_id: None,
         })
     }
@@ -2356,7 +2385,8 @@ impl AppWidget {
             dry_midi: self.add_track_dry_midi,
             processor: self.add_track_processor.clone(),
             default_playback_mode: self.add_track_default_playback_mode,
-            output_bus_name: self.add_track_output_bus_name.clone(),
+            output_bus_names: self.add_track_output_bus_names.clone(),
+            output_bus_text: self.add_track_output_bus_text.clone(),
             recording_adjustment: self.add_track_recording_adjustment,
             recording_frames: self.add_track_recording_frames,
             processor_adjustment: self.add_track_processor_adjustment,
@@ -2775,17 +2805,24 @@ fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> A
 }
 
 #[derive(Default)]
-pub(crate) struct NewTrackConfigurationUi {
+pub struct NewTrackConfigurationUi {
     pub midi_id: Option<egui::Id>,
     pub recording_frames_rect: Option<egui::Rect>,
     pub processor_frames_rect: Option<egui::Rect>,
 }
 
-pub(crate) fn show_new_track_configuration(
+pub struct BusOption {
+    pub name: String,
+    pub channel_count: usize,
+    pub compatible: bool,
+}
+
+pub fn show_new_track_configuration(
     ui: &mut egui::Ui,
     id: &str,
     configuration: &mut NewTrackConfiguration,
     processors: &[TrackProcessorDescriptor],
+    buses: &[BusOption],
 ) -> NewTrackConfigurationUi {
     if configuration.mode == AddTrackMode::DryWet
         && configuration.processor.as_ref().is_none_or(|selected| {
@@ -2860,8 +2897,13 @@ pub(crate) fn show_new_track_configuration(
                 }
                 ui.end_row();
 
-                ui.label("Output bus:");
-                ui.text_edit_singleline(&mut configuration.output_bus_name);
+                ui.label("Output buses:");
+                show_output_bus_picker(
+                    ui,
+                    &mut configuration.output_bus_names,
+                    &mut configuration.output_bus_text,
+                    buses,
+                );
                 ui.end_row();
 
                 let audio_enabled = configuration.mode != AddTrackMode::Trigger;
@@ -3024,6 +3066,104 @@ pub(crate) fn show_new_track_configuration(
             });
     });
     response
+}
+
+fn settings_bus_options(state: &AppState) -> Vec<BusOption> {
+    state
+        .buses
+        .iter()
+        .map(|bus| BusOption {
+            name: bus.name.clone(),
+            channel_count: bus.channels.len(),
+            compatible: true,
+        })
+        .collect()
+}
+
+fn bus_options(state: &AppState, configuration: &NewTrackConfiguration) -> Vec<BusOption> {
+    let sources = configuration_source_channels(configuration);
+    state
+        .buses
+        .iter()
+        .map(|bus| BusOption {
+            name: bus.name.clone(),
+            channel_count: bus.channels.len(),
+            compatible: sources == bus.channels.len() || sources == 1,
+        })
+        .collect()
+}
+
+fn configuration_source_channels(configuration: &NewTrackConfiguration) -> usize {
+    match configuration.mode {
+        AddTrackMode::Regular => configuration.audio_channels as usize,
+        AddTrackMode::Trigger => 0,
+        AddTrackMode::DryWet => configuration.audio_channels as usize,
+    }
+}
+
+fn show_output_bus_picker(
+    ui: &mut egui::Ui,
+    selected: &mut Vec<String>,
+    custom_name: &mut String,
+    buses: &[BusOption],
+) {
+    ui.vertical(|ui| {
+        if selected.is_empty() {
+            ui.weak("No buses selected.");
+        } else {
+            ui.horizontal_wrapped(|ui| {
+                let mut removed: Option<String> = None;
+                for name in selected.iter() {
+                    let known = buses.iter().any(|bus| bus.name == *name);
+                    let label = if known {
+                        name.clone()
+                    } else {
+                        format!("{name} (new)")
+                    };
+                    ui.horizontal(|ui| {
+                        ui.label(label);
+                        if ui.small_button("×").clicked() {
+                            removed = Some(name.clone());
+                        }
+                    });
+                }
+                if let Some(name) = removed {
+                    selected.retain(|selected| *selected != name);
+                }
+            });
+        }
+        egui::ComboBox::from_id_salt("output_bus_picker")
+            .selected_text("Add bus…")
+            .show_ui(ui, |ui| {
+                for bus in buses {
+                    let mut is_selected = selected.contains(&bus.name);
+                    let response = ui.add_enabled(
+                        bus.compatible,
+                        egui::Checkbox::new(&mut is_selected, &bus.name),
+                    );
+                    if response.changed() {
+                        if is_selected {
+                            if !selected.contains(&bus.name) {
+                                selected.push(bus.name.clone());
+                            }
+                        } else {
+                            selected.retain(|selected| *selected != bus.name);
+                        }
+                    }
+                }
+            });
+        ui.horizontal(|ui| {
+            ui.text_edit_singleline(custom_name);
+            let add = ui.button("Add name");
+            if add.clicked() {
+                let name = custom_name.trim().to_owned();
+                if !name.is_empty() && !selected.contains(&name) {
+                    selected.push(name);
+                }
+                custom_name.clear();
+            }
+        });
+    });
 }
 
 fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
@@ -3823,7 +3963,7 @@ mod tests {
                     processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
                     processor_manual_frames: 256,
                 },
-                initial_output_bus_name: Some("Master".to_owned()),
+                initial_output_bus_names: vec!["Master".to_owned()],
                 creation_request_id: None,
             }))
         );
@@ -3878,7 +4018,7 @@ mod tests {
                     midi: false,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: Some("Master".to_owned()),
+                initial_output_bus_names: vec!["Master".to_owned()],
                 creation_request_id: None,
             }))
         );
@@ -3939,7 +4079,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: Some("Master".to_owned()),
+                initial_output_bus_names: vec!["Master".to_owned()],
                 creation_request_id: None,
             }))
         );
@@ -3993,7 +4133,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: Some("Master".to_owned()),
+                initial_output_bus_names: vec!["Master".to_owned()],
                 creation_request_id: None,
             }))
         );
@@ -4381,7 +4521,7 @@ mod tests {
             DEFAULT_NEW_TRACK_PLAYBACK_MODE,
             "dry_through_wet".to_owned(),
         );
-        draft.set(DEFAULT_NEW_TRACK_OUTPUT_BUS, "Cue".to_owned());
+        draft.set(DEFAULT_NEW_TRACK_OUTPUT_BUS, "Cue, Master".to_owned());
         draft.set(
             DEFAULT_NEW_TRACK_RECORDING_ADJUSTMENT,
             "automatic_plus_trim".to_owned(),
@@ -4429,7 +4569,10 @@ mod tests {
             widget.add_track_default_playback_mode,
             DefaultPlaybackMode::DryThroughWet
         );
-        assert_eq!(widget.add_track_output_bus_name, "Cue");
+        assert_eq!(
+            widget.add_track_output_bus_names,
+            vec!["Cue".to_owned(), "Master".to_owned()]
+        );
         assert_eq!(widget.add_track_recording_frames, -24);
         assert_eq!(
             widget.add_track_processor_adjustment,
@@ -4450,6 +4593,43 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn output_bus_names_parse_dedupe_and_format() {
+        assert_eq!(
+            parse_output_bus_names("Master, Cue ,,Master , "),
+            vec!["Master".to_owned(), "Cue".to_owned()]
+        );
+        assert!(parse_output_bus_names("  , ").is_empty());
+        assert_eq!(
+            format_output_bus_names(&["Master".to_owned(), "Cue".to_owned()]),
+            "Master, Cue"
+        );
+        let mut configuration = NewTrackConfiguration {
+            mode: AddTrackMode::Regular,
+            audio_channels: 2,
+            midi: false,
+            dry_midi: false,
+            processor: None,
+            default_playback_mode: DefaultPlaybackMode::Regular,
+            output_bus_names: vec!["Cue".to_owned()],
+            output_bus_text: "Master, Cue, Master ".to_owned(),
+            recording_adjustment: RecordingOffsetAdjustmentState::Automatic,
+            recording_frames: 0,
+            processor_adjustment: ProcessorLatencyAdjustmentState::Automatic,
+            processor_frames: 0,
+        };
+        let mut extra = parse_output_bus_names(&configuration.output_bus_text);
+        for name in extra.drain(..) {
+            if !configuration.output_bus_names.contains(&name) {
+                configuration.output_bus_names.push(name);
+            }
+        }
+        assert_eq!(
+            configuration.output_bus_names,
+            vec!["Cue".to_owned(), "Master".to_owned()]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn add_track_make_default_saves_all_track_defaults_after_creation_confirmation() {
         let settings = settings_state();
         let mut widget = AppWidget::default();
@@ -4460,7 +4640,7 @@ mod tests {
         widget.add_track_dry_midi = true;
         widget.add_track_processor = Some(TrackProcessorTypeId::new("processor"));
         widget.add_track_default_playback_mode = DefaultPlaybackMode::DryThroughWet;
-        widget.add_track_output_bus_name = "Monitor".to_owned();
+        widget.add_track_output_bus_names = vec!["Monitor".to_owned()];
         widget.add_track_recording_adjustment = RecordingOffsetAdjustmentState::Automatic;
         widget.add_track_recording_frames = -9;
         widget.add_track_processor_adjustment = ProcessorLatencyAdjustmentState::AutomaticPlusTrim;

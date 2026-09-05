@@ -17,7 +17,10 @@ use shoop_settings::{
 };
 
 use crate::{
-    app_widget::{show_new_track_configuration, NewTrackConfiguration},
+    app_widget::{
+        format_output_bus_names, parse_output_bus_names, show_new_track_configuration, BusOption,
+        NewTrackConfiguration,
+    },
     audio_driver_config_from_draft, colors, AppAction, AudioDriverKind, AudioDriverRuntimeState,
     ScriptId, ScriptKind, ScriptLifecycle, ScriptLogLevel, ScriptState, ScriptingState,
     TrackProcessorDescriptor, BUILTINS_LOCATION, BUILTIN_SCRIPTS, TOUCH_MODE, UI_SCALE_FACTOR,
@@ -258,6 +261,7 @@ impl SettingsDialog {
         audio_drivers: &AudioDriverRuntimeState,
         track_processors: &[TrackProcessorDescriptor],
         script_paths: Option<&BTreeMap<ScriptId, String>>,
+        buses: &[BusOption],
     ) -> SettingsDialogResponse {
         if !self.open {
             return SettingsDialogResponse::default();
@@ -344,7 +348,11 @@ impl SettingsDialog {
                                                     .definition(crate::DEFAULT_NEW_TRACK_MODE.id())
                                                     .is_some()
                                             {
-                                                self.show_track_defaults(ui, track_processors);
+                                                self.show_track_defaults(
+                                                    ui,
+                                                    track_processors,
+                                                    buses,
+                                                );
                                             } else {
                                                 self.show_definitions(ui, &active_category);
                                             }
@@ -832,7 +840,12 @@ impl SettingsDialog {
             });
     }
 
-    fn show_track_defaults(&mut self, ui: &mut egui::Ui, processors: &[TrackProcessorDescriptor]) {
+    fn show_track_defaults(
+        &mut self,
+        ui: &mut egui::Ui,
+        processors: &[TrackProcessorDescriptor],
+        buses: &[BusOption],
+    ) {
         ui.heading("New track defaults");
         ui.label(
             "These fields match the Add Track dialog. Track names remain generated from their position.",
@@ -846,12 +859,23 @@ impl SettingsDialog {
             ui.colored_label(colors::ERROR, "Invalid new-track settings");
             return;
         };
+        if configuration.output_bus_text.is_empty() {
+            configuration.output_bus_text =
+                format_output_bus_names(&configuration.output_bus_names);
+        }
         show_new_track_configuration(
             ui,
             "settings_track_defaults",
             &mut configuration,
             processors,
+            buses,
         );
+        let mut extra = parse_output_bus_names(&configuration.output_bus_text);
+        for name in extra.drain(..) {
+            if !configuration.output_bus_names.contains(&name) {
+                configuration.output_bus_names.push(name);
+            }
+        }
         configuration.write_to_settings_draft(draft);
     }
 
@@ -1712,6 +1736,7 @@ mod tests {
                         &AudioDriverRuntimeState::default(),
                         &[],
                         None,
+                        &[],
                     );
                 },
             );
@@ -1814,6 +1839,7 @@ mod tests {
                         &AudioDriverRuntimeState::default(),
                         &[],
                         None,
+                        &[],
                     );
                 },
             );
@@ -1918,6 +1944,7 @@ mod tests {
                         &audio,
                         &[],
                         None,
+                        &[],
                     );
                 },
             );
@@ -2532,6 +2559,7 @@ mod tests {
                 &AudioDriverRuntimeState::default(),
                 &[],
                 None,
+                &[],
             );
         });
         output.textures_delta.clear();

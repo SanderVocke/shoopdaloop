@@ -1689,7 +1689,7 @@ pub struct TrackSpec {
     pub name: String,
     pub topology: TrackSpecTopology,
     pub latency: TrackLatencySpec,
-    pub initial_output_bus_name: Option<String>,
+    pub initial_output_bus_names: Vec<String>,
     pub creation_request_id: Option<u64>,
 }
 
@@ -1822,7 +1822,7 @@ impl From<DirectTrackSpec> for TrackSpec {
                 midi: value.midi,
             },
             latency: TrackLatencySpec::default(),
-            initial_output_bus_name: None,
+            initial_output_bus_names: Vec::new(),
             creation_request_id: None,
         }
     }
@@ -2549,7 +2549,7 @@ mod tests {
                 default_playback_mode: DefaultPlaybackMode::Regular,
             },
             latency: TrackLatencySpec::default(),
-            initial_output_bus_name: None,
+            initial_output_bus_names: Vec::new(),
             creation_request_id: None,
         };
         assert_eq!(

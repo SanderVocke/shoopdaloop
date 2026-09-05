@@ -32,11 +32,12 @@ mod waveform_widget;
 
 pub use app_widget::{
     audio_driver_config_from_draft, audio_driver_config_from_snapshot,
-    carla_hosting_mode_from_snapshot, default_builtins_location, loop_edge_smoothing_ms,
-    master_auto_connect, register_audio_settings, register_bundled_script_settings,
-    register_carla_settings, register_script_settings, register_settings,
-    register_settings_with_appearance_defaults, register_settings_with_ui_scale_default,
-    selected_audio_driver, set_selected_audio_driver, AppWidget, AppWidgetResponse,
+    carla_hosting_mode_from_snapshot, default_builtins_location, format_output_bus_names,
+    loop_edge_smoothing_ms, master_auto_connect, parse_output_bus_names, register_audio_settings,
+    register_bundled_script_settings, register_carla_settings, register_script_settings,
+    register_settings, register_settings_with_appearance_defaults,
+    register_settings_with_ui_scale_default, selected_audio_driver, set_selected_audio_driver,
+    show_new_track_configuration, AppWidget, AppWidgetResponse, BusOption, NewTrackConfiguration,
     TrackDefaultSaveResult, APC_MINI_SCRIPT_ENABLED, BUILTINS_LOCATION, BUILTIN_SCRIPTS,
     CARLA_HOSTING_MODE, CPAL_BUFFER_SIZE, CPAL_CAPTURE_RING_FRAMES, CPAL_CLIENT_NAME, CPAL_HOST,
     CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE, CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS,

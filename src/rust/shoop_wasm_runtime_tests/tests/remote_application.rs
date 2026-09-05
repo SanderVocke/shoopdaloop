@@ -649,7 +649,7 @@ async fn remote_builtin_synth_state_round_trips_through_session() {
             default_playback_mode: DefaultPlaybackMode::DryThroughWet,
         },
         latency: Default::default(),
-        initial_output_bus_name: None,
+        initial_output_bus_names: Vec::new(),
         creation_request_id: None,
     }));
     harness
