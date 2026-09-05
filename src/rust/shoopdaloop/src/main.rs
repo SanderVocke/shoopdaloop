@@ -1852,7 +1852,18 @@ fn reconcile_loop_smoothing_settings(
             3
         }
     };
+    let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "frontend.audio.master_auto_connect_settings_fallback"
+            );
+            true
+        }
+    };
     dispatch(AppIntent::SetLoopSmoothingMs(milliseconds))?;
+    dispatch(AppIntent::SetMasterAutoConnect(master_auto_connect))?;
     *applied_revision = settings.revision();
     Ok(())
 }
@@ -1940,7 +1951,23 @@ impl Runtime {
         #[cfg(feature = "native-fx")]
         warnings.extend(carla_configuration_warning);
         warnings.extend(backend_warning);
-        let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
+        let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
+            Ok(enabled) => enabled,
+            Err(error) => {
+                let warning = format!(
+                    "Could not use Master auto-connect setting: {error}; using automatic connection"
+                );
+                warnings.push(warning);
+                true
+            }
+        };
+        let runtime = ApplicationRuntime::start_with_options(
+            Box::new(backend),
+            shoop_app::ApplicationStartOptions {
+                startup_scripts,
+                master_auto_connect,
+            },
+        )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
         for warning in warnings {
@@ -2480,6 +2507,16 @@ impl Runtime {
             }
         };
         shoop_backend::Backend::set_loop_smoothing_ms(&mut backend, loop_smoothing_ms)?;
+        let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
+            Ok(enabled) => enabled,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "frontend.audio.master_auto_connect_settings_fallback"
+                );
+                true
+            }
+        };
         let mode = if worker || offline {
             set_offline_audio_permission_presentation();
             BrowserRuntimeMode::Worker(browser_worker::BrowserWorkerDriver::new(transport)?)
@@ -2487,9 +2524,12 @@ impl Runtime {
             BrowserRuntimeMode::WebAudio(browser_audio::BrowserAudioController::new(transport)?)
         };
         let mut runtime = Self {
-            runtime: CooperativeApplicationRuntime::start_with_scripts_and_midi(
+            runtime: CooperativeApplicationRuntime::start_with_options_and_midi(
                 Box::new(backend),
-                Vec::new(),
+                shoop_app::ApplicationStartOptions {
+                    startup_scripts: Vec::new(),
+                    master_auto_connect,
+                },
                 midi_service,
             )?,
             mode,
@@ -5900,13 +5940,19 @@ mod tests {
         );
         assert_eq!(applied_revision, 0);
 
-        let mut received = None;
+        let mut received = Vec::new();
         reconcile_loop_smoothing_settings(&settings, &mut applied_revision, |intent| {
-            received = Some(intent);
+            received.push(intent);
             Ok(())
         })
         .unwrap();
-        assert_eq!(received, Some(AppIntent::SetLoopSmoothingMs(0)));
+        assert_eq!(
+            received,
+            vec![
+                AppIntent::SetLoopSmoothingMs(0),
+                AppIntent::SetMasterAutoConnect(true),
+            ]
+        );
         assert_eq!(applied_revision, 42);
 
         reconcile_loop_smoothing_settings(&settings, &mut applied_revision, |_| {

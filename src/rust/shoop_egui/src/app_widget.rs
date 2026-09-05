@@ -105,6 +105,7 @@ pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scriptin
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
+pub const MASTER_AUTO_CONNECT: SettingKey<bool> = SettingKey::new("audio.master_auto_connect");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
 pub const DUMMY_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.dummy.buffer_size");
@@ -388,6 +389,18 @@ pub fn register_audio_settings(
     )?;
     builder.register(
         SettingDefinition::new(
+            MASTER_AUTO_CONNECT,
+            true,
+            "Audio",
+            "Connect Master to outputs",
+            "Automatically connect a new session's stereo Master bus to the preferred playback ports.",
+        )
+        .category_order(5)
+        .setting_order(2)
+        .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(
             SELECTED_AUDIO_DRIVER,
             "dummy".to_owned(),
             "Audio",
@@ -611,6 +624,12 @@ pub fn carla_hosting_mode_from_snapshot(
 pub fn loop_edge_smoothing_ms(snapshot: &SettingsSnapshot) -> Result<u32, String> {
     snapshot
         .get(LOOP_EDGE_SMOOTHING_MS)
+        .map_err(|error| error.to_string())
+}
+
+pub fn master_auto_connect(snapshot: &SettingsSnapshot) -> Result<bool, String> {
+    snapshot
+        .get(MASTER_AUTO_CONNECT)
         .map_err(|error| error.to_string())
 }
 
