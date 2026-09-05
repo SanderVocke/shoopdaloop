@@ -159,7 +159,6 @@ jobs:
             trunk_args: ""
             rust_targets: wasm32-unknown-unknown
             artifact: shoopdaloop-web-wasm32-debug.zip
-            html_artifact: shoopdaloop-web-wasm32-debug.html
           - target: web
             os: ubuntu-24.04
             arch: wasm32
@@ -526,6 +525,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          PROFILE: ${{ matrix.profile }}
         run: |
           python3 - <<'PY'
           import os
@@ -536,8 +536,10 @@ jobs:
           html = [path for path in artifacts if path.suffix == ".html"]
           if len(archives) != 1:
               raise RuntimeError(f"expected one packaged archive, found: {archives}")
-          if os.environ["TARGET"] == "web" and len(html) != 1:
-              raise RuntimeError(f"expected one packaged HTML file, found: {html}")
+          if os.environ["TARGET"] == "web" and os.environ["PROFILE"] == "release" and len(html) != 1:
+              raise RuntimeError(f"expected one release HTML file, found: {html}")
+          if os.environ["TARGET"] == "web" and os.environ["PROFILE"] == "debug" and html:
+              raise RuntimeError(f"unexpected debug HTML files: {html}")
           if os.environ["TARGET"] != "web" and html:
               raise RuntimeError(f"unexpected packaged HTML files: {html}")
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as environment:
@@ -561,7 +563,7 @@ jobs:
           archive: false
 
       - name: Upload core-only single-file web application
-        if: matrix.target == 'web' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.html_artifact }}
@@ -572,7 +574,7 @@ jobs:
         if: env.ACT == 'true'
         run: |
           test -s "$SHOOP_ARTIFACT"
-          if [ "${{ matrix.target }}" = "web" ]; then
+          if [ "${{ matrix.target }}" = "web" ] && [ "${{ matrix.profile }}" = "release" ]; then
             test -s "$SHOOP_HTML_ARTIFACT"
           fi
           ls -lh artifacts
@@ -796,11 +798,12 @@ jobs:
 
       - name: Verify web application artifacts
         if: matrix.target == 'web'
-        run: >-
-          python3 src/rust/shoopdaloop/package_artifacts.py verify
-          --platform web
-          --artifact "$SHOOP_ARTIFACT"
-          --html "$SHOOP_HTML_ARTIFACT"
+        run: |
+          args=(--platform web --artifact "$SHOOP_ARTIFACT")
+          if [ -n "${SHOOP_HTML_ARTIFACT:-}" ]; then
+            args+=(--html "$SHOOP_HTML_ARTIFACT")
+          fi
+          python3 src/rust/shoopdaloop/package_artifacts.py verify "${args[@]}"
 
       - name: Check WebAssembly packages
         if: matrix.target == 'web'
@@ -940,7 +943,7 @@ jobs:
           done
 
       - name: Run retained self-contained Chrome AudioWorklet smoke
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         env:
           SELF_CONTAINED_PATH: ${{ env.SHOOP_HTML_ARTIFACT }}

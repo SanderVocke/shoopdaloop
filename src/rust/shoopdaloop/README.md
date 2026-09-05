@@ -147,12 +147,12 @@ python3 src/rust/shoopdaloop/package_artifacts.py native \
   --binary target/debug/shoopdaloop --carla-runtime /path/to/normalized-carla \
   --output-dir artifacts
 
-# From src/rust/shoopdaloop after a Trunk debug build.
+# From src/rust/shoopdaloop after a Trunk release build.
 python3 package_artifacts.py web \
-  --profile debug --dist dist --output-dir ../../../artifacts
+  --profile release --dist dist --output-dir ../../../artifacts
 ```
 
-Native CI outputs are unsigned application archives rather than installers. They include the normalized, manifest-verified Carla runtime component; `scripts/carla_runtime.py` creates and verifies that component from the pinned upstream payload. The hosted web archive supports physical browser audio and contains the complete UI, external built-ins catalog/tree, shared raw Wasm host bridge, AudioWorklet, and Worker assets. The separately generated profile-named HTML embeds those executable assets and the built-ins tree, and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` (or `?worker=1`) to select the remote Worker dummy instead. It runs the same import-free Wasm engine and production protocol/client as the AudioWorklet, uses 48 kHz/128-frame realtime-paced quanta, and requests no physical audio permission.
+Native CI outputs are unsigned application archives rather than installers. They include the normalized, manifest-verified Carla runtime component; `scripts/carla_runtime.py` creates and verifies that component from the pinned upstream payload. The hosted web archive supports physical browser audio and contains the complete UI, external built-ins catalog/tree, shared raw Wasm host bridge, AudioWorklet, and Worker assets. The separately generated release HTML embeds those executable assets and the built-ins tree, and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` (or `?worker=1`) to select the remote Worker dummy instead. It runs the same import-free Wasm engine and production protocol/client as the AudioWorklet, uses 48 kHz/128-frame realtime-paced quanta, and requests no physical audio permission. Debug web builds produce only the hosted archive to avoid materializing their large symbol-bearing Wasm modules as base64 strings in a browser page.
 
 `raw_wasm_host.js` is the single owner of module instantiation, ABI buffers, command/response bytes, process calls, memory-view recovery, and destruction. The AudioWorklet adapter supplies physical callbacks. The Worker adapter has isolated engine/timer/port ownership and supports realtime-paced production operation plus explicit and cooperative modes only through an explicitly transferred fixture-control port. Fixture batches and realtime catch-up are bounded and yield to command/shutdown delivery.
 
@@ -160,7 +160,7 @@ Generated `dist`, worklet, staging, and artifact files are not committed.
 
 ## Cross-target CI
 
-`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a complete hosted bundle archive and a separately downloadable core-only HTML file that is explicitly not a built-ins distribution. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
+`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives, both web cells upload a complete hosted bundle archive, and web release additionally uploads a core-only single-file HTML artifact. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
 
 For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
 
@@ -214,7 +214,7 @@ cd src/rust/shoopdaloop
 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 OUTPUT_ONLY=1 \
   SELF_CONTAINED_PATH=$(find ../../../artifacts -maxdepth 1 -type f \
-    -name 'shoopdaloop-web-wasm32-debug-*.html' -print -quit) \
+    -name 'shoopdaloop-web-wasm32-release-*.html' -print -quit) \
   node --experimental-websocket browser_smoke.mjs
 xvfb-run -a python3 browser_firefox_smoke.py
 ```
