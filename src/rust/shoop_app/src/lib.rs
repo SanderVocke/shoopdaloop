@@ -116,6 +116,21 @@ enum SaturatedConnection {
     Mixer(MixerRouteState),
 }
 
+#[derive(Clone, Debug)]
+pub struct ApplicationStartOptions {
+    pub startup_scripts: Vec<StartupScript>,
+    pub master_auto_connect: bool,
+}
+
+impl Default for ApplicationStartOptions {
+    fn default() -> Self {
+        Self {
+            startup_scripts: Vec::new(),
+            master_auto_connect: true,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ApplicationHandle {
     sender: SyncSender<ApplicationMessage>,
@@ -257,13 +272,30 @@ pub struct ApplicationRuntime {
 
 impl ApplicationRuntime {
     pub fn start(backend: Box<dyn Backend + Send>) -> Result<Self> {
-        Self::start_with_scripts(backend, Vec::new())
+        Self::start_with_options(backend, ApplicationStartOptions::default())
     }
 
     pub fn start_with_scripts(
-        mut backend: Box<dyn Backend + Send>,
+        backend: Box<dyn Backend + Send>,
         startup_scripts: Vec<StartupScript>,
     ) -> Result<Self> {
+        Self::start_with_options(
+            backend,
+            ApplicationStartOptions {
+                startup_scripts,
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn start_with_options(
+        mut backend: Box<dyn Backend + Send>,
+        options: ApplicationStartOptions,
+    ) -> Result<Self> {
+        let ApplicationStartOptions {
+            startup_scripts,
+            master_auto_connect,
+        } = options;
         let _span = tracing::info_span!(
             "frontend.app.runtime_start",
             startup_script_count = startup_scripts.len()
@@ -293,6 +325,7 @@ impl ApplicationRuntime {
                     file_outputs,
                     preview_outputs,
                     true,
+                    master_auto_connect,
                 ) {
                     Ok(mut model) => {
                         let startup_script_ids = model.install_startup_scripts(startup_scripts);
@@ -371,21 +404,53 @@ pub struct CooperativeApplicationRuntime {
 
 impl CooperativeApplicationRuntime {
     pub fn start(backend: Box<dyn Backend>) -> Result<Self> {
-        Self::start_with_scripts(backend, Vec::new())
+        Self::start_with_options(backend, ApplicationStartOptions::default())
     }
 
     pub fn start_with_scripts(
         backend: Box<dyn Backend>,
         startup_scripts: Vec<StartupScript>,
     ) -> Result<Self> {
-        Self::start_with_scripts_and_midi(backend, startup_scripts, Box::new(NullMidiService))
+        Self::start_with_options(
+            backend,
+            ApplicationStartOptions {
+                startup_scripts,
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn start_with_options(
+        backend: Box<dyn Backend>,
+        options: ApplicationStartOptions,
+    ) -> Result<Self> {
+        Self::start_with_options_and_midi(backend, options, Box::new(NullMidiService))
     }
 
     pub fn start_with_scripts_and_midi(
-        mut backend: Box<dyn Backend>,
+        backend: Box<dyn Backend>,
         startup_scripts: Vec<StartupScript>,
         midi: Box<dyn shoop_scripting::MidiControlService>,
     ) -> Result<Self> {
+        Self::start_with_options_and_midi(
+            backend,
+            ApplicationStartOptions {
+                startup_scripts,
+                ..Default::default()
+            },
+            midi,
+        )
+    }
+
+    pub fn start_with_options_and_midi(
+        mut backend: Box<dyn Backend>,
+        options: ApplicationStartOptions,
+        midi: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> Result<Self> {
+        let ApplicationStartOptions {
+            startup_scripts,
+            master_auto_connect,
+        } = options;
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let preview_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let mut model = ApplicationModel::initialize(
@@ -393,6 +458,7 @@ impl CooperativeApplicationRuntime {
             Arc::clone(&file_outputs),
             Arc::clone(&preview_outputs),
             false,
+            master_auto_connect,
         )?;
         model.script_manager = ScriptManager::new_with_midi(midi);
         model.install_startup_scripts(startup_scripts);
@@ -657,6 +723,7 @@ struct ApplicationModel {
     backend_connection_revision: u64,
     backend_mixer_revision: u64,
     connection_backend_available: bool,
+    master_auto_connect: bool,
     master_bootstrap_pending: bool,
     master_bootstrap_after_load: bool,
     connection_view: Arc<ConnectionViewState>,
@@ -1510,6 +1577,7 @@ impl ApplicationModel {
         file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
         preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
         background_session_encoding: bool,
+        master_auto_connect: bool,
     ) -> Result<Self> {
         #[cfg(target_arch = "wasm32")]
         let _ = background_session_encoding;
@@ -1706,7 +1774,8 @@ impl ApplicationModel {
             backend_connection_revision: 0,
             backend_mixer_revision: initial_backend.mixer.revision,
             connection_backend_available: false,
-            master_bootstrap_pending: true,
+            master_auto_connect,
+            master_bootstrap_pending: master_auto_connect,
             master_bootstrap_after_load: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
@@ -1809,6 +1878,16 @@ impl ApplicationModel {
             AppIntent::SetLoopSmoothingMs(milliseconds) => backend
                 .set_loop_smoothing_ms(milliseconds)
                 .map_err(|error| error.to_string()),
+            AppIntent::SetMasterAutoConnect(enabled) => {
+                self.master_auto_connect = enabled;
+                if enabled {
+                    Ok(())
+                } else {
+                    self.master_bootstrap_pending = false;
+                    self.master_bootstrap_after_load = false;
+                    Ok(())
+                }
+            }
             AppIntent::SetLoopTimeline {
                 loop_id,
                 start_offset,
@@ -4063,7 +4142,7 @@ impl ApplicationModel {
         self.ensure_bus_structures_settled()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Creating new session");
         self.master_bootstrap_pending = false;
-        self.master_bootstrap_after_load = true;
+        self.master_bootstrap_after_load = self.master_auto_connect;
         let document = new_session_document(self.status.sample_rate);
         self.begin_session_load(
             "new session".to_owned(),
@@ -4509,7 +4588,8 @@ impl ApplicationModel {
                 Ok(BackendAsyncResult::Ready(replacement)) => {
                     match self.apply_loaded_session(backend, &bundle, &replacement) {
                         Ok(()) => {
-                            self.master_bootstrap_pending = self.master_bootstrap_after_load;
+                            self.master_bootstrap_pending =
+                                self.master_auto_connect && self.master_bootstrap_after_load;
                             self.master_bootstrap_after_load = false;
                             self.finish_io(
                                 IoTaskStatus::Completed,
@@ -5103,7 +5183,7 @@ impl ApplicationModel {
             created.track_id,
             backend_default_playback_mode(default_playback_mode),
         );
-        let initial_output_bus_name = spec.initial_output_bus_name.clone();
+        let initial_output_bus_names = spec.initial_output_bus_names.clone();
         self.tracks.push(TrackModel {
             id: track_id,
             backend_id: created.track_id,
@@ -5134,8 +5214,8 @@ impl ApplicationModel {
             },
             creation_request_id: spec.creation_request_id,
         });
-        if let Some(bus_name) = initial_output_bus_name {
-            self.connect_new_track_to_bus(backend, track_id, &bus_name);
+        for bus_name in &initial_output_bus_names {
+            self.connect_new_track_to_bus(backend, track_id, bus_name);
         }
         Ok(())
     }
@@ -8420,7 +8500,7 @@ impl ApplicationModel {
     }
 
     fn try_bootstrap_master(&mut self, backend: &mut dyn Backend) {
-        if !self.master_bootstrap_pending {
+        if !self.master_auto_connect || !self.master_bootstrap_pending {
             return;
         }
         let Some(bus) = self
@@ -13349,6 +13429,7 @@ mod tests {
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         for name in ["Script", "First", "Second", "Nested"] {
@@ -14519,6 +14600,7 @@ mod tests {
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         for name in ["Script", "First", "Second"] {
@@ -14721,6 +14803,7 @@ mod tests {
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -14818,6 +14901,7 @@ mod tests {
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         let spec = DirectTrackSpec {
@@ -14918,6 +15002,7 @@ mod tests {
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         for index in 1..=3 {
@@ -15003,6 +15088,7 @@ mod tests {
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -15215,7 +15301,7 @@ mod tests {
                     processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
                     processor_manual_frames: 11,
                 },
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: Some(41),
             }))
             .unwrap();
@@ -15412,7 +15498,7 @@ mod tests {
                     default_playback_mode: shoop_app_api::DefaultPlaybackMode::Regular,
                 },
                 latency: shoop_app_api::TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15583,7 +15669,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15843,7 +15929,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -15990,7 +16076,7 @@ mod tests {
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -17356,6 +17442,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         for name in ["Target", "Rhythm", "Melody"] {
@@ -17595,6 +17682,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -17732,6 +17820,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         for name in ["Target", "Source", "Nested"] {
@@ -17903,6 +17992,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -18211,6 +18301,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -18267,6 +18358,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -18318,6 +18410,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -18793,6 +18886,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         for name in ["Target", "Source A", "Source B"] {
@@ -19871,7 +19965,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     midi: false,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: Some(42),
             }))
             .unwrap();
@@ -19985,7 +20079,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
         let mut backend = FakeBackend::default();
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         for name in ["first", "second", "third"] {
             model.handle_intent(
                 &mut backend,
@@ -20072,7 +20167,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
         let mut backend = FakeBackend::default();
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         for (name, audio_channels, midi) in [
             ("fails", 0, true),
             ("works", 0, true),
@@ -20161,7 +20257,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             features: shoop_app_api::TrackProcessorFeatures::default(),
             editor: None,
         }]);
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         for (name, audio_channels, midi) in [
             ("first", 0, true),
             ("second", 0, true),
@@ -20191,7 +20288,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }),
         );
@@ -20283,7 +20380,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
         let mut backend = FakeBackend::default();
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         for name in ["fails", "works"] {
             model.handle_intent(
                 &mut backend,
@@ -20469,7 +20567,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         model
             .add_track(
                 &mut backend,
@@ -20609,6 +20708,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -20665,6 +20765,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -20706,6 +20807,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -20800,6 +20902,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -20861,6 +20964,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -20946,6 +21050,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         let master = model.bus_order[0];
@@ -21153,6 +21258,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         let master = model.bus_order[0];
@@ -21213,6 +21319,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         let bus_id = *model.buses.keys().next().unwrap();
@@ -21337,6 +21444,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         let source_port_id = model.tracks[0]
@@ -21428,6 +21536,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         let add =
@@ -21442,7 +21551,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                                 midi: false,
                             },
                             latency: TrackLatencySpec::default(),
-                            initial_output_bus_name: Some("Master".to_owned()),
+                            initial_output_bus_names: vec!["Master".to_owned()],
                             creation_request_id: None,
                         },
                     )
@@ -21461,6 +21570,39 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         add(&mut model, &mut backend, "Mismatch", 3);
         assert!(model.pending_mixer_routes.is_empty());
         assert_eq!(model.confirmed_mixer_routes.len(), 4);
+
+        model
+            .add_bus(
+                &mut backend,
+                BusSpec {
+                    name: "Cue".to_owned(),
+                    channel_count: 2,
+                    creation_request_id: None,
+                },
+            )
+            .unwrap();
+        model
+            .add_track_spec(
+                &mut backend,
+                TrackSpec {
+                    name: "Fanout".to_owned(),
+                    topology: TrackSpecTopology::Direct {
+                        audio_channels: 2,
+                        midi: false,
+                    },
+                    latency: TrackLatencySpec::default(),
+                    initial_output_bus_names: vec![
+                        "Master".to_owned(),
+                        "Cue".to_owned(),
+                        "Missing".to_owned(),
+                    ],
+                    creation_request_id: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(model.pending_mixer_routes.len(), 4);
+        model.apply_mixer_snapshot(backend.poll().unwrap().mixer);
+        assert_eq!(model.confirmed_mixer_routes.len(), 8);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -21471,6 +21613,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
@@ -21499,6 +21642,30 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .count(),
             2
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn disabled_master_auto_connect_skips_bootstrap_for_new_sessions() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+            false,
+        )
+        .unwrap();
+        assert!(!model.master_auto_connect);
+        assert!(!model.master_bootstrap_pending);
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        assert!(model.pending_connections.is_empty());
+        model.handle_intent(&mut backend, AppIntent::SetMasterAutoConnect(true));
+        model.handle_intent(&mut backend, AppIntent::RequestNewSession);
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        assert!(model.master_bootstrap_pending || !model.pending_connections.is_empty());
+        model.handle_intent(&mut backend, AppIntent::SetMasterAutoConnect(false));
+        assert!(!model.master_bootstrap_pending);
+        assert!(!model.master_bootstrap_after_load);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -22193,6 +22360,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         let backend_data = backend.capture_session().unwrap();
@@ -23837,7 +24005,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::Regular,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -24250,7 +24418,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
 
         let mut snapshot = BackendSnapshot::default();
         snapshot.status.xruns = 2;
@@ -24281,7 +24450,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
 
         assert!(model.report_periodic_failure("test.operation", "first failure".to_owned()));
         assert!(!model.report_periodic_failure("test.operation", "repeated failure".to_owned()));
@@ -24348,7 +24518,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
 
         let mut snapshot = BackendSnapshot::default();
         snapshot.status.render_memory_growths = 1;
@@ -24368,7 +24539,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         model.apply_backend_snapshot(backend.poll().unwrap());
         model
             .add_track(
@@ -24470,7 +24642,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         model.apply_backend_snapshot(backend.poll().unwrap());
         model
             .add_track(
@@ -24513,7 +24686,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         model.apply_backend_snapshot(backend.poll().unwrap());
         model
             .add_track(
@@ -24663,7 +24837,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        let mut model =
+            ApplicationModel::initialize(&mut backend, files, previews, false, true).unwrap();
         model.apply_backend_snapshot(backend.poll().unwrap());
         let track_id = model.tracks[0].id;
         let backend_track = model.tracks[0].backend_id;
@@ -24871,6 +25046,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model.handle_intent(&mut backend, AppIntent::SetLoopSmoothingMs(23));
@@ -24940,7 +25116,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
                 },
                 latency: TrackLatencySpec::default(),
-                initial_output_bus_name: None,
+                initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }))
             .unwrap();
@@ -25122,6 +25298,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
+            true,
         )
         .unwrap();
         model
@@ -25139,7 +25316,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         default_playback_mode: DefaultPlaybackMode::Regular,
                     },
                     latency: TrackLatencySpec::default(),
-                    initial_output_bus_name: None,
+                    initial_output_bus_names: Vec::new(),
                     creation_request_id: None,
                 },
             )
