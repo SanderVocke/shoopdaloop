@@ -655,7 +655,10 @@ impl SettingsDialog {
             .registry
             .definitions()
             .iter()
-            .filter(|definition| definition.key() == crate::LOOP_EDGE_SMOOTHING_MS.id())
+            .filter(|definition| {
+                definition.key() == crate::LOOP_EDGE_SMOOTHING_MS.id()
+                    || definition.key() == crate::MASTER_AUTO_CONNECT.id()
+            })
             .cloned()
             .collect::<Vec<_>>();
         self.show_definition_cards(ui, definitions, None);
@@ -1974,7 +1977,7 @@ mod tests {
             dialog.show_audio(ui, &AudioDriverRuntimeState::default(), &mut response);
         });
         output.textures_delta.clear();
-        assert_eq!(dialog.setting_card_rects.len(), 1);
+        assert_eq!(dialog.setting_card_rects.len(), 2);
         assert!(response.app_actions.is_empty());
     }
 
