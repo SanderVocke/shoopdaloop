@@ -204,10 +204,12 @@ def package_web(args: argparse.Namespace) -> list[Path]:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     stem = artifact_stem("web", "wasm32", args.profile)
     bundle = args.output_dir / f"{stem}.zip"
-    html = args.output_dir / f"{stem}.html"
     bundle.unlink(missing_ok=True)
-    html.unlink(missing_ok=True)
-    build_single_file(dist, html)
+    html = None
+    if args.profile == "release":
+        html = args.output_dir / f"{stem}.html"
+        html.unlink(missing_ok=True)
+        build_single_file(dist, html)
 
     with tempfile.TemporaryDirectory(prefix="shoop-web-") as temporary:
         root = Path(temporary) / ARCHIVE_ROOT
@@ -219,7 +221,7 @@ def package_web(args: argparse.Namespace) -> list[Path]:
         write_zip(root, bundle)
 
     verify_web(bundle, html)
-    return [bundle, html]
+    return [bundle, *([html] if html is not None else [])]
 
 
 def archive_names(path: Path) -> tuple[set[str], dict[str, int]]:
@@ -450,7 +452,7 @@ def verify_native(path: Path, platform: str) -> None:
     reject_application_script_payload(binary, "native executable")
 
 
-def verify_web(bundle: Path, html: Path) -> None:
+def verify_web(bundle: Path, html: Path | None) -> None:
     names, _ = archive_names(bundle)
     root = f"{ARCHIVE_ROOT}/"
     fixed = {f"{root}{relative}" for relative in WEB_REQUIRED_FILES}
@@ -472,6 +474,8 @@ def verify_web(bundle: Path, html: Path) -> None:
     reject_carla_native_payload(hosted_application, "hosted application Wasm")
     reject_application_script_payload(hosted_application, "hosted application Wasm")
     reject_carla_native_payload(hosted_worklet, "hosted AudioWorklet Wasm")
+    if html is None:
+        return
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
         raise RuntimeError("self-contained HTML does not contain the embedded application")
@@ -536,10 +540,8 @@ def verify(args: argparse.Namespace) -> list[Path]:
     if args.artifact == Path(".") and os.environ.get("SHOOP_ARTIFACT"):
         args.artifact = Path(os.environ["SHOOP_ARTIFACT"])
     if args.platform == "web":
-        if args.html is None:
-            raise RuntimeError("--html is required when verifying a web artifact")
         verify_web(args.artifact, args.html)
-        return [args.artifact, args.html]
+        return [args.artifact, *([args.html] if args.html is not None else [])]
     verify_native(args.artifact, args.platform)
     return [args.artifact]
 
