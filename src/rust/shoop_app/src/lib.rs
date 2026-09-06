@@ -21434,6 +21434,53 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model
             .handle_bus_action(&mut backend, added, BusAction::Remove)
             .unwrap();
+
+        // Bus FX intents drive the backend and reconcile optimistically.
+        let mut fx_backend = FakeBackend::default();
+        let mut fx_bus_model = ApplicationModel::initialize(
+            &mut fx_backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+            true,
+        )
+        .unwrap();
+        // FakeBackend mirrors the track catalog as the bus catalog for tests.
+        let mut bus_descriptor = shoop_backend::builtin_fx_descriptor();
+        bus_descriptor.constraints.midi = shoop_app_api::TrackProcessorMidiPolicy::Unsupported;
+        fx_bus_model.bus_processors = std::sync::Arc::from([bus_descriptor]);
+        fx_bus_model
+            .add_bus(
+                &mut fx_backend,
+                BusSpec {
+                    name: "Fx".to_owned(),
+                    channel_count: 2,
+                    creation_request_id: None,
+                    fx: Some(shoop_app_api::BusFxSpec {
+                        processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                            shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+                        ),
+                    }),
+                },
+            )
+            .unwrap();
+        let fx_bus = *fx_bus_model.bus_order.last().unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_some());
+        fx_bus_model
+            .handle_bus_action(&mut fx_backend, fx_bus, BusAction::FxActiveChanged(false))
+            .unwrap();
+        assert!(!fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().active);
+        fx_bus_model
+            .handle_bus_action(
+                &mut fx_backend,
+                fx_bus,
+                BusAction::FxVisibilityChanged(true),
+            )
+            .unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().visible);
+        fx_bus_model.apply_backend_snapshot(fx_backend.poll().unwrap());
+        assert!(!fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().active);
+        assert!(fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().visible);
         assert_eq!(
             model.buses[&added].structural_state,
             StructuralState::Removing

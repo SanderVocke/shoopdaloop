@@ -11567,6 +11567,98 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn bus_fx_mixer_routes_keep_working_and_remove_cleans_up() {
+        use crate::BackendBusFxControl;
+        use shoop_app_api::BuiltInFxControl;
+        let mut backend = EngineBackend::new_dummy_runtime(48_000, 4).unwrap();
+        let creation = backend
+            .create_bus(BackendBusRequest {
+                name: "FxBus".to_owned(),
+                channel_count: 2,
+                fx: Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                }),
+            })
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    shoop_app_api::BuiltInFxStage::Drive,
+                    true,
+                )),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(creation.bus_id, BackendBusFxControl::SetActive(true))
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "routed".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        load_direct_loop(&mut backend, track.loops[0], 0.5);
+        let source = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap()
+            .id;
+        let left = backend.buses[&creation.bus_id].channels[0].id;
+        let right = backend.buses[&creation.bus_id].channels[1].id;
+        backend.set_mixer_route(source, left, true).unwrap();
+        backend.set_mixer_route(source, right, true).unwrap();
+        assert_eq!(backend.mixer_snapshot().confirmed_links.len(), 2);
+        backend
+            .set_bus_fx_control(creation.bus_id, BackendBusFxControl::SetActive(false))
+            .unwrap();
+        backend.set_mixer_route(source, right, false).unwrap();
+        assert_eq!(backend.mixer_snapshot().confirmed_links.len(), 1);
+        backend.remove_bus(creation.bus_id).unwrap();
+        assert!(!backend.buses.contains_key(&creation.bus_id));
+        assert!(backend.mixer_snapshot().confirmed_links.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_fx_master_and_wide_channel_shapes_create_and_remove() {
+        for channels in [1_u32, 2, 3, 6, 64] {
+            let mut backend = EngineBackend::new_dummy_runtime(48_000, 4).unwrap();
+            let creation = backend
+                .create_bus(BackendBusRequest {
+                    name: format!("Wide{channels}"),
+                    channel_count: channels,
+                    fx: Some(BackendBusFxRequest {
+                        processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                        audio_channels: channels,
+                    }),
+                })
+                .unwrap();
+            assert_eq!(
+                backend.buses[&creation.bus_id].channels.len(),
+                channels as usize
+            );
+            assert!(backend.mixer_snapshot().buses[&creation.bus_id]
+                .fx
+                .is_some());
+            backend.remove_bus(creation.bus_id).unwrap();
+        }
+        assert!(BackendBusRequest {
+            name: "TooWide".to_owned(),
+            channel_count: 65,
+            fx: Some(BackendBusFxRequest {
+                processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                audio_channels: 65,
+            }),
+        }
+        .normalized()
+        .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn bus_definition_contract_and_fake_lifecycle_are_bounded_and_exact() {
         assert_eq!(
             BackendBusRequest {

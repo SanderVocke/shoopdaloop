@@ -99,9 +99,9 @@ Depends on: Stages 1–3. Blocks Stages 5–7.
 ### Stage 5 — UI (`shoop_egui/src/bus_controls.rs` + track-editor reuse)
 Depends on: Stage 4. Blocks Stages 6–7.
 
-- [ ] Add collapsed FX section to the bus strip reusing the Built-in FX editor widgets and Carla status/logs/external-UI affordances; wire to new `BusAction::Fx*`.
-- [ ] Processor picker for buses lists only the bus catalog (no synth).
-- [ ] Verification: existing `bus_controls` egui tests still pass; new tests for FX action emission and MIDI-less picker contents.
+- [x] Add collapsed FX section to the bus strip reusing the Built-in FX editor widgets and Carla status/logs/external-UI affordances; wire to new `BusAction::Fx*`.
+- [x] Processor picker for buses lists only the bus catalog (no synth).
+- [x] Verification: existing `bus_controls` egui tests still pass; new tests for FX action emission and MIDI-less picker contents.
 
 ### Stage 6 — Regression + edge-case tests
 Depends on: Stages 1–5. Blocks Stage 7.
