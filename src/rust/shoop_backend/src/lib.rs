@@ -11958,6 +11958,36 @@ mod tests {
             .bus_fx_state_string(creation.bus_id)
             .unwrap()
             .is_none());
+        let dry_output = {
+            let output = backend.buses[&creation.bus_id].channels[0].output;
+            let source_index = backend.connection_ports[&source].engine_port_index;
+            for channel in backend.buses.values().flat_map(|bus| &bus.channels) {
+                backend
+                    .session
+                    .port_mut(channel.output)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .request_data(4);
+            }
+            backend
+                .session
+                .port_mut(source_index)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+            backend.advance_frames(4);
+            backend
+                .session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(4)
+                .unwrap()
+        };
+        assert_eq!(dry_output, vec![0.5; 4]);
         backend
             .set_bus_fx_control(
                 creation.bus_id,
@@ -11970,6 +12000,32 @@ mod tests {
         assert!(backend.mixer_snapshot().buses[&creation.bus_id]
             .fx
             .is_some());
+        assert_eq!(
+            backend.mixer_snapshot().confirmed_links.len(),
+            2,
+            "mixer routes survive the processor switch"
+        );
+        let captured = backend.capture_session().unwrap();
+        let switched = captured
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Switch")
+            .unwrap();
+        assert_eq!(
+            switched.processor_type.as_deref(),
+            Some(TrackProcessorTypeId::BUILTIN_FX)
+        );
+        backend.replace_session(&captured).unwrap();
+        let restored = backend.capture_session().unwrap();
+        let restored_bus = restored
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Switch")
+            .unwrap();
+        assert_eq!(
+            restored_bus.processor_type.as_deref(),
+            Some(TrackProcessorTypeId::BUILTIN_FX)
+        );
         assert!(backend
             .set_bus_fx_control(
                 creation.bus_id,
