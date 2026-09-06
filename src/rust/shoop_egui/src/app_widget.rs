@@ -1675,12 +1675,13 @@ impl AppWidget {
                         });
                         actions.extend(
                             controls
-                                .show_with_processor(
+                                .show_with_catalog(
                                     ui,
                                     bus,
                                     incoming_routes,
                                     outgoing_links,
                                     processor,
+                                    &state.bus_processors,
                                 )
                                 .into_iter()
                                 .map(|action| AppAction::Bus {

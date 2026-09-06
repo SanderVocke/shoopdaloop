@@ -71,6 +71,18 @@ impl BusControls {
         outgoing_links: usize,
         processor: Option<&TrackProcessorDescriptor>,
     ) -> Vec<BusAction> {
+        self.show_with_catalog(ui, state, incoming_routes, outgoing_links, processor, &[])
+    }
+
+    pub fn show_with_catalog(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &BusState,
+        incoming_routes: usize,
+        outgoing_links: usize,
+        processor: Option<&TrackProcessorDescriptor>,
+        catalog: &[TrackProcessorDescriptor],
+    ) -> Vec<BusAction> {
         #[cfg(test)]
         {
             self.test_rects = TestBusControlRects::default();
@@ -155,7 +167,7 @@ impl BusControls {
                             }
                         });
                     });
-                    self.show_control_row(ui, state, meter_width, processor, &mut actions);
+                    self.show_control_row(ui, state, meter_width, processor, catalog, &mut actions);
                 });
             })
             .response;
@@ -202,6 +214,7 @@ impl BusControls {
         state: &BusState,
         meter_width: f32,
         processor: Option<&TrackProcessorDescriptor>,
+        catalog: &[TrackProcessorDescriptor],
         actions: &mut Vec<BusAction>,
     ) {
         let stereo = state.stereo();
@@ -347,7 +360,7 @@ impl BusControls {
                 actions.push(BusAction::MuteChanged(!state.muted));
             }
         });
-        self.show_fx_row(ui, state, processor, group_width, actions);
+        self.show_fx_row(ui, state, processor, catalog, group_width, actions);
     }
 
     fn show_fx_row(
@@ -355,10 +368,28 @@ impl BusControls {
         ui: &mut egui::Ui,
         state: &BusState,
         processor: Option<&TrackProcessorDescriptor>,
+        catalog: &[TrackProcessorDescriptor],
         group_width: f32,
         actions: &mut Vec<BusAction>,
     ) {
         let Some(fx) = &state.fx else {
+            let mut selected = String::from("none");
+            egui::ComboBox::from_id_salt(("bus_fx_processor", state.id.raw()))
+                .selected_text("No FX")
+                .show_ui(ui, |ui| {
+                    for entry in catalog.iter().filter(|entry| entry.available) {
+                        ui.selectable_value(
+                            &mut selected,
+                            entry.id.as_str().to_owned(),
+                            entry.label.as_str(),
+                        );
+                    }
+                });
+            if selected != "none" {
+                if let Some(entry) = catalog.iter().find(|entry| entry.id.as_str() == selected) {
+                    actions.push(BusAction::FxProcessorChanged(Some(entry.id.clone())));
+                }
+            }
             return;
         };
         let features = processor.map(|value| value.features).unwrap_or_default();
@@ -383,6 +414,18 @@ impl BusControls {
             {
                 self.fx_logs_open = true;
                 ui.close();
+            }
+            if ui.button("Remove FX").clicked() {
+                actions.push(BusAction::FxProcessorChanged(None));
+                ui.close();
+            }
+            for entry in catalog.iter().filter(|entry| {
+                entry.available && Some(entry.id.clone()) != Some(fx.processor_type.clone())
+            }) {
+                if ui.button(entry.label.as_str()).clicked() {
+                    actions.push(BusAction::FxProcessorChanged(Some(entry.id.clone())));
+                    ui.close();
+                }
             }
         });
     }
@@ -1062,5 +1105,15 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(bus_catalog.len(), 1);
         assert_eq!(bus_catalog[0].as_str(), TrackProcessorTypeId::BUILTIN_FX);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fx_processor_action_round_trips_through_match() {
+        let change = BusAction::FxProcessorChanged(Some(TrackProcessorTypeId::new(
+            TrackProcessorTypeId::BUILTIN_FX,
+        )));
+        assert!(matches!(change, BusAction::FxProcessorChanged(Some(_))));
+        let remove = BusAction::FxProcessorChanged(None);
+        assert!(matches!(remove, BusAction::FxProcessorChanged(None)));
     }
 }
