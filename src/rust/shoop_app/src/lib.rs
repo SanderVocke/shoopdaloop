@@ -12154,6 +12154,19 @@ fn new_session_document(sample_rate: u32) -> SessionDocument {
             fx_chain: None,
         }],
     });
+    document.mixer_routes = document
+        .buses
+        .first()
+        .map(|bus| {
+            bus.channels
+                .iter()
+                .map(|channel| MixerRouteDocument {
+                    source_port_id: 2,
+                    destination_channel_id: channel.id,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     document
 }
 
@@ -14891,6 +14904,8 @@ mod tests {
             IoTaskStatus::Completed
         );
         assert_eq!(snapshot.connections.pending_links.len(), 2);
+        assert_eq!(snapshot.connections.mixer_links.len(), 2);
+        assert!(snapshot.connections.pending_mixer_links.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
