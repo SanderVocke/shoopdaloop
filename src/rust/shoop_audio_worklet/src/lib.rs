@@ -4907,6 +4907,24 @@ mod tests {
                 BackendTrackFxControl::BuiltInFx(expected)
             );
         }
+        assert_eq!(
+            from_wire_bus_fx_control(WireBusFxControl::SetActive(true)),
+            BackendBusFxControl::SetActive(true)
+        );
+        assert_eq!(
+            from_wire_bus_fx_control(WireBusFxControl::SetProcessor(Some(WireBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 2,
+            }))),
+            BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 2,
+            }))
+        );
+        assert_eq!(
+            from_wire_bus_fx_control(WireBusFxControl::SetProcessor(None)),
+            BackendBusFxControl::SetProcessor(None)
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
