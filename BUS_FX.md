@@ -81,11 +81,11 @@ Depends on: Stage 1. Blocks Stages 4–7; independent of Stage 2.
 
 Changes in `src/rust/shoop_backend/src/native.rs`:
 
-- [ ] Refactor `create_processed_track()` chain-setup into a helper usable by buses, or add `create_processed_bus()` calling the same `processor_chain_type()` → `create_builtin_fx_chain_with_audio_channels()` / `create_fx_chain()` dispatch with `dry_midi=false`.
-- [ ] Wire bus inputs → chain audio inputs, chain audio outputs → bus outputs; skip all MIDI port creation.
-- [ ] Extend native catalog function to expose the bus catalog (Carla entries only under `native-fx`, same availability logic; never OxiSynth for buses).
-- [ ] Implement native `set_bus_fx_control()` / state-string by reusing the native track FX control arms.
-- [ ] Verification: native tests for builtin + Carla-chain bus creation/control/state where runtime is available; unavailable-Carla path asserts degraded reason, not panic.
+- [x] Refactor `create_processed_track()` chain-setup into a helper usable by buses, or add `create_processed_bus()` calling the same `processor_chain_type()` → `create_builtin_fx_chain_with_audio_channels()` / `create_fx_chain()` dispatch with `dry_midi=false`.
+- [x] Wire bus inputs → chain audio inputs, chain audio outputs → bus outputs; skip all MIDI port creation.
+- [x] Extend native catalog function to expose the bus catalog (Carla entries only under `native-fx`, same availability logic; never OxiSynth for buses).
+- [x] Implement native `set_bus_fx_control()` / state-string by reusing the native track FX control arms.
+- [x] Verification: `cargo test -p shoop_backend --features native-drivers --lib bus` green (incl. new `native_dummy_bus_fx_builtin_round_trips_state_and_removes_cleanly`: catalog → create stereo Built-in FX bus → Drive-on editor snapshot → capture `processor_type/state` → `RestoreState` → remove cleanup); full `--features native-drivers --lib` suite 111 passed; workspace `cargo check` + `cargo check --features native-drivers --tests` clean.
 
 ### Stage 4 — App model + session persistence
 Depends on: Stages 1–3. Blocks Stages 5–7.

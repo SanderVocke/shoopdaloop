@@ -128,6 +128,7 @@ struct NativeRuntime {
     tracks: BTreeMap<BackendTrackId, NativeTrack>,
     global_fx_port: BackendPortId,
     buses: BTreeMap<BackendBusId, NativeBus>,
+    staged_bus_fx: BTreeMap<BackendBusId, NativeFx>,
     mixer_routes: BTreeSet<BackendMixerLink>,
     mixer_failures: Vec<BackendMixerFailure>,
     mixer_revision: u64,
@@ -172,7 +173,6 @@ struct NativeFx {
     last_confirmed_state: Option<String>,
 }
 
-#[derive(Clone)]
 struct NativeBus {
     id: BackendBusId,
     name: String,
@@ -180,6 +180,7 @@ struct NativeBus {
     gain_db: f32,
     balance: f32,
     muted: bool,
+    fx: Option<NativeFx>,
 }
 
 #[derive(Clone)]
@@ -188,6 +189,18 @@ struct NativeBusChannel {
     label: String,
     input: AudioPort,
     output_port_id: BackendPortId,
+}
+
+struct NativeBusSnapshot {
+    channels: Vec<NativeBusChannel>,
+}
+
+impl NativeBusSnapshot {
+    fn of(bus: &NativeBus) -> Self {
+        Self {
+            channels: bus.channels.clone(),
+        }
+    }
 }
 
 struct NativeComposite {
@@ -398,6 +411,7 @@ impl NativeRuntime {
             tracks: BTreeMap::new(),
             global_fx_port,
             buses: BTreeMap::new(),
+            staged_bus_fx: BTreeMap::new(),
             mixer_routes: BTreeSet::new(),
             mixer_failures: Vec::new(),
             mixer_revision: 1,
@@ -720,6 +734,119 @@ impl NativeRuntime {
         }
     }
 
+    fn create_native_bus_fx(
+        &mut self,
+        bus_id: BackendBusId,
+        fx_request: &BackendBusFxRequest,
+        channels: &mut [NativeBusChannel],
+    ) -> Result<()> {
+        let channel_count = channels.len();
+        let chain_type = processor_chain_type(&fx_request.processor_type)
+            .ok_or_else(|| anyhow!("unknown bus processor {}", fx_request.processor_type))?;
+        if chain_type == FXChainType::OxiSynth {
+            return Err(anyhow!("synth processors are unavailable on buses"));
+        }
+        if fx_request.audio_channels as usize != channel_count {
+            return Err(anyhow!("bus processor channel count must match the bus"));
+        }
+        let ring = self
+            .resolved
+            .sample_rate
+            .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
+        let title = native_bus_fx_title(bus_id);
+        let chain =
+            match chain_type {
+                FXChainType::BuiltInFx => self
+                    .session
+                    .create_builtin_fx_chain_with_audio_channels(&title, ring, channel_count)?,
+                _ => self.session.create_fx_chain(chain_type, &title, ring)?,
+            };
+        let last_confirmed_state = chain.try_get_state_str().ok();
+        let mut rewired: Vec<(NativeBusChannel, AudioPort)> = Vec::with_capacity(channel_count);
+        for (index, channel) in channels.iter().enumerate() {
+            if self
+                .rewire_bus_channel_for_fx(&chain, channel, index)
+                .is_err()
+            {
+                for (channel, output) in rewired {
+                    let _ = channel.input.connect_internal(&output);
+                }
+                let _ = self.session.remove_fx_chain(&chain);
+                self.wait();
+                self.staged_bus_fx.remove(&bus_id);
+                return Err(anyhow!("bus processor graph did not become active"));
+            }
+            let Some(output) = self
+                .ports
+                .get(&channel.output_port_id)
+                .and_then(|port| match &port.handle {
+                    NativePortHandle::Audio(output) => Some(output.clone()),
+                    NativePortHandle::Midi(_) => None,
+                })
+            else {
+                for (channel, output) in rewired {
+                    let _ = channel.input.connect_internal(&output);
+                }
+                let _ = self.session.remove_fx_chain(&chain);
+                self.wait();
+                self.staged_bus_fx.remove(&bus_id);
+                return Err(anyhow!("missing native bus output port"));
+            };
+            rewired.push((channel.clone(), output));
+        }
+        if !self.wait_for_graph().unwrap_or(false) {
+            for (channel, output) in rewired {
+                let _ = channel.input.connect_internal(&output);
+            }
+            let _ = self.session.remove_fx_chain(&chain);
+            self.wait();
+            self.staged_bus_fx.remove(&bus_id);
+            return Err(anyhow!("bus processor graph did not become active"));
+        }
+        self.staged_bus_fx.insert(
+            bus_id,
+            NativeFx {
+                processor_type: TrackProcessorTypeId::new(&fx_request.processor_type),
+                chain,
+                active: true,
+                last_confirmed_state,
+            },
+        );
+        Ok(())
+    }
+
+    fn rewire_bus_channel_for_fx(
+        &self,
+        chain: &FXChain,
+        channel: &NativeBusChannel,
+        index: usize,
+    ) -> Result<()> {
+        let input = chain
+            .get_audio_input_port(index as u32)
+            .ok_or_else(|| anyhow!("bus processor is missing audio input {index}"))?;
+        let output = chain
+            .get_audio_output_port(index as u32)
+            .ok_or_else(|| anyhow!("bus processor is missing audio output {index}"))?;
+        let driver_output = self
+            .ports
+            .get(&channel.output_port_id)
+            .and_then(|port| match &port.handle {
+                NativePortHandle::Audio(output) => Some(output.clone()),
+                NativePortHandle::Midi(_) => None,
+            })
+            .ok_or_else(|| anyhow!("missing native bus output port"))?;
+        self.session.detach_audio_ports(&[channel.input.clone()])?;
+        channel.input.connect_internal(&input)?;
+        output.connect_internal(&driver_output)?;
+        Ok(())
+    }
+
+    fn take_staged_bus_fx(&mut self, bus_id: BackendBusId) -> Result<NativeFx> {
+        self.staged_bus_fx
+            .remove(&bus_id)
+            .ok_or_else(|| anyhow!("missing staged bus processor"))
+    }
+
     fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
         let request = request.normalized()?;
         let channel_count = request.channel_count as usize;
@@ -868,6 +995,13 @@ impl NativeRuntime {
                 })
                 .collect(),
         };
+        if let Some(fx_request) = request.fx.clone() {
+            if let Err(error) = self.create_native_bus_fx(bus_id, &fx_request, &mut channels) {
+                self.staged_bus_fx.remove(&bus_id);
+                self.rollback_unpublished_bus_channels(channels);
+                return Err(error);
+            }
+        }
         self.buses.insert(
             bus_id,
             NativeBus {
@@ -877,15 +1011,23 @@ impl NativeRuntime {
                 gain_db: 0.0,
                 balance: 0.0,
                 muted: false,
+                fx: None,
             },
         );
+        if self.buses[&bus_id].fx.is_none() && request.fx.is_some() {
+            let fx = self.take_staged_bus_fx(bus_id)?;
+            self.buses
+                .get_mut(&bus_id)
+                .ok_or_else(|| anyhow!("missing native bus {bus_id:?}"))?
+                .fx = Some(fx);
+        }
         self.mixer_revision = self.mixer_revision.wrapping_add(1);
         Ok(creation)
     }
 
     fn restore_detached_bus_graph(
         &self,
-        bus: &NativeBus,
+        bus: &NativeBusSnapshot,
         outputs: &[AudioPort],
         affected_routes: &[BackendMixerLink],
     ) -> Result<()> {
@@ -915,11 +1057,10 @@ impl NativeRuntime {
     }
 
     fn remove_bus_internal(&mut self, bus_id: BackendBusId) -> Result<()> {
-        let bus = self
-            .buses
-            .get(&bus_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("unknown native bus {bus_id:?}"))?;
+        if !self.buses.contains_key(&bus_id) {
+            return Err(anyhow!("unknown native bus {bus_id:?}"));
+        }
+        let bus = NativeBusSnapshot::of(self.buses.get(&bus_id).expect("bus present"));
         let channel_ids = bus
             .channels
             .iter()
@@ -1021,6 +1162,10 @@ impl NativeRuntime {
                 ));
             }
         }
+        if let Some(fx) = self.buses.get_mut(&bus_id).and_then(|bus| bus.fx.take()) {
+            let _ = self.session.remove_fx_chain(&fx.chain);
+            self.wait();
+        }
         self.buses.remove(&bus_id);
         for output_id in &output_ids {
             self.ports.remove(output_id);
@@ -1074,7 +1219,7 @@ impl NativeRuntime {
                         balance: bus.balance,
                         muted: bus.muted,
                         output_peaks_db,
-                        fx: None,
+                        fx: bus.fx.as_ref().map(native_bus_fx_state),
                     },
                 )
             })
@@ -1578,10 +1723,37 @@ impl NativeRuntime {
                 .map(|link| link.host_port_id.clone())
                 .collect(),
         }];
-        let buses = self
-            .buses
-            .values()
-            .map(|bus| BackendSessionBus {
+        let mut buses = Vec::with_capacity(self.buses.len());
+        for bus in self.buses.values_mut() {
+            let processor_state = bus
+                .fx
+                .as_mut()
+                .map(|fx| match fx.chain.try_get_state_str() {
+                    Ok(state) => {
+                        fx.last_confirmed_state = Some(state.clone());
+                        Ok(state)
+                    }
+                    Err(error) => fx.last_confirmed_state.clone().ok_or_else(|| {
+                        anyhow!(
+                            "bus processor state is unavailable and no checkpoint exists: {error}"
+                        )
+                    }),
+                })
+                .transpose()?;
+            let builtin_fx_midi_cc_assignments = bus
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.chain.builtin_fx_midi_cc_assignments())
+                .into_iter()
+                .flat_map(|assignments| assignments.iter().collect::<Vec<_>>())
+                .map(|assignment| BuiltInFxMidiCcAssignment {
+                    parameter: app_builtin_fx_parameter(assignment.parameter),
+                    channel: assignment.channel,
+                    controller: assignment.controller,
+                })
+                .map(backend_builtin_fx_midi_cc_assignment)
+                .collect();
+            buses.push(BackendSessionBus {
                 source_id: bus.id.raw(),
                 name: bus.name.clone(),
                 channels: bus
@@ -1605,11 +1777,14 @@ impl NativeRuntime {
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
-                processor_type: None,
-                processor_state: None,
-                builtin_fx_midi_cc_assignments: Vec::new(),
-            })
-            .collect();
+                processor_type: bus
+                    .fx
+                    .as_ref()
+                    .map(|fx| fx.processor_type.as_str().to_owned()),
+                processor_state,
+                builtin_fx_midi_cc_assignments,
+            });
+        }
         let mixer_routes = self
             .mixer_routes
             .iter()
@@ -1652,11 +1827,23 @@ impl NativeRuntime {
             .insert(source_global.source_id, self.global_fx_port);
         self.remove_bus_internal(MASTER_BUS_ID)?;
         for source_bus in &data.buses {
+            validate_backend_bus_midi_cc_assignments(source_bus)?;
+            let fx = match source_bus.processor_type.as_deref() {
+                None => None,
+                Some(TrackProcessorTypeId::BUILTIN_FX) => Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: u32::try_from(source_bus.channels.len())
+                        .map_err(|_| anyhow!("session bus channel count exceeds u32"))?,
+                }),
+                Some(other) => {
+                    return Err(anyhow!("unsupported session bus processor {other}"));
+                }
+            };
             let request = BackendBusRequest {
                 name: source_bus.name.clone(),
                 channel_count: u32::try_from(source_bus.channels.len())
                     .map_err(|_| anyhow!("session bus channel count exceeds u32"))?,
-                fx: None,
+                fx,
             }
             .normalized()?;
             let expected_labels = default_bus_channel_labels(source_bus.channels.len())?;
@@ -1744,6 +1931,36 @@ impl NativeRuntime {
                 return Err(anyhow!("non-stereo session bus balance must be centered"));
             }
             self.apply_bus_control(created.bus_id, BackendBusControl::Mute(source_bus.muted))?;
+            match source_bus.processor_type.as_deref() {
+                None => {
+                    if source_bus.processor_state.is_some()
+                        || !source_bus.builtin_fx_midi_cc_assignments.is_empty()
+                    {
+                        return Err(anyhow!("unprocessed bus has processor state"));
+                    }
+                }
+                Some(TrackProcessorTypeId::BUILTIN_FX) => {
+                    let state = source_bus
+                        .processor_state
+                        .as_deref()
+                        .ok_or_else(|| anyhow!("processed bus has no saved processor state"))?;
+                    self.set_bus_fx_control(
+                        created.bus_id,
+                        BackendBusFxControl::RestoreState(state.to_owned()),
+                    )?;
+                    for assignment in &source_bus.builtin_fx_midi_cc_assignments {
+                        self.set_bus_fx_control(
+                            created.bus_id,
+                            BackendBusFxControl::BuiltInFx(BuiltInFxControl::AssignMidiCc(
+                                app_backend_builtin_fx_midi_cc_assignment(*assignment),
+                            )),
+                        )?;
+                    }
+                }
+                Some(other) => {
+                    return Err(anyhow!("unsupported session bus processor {other}"));
+                }
+            }
         }
         for external in &source_global.external_connections {
             if let Err(error) = self.set_port_connected(self.global_fx_port, external, true) {
@@ -3055,6 +3272,177 @@ impl NativeRuntime {
         }
     }
 
+    fn bus_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        let catalog = vec![super::bus_fx_descriptor()];
+        #[cfg(feature = "native-fx")]
+        let catalog = {
+            let mut catalog = catalog;
+            let carla_availability = shoop_engine::carla_native::carla_runtime_availability();
+            for (id, label, max_channels) in [
+                (TrackProcessorTypeId::CARLA_RACK, "Carla Rack", 2),
+                (TrackProcessorTypeId::CARLA_PATCHBAY, "Carla Patchbay", 2),
+                (
+                    TrackProcessorTypeId::CARLA_PATCHBAY_16X,
+                    "Carla Patchbay 16x",
+                    16,
+                ),
+            ] {
+                catalog.push(TrackProcessorDescriptor {
+                    id: TrackProcessorTypeId::new(id),
+                    label: label.to_owned(),
+                    available: carla_availability.is_ok(),
+                    unavailable_reason: carla_availability.as_ref().err().cloned(),
+                    constraints: TrackProcessorConstraints {
+                        min_dry_audio_channels: None,
+                        max_dry_audio_channels: Some(max_channels),
+                        min_wet_audio_channels: None,
+                        max_wet_audio_channels: Some(max_channels),
+                        matching_audio_channels: true,
+                        midi: TrackProcessorMidiPolicy::Unsupported,
+                    },
+                    features: TrackProcessorFeatures {
+                        state: true,
+                        external_ui: true,
+                        embedded_ui: false,
+                        recovery: true,
+                        logs: true,
+                    },
+                    editor: None,
+                });
+            }
+            catalog
+        };
+        Ok(catalog.into())
+    }
+
+    fn set_bus_fx_control(
+        &mut self,
+        bus_id: BackendBusId,
+        control: BackendBusFxControl,
+    ) -> Result<()> {
+        let processor_type = {
+            let bus = self
+                .buses
+                .get(&bus_id)
+                .ok_or_else(|| anyhow!("unknown native bus {bus_id:?}"))?;
+            let Some(fx) = bus.fx.as_ref() else {
+                return Err(anyhow!("bus has no processor"));
+            };
+            fx.processor_type.clone()
+        };
+        match control {
+            BackendBusFxControl::SetActive(active) => {
+                let fx = self
+                    .buses
+                    .get_mut(&bus_id)
+                    .and_then(|bus| bus.fx.as_mut())
+                    .ok_or_else(|| anyhow!("bus has no processor"))?;
+                fx.chain.set_active(active);
+                fx.active = active;
+            }
+            BackendBusFxControl::SetVisible(visible) => {
+                self.buses
+                    .get_mut(&bus_id)
+                    .and_then(|bus| bus.fx.as_mut())
+                    .ok_or_else(|| anyhow!("bus has no processor"))?
+                    .chain
+                    .set_visible(visible);
+            }
+            BackendBusFxControl::ToggleOrRecover => {
+                self.buses
+                    .get_mut(&bus_id)
+                    .and_then(|bus| bus.fx.as_mut())
+                    .ok_or_else(|| anyhow!("bus has no processor"))?
+                    .chain
+                    .toggle_or_recover()?;
+            }
+            BackendBusFxControl::RestoreState(state) => {
+                let fx = self
+                    .buses
+                    .get_mut(&bus_id)
+                    .and_then(|bus| bus.fx.as_mut())
+                    .ok_or_else(|| anyhow!("bus has no processor"))?;
+                fx.chain.try_restore_state(&state)?;
+                fx.last_confirmed_state = Some(state);
+            }
+            BackendBusFxControl::ClearLogs => {
+                self.buses
+                    .get_mut(&bus_id)
+                    .and_then(|bus| bus.fx.as_mut())
+                    .ok_or_else(|| anyhow!("bus has no processor"))?
+                    .chain
+                    .clear_logs();
+            }
+            BackendBusFxControl::BuiltInFx(control) => {
+                if processor_type.as_str() != TrackProcessorTypeId::BUILTIN_FX {
+                    return Err(anyhow!("bus is not a Built-in FX processor"));
+                }
+                let fx = self
+                    .buses
+                    .get_mut(&bus_id)
+                    .and_then(|bus| bus.fx.as_mut())
+                    .ok_or_else(|| anyhow!("bus has no processor"))?;
+                match control {
+                    BuiltInFxControl::SetStageEnabled(stage, enabled) => fx
+                        .chain
+                        .builtin_fx_set_stage_enabled(engine_builtin_fx_stage(stage), enabled)?,
+                    BuiltInFxControl::SetDriveType(drive_type) => fx
+                        .chain
+                        .builtin_fx_set_drive_type(engine_builtin_fx_drive_type(drive_type))?,
+                    BuiltInFxControl::SetModulationType(modulation_type) => {
+                        fx.chain.builtin_fx_set_modulation_type(
+                            engine_builtin_fx_modulation_type(modulation_type),
+                        )?
+                    }
+                    BuiltInFxControl::SetReverbType(reverb_type) => fx
+                        .chain
+                        .builtin_fx_set_reverb_type(engine_builtin_fx_reverb_type(reverb_type))?,
+                    BuiltInFxControl::SetParameter(parameter, value) => fx
+                        .chain
+                        .builtin_fx_set_parameter(engine_builtin_fx_parameter(parameter), value)?,
+                    BuiltInFxControl::AssignMidiCc(assignment) => fx
+                        .chain
+                        .builtin_fx_assign_midi_cc(engine_builtin_fx_midi_cc_assignment(
+                            assignment,
+                        ))?,
+                    BuiltInFxControl::RemoveMidiCc(parameter) => fx
+                        .chain
+                        .builtin_fx_remove_midi_cc(engine_builtin_fx_parameter(parameter))?,
+                    BuiltInFxControl::ClearMidiCcAssignments => {
+                        fx.chain.builtin_fx_clear_midi_cc_assignments()?
+                    }
+                    BuiltInFxControl::SetReverbEnabled(enabled) => {
+                        fx.chain.builtin_fx_set_reverb_enabled(enabled)?
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn bus_fx_state_string(&mut self, bus_id: BackendBusId) -> Result<Option<String>> {
+        let Some(fx) = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| anyhow!("unknown native bus {bus_id:?}"))?
+            .fx
+            .as_mut()
+        else {
+            return Ok(None);
+        };
+        match fx.chain.try_get_state_str() {
+            Ok(state) => {
+                fx.last_confirmed_state = Some(state.clone());
+                Ok(Some(state))
+            }
+            Err(error) => fx
+                .last_confirmed_state
+                .clone()
+                .map(Some)
+                .ok_or_else(|| anyhow!("processor state unavailable: {error}")),
+        }
+    }
+
     fn apply_track_routing(&mut self, track_id: BackendTrackId) -> Result<()> {
         let (topology, loop_ids, monitoring) = {
             let track = self
@@ -4296,6 +4684,22 @@ impl Backend for NativeBackend {
         self.runtime_mut()?.apply_bus_control(bus_id, control)
     }
 
+    fn bus_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        self.runtime_mut()?.bus_processor_catalog()
+    }
+
+    fn set_bus_fx_control(
+        &mut self,
+        bus_id: BackendBusId,
+        control: BackendBusFxControl,
+    ) -> Result<()> {
+        self.runtime_mut()?.set_bus_fx_control(bus_id, control)
+    }
+
+    fn bus_fx_state_string(&mut self, bus_id: BackendBusId) -> Result<Option<String>> {
+        self.runtime_mut()?.bus_fx_state_string(bus_id)
+    }
+
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -4758,6 +5162,49 @@ fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycl
     }
 }
 
+fn native_bus_fx_title(bus_id: BackendBusId) -> String {
+    format!("bus_{}_fx", bus_id.raw())
+}
+
+fn native_bus_fx_state(fx: &NativeFx) -> TrackFxState {
+    let chain_state = fx.chain.get_state().unwrap_or_default();
+    let lifecycle = fx_lifecycle(fx.chain.lifecycle());
+    let deadline_misses = fx.chain.deadline_misses();
+    let stale_completions = fx.chain.stale_completions();
+    TrackFxState {
+        processor_type: fx.processor_type.clone(),
+        active: chain_state.active != 0,
+        visible: chain_state.visible != 0,
+        lifecycle,
+        generation: fx.chain.generation(),
+        deadline_misses,
+        stale_completions,
+        status_summary: fx_status_summary(lifecycle, deadline_misses, stale_completions),
+        crash_summary: fx.chain.crash_summary(),
+        logs: fx
+            .chain
+            .generation_logs()
+            .into_iter()
+            .map(|log| FxGenerationLogState {
+                generation: log.generation,
+                stdout: Arc::from(String::from_utf8_lossy(&log.stdout).into_owned()),
+                stderr: Arc::from(String::from_utf8_lossy(&log.stderr).into_owned()),
+                dropped_stdout_bytes: log.stdout_dropped_bytes,
+                dropped_stderr_bytes: log.stderr_dropped_bytes,
+            })
+            .collect::<Vec<_>>()
+            .into(),
+        editor: fx.chain.builtin_fx_state().map(|state| {
+            TrackProcessorEditorState::BuiltInFx(super::app_builtin_fx_state(
+                state,
+                fx.chain
+                    .builtin_fx_midi_cc_assignments()
+                    .unwrap_or_default(),
+            ))
+        }),
+    }
+}
+
 fn processor_chain_type(processor_type: &str) -> Option<FXChainType> {
     match processor_type {
         TrackProcessorTypeId::BUILTIN_FX => Some(FXChainType::BuiltInFx),
@@ -4861,6 +5308,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "Surround".to_owned(),
                 channel_count: 4,
+                fx: None,
             })
             .unwrap();
         assert_eq!(created.channels.len(), 4);
@@ -4892,6 +5340,74 @@ mod tests {
             .application_ports
             .values()
             .all(|port| !matches!(port.owner, BackendPortOwner::Bus(_))));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_dummy_bus_fx_builtin_round_trips_state_and_removes_cleanly() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }))
+        .unwrap();
+        let catalog = backend.bus_processor_catalog().unwrap();
+        assert!(catalog
+            .iter()
+            .any(|entry| entry.id.as_str() == TrackProcessorTypeId::BUILTIN_FX));
+        assert!(catalog
+            .iter()
+            .all(|entry| entry.id.as_str() != TrackProcessorTypeId::OXISYNTH));
+        let created = backend
+            .create_bus(BackendBusRequest {
+                name: "FxBus".to_owned(),
+                channel_count: 2,
+                fx: Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                }),
+            })
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                created.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    BuiltInFxStage::Drive,
+                    true,
+                )),
+            )
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        let fx = snapshot.mixer.buses[&created.bus_id]
+            .fx
+            .as_ref()
+            .expect("bus fx snapshot");
+        assert_eq!(fx.processor_type.as_str(), TrackProcessorTypeId::BUILTIN_FX);
+        assert!(fx
+            .editor
+            .as_ref()
+            .is_some_and(|editor| matches!(editor, TrackProcessorEditorState::BuiltInFx(_))));
+        let state = backend.bus_fx_state_string(created.bus_id).unwrap();
+        assert!(state.is_some());
+        let captured = backend.capture_session().unwrap();
+        let bus = captured
+            .buses
+            .iter()
+            .find(|bus| bus.name == "FxBus")
+            .expect("captured bus");
+        assert_eq!(
+            bus.processor_type.as_deref(),
+            Some(TrackProcessorTypeId::BUILTIN_FX)
+        );
+        assert!(bus.processor_state.is_some());
+        backend
+            .set_bus_fx_control(
+                created.bus_id,
+                BackendBusFxControl::RestoreState(state.unwrap()),
+            )
+            .unwrap();
+        backend.remove_bus(created.bus_id).unwrap();
+        let snapshot = backend.poll().unwrap();
+        assert!(!snapshot.mixer.buses.contains_key(&created.bus_id));
+        assert!(backend.bus_fx_state_string(created.bus_id).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]
