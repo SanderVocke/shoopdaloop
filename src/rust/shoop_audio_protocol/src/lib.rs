@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 26;
+pub const PROTOCOL_VERSION: u16 = 27;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -137,7 +137,7 @@ pub enum Command {
     },
     SetBusFxControl {
         bus_id: u64,
-        control: WireTrackFxControl,
+        control: WireBusFxControl,
     },
     SetTrackDefaultPlaybackMode {
         track_id: u64,
@@ -745,6 +745,47 @@ pub struct WireConnectionFailure {
     pub host_port_id: String,
     pub desired_connected: bool,
     pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum WireBusFxControl {
+    SetActive(bool),
+    SetVisible(bool),
+    ToggleOrRecover,
+    RestoreState(String),
+    ClearLogs,
+    BuiltInSetStageEnabled(WireBuiltInFxStage, bool),
+    BuiltInSetDriveType(WireBuiltInFxDriveType),
+    BuiltInSetModulationType(WireBuiltInFxModulationType),
+    BuiltInSetReverbType(WireBuiltInFxReverbType),
+    BuiltInSetParameter(WireBuiltInFxParameter, f32),
+    BuiltInAssignMidiCc(WireBuiltInFxMidiCcAssignment),
+    BuiltInRemoveMidiCc(WireBuiltInFxParameter),
+    BuiltInClearMidiCcAssignments,
+    BuiltInSetReverbEnabled(bool),
+    SetProcessor(Option<WireBusFxRequest>),
+}
+
+impl WireBusFxControl {
+    fn supersedable_parameter(&self) -> Option<u8> {
+        Some(match self {
+            Self::SetActive(_) => 0,
+            Self::BuiltInSetReverbEnabled(_) => 16 + WireBuiltInFxStage::Reverb.index(),
+            Self::BuiltInSetStageEnabled(stage, _) => 16 + stage.index(),
+            Self::BuiltInSetDriveType(_) => 22,
+            Self::BuiltInSetModulationType(_) => 23,
+            Self::BuiltInSetReverbType(_) => 24,
+            Self::BuiltInSetParameter(parameter, _) => 32 + parameter.index(),
+            Self::SetVisible(_)
+            | Self::ToggleOrRecover
+            | Self::RestoreState(_)
+            | Self::ClearLogs
+            | Self::BuiltInAssignMidiCc(_)
+            | Self::BuiltInRemoveMidiCc(_)
+            | Self::BuiltInClearMidiCcAssignments
+            | Self::SetProcessor(_) => return None,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -1491,9 +1532,20 @@ mod tests {
         };
         let control = Command::SetBusFxControl {
             bus_id: 7,
-            control: WireTrackFxControl::BuiltInSetStageEnabled(WireBuiltInFxStage::Drive, true),
+            control: WireBusFxControl::BuiltInSetStageEnabled(WireBuiltInFxStage::Drive, true),
         };
-        for (sequence, command) in [(1, create), (2, control)] {
+        let replace = Command::SetBusFxControl {
+            bus_id: 7,
+            control: WireBusFxControl::SetProcessor(Some(WireBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 2,
+            })),
+        };
+        let remove = Command::SetBusFxControl {
+            bus_id: 7,
+            control: WireBusFxControl::SetProcessor(None),
+        };
+        for (sequence, command) in [(1, create), (2, control), (3, replace), (4, remove)] {
             let envelope = CommandEnvelope::new(sequence, command);
             let encoded = serde_json::to_vec(&envelope).unwrap();
             assert_eq!(
@@ -1667,7 +1719,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":26,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":27,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1678,7 +1730,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":26,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":27,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

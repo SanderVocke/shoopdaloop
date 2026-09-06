@@ -9,7 +9,7 @@ use shoop_audio_protocol::{
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
     WireBuiltInFxDriveType, WireBuiltInFxMidiCcAssignment, WireBuiltInFxModulationType,
     WireBuiltInFxParameter, WireBuiltInFxReverbType, WireBuiltInFxStage, WireBuiltInFxState,
-    WireBus, WireBusChannel, WireBusControl, WireBusFxRequest, WireChannelMode,
+    WireBus, WireBusChannel, WireBusControl, WireBusFxControl, WireBusFxRequest, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireConnectionFailure, WireDefaultPlaybackMode, WireHostPort,
     WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent, WireMixerFailure,
@@ -1308,53 +1308,52 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
     }
 }
 
-fn from_wire_bus_fx_control(control: WireTrackFxControl) -> BackendBusFxControl {
+fn from_wire_bus_fx_control(control: WireBusFxControl) -> BackendBusFxControl {
     match control {
-        WireTrackFxControl::SetActive(value) => BackendBusFxControl::SetActive(value),
-        WireTrackFxControl::SetVisible(value) => BackendBusFxControl::SetVisible(value),
-        WireTrackFxControl::ToggleOrRecover => BackendBusFxControl::ToggleOrRecover,
-        WireTrackFxControl::RestoreState(value) => BackendBusFxControl::RestoreState(value),
-        WireTrackFxControl::ClearLogs => BackendBusFxControl::ClearLogs,
-        WireTrackFxControl::BuiltInSetStageEnabled(stage, enabled) => {
-            BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
-                from_wire_builtin_fx_stage(stage),
-                enabled,
-            ))
-        }
-        WireTrackFxControl::BuiltInSetDriveType(drive_type) => BackendBusFxControl::BuiltInFx(
+        WireBusFxControl::SetActive(value) => BackendBusFxControl::SetActive(value),
+        WireBusFxControl::SetVisible(value) => BackendBusFxControl::SetVisible(value),
+        WireBusFxControl::ToggleOrRecover => BackendBusFxControl::ToggleOrRecover,
+        WireBusFxControl::RestoreState(value) => BackendBusFxControl::RestoreState(value),
+        WireBusFxControl::ClearLogs => BackendBusFxControl::ClearLogs,
+        WireBusFxControl::BuiltInSetStageEnabled(stage, enabled) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetStageEnabled(from_wire_builtin_fx_stage(stage), enabled),
+        ),
+        WireBusFxControl::BuiltInSetDriveType(drive_type) => BackendBusFxControl::BuiltInFx(
             BuiltInFxControl::SetDriveType(from_wire_builtin_fx_drive_type(drive_type)),
         ),
-        WireTrackFxControl::BuiltInSetModulationType(modulation_type) => {
+        WireBusFxControl::BuiltInSetModulationType(modulation_type) => {
             BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetModulationType(
                 from_wire_builtin_fx_modulation_type(modulation_type),
             ))
         }
-        WireTrackFxControl::BuiltInSetReverbType(reverb_type) => BackendBusFxControl::BuiltInFx(
+        WireBusFxControl::BuiltInSetReverbType(reverb_type) => BackendBusFxControl::BuiltInFx(
             BuiltInFxControl::SetReverbType(from_wire_builtin_fx_reverb_type(reverb_type)),
         ),
-        WireTrackFxControl::BuiltInSetParameter(parameter, value) => {
-            BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetParameter(
-                from_wire_builtin_fx_parameter(parameter),
-                value,
-            ))
-        }
-        WireTrackFxControl::BuiltInAssignMidiCc(assignment) => BackendBusFxControl::BuiltInFx(
+        WireBusFxControl::BuiltInSetParameter(parameter, value) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetParameter(from_wire_builtin_fx_parameter(parameter), value),
+        ),
+        WireBusFxControl::BuiltInAssignMidiCc(assignment) => BackendBusFxControl::BuiltInFx(
             BuiltInFxControl::AssignMidiCc(BuiltInFxMidiCcAssignment {
                 parameter: from_wire_builtin_fx_parameter(assignment.parameter),
                 channel: assignment.channel,
                 controller: assignment.controller,
             }),
         ),
-        WireTrackFxControl::BuiltInRemoveMidiCc(parameter) => BackendBusFxControl::BuiltInFx(
+        WireBusFxControl::BuiltInRemoveMidiCc(parameter) => BackendBusFxControl::BuiltInFx(
             BuiltInFxControl::RemoveMidiCc(from_wire_builtin_fx_parameter(parameter)),
         ),
-        WireTrackFxControl::BuiltInClearMidiCcAssignments => {
+        WireBusFxControl::BuiltInClearMidiCcAssignments => {
             BackendBusFxControl::BuiltInFx(BuiltInFxControl::ClearMidiCcAssignments)
         }
-        WireTrackFxControl::BuiltInSetReverbEnabled(value) => {
+        WireBusFxControl::BuiltInSetReverbEnabled(value) => {
             BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(value))
         }
-        control => panic!("unsupported bus FX control: {control:?}"),
+        WireBusFxControl::SetProcessor(fx) => {
+            BackendBusFxControl::SetProcessor(fx.map(|request| BackendBusFxRequest {
+                processor_type: request.processor_type,
+                audio_channels: request.audio_channels,
+            }))
+        }
     }
 }
 
@@ -4475,7 +4474,7 @@ mod tests {
                 sequence,
                 Command::SetBusFxControl {
                     bus_id: 2,
-                    control: WireTrackFxControl::SetActive(true),
+                    control: WireBusFxControl::SetActive(true),
                 },
             )
             .event,
