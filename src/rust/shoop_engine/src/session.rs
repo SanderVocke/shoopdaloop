@@ -1684,7 +1684,7 @@ impl Session {
         if let ProcessorBackend::BuiltInFx(processor) = &route.backend {
             if audio_inputs.len() != processor.audio_channels()
                 || audio_outputs.len() != processor.audio_channels()
-                || midi_inputs.len() != 1
+                || midi_inputs.len() > 1
             {
                 return Err(SessionError::InvalidProcessorPorts);
             }
@@ -2533,22 +2533,20 @@ impl Session {
         }
 
         route.global_current.clear();
-        if !route.midi_inputs.is_empty() {
-            if let Some(port) = self
-                .global_fx_midi_input
-                .and_then(|port| self.ports.get(port))
-            {
-                for event in port.midi_events() {
-                    if PendingMidiControlState::supports(event.data()) {
-                        if route.global_current.len() < MAX_MIDI_EVENTS_PER_BLOCK {
-                            route.global_current.push(*event);
-                        } else {
-                            route.global_capacity_deferrals =
-                                route.global_capacity_deferrals.saturating_add(1);
-                        }
+        if let Some(port) = self
+            .global_fx_midi_input
+            .and_then(|port| self.ports.get(port))
+        {
+            for event in port.midi_events() {
+                if PendingMidiControlState::supports(event.data()) {
+                    if route.global_current.len() < MAX_MIDI_EVENTS_PER_BLOCK {
+                        route.global_current.push(*event);
                     } else {
-                        route.global_rejected = route.global_rejected.saturating_add(1);
+                        route.global_capacity_deferrals =
+                            route.global_capacity_deferrals.saturating_add(1);
                     }
+                } else {
+                    route.global_rejected = route.global_rejected.saturating_add(1);
                 }
             }
         }
@@ -4050,7 +4048,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn builtin_fx_routes_matching_mono_stereo_and_n_channels_with_required_midi() {
+    fn builtin_fx_routes_matching_mono_stereo_and_n_channels_with_optional_midi() {
         use crate::builtin_fx::{BuiltInFxProcessor, BuiltInFxStage, BuiltInFxState};
 
         let frames = 4;
@@ -4115,15 +4113,6 @@ mod tests {
                     processor_inputs[..channels - 1].to_vec(),
                     processor_outputs.clone(),
                     vec![midi],
-                ),
-                Err(SessionError::InvalidProcessorPorts)
-            );
-            assert_eq!(
-                session.set_processor_ports(
-                    "builtin",
-                    processor_inputs.clone(),
-                    processor_outputs.clone(),
-                    vec![],
                 ),
                 Err(SessionError::InvalidProcessorPorts)
             );
@@ -4221,6 +4210,96 @@ mod tests {
                 2
             );
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn builtin_fx_processes_audio_without_midi_ports() {
+        use crate::builtin_fx::{BuiltInFxProcessor, BuiltInFxStage, BuiltInFxState};
+
+        let frames = 64;
+        let channels = 2;
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(frames as u32);
+        let mut inputs = Vec::new();
+        let mut sends = Vec::new();
+        let mut returns = Vec::new();
+        let mut outputs = Vec::new();
+        for channel in 0..channels {
+            let input = session.add_port(dummy_with_frames(
+                600 + channel as u64,
+                &format!("input-{channel}"),
+                PortDirection::Input,
+                frames,
+            ));
+            let send = session.add_port(internal(&format!("builtin:audio_in_{channel}"), frames));
+            let return_ =
+                session.add_port(internal(&format!("builtin:audio_out_{channel}"), frames));
+            let output = session.add_port(dummy_with_frames(
+                700 + channel as u64,
+                &format!("output-{channel}"),
+                PortDirection::Output,
+                frames,
+            ));
+            session.connect_ports_internal(input, send).unwrap();
+            session.connect_ports_internal(return_, output).unwrap();
+            inputs.push(input);
+            sends.push(send);
+            returns.push(return_);
+            outputs.push(output);
+        }
+        session.set_builtin_fx_processor(
+            "builtin",
+            BuiltInFxProcessor::new(
+                48_000.0,
+                frames / 2,
+                BuiltInFxState {
+                    reverb_enabled: false,
+                    ..BuiltInFxState::default()
+                },
+            ),
+        );
+        session.set_builtin_fx_active("builtin", true);
+        session
+            .set_processor_ports("builtin", sends, returns, vec![])
+            .unwrap();
+        session.apply_graph_changes().unwrap();
+
+        for &input in &inputs {
+            session
+                .port_mut(input)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&vec![0.25; frames]);
+        }
+        for &output in &outputs {
+            session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+        }
+        session.process(frames);
+        for (channel, &output) in outputs.iter().enumerate() {
+            let actual = session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap();
+            assert!(actual.iter().all(|sample| sample.is_finite()));
+            assert!(actual[0] > 0.1, "channel {channel} produced {actual:?}");
+        }
+        assert_eq!(
+            session
+                .builtin_fx_processor_mut("builtin")
+                .unwrap()
+                .stage_process_calls(BuiltInFxStage::Reverb),
+            0
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
