@@ -4702,6 +4702,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "Rejected".to_owned(),
                 channel_count: 1,
+                fx: None,
             })
             .unwrap();
         control
@@ -4749,6 +4750,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "Retained".to_owned(),
                 channel_count: 2,
+                fx: None,
             })
             .unwrap();
         deliver(&control, 1, 4, Event::Ack);
@@ -5405,6 +5407,9 @@ mod tests {
             buses: vec![shoop_backend::BackendSessionBus {
                 source_id: 1,
                 name: "Master".to_owned(),
+                processor_type: None,
+                processor_state: None,
+                builtin_fx_midi_cc_assignments: Vec::new(),
                 channels: vec![
                     shoop_backend::BackendSessionBusChannel {
                         source_id: 42,
@@ -5468,6 +5473,9 @@ mod tests {
         dynamic.buses.push(shoop_backend::BackendSessionBus {
             source_id: 50,
             name: "Mono".to_owned(),
+            processor_type: None,
+            processor_state: None,
+            builtin_fx_midi_cc_assignments: Vec::new(),
             channels: vec![shoop_backend::BackendSessionBusChannel {
                 source_id: 51,
                 label: "Mono".to_owned(),
@@ -5580,6 +5588,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "After zero".to_owned(),
                 channel_count: 1,
+                fx: None,
             })
             .unwrap();
         assert_eq!(created.bus_id, BackendBusId::from_raw(2));
@@ -5598,6 +5607,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "Surround".to_owned(),
                 channel_count: 4,
+                fx: None,
             })
             .unwrap();
         assert_eq!(created.bus_id, BackendBusId::from_raw(2));

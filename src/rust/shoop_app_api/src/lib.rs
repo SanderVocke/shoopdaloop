@@ -2485,6 +2485,7 @@ mod tests {
             output_peaks_db: Arc::from([-200.0]),
             control_pending: false,
             control_error: None,
+            fx: None,
         };
         assert!(!state.stereo());
         state.channels = Arc::from([channel(1), channel(2)]);
