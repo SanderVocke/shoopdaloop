@@ -226,6 +226,7 @@ pub enum BackendBusFxControl {
     RestoreState(String),
     ClearLogs,
     BuiltInFx(BuiltInFxControl),
+    SetProcessor(Option<BackendBusFxRequest>),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -3489,6 +3490,146 @@ impl EngineBackend {
         self.connection_revision = self.connection_revision.wrapping_add(1);
         self.mixer_revision = self.mixer_revision.wrapping_add(1);
         Ok(creation)
+    }
+
+    fn replace_bus_processor(
+        &mut self,
+        bus_id: BackendBusId,
+        fx: Option<BackendBusFxRequest>,
+    ) -> Result<()> {
+        let channel_count = self
+            .buses
+            .get(&bus_id)
+            .ok_or_else(|| anyhow!("unknown backend bus {bus_id:?}"))?
+            .channels
+            .len();
+        let fx = fx.map(|fx| fx.normalized(channel_count)).transpose()?;
+        if let Some(fx) = &fx {
+            if fx.processor_type != TrackProcessorTypeId::BUILTIN_FX {
+                return Err(anyhow!("unknown bus processor {}", fx.processor_type));
+            }
+            if !bus_fx_descriptor().constraints.accepts(
+                channel_count as u32,
+                channel_count as u32,
+                false,
+            ) {
+                return Err(anyhow!("bus processor does not accept this channel count"));
+            }
+        }
+        let bus = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| anyhow!("unknown backend bus {bus_id:?}"))?;
+        let title = bus_fx_title(bus_id);
+        for (input, send) in bus
+            .channels
+            .iter()
+            .map(|channel| channel.input)
+            .zip(bus.fx_sends.iter().copied())
+        {
+            let _ = self.session.disconnect_ports_internal(input, send);
+        }
+        for (receive, output) in bus
+            .fx_receives
+            .iter()
+            .copied()
+            .zip(bus.channels.iter().map(|channel| channel.output))
+        {
+            let _ = self.session.disconnect_ports_internal(receive, output);
+        }
+        for port in bus.fx_sends.iter().chain(&bus.fx_receives) {
+            let _ = self.session.remove_port(*port);
+        }
+        if bus.builtin_fx.is_some() {
+            self.session.remove_processor(&title);
+        }
+        bus.builtin_fx = None;
+        bus.fx_sends.clear();
+        bus.fx_receives.clear();
+        if fx.is_some() {
+            let control = shoop_engine::builtin_fx::BuiltInFxControlState::default();
+            let processor = control.prepare_processor_with_channels(
+                self.sample_rate as f32,
+                self.buffer_size as usize,
+                channel_count,
+            )?;
+            let _ = self.session.set_builtin_fx_processor(&title, processor);
+            let mut sends = Vec::with_capacity(channel_count);
+            let mut receives = Vec::with_capacity(channel_count);
+            for index in 0..channel_count {
+                sends.push(self.session.add_port(Port::Internal(InternalAudioPort::new(
+                    format!("bus_{}_fx:audio_in_{index}", bus_id.raw()),
+                    self.buffer_size as usize,
+                    shoop_engine::PortConnectability::INTERNAL,
+                    shoop_engine::PortConnectability::INTERNAL,
+                    0,
+                ))));
+                receives.push(self.session.add_port(Port::Internal(InternalAudioPort::new(
+                    format!("bus_{}_fx:audio_out_{index}", bus_id.raw()),
+                    self.buffer_size as usize,
+                    shoop_engine::PortConnectability::INTERNAL,
+                    shoop_engine::PortConnectability::INTERNAL,
+                    0,
+                ))));
+            }
+            self.session.set_processor_ports(
+                &title,
+                sends.clone(),
+                receives.clone(),
+                Vec::new(),
+            )?;
+            let bus = self
+                .buses
+                .get(&bus_id)
+                .ok_or_else(|| anyhow!("unknown backend bus {bus_id:?}"))?;
+            for (index, channel) in bus.channels.iter().enumerate() {
+                self.session
+                    .connect_ports_internal(channel.input, sends[index])?;
+                self.session
+                    .connect_ports_internal(receives[index], channel.output)?;
+            }
+            if let Err(error) = self.session.apply_graph_changes() {
+                let bus = self
+                    .buses
+                    .get_mut(&bus_id)
+                    .ok_or_else(|| anyhow!("unknown backend bus {bus_id:?}"))?;
+                for port in sends.iter().chain(&receives) {
+                    let _ = self.session.remove_port(*port);
+                }
+                self.session.remove_processor(&title);
+                let _ = self.session.apply_graph_changes();
+                for channel in &bus.channels {
+                    let _ = self
+                        .session
+                        .connect_ports_internal(channel.input, channel.output);
+                }
+                let _ = self.session.apply_graph_changes();
+                return Err(error.into());
+            }
+            let bus = self
+                .buses
+                .get_mut(&bus_id)
+                .ok_or_else(|| anyhow!("unknown backend bus {bus_id:?}"))?;
+            bus.builtin_fx = Some(EngineBuiltInFx {
+                control: shoop_engine::builtin_fx::BuiltInFxControlState::default(),
+                active: false,
+                visible: false,
+            });
+            bus.fx_sends = sends;
+            bus.fx_receives = receives;
+        } else {
+            let bus = self
+                .buses
+                .get(&bus_id)
+                .ok_or_else(|| anyhow!("unknown backend bus {bus_id:?}"))?;
+            for channel in &bus.channels {
+                self.session
+                    .connect_ports_internal(channel.input, channel.output)?;
+            }
+            self.session.apply_graph_changes()?;
+        }
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        Ok(())
     }
 
     fn remove_bus_internal(&mut self, bus_id: BackendBusId) -> Result<()> {
@@ -7443,6 +7584,9 @@ impl Backend for EngineBackend {
         bus_id: BackendBusId,
         control: BackendBusFxControl,
     ) -> Result<()> {
+        if let BackendBusFxControl::SetProcessor(fx) = control {
+            return self.replace_bus_processor(bus_id, fx);
+        }
         let bus = self
             .buses
             .get_mut(&bus_id)
@@ -7453,6 +7597,7 @@ impl Backend for EngineBackend {
         let title = bus_fx_title(bus_id);
         let channel_count = bus.channels.len();
         match control {
+            BackendBusFxControl::SetProcessor(_) => unreachable!(),
             BackendBusFxControl::SetActive(active) => {
                 fx.active = active;
                 self.session.set_builtin_fx_active(&title, active);
@@ -11363,6 +11508,9 @@ impl Backend for FakeBackend {
             return Err(anyhow!("injected processor state restore failure"));
         }
         match control {
+            BackendBusFxControl::SetProcessor(_) => {
+                return Err(anyhow!("bus processor replacement is unavailable in tests"));
+            }
             BackendBusFxControl::SetActive(active) => fx.active = active,
             BackendBusFxControl::SetVisible(visible) => fx.visible = visible,
             BackendBusFxControl::ToggleOrRecover => {
@@ -11733,6 +11881,96 @@ mod tests {
             .bus_fx_state_string(creation.bus_id)
             .unwrap()
             .is_some());
+        backend.remove_bus(creation.bus_id).unwrap();
+        assert!(!backend.buses.contains_key(&creation.bus_id));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_fx_processor_switch_rewires_and_rejects_invalid_targets() {
+        use crate::BackendBusFxControl;
+        use shoop_app_api::BuiltInFxControl;
+        let mut backend = EngineBackend::new_dummy_runtime(48_000, 4).unwrap();
+        let creation = backend
+            .create_bus(BackendBusRequest {
+                name: "Switch".to_owned(),
+                channel_count: 2,
+                fx: Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                }),
+            })
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "switch-source".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        load_direct_loop(&mut backend, track.loops[0], 0.5);
+        let source = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap()
+            .id;
+        let left = backend.buses[&creation.bus_id].channels[0].id;
+        let right = backend.buses[&creation.bus_id].channels[1].id;
+        backend.set_mixer_route(source, left, true).unwrap();
+        backend.set_mixer_route(source, right, true).unwrap();
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    shoop_app_api::BuiltInFxStage::Drive,
+                    true,
+                )),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(creation.bus_id, BackendBusFxControl::SetProcessor(None))
+            .unwrap();
+        assert!(backend.mixer_snapshot().buses[&creation.bus_id]
+            .fx
+            .is_none());
+        assert!(backend
+            .bus_fx_state_string(creation.bus_id)
+            .unwrap()
+            .is_none());
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                })),
+            )
+            .unwrap();
+        assert!(backend.mixer_snapshot().buses[&creation.bus_id]
+            .fx
+            .is_some());
+        assert!(backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    audio_channels: 2,
+                })),
+            )
+            .is_err());
+        assert!(backend.mixer_snapshot().buses[&creation.bus_id]
+            .fx
+            .is_some());
+        assert!(backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 1,
+                })),
+            )
+            .is_err());
         backend.remove_bus(creation.bus_id).unwrap();
         assert!(!backend.buses.contains_key(&creation.bus_id));
     }
