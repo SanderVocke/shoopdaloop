@@ -7499,6 +7499,9 @@ impl Backend for EngineBackend {
                     BuiltInFxControl::SetParameter(parameter, value) => {
                         fx.control
                             .set_parameter(engine_builtin_fx_parameter(parameter), value)?;
+                        processor
+                            .set_parameter(engine_builtin_fx_parameter(parameter), value)
+                            .map_err(|error| anyhow!("could not set bus parameter: {error}"))?;
                     }
                     BuiltInFxControl::AssignMidiCc(assignment) => {
                         let assignment = engine_builtin_fx_midi_cc_assignment(assignment);
@@ -11484,10 +11487,215 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn bus_fx_drive_changes_dummy_output_bypass_restores_and_remove_cleans_up() {
+        use crate::BackendBusFxControl;
+        use shoop_app_api::{BuiltInFxControl, BuiltInFxParameter};
+        let mut backend = EngineBackend::new_dummy_runtime(48_000, 4).unwrap();
+        let creation = backend
+            .create_bus(BackendBusRequest {
+                name: "FxBus".to_owned(),
+                channel_count: 2,
+                fx: Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                }),
+            })
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "drive-source".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        load_direct_loop(&mut backend, track.loops[0], 0.5);
+        let source = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap()
+            .id;
+        let left = backend.buses[&creation.bus_id].channels[0].id;
+        let right = backend.buses[&creation.bus_id].channels[1].id;
+        backend.set_mixer_route(source, left, true).unwrap();
+        backend.set_mixer_route(source, right, true).unwrap();
+        let output = backend.buses[&creation.bus_id].channels[0].output;
+        let source_index = backend.connection_ports[&source].engine_port_index;
+        let render = |backend: &mut EngineBackend| {
+            for channel in backend.buses.values().flat_map(|bus| &bus.channels) {
+                backend
+                    .session
+                    .port_mut(channel.output)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .request_data(4);
+            }
+            backend
+                .session
+                .port_mut(source_index)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+            backend.advance_frames(4);
+            backend
+                .session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(4)
+                .unwrap()
+        };
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(creation.bus_id, BackendBusFxControl::SetActive(true))
+            .unwrap();
+        let dry = render(&mut backend);
+        assert_eq!(dry, vec![0.5; 4]);
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    shoop_app_api::BuiltInFxStage::Drive,
+                    true,
+                )),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetParameter(
+                    BuiltInFxParameter::Drive,
+                    20.0,
+                )),
+            )
+            .unwrap();
+        let wet = render(&mut backend);
+        assert_ne!(wet, dry);
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    shoop_app_api::BuiltInFxStage::Drive,
+                    false,
+                )),
+            )
+            .unwrap();
+        assert_eq!(render(&mut backend), dry);
+        assert!(backend
+            .bus_fx_state_string(creation.bus_id)
+            .unwrap()
+            .is_some());
+        backend.remove_bus(creation.bus_id).unwrap();
+        assert!(!backend.buses.contains_key(&creation.bus_id));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_fx_mono_drive_changes_dummy_output_and_remove_cleans_up() {
+        use crate::BackendBusFxControl;
+        use shoop_app_api::{BuiltInFxControl, BuiltInFxParameter};
+        let mut backend = EngineBackend::new_dummy_runtime(48_000, 4).unwrap();
+        let creation = backend
+            .create_bus(BackendBusRequest {
+                name: "MonoFx".to_owned(),
+                channel_count: 1,
+                fx: Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 1,
+                }),
+            })
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "mono-source".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        load_direct_loop(&mut backend, track.loops[0], 0.5);
+        let source = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap()
+            .id;
+        let destination = backend.buses[&creation.bus_id].channels[0].id;
+        backend.set_mixer_route(source, destination, true).unwrap();
+        let output = backend.buses[&creation.bus_id].channels[0].output;
+        let source_index = backend.connection_ports[&source].engine_port_index;
+        let render = |backend: &mut EngineBackend| {
+            backend
+                .session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+            backend
+                .session
+                .port_mut(source_index)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+            backend.advance_frames(4);
+            backend
+                .session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(4)
+                .unwrap()
+        };
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(creation.bus_id, BackendBusFxControl::SetActive(true))
+            .unwrap();
+        let dry = render(&mut backend);
+        assert_eq!(dry, vec![0.5; 4]);
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    shoop_app_api::BuiltInFxStage::Drive,
+                    true,
+                )),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                creation.bus_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetParameter(
+                    BuiltInFxParameter::Drive,
+                    20.0,
+                )),
+            )
+            .unwrap();
+        assert_ne!(render(&mut backend), dry);
+        backend.remove_bus(creation.bus_id).unwrap();
+        assert!(!backend.buses.contains_key(&creation.bus_id));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn bus_fx_drive_changes_dummy_output_and_remove_cleans_up() {
         use crate::BackendBusFxControl;
         use shoop_app_api::BuiltInFxControl;
-        let mut backend = EngineBackend::new_dummy_runtime(48_000, 128).unwrap();
+        let mut backend = EngineBackend::new_dummy_runtime(48_000, 4).unwrap();
         let creation = backend
             .create_bus(BackendBusRequest {
                 name: "FxBus".to_owned(),
