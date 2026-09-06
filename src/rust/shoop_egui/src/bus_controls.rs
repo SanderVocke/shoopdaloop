@@ -1,6 +1,7 @@
 use crate::{
-    colors, dial::paint_dial, meter_ballistics::PeakMeterAnimation,
-    optimistic_value::OptimisticValue, BusAction, BusId, BusState, MAX_BUS_GAIN_DB,
+    builtin_fx_editor::BuiltInFxEditor, colors, dial::paint_dial,
+    meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue, BusAction, BusId,
+    BusState, FxLifecycle, TrackFxState, TrackProcessorDescriptor, MAX_BUS_GAIN_DB,
     MIN_BUS_GAIN_DB,
 };
 use egui_material_icons::icons::{
@@ -29,6 +30,8 @@ pub struct BusControls {
     balance_drag_start: Option<f32>,
     peaks: Vec<PeakMeterAnimation>,
     remove_confirmation_open: bool,
+    fx_logs_open: bool,
+    builtin_fx_editor: BuiltInFxEditor,
     #[cfg(test)]
     test_rects: TestBusControlRects,
 }
@@ -46,6 +49,7 @@ struct TestBusControlRects {
     mute: Option<egui::Rect>,
     gain: Option<egui::Rect>,
     balance: Option<egui::Rect>,
+    fx: Option<egui::Rect>,
 }
 
 impl BusControls {
@@ -55,6 +59,29 @@ impl BusControls {
         state: &BusState,
         incoming_routes: usize,
         outgoing_links: usize,
+    ) -> Vec<BusAction> {
+        self.show_with_processor(ui, state, incoming_routes, outgoing_links, None)
+    }
+
+    pub fn show_with_processor(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &BusState,
+        incoming_routes: usize,
+        outgoing_links: usize,
+        processor: Option<&TrackProcessorDescriptor>,
+    ) -> Vec<BusAction> {
+        self.show_with_catalog(ui, state, incoming_routes, outgoing_links, processor, &[])
+    }
+
+    pub fn show_with_catalog(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &BusState,
+        incoming_routes: usize,
+        outgoing_links: usize,
+        processor: Option<&TrackProcessorDescriptor>,
+        catalog: &[TrackProcessorDescriptor],
     ) -> Vec<BusAction> {
         #[cfg(test)]
         {
@@ -140,7 +167,7 @@ impl BusControls {
                             }
                         });
                     });
-                    self.show_control_row(ui, state, meter_width, &mut actions);
+                    self.show_control_row(ui, state, meter_width, processor, catalog, &mut actions);
                 });
             })
             .response;
@@ -148,6 +175,7 @@ impl BusControls {
         {
             self.test_rects.block = Some(_response.rect);
         }
+        self.show_fx_windows(ui.ctx(), state, processor, &mut actions);
         if self.remove_confirmation_open {
             let mut open = true;
             let mut remove = false;
@@ -185,6 +213,8 @@ impl BusControls {
         ui: &mut egui::Ui,
         state: &BusState,
         meter_width: f32,
+        processor: Option<&TrackProcessorDescriptor>,
+        catalog: &[TrackProcessorDescriptor],
         actions: &mut Vec<BusAction>,
     ) {
         let stereo = state.stereo();
@@ -330,8 +360,163 @@ impl BusControls {
                 actions.push(BusAction::MuteChanged(!state.muted));
             }
         });
+        self.show_fx_row(ui, state, processor, catalog, group_width, actions);
     }
 
+    fn show_fx_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &BusState,
+        processor: Option<&TrackProcessorDescriptor>,
+        catalog: &[TrackProcessorDescriptor],
+        group_width: f32,
+        actions: &mut Vec<BusAction>,
+    ) {
+        let Some(fx) = &state.fx else {
+            let mut selected = String::from("none");
+            egui::ComboBox::from_id_salt(("bus_fx_processor", state.id.raw()))
+                .selected_text("No FX")
+                .show_ui(ui, |ui| {
+                    for entry in catalog.iter().filter(|entry| entry.available) {
+                        ui.selectable_value(
+                            &mut selected,
+                            entry.id.as_str().to_owned(),
+                            entry.label.as_str(),
+                        );
+                    }
+                });
+            if selected != "none" {
+                if let Some(entry) = catalog.iter().find(|entry| entry.id.as_str() == selected) {
+                    actions.push(BusAction::FxProcessorChanged(Some(entry.id.clone())));
+                }
+            }
+            return;
+        };
+        let features = processor.map(|value| value.features).unwrap_or_default();
+        let color = bus_fx_color(fx);
+        let fx_button = ui
+            .add_sized(
+                [group_width, 22.0],
+                egui::Button::new(egui::RichText::new("FX").color(color)),
+            )
+            .on_hover_text(bus_fx_hover_text(fx));
+        #[cfg(test)]
+        {
+            self.test_rects.fx = Some(fx_button.rect);
+        }
+        if fx_button.clicked() {
+            actions.push(bus_fx_primary_action(fx));
+        }
+        fx_button.context_menu(|ui| {
+            if ui
+                .add_enabled(features.logs, egui::Button::new("Process logs..."))
+                .clicked()
+            {
+                self.fx_logs_open = true;
+                ui.close();
+            }
+            if ui.button("Remove FX").clicked() {
+                actions.push(BusAction::FxProcessorChanged(None));
+                ui.close();
+            }
+            for entry in catalog.iter().filter(|entry| {
+                entry.available && Some(entry.id.clone()) != Some(fx.processor_type.clone())
+            }) {
+                if ui.button(entry.label.as_str()).clicked() {
+                    actions.push(BusAction::FxProcessorChanged(Some(entry.id.clone())));
+                    ui.close();
+                }
+            }
+        });
+    }
+
+    fn show_fx_windows(
+        &mut self,
+        context: &egui::Context,
+        state: &BusState,
+        processor: Option<&TrackProcessorDescriptor>,
+        actions: &mut Vec<BusAction>,
+    ) {
+        actions.extend(
+            self.builtin_fx_editor
+                .show_for_bus(context, state, processor),
+        );
+        if !self.fx_logs_open {
+            return;
+        }
+        let Some(fx) = &state.fx else {
+            self.fx_logs_open = false;
+            return;
+        };
+        let mut open = true;
+        egui::Window::new(format!("{} — Process logs", state.name))
+            .id(egui::Id::new(("bus_fx_logs", state.id.raw())))
+            .open(&mut open)
+            .resizable(true)
+            .show(context, |ui| {
+                ui.label(format!(
+                    "Lifecycle: {:?} · generation {}",
+                    fx.lifecycle, fx.generation
+                ));
+                if let Some(summary) = &fx.crash_summary {
+                    ui.colored_label(egui::Color32::LIGHT_RED, summary);
+                }
+                if fx.logs.is_empty() {
+                    ui.weak("No process logs");
+                }
+                for log in fx.logs.iter() {
+                    ui.label(format!(
+                        "generation {}\nstdout:\n{}\nstderr:\n{}",
+                        log.generation, log.stdout, log.stderr
+                    ));
+                }
+                if ui.button("Clear").clicked() {
+                    actions.push(BusAction::FxClearLogs);
+                }
+            });
+        if !open {
+            self.fx_logs_open = false;
+        }
+    }
+}
+
+fn bus_fx_color(fx: &TrackFxState) -> egui::Color32 {
+    match fx.lifecycle {
+        FxLifecycle::Running if fx.active => egui::Color32::LIGHT_GREEN,
+        FxLifecycle::Running => egui::Color32::GRAY,
+        FxLifecycle::Starting | FxLifecycle::Degraded | FxLifecycle::Restarting => {
+            egui::Color32::YELLOW
+        }
+        FxLifecycle::Crashed | FxLifecycle::Unavailable => egui::Color32::LIGHT_RED,
+        FxLifecycle::Stopped => egui::Color32::GRAY,
+    }
+}
+
+fn bus_fx_hover_text(fx: &TrackFxState) -> String {
+    format!(
+        "{}: {:?}{}",
+        fx.processor_type,
+        fx.lifecycle,
+        fx.status_summary
+            .as_deref()
+            .or(fx.crash_summary.as_deref())
+            .map(|summary| format!(" — {summary}"))
+            .unwrap_or_default()
+    )
+}
+
+fn bus_fx_primary_action(fx: &TrackFxState) -> BusAction {
+    if matches!(
+        fx.lifecycle,
+        FxLifecycle::Crashed | FxLifecycle::Unavailable
+    ) {
+        BusAction::FxToggleOrRecover
+    } else {
+        BusAction::FxVisibilityChanged(!fx.visible)
+    }
+}
+
+impl BusControls {
     #[cfg(test)]
     pub(crate) fn block_rect(&self) -> Option<egui::Rect> {
         self.test_rects.block
@@ -390,12 +575,23 @@ impl BusControls {
                 .request_repaint_after(std::time::Duration::from_millis(16));
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn fx_rect(&self) -> Option<egui::Rect> {
+        self.test_rects.fx
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
-    use crate::{BusChannelId, BusChannelState, BusId, PortId};
+    use crate::{
+        BuiltInFxState, BusChannelId, BusChannelState, BusId, PortId, TrackProcessorConstraints,
+        TrackProcessorEditorDescriptor, TrackProcessorEditorState, TrackProcessorFeatures,
+        TrackProcessorMidiPolicy, TrackProcessorTypeId,
+    };
 
     fn state(channels: usize) -> BusState {
         BusState {
@@ -417,6 +613,7 @@ mod tests {
             output_peaks_db: vec![-12.0; channels].into(),
             control_pending: false,
             control_error: None,
+            fx: None,
         }
     }
 
@@ -426,17 +623,27 @@ mod tests {
         state: &BusState,
         events: Vec<egui::Event>,
     ) -> Vec<BusAction> {
+        frame_with_processor(context, controls, state, None, events)
+    }
+
+    fn frame_with_processor(
+        context: &egui::Context,
+        controls: &mut BusControls,
+        state: &BusState,
+        processor: Option<&TrackProcessorDescriptor>,
+        events: Vec<egui::Event>,
+    ) -> Vec<BusAction> {
         let mut actions = Vec::new();
         let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(240.0, 220.0),
+                    egui::vec2(240.0, 420.0),
                 )),
                 events,
                 ..Default::default()
             },
-            |ui| actions = controls.show(ui, state, 0, 0),
+            |ui| actions = controls.show_with_processor(ui, state, 0, 0, processor),
         );
         output.textures_delta.clear();
         actions
@@ -784,5 +991,129 @@ mod tests {
             ],
         );
         assert_eq!(actions, [BusAction::Remove]);
+    }
+
+    fn fx_fixture() -> (BusState, TrackProcessorDescriptor) {
+        let processor = TrackProcessorDescriptor {
+            id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+            label: "Built-in FX".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: TrackProcessorConstraints {
+                min_dry_audio_channels: Some(1),
+                max_dry_audio_channels: None,
+                min_wet_audio_channels: Some(1),
+                max_wet_audio_channels: None,
+                matching_audio_channels: true,
+                midi: TrackProcessorMidiPolicy::Unsupported,
+            },
+            features: TrackProcessorFeatures {
+                state: true,
+                embedded_ui: true,
+                logs: true,
+                recovery: true,
+                ..TrackProcessorFeatures::default()
+            },
+            editor: Some(TrackProcessorEditorDescriptor::BuiltInFx),
+        };
+        let mut state = state(2);
+        state.fx = Some(TrackFxState {
+            processor_type: processor.id.clone(),
+            active: true,
+            visible: false,
+            lifecycle: FxLifecycle::Running,
+            generation: 1,
+            deadline_misses: 0,
+            stale_completions: 0,
+            status_summary: None,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: Some(TrackProcessorEditorState::BuiltInFx(
+                BuiltInFxState::default(),
+            )),
+        });
+        (state, processor)
+    }
+
+    fn click(
+        context: &egui::Context,
+        controls: &mut BusControls,
+        state: &BusState,
+        processor: &TrackProcessorDescriptor,
+        position: egui::Pos2,
+    ) -> Vec<BusAction> {
+        frame_with_processor(
+            context,
+            controls,
+            state,
+            Some(processor),
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame_with_processor(
+            context,
+            controls,
+            state,
+            Some(processor),
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        )
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fx_button_toggles_visibility_without_midi_ports() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut controls = BusControls::default();
+        let (state, processor) = fx_fixture();
+        frame_with_processor(
+            &context,
+            &mut controls,
+            &state,
+            Some(&processor),
+            Vec::new(),
+        );
+        assert!(controls.fx_rect().is_some());
+        let position = controls.fx_rect().unwrap().center();
+        let actions = click(&context, &mut controls, &state, &processor, position);
+        assert_eq!(actions, [BusAction::FxVisibilityChanged(true)]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fx_picker_hides_synth_processors() {
+        let catalog = [
+            TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+            TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
+        ];
+        let bus_catalog = catalog
+            .iter()
+            .filter(|id| id.as_str() != TrackProcessorTypeId::OXISYNTH)
+            .collect::<Vec<_>>();
+        assert_eq!(bus_catalog.len(), 1);
+        assert_eq!(bus_catalog[0].as_str(), TrackProcessorTypeId::BUILTIN_FX);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fx_processor_action_round_trips_through_match() {
+        let change = BusAction::FxProcessorChanged(Some(TrackProcessorTypeId::new(
+            TrackProcessorTypeId::BUILTIN_FX,
+        )));
+        assert!(matches!(change, BusAction::FxProcessorChanged(Some(_))));
+        let remove = BusAction::FxProcessorChanged(None);
+        assert!(matches!(remove, BusAction::FxProcessorChanged(None)));
     }
 }

@@ -1,10 +1,11 @@
 use crate::document::{
     AudioPayload, ChannelDocument, ChannelModeDocument, CompositeKindDocument,
     ConnectabilityDocument, DataTypeDocument, DefaultPlaybackModeDocument, FormatVersion,
-    FxChainTypeDocument, MediaPayload, PortDirectionDocument, PortDocument, PortRoleDocument,
-    ProcessorLatencyAdjustmentDocument, RecordingOffsetAdjustmentDocument, SessionBundle,
-    SessionDocument, TrackDocument, TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION,
-    FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
+    FxChainDocument, FxChainTypeDocument, MediaPayload, PortDirectionDocument, PortDocument,
+    PortRoleDocument, ProcessorLatencyAdjustmentDocument, RecordingOffsetAdjustmentDocument,
+    SessionBundle, SessionDocument, TrackDocument, TrackTopologyDocument, AUDIO_FORMAT,
+    DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_DOCUMENT_VERSION,
+    SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1372,6 +1373,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                 )));
             }
         }
+        validate_bus_fx_shape(bus)?;
     }
     let display_order = bundle
         .document
@@ -1578,52 +1580,90 @@ fn is_canonical_builtin_fx_state(state: &str) -> bool {
     })
 }
 
+fn validate_fx_chain_assignments(chain: &FxChainDocument) -> Result<(), SessionError> {
+    if chain.chain_type != FxChainTypeDocument::BuiltInFx
+        && !chain.builtin_fx_midi_cc_assignments.is_empty()
+    {
+        return Err(SessionError::Validation(format!(
+            "non-Built-in FX chain {} contains Built-in FX MIDI CC assignments",
+            chain.id
+        )));
+    }
+    let mut builtin_parameters = BTreeSet::new();
+    let mut builtin_sources = BTreeSet::new();
+    for assignment in &chain.builtin_fx_midi_cc_assignments {
+        if assignment.channel > 15
+            || assignment.controller > 127
+            || !builtin_parameters.insert(assignment.parameter)
+            || !builtin_sources.insert((assignment.channel, assignment.controller))
+        {
+            return Err(SessionError::Validation(format!(
+                "FX chain {} contains invalid or duplicate Built-in FX MIDI CC assignments",
+                chain.id
+            )));
+        }
+    }
+    if chain.chain_type != FxChainTypeDocument::OxiSynth && !chain.midi_cc_assignments.is_empty() {
+        return Err(SessionError::Validation(format!(
+            "non-OxiSynth FX chain {} contains MIDI CC assignments",
+            chain.id
+        )));
+    }
+    let mut parameters = BTreeSet::new();
+    let mut sources = BTreeSet::new();
+    for assignment in &chain.midi_cc_assignments {
+        if assignment.channel > 15
+            || assignment.controller > 127
+            || !parameters.insert(assignment.parameter)
+            || !sources.insert((assignment.channel, assignment.controller))
+        {
+            return Err(SessionError::Validation(format!(
+                "FX chain {} contains invalid or duplicate MIDI CC assignments",
+                chain.id
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_bus_fx_shape(bus: &crate::document::BusDocument) -> Result<(), SessionError> {
+    let Some(chain) = &bus.fx_chain else {
+        return Ok(());
+    };
+    validate_fx_chain_assignments(chain)?;
+    match chain.chain_type {
+        FxChainTypeDocument::CarlaRack
+        | FxChainTypeDocument::CarlaPatchbay
+        | FxChainTypeDocument::CarlaPatchbay16x
+        | FxChainTypeDocument::BuiltInFx
+        | FxChainTypeDocument::Test => {}
+        FxChainTypeDocument::OxiSynth => {
+            return Err(SessionError::Validation(format!(
+                "bus {} FX chain type is unsupported",
+                bus.id
+            )));
+        }
+    }
+    if chain.chain_type == FxChainTypeDocument::BuiltInFx
+        && !is_canonical_builtin_fx_state(&chain.internal_state)
+    {
+        return Err(SessionError::Validation(format!(
+            "bus {} contains invalid Built-in FX processor state",
+            bus.id
+        )));
+    }
+    if !chain.midi_cc_assignments.is_empty() {
+        return Err(SessionError::Validation(format!(
+            "bus {} FX chain must not contain MIDI CC assignments",
+            bus.id
+        )));
+    }
+    Ok(())
+}
+
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
     if let Some(chain) = &track.fx_chain {
-        if chain.chain_type != FxChainTypeDocument::BuiltInFx
-            && !chain.builtin_fx_midi_cc_assignments.is_empty()
-        {
-            return Err(SessionError::Validation(format!(
-                "non-Built-in FX chain {} contains Built-in FX MIDI CC assignments",
-                chain.id
-            )));
-        }
-        let mut builtin_parameters = BTreeSet::new();
-        let mut builtin_sources = BTreeSet::new();
-        for assignment in &chain.builtin_fx_midi_cc_assignments {
-            if assignment.channel > 15
-                || assignment.controller > 127
-                || !builtin_parameters.insert(assignment.parameter)
-                || !builtin_sources.insert((assignment.channel, assignment.controller))
-            {
-                return Err(SessionError::Validation(format!(
-                    "FX chain {} contains invalid or duplicate Built-in FX MIDI CC assignments",
-                    chain.id
-                )));
-            }
-        }
-        if chain.chain_type != FxChainTypeDocument::OxiSynth
-            && !chain.midi_cc_assignments.is_empty()
-        {
-            return Err(SessionError::Validation(format!(
-                "non-OxiSynth FX chain {} contains MIDI CC assignments",
-                chain.id
-            )));
-        }
-        let mut parameters = BTreeSet::new();
-        let mut sources = BTreeSet::new();
-        for assignment in &chain.midi_cc_assignments {
-            if assignment.channel > 15
-                || assignment.controller > 127
-                || !parameters.insert(assignment.parameter)
-                || !sources.insert((assignment.channel, assignment.controller))
-            {
-                return Err(SessionError::Validation(format!(
-                    "FX chain {} contains invalid or duplicate MIDI CC assignments",
-                    chain.id
-                )));
-            }
-        }
+        validate_fx_chain_assignments(chain)?;
     }
     match (&track.topology, &track.fx_chain) {
         (TrackTopologyDocument::DryWetExternal { .. }, Some(_)) => {

@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use crate::{
     colors, composite_loop_widget::LoopDragPayload, AppIntent, DefaultPlaybackMode, FxLifecycle,
     GlobalControlState, LoopId, LoopWidget, LoopWidgetAction, ProcessorLatencyAdjustmentState,
-    RecordingOffsetAdjustmentState, TrackControls, TrackProcessorDescriptor, TrackState,
-    TrackWidgetAction,
+    RecordingOffsetAdjustmentState, TrackControls, TrackFxState, TrackProcessorDescriptor,
+    TrackState, TrackWidgetAction,
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
@@ -202,7 +202,7 @@ fn track_background(state: &crate::TrackControlState) -> egui::Color32 {
     }
 }
 
-fn fx_color(fx: &crate::TrackFxState) -> egui::Color32 {
+fn fx_color(fx: &TrackFxState) -> egui::Color32 {
     match fx.lifecycle {
         FxLifecycle::Running if fx.active => egui::Color32::LIGHT_GREEN,
         FxLifecycle::Running => egui::Color32::GRAY,
@@ -214,7 +214,7 @@ fn fx_color(fx: &crate::TrackFxState) -> egui::Color32 {
     }
 }
 
-fn fx_hover_text(fx: &crate::TrackFxState) -> String {
+fn fx_hover_text(fx: &TrackFxState) -> String {
     format!(
         "{}: {:?}{}",
         fx.processor_type,
@@ -227,7 +227,7 @@ fn fx_hover_text(fx: &crate::TrackFxState) -> String {
     )
 }
 
-fn fx_primary_action(fx: &crate::TrackFxState) -> TrackWidgetAction {
+fn fx_primary_action(fx: &TrackFxState) -> TrackWidgetAction {
     if matches!(
         fx.lifecycle,
         FxLifecycle::Crashed | FxLifecycle::Unavailable

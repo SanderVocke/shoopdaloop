@@ -264,7 +264,10 @@ impl TransportCore {
                 Command::SetBusControl {
                     bus_id: existing, ..
                 }
-                | Command::RemoveBus { bus_id: existing } => *existing == bus_id,
+                | Command::RemoveBus { bus_id: existing }
+                | Command::SetBusFxControl {
+                    bus_id: existing, ..
+                } => *existing == bus_id,
                 Command::SetMixerRoute {
                     destination_channel_id,
                     ..
@@ -932,6 +935,7 @@ mod tests {
                     expected_output_port_ids: vec![4],
                     name: "Mono".to_owned(),
                     channel_count: 1,
+                    fx: None,
                 },
                 Command::SetBusControl {
                     bus_id: 2,

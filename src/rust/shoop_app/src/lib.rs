@@ -38,18 +38,19 @@ use shoop_backend::{
     canonical_midi_start_state, default_bus_channel_labels, Backend, BackendAsyncResult,
     BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData,
     BackendBuiltInFxMidiCcAssignment, BackendBuiltInFxParameter, BackendBusChannelId,
-    BackendBusControl, BackendBusId, BackendBusRequest, BackendChannelMode, BackendCompositeConfig,
-    BackendCompositeEntry, BackendCompositeId, BackendCompositeKind, BackendCompositeTarget,
-    BackendConnectionSnapshot, BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate,
-    BackendMidiContent, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
-    BackendMutationDetail, BackendOperationProgress, BackendOxiSynthMidiCcAssignment,
-    BackendOxiSynthParameter, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendProcessorLatencyAdjustment,
-    BackendRecordingOffsetAdjustment, BackendSessionBus, BackendSessionBusChannel,
-    BackendSessionData, BackendSessionMixerRoute, BackendSessionPort, BackendSessionReplacement,
-    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    BackendBusControl, BackendBusFxControl, BackendBusFxRequest, BackendBusId, BackendBusRequest,
+    BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot,
+    BackendDefaultPlaybackMode, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
+    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
+    BackendMidiEvent, BackendMixerSnapshot, BackendMutationDetail, BackendOperationProgress,
+    BackendOxiSynthMidiCcAssignment, BackendOxiSynthParameter, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionBus,
+    BackendSessionBusChannel, BackendSessionData, BackendSessionMixerRoute, BackendSessionPort,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -704,6 +705,7 @@ struct ApplicationModel {
     buses: BTreeMap<BusId, BusModel>,
     bus_order: Vec<BusId>,
     bus_view: Arc<[BusState]>,
+    bus_processors: Arc<[TrackProcessorDescriptor]>,
     loops: BTreeMap<LoopId, LoopModel>,
     connection_ports: BTreeMap<PortId, ConnectionPortModel>,
     host_ports: BTreeMap<String, HostPortState>,
@@ -714,6 +716,7 @@ struct ApplicationModel {
     pending_mixer_routes: BTreeMap<MixerRouteState, PendingConnection>,
     mixer_route_errors: Vec<MixerRouteErrorState>,
     desired_bus_controls: BTreeMap<(BackendBusId, BusControlKey), PendingBusControl>,
+    desired_bus_fx_controls: BTreeMap<(BackendBusId, FxControlKey), BackendBusFxControl>,
     desired_track_controls: BTreeMap<(BackendTrackId, TrackControlKey), BackendTrackControl>,
     desired_track_default_playback_modes: BTreeMap<BackendTrackId, BackendDefaultPlaybackMode>,
     desired_fx_controls: BTreeMap<(BackendTrackId, FxControlKey), BackendTrackFxControl>,
@@ -782,6 +785,7 @@ struct BusModel {
     balance: f32,
     muted: bool,
     output_peaks_db: Vec<f32>,
+    fx: Option<shoop_app_api::TrackFxState>,
     control_pending: bool,
     control_error: Option<String>,
 }
@@ -1004,6 +1008,32 @@ enum FxControlKey {
     OxiReverbSend,
     OxiChorusSend,
     OxiMidiAssignments,
+}
+
+fn bus_fx_control_as_track(control: &BackendBusFxControl) -> Option<BackendTrackFxControl> {
+    Some(match control {
+        BackendBusFxControl::SetActive(value) => BackendTrackFxControl::SetActive(*value),
+        BackendBusFxControl::SetVisible(value) => BackendTrackFxControl::SetVisible(*value),
+        BackendBusFxControl::ToggleOrRecover => BackendTrackFxControl::ToggleOrRecover,
+        BackendBusFxControl::RestoreState(state) => {
+            BackendTrackFxControl::RestoreState(state.clone())
+        }
+        BackendBusFxControl::ClearLogs => BackendTrackFxControl::ClearLogs,
+        BackendBusFxControl::BuiltInFx(control) => {
+            BackendTrackFxControl::BuiltInFx(control.clone())
+        }
+        BackendBusFxControl::SetProcessor(_) => return None,
+    })
+}
+
+fn apply_bus_fx_control(bus: &mut BusModel, control: &BackendBusFxControl) {
+    let Some(track_control) = bus_fx_control_as_track(control) else {
+        return;
+    };
+    let Some(fx) = bus.fx.as_mut() else {
+        return;
+    };
+    apply_fx_control(fx, &track_control);
 }
 
 fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
@@ -1678,6 +1708,7 @@ impl ApplicationModel {
                     balance: backend_bus.balance,
                     muted: backend_bus.muted,
                     output_peaks_db: backend_bus.output_peaks_db.clone(),
+                    fx: backend_bus.fx.clone(),
                     control_pending: false,
                     control_error: None,
                 },
@@ -1765,6 +1796,7 @@ impl ApplicationModel {
             pending_mixer_routes: BTreeMap::new(),
             mixer_route_errors: Vec::new(),
             desired_bus_controls: BTreeMap::new(),
+            desired_bus_fx_controls: BTreeMap::new(),
             desired_track_controls: BTreeMap::new(),
             desired_track_default_playback_modes: BTreeMap::new(),
             desired_fx_controls: BTreeMap::new(),
@@ -1784,6 +1816,9 @@ impl ApplicationModel {
             }),
             track_processors: backend
                 .track_processor_catalog()
+                .unwrap_or_else(|_| Arc::from([])),
+            bus_processors: backend
+                .bus_processor_catalog()
                 .unwrap_or_else(|_| Arc::from([])),
             track_creation_results: VecDeque::new(),
             bus_creation_results: VecDeque::new(),
@@ -3266,7 +3301,7 @@ impl ApplicationModel {
         action: BusAction,
     ) -> Result<(), String> {
         for id in buses {
-            self.handle_bus_action(backend, id, action)?;
+            self.handle_bus_action(backend, id, action.clone())?;
         }
         Ok(())
     }
@@ -3773,7 +3808,11 @@ impl ApplicationModel {
                 }
             }
         };
-        let backend_data = match session_bundle_to_backend(&bundle, &self.track_processors) {
+        let backend_data = match session_bundle_to_backend(
+            &bundle,
+            &self.track_processors,
+            &self.bus_processors,
+        ) {
             Ok(data) => data,
             Err(error) => {
                 self.fail_audio_driver_switch(request_id, source, pending.target, &error);
@@ -3846,7 +3885,11 @@ impl ApplicationModel {
         if let Err(error) = self.apply_loaded_session(backend, &bundle, &replacement) {
             self.audio_drivers.switch.status = AudioDriverSwitchStatus::Restoring;
             self.audio_drivers.switch.message = "Restoring the prior audio driver".to_owned();
-            let rollback_data = session_bundle_to_backend(&source_bundle, &self.track_processors);
+            let rollback_data = session_bundle_to_backend(
+                &source_bundle,
+                &self.track_processors,
+                &self.bus_processors,
+            );
             let rollback = source.as_ref().ok_or_else(|| {
                 "could not restore switched session because source driver state is missing"
                     .to_owned()
@@ -4207,7 +4250,11 @@ impl ApplicationModel {
             });
             return Ok(());
         }
-        let backend_data = match session_bundle_to_backend(&bundle, &self.track_processors) {
+        let backend_data = match session_bundle_to_backend(
+            &bundle,
+            &self.track_processors,
+            &self.bus_processors,
+        ) {
             Ok(backend_data) => backend_data,
             Err(message) => {
                 self.finish_io(IoTaskStatus::Failed, &message);
@@ -4246,8 +4293,11 @@ impl ApplicationModel {
                 resample_session(&bundle, self.status.sample_rate)
                     .map_err(|error| error.to_string())
                     .and_then(|bundle| {
-                        let backend_data =
-                            session_bundle_to_backend(&bundle, &self.track_processors)?;
+                        let backend_data = session_bundle_to_backend(
+                            &bundle,
+                            &self.track_processors,
+                            &self.bus_processors,
+                        )?;
                         self.pending_io = Some(PendingIo::CommitSessionLoad {
                             name,
                             bundle,
@@ -4932,9 +4982,25 @@ impl ApplicationModel {
     }
 
     fn add_bus(&mut self, backend: &mut dyn Backend, spec: BusSpec) -> Result<(), String> {
+        let fx = spec
+            .fx
+            .as_ref()
+            .map(|fx| {
+                validate_bus_processor(
+                    &fx.processor_type,
+                    spec.channel_count,
+                    &self.bus_processors,
+                )?;
+                Ok::<_, String>(BackendBusFxRequest {
+                    processor_type: fx.processor_type.as_str().to_owned(),
+                    audio_channels: spec.channel_count,
+                })
+            })
+            .transpose()?;
         let request = BackendBusRequest {
             name: spec.name,
             channel_count: spec.channel_count,
+            fx,
         }
         .normalized()
         .map_err(|error| format!("invalid bus: {error}"))?;
@@ -4960,6 +5026,7 @@ impl ApplicationModel {
         let creation = backend
             .create_bus(request.clone())
             .map_err(|error| format!("could not create bus: {error}"))?;
+        let backend_id = creation.bus_id;
         let channel_ids = creation
             .channels
             .iter()
@@ -4989,9 +5056,22 @@ impl ApplicationModel {
                     })
             });
         if mapping_invalid {
-            let _ = backend.remove_bus(creation.bus_id);
+            let _ = backend.remove_bus(backend_id);
             return Err("backend returned an invalid bus identity mapping".to_owned());
         }
+        let fx = spec.fx.as_ref().map(|fx| shoop_app_api::TrackFxState {
+            processor_type: fx.processor_type.clone(),
+            active: true,
+            visible: false,
+            lifecycle: shoop_app_api::FxLifecycle::Running,
+            generation: 1,
+            deadline_misses: 0,
+            stale_completions: 0,
+            status_summary: None,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: None,
+        });
         self.next_bus_id = next_bus_id;
         self.next_bus_channel_id = next_bus_channel_id;
         let mut channels = Vec::with_capacity(creation.channels.len());
@@ -5009,7 +5089,7 @@ impl ApplicationModel {
             bus_id,
             BusModel {
                 id: bus_id,
-                backend_id: creation.bus_id,
+                backend_id,
                 name: request.name,
                 structural_state: StructuralState::Creating,
                 structural_error: None,
@@ -5021,6 +5101,7 @@ impl ApplicationModel {
                 balance: 0.0,
                 muted: false,
                 output_peaks_db: vec![-200.0; request.channel_count as usize],
+                fx,
                 control_pending: false,
                 control_error: None,
             },
@@ -5479,11 +5560,31 @@ impl ApplicationModel {
             .buses
             .get_mut(&bus_id)
             .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        if matches!(
+            action,
+            BusAction::FxActiveChanged(_)
+                | BusAction::FxVisibilityChanged(_)
+                | BusAction::FxToggleOrRecover
+                | BusAction::FxRestoreState(_)
+                | BusAction::FxClearLogs
+                | BusAction::BuiltInFx(_)
+                | BusAction::FxProcessorChanged(_)
+        ) {
+            return self.handle_bus_fx_action(backend, bus_id, action);
+        }
         let requested = match action {
             BusAction::GainChanged(value) => BackendBusControl::GainDb(value),
             BusAction::BalanceChanged(value) => BackendBusControl::Balance(value),
             BusAction::MuteChanged(value) => BackendBusControl::Mute(value),
-            BusAction::Remove | BusAction::MoveBefore(_) => unreachable!(),
+            BusAction::Remove
+            | BusAction::MoveBefore(_)
+            | BusAction::FxActiveChanged(_)
+            | BusAction::FxVisibilityChanged(_)
+            | BusAction::FxToggleOrRecover
+            | BusAction::FxRestoreState(_)
+            | BusAction::FxClearLogs
+            | BusAction::BuiltInFx(_)
+            | BusAction::FxProcessorChanged(_) => unreachable!(),
         };
         let control = match requested.normalized(bus.channels.len()) {
             Ok(control) => control,
@@ -5517,6 +5618,88 @@ impl ApplicationModel {
         bus.control_pending = true;
         bus.control_error = None;
         apply_bus_control(bus, control);
+        Ok(())
+    }
+
+    fn handle_bus_fx_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        bus_id: BusId,
+        action: BusAction,
+    ) -> Result<(), String> {
+        if let BusAction::FxProcessorChanged(processor) = action {
+            return self.replace_bus_processor(backend, bus_id, processor);
+        }
+        let backend_id = self
+            .buses
+            .get(&bus_id)
+            .map(|bus| bus.backend_id)
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        let control = match action {
+            BusAction::FxActiveChanged(value) => BackendBusFxControl::SetActive(value),
+            BusAction::FxVisibilityChanged(value) => BackendBusFxControl::SetVisible(value),
+            BusAction::FxToggleOrRecover => BackendBusFxControl::ToggleOrRecover,
+            BusAction::FxRestoreState(state) => BackendBusFxControl::RestoreState(state),
+            BusAction::FxClearLogs => BackendBusFxControl::ClearLogs,
+            BusAction::BuiltInFx(control) => BackendBusFxControl::BuiltInFx(control),
+            _ => unreachable!(),
+        };
+        backend
+            .set_bus_fx_control(backend_id, control.clone())
+            .map_err(|error| format!("could not update bus FX {bus_id}: {error}"))?;
+        if let Some(track_control) = bus_fx_control_as_track(&control) {
+            if let Some(key) = fx_control_key(&track_control) {
+                self.desired_bus_fx_controls
+                    .insert((backend_id, key), control.clone());
+            }
+        }
+        let bus = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        apply_bus_fx_control(bus, &control);
+        Ok(())
+    }
+
+    fn replace_bus_processor(
+        &mut self,
+        backend: &mut dyn Backend,
+        bus_id: BusId,
+        processor: Option<shoop_app_api::TrackProcessorTypeId>,
+    ) -> Result<(), String> {
+        let (backend_id, channel_count) = self
+            .buses
+            .get(&bus_id)
+            .map(|bus| (bus.backend_id, bus.channels.len() as u32))
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        if let Some(processor) = &processor {
+            validate_bus_processor(processor, channel_count, &self.bus_processors)?;
+        }
+        let request = processor.as_ref().map(|processor| BackendBusFxRequest {
+            processor_type: processor.as_str().to_owned(),
+            audio_channels: channel_count,
+        });
+        backend
+            .set_bus_fx_control(backend_id, BackendBusFxControl::SetProcessor(request))
+            .map_err(|error| format!("could not replace bus FX {bus_id}: {error}"))?;
+        let bus = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        bus.fx = processor.map(|processor_type| shoop_app_api::TrackFxState {
+            processor_type,
+            active: true,
+            visible: false,
+            lifecycle: shoop_app_api::FxLifecycle::Running,
+            generation: 1,
+            deadline_misses: 0,
+            stale_completions: 0,
+            status_summary: None,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: None,
+        });
+        bus.control_error = None;
         Ok(())
     }
 
@@ -9135,6 +9318,7 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::BusFxControl(_)) => {}
                 None => {}
             }
             self.report_error(format!(
@@ -9693,6 +9877,7 @@ impl ApplicationModel {
                             balance: backend_bus.balance,
                             muted: backend_bus.muted,
                             output_peaks_db: backend_bus.output_peaks_db.clone(),
+                            fx: backend_bus.fx.clone(),
                             control_pending: false,
                             control_error: None,
                         },
@@ -9715,6 +9900,7 @@ impl ApplicationModel {
             bus.balance = backend_bus.balance;
             bus.muted = backend_bus.muted;
             bus.output_peaks_db.clone_from(&backend_bus.output_peaks_db);
+            bus.fx.clone_from(&backend_bus.fx);
             for backend_channel in &backend_bus.channels {
                 if let Some(channel) = bus
                     .channels
@@ -9814,6 +10000,14 @@ impl ApplicationModel {
                     !(matched && confirmed)
                 })
             });
+        self.desired_bus_fx_controls
+            .retain(|(backend_id, _), desired| {
+                !snapshot.buses.get(backend_id).is_some_and(|bus| {
+                    bus_fx_control_as_track(desired).is_some_and(|track_control| {
+                        fx_control_matches(bus.fx.as_ref(), &track_control)
+                    })
+                })
+            });
         for ((backend_id, _), pending) in &self.desired_bus_controls {
             if let Some(bus) = self
                 .buses
@@ -9821,6 +10015,15 @@ impl ApplicationModel {
                 .find(|bus| bus.backend_id == *backend_id)
             {
                 apply_bus_control(bus, pending.desired);
+            }
+        }
+        for ((backend_id, _), desired) in &self.desired_bus_fx_controls {
+            if let Some(bus) = self
+                .buses
+                .values_mut()
+                .find(|bus| bus.backend_id == *backend_id)
+            {
+                apply_bus_fx_control(bus, desired);
             }
         }
         for bus in self.buses.values_mut() {
@@ -10732,7 +10935,33 @@ impl ApplicationModel {
                     name: bus.name.clone(),
                     channels,
                     ports,
-                    fx_chain: None,
+                    fx_chain: captured_bus
+                        .processor_type
+                        .as_ref()
+                        .map(|processor_type| {
+                            let chain_type = fx_chain_type_for_processor(
+                                &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
+                            )?;
+                            let internal_state =
+                                captured_bus.processor_state.clone().ok_or_else(|| {
+                                    format!("processed bus {} has no captured state", bus.id)
+                                })?;
+                            Ok::<_, String>(FxChainDocument {
+                                id: bus.id.raw(),
+                                title: bus.name.clone(),
+                                chain_type,
+                                ports: Vec::new(),
+                                internal_state,
+                                builtin_fx_midi_cc_assignments: captured_bus
+                                    .builtin_fx_midi_cc_assignments
+                                    .iter()
+                                    .copied()
+                                    .map(document_builtin_fx_midi_cc_assignment)
+                                    .collect(),
+                                midi_cc_assignments: Vec::new(),
+                            })
+                        })
+                        .transpose()?,
                     gain_db: captured_bus.gain_db,
                     balance: captured_bus.balance,
                     muted: captured_bus.muted,
@@ -11171,6 +11400,7 @@ impl ApplicationModel {
                     gain_db: bus_document.gain_db,
                     balance: bus_document.balance,
                     muted: bus_document.muted,
+                    fx: None,
                     control_pending: false,
                     control_error: None,
                 },
@@ -11210,6 +11440,7 @@ impl ApplicationModel {
         self.pending_mixer_routes.clear();
         self.mixer_route_errors.clear();
         self.desired_bus_controls.clear();
+        self.desired_bus_fx_controls.clear();
         self.desired_track_controls.clear();
         self.desired_track_default_playback_modes = self
             .tracks
@@ -11273,6 +11504,7 @@ impl ApplicationModel {
                 output_peaks_db: bus.output_peaks_db.clone().into(),
                 control_pending: bus.control_pending,
                 control_error: bus.control_error.clone(),
+                fx: bus.fx.clone(),
             })
             .collect::<Vec<_>>();
         if self.bus_view.as_ref() != next.as_slice() {
@@ -11333,6 +11565,7 @@ impl ApplicationModel {
                 .collect(),
             buses: Arc::clone(&self.bus_view),
             track_processors: Arc::clone(&self.track_processors),
+            bus_processors: Arc::clone(&self.bus_processors),
             track_creation_results: self
                 .track_creation_results
                 .iter()
@@ -12543,6 +12776,30 @@ fn validate_loaded_processor(
     Ok(())
 }
 
+fn validate_bus_processor(
+    processor: &shoop_app_api::TrackProcessorTypeId,
+    audio_channels: u32,
+    processors: &[TrackProcessorDescriptor],
+) -> Result<(), String> {
+    if processor.as_str() == shoop_app_api::TrackProcessorTypeId::OXISYNTH {
+        return Err("Built-in Synth is unavailable on buses".to_owned());
+    }
+    let descriptor = processors
+        .iter()
+        .find(|descriptor| descriptor.id == *processor)
+        .filter(|descriptor| descriptor.available)
+        .ok_or_else(|| format!("bus requires unavailable processor {processor}"))?;
+    if !descriptor
+        .constraints
+        .accepts(audio_channels, audio_channels, false)
+    {
+        return Err(format!(
+            "bus processor {processor} does not support its channel shape"
+        ));
+    }
+    Ok(())
+}
+
 fn session_script_sources(bundle: &SessionBundle) -> Result<Vec<SessionScriptSource>, String> {
     bundle
         .document
@@ -12647,16 +12904,10 @@ fn valid_global_fx_port_document(port: &PortDocument) -> bool {
 fn session_bundle_to_backend(
     bundle: &SessionBundle,
     processors: &[TrackProcessorDescriptor],
+    bus_processors: &[TrackProcessorDescriptor],
 ) -> Result<BackendSessionData, String> {
     shoop_session::validate_bundle(bundle).map_err(|error| error.to_string())?;
-    if !bundle.document.midi_control.bindings.is_empty()
-        || !bundle.document.settings.is_empty()
-        || bundle
-            .document
-            .buses
-            .iter()
-            .any(|bus| bus.fx_chain.is_some())
-    {
+    if !bundle.document.midi_control.bindings.is_empty() || !bundle.document.settings.is_empty() {
         return Err(
             "session requires a feature not yet available in the application runtime".to_owned(),
         );
@@ -12938,10 +13189,26 @@ fn session_bundle_to_backend(
         .buses
         .iter()
         .map(|bus| {
+            let audio_channels = u32::try_from(bus.channels.len())
+                .map_err(|_| "session bus channel count exceeds u32".to_owned())?;
+            let fx = match &bus.fx_chain {
+                None => None,
+                Some(chain) => {
+                    let processor = processor_for_fx_chain_type(chain.chain_type);
+                    validate_bus_processor(&processor, audio_channels, bus_processors)?;
+                    if !chain.midi_cc_assignments.is_empty() {
+                        return Err("session bus FX chain has unsupported assignments".to_owned());
+                    }
+                    Some(BackendBusFxRequest {
+                        processor_type: processor.as_str().to_owned(),
+                        audio_channels,
+                    })
+                }
+            };
             BackendBusRequest {
                 name: bus.name.clone(),
-                channel_count: u32::try_from(bus.channels.len())
-                    .map_err(|_| "session bus channel count exceeds u32".to_owned())?,
+                channel_count: audio_channels,
+                fx,
             }
             .normalized()
             .map_err(|error| error.to_string())?;
@@ -13002,6 +13269,22 @@ fn session_bundle_to_backend(
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
+                processor_type: bus.fx_chain.as_ref().map(|chain| {
+                    processor_for_fx_chain_type(chain.chain_type)
+                        .as_str()
+                        .to_owned()
+                }),
+                processor_state: bus
+                    .fx_chain
+                    .as_ref()
+                    .map(|chain| chain.internal_state.clone()),
+                builtin_fx_midi_cc_assignments: bus
+                    .fx_chain
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|chain| chain.builtin_fx_midi_cc_assignments.iter().copied())
+                    .map(backend_builtin_fx_midi_cc_assignment)
+                    .collect(),
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -21076,6 +21359,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 name: "  Duplicate  ".to_owned(),
                 channel_count: 4,
                 creation_request_id: Some(42),
+                fx: None,
             }),
         );
         let added = *model.bus_order.last().unwrap();
@@ -21219,6 +21503,79 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model
             .handle_bus_action(&mut backend, added, BusAction::Remove)
             .unwrap();
+
+        // Bus FX intents drive the backend and reconcile optimistically.
+        let mut fx_backend = FakeBackend::default();
+        let mut fx_bus_model = ApplicationModel::initialize(
+            &mut fx_backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+            true,
+        )
+        .unwrap();
+        // FakeBackend mirrors the track catalog as the bus catalog for tests.
+        let mut bus_descriptor = shoop_backend::builtin_fx_descriptor();
+        bus_descriptor.constraints.midi = shoop_app_api::TrackProcessorMidiPolicy::Unsupported;
+        fx_bus_model.bus_processors = std::sync::Arc::from([bus_descriptor]);
+        fx_bus_model
+            .add_bus(
+                &mut fx_backend,
+                BusSpec {
+                    name: "Fx".to_owned(),
+                    channel_count: 2,
+                    creation_request_id: None,
+                    fx: Some(shoop_app_api::BusFxSpec {
+                        processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                            shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+                        ),
+                    }),
+                },
+            )
+            .unwrap();
+        let fx_bus = *fx_bus_model.bus_order.last().unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_some());
+        fx_bus_model
+            .handle_bus_action(&mut fx_backend, fx_bus, BusAction::FxActiveChanged(false))
+            .unwrap();
+        assert!(!fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().active);
+        fx_bus_model
+            .handle_bus_action(
+                &mut fx_backend,
+                fx_bus,
+                BusAction::FxVisibilityChanged(true),
+            )
+            .unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().visible);
+        fx_bus_model.apply_backend_snapshot(fx_backend.poll().unwrap());
+        assert!(!fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().active);
+        assert!(fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().visible);
+        fx_bus_model
+            .handle_bus_action(&mut fx_backend, fx_bus, BusAction::FxProcessorChanged(None))
+            .unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_none());
+        fx_bus_model.apply_backend_snapshot(fx_backend.poll().unwrap());
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_none());
+        fx_bus_model
+            .handle_bus_action(
+                &mut fx_backend,
+                fx_bus,
+                BusAction::FxProcessorChanged(Some(shoop_app_api::TrackProcessorTypeId::new(
+                    shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+                ))),
+            )
+            .unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_some());
+        assert!(fx_bus_model
+            .handle_bus_action(
+                &mut fx_backend,
+                fx_bus,
+                BusAction::FxProcessorChanged(Some(shoop_app_api::TrackProcessorTypeId::new(
+                    shoop_app_api::TrackProcessorTypeId::OXISYNTH,
+                ))),
+            )
+            .is_err());
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_some());
         assert_eq!(
             model.buses[&added].structural_state,
             StructuralState::Removing
@@ -21297,6 +21654,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 name: "Timeout".to_owned(),
                 channel_count: 1,
                 creation_request_id: Some(77),
+                fx: None,
             }),
         );
         let pending = *model.bus_order.last().unwrap();
@@ -21593,6 +21951,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     name: "Cue".to_owned(),
                     channel_count: 2,
                     creation_request_id: None,
+                    fx: None,
                 },
             )
             .unwrap();
@@ -22140,6 +22499,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     name: name.to_owned(),
                     channel_count: channels,
                     creation_request_id: Some(request_id),
+                    fx: None,
                 }))
                 .unwrap();
             runtime.tick(Duration::ZERO);
@@ -23215,23 +23575,23 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let mut aliased_master = saved.clone();
         aliased_master.document.buses[0].channels[1].output_port_id =
             aliased_master.document.buses[0].channels[0].output_port_id;
-        assert!(session_bundle_to_backend(&aliased_master, &[])
+        assert!(session_bundle_to_backend(&aliased_master, &[], &[])
             .unwrap_err()
             .contains("share one output port"));
         let mut noncanonical_master = saved.clone();
         noncanonical_master.document.buses[0].ports[0].gain = 0.5;
-        assert!(session_bundle_to_backend(&noncanonical_master, &[])
+        assert!(session_bundle_to_backend(&noncanonical_master, &[], &[])
             .unwrap_err()
             .contains("not canonical"));
         let mut invalid_controls = saved.clone();
         invalid_controls.document.buses[0].gain_db = 100.0;
-        assert!(session_bundle_to_backend(&invalid_controls, &[])
+        assert!(session_bundle_to_backend(&invalid_controls, &[], &[])
             .unwrap_err()
             .contains("bus gain"));
         let mut colliding_global = saved.clone();
         colliding_global.document.global_ports[0].id =
             colliding_global.document.buses[0].ports[0].id;
-        assert!(session_bundle_to_backend(&colliding_global, &[])
+        assert!(session_bundle_to_backend(&colliding_global, &[], &[])
             .unwrap_err()
             .contains("duplicate port ID"));
 

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 25;
+pub const PROTOCOL_VERSION: u16 = 27;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -125,6 +125,8 @@ pub enum Command {
         expected_output_port_ids: Vec<u64>,
         name: String,
         channel_count: u32,
+        #[serde(default)]
+        fx: Option<WireBusFxRequest>,
     },
     RemoveBus {
         bus_id: u64,
@@ -132,6 +134,10 @@ pub enum Command {
     SetBusControl {
         bus_id: u64,
         control: WireBusControl,
+    },
+    SetBusFxControl {
+        bus_id: u64,
+        control: WireBusFxControl,
     },
     SetTrackDefaultPlaybackMode {
         track_id: u64,
@@ -307,6 +313,21 @@ impl Command {
                 },
             ) => {
                 existing_track == replacement_track
+                    && existing_control.supersedable_parameter()
+                        == replacement_control.supersedable_parameter()
+                    && replacement_control.supersedable_parameter().is_some()
+            }
+            (
+                Self::SetBusFxControl {
+                    bus_id: existing_bus,
+                    control: existing_control,
+                },
+                Self::SetBusFxControl {
+                    bus_id: replacement_bus,
+                    control: replacement_control,
+                },
+            ) => {
+                existing_bus == replacement_bus
                     && existing_control.supersedable_parameter()
                         == replacement_control.supersedable_parameter()
                     && replacement_control.supersedable_parameter().is_some()
@@ -727,6 +748,53 @@ pub struct WireConnectionFailure {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum WireBusFxControl {
+    SetActive(bool),
+    SetVisible(bool),
+    ToggleOrRecover,
+    RestoreState(String),
+    ClearLogs,
+    BuiltInSetStageEnabled(WireBuiltInFxStage, bool),
+    BuiltInSetDriveType(WireBuiltInFxDriveType),
+    BuiltInSetModulationType(WireBuiltInFxModulationType),
+    BuiltInSetReverbType(WireBuiltInFxReverbType),
+    BuiltInSetParameter(WireBuiltInFxParameter, f32),
+    BuiltInAssignMidiCc(WireBuiltInFxMidiCcAssignment),
+    BuiltInRemoveMidiCc(WireBuiltInFxParameter),
+    BuiltInClearMidiCcAssignments,
+    BuiltInSetReverbEnabled(bool),
+    SetProcessor(Option<WireBusFxRequest>),
+}
+
+impl WireBusFxControl {
+    fn supersedable_parameter(&self) -> Option<u8> {
+        Some(match self {
+            Self::SetActive(_) => 0,
+            Self::BuiltInSetReverbEnabled(_) => 16 + WireBuiltInFxStage::Reverb.index(),
+            Self::BuiltInSetStageEnabled(stage, _) => 16 + stage.index(),
+            Self::BuiltInSetDriveType(_) => 22,
+            Self::BuiltInSetModulationType(_) => 23,
+            Self::BuiltInSetReverbType(_) => 24,
+            Self::BuiltInSetParameter(parameter, _) => 32 + parameter.index(),
+            Self::SetVisible(_)
+            | Self::ToggleOrRecover
+            | Self::RestoreState(_)
+            | Self::ClearLogs
+            | Self::BuiltInAssignMidiCc(_)
+            | Self::BuiltInRemoveMidiCc(_)
+            | Self::BuiltInClearMidiCcAssignments
+            | Self::SetProcessor(_) => return None,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireBusFxRequest {
+    pub processor_type: String,
+    pub audio_channels: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireBus {
     pub id: u64,
     pub name: String,
@@ -735,6 +803,8 @@ pub struct WireBus {
     pub balance: f32,
     pub muted: bool,
     pub output_peaks_db: Vec<f32>,
+    #[serde(default)]
+    pub fx: Option<WireTrackFxState>,
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -1424,6 +1494,10 @@ mod tests {
             expected_output_port_ids: vec![21, 22, 23, 24],
             name: "Surround".to_owned(),
             channel_count: 4,
+            fx: Some(WireBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 4,
+            }),
         };
         let remove = Command::RemoveBus { bus_id: 7 };
         for (sequence, command) in [(1, create.clone()), (2, remove.clone())] {
@@ -1441,6 +1515,73 @@ mod tests {
             bus_id: 7,
             control: WireBusControl::Mute(true),
         }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_fx_commands_round_trip_with_stable_identity_and_values() {
+        let create = Command::CreateBus {
+            expected_bus_id: 7,
+            expected_channel_ids: vec![11, 12],
+            expected_output_port_ids: vec![21, 22],
+            name: "Fx".to_owned(),
+            channel_count: 2,
+            fx: Some(WireBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 2,
+            }),
+        };
+        let control = Command::SetBusFxControl {
+            bus_id: 7,
+            control: WireBusFxControl::BuiltInSetStageEnabled(WireBuiltInFxStage::Drive, true),
+        };
+        let replace = Command::SetBusFxControl {
+            bus_id: 7,
+            control: WireBusFxControl::SetProcessor(Some(WireBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 2,
+            })),
+        };
+        let remove = Command::SetBusFxControl {
+            bus_id: 7,
+            control: WireBusFxControl::SetProcessor(None),
+        };
+        for (sequence, command) in [(1, create), (2, control), (3, replace), (4, remove)] {
+            let envelope = CommandEnvelope::new(sequence, command);
+            let encoded = serde_json::to_vec(&envelope).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+                envelope
+            );
+            assert!(encoded.len() <= COMMAND_MAX_BYTES);
+        }
+        let plain = Command::CreateBus {
+            expected_bus_id: 7,
+            expected_channel_ids: vec![11, 12],
+            expected_output_port_ids: vec![21, 22],
+            name: "Fx".to_owned(),
+            channel_count: 2,
+            fx: None,
+        };
+        let encoded = serde_json::to_vec(&CommandEnvelope::new(3, plain)).unwrap();
+        assert!(encoded.len() <= COMMAND_MAX_BYTES);
+        let legacy = serde_json::json!({
+            "version": PROTOCOL_VERSION,
+            "sequence": 4,
+            "command": {
+                "kind": "create_bus",
+                "expected_bus_id": 7,
+                "expected_channel_ids": [11, 12],
+                "expected_output_port_ids": [21, 22],
+                "name": "Fx",
+                "channel_count": 2
+            }
+        });
+        assert!(matches!(
+            serde_json::from_value::<CommandEnvelope>(legacy)
+                .unwrap()
+                .command,
+            Command::CreateBus { fx: None, .. }
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1578,7 +1719,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":25,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":27,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1589,7 +1730,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":25,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":27,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

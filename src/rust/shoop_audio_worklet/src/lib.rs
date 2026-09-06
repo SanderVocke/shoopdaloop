@@ -1,6 +1,7 @@
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+use shoop_app_api::{TrackFxState, TrackProcessorEditorState, TrackProcessorTypeId};
 #[cfg(test)]
 use shoop_audio_protocol::WireMidiEvent;
 use shoop_audio_protocol::{
@@ -8,31 +9,31 @@ use shoop_audio_protocol::{
     WaveformChunk, WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
     WireBuiltInFxDriveType, WireBuiltInFxMidiCcAssignment, WireBuiltInFxModulationType,
     WireBuiltInFxParameter, WireBuiltInFxReverbType, WireBuiltInFxStage, WireBuiltInFxState,
-    WireBus, WireBusChannel, WireBusControl, WireChannelMode, WireCompositeConfig,
-    WireCompositeKind, WireCompositeState, WireCompositeTarget, WireConfirmedLink,
-    WireConnectionFailure, WireDefaultPlaybackMode, WireHostPort, WireLatestMidiMessage,
-    WireLoopMode, WireLoopState, WireMidiOutputEvent, WireMixerFailure, WireMixerLink,
-    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState, WirePortDataType,
-    WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment,
-    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyState,
-    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireBus, WireBusChannel, WireBusControl, WireBusFxControl, WireBusFxRequest, WireChannelMode,
+    WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
+    WireConfirmedLink, WireConnectionFailure, WireDefaultPlaybackMode, WireHostPort,
+    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent, WireMixerFailure,
+    WireMixerLink, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
+    WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
+    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackFxState, WireTrackLatencyState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
+    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 #[cfg(test)]
 use shoop_backend::BuiltInFxState;
 use shoop_backend::{
-    Backend, BackendBusChannelId, BackendBusControl, BackendBusId, BackendBusRequest,
-    BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId, BackendCompositeKind,
-    BackendCompositeTarget, BackendDefaultPlaybackMode, BackendGrabRequest,
-    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
-    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
-    BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
+    Backend, BackendBusChannelId, BackendBusControl, BackendBusFxControl, BackendBusFxRequest,
+    BackendBusId, BackendBusRequest, BackendCompositeConfig, BackendCompositeEntry,
+    BackendCompositeId, BackendCompositeKind, BackendCompositeTarget, BackendDefaultPlaybackMode,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId,
+    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
     BackendTrackFxControl, BackendTrackId, BackendTrackTopology, BuiltInFxControl,
     BuiltInFxDriveType, BuiltInFxMidiCcAssignment, BuiltInFxModulationType, BuiltInFxParameter,
     BuiltInFxReverbType, BuiltInFxStage, EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest,
-    MAX_WEB_AUDIO_QUANTUM,
+    OxiSynthParameter, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -504,12 +505,17 @@ impl WorkletHost {
                 expected_output_port_ids,
                 name,
                 channel_count,
+                fx,
             } => {
                 let created = self
                     .backend
                     .create_bus(BackendBusRequest {
                         name,
                         channel_count,
+                        fx: fx.map(|request: WireBusFxRequest| BackendBusFxRequest {
+                            processor_type: request.processor_type,
+                            audio_channels: request.audio_channels,
+                        }),
                     })
                     .map_err(|error| error.to_string())?;
                 let actual_channel_ids = created
@@ -542,6 +548,15 @@ impl WorkletHost {
                     .set_bus_control(
                         BackendBusId::from_raw(bus_id),
                         from_wire_bus_control(control),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetBusFxControl { bus_id, control } => {
+                self.backend
+                    .set_bus_fx_control(
+                        BackendBusId::from_raw(bus_id),
+                        from_wire_bus_fx_control(control),
                     )
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
@@ -1293,6 +1308,55 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
     }
 }
 
+fn from_wire_bus_fx_control(control: WireBusFxControl) -> BackendBusFxControl {
+    match control {
+        WireBusFxControl::SetActive(value) => BackendBusFxControl::SetActive(value),
+        WireBusFxControl::SetVisible(value) => BackendBusFxControl::SetVisible(value),
+        WireBusFxControl::ToggleOrRecover => BackendBusFxControl::ToggleOrRecover,
+        WireBusFxControl::RestoreState(value) => BackendBusFxControl::RestoreState(value),
+        WireBusFxControl::ClearLogs => BackendBusFxControl::ClearLogs,
+        WireBusFxControl::BuiltInSetStageEnabled(stage, enabled) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetStageEnabled(from_wire_builtin_fx_stage(stage), enabled),
+        ),
+        WireBusFxControl::BuiltInSetDriveType(drive_type) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetDriveType(from_wire_builtin_fx_drive_type(drive_type)),
+        ),
+        WireBusFxControl::BuiltInSetModulationType(modulation_type) => {
+            BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetModulationType(
+                from_wire_builtin_fx_modulation_type(modulation_type),
+            ))
+        }
+        WireBusFxControl::BuiltInSetReverbType(reverb_type) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetReverbType(from_wire_builtin_fx_reverb_type(reverb_type)),
+        ),
+        WireBusFxControl::BuiltInSetParameter(parameter, value) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetParameter(from_wire_builtin_fx_parameter(parameter), value),
+        ),
+        WireBusFxControl::BuiltInAssignMidiCc(assignment) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::AssignMidiCc(BuiltInFxMidiCcAssignment {
+                parameter: from_wire_builtin_fx_parameter(assignment.parameter),
+                channel: assignment.channel,
+                controller: assignment.controller,
+            }),
+        ),
+        WireBusFxControl::BuiltInRemoveMidiCc(parameter) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::RemoveMidiCc(from_wire_builtin_fx_parameter(parameter)),
+        ),
+        WireBusFxControl::BuiltInClearMidiCcAssignments => {
+            BackendBusFxControl::BuiltInFx(BuiltInFxControl::ClearMidiCcAssignments)
+        }
+        WireBusFxControl::BuiltInSetReverbEnabled(value) => {
+            BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(value))
+        }
+        WireBusFxControl::SetProcessor(fx) => {
+            BackendBusFxControl::SetProcessor(fx.map(|request| BackendBusFxRequest {
+                processor_type: request.processor_type,
+                audio_channels: request.audio_channels,
+            }))
+        }
+    }
+}
+
 fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
     match mode {
         WireLoopMode::Unknown => BackendLoopMode::Unknown,
@@ -1341,6 +1405,90 @@ fn from_wire_composite_config(config: WireCompositeConfig) -> BackendCompositeCo
                     .collect()
             })
             .collect(),
+    }
+}
+
+fn to_wire_track_fx_state(fx: TrackFxState) -> Option<WireTrackFxState> {
+    let editor = fx.editor?;
+    to_wire_fx_state(&fx.processor_type, fx.active, fx.visible, editor)
+}
+
+fn to_wire_fx_state(
+    processor_type: &TrackProcessorTypeId,
+    active: bool,
+    visible: bool,
+    editor: TrackProcessorEditorState,
+) -> Option<WireTrackFxState> {
+    match editor {
+        TrackProcessorEditorState::BuiltInFx(editor) => Some(WireTrackFxState {
+            processor_type: processor_type.as_str().to_owned(),
+            active,
+            visible,
+            builtin_fx: Some(WireBuiltInFxState {
+                compressor_enabled: editor.compressor_enabled,
+                compressor_threshold_db: editor.compressor_threshold_db,
+                compressor_ratio: editor.compressor_ratio,
+                compressor_attack_ms: editor.compressor_attack_ms,
+                compressor_release_ms: editor.compressor_release_ms,
+                compressor_makeup_db: editor.compressor_makeup_db,
+                drive_enabled: editor.drive_enabled,
+                drive_type: to_wire_builtin_fx_drive_type(editor.drive_type),
+                drive_db: editor.drive_db,
+                drive_tone: editor.drive_tone,
+                drive_mix: editor.drive_mix,
+                drive_output_db: editor.drive_output_db,
+                eq_enabled: editor.eq_enabled,
+                eq_low_db: editor.eq_low_db,
+                eq_mid_db: editor.eq_mid_db,
+                eq_high_db: editor.eq_high_db,
+                chorus_enabled: editor.chorus_enabled,
+                chorus_rate_hz: editor.chorus_rate_hz,
+                chorus_depth: editor.chorus_depth,
+                chorus_mix: editor.chorus_mix,
+                chorus_width: editor.chorus_width,
+                modulation_enabled: editor.modulation_enabled,
+                modulation_type: to_wire_builtin_fx_modulation_type(editor.modulation_type),
+                modulation_rate_hz: editor.modulation_rate_hz,
+                modulation_depth: editor.modulation_depth,
+                modulation_mix: editor.modulation_mix,
+                modulation_feedback: editor.modulation_feedback,
+                modulation_spread: editor.modulation_spread,
+                reverb_enabled: editor.reverb_enabled,
+                reverb_type: to_wire_builtin_fx_reverb_type(editor.reverb_type),
+                reverb_amount: editor.reverb_amount,
+                reverb_tone: editor.reverb_tone,
+                midi_cc_assignments: editor
+                    .midi_cc_assignments
+                    .iter()
+                    .map(|assignment| WireBuiltInFxMidiCcAssignment {
+                        parameter: to_wire_builtin_fx_parameter(assignment.parameter),
+                        channel: assignment.channel,
+                        controller: assignment.controller,
+                    })
+                    .collect(),
+            }),
+            oxisynth: None,
+        }),
+        TrackProcessorEditorState::OxiSynth(editor) => Some(WireTrackFxState {
+            processor_type: processor_type.as_str().to_owned(),
+            active,
+            visible,
+            builtin_fx: None,
+            oxisynth: Some(WireOxiSynthState {
+                selected_preset_id: editor.selected_preset_id,
+                reverb_send: editor.reverb_send,
+                chorus_send: editor.chorus_send,
+                midi_cc_assignments: editor
+                    .midi_cc_assignments
+                    .iter()
+                    .map(|assignment| WireOxiSynthMidiCcAssignment {
+                        parameter: to_wire_oxisynth_parameter(assignment.parameter),
+                        channel: assignment.channel,
+                        controller: assignment.controller,
+                    })
+                    .collect(),
+            }),
+        }),
     }
 }
 
@@ -1503,6 +1651,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             balance: bus.balance,
             muted: bus.muted,
             output_peaks_db: bus.output_peaks_db,
+            fx: bus.fx.and_then(to_wire_track_fx_state),
         })
         .collect();
     let confirmed_mixer_links = snapshot
@@ -1554,79 +1703,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                         WireDefaultPlaybackMode::DryThroughWet
                     }
                 },
-                fx: track.fx.and_then(|fx| match fx.editor? {
-                    TrackProcessorEditorState::BuiltInFx(editor) => Some(WireTrackFxState {
-                        processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
-                        active: fx.active,
-                        visible: fx.visible,
-                        builtin_fx: Some(WireBuiltInFxState {
-                            compressor_enabled: editor.compressor_enabled,
-                            compressor_threshold_db: editor.compressor_threshold_db,
-                            compressor_ratio: editor.compressor_ratio,
-                            compressor_attack_ms: editor.compressor_attack_ms,
-                            compressor_release_ms: editor.compressor_release_ms,
-                            compressor_makeup_db: editor.compressor_makeup_db,
-                            drive_enabled: editor.drive_enabled,
-                            drive_type: to_wire_builtin_fx_drive_type(editor.drive_type),
-                            drive_db: editor.drive_db,
-                            drive_tone: editor.drive_tone,
-                            drive_mix: editor.drive_mix,
-                            drive_output_db: editor.drive_output_db,
-                            eq_enabled: editor.eq_enabled,
-                            eq_low_db: editor.eq_low_db,
-                            eq_mid_db: editor.eq_mid_db,
-                            eq_high_db: editor.eq_high_db,
-                            chorus_enabled: editor.chorus_enabled,
-                            chorus_rate_hz: editor.chorus_rate_hz,
-                            chorus_depth: editor.chorus_depth,
-                            chorus_mix: editor.chorus_mix,
-                            chorus_width: editor.chorus_width,
-                            modulation_enabled: editor.modulation_enabled,
-                            modulation_type: to_wire_builtin_fx_modulation_type(
-                                editor.modulation_type,
-                            ),
-                            modulation_rate_hz: editor.modulation_rate_hz,
-                            modulation_depth: editor.modulation_depth,
-                            modulation_mix: editor.modulation_mix,
-                            modulation_feedback: editor.modulation_feedback,
-                            modulation_spread: editor.modulation_spread,
-                            reverb_enabled: editor.reverb_enabled,
-                            reverb_type: to_wire_builtin_fx_reverb_type(editor.reverb_type),
-                            reverb_amount: editor.reverb_amount,
-                            reverb_tone: editor.reverb_tone,
-                            midi_cc_assignments: editor
-                                .midi_cc_assignments
-                                .iter()
-                                .map(|assignment| WireBuiltInFxMidiCcAssignment {
-                                    parameter: to_wire_builtin_fx_parameter(assignment.parameter),
-                                    channel: assignment.channel,
-                                    controller: assignment.controller,
-                                })
-                                .collect(),
-                        }),
-                        oxisynth: None,
-                    }),
-                    TrackProcessorEditorState::OxiSynth(editor) => Some(WireTrackFxState {
-                        processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
-                        active: fx.active,
-                        visible: fx.visible,
-                        builtin_fx: None,
-                        oxisynth: Some(WireOxiSynthState {
-                            selected_preset_id: editor.selected_preset_id,
-                            reverb_send: editor.reverb_send,
-                            chorus_send: editor.chorus_send,
-                            midi_cc_assignments: editor
-                                .midi_cc_assignments
-                                .iter()
-                                .map(|assignment| WireOxiSynthMidiCcAssignment {
-                                    parameter: to_wire_oxisynth_parameter(assignment.parameter),
-                                    channel: assignment.channel,
-                                    controller: assignment.controller,
-                                })
-                                .collect(),
-                        }),
-                    }),
-                }),
+                fx: track.fx.and_then(to_wire_track_fx_state),
                 audio_channels: track.audio_channels,
                 midi: track.midi,
                 output_gain_db: track.output_gain_db,
@@ -3407,6 +3484,7 @@ mod tests {
                     expected_output_port_ids: vec![1, 2, 3, 4],
                     name: "Surround".to_owned(),
                     channel_count: 4,
+                    fx: None,
                 },
             )
             .event,
@@ -4370,6 +4448,46 @@ mod tests {
             ));
             sequence += 1;
         }
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CreateBus {
+                    expected_bus_id: 2,
+                    expected_channel_ids: vec![3, 4],
+                    expected_output_port_ids: vec![16, 17],
+                    name: "Fx".to_owned(),
+                    channel_count: 2,
+                    fx: Some(WireBusFxRequest {
+                        processor_type: "builtin_fx".to_owned(),
+                        audio_channels: 2,
+                    }),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::SetBusFxControl {
+                    bus_id: 2,
+                    control: WireBusFxControl::SetActive(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        let Event::Snapshot(snapshot) = command(&mut host, sequence, Command::Poll).event else {
+            panic!("expected snapshot")
+        };
+        sequence += 1;
+        let fx_bus = snapshot.buses.iter().find(|bus| bus.id == 2).unwrap();
+        assert_eq!(fx_bus.fx.as_ref().unwrap().processor_type, "builtin_fx");
+        assert!(fx_bus.fx.as_ref().unwrap().builtin_fx.is_some());
         let Event::SessionCaptureReady { total_bytes, .. } = command(
             &mut host,
             sequence,
@@ -4789,6 +4907,24 @@ mod tests {
                 BackendTrackFxControl::BuiltInFx(expected)
             );
         }
+        assert_eq!(
+            from_wire_bus_fx_control(WireBusFxControl::SetActive(true)),
+            BackendBusFxControl::SetActive(true)
+        );
+        assert_eq!(
+            from_wire_bus_fx_control(WireBusFxControl::SetProcessor(Some(WireBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 2,
+            }))),
+            BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                processor_type: "builtin_fx".to_owned(),
+                audio_channels: 2,
+            }))
+        );
+        assert_eq!(
+            from_wire_bus_fx_control(WireBusFxControl::SetProcessor(None)),
+            BackendBusFxControl::SetProcessor(None)
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

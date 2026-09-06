@@ -28,31 +28,32 @@ use shoop_audio_protocol::{
     decode_binary, encode_binary, Command, Event, MidiDataChunk, WaveformChunk,
     WireApplicationPortOwner, WireBuiltInFxDriveType, WireBuiltInFxMidiCcAssignment,
     WireBuiltInFxModulationType, WireBuiltInFxParameter, WireBuiltInFxReverbType,
-    WireBuiltInFxStage, WireBusControl, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
-    WireCompositeKind, WireCompositeTarget, WireDefaultPlaybackMode, WireGrabRequest, WireHostPort,
-    WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter,
-    WirePortDataType, WirePortDirection, WirePortRole, WireProcessorLatencyAdjustment,
-    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
-    WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
-    WAVEFORM_CHUNK_SAMPLES,
+    WireBuiltInFxStage, WireBusControl, WireBusFxControl, WireBusFxRequest, WireChannelMode,
+    WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
+    WireDefaultPlaybackMode, WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent,
+    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType, WirePortDirection,
+    WirePortRole, WireProcessorLatencyAdjustment, WireRecordingOffsetAdjustment, WireSnapshot,
+    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    builtin_fx_descriptor, default_bus_channel_labels, encode_builtin_fx_state,
-    encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
-    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendBusChannelId,
-    BackendBusChannelState, BackendBusControl, BackendBusCreation, BackendBusId, BackendBusRequest,
-    BackendBusState, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink,
-    BackendConnectionFailure, BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest,
-    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
-    BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendMixerFailure, BackendMixerLink, BackendMutationDetail, BackendMutationFailure,
-    BackendMutationKind, BackendOperationKind, BackendOperationProgress, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
-    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
-    BackendTrackState, BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
+    builtin_fx_descriptor, bus_fx_descriptor_for_catalog, default_bus_channel_labels,
+    encode_builtin_fx_state, encode_oxisynth_state, oxisynth_descriptor, Backend,
+    BackendActiveCompositeChild, BackendAsyncResult, BackendAudioChannelData, BackendAudioData,
+    BackendBusChannelId, BackendBusChannelState, BackendBusControl, BackendBusCreation,
+    BackendBusFxControl, BackendBusFxRequest, BackendBusId, BackendBusRequest, BackendBusState,
+    BackendChannelMode, BackendCompositeConfig, BackendCompositeId, BackendCompositeKind,
+    BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure,
+    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
+    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMixerFailure,
+    BackendMixerLink, BackendMutationDetail, BackendMutationFailure, BackendMutationKind,
+    BackendOperationKind, BackendOperationProgress, BackendPortDataType, BackendPortDescriptor,
+    BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
+    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
+    BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
     TrackProcessorTypeId, TrackRequest, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
     MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID, MASTER_BUS_OUTPUT_PORT_IDS, MAX_BUSES,
     MAX_TOTAL_BUS_CHANNELS,
@@ -248,6 +249,7 @@ impl RemoteWorkletBackend {
                 gain_db: 0.0,
                 balance: 0.0,
                 muted: false,
+                fx: None,
             },
         );
         (
@@ -884,6 +886,7 @@ impl RemoteWorkletBackend {
                     gain_db: source_bus.gain_db,
                     balance: source_bus.balance,
                     muted: source_bus.muted,
+                    fx: None,
                 },
             );
         }
@@ -1069,6 +1072,26 @@ impl RemoteWorkletBackend {
                         balance: bus.balance,
                         muted: bus.muted,
                         output_peaks_db: bus.output_peaks_db,
+                        fx: bus.fx.map(|fx| {
+                            let builtin_fx = fx.builtin_fx.map(|builtin_fx| {
+                                TrackProcessorEditorState::BuiltInFx(from_wire_builtin_fx_state(
+                                    builtin_fx,
+                                ))
+                            });
+                            TrackFxState {
+                                processor_type: TrackProcessorTypeId::new(fx.processor_type),
+                                active: fx.active,
+                                visible: fx.visible,
+                                lifecycle: FxLifecycle::Running,
+                                generation: 0,
+                                deadline_misses: 0,
+                                stale_completions: 0,
+                                status_summary: None,
+                                crash_summary: None,
+                                logs: Arc::from([]),
+                                editor: builtin_fx,
+                            }
+                        }),
                     },
                 )
             })
@@ -1600,6 +1623,9 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         } => (BackendMutationKind::BusStructure, Some(*expected_bus_id)),
         Command::RemoveBus { bus_id } => (BackendMutationKind::BusStructure, Some(*bus_id)),
         Command::SetBusControl { bus_id, .. } => (BackendMutationKind::BusControl, Some(*bus_id)),
+        Command::SetBusFxControl { bus_id, .. } => {
+            (BackendMutationKind::BusFxControl, Some(*bus_id))
+        }
         Command::SetTrackFxControl { track_id, .. } => {
             (BackendMutationKind::TrackFxControl, Some(*track_id))
         }
@@ -1770,6 +1796,9 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
         Command::SetTrackFxControl { control, .. } => Some(BackendMutationDetail::TrackFxControl(
             from_wire_track_fx_control(control),
         )),
+        Command::SetBusFxControl { control, .. } => Some(BackendMutationDetail::BusFxControl(
+            from_wire_bus_fx_control(control),
+        )),
         Command::SetLoopGain { gain, .. } => Some(BackendMutationDetail::LoopGain(*gain)),
         Command::SetLoopBalance { balance, .. } => {
             Some(BackendMutationDetail::LoopBalance(*balance))
@@ -1823,6 +1852,10 @@ impl Backend for RemoteWorkletBackend {
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![builtin_fx_descriptor(), oxisynth_descriptor()].into())
+    }
+
+    fn bus_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        Ok(vec![bus_fx_descriptor_for_catalog()].into())
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -2906,6 +2939,10 @@ impl Backend for RemoteWorkletBackend {
                 .collect(),
             name: request.name,
             channel_count: request.channel_count,
+            fx: request.fx.map(|request| WireBusFxRequest {
+                processor_type: request.processor_type,
+                audio_channels: request.audio_channels,
+            }),
         })?;
         self.next_bus_id = next_bus_id;
         self.next_bus_channel_id = next_channel_id;
@@ -2962,6 +2999,93 @@ impl Backend for RemoteWorkletBackend {
             bus_id: bus_id.raw(),
             control: to_wire_bus_control(control),
         })
+    }
+
+    fn set_bus_fx_control(
+        &mut self,
+        bus_id: BackendBusId,
+        control: BackendBusFxControl,
+    ) -> Result<()> {
+        if let BackendBusFxControl::SetProcessor(fx) = &control {
+            let bus = self
+                .snapshot
+                .mixer
+                .buses
+                .get(&bus_id)
+                .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?;
+            if let Some(fx) = fx {
+                if fx.processor_type == TrackProcessorTypeId::OXISYNTH {
+                    return Err(anyhow!("Built-in Synth is unavailable on buses"));
+                }
+                if fx.audio_channels as usize != bus.channels.len() {
+                    return Err(anyhow!("bus FX channels must match the bus channel count"));
+                }
+            }
+        } else {
+            let fx = self
+                .snapshot
+                .mixer
+                .buses
+                .get(&bus_id)
+                .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?
+                .fx
+                .as_ref()
+                .ok_or_else(|| anyhow!("bus has no processor"))?;
+            if let BackendBusFxControl::BuiltInFx(builtin_fx) = &control {
+                if !matches!(
+                    fx.editor.as_ref(),
+                    Some(TrackProcessorEditorState::BuiltInFx(_))
+                ) {
+                    return Err(anyhow!("bus has no Built-in FX editor state"));
+                }
+                match builtin_fx {
+                    BuiltInFxControl::SetParameter(parameter, value)
+                        if !parameter.is_valid(*value) =>
+                    {
+                        return Err(anyhow!("invalid Built-in FX parameter value"));
+                    }
+                    BuiltInFxControl::AssignMidiCc(assignment)
+                        if assignment.channel > 15 || assignment.controller > 127 =>
+                    {
+                        return Err(anyhow!("invalid Built-in FX MIDI CC assignment"));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let command = Command::SetBusFxControl {
+            bus_id: bus_id.raw(),
+            control: to_wire_bus_fx_control(control.clone())?,
+        };
+        if matches!(
+            &control,
+            BackendBusFxControl::ToggleOrRecover | BackendBusFxControl::ClearLogs
+        ) {
+            self.submit_ephemeral(command)
+        } else {
+            self.submit(command)
+        }
+    }
+
+    fn bus_fx_state_string(&mut self, bus_id: BackendBusId) -> Result<Option<String>> {
+        let bus = self
+            .snapshot
+            .mixer
+            .buses
+            .get(&bus_id)
+            .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?;
+        let Some(fx) = &bus.fx else {
+            return Ok(None);
+        };
+        match &fx.editor {
+            Some(TrackProcessorEditorState::BuiltInFx(editor)) => {
+                Ok(Some(encode_builtin_fx_state(editor)))
+            }
+            None => Ok(None),
+            Some(TrackProcessorEditorState::OxiSynth(_)) => {
+                Err(anyhow!("bus has unsupported processor editor state"))
+            }
+        }
     }
 
     fn advance(&mut self, elapsed: Duration) {
@@ -3599,6 +3723,105 @@ fn to_wire_oxisynth_parameter(parameter: OxiSynthParameter) -> WireOxiSynthParam
     match parameter {
         OxiSynthParameter::ReverbSend => WireOxiSynthParameter::ReverbSend,
         OxiSynthParameter::ChorusSend => WireOxiSynthParameter::ChorusSend,
+    }
+}
+
+fn to_wire_bus_fx_control(control: BackendBusFxControl) -> Result<WireBusFxControl> {
+    match control {
+        BackendBusFxControl::SetActive(value) => Ok(WireBusFxControl::SetActive(value)),
+        BackendBusFxControl::SetVisible(value) => Ok(WireBusFxControl::SetVisible(value)),
+        BackendBusFxControl::ToggleOrRecover => Ok(WireBusFxControl::ToggleOrRecover),
+        BackendBusFxControl::RestoreState(value) => Ok(WireBusFxControl::RestoreState(value)),
+        BackendBusFxControl::ClearLogs => Ok(WireBusFxControl::ClearLogs),
+        BackendBusFxControl::BuiltInFx(control) => {
+            match to_wire_track_fx_control(BackendTrackFxControl::BuiltInFx(control))? {
+                WireTrackFxControl::BuiltInSetStageEnabled(stage, enabled) => {
+                    Ok(WireBusFxControl::BuiltInSetStageEnabled(stage, enabled))
+                }
+                WireTrackFxControl::BuiltInSetDriveType(drive_type) => {
+                    Ok(WireBusFxControl::BuiltInSetDriveType(drive_type))
+                }
+                WireTrackFxControl::BuiltInSetModulationType(modulation_type) => {
+                    Ok(WireBusFxControl::BuiltInSetModulationType(modulation_type))
+                }
+                WireTrackFxControl::BuiltInSetReverbType(reverb_type) => {
+                    Ok(WireBusFxControl::BuiltInSetReverbType(reverb_type))
+                }
+                WireTrackFxControl::BuiltInSetParameter(parameter, value) => {
+                    Ok(WireBusFxControl::BuiltInSetParameter(parameter, value))
+                }
+                WireTrackFxControl::BuiltInAssignMidiCc(assignment) => {
+                    Ok(WireBusFxControl::BuiltInAssignMidiCc(assignment))
+                }
+                WireTrackFxControl::BuiltInRemoveMidiCc(parameter) => {
+                    Ok(WireBusFxControl::BuiltInRemoveMidiCc(parameter))
+                }
+                WireTrackFxControl::BuiltInClearMidiCcAssignments => {
+                    Ok(WireBusFxControl::BuiltInClearMidiCcAssignments)
+                }
+                WireTrackFxControl::BuiltInSetReverbEnabled(value) => {
+                    Ok(WireBusFxControl::BuiltInSetReverbEnabled(value))
+                }
+                control => Err(anyhow!("unsupported bus FX control {control:?}")),
+            }
+        }
+        BackendBusFxControl::SetProcessor(fx) => {
+            Ok(WireBusFxControl::SetProcessor(fx.map(|request| {
+                WireBusFxRequest {
+                    processor_type: request.processor_type,
+                    audio_channels: request.audio_channels,
+                }
+            })))
+        }
+    }
+}
+
+fn from_wire_bus_fx_control(control: &WireBusFxControl) -> BackendBusFxControl {
+    match control {
+        WireBusFxControl::SetActive(value) => BackendBusFxControl::SetActive(*value),
+        WireBusFxControl::SetVisible(value) => BackendBusFxControl::SetVisible(*value),
+        WireBusFxControl::ToggleOrRecover => BackendBusFxControl::ToggleOrRecover,
+        WireBusFxControl::RestoreState(value) => BackendBusFxControl::RestoreState(value.clone()),
+        WireBusFxControl::ClearLogs => BackendBusFxControl::ClearLogs,
+        WireBusFxControl::BuiltInSetStageEnabled(stage, enabled) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetStageEnabled(from_wire_builtin_fx_stage(*stage), *enabled),
+        ),
+        WireBusFxControl::BuiltInSetDriveType(drive_type) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetDriveType(from_wire_builtin_fx_drive_type(*drive_type)),
+        ),
+        WireBusFxControl::BuiltInSetModulationType(modulation_type) => {
+            BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetModulationType(
+                from_wire_builtin_fx_modulation_type(*modulation_type),
+            ))
+        }
+        WireBusFxControl::BuiltInSetReverbType(reverb_type) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetReverbType(from_wire_builtin_fx_reverb_type(*reverb_type)),
+        ),
+        WireBusFxControl::BuiltInSetParameter(parameter, value) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::SetParameter(from_wire_builtin_fx_parameter(*parameter), *value),
+        ),
+        WireBusFxControl::BuiltInAssignMidiCc(assignment) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::AssignMidiCc(BuiltInFxMidiCcAssignment {
+                parameter: from_wire_builtin_fx_parameter(assignment.parameter),
+                channel: assignment.channel,
+                controller: assignment.controller,
+            }),
+        ),
+        WireBusFxControl::BuiltInRemoveMidiCc(parameter) => BackendBusFxControl::BuiltInFx(
+            BuiltInFxControl::RemoveMidiCc(from_wire_builtin_fx_parameter(*parameter)),
+        ),
+        WireBusFxControl::BuiltInClearMidiCcAssignments => {
+            BackendBusFxControl::BuiltInFx(BuiltInFxControl::ClearMidiCcAssignments)
+        }
+        WireBusFxControl::BuiltInSetReverbEnabled(value) => {
+            BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(*value))
+        }
+        WireBusFxControl::SetProcessor(fx) => {
+            BackendBusFxControl::SetProcessor(fx.clone().map(|request| BackendBusFxRequest {
+                processor_type: request.processor_type,
+                audio_channels: request.audio_channels,
+            }))
+        }
     }
 }
 
@@ -4461,6 +4684,16 @@ mod tests {
                     balance: 0.0,
                     muted: false,
                     output_peaks_db: vec![-12.0],
+                    fx: Some(shoop_audio_protocol::WireTrackFxState {
+                        processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                        active: true,
+                        visible: false,
+                        builtin_fx: Some(shoop_audio_protocol::WireBuiltInFxState {
+                            reverb_enabled: false,
+                            ..shoop_audio_protocol::WireBuiltInFxState::default()
+                        }),
+                        oxisynth: None,
+                    }),
                 }],
                 confirmed_mixer_links: vec![shoop_audio_protocol::WireMixerLink {
                     source_port_id: 2,
@@ -4471,6 +4704,60 @@ mod tests {
         );
         let snapshot = backend.poll().unwrap();
         assert_eq!(snapshot.tracks.len(), 3);
+        let master_id = BackendBusId::from_raw(1);
+        assert_eq!(
+            snapshot.mixer.buses[&master_id]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            }))
+        );
+        assert_eq!(
+            backend.bus_fx_state_string(master_id).unwrap(),
+            Some(encode_builtin_fx_state(&BuiltInFxState {
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            }))
+        );
+        backend
+            .set_bus_fx_control(
+                master_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(true)),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                master_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 1,
+                })),
+            )
+            .unwrap();
+        assert!(backend.transport.borrow().journal_commands().contains(
+            &Command::SetBusFxControl {
+                bus_id: 1,
+                control: WireBusFxControl::SetProcessor(Some(WireBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 1,
+                })),
+            }
+        ));
+        assert!(backend
+            .set_bus_fx_control(
+                master_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    audio_channels: 1,
+                })),
+            )
+            .is_err());
+        backend
+            .set_bus_fx_control(master_id, BackendBusFxControl::SetProcessor(None))
+            .unwrap();
         let builtin_fx_track = BackendTrackId::from_raw(2);
         assert_eq!(
             snapshot.tracks[&builtin_fx_track]
@@ -4699,6 +4986,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "Rejected".to_owned(),
                 channel_count: 1,
+                fx: None,
             })
             .unwrap();
         control
@@ -4746,6 +5034,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "Retained".to_owned(),
                 channel_count: 2,
+                fx: None,
             })
             .unwrap();
         deliver(&control, 1, 4, Event::Ack);
@@ -4828,6 +5117,7 @@ mod tests {
                     balance: 0.0,
                     muted: false,
                     output_peaks_db: vec![-200.0; 2],
+                    fx: None,
                 }],
                 ..Default::default()
             }),
@@ -5402,6 +5692,9 @@ mod tests {
             buses: vec![shoop_backend::BackendSessionBus {
                 source_id: 1,
                 name: "Master".to_owned(),
+                processor_type: None,
+                processor_state: None,
+                builtin_fx_midi_cc_assignments: Vec::new(),
                 channels: vec![
                     shoop_backend::BackendSessionBusChannel {
                         source_id: 42,
@@ -5465,6 +5758,9 @@ mod tests {
         dynamic.buses.push(shoop_backend::BackendSessionBus {
             source_id: 50,
             name: "Mono".to_owned(),
+            processor_type: None,
+            processor_state: None,
+            builtin_fx_midi_cc_assignments: Vec::new(),
             channels: vec![shoop_backend::BackendSessionBusChannel {
                 source_id: 51,
                 label: "Mono".to_owned(),
@@ -5577,6 +5873,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "After zero".to_owned(),
                 channel_count: 1,
+                fx: None,
             })
             .unwrap();
         assert_eq!(created.bus_id, BackendBusId::from_raw(2));
@@ -5595,6 +5892,7 @@ mod tests {
             .create_bus(BackendBusRequest {
                 name: "Surround".to_owned(),
                 channel_count: 4,
+                fx: None,
             })
             .unwrap();
         assert_eq!(created.bus_id, BackendBusId::from_raw(2));
@@ -5624,6 +5922,7 @@ mod tests {
                 expected_output_port_ids: vec![1, 2, 3, 4],
                 name: "Surround".to_owned(),
                 channel_count: 4,
+                fx: None,
             }));
         backend.remove_bus(created.bus_id).unwrap();
         assert!(!backend.bus_resources.contains_key(&created.bus_id));

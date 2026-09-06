@@ -1779,6 +1779,7 @@ mod tests {
             output_peaks_db: Arc::from([-200.0]),
             control_pending: false,
             control_error: None,
+            fx: None,
         }]);
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();
