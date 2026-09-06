@@ -18,8 +18,7 @@ use shoop_settings::{
 
 use crate::{
     app_widget::{
-        format_output_bus_names, parse_output_bus_names, show_new_track_configuration, BusOption,
-        NewTrackConfiguration,
+        parse_output_bus_names, show_new_track_configuration, BusOption, NewTrackConfiguration,
     },
     audio_driver_config_from_draft, colors, AppAction, AudioDriverKind, AudioDriverRuntimeState,
     ScriptId, ScriptKind, ScriptLifecycle, ScriptLogLevel, ScriptState, ScriptingState,
@@ -862,10 +861,6 @@ impl SettingsDialog {
             ui.colored_label(colors::ERROR, "Invalid new-track settings");
             return;
         };
-        if configuration.output_bus_text.is_empty() {
-            configuration.output_bus_text =
-                format_output_bus_names(&configuration.output_bus_names);
-        }
         show_new_track_configuration(
             ui,
             "settings_track_defaults",
