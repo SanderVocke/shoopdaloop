@@ -151,10 +151,10 @@ Depends on: R2. Blocks R4.
 ### Stage R4 — Round-2 validation + delivery workflow
 Depends on: R1–R3.
 
-- [ ] End-to-end: bus with Built-in FX → change to another processor (or none) → audio path correct → save → reload → state intact → change back; mixer routes survive the switch; remove-bus cleanup still leak-free.
-- [ ] Run the required test suites before pushing; push branch and create a PR.
-- [ ] Work to ensure CI turns green.
-- [ ] Check the PR for any automated review coming in; repeatedly address review feedback until the reviewer approves.
+- [x] End-to-end: bus with Built-in FX → change to another processor (or none) → audio path correct → save → reload → state intact → change back; mixer routes survive the switch; remove-bus cleanup still leak-free.
+- [x] Run the required test suites before pushing; push branch and create a PR.
+- [x] Work to ensure CI turns green.
+- [x] Check the PR for any automated review coming in; repeatedly address review feedback until the reviewer approves.
 
 ## 5. Execution contract
 
