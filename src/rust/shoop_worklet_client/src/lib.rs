@@ -3006,32 +3006,51 @@ impl Backend for RemoteWorkletBackend {
         bus_id: BackendBusId,
         control: BackendBusFxControl,
     ) -> Result<()> {
-        let fx = self
-            .snapshot
-            .mixer
-            .buses
-            .get(&bus_id)
-            .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?
-            .fx
-            .as_ref()
-            .ok_or_else(|| anyhow!("bus has no processor"))?;
-        if let BackendBusFxControl::BuiltInFx(builtin_fx) = &control {
-            if !matches!(
-                fx.editor.as_ref(),
-                Some(TrackProcessorEditorState::BuiltInFx(_))
-            ) {
-                return Err(anyhow!("bus has no Built-in FX editor state"));
+        if let BackendBusFxControl::SetProcessor(fx) = &control {
+            let bus = self
+                .snapshot
+                .mixer
+                .buses
+                .get(&bus_id)
+                .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?;
+            if let Some(fx) = fx {
+                if fx.processor_type == TrackProcessorTypeId::OXISYNTH {
+                    return Err(anyhow!("Built-in Synth is unavailable on buses"));
+                }
+                if fx.audio_channels as usize != bus.channels.len() {
+                    return Err(anyhow!("bus FX channels must match the bus channel count"));
+                }
             }
-            match builtin_fx {
-                BuiltInFxControl::SetParameter(parameter, value) if !parameter.is_valid(*value) => {
-                    return Err(anyhow!("invalid Built-in FX parameter value"));
+        } else {
+            let fx = self
+                .snapshot
+                .mixer
+                .buses
+                .get(&bus_id)
+                .ok_or_else(|| anyhow!("unknown browser bus {bus_id:?}"))?
+                .fx
+                .as_ref()
+                .ok_or_else(|| anyhow!("bus has no processor"))?;
+            if let BackendBusFxControl::BuiltInFx(builtin_fx) = &control {
+                if !matches!(
+                    fx.editor.as_ref(),
+                    Some(TrackProcessorEditorState::BuiltInFx(_))
+                ) {
+                    return Err(anyhow!("bus has no Built-in FX editor state"));
                 }
-                BuiltInFxControl::AssignMidiCc(assignment)
-                    if assignment.channel > 15 || assignment.controller > 127 =>
-                {
-                    return Err(anyhow!("invalid Built-in FX MIDI CC assignment"));
+                match builtin_fx {
+                    BuiltInFxControl::SetParameter(parameter, value)
+                        if !parameter.is_valid(*value) =>
+                    {
+                        return Err(anyhow!("invalid Built-in FX parameter value"));
+                    }
+                    BuiltInFxControl::AssignMidiCc(assignment)
+                        if assignment.channel > 15 || assignment.controller > 127 =>
+                    {
+                        return Err(anyhow!("invalid Built-in FX MIDI CC assignment"));
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
         let command = Command::SetBusFxControl {
