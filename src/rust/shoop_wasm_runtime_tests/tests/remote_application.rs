@@ -547,6 +547,7 @@ async fn remote_session_round_trips_track_controls_and_dynamic_buses() {
         name: "Surround".to_owned(),
         channel_count: 6,
         creation_request_id: Some(99),
+        fx: None,
     }));
     harness
         .drive_until("created multichannel bus", |snapshot| {
