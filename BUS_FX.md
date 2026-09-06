@@ -106,10 +106,10 @@ Depends on: Stage 4. Blocks Stages 6–7.
 ### Stage 6 — Regression + edge-case tests
 Depends on: Stages 1–5. Blocks Stage 7.
 
-- [ ] Mixer-route × bus-FX matrix: route connect/disconnect with FX active/inactive; bus remove with routes attached.
-- [ ] Master-bus FX create/remove; mono/3ch/surround channel counts incl. Carla-16x limits and rejection messages.
-- [ ] `python3 scripts/check_shoop_test_usage.py`; `cargo fmt --all`; `RUSTFLAGS="-D warnings"` build.
-- [ ] Verification: full affected test suites green locally.
+- [x] Mixer-route × bus-FX matrix: route connect/disconnect with FX active/inactive; bus remove with routes attached.
+- [x] Master-bus FX create/remove; mono/3ch/surround channel counts incl. Carla-16x limits and rejection messages.
+- [x] `python3 scripts/check_shoop_test_usage.py`; `cargo fmt --all`; `RUSTFLAGS="-D warnings"` build.
+- [x] Verification: full affected test suites green locally.
 
 ### Stage 7 — Final end-to-end validation + delivery workflow
 Depends on: Stages 0–6.
