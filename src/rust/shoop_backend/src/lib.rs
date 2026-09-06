@@ -11496,6 +11496,28 @@ impl Backend for FakeBackend {
         bus_id: BackendBusId,
         control: BackendBusFxControl,
     ) -> Result<()> {
+        if let BackendBusFxControl::SetProcessor(fx) = control {
+            let bus = self
+                .mixer
+                .buses
+                .get_mut(&bus_id)
+                .ok_or_else(|| anyhow!("unknown fake bus {bus_id:?}"))?;
+            bus.fx = fx.map(|fx| TrackFxState {
+                processor_type: TrackProcessorTypeId::new(fx.processor_type),
+                active: true,
+                visible: false,
+                lifecycle: FxLifecycle::Running,
+                generation: 1,
+                deadline_misses: 0,
+                stale_completions: 0,
+                status_summary: None,
+                crash_summary: None,
+                logs: Arc::from([]),
+                editor: None,
+            });
+            self.mixer.revision = self.mixer.revision.wrapping_add(1);
+            return Ok(());
+        }
         let fx = self
             .mixer
             .buses
@@ -11508,9 +11530,7 @@ impl Backend for FakeBackend {
             return Err(anyhow!("injected processor state restore failure"));
         }
         match control {
-            BackendBusFxControl::SetProcessor(_) => {
-                return Err(anyhow!("bus processor replacement is unavailable in tests"));
-            }
+            BackendBusFxControl::SetProcessor(_) => unreachable!(),
             BackendBusFxControl::SetActive(active) => fx.active = active,
             BackendBusFxControl::SetVisible(visible) => fx.visible = visible,
             BackendBusFxControl::ToggleOrRecover => {

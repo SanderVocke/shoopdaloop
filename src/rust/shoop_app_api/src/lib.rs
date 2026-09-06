@@ -1986,6 +1986,7 @@ pub enum BusAction {
     FxRestoreState(String),
     FxClearLogs,
     BuiltInFx(BuiltInFxControl),
+    FxProcessorChanged(Option<TrackProcessorTypeId>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2355,6 +2356,7 @@ impl BusAction {
             Self::FxRestoreState(_) => "bus.fx_restore_state",
             Self::FxClearLogs => "bus.fx_clear_logs",
             Self::BuiltInFx(control) => control.kind(),
+            Self::FxProcessorChanged(_) => "bus.fx_processor",
         }
     }
 }

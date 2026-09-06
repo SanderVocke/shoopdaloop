@@ -1010,8 +1010,8 @@ enum FxControlKey {
     OxiMidiAssignments,
 }
 
-fn bus_fx_control_as_track(control: &BackendBusFxControl) -> BackendTrackFxControl {
-    match control {
+fn bus_fx_control_as_track(control: &BackendBusFxControl) -> Option<BackendTrackFxControl> {
+    Some(match control {
         BackendBusFxControl::SetActive(value) => BackendTrackFxControl::SetActive(*value),
         BackendBusFxControl::SetVisible(value) => BackendTrackFxControl::SetVisible(*value),
         BackendBusFxControl::ToggleOrRecover => BackendTrackFxControl::ToggleOrRecover,
@@ -1022,15 +1022,18 @@ fn bus_fx_control_as_track(control: &BackendBusFxControl) -> BackendTrackFxContr
         BackendBusFxControl::BuiltInFx(control) => {
             BackendTrackFxControl::BuiltInFx(control.clone())
         }
-    }
+        BackendBusFxControl::SetProcessor(_) => return None,
+    })
 }
 
 fn apply_bus_fx_control(bus: &mut BusModel, control: &BackendBusFxControl) {
+    let Some(track_control) = bus_fx_control_as_track(control) else {
+        return;
+    };
     let Some(fx) = bus.fx.as_mut() else {
         return;
     };
-    let control = bus_fx_control_as_track(control);
-    apply_fx_control(fx, &control);
+    apply_fx_control(fx, &track_control);
 }
 
 fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
@@ -5565,6 +5568,7 @@ impl ApplicationModel {
                 | BusAction::FxRestoreState(_)
                 | BusAction::FxClearLogs
                 | BusAction::BuiltInFx(_)
+                | BusAction::FxProcessorChanged(_)
         ) {
             return self.handle_bus_fx_action(backend, bus_id, action);
         }
@@ -5579,7 +5583,8 @@ impl ApplicationModel {
             | BusAction::FxToggleOrRecover
             | BusAction::FxRestoreState(_)
             | BusAction::FxClearLogs
-            | BusAction::BuiltInFx(_) => unreachable!(),
+            | BusAction::BuiltInFx(_)
+            | BusAction::FxProcessorChanged(_) => unreachable!(),
         };
         let control = match requested.normalized(bus.channels.len()) {
             Ok(control) => control,
@@ -5622,6 +5627,9 @@ impl ApplicationModel {
         bus_id: BusId,
         action: BusAction,
     ) -> Result<(), String> {
+        if let BusAction::FxProcessorChanged(processor) = action {
+            return self.replace_bus_processor(backend, bus_id, processor);
+        }
         let backend_id = self
             .buses
             .get(&bus_id)
@@ -5639,15 +5647,59 @@ impl ApplicationModel {
         backend
             .set_bus_fx_control(backend_id, control.clone())
             .map_err(|error| format!("could not update bus FX {bus_id}: {error}"))?;
-        if let Some(key) = fx_control_key(&bus_fx_control_as_track(&control)) {
-            self.desired_bus_fx_controls
-                .insert((backend_id, key), control.clone());
+        if let Some(track_control) = bus_fx_control_as_track(&control) {
+            if let Some(key) = fx_control_key(&track_control) {
+                self.desired_bus_fx_controls
+                    .insert((backend_id, key), control.clone());
+            }
         }
         let bus = self
             .buses
             .get_mut(&bus_id)
             .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
         apply_bus_fx_control(bus, &control);
+        Ok(())
+    }
+
+    fn replace_bus_processor(
+        &mut self,
+        backend: &mut dyn Backend,
+        bus_id: BusId,
+        processor: Option<shoop_app_api::TrackProcessorTypeId>,
+    ) -> Result<(), String> {
+        let (backend_id, channel_count) = self
+            .buses
+            .get(&bus_id)
+            .map(|bus| (bus.backend_id, bus.channels.len() as u32))
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        if let Some(processor) = &processor {
+            validate_bus_processor(processor, channel_count, &self.bus_processors)?;
+        }
+        let request = processor.as_ref().map(|processor| BackendBusFxRequest {
+            processor_type: processor.as_str().to_owned(),
+            audio_channels: channel_count,
+        });
+        backend
+            .set_bus_fx_control(backend_id, BackendBusFxControl::SetProcessor(request))
+            .map_err(|error| format!("could not replace bus FX {bus_id}: {error}"))?;
+        let bus = self
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        bus.fx = processor.map(|processor_type| shoop_app_api::TrackFxState {
+            processor_type,
+            active: true,
+            visible: false,
+            lifecycle: shoop_app_api::FxLifecycle::Running,
+            generation: 1,
+            deadline_misses: 0,
+            stale_completions: 0,
+            status_summary: None,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: None,
+        });
+        bus.control_error = None;
         Ok(())
     }
 
@@ -9951,7 +10003,9 @@ impl ApplicationModel {
         self.desired_bus_fx_controls
             .retain(|(backend_id, _), desired| {
                 !snapshot.buses.get(backend_id).is_some_and(|bus| {
-                    fx_control_matches(bus.fx.as_ref(), &bus_fx_control_as_track(desired))
+                    bus_fx_control_as_track(desired).is_some_and(|track_control| {
+                        fx_control_matches(bus.fx.as_ref(), &track_control)
+                    })
                 })
             });
         for ((backend_id, _), pending) in &self.desired_bus_controls {
@@ -21481,6 +21535,32 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         fx_bus_model.apply_backend_snapshot(fx_backend.poll().unwrap());
         assert!(!fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().active);
         assert!(fx_bus_model.buses[&fx_bus].fx.as_ref().unwrap().visible);
+        fx_bus_model
+            .handle_bus_action(&mut fx_backend, fx_bus, BusAction::FxProcessorChanged(None))
+            .unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_none());
+        fx_bus_model.apply_backend_snapshot(fx_backend.poll().unwrap());
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_none());
+        fx_bus_model
+            .handle_bus_action(
+                &mut fx_backend,
+                fx_bus,
+                BusAction::FxProcessorChanged(Some(shoop_app_api::TrackProcessorTypeId::new(
+                    shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
+                ))),
+            )
+            .unwrap();
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_some());
+        assert!(fx_bus_model
+            .handle_bus_action(
+                &mut fx_backend,
+                fx_bus,
+                BusAction::FxProcessorChanged(Some(shoop_app_api::TrackProcessorTypeId::new(
+                    shoop_app_api::TrackProcessorTypeId::OXISYNTH,
+                ))),
+            )
+            .is_err());
+        assert!(fx_bus_model.buses[&fx_bus].fx.is_some());
         assert_eq!(
             model.buses[&added].structural_state,
             StructuralState::Removing
