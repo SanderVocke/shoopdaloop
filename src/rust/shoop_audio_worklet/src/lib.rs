@@ -510,6 +510,7 @@ impl WorkletHost {
                     .create_bus(BackendBusRequest {
                         name,
                         channel_count,
+                        fx: None,
                     })
                     .map_err(|error| error.to_string())?;
                 let actual_channel_ids = created

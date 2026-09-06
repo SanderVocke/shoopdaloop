@@ -248,6 +248,7 @@ impl RemoteWorkletBackend {
                 gain_db: 0.0,
                 balance: 0.0,
                 muted: false,
+                fx: None,
             },
         );
         (
@@ -884,6 +885,7 @@ impl RemoteWorkletBackend {
                     gain_db: source_bus.gain_db,
                     balance: source_bus.balance,
                     muted: source_bus.muted,
+                    fx: None,
                 },
             );
         }
@@ -1069,6 +1071,7 @@ impl RemoteWorkletBackend {
                         balance: bus.balance,
                         muted: bus.muted,
                         output_peaks_db: bus.output_peaks_db,
+                        fx: None,
                     },
                 )
             })

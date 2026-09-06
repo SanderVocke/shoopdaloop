@@ -665,6 +665,7 @@ impl NativeRuntime {
             BackendBusRequest {
                 name: MASTER_BUS_NAME.to_owned(),
                 channel_count: 2,
+                fx: None,
             },
             MASTER_BUS_ID,
             MASTER_BUS_CHANNEL_IDS.to_vec(),
@@ -1073,6 +1074,7 @@ impl NativeRuntime {
                         balance: bus.balance,
                         muted: bus.muted,
                         output_peaks_db,
+                        fx: None,
                     },
                 )
             })
@@ -1603,6 +1605,9 @@ impl NativeRuntime {
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
+                processor_type: None,
+                processor_state: None,
+                builtin_fx_midi_cc_assignments: Vec::new(),
             })
             .collect();
         let mixer_routes = self
@@ -1651,6 +1656,7 @@ impl NativeRuntime {
                 name: source_bus.name.clone(),
                 channel_count: u32::try_from(source_bus.channels.len())
                     .map_err(|_| anyhow!("session bus channel count exceeds u32"))?,
+                fx: None,
             }
             .normalized()?;
             let expected_labels = default_bus_channel_labels(source_bus.channels.len())?;

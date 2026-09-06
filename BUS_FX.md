@@ -59,22 +59,22 @@ Depends on: Stage 0. Blocks Stages 2–7.
 
 Changes in `src/rust/shoop_backend/src/lib.rs`:
 
-- [ ] Add `BackendBusFxTopology` (or extend `BackendBusRequest` with `fx: Option<BackendBusFxRequest>`), e.g. `{ processor_type, audio_channels }` with `dry_midi=false` invariant.
-- [ ] Add `BackendBusFxControl` mirroring the Built-in FX subset of `BackendTrackFxControl`: `SetActive/SetVisible/ToggleOrRecover/RestoreState/ClearLogs/BuiltInFx(...)`, plus Carla generic controls if tracks expose them; no `OxiSynth` variant.
-- [ ] Add `fx: Option<TrackFxState>` (or `BusFxState` alias) to `BackendBusState`; add `processor_state + builtin_fx_midi_cc_assignments` to `BackendSessionBus`.
-- [ ] Extend `Backend` trait: `bus_processor_catalog()`, `set_bus_fx_control()`, `bus_fx_state_string()`; add `BusFxControl` mutation kind/detail.
-- [ ] Update `MockBackend`/`FakeBackend`/test fakes for new methods.
-- [ ] Verification: `cargo build`; new API-level unit tests for normalization/validation (bad channel count, synth rejected, MIDI rejected).
+- [x] Add `BackendBusFxTopology` (or extend `BackendBusRequest` with `fx: Option<BackendBusFxRequest>`), e.g. `{ processor_type, audio_channels }` with `dry_midi=false` invariant.
+- [x] Add `BackendBusFxControl` mirroring the Built-in FX subset of `BackendTrackFxControl`: `SetActive/SetVisible/ToggleOrRecover/RestoreState/ClearLogs/BuiltInFx(...)`, plus Carla generic controls if tracks expose them; no `OxiSynth` variant.
+- [x] Add `fx: Option<TrackFxState>` (or `BusFxState` alias) to `BackendBusState`; add `processor_state + builtin_fx_midi_cc_assignments` to `BackendSessionBus`.
+- [x] Extend `Backend` trait: `bus_processor_catalog()`, `set_bus_fx_control()`, `bus_fx_state_string()`; add `BusFxControl` mutation kind/detail.
+- [x] Update `MockBackend`/`FakeBackend`/test fakes for new methods.
+- [x] Verification: `cargo build`; new API-level unit tests for normalization/validation (bad channel count, synth rejected, MIDI rejected).
 
 ### Stage 2 — `EngineBackend` (dummy/web): Built-in FX on buses
 Depends on: Stage 1. Blocks Stages 4–7; independent of Stage 3.
 
-- [ ] Store `EngineBusFx { control, active, visible }` on `EngineBus`; create processor in `create_bus_with_ids()` when requested (`prepare_processor_with_channels(sample_rate, buffer_size, channel_count)`).
-- [ ] Rewire bus graph from `input -> output` to `input -> send -> processor -> receive -> output`, keeping gain/balance/mute on the output port (`apply_bus_control` unchanged in behavior).
-- [ ] Implement `set_bus_fx_control()` by cloning the Built-in FX arm of `set_track_fx_control()`; implement `bus_fx_state_string()`, include FX in `mixer_snapshot()` + `capture_session_data()` + `build_replacement()` restore.
-- [ ] `remove_bus_internal()` also calls `session.remove_processor(title)` and drops FX ports.
-- [ ] Carla on `EngineBackend` stays unsupported (same as Carla tracks there); return a clear error.
-- [ ] Verification: backend tests for mono/stereo create → control → snapshot → remove; audio test proving Drive-on changes bus output vs bypass.
+- [x] Store `EngineBusFx { control, active, visible }` on `EngineBus`; create processor in `create_bus_with_ids()` when requested (`prepare_processor_with_channels(sample_rate, buffer_size, channel_count)`).
+- [x] Rewire bus graph from `input -> output` to `input -> send -> processor -> receive -> output`, keeping gain/balance/mute on the output port (`apply_bus_control` unchanged in behavior).
+- [x] Implement `set_bus_fx_control()` by cloning the Built-in FX arm of `set_track_fx_control()`; implement `bus_fx_state_string()`, include FX in `mixer_snapshot()` + `capture_session_data()` + `build_replacement()` restore.
+- [x] `remove_bus_internal()` also calls `session.remove_processor(title)` and drops FX ports.
+- [x] Carla on `EngineBackend` stays unsupported (same as Carla tracks there); return a clear error.
+- [x] Verification: backend tests for mono/stereo create → control → snapshot → remove; audio test proving Drive-on changes bus output vs bypass.
 
 ### Stage 3 — `NativeBackend`: Built-in FX + Carla on buses
 Depends on: Stage 1. Blocks Stages 4–7; independent of Stage 2.

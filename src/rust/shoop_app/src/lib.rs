@@ -4935,6 +4935,7 @@ impl ApplicationModel {
         let request = BackendBusRequest {
             name: spec.name,
             channel_count: spec.channel_count,
+            fx: None,
         }
         .normalized()
         .map_err(|error| format!("invalid bus: {error}"))?;
@@ -9135,6 +9136,7 @@ impl ApplicationModel {
                         }
                     }
                 }
+                Some(BackendMutationDetail::BusFxControl(_)) => {}
                 None => {}
             }
             self.report_error(format!(
@@ -12929,6 +12931,7 @@ fn session_bundle_to_backend(
                 name: bus.name.clone(),
                 channel_count: u32::try_from(bus.channels.len())
                     .map_err(|_| "session bus channel count exceeds u32".to_owned())?,
+                fx: None,
             }
             .normalized()
             .map_err(|error| error.to_string())?;
@@ -12989,6 +12992,9 @@ fn session_bundle_to_backend(
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
+                processor_type: None,
+                processor_state: None,
+                builtin_fx_midi_cc_assignments: Vec::new(),
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
