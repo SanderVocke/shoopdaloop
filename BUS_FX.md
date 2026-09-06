@@ -7,6 +7,7 @@
 - Support insert effects on buses, reusing per-track FX concepts: processor descriptors + constraints, `DryWetProcessor`-style insert wiring, `*FxControl` set/active/visible/restore-state pattern, `FxState` snapshots, session `FxChainDocument` persistence.
 - Include Carla (Rack / Patchbay / Patchbay 16x) and Built-in FX.
 - Explicitly exclude Built-in Synth: buses have no MIDI input path.
+- Round 2: allow changing the FX type of an existing bus, including removing FX entirely (back to a dry bus).
 
 ### Scope
 
@@ -22,6 +23,7 @@
 - [ ] No bus FX path creates or requires a MIDI port; OxiSynth is not offered for buses anywhere (catalog, validation, session load).
 - [ ] Session save/load round-trips bus FX state + MIDI-CC assignments; old sessions without bus FX load unchanged.
 - [ ] Mixer routes to an FX bus keep working; removing the bus removes its processor and ports without leaking session processors/ports.
+- [ ] (Round 2) The FX type of an existing bus can be changed to any bus-catalog processor or to none; audio path, snapshot, session persistence, and UI all reflect the change without requiring bus removal/recreation.
 - [ ] CI is green on the PR.
 
 ## 2. Design rules and constraints
@@ -32,6 +34,7 @@
 - MIDI policy for buses is `Unsupported`: zero MIDI ports passed to `set_processor_ports()`. Built-in FX parameter/state controls still work; MIDI-CC assignments persist but have no live MIDI driver unless a later global-FX-MIDI routing stage explicitly adds it.
 - Built-in FX descriptor currently says `midi: Required`; do not change the track descriptor. Bus catalog is the track catalog filtered to `midi != Required` and `id != OXI_SYNTH`, plus a bus-specific Built-in FX entry with `midi: Unsupported` and `matching_audio_channels: true`.
 - No bus latency compensation in v1; document as a known limitation. Do not block on it.
+- Round 2 rules: switching FX type reuses the stable `bus_<raw_id>_fx` title; the new processor starts from fresh default state (no cross-processor state or MIDI-CC carryover); switching to none restores the direct `input -> output` wiring and drops the processor plus its FX ports; the switch is validated against the bus catalog (synth always rejected) before any graph mutation, with rollback to the previous wiring on failure.
 - Goals/acceptance criteria change only with explicit user approval. Design rules/steps may be revised on new evidence with a documented reason. Keep the plan checked off as work progresses; commit per completed stage.
 
 ## 3. Stage 0 findings (recorded)
@@ -115,6 +118,40 @@ Depends on: Stages 1–5. Blocks Stage 7.
 Depends on: Stages 0–6.
 
 - [ ] End-to-end: new bus with Built-in FX → route a track → hear/measure effect → bypass → save → reload → FX state intact → remove bus cleanly; repeat smoke for a Carla bus where supported.
+- [ ] Run the required test suites before pushing; push branch and create a PR.
+- [ ] Work to ensure CI turns green.
+- [ ] Check the PR for any automated review coming in; repeatedly address review feedback until the reviewer approves.
+
+## Round 2 — Change FX type of an existing bus (including none)
+
+Depends on: Stages 0–7 (round 1 complete). Uses a new branch off the round-1 result; blocks only the round-2 validation stage.
+
+### Stage R1 — Backend + protocol: replace bus processor
+Depends on: round-1 Stages 1–3. Blocks R2–R4.
+
+- [ ] Add a replace/remove operation on the bus FX path (e.g. a `SetProcessorType(Option<...>)`-style control or dedicated method) in `shoop_backend`: validate against the bus catalog first (reject synth, channel mismatch), then tear down the old processor (remove processor + FX ports, restore direct wiring for none) and build the new insert chain reusing the stable `bus_<raw_id>_fx` title and the existing chain-setup dispatch with `dry_midi=false`.
+- [ ] Mirror the operation in the wire protocol (`CreateBus.fx`-style field or new control variant + snapshot `fx` propagation) so `RemoteWorkletBackend`/`WorkletHost` support replace/remove in browser builds; bump `PROTOCOL_VERSION` and update version-pinned fixtures/contracts.
+- [ ] Extend `NativeBackend` the same way (remove old chain via existing cleanup, create new chain via existing dispatch; none = direct wiring).
+- [ ] Verification: backend unit tests for replace Built-in→Built-in (fresh default state), Built-in→none (dry path restored, no leaked ports/processors), none→Built-in, invalid target rejected with prior wiring intact; worklet protocol round-trip tests for the new operation.
+
+### Stage R2 — App model + session persistence
+Depends on: R1. Blocks R3–R4.
+
+- [ ] `shoop_app_api`: add a bus FX-type-change action/intent (e.g. `BusAction::FxProcessorChanged(Option<...>)`); never construct a synth target.
+- [ ] `shoop_app`: handle the action with validation against `bus_processors` before mutating, optimistic desired-state handling mirroring the existing bus FX arms, snapshot/view propagation; session save emits the updated `FxChainDocument` (or none), session load replaces/restores the same way round 1 does.
+- [ ] `shoop_session`: validation already covers `None` vs `Carla`/`BuiltInFx` chains; extend only if the new action introduces a representable shape.
+- [ ] Verification: app unit tests for change/remove/rollback paths; session bundle round-trip with a changed and a removed bus FX chain; old-fixture load still passes.
+
+### Stage R3 — UI: change/remove FX on the bus strip
+Depends on: R2. Blocks R4.
+
+- [ ] Bus strip FX affordance gains a processor picker (bus catalog only, plus "None") and a remove option, wired to the new action; editor/logs windows follow the current processor.
+- [ ] Verification: egui tests for change/remove action emission; existing `bus_controls` tests still pass.
+
+### Stage R4 — Round-2 validation + delivery workflow
+Depends on: R1–R3.
+
+- [ ] End-to-end: bus with Built-in FX → change to another processor (or none) → audio path correct → save → reload → state intact → change back; mixer routes survive the switch; remove-bus cleanup still leak-free.
 - [ ] Run the required test suites before pushing; push branch and create a PR.
 - [ ] Work to ensure CI turns green.
 - [ ] Check the PR for any automated review coming in; repeatedly address review feedback until the reviewer approves.
