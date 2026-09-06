@@ -4,7 +4,9 @@ use shoop_engine::app_backend::{
     AudioDriver, AudioDriverSettings, AudioPort, BackendSession, DummyAudioDriverSettings, MidiPort,
 };
 use shoop_engine::realtime_lock_guard;
-use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, MidiEvent, PortDirection};
+use shoop_engine::{
+    AudioDriverType, ChannelMode, LoopMode, MidiEvent, PortDirection, DEFAULT_WAIT_TIMEOUT,
+};
 
 struct DisableGuard;
 
@@ -34,12 +36,21 @@ fn dummy_app_processing_uses_only_explicit_realtime_lock_permissions() {
     let _disable = DisableGuard;
 
     let loop_ = session.create_loop().expect("loop");
+    session
+        .wait_for_command(loop_.creation_sequence(), DEFAULT_WAIT_TIMEOUT)
+        .expect("loop creation");
     let channel = loop_
         .add_audio_channel(ChannelMode::Direct)
         .expect("channel");
+    session
+        .wait_for_command(channel.creation_sequence(), DEFAULT_WAIT_TIMEOUT)
+        .expect("channel creation");
     let midi_channel = loop_
         .add_midi_channel(ChannelMode::Direct)
         .expect("MIDI channel");
+    session
+        .wait_for_command(midi_channel.creation_sequence(), DEFAULT_WAIT_TIMEOUT)
+        .expect("MIDI channel creation");
     let output = AudioPort::new_driver_port(
         &session,
         &driver,
@@ -48,6 +59,9 @@ fn dummy_app_processing_uses_only_explicit_realtime_lock_permissions() {
         BUFFER,
     )
     .expect("output port");
+    session
+        .wait_for_command(output.creation_sequence(), DEFAULT_WAIT_TIMEOUT)
+        .expect("output port creation");
     let midi_output = MidiPort::new_driver_port(
         &session,
         &driver,
@@ -56,23 +70,62 @@ fn dummy_app_processing_uses_only_explicit_realtime_lock_permissions() {
         BUFFER,
     )
     .expect("MIDI output port");
-    channel.connect_output(&output).expect("connect output");
-    midi_channel
-        .connect_output(&midi_output)
-        .expect("connect MIDI output");
-    midi_channel
-        .load_all_midi_data(&[MidiEvent::new(0, vec![0x90, 60, 100])])
-        .expect("load MIDI");
-    loop_.set_length(BUFFER * 2).expect("length");
-    loop_
-        .transition(LoopMode::Playing, -1, -1)
-        .expect("playing");
-    output.dummy_request_data(BUFFER).expect("request capture");
-    midi_output
-        .dummy_request_data(BUFFER)
-        .expect("request MIDI capture");
+    session
+        .wait_for_command(midi_output.creation_sequence(), DEFAULT_WAIT_TIMEOUT)
+        .expect("MIDI output port creation");
+    session
+        .wait_for_command(
+            channel.connect_output(&output).expect("connect output"),
+            DEFAULT_WAIT_TIMEOUT,
+        )
+        .expect("output connection");
+    session
+        .wait_for_command(
+            midi_channel
+                .connect_output(&midi_output)
+                .expect("connect MIDI output"),
+            DEFAULT_WAIT_TIMEOUT,
+        )
+        .expect("MIDI output connection");
+    session
+        .wait_for_command(
+            midi_channel
+                .load_all_midi_data(&[MidiEvent::new(0, vec![0x90, 60, 100])])
+                .expect("load MIDI"),
+            DEFAULT_WAIT_TIMEOUT,
+        )
+        .expect("MIDI content");
+    session
+        .wait_for_command(
+            loop_.set_length(BUFFER * 2).expect("length"),
+            DEFAULT_WAIT_TIMEOUT,
+        )
+        .expect("loop length");
+    session
+        .wait_for_command(
+            loop_
+                .transition(LoopMode::Playing, -1, -1)
+                .expect("playing"),
+            DEFAULT_WAIT_TIMEOUT,
+        )
+        .expect("loop transition");
+    session
+        .wait_for_command(
+            output.dummy_request_data(BUFFER).expect("request capture"),
+            DEFAULT_WAIT_TIMEOUT,
+        )
+        .expect("output capture reset");
+    session
+        .wait_for_command(
+            midi_output
+                .dummy_request_data(BUFFER)
+                .expect("request MIDI capture"),
+            DEFAULT_WAIT_TIMEOUT,
+        )
+        .expect("MIDI capture reset");
 
     driver.wait_process();
+    assert_eq!(loop_.get_state().expect("state").position, 0);
     driver.dummy_request_controlled_frames(BUFFER);
     driver.dummy_run_requested_frames();
 
