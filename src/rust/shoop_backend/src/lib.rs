@@ -2296,6 +2296,10 @@ fn bus_fx_title(bus_id: BackendBusId) -> String {
 }
 
 fn bus_fx_descriptor() -> TrackProcessorDescriptor {
+    bus_fx_descriptor_for_catalog()
+}
+
+pub fn bus_fx_descriptor_for_catalog() -> TrackProcessorDescriptor {
     let mut descriptor = builtin_fx_descriptor();
     descriptor.constraints.midi = shoop_app_api::TrackProcessorMidiPolicy::Unsupported;
     descriptor
