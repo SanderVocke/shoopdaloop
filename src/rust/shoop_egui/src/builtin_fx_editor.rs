@@ -1,8 +1,8 @@
 use crate::{
     BuiltInFxControl, BuiltInFxDriveType, BuiltInFxMidiCcAssignment, BuiltInFxModulationType,
-    BuiltInFxParameter, BuiltInFxReverbType, BuiltInFxStage, BuiltInFxState, TrackAction,
-    TrackProcessorDescriptor, TrackProcessorEditorDescriptor, TrackProcessorEditorState,
-    TrackState,
+    BuiltInFxParameter, BuiltInFxReverbType, BuiltInFxStage, BuiltInFxState, BusAction, BusState,
+    TrackAction, TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorDescriptor,
+    TrackProcessorEditorState, TrackState,
 };
 
 pub(crate) const FUNDSP_URL: &str = "https://github.com/SamiPerttu/fundsp";
@@ -62,7 +62,54 @@ impl BuiltInFxEditor {
         state: &TrackState,
         processor: Option<&TrackProcessorDescriptor>,
     ) -> Vec<TrackAction> {
-        let Some(fx) = &state.fx else {
+        let latest_cc = state
+            .controls
+            .latest_input_midi_message
+            .and_then(|message| message.midi_cc());
+        Self::show_for_fx(
+            self,
+            context,
+            &state.name,
+            state.id.raw(),
+            &state.fx,
+            processor,
+            latest_cc,
+            TrackAction::BuiltInFx,
+            TrackAction::FxVisibilityChanged(false),
+        )
+    }
+
+    pub(crate) fn show_for_bus(
+        &mut self,
+        context: &egui::Context,
+        state: &BusState,
+        processor: Option<&TrackProcessorDescriptor>,
+    ) -> Vec<BusAction> {
+        Self::show_for_fx(
+            self,
+            context,
+            &state.name,
+            state.id.raw(),
+            &state.fx,
+            processor,
+            None,
+            BusAction::BuiltInFx,
+            BusAction::FxVisibilityChanged(false),
+        )
+    }
+
+    fn show_for_fx<A>(
+        &mut self,
+        context: &egui::Context,
+        name: &str,
+        id: u64,
+        fx: &Option<TrackFxState>,
+        processor: Option<&TrackProcessorDescriptor>,
+        latest_cc: Option<(u8, u8, u8)>,
+        wrap: impl Fn(BuiltInFxControl) -> A,
+        hide: A,
+    ) -> Vec<A> {
+        let Some(fx) = fx else {
             return Vec::new();
         };
         let Some(TrackProcessorEditorState::BuiltInFx(editor)) = &fx.editor else {
@@ -86,8 +133,8 @@ impl BuiltInFxEditor {
         }
         let mut actions = Vec::new();
         let mut open = true;
-        let _shown = egui::Window::new(format!("{} — Built-in FX", state.name))
-            .id(egui::Id::new(("builtin_fx_editor", state.id)))
+        let _shown = egui::Window::new(format!("{name} — Built-in FX"))
+            .id(egui::Id::new(("builtin_fx_editor", id)))
             .open(&mut open)
             .resizable(true)
             .default_width(430.0)
@@ -116,9 +163,7 @@ impl BuiltInFxEditor {
                         #[cfg(test)]
                         self.stage_rects.push(($stage, response.rect));
                         if response.changed() {
-                            actions.push(TrackAction::BuiltInFx(
-                                BuiltInFxControl::SetStageEnabled($stage, value),
-                            ));
+                            actions.push(wrap(BuiltInFxControl::SetStageEnabled($stage, value)));
                         }
                     }};
                 }
@@ -139,9 +184,7 @@ impl BuiltInFxEditor {
                         #[cfg(test)]
                         self.parameter_rects.push(($parameter, response.rect));
                         if response.changed() {
-                            actions.push(TrackAction::BuiltInFx(BuiltInFxControl::SetParameter(
-                                $parameter, value,
-                            )));
+                            actions.push(wrap(BuiltInFxControl::SetParameter($parameter, value)));
                         }
                     }};
                 }
@@ -179,7 +222,7 @@ impl BuiltInFxEditor {
                             }
                         });
                     if let Some(control) = drive_type_control(editor.drive_type, drive_type) {
-                        actions.push(TrackAction::BuiltInFx(control));
+                        actions.push(wrap(control));
                     }
                     parameter_slider!(ui, BuiltInFxParameter::Drive, true);
                     parameter_slider!(ui, BuiltInFxParameter::DriveTone, true);
@@ -225,7 +268,7 @@ impl BuiltInFxEditor {
                     if let Some(control) =
                         modulation_type_control(editor.modulation_type, modulation_type)
                     {
-                        actions.push(TrackAction::BuiltInFx(control));
+                        actions.push(wrap(control));
                     }
                     parameter_slider!(ui, BuiltInFxParameter::ModulationRate, true);
                     parameter_slider!(ui, BuiltInFxParameter::ModulationDepth, true);
@@ -256,7 +299,7 @@ impl BuiltInFxEditor {
                             }
                         });
                     if let Some(control) = reverb_type_control(editor.reverb_type, reverb_type) {
-                        actions.push(TrackAction::BuiltInFx(control));
+                        actions.push(wrap(control));
                     }
                     parameter_slider!(ui, BuiltInFxParameter::ReverbAmount, true);
                     parameter_slider!(ui, BuiltInFxParameter::ReverbTone, true);
@@ -264,14 +307,10 @@ impl BuiltInFxEditor {
             });
 
         if self.midi_learn_open {
-            let latest_cc = state
-                .controls
-                .latest_input_midi_message
-                .and_then(|message| message.midi_cc());
             let mut learn_open = self.midi_learn_open;
             let mut selected_parameter = self.selected_midi_parameter;
-            egui::Window::new(format!("{} — MIDI Learn", state.name))
-                .id(egui::Id::new(("builtin_fx_midi_learn", state.id)))
+            egui::Window::new(format!("{name} — MIDI Learn"))
+                .id(egui::Id::new(("builtin_fx_midi_learn", id)))
                 .open(&mut learn_open)
                 .resizable(true)
                 .show(context, |ui| {
@@ -305,7 +344,7 @@ impl BuiltInFxEditor {
                         }
                         if assign.clicked() {
                             let (channel, controller, _) = latest_cc.expect("button is enabled");
-                            actions.push(TrackAction::BuiltInFx(BuiltInFxControl::AssignMidiCc(
+                            actions.push(wrap(BuiltInFxControl::AssignMidiCc(
                                 BuiltInFxMidiCcAssignment {
                                     parameter: selected_parameter,
                                     channel,
@@ -332,9 +371,9 @@ impl BuiltInFxEditor {
                             self.midi_remove_rects
                                 .push((assignment.parameter, remove.rect));
                             if remove.clicked() {
-                                actions.push(TrackAction::BuiltInFx(
-                                    BuiltInFxControl::RemoveMidiCc(assignment.parameter),
-                                ));
+                                actions.push(wrap(BuiltInFxControl::RemoveMidiCc(
+                                    assignment.parameter,
+                                )));
                             }
                         });
                     }
@@ -347,9 +386,7 @@ impl BuiltInFxEditor {
                         self.midi_remove_all_rect = Some(remove_all.rect);
                     }
                     if remove_all.clicked() {
-                        actions.push(TrackAction::BuiltInFx(
-                            BuiltInFxControl::ClearMidiCcAssignments,
-                        ));
+                        actions.push(wrap(BuiltInFxControl::ClearMidiCcAssignments));
                     }
                 });
             self.midi_learn_open = learn_open;
@@ -361,7 +398,7 @@ impl BuiltInFxEditor {
             self.window_rect = _shown.map(|response| response.response.rect);
         }
         if !open {
-            actions.push(TrackAction::FxVisibilityChanged(false));
+            actions.push(hide);
         }
         actions
     }

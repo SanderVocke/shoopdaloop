@@ -1079,6 +1079,7 @@ pub struct AppWidget {
     add_bus_open: bool,
     add_bus_name: String,
     add_bus_channels: u32,
+    add_bus_processor: Option<TrackProcessorTypeId>,
     next_add_bus_request_id: u64,
     pending_add_bus_request: Option<u64>,
     add_bus_error: Option<String>,
@@ -1177,6 +1178,7 @@ impl AppWidget {
             add_bus_open: false,
             add_bus_name: String::new(),
             add_bus_channels: 2,
+            add_bus_processor: None,
             next_add_bus_request_id: 1,
             pending_add_bus_request: None,
             add_bus_error: None,
@@ -1665,9 +1667,21 @@ impl AppWidget {
                             .filter(|link| output_ids.contains(&link.application_port_id))
                             .count();
                         let controls = self.bus_controls.entry(bus.id).or_default();
+                        let processor = bus.fx.as_ref().and_then(|fx| {
+                            state
+                                .bus_processors
+                                .iter()
+                                .find(|processor| processor.id == fx.processor_type)
+                        });
                         actions.extend(
                             controls
-                                .show(ui, bus, incoming_routes, outgoing_links)
+                                .show_with_processor(
+                                    ui,
+                                    bus,
+                                    incoming_routes,
+                                    outgoing_links,
+                                    processor,
+                                )
                                 .into_iter()
                                 .map(|action| AppAction::Bus {
                                     bus_id: bus.id,
@@ -1800,6 +1814,7 @@ impl AppWidget {
     fn open_add_bus_dialog(&mut self, bus_count: usize) {
         self.add_bus_name = format!("Bus {}", bus_count + 1);
         self.add_bus_channels = 2;
+        self.add_bus_processor = None;
         self.pending_add_bus_request = None;
         self.add_bus_error = None;
         self.add_bus_open = true;
@@ -1851,6 +1866,41 @@ impl AppWidget {
                                 .range(1..=crate::MAX_BUS_CHANNELS as u32),
                         );
                         ui.end_row();
+                        ui.label("Effect");
+                        let mut selected = self
+                            .add_bus_processor
+                            .as_ref()
+                            .map(|processor| processor.as_str().to_owned())
+                            .unwrap_or_else(|| "none".to_owned());
+                        egui::ComboBox::from_id_salt("add_bus_processor")
+                            .selected_text(
+                                selected
+                                    .as_str()
+                                    .eq("none")
+                                    .then_some("None")
+                                    .unwrap_or_else(|| {
+                                        state
+                                            .bus_processors
+                                            .iter()
+                                            .find(|processor| processor.id.as_str() == selected)
+                                            .map(|processor| processor.label.as_str())
+                                            .unwrap_or(&selected)
+                                    }),
+                            )
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut selected, "none".to_owned(), "None");
+                                for processor in state.bus_processors.iter().filter(|p| p.available)
+                                {
+                                    ui.selectable_value(
+                                        &mut selected,
+                                        processor.id.as_str().to_owned(),
+                                        &processor.label,
+                                    );
+                                }
+                            });
+                        self.add_bus_processor =
+                            (selected != "none").then(|| TrackProcessorTypeId::new(selected));
+                        ui.end_row();
                     });
                 let trimmed = self.add_bus_name.trim();
                 let valid_name = !trimmed.is_empty()
@@ -1892,7 +1942,10 @@ impl AppWidget {
                 name: self.add_bus_name.trim().to_owned(),
                 channel_count: self.add_bus_channels,
                 creation_request_id: Some(request_id),
-                fx: None,
+                fx: self
+                    .add_bus_processor
+                    .clone()
+                    .map(|processor_type| crate::BusFxSpec { processor_type }),
             }));
         }
     }

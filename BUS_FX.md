@@ -90,11 +90,11 @@ Changes in `src/rust/shoop_backend/src/native.rs`:
 ### Stage 4 — App model + session persistence
 Depends on: Stages 1–3. Blocks Stages 5–7.
 
-- [ ] `shoop_app_api`: add `fx` to `BusState`; add `BusAction::Fx*` variants (active/visible/toggle/restore/clear/builtin-fx); add bus catalog to the snapshot/view state; never construct an OxiSynth bus action.
-- [ ] `shoop_app`: `handle_bus_action()` FX arms mirroring `handle_track_action()` FX arms incl. optimistic `desired_bus_fx_controls`; `refresh_bus_view()` propagates `fx`; bus creation accepts an FX spec and validates against the bus catalog.
-- [ ] Session save: emit bus `FxChainDocument` + topology for FX buses; session load: remove the `bus.fx_chain.is_some()` rejection in `session_bundle_to_backend()`, add `runtime_bus_topology()` + validation paralleling `runtime_track_topology()`; restore via create-bus-with-FX + `RestoreState` + CC assignments.
-- [ ] `shoop_session`: allow/validate bus FX chains (`Carla` + `BuiltInFx` only; reject synth/test mismatches in `archive.rs`).
-- [ ] Verification: app unit tests for bus FX intents + optimistic rollback; session bundle round-trip test with an FX bus; old-fixture load test still passes.
+- [x] `shoop_app_api`: add `fx` to `BusState`; add `BusAction::Fx*` variants (active/visible/toggle/restore/clear/builtin-fx); add bus catalog to the snapshot/view state; never construct an OxiSynth bus action.
+- [x] `shoop_app`: `handle_bus_action()` FX arms mirroring `handle_track_action()` FX arms incl. optimistic `desired_bus_fx_controls`; `refresh_bus_view()` propagates `fx`; bus creation accepts an FX spec and validates against the bus catalog.
+- [x] Session save: emit bus `FxChainDocument` + topology for FX buses; session load: remove the `bus.fx_chain.is_some()` rejection in `session_bundle_to_backend()`, add `runtime_bus_topology()` + validation paralleling `runtime_track_topology()`; restore via create-bus-with-FX + `RestoreState` + CC assignments.
+- [x] `shoop_session`: allow/validate bus FX chains (`Carla` + `BuiltInFx` only; reject synth/test mismatches in `archive.rs`).
+- [x] Verification: app unit tests for bus FX intents + optimistic rollback; session bundle round-trip test with an FX bus; old-fixture load test still passes.
 
 ### Stage 5 — UI (`shoop_egui/src/bus_controls.rs` + track-editor reuse)
 Depends on: Stage 4. Blocks Stages 6–7.
