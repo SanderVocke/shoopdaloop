@@ -4684,7 +4684,16 @@ mod tests {
                     balance: 0.0,
                     muted: false,
                     output_peaks_db: vec![-12.0],
-                    fx: None,
+                    fx: Some(shoop_audio_protocol::WireTrackFxState {
+                        processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                        active: true,
+                        visible: false,
+                        builtin_fx: Some(shoop_audio_protocol::WireBuiltInFxState {
+                            reverb_enabled: false,
+                            ..shoop_audio_protocol::WireBuiltInFxState::default()
+                        }),
+                        oxisynth: None,
+                    }),
                 }],
                 confirmed_mixer_links: vec![shoop_audio_protocol::WireMixerLink {
                     source_port_id: 2,
@@ -4695,6 +4704,60 @@ mod tests {
         );
         let snapshot = backend.poll().unwrap();
         assert_eq!(snapshot.tracks.len(), 3);
+        let master_id = BackendBusId::from_raw(1);
+        assert_eq!(
+            snapshot.mixer.buses[&master_id]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(&TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            }))
+        );
+        assert_eq!(
+            backend.bus_fx_state_string(master_id).unwrap(),
+            Some(encode_builtin_fx_state(&BuiltInFxState {
+                reverb_enabled: false,
+                ..BuiltInFxState::default()
+            }))
+        );
+        backend
+            .set_bus_fx_control(
+                master_id,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(true)),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                master_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 1,
+                })),
+            )
+            .unwrap();
+        assert!(backend.transport.borrow().journal_commands().contains(
+            &Command::SetBusFxControl {
+                bus_id: 1,
+                control: WireBusFxControl::SetProcessor(Some(WireBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 1,
+                })),
+            }
+        ));
+        assert!(backend
+            .set_bus_fx_control(
+                master_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    audio_channels: 1,
+                })),
+            )
+            .is_err());
+        backend
+            .set_bus_fx_control(master_id, BackendBusFxControl::SetProcessor(None))
+            .unwrap();
         let builtin_fx_track = BackendTrackId::from_raw(2);
         assert_eq!(
             snapshot.tracks[&builtin_fx_track]
