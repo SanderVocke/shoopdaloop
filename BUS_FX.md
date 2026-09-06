@@ -129,24 +129,24 @@ Depends on: Stages 0–7 (round 1 complete). Uses a new branch off the round-1 r
 ### Stage R1 — Backend + protocol: replace bus processor
 Depends on: round-1 Stages 1–3. Blocks R2–R4.
 
-- [ ] Add a replace/remove operation on the bus FX path (e.g. a `SetProcessorType(Option<...>)`-style control or dedicated method) in `shoop_backend`: validate against the bus catalog first (reject synth, channel mismatch), then tear down the old processor (remove processor + FX ports, restore direct wiring for none) and build the new insert chain reusing the stable `bus_<raw_id>_fx` title and the existing chain-setup dispatch with `dry_midi=false`.
-- [ ] Mirror the operation in the wire protocol (`CreateBus.fx`-style field or new control variant + snapshot `fx` propagation) so `RemoteWorkletBackend`/`WorkletHost` support replace/remove in browser builds; bump `PROTOCOL_VERSION` and update version-pinned fixtures/contracts.
-- [ ] Extend `NativeBackend` the same way (remove old chain via existing cleanup, create new chain via existing dispatch; none = direct wiring).
-- [ ] Verification: backend unit tests for replace Built-in→Built-in (fresh default state), Built-in→none (dry path restored, no leaked ports/processors), none→Built-in, invalid target rejected with prior wiring intact; worklet protocol round-trip tests for the new operation.
+- [x] Add a replace/remove operation on the bus FX path (e.g. a `SetProcessorType(Option<...>)`-style control or dedicated method) in `shoop_backend`: validate against the bus catalog first (reject synth, channel mismatch), then tear down the old processor (remove processor + FX ports, restore direct wiring for none) and build the new insert chain reusing the stable `bus_<raw_id>_fx` title and the existing chain-setup dispatch with `dry_midi=false`.
+- [x] Mirror the operation in the wire protocol (`CreateBus.fx`-style field or new control variant + snapshot `fx` propagation) so `RemoteWorkletBackend`/`WorkletHost` support replace/remove in browser builds; bump `PROTOCOL_VERSION` and update version-pinned fixtures/contracts.
+- [x] Extend `NativeBackend` the same way (remove old chain via existing cleanup, create new chain via existing dispatch; none = direct wiring).
+- [x] Verification: backend unit tests for replace Built-in→Built-in (fresh default state), Built-in→none (dry path restored, no leaked ports/processors), none→Built-in, invalid target rejected with prior wiring intact; worklet protocol round-trip tests for the new operation.
 
 ### Stage R2 — App model + session persistence
 Depends on: R1. Blocks R3–R4.
 
-- [ ] `shoop_app_api`: add a bus FX-type-change action/intent (e.g. `BusAction::FxProcessorChanged(Option<...>)`); never construct a synth target.
-- [ ] `shoop_app`: handle the action with validation against `bus_processors` before mutating, optimistic desired-state handling mirroring the existing bus FX arms, snapshot/view propagation; session save emits the updated `FxChainDocument` (or none), session load replaces/restores the same way round 1 does.
-- [ ] `shoop_session`: validation already covers `None` vs `Carla`/`BuiltInFx` chains; extend only if the new action introduces a representable shape.
-- [ ] Verification: app unit tests for change/remove/rollback paths; session bundle round-trip with a changed and a removed bus FX chain; old-fixture load still passes.
+- [x] `shoop_app_api`: add a bus FX-type-change action/intent (e.g. `BusAction::FxProcessorChanged(Option<...>)`); never construct a synth target.
+- [x] `shoop_app`: handle the action with validation against `bus_processors` before mutating, optimistic desired-state handling mirroring the existing bus FX arms, snapshot/view propagation; session save emits the updated `FxChainDocument` (or none), session load replaces/restores the same way round 1 does.
+- [x] `shoop_session`: validation already covers `None` vs `Carla`/`BuiltInFx` chains; extend only if the new action introduces a representable shape.
+- [x] Verification: app unit tests for change/remove/rollback paths; session bundle round-trip with a changed and a removed bus FX chain; old-fixture load still passes.
 
 ### Stage R3 — UI: change/remove FX on the bus strip
 Depends on: R2. Blocks R4.
 
-- [ ] Bus strip FX affordance gains a processor picker (bus catalog only, plus "None") and a remove option, wired to the new action; editor/logs windows follow the current processor.
-- [ ] Verification: egui tests for change/remove action emission; existing `bus_controls` tests still pass.
+- [x] Bus strip FX affordance gains a processor picker (bus catalog only, plus "None") and a remove option, wired to the new action; editor/logs windows follow the current processor.
+- [x] Verification: egui tests for change/remove action emission; existing `bus_controls` tests still pass.
 
 ### Stage R4 — Round-2 validation + delivery workflow
 Depends on: R1–R3.
