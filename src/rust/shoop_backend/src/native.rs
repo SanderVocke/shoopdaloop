@@ -1056,6 +1056,75 @@ impl NativeRuntime {
         Ok(())
     }
 
+    fn replace_native_bus_fx(
+        &mut self,
+        bus_id: BackendBusId,
+        fx: Option<BackendBusFxRequest>,
+    ) -> Result<()> {
+        let channel_count = self
+            .buses
+            .get(&bus_id)
+            .ok_or_else(|| anyhow!("unknown native bus {bus_id:?}"))?
+            .channels
+            .len();
+        let fx = fx
+            .map(|fx| {
+                if fx.audio_channels as usize != channel_count {
+                    return Err(anyhow!("bus processor channel count must match the bus"));
+                }
+                Ok(fx)
+            })
+            .transpose()?;
+        if let Some(fx) = self.buses.get_mut(&bus_id).and_then(|bus| bus.fx.take()) {
+            let snapshot = NativeBusSnapshot::of(self.buses.get(&bus_id).expect("bus present"));
+            let outputs = snapshot
+                .channels
+                .iter()
+                .map(|channel| {
+                    self.ports
+                        .get(&channel.output_port_id)
+                        .and_then(|port| match &port.handle {
+                            NativePortHandle::Audio(output) => Some(output.clone()),
+                            NativePortHandle::Midi(_) => None,
+                        })
+                        .ok_or_else(|| anyhow!("missing native bus output port"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            for (channel, output) in snapshot.channels.iter().zip(&outputs) {
+                let _ = channel.input.connect_internal(output);
+            }
+            let _ = self.session.remove_fx_chain(&fx.chain);
+            self.wait();
+            if !self.wait_for_graph().unwrap_or(false) {
+                return Err(anyhow!("bus processor removal graph did not become active"));
+            }
+        }
+        let Some(fx) = fx else {
+            self.staged_bus_fx.remove(&bus_id);
+            self.mixer_revision = self.mixer_revision.wrapping_add(1);
+            return Ok(());
+        };
+        let mut channels =
+            NativeBusSnapshot::of(self.buses.get(&bus_id).expect("bus present")).channels;
+        self.create_native_bus_fx(bus_id, &fx, &mut channels)?;
+        let staged = self.take_staged_bus_fx(bus_id)?;
+        self.buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| anyhow!("missing native bus {bus_id:?}"))?
+            .fx = Some(staged);
+        for (snapshot_channel, live_channel) in channels.iter().zip(
+            self.buses
+                .get(&bus_id)
+                .expect("bus present")
+                .channels
+                .iter(),
+        ) {
+            debug_assert_eq!(snapshot_channel.id, live_channel.id);
+        }
+        self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        Ok(())
+    }
+
     fn remove_bus_internal(&mut self, bus_id: BackendBusId) -> Result<()> {
         if !self.buses.contains_key(&bus_id) {
             return Err(anyhow!("unknown native bus {bus_id:?}"));
@@ -3320,6 +3389,9 @@ impl NativeRuntime {
         bus_id: BackendBusId,
         control: BackendBusFxControl,
     ) -> Result<()> {
+        if let BackendBusFxControl::SetProcessor(fx) = control {
+            return self.replace_native_bus_fx(bus_id, fx);
+        }
         let processor_type = {
             let bus = self
                 .buses
@@ -3331,6 +3403,7 @@ impl NativeRuntime {
             fx.processor_type.clone()
         };
         match control {
+            BackendBusFxControl::SetProcessor(_) => unreachable!(),
             BackendBusFxControl::SetActive(active) => {
                 let fx = self
                     .buses
@@ -5408,6 +5481,51 @@ mod tests {
         let snapshot = backend.poll().unwrap();
         assert!(!snapshot.mixer.buses.contains_key(&created.bus_id));
         assert!(backend.bus_fx_state_string(created.bus_id).is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_dummy_bus_fx_processor_switch_replaces_and_removes() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }))
+        .unwrap();
+        let created = backend
+            .create_bus(BackendBusRequest {
+                name: "Switch".to_owned(),
+                channel_count: 2,
+                fx: Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                }),
+            })
+            .unwrap();
+        backend
+            .set_bus_fx_control(created.bus_id, BackendBusFxControl::SetProcessor(None))
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        assert!(snapshot.mixer.buses[&created.bus_id].fx.is_none());
+        backend
+            .set_bus_fx_control(
+                created.bus_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                })),
+            )
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        assert!(snapshot.mixer.buses[&created.bus_id].fx.is_some());
+        assert!(backend
+            .set_bus_fx_control(
+                created.bus_id,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    audio_channels: 2,
+                })),
+            )
+            .is_err());
+        backend.remove_bus(created.bus_id).unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]
