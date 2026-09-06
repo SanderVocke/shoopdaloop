@@ -232,7 +232,7 @@ pub enum BackendBusFxControl {
 pub struct BackendBusRequest {
     pub name: String,
     pub channel_count: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub fx: Option<BackendBusFxRequest>,
 }
 
@@ -998,9 +998,9 @@ pub struct BackendSessionBus {
     pub balance: f32,
     #[serde(default)]
     pub muted: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub processor_type: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub processor_state: Option<String>,
     #[serde(default)]
     pub builtin_fx_midi_cc_assignments: Vec<BackendBuiltInFxMidiCcAssignment>,
