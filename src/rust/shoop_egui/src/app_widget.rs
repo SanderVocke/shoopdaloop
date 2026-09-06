@@ -1892,6 +1892,7 @@ impl AppWidget {
                 name: self.add_bus_name.trim().to_owned(),
                 channel_count: self.add_bus_channels,
                 creation_request_id: Some(request_id),
+                fx: None,
             }));
         }
     }
@@ -3623,6 +3624,7 @@ mod tests {
                 name: "Surround".to_owned(),
                 channel_count: 6,
                 creation_request_id: Some(1),
+                fx: None,
             })]
         );
         assert_eq!(widget.pending_add_bus_request, Some(1));
@@ -4184,6 +4186,7 @@ mod tests {
             output_peaks_db: Arc::from([-20.0, -10.0]),
             control_pending: false,
             control_error: None,
+            fx: None,
         };
         let mut state = AppState {
             tracks: vec![TrackState {

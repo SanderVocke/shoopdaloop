@@ -417,6 +417,7 @@ mod tests {
             output_peaks_db: vec![-12.0; channels].into(),
             control_pending: false,
             control_error: None,
+            fx: None,
         }
     }
 

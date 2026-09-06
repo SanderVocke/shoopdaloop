@@ -1084,6 +1084,7 @@ pub struct BusState {
     pub output_peaks_db: Arc<[f32]>,
     pub control_pending: bool,
     pub control_error: Option<String>,
+    pub fx: Option<TrackFxState>,
 }
 
 impl BusState {
@@ -1651,7 +1652,13 @@ pub struct BusCreationResult {
 pub struct BusSpec {
     pub name: String,
     pub channel_count: u32,
+    pub fx: Option<BusFxSpec>,
     pub creation_request_id: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BusFxSpec {
+    pub processor_type: TrackProcessorTypeId,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1660,6 +1667,7 @@ pub struct AppSnapshot {
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
+    pub bus_processors: Arc<[TrackProcessorDescriptor]>,
     pub track_creation_results: Arc<[TrackCreationResult]>,
     pub bus_creation_results: Arc<[BusCreationResult]>,
     pub global_controls: GlobalControlState,
@@ -1965,13 +1973,19 @@ pub enum TrackAction {
 
 pub type TrackWidgetAction = TrackAction;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BusAction {
     Remove,
     MoveBefore(Option<BusId>),
     GainChanged(f32),
     BalanceChanged(f32),
     MuteChanged(bool),
+    FxActiveChanged(bool),
+    FxVisibilityChanged(bool),
+    FxToggleOrRecover,
+    FxRestoreState(String),
+    FxClearLogs,
+    BuiltInFx(BuiltInFxControl),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2335,6 +2349,12 @@ impl BusAction {
             Self::GainChanged(_) => "bus.gain",
             Self::BalanceChanged(_) => "bus.balance",
             Self::MuteChanged(_) => "bus.mute",
+            Self::FxActiveChanged(_) => "bus.fx_active",
+            Self::FxVisibilityChanged(_) => "bus.fx_visibility",
+            Self::FxToggleOrRecover => "bus.fx_toggle_or_recover",
+            Self::FxRestoreState(_) => "bus.fx_restore_state",
+            Self::FxClearLogs => "bus.fx_clear_logs",
+            Self::BuiltInFx(control) => control.kind(),
         }
     }
 }

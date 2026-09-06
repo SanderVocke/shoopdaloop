@@ -10673,8 +10673,14 @@ impl Backend for FakeBackend {
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
-                processor_type: None,
-                processor_state: None,
+                processor_type: bus
+                    .fx
+                    .as_ref()
+                    .map(|fx| fx.processor_type.as_str().to_owned()),
+                processor_state: bus
+                    .fx
+                    .as_ref()
+                    .map(|_| self.default_fx_state_string.clone()),
                 builtin_fx_midi_cc_assignments: Vec::new(),
             })
             .collect();
@@ -10773,7 +10779,14 @@ impl Backend for FakeBackend {
                 name: source_bus.name.clone(),
                 channel_count: u32::try_from(source_bus.channels.len())
                     .map_err(|_| anyhow!("session bus channel count exceeds u32"))?,
-                fx: None,
+                fx: source_bus
+                    .processor_type
+                    .clone()
+                    .map(|processor_type| BackendBusFxRequest {
+                        processor_type,
+                        audio_channels: u32::try_from(source_bus.channels.len())
+                            .unwrap_or(u32::MAX),
+                    }),
             }
             .normalized()?;
             let expected_labels = default_bus_channel_labels(source_bus.channels.len())?;
@@ -11233,6 +11246,19 @@ impl Backend for FakeBackend {
             bus_id,
             channels: channels.clone(),
         };
+        let fx = request.fx.as_ref().map(|fx| TrackFxState {
+            processor_type: TrackProcessorTypeId::new(fx.processor_type.clone()),
+            active: true,
+            visible: false,
+            lifecycle: FxLifecycle::Running,
+            generation: 1,
+            deadline_misses: 0,
+            stale_completions: 0,
+            status_summary: None,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: None,
+        });
         self.mixer.buses.insert(
             bus_id,
             BackendBusState {
@@ -11243,7 +11269,7 @@ impl Backend for FakeBackend {
                 balance: 0.0,
                 muted: false,
                 output_peaks_db: vec![-200.0; channel_count],
-                fx: None,
+                fx,
             },
         );
         self.mixer.revision = self.mixer.revision.wrapping_add(1);
@@ -11311,6 +11337,59 @@ impl Backend for FakeBackend {
         self.operations
             .push(FakeOperation::SetBusControl(bus_id, control));
         Ok(())
+    }
+
+    fn set_bus_fx_control(
+        &mut self,
+        bus_id: BackendBusId,
+        control: BackendBusFxControl,
+    ) -> Result<()> {
+        let fx = self
+            .mixer
+            .buses
+            .get_mut(&bus_id)
+            .ok_or_else(|| anyhow!("unknown fake bus {bus_id:?}"))?
+            .fx
+            .as_mut()
+            .ok_or_else(|| anyhow!("bus has no processor"))?;
+        if self.fail_fx_state_restore && matches!(control, BackendBusFxControl::RestoreState(_)) {
+            return Err(anyhow!("injected processor state restore failure"));
+        }
+        match control {
+            BackendBusFxControl::SetActive(active) => fx.active = active,
+            BackendBusFxControl::SetVisible(visible) => fx.visible = visible,
+            BackendBusFxControl::ToggleOrRecover => {
+                if matches!(
+                    fx.lifecycle,
+                    FxLifecycle::Crashed | FxLifecycle::Unavailable
+                ) {
+                    fx.lifecycle = FxLifecycle::Running;
+                    fx.generation = fx.generation.saturating_add(1);
+                    fx.visible = true;
+                } else {
+                    fx.visible = !fx.visible;
+                }
+            }
+            BackendBusFxControl::RestoreState(_) => {}
+            BackendBusFxControl::ClearLogs => fx.logs = Arc::from([]),
+            BackendBusFxControl::BuiltInFx(control) => {
+                let Some(TrackProcessorEditorState::BuiltInFx(editor)) = fx.editor.as_mut() else {
+                    return Err(anyhow!("Built-in FX editor state is unavailable"));
+                };
+                apply_app_builtin_fx_control(editor, control);
+            }
+        }
+        self.mixer.revision = self.mixer.revision.wrapping_add(1);
+        Ok(())
+    }
+
+    fn bus_fx_state_string(&mut self, bus_id: BackendBusId) -> Result<Option<String>> {
+        Ok(Some(self.default_fx_state_string.clone()).filter(|_| {
+            self.mixer
+                .buses
+                .get(&bus_id)
+                .is_some_and(|bus| bus.fx.is_some())
+        }))
     }
 
     fn advance(&mut self, _elapsed: Duration) {}
