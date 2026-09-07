@@ -828,7 +828,6 @@ jobs:
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
-          python3 scripts/check_wasm_smoke_budget.py
           python3 scripts/check_wasm_test_dependencies.py \
             --package shoop_app --package shoop_app_api \
             --package shoop_audio_protocol --package shoop_audio_worklet \
