@@ -443,8 +443,10 @@ try {
     midiDetailChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-midi-detail-channels')),
     midiDetailEvents: Number(document.getElementById('runtime_status')?.getAttribute('data-midi-detail-events')),
     midiDetailLoading: document.getElementById('runtime_status')?.getAttribute('data-midi-detail-loading'),
-    enableHidden: document.getElementById('enable_audio')?.hidden,
-    outputEnableHidden: document.getElementById('enable_output_audio')?.hidden,
+    enableDisabled: document.getElementById('enable_audio')?.disabled,
+    enableGranted: document.getElementById('enable_audio')?.hasAttribute('data-permission-granted'),
+    outputEnableDisabled: document.getElementById('enable_output_audio')?.disabled,
+    outputEnableGranted: document.getElementById('enable_output_audio')?.hasAttribute('data-permission-granted'),
     canvasWidth: document.getElementById('shoop_canvas')?.width,
     canvasHeight: document.getElementById('shoop_canvas')?.height,
   })`;
@@ -565,7 +567,13 @@ try {
         && candidate.callbacks > 0,
       'browser Worker dummy did not advance and finish the session round trip',
     );
-    if (state.ownedMediaTracks !== 0 || !state.enableHidden || !state.outputEnableHidden) {
+    if (
+      state.ownedMediaTracks !== 0
+      || !state.enableDisabled
+      || state.enableGranted
+      || !state.outputEnableDisabled
+      || state.outputEnableGranted
+    ) {
       throw new Error(`Worker engine unexpectedly owned physical audio presentation: ${JSON.stringify(state)}`);
     }
     if (!selfContained) {
@@ -596,8 +604,14 @@ try {
     if (!(state.frames >= state.callbacks * 128 && state.quantum === 128)) {
       throw new Error(`output-only callback evidence is invalid: ${JSON.stringify(state)}`);
     }
-    if (state.ownedMediaTracks !== 0 || state.enableHidden || !state.outputEnableHidden) {
-      throw new Error(`output-only mode acquired input or hid the microphone upgrade action: ${JSON.stringify(state)}`);
+    if (
+      state.ownedMediaTracks !== 0
+      || state.enableDisabled
+      || state.enableGranted
+      || !state.outputEnableDisabled
+      || !state.outputEnableGranted
+    ) {
+      throw new Error(`output-only mode acquired input or presented incorrect permission actions: ${JSON.stringify(state)}`);
     }
     console.log(`${selfContained ? 'direct-file' : 'hosted'} output-only audio passed at ${browserSize}`);
   } else if (webMidi) {
@@ -854,7 +868,9 @@ try {
     await clickEnable();
     if (denyFirst) {
       const denied = await waitFor(candidate => candidate.driver === 'Denied', 'permission denial was not visible');
-      if (denied.enableHidden) throw new Error('retry action stayed hidden after denial');
+      if (denied.enableDisabled || denied.enableGranted) {
+        throw new Error('retry action was unavailable after denial');
+      }
       await call('Browser.resetPermissions');
       await call('Browser.grantPermissions', {
         permissions: ['audioCapture'],
@@ -944,7 +960,9 @@ try {
         candidate => candidate.driver === 'Failed' && candidate.ownedMediaTracks === 0,
         'media-track end did not fail visibly and release graph ownership',
       );
-      if (trackEnded.enableHidden) throw new Error('retry action stayed hidden after media-track end');
+      if (trackEnded.enableDisabled || trackEnded.enableGranted) {
+        throw new Error('retry action was unavailable after media-track end');
+      }
       await clickEnable();
       state = await waitFor(
         candidate => candidate.driver === 'Running' && candidate.callbacks > 0 && candidate.ownedMediaTracks > 0,
@@ -952,7 +970,9 @@ try {
       );
       await evaluate("shoopAudioDiagnostics.fail(new Event('diagnostic'))");
       const failed = await waitFor(candidate => candidate.driver === 'Failed', 'worklet failure was not visible');
-      if (failed.enableHidden) throw new Error('retry action stayed hidden after worklet failure');
+      if (failed.enableDisabled || failed.enableGranted) {
+        throw new Error('retry action was unavailable after worklet failure');
+      }
       await clickEnable();
       state = await waitFor(
         candidate => candidate.driver === 'Running' && candidate.callbacks > 0,
@@ -963,7 +983,12 @@ try {
       const stoppedCallbacks = stopped.callbacks;
       await delay(250);
       state = await evaluate(statusExpression);
-      if (state.callbacks !== stoppedCallbacks || state.enableHidden || state.ownedMediaTracks !== 0) {
+      if (
+        state.callbacks !== stoppedCallbacks
+        || state.enableDisabled
+        || state.enableGranted
+        || state.ownedMediaTracks !== 0
+      ) {
         throw new Error(`shutdown did not stop callbacks, release media, and expose retry: ${JSON.stringify(state)}`);
       }
     }
