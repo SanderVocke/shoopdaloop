@@ -171,7 +171,7 @@ fn validate_track_default_latency(draft: &SettingsDraft) -> Result<(), SettingsD
 pub fn register_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
-    register_settings_with_ui_scale_default(builder, 1.0)
+    register_settings_with_ui_scale_default(builder, 1.3)
 }
 
 pub fn register_settings_with_ui_scale_default(
