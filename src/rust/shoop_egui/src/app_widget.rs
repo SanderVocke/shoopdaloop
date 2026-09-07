@@ -24,7 +24,7 @@ const BUS_MIXER_DEFAULT_HEIGHT: f32 = 290.0;
 const BUS_MIXER_MIN_HEIGHT: f32 = 220.0;
 const BUS_MIXER_MAX_HEIGHT: f32 = 460.0;
 const BUS_INSERT_ZONE_WIDTH: f32 = 12.0;
-const SIDEBAR_SECTION_GAP: f32 = 8.0;
+const SIDEBAR_SECTION_GAP: f32 = 16.0;
 
 fn bus_move_changes_order(
     bus_ids: &[crate::BusId],
@@ -1439,7 +1439,7 @@ impl AppWidget {
                         egui::UiBuilder::new()
                             .id_salt("sync_track_area")
                             .max_rect(sync_rect)
-                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                            .layout(egui::Layout::top_down(egui::Align::Center)),
                         |ui| self.show_sync_track(ui, sync, state, &mut actions),
                     );
                 }
