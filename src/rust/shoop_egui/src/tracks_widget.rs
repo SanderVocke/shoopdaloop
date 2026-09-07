@@ -22,8 +22,6 @@ pub struct TracksWidget {
     track_widgets: BTreeMap<TrackId, TrackWidget>,
     track_centers: BTreeMap<TrackId, f32>,
     #[cfg(test)]
-    test_empty_prompt_shown: bool,
-    #[cfg(test)]
     test_track_insert_rects: Vec<(Option<TrackId>, egui::Rect)>,
     #[cfg(test)]
     test_highlighted_track_insert: Option<Option<TrackId>>,
@@ -62,7 +60,6 @@ impl TracksWidget {
         let mut result = TracksWidgetResponse::default();
         #[cfg(test)]
         {
-            self.test_empty_prompt_shown = tracks.is_empty();
             self.test_track_insert_rects.clear();
             self.test_highlighted_track_insert = None;
         }
@@ -116,14 +113,7 @@ impl TracksWidget {
                                         track_response.response.rect.center().x,
                                     );
                                 }
-                                if tracks.is_empty() {
-                                    ui.add_sized(
-                                        [190.0, 40.0],
-                                        egui::Label::new(
-                                            "No tracks yet — use + to add your first track",
-                                        ),
-                                    );
-                                } else {
+                                if !tracks.is_empty() {
                                     self.show_track_insert_zone(
                                         ui,
                                         &track_ids,
@@ -293,39 +283,6 @@ mod tests {
         );
         ignored_output_0.textures_delta.clear();
         response
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn empty_main_tracks_show_first_track_instruction_only() {
-        let context = egui::Context::default();
-        crate::initialize(&context);
-        let mut widget = TracksWidget::default();
-        for (tracks, expected) in [
-            (Vec::<TrackState>::new(), true),
-            (
-                vec![TrackState {
-                    id: TrackId::from_raw(1),
-                    name: "Track".to_owned(),
-                    ..Default::default()
-                }],
-                false,
-            ),
-        ] {
-            let mut ignored_output_1 = context.run_ui(
-                egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        egui::vec2(600.0, 400.0),
-                    )),
-                    ..Default::default()
-                },
-                |ui| {
-                    widget.show(ui, &tracks, &[]);
-                },
-            );
-            ignored_output_1.textures_delta.clear();
-            assert_eq!(widget.test_empty_prompt_shown, expected);
-        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
