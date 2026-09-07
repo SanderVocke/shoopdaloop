@@ -910,6 +910,7 @@ mod platform {
             else {
                 return;
             };
+            let _ = button.remove_attribute("data-permission-granted");
             let permission_status = match self.hub.state() {
                 BrowserMidiState::Unsupported => {
                     button.set_hidden(false);
@@ -921,7 +922,7 @@ mod platform {
                     button.set_hidden(false);
                     button.set_disabled(false);
                     button.set_text_content(Some("Enable Web MIDI + SysEx"));
-                    "Not granted"
+                    ""
                 }
                 BrowserMidiState::RequestingPermission => {
                     button.set_hidden(false);
@@ -930,13 +931,11 @@ mod platform {
                     "Requesting permission…"
                 }
                 BrowserMidiState::Running => {
-                    button.set_hidden(true);
+                    button.set_hidden(false);
                     button.set_disabled(true);
-                    if self.hub.sysex_enabled() {
-                        "Granted (SysEx enabled)"
-                    } else {
-                        "Granted (SysEx unavailable)"
-                    }
+                    button.set_text_content(Some("Granted"));
+                    let _ = button.set_attribute("data-permission-granted", "");
+                    ""
                 }
                 BrowserMidiState::Denied => {
                     button.set_hidden(false);
@@ -958,8 +957,13 @@ mod platform {
                 status.set_text_content(Some(&permission_status));
             }
             let (dropped, refused_track, refused_control) = self.hub.diagnostics();
+            let sysex = if self.hub.sysex_enabled() {
+                "SysEx enabled"
+            } else {
+                "SysEx unavailable"
+            };
             let diagnostics = format!(
-                "{}; track drops: {dropped}; track refusals: {refused_track}; control refusals: {refused_control}",
+                "{}; {sysex}; track drops: {dropped}; track refusals: {refused_track}; control refusals: {refused_control}",
                 self.hub.error().as_deref().unwrap_or("Web MIDI ready")
             );
             button.set_title(&diagnostics);
