@@ -402,31 +402,35 @@ impl BrowserAudioController {
             ),
         ] {
             if let Ok(button) = button {
-                button.set_hidden(enabled);
-                button.set_disabled(busy || state == BackendDriverState::Unsupported);
-                button.set_text_content(Some(
-                    if input_mode == Some(mode)
-                        && matches!(
-                            state,
-                            BackendDriverState::Denied
-                                | BackendDriverState::Failed
-                                | BackendDriverState::Stopped
-                        )
-                    {
-                        retry_text
-                    } else {
-                        enable_text
-                    },
-                ));
+                button.set_hidden(false);
+                button.set_disabled(enabled || busy || state == BackendDriverState::Unsupported);
+                if enabled {
+                    let _ = button.set_attribute("data-permission-granted", "");
+                } else {
+                    let _ = button.remove_attribute("data-permission-granted");
+                }
+                button.set_text_content(Some(if enabled {
+                    "Granted"
+                } else if input_mode == Some(mode)
+                    && matches!(
+                        state,
+                        BackendDriverState::Denied
+                            | BackendDriverState::Failed
+                            | BackendDriverState::Stopped
+                    )
+                {
+                    retry_text
+                } else {
+                    enable_text
+                }));
             }
         }
         let output_status = match state {
             BackendDriverState::RequestingPermission | BackendDriverState::Starting => "Starting…",
-            BackendDriverState::Running => "Enabled",
-            BackendDriverState::Suspended => "Enabled (suspended)",
+            BackendDriverState::Running | BackendDriverState::Suspended => "",
             BackendDriverState::Unsupported => "Unavailable in this browser",
             BackendDriverState::Failed => "Failed",
-            _ => "Not enabled",
+            _ => "",
         };
         let microphone_status = match (state, input_mode) {
             (BackendDriverState::RequestingPermission, Some(AudioInputMode::Microphone)) => {
@@ -434,11 +438,11 @@ impl BrowserAudioController {
             }
             (BackendDriverState::Starting, Some(AudioInputMode::Microphone))
             | (BackendDriverState::Running, Some(AudioInputMode::Microphone))
-            | (BackendDriverState::Suspended, Some(AudioInputMode::Microphone)) => "Granted",
+            | (BackendDriverState::Suspended, Some(AudioInputMode::Microphone)) => "",
             (BackendDriverState::Denied, Some(AudioInputMode::Microphone)) => "Denied",
             (BackendDriverState::Failed, Some(AudioInputMode::Microphone)) => "Failed",
             (BackendDriverState::Unsupported, _) => "Unavailable in this browser",
-            _ => "Not granted",
+            _ => "",
         };
         set_permission_status("audio_output_permission_status", output_status);
         set_permission_status("microphone_permission_status", microphone_status);

@@ -6011,6 +6011,9 @@ mod tests {
         assert!(html.contains("Browser audio and MIDI permissions"));
         assert!(html.contains("Enable microphone audio"));
         assert!(html.contains("Enable output-only audio"));
+        assert!(html.contains("data-permission-granted"));
+        assert!(!html.contains(">Not granted</span>"));
+        assert!(!html.contains(">Not enabled</span>"));
         assert!(html.contains("audio_worklet.js"));
         assert!(html.contains("Roboto-Regular.ttf"));
         assert!(html.contains("Roboto-BoldItalic.ttf"));
