@@ -189,10 +189,9 @@ python3 scripts/run_wasm_tests.py --runtime chrome --profile dev
 python3 scripts/run_wasm_tests.py --runtime node --profile dev \
   --package shoop_worklet_client --filter restart
 
-# Attribute policy, parser, smoke-budget, and dependency gates.
+# Attribute policy and parser gates.
 python3 scripts/check_shoop_test_usage.py
 python3 -m unittest scripts.tests.test_wasm_test_report
-python3 scripts/check_wasm_smoke_budget.py
 
 # Explicit failure reproduction; this command must exit nonzero and retain JUnit.
 python3 scripts/run_wasm_tests.py --runtime node --profile ci \
@@ -219,7 +218,7 @@ SELF_CONTAINED=1 OUTPUT_ONLY=1 \
 xvfb-run -a python3 browser_firefox_smoke.py
 ```
 
-The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` for non-standard executable paths. These smokes assert only packaged loading, application-to-worklet startup commands, genuine 128-frame callback progress, hosted/self-contained policy, and clean process teardown. `docs/wasm_smoke_migration.md` maps every retired browser assertion to deterministic Rust/Wasm evidence and is enforced by the three-invocation CI budget.
+The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` for non-standard executable paths. These smokes assert only packaged loading, application-to-worklet startup commands, genuine 128-frame callback progress, hosted/self-contained policy, and clean process teardown.
 
 Compiler-only checks from the repository root:
 
