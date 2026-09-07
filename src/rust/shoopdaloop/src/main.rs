@@ -2808,7 +2808,7 @@ fn default_ui_scale_for_screen(screen_size: Option<egui::Vec2>) -> f64 {
     }) {
         SMALL_SCREEN_UI_SCALE
     } else {
-        1.0
+        1.3
     }
 }
 
@@ -6020,16 +6020,16 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn small_screens_use_a_larger_missing_setting_default() {
+    fn missing_setting_default_accounts_for_screen_size() {
         assert_eq!(
             default_ui_scale_for_screen(Some(egui::vec2(1280.0, 800.0))),
             1.25
         );
         assert_eq!(
             default_ui_scale_for_screen(Some(egui::vec2(1280.0, 801.0))),
-            1.0
+            1.3
         );
-        assert_eq!(default_ui_scale_for_screen(None), 1.0);
+        assert_eq!(default_ui_scale_for_screen(None), 1.3);
 
         let mut builder = SettingsRegistryBuilder::default();
         register_settings_with_appearance_defaults(&mut builder, 1.25, false).unwrap();
