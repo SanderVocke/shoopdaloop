@@ -1133,6 +1133,8 @@ pub struct AppWidget {
     reset_xruns_rect: Option<egui::Rect>,
     #[cfg(test)]
     bus_area_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    empty_tracks_welcome_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -1232,6 +1234,8 @@ impl AppWidget {
             reset_xruns_rect: None,
             #[cfg(test)]
             bus_area_rect: None,
+            #[cfg(test)]
+            empty_tracks_welcome_rect: None,
         }
     }
 
@@ -1532,6 +1536,23 @@ impl AppWidget {
                     &state.track_processors,
                     &state.global_controls,
                 );
+                #[cfg(test)]
+                {
+                    self.empty_tracks_welcome_rect = None;
+                }
+                if main_tracks.is_empty() {
+                    let _welcome_rect = ui.painter().text(
+                        ui.ctx().content_rect().center(),
+                        egui::Align2::CENTER_CENTER,
+                        "Welcome to ShoopDaLoop!\nTo add your first recording track, click \"+\".",
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        ui.visuals().text_color(),
+                    );
+                    #[cfg(test)]
+                    {
+                        self.empty_tracks_welcome_rect = Some(_welcome_rect);
+                    }
+                }
                 if response.add_track_requested {
                     let defaults = self.effective_track_defaults(settings_state);
                     self.open_add_track_dialog(main_tracks.len(), &defaults);
@@ -3500,6 +3521,32 @@ mod tests {
             recovery_required: false,
             persistence: SettingsPersistenceState::Idle,
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn empty_tracks_welcome_is_window_centered_and_ignores_sync_track() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = AppWidget::default();
+        let mut state = AppState {
+            tracks: vec![TrackState {
+                id: crate::TrackId::from_raw(1),
+                is_sync: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        frame(&context, &mut widget, &state, Vec::new());
+        let welcome = widget.empty_tracks_welcome_rect.unwrap();
+        assert_eq!(welcome.center(), egui::pos2(450.0, 300.0));
+
+        state.tracks.push(TrackState {
+            id: crate::TrackId::from_raw(2),
+            ..Default::default()
+        });
+        frame(&context, &mut widget, &state, Vec::new());
+        assert!(widget.empty_tracks_welcome_rect.is_none());
     }
 
     fn frame(
