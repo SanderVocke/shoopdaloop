@@ -5128,6 +5128,24 @@ fn validate_cpal(config: &CpalAudioDriverConfig) -> Result<()> {
     Ok(())
 }
 
+pub fn default_native_audio_driver_kind() -> AudioDriverKind {
+    let jack_available = probe_jack(&AudioDriverConfig::default()).is_ok();
+    let cpal_available = !jack_available
+        && !cpal_host_names().is_empty()
+        && !cpal_output_device_names_for_host("default").is_empty();
+    preferred_audio_driver_kind(jack_available, cpal_available)
+}
+
+fn preferred_audio_driver_kind(jack_available: bool, cpal_available: bool) -> AudioDriverKind {
+    if jack_available {
+        AudioDriverKind::Jack
+    } else if cpal_available {
+        AudioDriverKind::Cpal
+    } else {
+        AudioDriverKind::Dummy
+    }
+}
+
 fn discover_audio_drivers(active: &AudioDriverConfig) -> Arc<[AudioDriverDescriptor]> {
     let jack = match probe_jack(active) {
         Ok(()) => AudioDriverDescriptor {
@@ -8048,6 +8066,22 @@ mod tests {
             .switch_audio_driver(&target, session.sample_rate, &session)
             .unwrap();
         assert_eq!(backend.loop_smoothing_ms, 9);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn default_driver_preference_is_jack_then_cpal_then_dummy() {
+        assert_eq!(
+            preferred_audio_driver_kind(true, true),
+            AudioDriverKind::Jack
+        );
+        assert_eq!(
+            preferred_audio_driver_kind(false, true),
+            AudioDriverKind::Cpal
+        );
+        assert_eq!(
+            preferred_audio_driver_kind(false, false),
+            AudioDriverKind::Dummy
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

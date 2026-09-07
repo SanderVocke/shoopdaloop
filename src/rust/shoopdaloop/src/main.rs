@@ -33,6 +33,8 @@ use shoop_backend::NativeBackend;
 use shoop_backend::{
     configure_carla_hosting_mode, configure_carla_ui_dispatcher, CarlaMainThreadUiService,
 };
+#[cfg(test)]
+use shoop_egui::register_audio_settings;
 #[cfg(target_arch = "wasm32")]
 use shoop_egui::register_bundled_script_settings;
 #[cfg(all(not(target_arch = "wasm32"), any(feature = "native-fx", test)))]
@@ -44,9 +46,9 @@ use shoop_egui::register_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::AudioDriverConfig;
 use shoop_egui::{
-    register_audio_settings, register_settings_with_appearance_defaults, AppIntent, AppSnapshot,
-    AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, TrackDefaultSaveResult,
-    UI_SCALE_FACTOR,
+    register_audio_settings_with_default_driver, register_settings_with_appearance_defaults,
+    AppIntent, AppSnapshot, AppWidget, AudioDriverKind, ScriptKind, SettingsAction,
+    SettingsRegistryBuilder, TrackDefaultSaveResult, UI_SCALE_FACTOR,
 };
 use shoop_egui::{TracingStatus, TracingStopped};
 
@@ -472,6 +474,21 @@ fn load_settings_manager(
     )
 }
 
+#[cfg(all(not(target_arch = "wasm32"), not(test)))]
+fn default_audio_driver_kind() -> AudioDriverKind {
+    shoop_backend::default_native_audio_driver_kind()
+}
+
+#[cfg(all(not(target_arch = "wasm32"), test))]
+fn default_audio_driver_kind() -> AudioDriverKind {
+    AudioDriverKind::Dummy
+}
+
+#[cfg(target_arch = "wasm32")]
+fn default_audio_driver_kind() -> AudioDriverKind {
+    AudioDriverKind::WebAudio
+}
+
 impl UnifiedApp {
     fn new(
         ui_scale_default: f64,
@@ -487,7 +504,10 @@ impl UnifiedApp {
             ui_scale_default,
             touch_mode_default,
         )?;
-        register_audio_settings(&mut settings_builder)?;
+        register_audio_settings_with_default_driver(
+            &mut settings_builder,
+            default_audio_driver_kind(),
+        )?;
         #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
         register_carla_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]

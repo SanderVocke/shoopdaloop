@@ -374,6 +374,13 @@ pub fn register_settings_with_appearance_defaults(
 pub fn register_audio_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    register_audio_settings_with_default_driver(builder, AudioDriverKind::Dummy)
+}
+
+pub fn register_audio_settings_with_default_driver(
+    builder: &mut SettingsRegistryBuilder,
+    default_driver: AudioDriverKind,
+) -> Result<(), SettingsRegistryError> {
     let effect = SettingEffect::ExplicitApply;
     builder.register(
         SettingDefinition::new(
@@ -403,7 +410,7 @@ pub fn register_audio_settings(
     builder.register(
         SettingDefinition::new(
             SELECTED_AUDIO_DRIVER,
-            "dummy".to_owned(),
+            default_driver.id().to_owned(),
             "Audio",
             "Preferred audio driver",
             "Driver attempted first on the next native launch. Runtime changes require Switch confirmation.",
@@ -4032,6 +4039,23 @@ mod tests {
             audio_driver_config_from_draft(&draft, AudioDriverKind::Dummy).unwrap(),
             dummy
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn audio_settings_use_the_supplied_default_driver() {
+        for kind in [
+            AudioDriverKind::Jack,
+            AudioDriverKind::Cpal,
+            AudioDriverKind::WebAudio,
+            AudioDriverKind::Dummy,
+        ] {
+            let mut builder = SettingsRegistryBuilder::default();
+            register_audio_settings_with_default_driver(&mut builder, kind).unwrap();
+            assert_eq!(
+                selected_audio_driver(&builder.finish().defaults(1)).unwrap(),
+                kind
+            );
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

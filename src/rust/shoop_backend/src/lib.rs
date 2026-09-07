@@ -3,14 +3,14 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 mod native;
-#[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
-pub use native::NativeBackend;
 #[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
 pub use native::{
     carla_runtime_path, configure_carla_hosting_mode, configure_carla_ui_dispatcher,
     configured_carla_hosting_mode, run_carla_worker_if_requested, smoke_test_carla_runtime,
     smoke_test_carla_ui, CarlaMainThreadUiDispatcher, CarlaMainThreadUiService,
 };
+#[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
+pub use native::{default_native_audio_driver_kind, NativeBackend};
 pub use shoop_app_api::{
     BuiltInFxControl, BuiltInFxDriveType, BuiltInFxMidiCcAssignment, BuiltInFxModulationType,
     BuiltInFxParameter, BuiltInFxReverbType, BuiltInFxStage, BuiltInFxState, OxiSynthControl,
