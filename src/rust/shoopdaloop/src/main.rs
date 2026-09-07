@@ -371,7 +371,12 @@ impl BuildIdentity {
     };
 }
 
-fn show_about_dialog(context: &egui::Context, open: &mut bool, identity: BuildIdentity) {
+fn show_about_dialog(
+    context: &egui::Context,
+    open: &mut bool,
+    identity: BuildIdentity,
+    settings_storage_location: &str,
+) {
     if !*open {
         return;
     }
@@ -389,6 +394,7 @@ fn show_about_dialog(context: &egui::Context, open: &mut bool, identity: BuildId
                 ui.label(format!("Commit: {}", identity.revision));
             }
             ui.label(format!("Built: {}", identity.date));
+            ui.label(format!("Settings storage: {settings_storage_location}"));
         });
 }
 
@@ -1282,7 +1288,12 @@ impl UnifiedApp {
         for action in response.settings_actions {
             self.handle_settings_action(action);
         }
-        show_about_dialog(ui.ctx(), &mut self.about_open, BuildIdentity::CURRENT);
+        show_about_dialog(
+            ui.ctx(),
+            &mut self.about_open,
+            BuildIdentity::CURRENT,
+            &settings_state.storage_location,
+        );
         self.show_file_drop_overlay(ui.ctx());
         self.show_session_url_dialogs(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
@@ -5731,7 +5742,7 @@ mod tests {
         ] {
             let mut open = true;
             let mut output = context.run_ui(Default::default(), |ui| {
-                show_about_dialog(ui.ctx(), &mut open, identity);
+                show_about_dialog(ui.ctx(), &mut open, identity, "fixture settings path");
             });
             output.textures_delta.clear();
             assert!(open);
@@ -5739,7 +5750,12 @@ mod tests {
 
         let mut open = false;
         let mut output = context.run_ui(Default::default(), |ui| {
-            show_about_dialog(ui.ctx(), &mut open, BuildIdentity::CURRENT);
+            show_about_dialog(
+                ui.ctx(),
+                &mut open,
+                BuildIdentity::CURRENT,
+                "fixture settings path",
+            );
         });
         output.textures_delta.clear();
         assert!(!open);

@@ -100,6 +100,7 @@ pub struct SettingsDialog {
     registry: Arc<SettingsRegistry>,
     open: bool,
     draft: Option<SettingsDraft>,
+    pending_save_revision: Option<u64>,
     active_category: Option<String>,
     audio_target: Option<AudioDriverKind>,
     audio_discovery_key: Option<(AudioDriverKind, String)>,
@@ -143,6 +144,7 @@ impl SettingsDialog {
             registry,
             open: false,
             draft: None,
+            pending_save_revision: None,
             active_category: None,
             audio_target: None,
             audio_discovery_key: None,
@@ -268,6 +270,7 @@ impl SettingsDialog {
         if self.draft.is_none() {
             self.draft = Some(SettingsDraft::from_snapshot(&state.active));
         }
+        self.rebase_after_save(state);
         self.ensure_active_category();
         let mut response = SettingsDialogResponse::default();
         let mut open = self.open;
@@ -279,8 +282,7 @@ impl SettingsDialog {
             .default_size([660.0, 560.0])
             .min_size([320.0, 180.0])
             .show(context, |ui| {
-                self.show_status(ui, state);
-                ui.separator();
+                self.show_diagnostics(ui, state);
                 if state.recovery_required {
                     ui.label(
                         "The stored document must be explicitly replaced before settings can be edited.",
@@ -368,6 +370,12 @@ impl SettingsDialog {
                             draft.reset_all(&self.registry);
                         }
                     }
+                    let has_unsaved_changes = self.has_unsaved_changes(state);
+                    ui.weak(if has_unsaved_changes {
+                        "Unsaved changes"
+                    } else {
+                        "All changes saved"
+                    });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("Cancel").clicked() {
                             close_without_save = true;
@@ -393,17 +401,11 @@ impl SettingsDialog {
                         );
                         if save.clicked() {
                             if let Some(action) = self.save_action() {
+                                self.pending_save_revision =
+                                    self.draft.as_ref().map(SettingsDraft::base_revision);
                                 self.apply_appearance(context);
                                 response.settings_actions.push(action);
                             }
-                        }
-                        if stale {
-                            ui.colored_label(
-                                colors::WARNING,
-                                "Settings changed elsewhere; close and reopen this dialog.",
-                            );
-                        } else if !valid {
-                            ui.colored_label(colors::WARNING, "Correct invalid settings to save.");
                         }
                     });
                 });
@@ -411,6 +413,7 @@ impl SettingsDialog {
         if close_without_save || !open {
             self.open = false;
             self.draft = None;
+            self.pending_save_revision = None;
             self.audio_target = None;
             self.audio_discovery_key = None;
             self.script_log_windows.clear();
@@ -480,24 +483,40 @@ impl SettingsDialog {
         self.draft.clone().map(SettingsAction::Save)
     }
 
-    fn show_status(&self, ui: &mut egui::Ui, state: &SettingsViewState) {
-        ui.label(format!("Storage: {}", state.storage_location));
-        match state.persistence {
-            SettingsPersistenceState::Idle => {}
-            SettingsPersistenceState::Saving => {
-                ui.spinner();
-                ui.label("Saving settings…");
-            }
-            SettingsPersistenceState::Saved => {
-                ui.colored_label(colors::SUCCESS, "Settings saved");
-            }
-            SettingsPersistenceState::Failed => {
-                ui.colored_label(colors::ERROR, "Settings were not saved");
-            }
-        }
+    fn show_diagnostics(&self, ui: &mut egui::Ui, state: &SettingsViewState) {
         for diagnostic in state.diagnostics.iter() {
             ui.colored_label(colors::WARNING, &diagnostic.message);
         }
+    }
+
+    fn has_unsaved_changes(&self, state: &SettingsViewState) -> bool {
+        self.draft.as_ref().is_some_and(|draft| {
+            self.registry.definitions().iter().any(|definition| {
+                draft.value(definition.key()) != state.active.value(definition.key())
+            })
+        })
+    }
+
+    fn rebase_after_save(&mut self, state: &SettingsViewState) {
+        let Some(saved_revision) = self.pending_save_revision else {
+            return;
+        };
+        if state.persistence != SettingsPersistenceState::Saved
+            || state.active.revision() == saved_revision
+        {
+            return;
+        }
+        let Some(draft) = &self.draft else {
+            return;
+        };
+        let mut rebased = SettingsDraft::from_snapshot(&state.active);
+        for definition in self.registry.definitions() {
+            if let Some(value) = draft.value(definition.key()) {
+                rebased.set_value(definition.key(), value.clone());
+            }
+        }
+        self.draft = Some(rebased);
+        self.pending_save_revision = None;
     }
 
     fn show_developer(&mut self, ui: &mut egui::Ui, response: &mut SettingsDialogResponse) {
@@ -1746,6 +1765,25 @@ mod tests {
             dialog.categories(),
             ["Other", "Track defaults", "Developer"]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn completed_save_rebases_the_open_draft_for_further_edits() {
+        let (registry, mut state) = fixture();
+        let mut dialog = SettingsDialog::new(Arc::clone(&registry));
+        dialog.open(&state);
+        dialog.draft_mut().unwrap().set(COUNT, 5);
+        dialog.pending_save_revision = Some(state.active.revision());
+
+        state.active = Arc::new(registry.defaults(2));
+        state.persistence = SettingsPersistenceState::Saved;
+        dialog.rebase_after_save(&state);
+
+        let draft = dialog.draft.as_ref().unwrap();
+        assert_eq!(draft.base_revision(), 2);
+        assert_eq!(draft.get(COUNT), Ok(5));
+        assert!(dialog.has_unsaved_changes(&state));
+        assert_eq!(dialog.pending_save_revision, None);
     }
 
     #[shoop_wasm_test_support::shoop_test]
