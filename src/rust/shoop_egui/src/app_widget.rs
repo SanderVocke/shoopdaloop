@@ -20,6 +20,7 @@ use std::sync::Arc;
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
 const LOGO_AREA_HEIGHT: f32 = 112.0;
 const SYNC_TRACK_HEIGHT: f32 = 118.0;
+const SYNC_TRACK_WIDTH: f32 = 128.0;
 const BUS_MIXER_DEFAULT_HEIGHT: f32 = 290.0;
 const BUS_MIXER_MIN_HEIGHT: f32 = 220.0;
 const BUS_MIXER_MAX_HEIGHT: f32 = 460.0;
@@ -1430,16 +1431,16 @@ impl AppWidget {
                 if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
                     let sync_rect = egui::Rect::from_min_size(
                         egui::pos2(
-                            sidebar.left(),
+                            sidebar.center().x - SYNC_TRACK_WIDTH / 2.0,
                             logo_rect.top() - SIDEBAR_SECTION_GAP - SYNC_TRACK_HEIGHT,
                         ),
-                        egui::vec2(sidebar.width(), SYNC_TRACK_HEIGHT),
+                        egui::vec2(SYNC_TRACK_WIDTH, SYNC_TRACK_HEIGHT),
                     );
                     ui.scope_builder(
                         egui::UiBuilder::new()
                             .id_salt("sync_track_area")
                             .max_rect(sync_rect)
-                            .layout(egui::Layout::top_down(egui::Align::Center)),
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
                         |ui| self.show_sync_track(ui, sync, state, &mut actions),
                     );
                 }
