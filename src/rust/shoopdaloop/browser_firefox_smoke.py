@@ -83,13 +83,19 @@ def main() -> None:
         else:
             raise RuntimeError(f"Firefox browser audio timed out: {state}")
 
+        microphone_button = driver.find_element(By.ID, "enable_audio")
+        output_button = driver.find_element(By.ID, "enable_output_audio")
         if not (
             state["frames"] >= state["callbacks"] * 128
             and state["quantum"] == 128
             and state["overflows"] == 0
             and state["owned_media_tracks"] == 0
-            and not driver.find_element(By.ID, "enable_audio").get_attribute("hidden")
-            and bool(driver.find_element(By.ID, "enable_output_audio").get_attribute("hidden"))
+            and microphone_button.is_displayed()
+            and microphone_button.is_enabled()
+            and not microphone_button.get_attribute("data-permission-granted")
+            and output_button.is_displayed()
+            and not output_button.is_enabled()
+            and output_button.get_attribute("data-permission-granted") is not None
         ):
             raise RuntimeError(f"Firefox AudioWorklet evidence is incomplete: {state}")
         print(f"Firefox AudioWorklet smoke passed: {state}")
