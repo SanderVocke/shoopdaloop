@@ -9317,6 +9317,7 @@ mod tests {
             .create_fx_chain(FXChainType::CarlaRack, "carla", 0)
             .expect("chain handle");
         if !chain.available() {
+            assert!(!chain.set_active(true));
             eprintln!(
                 "skipping app-backend Carla availability assertion: {}",
                 chain.get_state_str().unwrap_or_default()
