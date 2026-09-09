@@ -443,14 +443,7 @@ mod bridge {
                 .map(|summary| (*summary).clone())
         }
 
-        pub fn set_active(&self, active: bool) {
-            // Publish desired activity immediately, then apply it in FIFO order on
-            // the bridge thread. This keeps application state deterministic without
-            // sharing the callback endpoint or making it consume control traffic.
-            self.control
-                .snapshot
-                .active
-                .store(active, Ordering::Release);
+        pub fn set_active(&self, active: bool) -> bool {
             if self
                 .control
                 .sender
@@ -458,8 +451,14 @@ mod bridge {
                 .is_err()
             {
                 self.control.snapshot.ready.store(false, Ordering::Release);
+                false
             } else {
+                self.control
+                    .snapshot
+                    .active
+                    .store(active, Ordering::Release);
                 self.control.wake.unpark();
+                true
             }
         }
 
