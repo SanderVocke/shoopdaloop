@@ -6691,39 +6691,42 @@ impl FXChain {
             self.state.lock().unwrap().visible = (visible && ok) as u32;
         }
     }
-    pub fn set_active(&self, active: bool) {
-        self.state.lock().unwrap().active = active as u32;
-        match &self.backend {
+    pub fn set_active(&self, active: bool) -> bool {
+        let accepted = match &self.backend {
             FXChainBackendKind::Test2x2x1 => {
                 let mut pending = Some(self.title.clone());
-                if let Err(error) = self.shared.send_control(move |s: &mut engine::Session| {
-                    if let Some(title) = pending.take() {
-                        s.set_test_fx_active(title, active);
-                    }
-                }) {
-                    log::error!("could not queue FX active state: {error}");
-                }
+                self.shared
+                    .send_control(move |s: &mut engine::Session| {
+                        if let Some(title) = pending.take() {
+                            s.set_test_fx_active(title, active);
+                        }
+                    })
+                    .is_ok()
             }
             FXChainBackendKind::BuiltInFx { .. } => {
                 let title = self.title.clone();
-                if let Err(error) = self.shared.send_control(move |session| {
-                    session.set_builtin_fx_active(&title, active);
-                }) {
-                    log::error!("could not queue Built-in FX active state: {error}");
-                }
+                self.shared
+                    .send_control(move |session| {
+                        session.set_builtin_fx_active(&title, active);
+                    })
+                    .is_ok()
             }
             FXChainBackendKind::OxiSynth(_) => {
                 let title = self.title.clone();
-                if let Err(error) = self.shared.send_control(move |session| {
-                    session.set_oxisynth_active(&title, active);
-                }) {
-                    log::error!("could not queue OxiSynth active state: {error}");
-                }
+                self.shared
+                    .send_control(move |session| {
+                        session.set_oxisynth_active(&title, active);
+                    })
+                    .is_ok()
             }
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.set_active(active),
-            FXChainBackendKind::Unavailable { .. } => {}
+            FXChainBackendKind::Unavailable { .. } => false,
+        };
+        if accepted {
+            self.state.lock().unwrap().active = active as u32;
         }
+        accepted
     }
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
