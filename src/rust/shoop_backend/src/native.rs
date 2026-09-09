@@ -5716,7 +5716,7 @@ mod tests {
         configure_carla_ui_dispatcher(Some(carla_ui_dispatcher));
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
-            buffer_size: 128,
+            buffer_size: 2_048,
         }))
         .unwrap();
         let source = backend
@@ -5793,29 +5793,15 @@ mod tests {
             configure_carla_ui_dispatcher(None);
             return;
         }
-        if let Err(error) = backend.set_bus_fx_control(
-            MASTER_BUS_ID,
-            BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
-                processor_type: TrackProcessorTypeId::CARLA_RACK.to_owned(),
-                audio_channels: 2,
-            })),
-        ) {
-            assert!(error.to_string().contains("bus processor is unavailable"));
-            eprintln!(
-                "skipping native bus Carla audio assertion; Carla could not instantiate: {error:#}"
-            );
-            assert!(
-                render_dummy_bus_audio(&mut backend, source.track_id, MASTER_BUS_ID, &input)
-                    .iter()
-                    .any(|sample| sample.abs() > 0.1)
-            );
-            assert_routed_bus_link(&mut backend, source_port_id, destination_channel_id);
-            assert!(backend.poll().unwrap().mixer.buses[&MASTER_BUS_ID]
-                .fx
-                .is_none());
-            configure_carla_ui_dispatcher(None);
-            return;
-        }
+        backend
+            .set_bus_fx_control(
+                MASTER_BUS_ID,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::CARLA_RACK.to_owned(),
+                    audio_channels: 2,
+                })),
+            )
+            .unwrap();
         let initial_generation = backend.poll().unwrap().mixer.buses[&MASTER_BUS_ID]
             .fx
             .as_ref()
@@ -7794,6 +7780,17 @@ mod tests {
                 .all(|descriptor| {
                     !descriptor.available && descriptor.unavailable_reason.is_some()
                 }));
+            let error = backend
+                .set_bus_fx_control(
+                    MASTER_BUS_ID,
+                    BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                        processor_type: TrackProcessorTypeId::CARLA_RACK.to_owned(),
+                        audio_channels: 2,
+                    })),
+                )
+                .unwrap_err();
+            assert!(error.to_string().contains("bus processor is unavailable"));
+            assert!(backend.poll()?.mixer.buses[&MASTER_BUS_ID].fx.is_none());
             Ok::<_, anyhow::Error>(())
         })();
         unsafe {
