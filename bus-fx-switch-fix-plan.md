@@ -80,9 +80,9 @@ Depends on Stage 2.
 
 - [x] Run existing native bus creation, session round-trip, processor replacement, bus removal, and mixer-route tests.
 - [x] Run relevant engine FX-chain activation tests, including Carla fake-processor tests, to verify the common activation contract.
-- [x] Probe Carla locally and cover the shared bus path conditionally; the library is present but application-host instantiation is unavailable in this environment, so the test verifies failed insertion preserves direct audio and mixer routing.
+- [x] Probe Carla locally and cover the shared bus path conditionally; with a main-thread UI dispatcher configured, the Carla Rack master-bus workflow produces non-silent output with stable lifecycle counters, while the forced-unavailable test verifies failed insertion leaves no published FX.
 - [x] Review the diff for changes outside native bus-FX routing/tests and remove any unnecessary edits.
-- [x] Keep the Carla conditional/failure-path coverage in the focused green milestone; no separate hardening commit is needed.
+- [x] Commit the master-bus/Carla and CI-hardening follow-ups as separate milestones.
 
 Verification:
 
@@ -110,11 +110,11 @@ Validation evidence:
 
 ## Delivery
 
-- [ ] Push the branch to `origin` and open a PR summarizing the two root causes, transactional routing fix, activation fix, and audio-level regression coverage.
-- [ ] Link the validation commands/results and, if captured, the before/after trace evidence in the PR.
-- [ ] Monitor CI until every required job is green; inspect failed job logs before making targeted corrections and rerun local affected checks.
-- [ ] Check the PR for automated review feedback. If automated review appears, address justified findings, push updates, rerun affected/full validation, and repeat until the reviewer approves.
-- [ ] Ensure the final PR diff remains within scope and the acceptance criteria are unchanged.
+- [x] Push the branch to `origin` and open PR [#873](https://github.com/SanderVocke/shoopdaloop/pull/873) summarizing the two root causes, transactional routing fix, activation fix, and audio-level regression coverage.
+- [x] Link the validation commands/results and the deterministic graph/lifecycle evidence in the PR.
+- [x] Monitor CI and inspect failed logs before targeted corrections. All native platform builds, Rust coverage, CodeQL, docs, and Codecov checks pass; branch protection reports no required checks. The non-required WebAssembly release job repeatedly exposes a pre-existing Firefox smoke UI-publication race outside this plan's scope, while the WebAssembly debug job and all artifact/build checks pass.
+- [x] Check the PR for automated feedback. Codecov's justified patch-coverage finding was addressed (80.27% now passes); no code-review findings appeared.
+- [x] Ensure the final PR diff remains within scope and the acceptance criteria are unchanged.
 
 ## Execution contract
 
