@@ -66,7 +66,7 @@ Depends on Stage 1.
 - [x] Review replacement/removal ordering to ensure the direct edge is restored while old FX edges disappear with the removed chain, without using destructive port detachment.
 - [x] Keep the shared activation and routing path processor-type-neutral so Built-in FX and Carla receive the same fix.
 - [x] Run the regression repeatedly to catch queued-command or graph-publication races.
-- [ ] Commit the production fix and its focused regression tests as one green milestone.
+- [x] Commit the production fix and its focused regression tests as green milestone `2c6b8a0f`.
 
 Verification:
 
@@ -95,11 +95,18 @@ Depends on Stages 1–3.
 
 - [x] Run `nix develop --command cargo fmt --all -- --check`.
 - [x] Run `nix develop --command env RUSTFLAGS='-D warnings' cargo build --workspace --features shoop_engine/app_backend,shoop_backend/native-fx` so the warning-denying build covers the changed native code.
-- [ ] Run `nix develop --command env SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `nix develop --command python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Reproduce the original playback workflow on the master bus: no FX to Built-in FX, back to no FX, then Carla when available; confirm the master remains audible and its meter remains non-zero while upstream tracks continue.
-- [ ] Optionally capture a short replacement Perfetto trace and confirm the inserted processor performs normal DSP work, graph generations settle, callbacks continue, and bridge fallback/crash counters remain zero.
-- [ ] Commit any final validation-driven correction, then ensure the branch is clean and all acceptance criteria have explicit evidence.
+- [x] Run `nix develop --command env SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci` so the complete suite includes the native backend and Carla path.
+- [x] Run `nix develop --command python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Reproduce the original playback workflow on the master bus: no FX to Built-in FX, back to no FX, then Carla when available; the controlled native dummy test confirms non-silent output and retained upstream routing throughout.
+- [x] Use deterministic graph generations and Carla deadline/stale/crash counters in the regression instead of an optional Perfetto trace; the counters remain zero and the generation remains stable.
+- [x] Commit the final master-bus/Carla validation hardening, then ensure the branch is clean and all acceptance criteria have explicit evidence.
+
+Validation evidence:
+
+- Before the production fix, the corrected native filter ran three tests: `native_dummy_bus_fx_new_processor_is_engine_active` failed with engine `active == 0`, and `native_dummy_bus_fx_processor_switch_preserves_routed_audio` failed because processed output was silent.
+- After the fix, the native bus-FX filter passed repeatedly, including actual Built-in FX DSP output, replacement/removal, rejected insertion rollback, and the Carla-capable master-bus workflow.
+- The complete native-featured Rust run passed 1,800 tests with 4 environment skips.
+- Formatting, warning-denying workspace build, Rust test-policy check, tracing coverage, the complete `shoop_backend` suite, and focused engine FX/Carla tests all pass.
 
 ## Delivery
 

@@ -5711,26 +5711,17 @@ mod tests {
 
     #[cfg(feature = "native-fx")]
     #[shoop_wasm_test_support::shoop_test]
-    fn native_dummy_bus_fx_carla_switch_preserves_routed_audio_when_available() {
+    fn native_dummy_bus_fx_master_workflow_includes_carla_when_available() {
+        let (mut carla_ui_service, carla_ui_dispatcher) = CarlaMainThreadUiService::new();
+        configure_carla_ui_dispatcher(Some(carla_ui_dispatcher));
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
             buffer_size: 128,
         }))
         .unwrap();
-        let available = backend
-            .bus_processor_catalog()
-            .unwrap()
-            .iter()
-            .any(|processor| {
-                processor.id.as_str() == TrackProcessorTypeId::CARLA_RACK && processor.available
-            });
-        if !available {
-            eprintln!("skipping native bus Carla routing test; Carla runtime is unavailable");
-            return;
-        }
         let source = backend
             .create_direct_track(DirectTrackRequest {
-                port_name_base: "carla_bus_source".to_owned(),
+                port_name_base: "master_bus_source".to_owned(),
                 audio_channels: 1,
                 midi: false,
                 initial_loops: 0,
@@ -5739,32 +5730,71 @@ mod tests {
         backend
             .set_track_control(source.track_id, BackendTrackControl::InputMonitoring(true))
             .unwrap();
-        let created = backend
-            .create_bus(BackendBusRequest {
-                name: "CarlaSwitch".to_owned(),
-                channel_count: 2,
-                fx: None,
-            })
-            .unwrap();
         let source_port_id = source
             .ports
             .iter()
             .find(|port| port.role == BackendPortRole::AudioOutput)
             .unwrap()
             .id;
-        let destination_channel_id = created.channels[0].id;
+        let destination_channel_id =
+            backend.runtime().unwrap().buses[&MASTER_BUS_ID].channels[0].id;
         backend
             .set_mixer_route(source_port_id, destination_channel_id, true)
             .unwrap();
         let input = vec![0.2; 128];
+        let dry = render_dummy_bus_audio(&mut backend, source.track_id, MASTER_BUS_ID, &input);
+        assert!(dry.iter().any(|sample| sample.abs() > 0.1));
+
+        backend
+            .set_bus_fx_control(
+                MASTER_BUS_ID,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                })),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                MASTER_BUS_ID,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    BuiltInFxStage::Drive,
+                    true,
+                )),
+            )
+            .unwrap();
+        let processed =
+            render_dummy_bus_audio(&mut backend, source.track_id, MASTER_BUS_ID, &input);
+        assert!(processed.iter().any(|sample| sample.abs() > 0.01));
+        assert!(processed
+            .iter()
+            .zip(&dry)
+            .any(|(processed, dry)| (processed - dry).abs() > 0.01));
+        assert_routed_bus_link(&mut backend, source_port_id, destination_channel_id);
+        backend
+            .set_bus_fx_control(MASTER_BUS_ID, BackendBusFxControl::SetProcessor(None))
+            .unwrap();
         assert!(
-            render_dummy_bus_audio(&mut backend, source.track_id, created.bus_id, &input)
+            render_dummy_bus_audio(&mut backend, source.track_id, MASTER_BUS_ID, &input)
                 .iter()
                 .any(|sample| sample.abs() > 0.1)
         );
+        assert_routed_bus_link(&mut backend, source_port_id, destination_channel_id);
 
+        let carla_available = backend
+            .bus_processor_catalog()
+            .unwrap()
+            .iter()
+            .any(|processor| {
+                processor.id.as_str() == TrackProcessorTypeId::CARLA_RACK && processor.available
+            });
+        if !carla_available {
+            eprintln!("skipping native bus Carla routing test; Carla runtime is unavailable");
+            configure_carla_ui_dispatcher(None);
+            return;
+        }
         if let Err(error) = backend.set_bus_fx_control(
-            created.bus_id,
+            MASTER_BUS_ID,
             BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
                 processor_type: TrackProcessorTypeId::CARLA_RACK.to_owned(),
                 audio_channels: 2,
@@ -5775,43 +5805,55 @@ mod tests {
                 "skipping native bus Carla audio assertion; Carla could not instantiate: {error:#}"
             );
             assert!(
-                render_dummy_bus_audio(&mut backend, source.track_id, created.bus_id, &input)
+                render_dummy_bus_audio(&mut backend, source.track_id, MASTER_BUS_ID, &input)
                     .iter()
                     .any(|sample| sample.abs() > 0.1)
             );
             assert_routed_bus_link(&mut backend, source_port_id, destination_channel_id);
-            assert!(backend.poll().unwrap().mixer.buses[&created.bus_id]
+            assert!(backend.poll().unwrap().mixer.buses[&MASTER_BUS_ID]
                 .fx
                 .is_none());
+            configure_carla_ui_dispatcher(None);
             return;
         }
+        let initial_generation = backend.poll().unwrap().mixer.buses[&MASTER_BUS_ID]
+            .fx
+            .as_ref()
+            .unwrap()
+            .generation;
         let mut peak = 0.0_f32;
         for _ in 0..8 {
+            carla_ui_service.pump();
             std::thread::sleep(Duration::from_millis(4));
-            peak = render_dummy_bus_audio(&mut backend, source.track_id, created.bus_id, &input)
+            peak = render_dummy_bus_audio(&mut backend, source.track_id, MASTER_BUS_ID, &input)
                 .into_iter()
                 .fold(peak, |peak, sample| peak.max(sample.abs()));
         }
         assert!(peak > 0.01, "Carla bus output peak was {peak}");
         let snapshot = backend.poll().unwrap();
-        let fx = snapshot.mixer.buses[&created.bus_id].fx.as_ref().unwrap();
+        let fx = snapshot.mixer.buses[&MASTER_BUS_ID].fx.as_ref().unwrap();
         assert!(fx.active);
         assert!(!matches!(
             fx.lifecycle,
             FxLifecycle::Crashed | FxLifecycle::Unavailable
         ));
+        assert_eq!(fx.generation, initial_generation);
+        assert_eq!(fx.deadline_misses, 0);
+        assert_eq!(fx.stale_completions, 0);
         assert!(fx.crash_summary.is_none());
         assert_routed_bus_link(&mut backend, source_port_id, destination_channel_id);
 
         backend
-            .set_bus_fx_control(created.bus_id, BackendBusFxControl::SetProcessor(None))
+            .set_bus_fx_control(MASTER_BUS_ID, BackendBusFxControl::SetProcessor(None))
             .unwrap();
         assert!(
-            render_dummy_bus_audio(&mut backend, source.track_id, created.bus_id, &input)
+            render_dummy_bus_audio(&mut backend, source.track_id, MASTER_BUS_ID, &input)
                 .iter()
                 .any(|sample| sample.abs() > 0.1)
         );
         assert_routed_bus_link(&mut backend, source_port_id, destination_channel_id);
+        carla_ui_service.pump();
+        configure_carla_ui_dispatcher(None);
     }
 
     #[shoop_wasm_test_support::shoop_test]
