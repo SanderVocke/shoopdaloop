@@ -129,3 +129,20 @@ Verification through `nix develop`:
 - Recovery-lane reset admission succeeds while the normal command queue is full.
 
 Audit: native render and admission paths remain guarded against heap operations in all these tests. Scheduler vectors only insert within pre-reserved credits; payload pages are allocated/touched during preparation. `rtrb` transports Copy execution records and private recycle tokens; unexpected publication saturation retains a record rather than replaying or losing an operation. Per-callback scheduling is bounded by admitted slots, with at most one extra audio subrange. Ordinary MIDI work is bounded by prepared port/graph capacities; reset work adds at most 32 messages per affected internal port and the declared per-output drain budget. This is not a benchmark claim or a guarantee about arbitrary third-party processors.
+
+## Stage 5, milestone 1: fixed-page uploads and immutable revision leases
+
+Implemented a single-owner `resource::ResourceStore` with fixed identity/version/lease pools, pre-touched page bytes, logical upload reservations, checked metadata, generation-checked transfers and cursors, atomic revision switching, and incremental page/descriptor reclamation. MIDI records validate incrementally without allocating message-sized scratch or rescanning a whole SysEx at completion. Rejected malformed chunks preserve received content/parser state while charging validation work. Immutable uploaded revisions stay readable after replacement/removal until their leases are released.
+
+Verification through `nix develop`:
+
+- Warning-denying native debug/release tests: 70 passed each (the stage-4 suite plus nine resource integration tests and one generation-exhaustion unit test).
+- Node and Chromium package runners: 66 passed each, with pinned Node 22.22.2, Chromium/ChromeDriver 147, wasm-bindgen 0.2.127 and wasm-bindgen-test 0.3.77.
+- Warning-denying workspace build, formatting, shared-test policy, four-target production dependency audit, and Wasm dependency isolation: pass.
+- A stereo audio resource 32 times the callback transfer limit round-trips exactly; a pinned old revision survives a full replacement, is reported stale, and only becomes reclaimable after lease release. Removal changes currentness without invalidating leased bytes.
+- Reclamation uses at most 16 configured steps per test callback, independent of the 32-page revision length. All pages, reservations, version descriptors and snapshot slots return after removal/release.
+- MIDI headers and payloads are streamed one byte at a time across page boundaries. Stored duration remains independent of the final event. Exhaustive short-message status/length comparisons match the standalone MIDI validator.
+- Tests cover missing/reordered/duplicate chunks, incomplete headers, decreasing MIDI times, invalid metadata/overflow, malformed-chunk rollback, exhausted copy/validation budgets, reserved-page competition, cancellation, stale commits, lease exhaustion, stale cursors, resource-ID reuse, and checked generation exhaustion without ABA reuse.
+- Resource operations and error paths in integration tests run under the same heap guard as rendering. Metadata and page arrays retain their backing allocations until non-RT store destruction; release only queues fixed-pool recycling.
+
+This milestone does **not** yet integrate the store with executor commands/processors or implement capture and partial-tail prefix snapshots. The complete stage-5 contract remains in `RESOURCES.md`; those paths and their shared callback budgets still require implementation and tests.

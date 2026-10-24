@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resources and the real worklet fixture remain under development.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. The standalone revisioned upload/snapshot store is implemented; capture, resource/executor integration, and the real worklet fixture remain under development.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -49,6 +49,16 @@ MIDI payload staging shares the callback transfer-byte budget. A queued message 
 Each MIDI arena includes reserved space for 32 reset messages/96 bytes beyond its ordinary capacity. On internal route overflow, the processor receives CC120 then CC123 on all 16 channels through this reserved space. Ordinary events cannot overwrite it. On output/propagated overflow, the runtime suppresses ordinary host MIDI and holds an independent reset state per output; audio processing continues. Processors must handle reset messages and continue their audio work even when an ordinary MIDI writer refuses output.
 
 The host **must service** `drain_midi_recovery(port, reserved_sink, frames)` before delivering ordinary MIDI for that output. Use a separately reserved, preallocated sink and consume accepted reset messages; full sinks leave recovery pending. Repeated calls share a per-port per-callback `budgets.events` attempt limit. Repeated overflow does not restart an unfinished reset, and normal output resumes only after recovery drains. Internal reset work is separately bounded by 32 messages per affected port; ordinary per-port capacities and graph-size bounds still apply. `Command::ResetMidi` can use reserved recovery-lane admission when normal control is full.
+
+## Fixed-page resources (standalone milestone)
+
+`resource::ResourceStore` owns preallocated page bytes and fixed identity/version/snapshot pools. Create a resource, begin an upload against its expected revision, send exactly ordered chunks, finish validation, and commit. Only complete versions can become active. Audio storage is interleaved little-endian `f32`; MIDI storage uses little-endian `u64` frame/`u32` packet-length records and complete MIDI 1.0 packets. Duration is explicit, not inferred from the last MIDI event.
+
+Uploads reserve page credits before accepting data. Chunk length is limited by remaining page space and the callback transfer-byte budget; MIDI chunks also require one validation step per byte. A failed parser attempt consumes validation work but does not modify the stored prefix. `begin_callback` replenishes budgets once per callback, not once per request. `Budget` is explicit refusal, not success or implicit queuing.
+
+`snapshot` pins an immutable uploaded revision. Use its generation-checked cursor with bounded `read` calls; each call copies at most the remainder of one page. Poll currentness to distinguish a current version, replacement, or removed identity. A snapshot remains readable after replacement/removal. Release leases explicitly, cancel unused uploads, and call `reclaim` to incrementally recycle retired pages/descriptors within the remaining maintenance/validation budget. Final store destruction belongs after callbacks stop.
+
+`resource_slots` separately bounds resource identities, version/transfer descriptors, and snapshot leases. Long-lived readers retain old versions and can exhaust the fixed page pool; refusal is intentional. Exhausted handle generations permanently retire their slots instead of wrapping. Capture-prefix support and integration of resource commands/shared budgets into `GraphRuntime` remain pending. See `docs/rt_runtime/RESOURCES.md` for the complete stage-5 contract.
 
 ## Control ownership transport
 

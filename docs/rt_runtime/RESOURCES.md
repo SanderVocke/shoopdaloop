@@ -1,6 +1,6 @@
 # Resource implementation contract (stage 5)
 
-Status: design for the next implementation milestone; not a claim of implemented resource APIs. This specializes `DESIGN.md` without changing PLAN.md A1–A8.
+Status: the standalone fixed-page upload, immutable-revision snapshot, cursor, and reclamation APIs are implemented and tested. Capture/prefix-tail copying, shared executor budgets, and transport integration are still pending. The sections below remain the full stage-5 contract, not a claim that the entire resource feature is complete. This specializes `DESIGN.md` without changing PLAN.md A1–A8.
 
 ## Ownership and fixed capacities
 

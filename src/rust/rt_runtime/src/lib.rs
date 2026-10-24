@@ -23,6 +23,7 @@ pub mod ids;
 pub mod midi;
 pub mod processor;
 pub mod render;
+pub mod resource;
 pub mod schedule;
 pub mod transport;
 

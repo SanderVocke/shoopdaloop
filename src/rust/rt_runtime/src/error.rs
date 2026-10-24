@@ -18,6 +18,10 @@ pub enum Error {
     StaleEpoch,
     Busy,
     InvalidParameter,
+    InvalidOffset,
+    Incomplete,
+    Budget,
+    StaleRevision,
 }
 
 impl std::fmt::Display for Error {
@@ -39,6 +43,10 @@ impl std::fmt::Display for Error {
             Self::StaleEpoch => "graph epoch no longer matches",
             Self::Busy => "object is still referenced by the active graph",
             Self::InvalidParameter => "unsupported parameter or value",
+            Self::InvalidOffset => "transfer offset does not match the received prefix",
+            Self::Incomplete => "resource content is incomplete",
+            Self::Budget => "callback work budget exhausted",
+            Self::StaleRevision => "resource revision no longer matches",
         })
     }
 }
