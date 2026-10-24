@@ -110,6 +110,8 @@ Completed: conservative event/split/result reservations, exact-frame executor sc
 
 Depends on stages 2–4.
 
+Implementation contract: `docs/rt_runtime/RESOURCES.md` specifies fixed pools, streamed validation, constant-work commit/release, immutable capture-prefix leases, and incremental page reclamation. Resource implementation and validation are in progress; no stage-5 completion is claimed.
+
 - [ ] Implement bounded resource/page/lease pools, checked metadata, upload IDs, chunk sequence/range validation, incremental validation, and cancellation. Reserve storage before accepting a transfer.
 - [ ] Implement expected-revision commits and immutable snapshot leases; activate only complete revisions. Return displaced storage through the lifecycle from stage 2, never final-reference-drop it on RT.
 - [ ] Implement minimal audio/MIDI append/capture writers and coherent prefix snapshots. Bound partial-tail copying and publication work; report captured frame/length and pending/stale/incomplete states explicitly.
