@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stage 0 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–1 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -67,11 +67,11 @@ Stages are sequential unless explicitly stated otherwise. Keep each milestone ru
 
 Depends on stage 0.
 
-- [ ] Add `src/rust/rt_runtime/Cargo.toml`, library modules, crate documentation, and Wasm-test metadata. Use the existing workspace wildcard membership; update the lockfile only as needed.
-- [ ] Implement validated limits/configuration, frame positions, generational IDs, epochs/revisions, compact errors, bounded buffer/event views, and the prepare/process processor interface.
-- [ ] Add an allocator/deallocator guard harness that cannot compile to a release no-op; include allocation, reallocation, and deallocation canaries. Add destructor-location probes and a render-path audit for lock/wait/log/I/O calls; do not claim an allocator guard detects locks.
-- [ ] Add native and Wasm minimal render tests and a dependency-boundary check that excludes dev-only test support from A1 while checking production/build transitive dependencies.
-- [ ] Verify: warnings-denied native and Wasm builds, invalid configuration/overflow tests, buffer-shape tests, guard canaries in debug/release, and shared-test/dependency policy scripts. Commit.
+- [x] Add `src/rust/rt_runtime/Cargo.toml`, library modules, crate documentation, and Wasm-test metadata. Use the existing workspace wildcard membership; update the lockfile only as needed.
+- [x] Implement validated limits/configuration, frame positions, generational IDs, epochs/revisions, compact errors, bounded buffer/event views, and the prepare/process processor interface.
+- [x] Add an allocator/deallocator guard harness that cannot compile to a release no-op; include allocation, reallocation, and deallocation canaries. Add destructor-location probes and a render-path audit for lock/wait/log/I/O calls; do not claim an allocator guard detects locks.
+- [x] Add native and Wasm minimal render tests and a dependency-boundary check that excludes dev-only test support from A1 while checking production/build transitive dependencies.
+- [x] Verify: warnings-denied native and Wasm builds, invalid configuration/overflow tests, buffer-shape tests, guard canaries in debug/release, and shared-test/dependency policy scripts. Commit.
 
 ### 2. Bounded control boundary and ownership lifecycle
 
