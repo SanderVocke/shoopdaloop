@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resource uploads, capture, snapshots, and processor I/O are integrated with reliable owning commands. Independent native/offline/two-thread examples and a real non-isolated AudioWorklet fixture are verified on Linux; cross-platform CI and broader adversarial/performance validation remain in progress.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resource uploads, capture, snapshots, and processor I/O are integrated with reliable owning commands. Independent native/offline/two-thread examples and a real non-isolated AudioWorklet fixture are verified on Linux; seeded adversarial models, selected Miri checks, and release benchmarks also pass. Cross-platform CI and final delivery remain in progress.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -25,6 +25,10 @@ Run `python3 scripts/check_rt_runtime_boundary.py` from the workspace root to au
 ## Independent host examples
 
 From the workspace root, run `python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug` (or `release`) for self-contained native examples replaying a checked-in real-worklet journal. Run `RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py` for fresh actual OfflineAudioContext/live AudioContext execution followed by native equivalence checks. The browser command requires the pinned Chromium/ChromeDriver and wasm-pack tools; see `tests/rt_runtime_host/README.md` for setup, bounds, shutdown, and limitations. Native replay alone is not a new browser test. The helper's browser bindings are test-only dependencies outside this crate.
+
+## Performance and failure gates
+
+`python3 scripts/benchmark_rt_runtime.py` measures seven guarded release workloads with scalar/reference checks, full ownership cleanup, raw callback timings, work counters, and memory/throughput reporting. It proves allocation/reallocation/deallocation violations fail in both native profiles. `python3 scripts/run_rt_runtime_hosts.py --verify-failures` also proves actual worklet processor and Rust heap failures propagate to a failed browser runner. See `docs/rt_runtime/PERFORMANCE.md` for configurations, recorded evidence, tail investigation, and limitations; no CI wall-clock threshold or hard-real-time guarantee is implied.
 
 ## Graph preparation
 

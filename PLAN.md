@@ -135,12 +135,12 @@ Completed: shared guarded render/wire bridge, public-API native offline/two-thre
 
 Depends on stages 1–6.
 
-In progress: mixed seeded stress, wire/resource state-machine properties, and pinned isolated Miri checks pass on the applicable native/Wasm paths. Evidence: `docs/rt_runtime/VALIDATION.md` and `evidence/miri-stage7.json`. Benchmarks, full documentation/CI wiring, and deliberate gate-failure demonstrations remain pending.
+In progress: seeded properties/stress, isolated Miri, seven release workloads, and deliberate native/browser failure gates pass. Evidence: `docs/rt_runtime/VALIDATION.md` and `docs/rt_runtime/PERFORMANCE.md`. Capacity guidance and full CI wiring remain pending.
 
 - [x] Add reproducible seeded adversarial runs mixing graph commits, resource revisions, timed MIDI, snapshots, consumer pauses, disconnects, and restarts. Run long enough to exercise slot/page reuse and track peak outstanding ownership.
 - [x] Add fuzz/property coverage for plan/wire validation and resource chunk state machines. Run Miri on supported ownership/aliasing tests and any new unsafe buffer code; explicitly record tool exclusions and provide alternate tests rather than claiming unsupported coverage.
-- [ ] Add release benchmarks for idle, representative and near-capacity DAGs, MIDI bursts, sustained capture, and graph/resource transfers. Report configuration, callback duration distribution/max, work counters, transfer throughput, memory high-water marks, and refusal counts.
-- [ ] Keep performance acceptance based on enforced work/memory bounds and correctness. Record deadline misses on a specified local host; do not claim hard-real-time proof or speedups over the old engine from noisy CI timings. Investigate unexpected tail spikes before declaring completion.
+- [x] Add release benchmarks for idle, representative and near-capacity DAGs, MIDI bursts, sustained capture, and graph/resource transfers. Report configuration, callback duration distribution/max, work counters, transfer throughput, memory high-water marks, and refusal counts.
+- [x] Keep performance acceptance based on enforced work/memory bounds and correctness. Record deadline misses on a specified local host; do not claim hard-real-time proof or speedups over the old engine from noisy CI timings. Investigate unexpected tail spikes before declaring completion.
 - [ ] Add API examples, capacity sizing guidance, real-time processor obligations, ownership/teardown rules, supported host matrix, and explicit capability limitations. Update `DESIGN.md` to match the implementation.
 - [ ] Wire native debug/release tests into the existing Linux/Windows/macOS matrix; discover core tests in Node/Chrome and explicitly run the AudioWorklet fixture in browser CI. Add dependency-boundary and allocator-canary gates; include artifacts for failures and benchmark reports without brittle timing thresholds.
 - [ ] Verify: each A1–A8 test group is scheduled, not merely checked in; guard canaries and browser fixture failures actually fail their jobs. Commit.
@@ -174,7 +174,9 @@ python3 scripts/check_wasm_test_dependencies.py --package rt_runtime
 # Independent native examples and ACTUAL non-isolated AudioWorklet
 python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug
 python3 scripts/run_rt_runtime_hosts.py --native-only --profile release
-RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py
+RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py --verify-failures
+python3 scripts/benchmark_rt_runtime.py
+python3 scripts/run_rt_runtime_miri.py
 cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
 
 # Required repository checks; format before Rust commits

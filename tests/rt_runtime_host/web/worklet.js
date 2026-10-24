@@ -7,6 +7,7 @@ class RuntimeFixture extends AudioWorkletProcessor {
         this.stopped = false;
         this.disposed = false;
         this.failed = false;
+        this.failureCanary = options.processorOptions.failureCanary;
         this.head = 0; this.tail = 0; this.count = 0;
         this.queue = new Uint8Array(5);
         this.busy = new Uint8Array(5);
@@ -63,6 +64,16 @@ class RuntimeFixture extends AudioWorkletProcessor {
     process(_inputs, outputs) {
         if (this.stopped || this.failed) { for (const channel of outputs[0] || []) channel.fill(0); return false; }
         try {
+            if (this.failureCanary === "processor") throw new Error("intentional rt_runtime processor failure canary");
+            if (this.failureCanary === "rust-heap") {
+                if (typeof this.engine.fail_heap_canary !== "function") throw new Error("missing Rust heap canary export");
+                try { this.engine.fail_heap_canary(); }
+                catch (error) {
+                    if (!(error instanceof WebAssembly.RuntimeError)) throw error;
+                    throw new Error(`intentional rt_runtime Rust heap failure canary detected: ${error.stack || error}`);
+                }
+                throw new Error("Rust heap canary escaped the guard");
+            }
             for (let work = 0; work < 5 && this.count > 0; work++) {
                 const slot = this.queue[this.head]; this.head = (this.head + 1) % 5; this.count--;
                 this.views[slot].set(new Uint8Array(this.slots[slot].buffer));

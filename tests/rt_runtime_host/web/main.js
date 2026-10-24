@@ -25,7 +25,8 @@ function decode(buffer, length) {
         status: u32(bytes, 48), error: u32(bytes, 52), data: bytes.slice(56), raw: bytes.slice() };
 }
 class Host {
-    constructor(mode, module, stream) {
+    constructor(mode, module, stream, failureCanary) {
+        this.failureCanary = failureCanary;
         this.mode = mode; this.stream = stream; this.module = module; this.sequence = 0; this.epoch = 0; this.nextFrame = 0;
         this.pool = Array.from({ length: 5 }, () => new ArrayBuffer(512)); this.waiters = new Map(); this.journal = [];
         this.reject = null; this.failure = new Promise((_, reject) => { this.reject = reject; });
@@ -39,7 +40,7 @@ class Host {
         this.context = this.mode === "offline" ? new OfflineAudioContext(1, LIMIT * Q, RATE) : new AudioContext({ sampleRate: RATE });
         await this.context.audioWorklet.addModule("./worklet.js");
         const ready = this.wait("ready");
-        this.node = new AudioWorkletNode(this.context, "rt-runtime-fixture", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1], processorOptions: { module: this.module, stream: this.stream } });
+        this.node = new AudioWorkletNode(this.context, "rt-runtime-fixture", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1], processorOptions: { module: this.module, stream: this.stream, failureCanary: this.failureCanary } });
         this.node.onprocessorerror = () => this.reject(new Error("AudioWorklet processorerror"));
         this.node.port.onmessage = ({ data }) => {
             if (data.type === "fatal") { this.reject(new Error(data.error)); return; }
@@ -310,7 +311,7 @@ export async function run() {
     for (let variant = 0; variant < 3; variant++) { const length = compiler.compile_graph(variant); graph_hash = hashBytes(graph_hash, new Uint8Array(wasm.memory.buffer, compiler.descriptor_ptr(), length)); }
     const reports = [];
     for (const [mode, stream] of [["offline", 1], ["live", 2]]) {
-        const host = new Host(mode, module, stream);
+        const host = new Host(mode, module, stream, new URLSearchParams(location.search).get("failure"));
         try {
             await host.start(); const pressure = await host.pressure();
             const expected = await scenario(host, compiler, wasm.memory); const summary = await host.finish();

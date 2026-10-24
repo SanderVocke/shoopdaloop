@@ -1,4 +1,6 @@
-# Independent rt_runtime host fixtures
+# Independent rt_runtime host fixture
+
+To verify failure propagation as well as the successful scenario, run `python3 scripts/run_rt_runtime_hosts.py --verify-failures`. Two additional real-worklet sessions deliberately fail with a processor exception and a guarded Rust heap violation. The child runner must exit nonzero with the expected diagnostic. Logs remain in separate `reports/failure-*` directories; the successful journal/report are preserved.s
 
 Test-only hosts using the public `rt_runtime` API. This separate, non-publishable workspace is not a Shoop backend, device adapter, or production browser package. Native and worklet builds share the processor, wire decoder, prepared ownership pools, and guarded render bridge. The main-thread controller compiles relocatable graph descriptions; it never sends Rust pointers to another instance.
 

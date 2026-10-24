@@ -209,6 +209,14 @@ impl Bridge {
     pub fn error(&self) -> u32 {
         self.error
     }
+    /// Deliberately fail the guard so the real worklet runner can prove detection.
+    pub fn fail_heap_canary(&self) {
+        guarded(|| {
+            let payload = std::hint::black_box(Box::new(std::hint::black_box(7u64)));
+            std::hint::black_box(&payload);
+            drop(payload);
+        });
+    }
     pub fn marker(&self) -> u32 {
         crate::marker()
     }

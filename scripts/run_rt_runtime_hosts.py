@@ -14,6 +14,7 @@ from pathlib import Path
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -85,7 +86,7 @@ def http(method, url, data=None):
     return value
 
 
-def browser(url):
+def browser(url, failure_canary=None):
     chrome = os.environ.get("CHROME_BIN") or shutil.which("chromium") or shutil.which("google-chrome")
     if not chrome:
         raise RuntimeError("Chromium/Chrome is required")
@@ -117,7 +118,7 @@ def browser(url):
             session = created["sessionId"]
             endpoint = base + "/session/" + session
             http("POST", endpoint + "/timeouts", {"script": 300000, "pageLoad": 30000})
-            http("POST", endpoint + "/url", {"url": url + "/index.html"})
+            http("POST", endpoint + "/url", {"url": url + "/index.html" + ("?failure=" + failure_canary if failure_canary else "")})
             result = http("POST", endpoint + "/execute/async", {"script": "const done = arguments[0]; import('./main.js').then(m => m.run()).then(done, e => done({failure: String(e.stack || e)}));", "args": []})
             logs = http("POST", endpoint + "/log", {"type": "browser"})
             (REPORTS / "browser-console.json").write_text(json.dumps(logs, indent=2))
@@ -141,11 +142,18 @@ def browser(url):
 
 
 def main():
+    global REPORTS
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-build", action="store_true", help="Reuse existing native/Wasm fixture artifacts")
     parser.add_argument("--native-only", action="store_true", help="Replay the checked-in real-worklet journal without browser tools")
     parser.add_argument("--profile", choices=("debug", "release"), default="release", help="Native replay build profile")
+    parser.add_argument("--failure-canary", choices=("processor", "rust-heap"), help="Deliberately fail inside the real worklet; this command must exit nonzero")
+    parser.add_argument("--verify-failures", action="store_true", help="After success, prove processor and Rust heap failures make the runner fail")
     args = parser.parse_args()
+    if args.native_only and (args.failure_canary or args.verify_failures):
+        parser.error("browser failure canaries require a fresh worklet run")
+    if args.failure_canary:
+        REPORTS = REPORTS / ("failure-" + args.failure_canary)
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / "journal.bin").unlink(missing_ok=True)
     manifest = str(FIXTURE / "Cargo.toml")
@@ -170,7 +178,7 @@ def main():
             with urllib.request.urlopen(url + "/index.html") as response:
                 if response.headers.get("Cross-Origin-Opener-Policy") or response.headers.get("Cross-Origin-Embedder-Policy"):
                     raise RuntimeError("fixture origin unexpectedly has isolation headers")
-            result = browser(url)
+            result = browser(url, args.failure_canary)
         reference = result["reports"][0]
     if not journal.exists():
         raise RuntimeError("actual browser sample/response journal is missing")
@@ -185,6 +193,16 @@ def main():
             if replay[field] != reference[field]:
                 raise RuntimeError(f"{replay['mode']} differs from real worklet in {field}")
     result["native"] = native
+    if args.verify_failures:
+        results = []
+        for kind, expected in (("processor", "intentional rt_runtime processor failure canary"), ("rust-heap", "intentional rt_runtime Rust heap failure canary detected")):
+            failed = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--no-build", "--profile", args.profile, "--failure-canary", kind],
+                                    cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=360)
+            (REPORTS / f"{kind}-failure-gate.log").write_text(failed.stdout)
+            if failed.returncode == 0 or expected not in failed.stdout:
+                raise RuntimeError(f"{kind} did not fail through the expected browser path:\n{failed.stdout[-12000:]}")
+            results.append({"kind": kind, "expected_failure_observed": True, "exit_code": failed.returncode})
+        result["failure_canaries"] = results
     report_name = f"native-{args.profile}-result.json" if args.native_only else "result.json"
     (REPORTS / report_name).write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
