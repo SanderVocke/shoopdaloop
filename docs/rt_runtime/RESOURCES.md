@@ -1,6 +1,6 @@
 # Resource implementation contract (stage 5)
 
-Status: standalone fixed-page upload, capture, immutable prefix/revision snapshots, cursors, and reclamation are implemented and tested. Shared executor budgets, processor resource access, and transport integration are still pending. The sections below remain the full stage-5 contract, not a claim that the entire resource feature is complete. This specializes `DESIGN.md` without changing PLAN.md A1–A8.
+Status: fixed-page uploads, capture, immutable prefix/revision snapshots, cursors, reclamation, executor requests, shared budgets, and processor resource access are implemented and tested. Stage-5 evidence is recorded in `VALIDATION.md`. Actual worklet transport/materialization remains a separate stage-6 requirement. This specializes `DESIGN.md` without changing PLAN.md A1–A8.
 
 ## Ownership and fixed capacities
 
@@ -61,9 +61,9 @@ A resource-backed playback fixture must continue using its previous valid cursor
 
 Version references count active ownership and snapshot leases. When the last reference is released, mark the descriptor retired in constant work. Reclaim its chain one bounded page step at a time, recycling pages and finally the descriptor generation. Do not traverse/free the entire chain in a release, replacement, or cancellation operation.
 
-The resource context shares callback transfer/maintenance budgets across commands and processors; constructing a new context must not replenish them. Page allocation, chunk copying, parser steps, partial-tail copying, cursor reading, and retirement all have explicit charges. Resource lengths at least 16 times the callback transfer limit must pass the same no-heap render guard as small resources.
+The resource context shares callback transfer/maintenance budgets across commands and processors; constructing a new context does not replenish them. `resource_io_bytes` and `resource_io_steps` reserve processor headroom within the total budgets. Control leaves these credits untouched; at least one page/validation step remains available for control progress. Rendering can use reserved plus unused control capacity; reclamation runs afterward within the remaining maintenance steps. Capacity planning must account for reclamation delays when work budgets remain fully consumed. Page allocation, chunk copying, parser steps, partial-tail copying, cursor reading, and retirement all have explicit charges. Resource lengths at least 16 times the callback transfer limit must pass the same no-heap render guard as small resources.
 
-## Required evidence before completing stage 5
+## Stage-5 evidence requirements (verified in VALIDATION.md)
 
 - Audio/MIDI byte/sample/event round trips, including duration with no final MIDI event.
 - Captured-prefix immutability across further appends, partial-tail mutation, replacement, removal, and resource-ID reuse.

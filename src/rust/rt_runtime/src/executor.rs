@@ -7,6 +7,7 @@ use crate::graph::{
 };
 use crate::midi::ResetState;
 use crate::processor::{ProcessBlock, Processor};
+use crate::resource::{self, ResourceStore};
 use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
 use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence};
@@ -51,8 +52,12 @@ pub enum Command<P> {
         payload: Box<[u8]>,
     },
     ResetMidi,
+    Resource(resource::ResourceCommand),
 }
 impl<P> Command<P> {
+    pub fn resource(request: resource::Request) -> Self {
+        Self::Resource(resource::ResourceCommand::new(request))
+    }
     pub fn commit(expected_epoch: Epoch, plan: PreparedPlan) -> Self {
         Self::Commit {
             expected_epoch,
@@ -78,18 +83,30 @@ pub struct Diagnostics {
     pub subranges: usize,
     pub transfer_bytes: usize,
     pub midi_overflows: usize,
+    pub reclaimed_pages: usize,
+    pub reclaimed_versions: usize,
 }
 
 pub struct Control<P> {
     transport: ControlEndpoint<Command<P>, Retired<P>, Diagnostics>,
     executions: schedule::Results,
+    config: PreparedConfig,
 }
 impl<P> Control<P> {
     pub fn submit(
         &mut self,
         lane: Lane,
-        request: Command<P>,
+        mut request: Command<P>,
     ) -> Result<transport::Ticket, transport::SubmitError<Command<P>>> {
+        if let Command::Resource(command) = &mut request {
+            command.reset_reply();
+            if let Err(error) = command.envelope(self.config) {
+                return Err(transport::SubmitError {
+                    error,
+                    value: request,
+                });
+            }
+        }
         self.transport.submit(lane, request)
     }
     pub fn try_completion(&mut self) -> Option<transport::Completion<Command<P>, Retired<P>>> {
@@ -171,6 +188,7 @@ pub struct GraphRuntime<P> {
     scheduler: Scheduler,
     recovery: Vec<ResetState>,
     recovery_remaining: Vec<usize>,
+    resources: ResourceStore,
 }
 
 impl<P: Processor> GraphRuntime<P> {
@@ -180,6 +198,19 @@ impl<P: Processor> GraphRuntime<P> {
         config: PreparedConfig,
         nodes: Vec<PreparedNode<P>>,
     ) -> Result<(Control<P>, Self), Error> {
+        Self::prepare_with_resources(config, nodes, ResourceStore::new(config)?)
+    }
+
+    /// Move prepared resource identities/content into the runtime before starting
+    /// callbacks. Processors may retain plain IDs/leases created in this store.
+    pub fn prepare_with_resources(
+        config: PreparedConfig,
+        nodes: Vec<PreparedNode<P>>,
+        resources: ResourceStore,
+    ) -> Result<(Control<P>, Self), Error> {
+        if resources.config() != config {
+            return Err(Error::InvalidConfig);
+        }
         if config
             .limits()
             .max_nodes
@@ -214,6 +245,7 @@ impl<P: Processor> GraphRuntime<P> {
             Control {
                 transport: control,
                 executions,
+                config,
             },
             Self {
                 clock: RenderRuntime::new(config),
@@ -230,6 +262,7 @@ impl<P: Processor> GraphRuntime<P> {
                 scheduler,
                 recovery: vec![ResetState::default(); limits.midi_outputs],
                 recovery_remaining: vec![0; limits.midi_outputs],
+                resources,
             },
         ))
     }
@@ -247,6 +280,11 @@ impl<P: Processor> GraphRuntime<P> {
     }
     pub fn diagnostics(&self) -> Diagnostics {
         self.diagnostics
+    }
+
+    /// Coherent pool counters, read by the runtime owner between callbacks.
+    pub fn resource_usage(&self) -> resource::PoolUsage {
+        self.resources.usage()
     }
 
     pub fn process(
@@ -292,8 +330,11 @@ impl<P: Processor> GraphRuntime<P> {
         };
         self.recovery_remaining.fill(limits.budgets.events);
         self.scheduler.begin_callback();
+        self.resources.begin_callback();
+        self.resources.control_phase(true);
         self.ingress.begin_cycle(frame, self.epoch);
         self.apply_commands();
+        self.resources.control_phase(false);
         self.diagnostics.epoch = self.epoch;
         let result = self.run_scheduled(&mut audio, &mut midi);
         if let Err(error) = result {
@@ -318,6 +359,12 @@ impl<P: Processor> GraphRuntime<P> {
                 output.clear();
             }
         }
+        self.resources.reclaim();
+        let work = self.resources.work();
+        self.diagnostics.transfer_bytes = work.copied_bytes;
+        self.diagnostics.validation_steps = work.validation_steps;
+        self.diagnostics.reclaimed_pages = work.reclaimed_pages;
+        self.diagnostics.reclaimed_versions = work.reclaimed_versions;
         let _ = self.ingress.publish(self.diagnostics);
         result
     }
@@ -327,8 +374,6 @@ impl<P: Processor> GraphRuntime<P> {
             return;
         }
         let limits = self.clock.config().limits();
-        let mut remaining = limits.budgets.validation_steps;
-        let mut copy_budget = limits.budgets.transfer_bytes;
         for _ in 0..limits.budgets.commands {
             let Some(operation) = self.ingress.next_operation() else {
                 break;
@@ -336,6 +381,13 @@ impl<P: Processor> GraphRuntime<P> {
             let mut retired = None;
             let mut admitted = None;
             let result = match operation.request {
+                Command::Resource(command) => {
+                    if operation.lane == Lane::Recovery && !command.recovery_safe() {
+                        Err(Error::InvalidState)
+                    } else {
+                        command.apply(&mut self.resources, self.diagnostics.frame)
+                    }
+                }
                 Command::ResetMidi => {
                     for reset in &mut self.recovery {
                         reset.request();
@@ -349,9 +401,11 @@ impl<P: Processor> GraphRuntime<P> {
                 } => {
                     if operation.lane != Lane::Normal {
                         Err(Error::InvalidState)
-                    } else if payload.len() > self.scheduler.payload_limit() {
+                    } else if payload.len() > self.scheduler.payload_limit()
+                        || payload.len() > limits.budgets.transfer_bytes - limits.resource_io_bytes
+                    {
                         Err(Error::Capacity)
-                    } else if payload.len() > copy_budget {
+                    } else if payload.len() > self.resources.copy_remaining() {
                         break;
                     } else {
                         let target =
@@ -375,10 +429,10 @@ impl<P: Processor> GraphRuntime<P> {
                                     payload,
                                 )
                             })
-                            .map(|admission| {
-                                copy_budget -= payload.len();
-                                self.diagnostics.transfer_bytes += payload.len();
+                            .and_then(|admission| {
+                                self.resources.charge_external(payload.len(), 0)?;
                                 admitted = Some(admission);
+                                Ok(())
                             })
                     }
                 }
@@ -396,23 +450,29 @@ impl<P: Processor> GraphRuntime<P> {
                             self.validator.begin();
                             self.validating = Some(operation.sequence);
                         }
-                        let progress = self.validator.advance(candidate, &self.catalog, remaining);
-                        remaining -= progress.steps;
-                        self.diagnostics.validation_steps += progress.steps;
-                        match progress.status {
-                            ValidationStatus::Pending => break,
-                            ValidationStatus::Invalid(error) => Err(error),
-                            ValidationStatus::Valid => match self.epoch.checked_next() {
-                                Err(error) => Err(error),
-                                Ok(epoch) => {
-                                    if let Some(candidate) = plan.take() {
-                                        retired = self.active.replace(candidate).map(Retired::Plan);
-                                        self.epoch = epoch;
-                                        Ok(())
-                                    } else {
-                                        Err(Error::InvalidState)
+                        let progress = self.validator.advance(
+                            candidate,
+                            &self.catalog,
+                            self.resources.steps_remaining(),
+                        );
+                        match self.resources.charge_external(0, progress.steps) {
+                            Err(error) => Err(error),
+                            Ok(()) => match progress.status {
+                                ValidationStatus::Pending => break,
+                                ValidationStatus::Invalid(error) => Err(error),
+                                ValidationStatus::Valid => match self.epoch.checked_next() {
+                                    Err(error) => Err(error),
+                                    Ok(epoch) => {
+                                        if let Some(candidate) = plan.take() {
+                                            retired =
+                                                self.active.replace(candidate).map(Retired::Plan);
+                                            self.epoch = epoch;
+                                            Ok(())
+                                        } else {
+                                            Err(Error::InvalidState)
+                                        }
                                     }
-                                }
+                                },
                             },
                         }
                     } else {
@@ -628,6 +688,7 @@ impl<P: Processor> GraphRuntime<P> {
                 audio: AudioPorts::new(&buffers.input, &mut buffers.output, stride, start, frames)?,
                 midi_inputs: &buffers.midi_input,
                 midi_outputs: &mut buffers.midi_output,
+                resources: self.resources.io(),
             };
             let result = slot
                 .processor

@@ -322,6 +322,9 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
     let mut midi_in = [rt_runtime::buffer::MidiBuffer::new(1, 3).unwrap()];
     let mut midi_out = [rt_runtime::buffer::MidiBuffer::new(1, 3).unwrap()];
     midi_in[0].push(2, 4, &[0x90, 60, 100]).unwrap();
+    let mut resources =
+        rt_runtime::resource::ResourceStore::new(Config::default().prepare().unwrap()).unwrap();
+    resources.begin_callback();
     assert_no_heap(|| {
         processor.process(&mut ProcessBlock {
             frame: Frame(0),
@@ -329,6 +332,7 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
             audio: rt_runtime::buffer::AudioPorts::new(&input, &mut output, 4, 0, 4).unwrap(),
             midi_inputs: &midi_in,
             midi_outputs: &mut midi_out,
+            resources: resources.io(),
         })
     })
     .unwrap();

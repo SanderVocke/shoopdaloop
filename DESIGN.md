@@ -97,7 +97,7 @@ The baseline browser fixture uses a separate Wasm instance in an actual AudioWor
 
 Rust allocation-free processing does not make browser scheduling, structured cloning, or JavaScript GC hard-real-time. Recycle transferable buffers, limit in-flight messages, prohibit Wasm memory growth after startup, and measure actual worklet behavior. Keep these host limitations explicit rather than disguising them behind a thread abstraction.
 
-## Implementation decisions established through stage 4
+## Implementation decisions established through stage 5
 
 The executor now uses fixed processor slots with per-slot planar scratch and bounded MIDI arenas, rather than dynamically constructing port-reference vectors in callbacks. Preparation captures signatures and touches audio/MIDI storage. Graph plans contain only logical typed endpoints and execution ordering; the receiving validator checks every range, generation, dependency, and port type incrementally before activation. Rewiring retains slot state. Removing an unreferenced processor returns ownership to control and advances its generation; reinstalling requires the same prepared port signature. Increasing the slot/port capacity still requires stopping and preparing again.
 
@@ -109,7 +109,9 @@ MIDI routing includes reserved 32-message reset space per arena. Overflow resets
 
 The resource substrate now uses a single-owner fixed-page store with generation-checked identities, upload reservations, streamed MIDI validation, immutable revision/prefix leases, and incremental reclamation. Audio/MIDI capture appends complete blocks; prefix snapshots share sealed pages and copy only a mutable partial tail. Pool/work exhaustion reports a stopped, incomplete capture instead of overwriting data or resuming after a gap. Native reads use the same bounded-copy semantics as non-shared-memory browser reads rather than requiring a native publication thread.
 
-Resource integration into executor commands/processors and browser host fixtures are not finished; they remain required by the plan. Shared callback budgets must reserve processor I/O headroom so background upload/export cannot consume the work needed for ongoing playback/capture.
+Resource requests are now integrated with owning command completions, and processors receive a restricted resource I/O view. Copy/validation budgets are shared across control staging, graph validation, resource I/O, and retirement. Configured headroom reserves processor work within those totals, so background upload/export cannot consume the work provisioned for ongoing playback/capture. Request and result buffers return through reliable completions; snapshot/capture metadata distinguishes queued requests, actual cut frames, stale revisions, and stopped/incomplete prefixes. Playback fixtures keep the prior valid lease if a new revision cannot yet be pinned.
+
+Native/offline host examples and genuine non-shared-memory browser worklet materialization/transport remain required. Browser unit tests do not establish that host path.
 
 ## Initial delivery and exclusions
 

@@ -17,6 +17,7 @@ pub struct ProcessBlock<'a> {
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
+    pub resources: crate::resource::ResourceIo<'a>,
 }
 
 /// Implementations must not allocate, deallocate, lock, wait, perform I/O, or panic

@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. The standalone revisioned upload/capture/snapshot store is implemented; resource/executor integration and the real worklet fixture remain under development.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resource uploads, capture, snapshots, and processor I/O are integrated with reliable owning commands. Native/offline host examples and the real worklet fixture remain under development.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -50,7 +50,7 @@ Each MIDI arena includes reserved space for 32 reset messages/96 bytes beyond it
 
 The host **must service** `drain_midi_recovery(port, reserved_sink, frames)` before delivering ordinary MIDI for that output. Use a separately reserved, preallocated sink and consume accepted reset messages; full sinks leave recovery pending. Repeated calls share a per-port per-callback `budgets.events` attempt limit. Repeated overflow does not restart an unfinished reset, and normal output resumes only after recovery drains. Internal reset work is separately bounded by 32 messages per affected port; ordinary per-port capacities and graph-size bounds still apply. `Command::ResetMidi` can use reserved recovery-lane admission when normal control is full.
 
-## Fixed-page resources (standalone milestone)
+## Fixed-page resources
 
 `resource::ResourceStore` owns preallocated page bytes and fixed identity/version/snapshot pools. Create a resource, begin an upload against its expected revision, send exactly ordered chunks, finish validation, and commit. Only complete versions can become active. Audio storage is interleaved little-endian `f32`; MIDI storage uses little-endian `u64` frame/`u32` packet-length records and complete MIDI 1.0 packets. Duration is explicit, not inferred from the last MIDI event.
 
@@ -58,11 +58,23 @@ Uploads reserve page credits before accepting data. Chunk length is limited by r
 
 `snapshot` pins an immutable uploaded revision or coherent captured prefix. Use its generation-checked cursor with bounded `read` calls; each call copies at most the remainder of one page. Poll currentness to distinguish a current version, replacement, or removed identity. A snapshot remains readable after replacement/removal. Release leases explicitly, cancel unused uploads, and call `reclaim` to incrementally recycle retired pages/descriptors within the remaining maintenance/validation budget. Final store destruction belongs after callbacks stop.
 
-`resource_slots` separately bounds resource identities, version/transfer descriptors, and snapshot leases. Long-lived readers retain old versions and can exhaust the fixed page pool; refusal is intentional. Exhausted handle generations permanently retire their slots instead of wrapping. Integration of resource commands/shared budgets into `GraphRuntime` remains pending. See `docs/rt_runtime/RESOURCES.md` for the complete stage-5 contract.
+`resource_slots` separately bounds resource identities, version/transfer descriptors, and snapshot leases. Long-lived readers retain old versions and can exhaust the fixed page pool; refusal is intentional. Exhausted handle generations permanently retire their slots instead of wrapping. Handles/cursors are scoped to their store; do not reuse them across unrelated runtime instances. See `docs/rt_runtime/RESOURCES.md` for the complete resource contract.
 
 `begin_capture` starts a fresh audio/MIDI revision. Append complete blocks using `capture_audio` or `capture_midi` with contiguous absolute engine frames. MIDI event offsets become resource-relative frames; empty MIDI blocks still advance duration. A capture snapshot shares complete pages and copies only its partial mutable tail under the same copy budget. Returned cut frames describe the actual captured prefix, not a later request time. Snapshot refusal leaves capture unchanged.
 
 Capture storage/copy-budget exhaustion atomically stops recording and reports an incomplete prefix. No part of the refused block is appended, and later capacity recovery does not silently resume after a gap: start a new capture explicitly. Applications should report recording failure without abandoning unrelated audio work. `stop_capture` freezes content without changing its byte revision; capture-status changes still make prior status snapshots stale. `info` and snapshot metadata distinguish active, stopped, and incomplete capture.
+
+### Executor requests and processor access
+
+Use `Command::resource(resource::Request::...)` for resource creation/removal, uploads, snapshot/cursor/read requests, currentness/info, and capture start/stop. `Outcome::Applied` and `ResourceCommand::reply()` together describe a successful operation; rejection/cancellation has no reply. Queued requests are pending until their reliable completion arrives, not promises of a particular capture cut. Reads return the advanced cursor and filled preallocated byte buffer in the original owning request. Inspect `Reply::Read { written, eof }` before consuming its bytes. Write/read buffers larger than one page are refused before queue admission. Malformed or over-budget chunks return ownership without silently advancing a transfer.
+
+Resource operations use the normal lane, except explicit upload cancellation, snapshot release, and capture stop may use recovery admission. Recovery can overtake normal work; dependent normal reads/writes can consequently report stale handles. Release snapshot leases explicitly even when an export is cancelled. Stop callbacks before destroying the runtime; fixed-pool pages and retained queue payloads are then reclaimed outside rendering, including on disconnect.
+
+`GraphRuntime::prepare_with_resources` moves a prepared store into the executor, allowing processors to retain IDs or immutable playback leases created before startup. `ProcessBlock::resources` exposes a limited `ResourceIo` view: bounded reads/capture, snapshots, and metadata, but no budget reset or structural resource edits. Reborrowing it across nodes/subranges retains callback-wide counters. Processor replacement/removal does not automatically release IDs embedded in arbitrary processor state: return the processor through the owning completion, then explicitly release its leases.
+
+Size `resource_io_bytes` for worst-case processor reads plus capture/tail copies, and `resource_io_steps` for MIDI capture event checks. These reserve headroom **within** `budgets.transfer_bytes`/`budgets.validation_steps`, not extra budgets. Background commands, scheduled-payload staging, and graph validation cannot consume this headroom. Preparation requires at least one page of copy budget and one validation step left for control progress. Defaults reserve zero; resource-backed graphs must provision their expected I/O. MIDI upload chunks also fit the unreserved validation budget. Excess requests are explicitly rejected or remain unadmitted, never promised and silently deferred.
+
+The renderer uses reserved plus unused control work; incremental reclamation uses remaining validation/maintenance steps after rendering. Fully consumed budgets can postpone reclamation and cause visible pool refusal. `Diagnostics` reports total copied bytes/validation steps and reclaimed page/version counts. No helper call replenishes these limits inside a callback.
 
 ## Control ownership transport
 

@@ -40,6 +40,19 @@ impl ResourceStore {
             capture: version.capture,
         })
     }
+    pub fn active_capture(&self, resource: ResourceId) -> Result<CaptureId, Error> {
+        let active = get(&self.resources, resource.slot(), resource.generation())?
+            .active
+            .ok_or(Error::InvalidState)?;
+        let version = get(&self.versions, active.slot, active.generation)?;
+        if version.state != State::Capturing {
+            return Err(Error::InvalidState);
+        }
+        Ok(CaptureId {
+            slot: active.slot,
+            generation: active.generation,
+        })
+    }
     /// Begin a fresh capture revision; any previously active content remains
     /// available to its existing leases until explicitly released.
     pub fn begin_capture(
@@ -147,7 +160,7 @@ impl ResourceStore {
         if pages > self.free_pages.len() - self.reserved_pages {
             return Err(self.halt_capture(id, Error::Capacity));
         }
-        if bytes > self.copy_remaining {
+        if bytes > self.copy_remaining() {
             return Err(self.halt_capture(id, Error::Budget));
         }
         self.reserved_pages += pages;
@@ -264,7 +277,7 @@ impl ResourceStore {
         {
             return Err(Error::InvalidEvent);
         }
-        if input.len() > self.steps_remaining {
+        if input.len() > self.steps_remaining() {
             return Err(self.halt_capture(id, Error::Budget));
         }
         self.steps_remaining -= input.len();

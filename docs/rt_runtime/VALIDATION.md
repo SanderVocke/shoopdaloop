@@ -162,4 +162,25 @@ Verification through `nix develop`:
 - Thirty-two seeded variable-length capture blocks produce pinned immutable prefixes across repeated tail mutations. Removal and release reclaim every page/version/lease under bounded maintenance work.
 - Native capture, snapshot, error, and reclamation scopes run under the allocation/reallocation/deallocation guard; all page storage remains preallocated.
 
-Still required for stage 5: bounded resource request/result integration, shared executor budgets with reserved processor I/O headroom, and a resource-backed playback/capture fixture running during large background upload/export. Standalone tests do not substitute for those callback integration checks.
+That milestone still required executor integration and shared callback tests. The following milestone completes those stage-5 requirements.
+
+## Stage 5, milestone 3: executor integration and concurrent transfer fixtures
+
+Integrated typed resource requests with the owning transport, returning write/read buffers in reliable terminal completions, including rejection/cancellation. Requests expose separate Copy replies only on successful application. Queue pending state is not a snapshot-currentness claim. Resource generations/cursors remain validated at execution, and release/cancel/stop operations can use reserved recovery admission. Added `prepare_with_resources` and a restricted processor `ResourceIo` view that cannot reset budgets or perform structural resource edits.
+
+Copy/validation accounting is now callback-wide across scheduled-payload staging, graph validation, resource requests, DSP resource I/O, and incremental retirement. Configured processor headroom is reserved within the total budgets, leaving at least one page/validation step for control progress. Reborrowing views or processing subranges cannot replenish work. Reclamation uses only post-render remaining maintenance steps; sustained fully consumed work can delay recycling and cause explicit pool refusal.
+
+Verification through `nix develop`:
+
+- Native warning-denying debug/release tests: **82 passed each** (2 unit, 7 capture, 12 core, 18 executor, 7 graph, 11 lifecycle, 5 MIDI, 5 resource-executor, 9 resource-store, 6 scheduler).
+- Node/Chromium: **78 passed each**, pinned Node 22.22.2 and Chromium/ChromeDriver 147; wasm-bindgen 0.2.127/wasm-bindgen-test 0.3.77.
+- Warning-denying workspace build, formatting, shared-test policy, four-target production dependency audit, and Wasm dependency isolation: pass.
+- Public-API fixture: four-frame callbacks, 64-byte pages, 128-byte total copy budget, 32-byte processor headroom, 32 validation/maintenance steps, 512 pages, and 16 identity/version/lease slots. An 8192-byte audio replacement (64 times the copy budget) activates atomically while playback and capture continue. Every rendered sample is checked; output changes from 1.0 to 2.0 at application without an intervening silent block.
+- The same fixture fetches an immutable capture prefix while later recording continues, fetches a pinned stale audio revision during replacement playback, and round-trips a 3840-byte MIDI resource (30 times the copy budget) with explicit duration. All 512 pages, 16 version descriptors, 16 snapshot slots, and transport credits are recovered after removing processors/resources and releasing leases.
+- A full lease pool keeps playback on the prior valid revision. After a lease is released, the processor pins the new revision and switches immediately without an output gap; bounded source looping is also exercised.
+- With four total validation steps and one reserved for MIDI capture, every background three-byte MIDI chunk plus capture consumes exactly four steps. Copy accounting includes both serialized capture records and upload bytes. Audio remains unchanged and capture never reports incomplete.
+- Paused completions retain owning payloads across 16 callbacks; excess admission refuses. A second same-callback page write reports `Budget`, preserves its bytes, and succeeds when retried. Recovery release overtakes a queued read safely; the read reports a stale lease and returns its untouched buffer. Cancellation returns the original buffer without execution, including when reusing a previously completed request. Oversized buffers are refused before admission.
+- A scheduled payload too large for unreserved copy headroom is rejected rather than indefinitely blocking later control work. Dropping control with queued owning payloads and a live snapshot lease causes no callback deallocation; runtime destruction occurs outside rendering.
+- Native callback scopes, including resource command failures and pool recycling, remain guarded against heap operations. Page metadata and retirement-stack backing storage are pre-touched during preparation. No resource operation introduces locks, waits, I/O, or whole-resource work in a callback.
+
+This completes the resource milestone, not the host milestone: these Chrome results are browser unit/integration tests, **not an AudioWorklet claim**. Cross-platform CI, actual non-isolated worklet materialization/transfer credits, longer mixed adversarial runs, Miri, performance measurements, and final host equivalence remain required by stages 6–8.

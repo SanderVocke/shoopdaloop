@@ -7,7 +7,8 @@
 //! [`executor::GraphRuntime`] executes typed DAGs with stable processor slots and
 //! bounded plan validation/activation. The low-level [`RenderRuntime`] provides
 //! host-block validation and the empty-graph clock. Scheduling uses explicit event,
-//! split and execution-result credits. Resource exchange is still under development.
+//! split and execution-result credits. Resource exchange uses fixed pages, revisioned
+//! leases, and callback-wide copy/validation budgets with reserved processor headroom.
 
 #![forbid(unsafe_code)]
 

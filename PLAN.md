@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stages 0–4 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–5 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -110,13 +110,13 @@ Completed: conservative event/split/result reservations, exact-frame executor sc
 
 Depends on stages 2–4.
 
-Implementation contract: `docs/rt_runtime/RESOURCES.md`. Completed the independently tested fixed-page upload/capture/snapshot lifecycle, including reservations, streamed parsing, partial-tail copies, stale handles, explicit incomplete prefixes, and incremental reclamation. Executor/transport integration and its concurrent playback fixture remain pending; no stage-5 completion is claimed.
+Completed: fixed-page upload/capture/snapshot lifecycle, reliable owning resource requests, reserved processor I/O headroom, executor integration, and public-API concurrent playback/capture/transfer fixtures. Implementation contract: `docs/rt_runtime/RESOURCES.md`; native/Wasm evidence: `docs/rt_runtime/VALIDATION.md`.
 
 - [x] Implement bounded resource/page/lease pools, checked metadata, upload IDs, chunk sequence/range validation, incremental validation, and cancellation. Reserve storage before accepting a transfer.
-- [ ] Implement expected-revision commits and immutable snapshot leases; activate only complete revisions. Return displaced storage through the lifecycle from stage 2, never final-reference-drop it on RT.
-- [ ] Implement minimal audio/MIDI append/capture writers and coherent prefix snapshots. Bound partial-tail copying and publication work; report captured frame/length and pending/stale/incomplete states explicitly.
-- [ ] Add a resource-backed playback/capture fixture to verify data replacement and fetching during processing. Resource lengths must exceed a single callback's transfer budget by a large factor.
-- [ ] Verify: exact sample/event round trips; snapshot immutability across later writes/replacement; length/revision races; reordered/duplicate/missing chunks; stale commits; slow readers; many pinned revisions; pool exhaustion; interrupted upload/export; and shutdown with leases. Assert maximum copied bytes and bounded memory, and recover all credits after teardown. Commit.
+- [x] Implement expected-revision commits and immutable snapshot leases; activate only complete revisions. Return displaced storage through the lifecycle from stage 2, never final-reference-drop it on RT.
+- [x] Implement minimal audio/MIDI append/capture writers and coherent prefix snapshots. Bound partial-tail copying and publication work; report captured frame/length and pending/stale/incomplete states explicitly.
+- [x] Add a resource-backed playback/capture fixture to verify data replacement and fetching during processing. Resource lengths must exceed a single callback's transfer budget by a large factor.
+- [x] Verify: exact sample/event round trips; snapshot immutability across later writes/replacement; length/revision races; reordered/duplicate/missing chunks; stale commits; slow readers; many pinned revisions; pool exhaustion; interrupted upload/export; and shutdown with leases. Assert maximum copied bytes and bounded memory, and recover all credits after teardown. Commit.
 
 ### 6. Host fixtures and genuine non-shared-memory AudioWorklet path
 

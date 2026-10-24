@@ -3,7 +3,9 @@
 
 mod capture;
 mod format;
+mod request;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
+pub use request::{Reply, Request, ResourceCommand, ResourceIo};
 #[cfg(test)]
 mod tests;
 use crate::{Error, Frame, PreparedConfig, ResourceId, Revision};
@@ -97,7 +99,7 @@ struct Page {
     next: Option<usize>,
     used: usize,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Cursor {
     snapshot: SnapshotId,
     page: Option<usize>,
@@ -126,6 +128,15 @@ pub struct ResourceStore {
     copy_remaining: usize,
     steps_remaining: usize,
     work: Work,
+    control_phase: bool,
+}
+fn retirement_stack(count: usize) -> Vec<usize> {
+    let mut stack = vec![0; count];
+    for index in &mut stack {
+        *std::hint::black_box(index) = 0;
+    }
+    stack.clear();
+    stack
 }
 fn slots<T>(count: usize) -> Vec<Slot<T>> {
     (0..count)
@@ -169,10 +180,14 @@ impl ResourceStore {
         for byte in &mut data {
             *std::hint::black_box(byte) = 0;
         }
+        let mut pages = vec![Page::default(); limits.resource_pages];
+        for page in &mut pages {
+            *std::hint::black_box(page) = Page::default();
+        }
         Ok(Self {
             config,
             data,
-            pages: vec![Page::default(); limits.resource_pages],
+            pages,
             free_pages: (0..limits.resource_pages).rev().collect(),
             reserved_pages: 0,
             resources: slots(limits.resource_slots),
@@ -181,11 +196,12 @@ impl ResourceStore {
             free_versions: (0..limits.resource_slots).rev().collect(),
             snapshots: slots(limits.resource_slots),
             free_snapshots: (0..limits.resource_slots).rev().collect(),
-            retired_versions: Vec::with_capacity(limits.resource_slots),
-            retired_pages: Vec::with_capacity(limits.resource_pages),
+            retired_versions: retirement_stack(limits.resource_slots),
+            retired_pages: retirement_stack(limits.resource_pages),
             copy_remaining: 0,
             steps_remaining: 0,
             work: Work::default(),
+            control_phase: false,
         })
     }
 
@@ -194,15 +210,40 @@ impl ResourceStore {
         self.copy_remaining = self.config.limits().budgets.transfer_bytes;
         self.steps_remaining = self.config.limits().budgets.validation_steps;
         self.work = Work::default();
+        self.control_phase = false;
+    }
+    pub fn config(&self) -> PreparedConfig {
+        self.config
+    }
+    pub(crate) fn control_phase(&mut self, active: bool) {
+        self.control_phase = active;
+    }
+    pub(crate) fn charge_external(&mut self, bytes: usize, steps: usize) -> Result<(), Error> {
+        if bytes > self.copy_remaining() || steps > self.steps_remaining() {
+            return Err(Error::Budget);
+        }
+        self.copy_remaining -= bytes;
+        self.work.copied_bytes += bytes;
+        self.steps_remaining -= steps;
+        self.work.validation_steps += steps;
+        Ok(())
     }
     pub fn work(&self) -> Work {
         self.work
     }
     pub fn copy_remaining(&self) -> usize {
-        self.copy_remaining
+        self.copy_remaining.saturating_sub(if self.control_phase {
+            self.config.limits().resource_io_bytes
+        } else {
+            0
+        })
     }
     pub fn steps_remaining(&self) -> usize {
-        self.steps_remaining
+        self.steps_remaining.saturating_sub(if self.control_phase {
+            self.config.limits().resource_io_steps
+        } else {
+            0
+        })
     }
     pub fn usage(&self) -> PoolUsage {
         PoolUsage {
@@ -298,7 +339,7 @@ impl ResourceStore {
         } else {
             0
         };
-        if bytes.len() > self.copy_remaining || validation > self.steps_remaining {
+        if bytes.len() > self.copy_remaining() || validation > self.steps_remaining() {
             return Err(Error::Budget);
         }
         self.steps_remaining -= validation;
@@ -436,7 +477,7 @@ impl ResourceStore {
             if self.free_pages.len() == self.reserved_pages {
                 return Err(Error::Capacity);
             }
-            if used > self.copy_remaining {
+            if used > self.copy_remaining() {
                 return Err(Error::Budget);
             }
             let page = self.free_pages.pop().ok_or(Error::InvalidState)?;
@@ -533,7 +574,7 @@ impl ResourceStore {
         if count == 0 {
             return Err(Error::InvalidState);
         }
-        if count > self.copy_remaining {
+        if count > self.copy_remaining() {
             return Err(Error::Budget);
         }
         let start = page * page_bytes + offset;
@@ -563,7 +604,7 @@ impl ResourceStore {
     /// revision's last release never walks or frees its entire page chain.
     pub fn reclaim(&mut self) -> usize {
         let mut steps = 0;
-        while self.steps_remaining > 0 {
+        while self.steps_remaining() > 0 {
             if let Some(page) = self.retired_pages.pop() {
                 self.pages[page] = Page::default();
                 self.free_pages.push(page);

@@ -42,6 +42,9 @@ pub struct Config {
     pub resource_slots: usize,
     pub resource_pages: usize,
     pub page_bytes: usize,
+    /// Callback copy/validation headroom reserved for processor resource I/O.
+    pub resource_io_bytes: usize,
+    pub resource_io_steps: usize,
     pub command_slots: usize,
     pub budgets: Budgets,
 }
@@ -64,6 +67,8 @@ impl Default for Config {
             resource_slots: 32,
             resource_pages: 256,
             page_bytes: 4096,
+            resource_io_bytes: 0,
+            resource_io_steps: 0,
             command_slots: 64,
             budgets: Budgets::default(),
         }
@@ -125,6 +130,11 @@ impl Config {
             return Err(Error::Capacity);
         }
         if self.page_bytes % size_of::<f32>() != 0 || self.budgets.transfer_bytes < self.page_bytes
+        {
+            return Err(Error::InvalidConfig);
+        }
+        if self.resource_io_bytes > self.budgets.transfer_bytes - self.page_bytes
+            || self.resource_io_steps >= self.budgets.validation_steps
         {
             return Err(Error::InvalidConfig);
         }
