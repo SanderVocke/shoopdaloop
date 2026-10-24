@@ -1,0 +1,19 @@
+[package]
+name = "rt_runtime_host_fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rt_runtime = { path = "../../src/rust/rt_runtime" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.127"
+
+[profile.release]
+debug = 1

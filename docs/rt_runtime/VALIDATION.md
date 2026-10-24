@@ -199,4 +199,45 @@ Verification through `nix develop`:
 - A prepared executor cycles one owning chunk buffer through 64 submissions/completions without allocation, reallocation, deallocation, or pointer change, guarding ingress as well as rendering.
 - A plan is rebuilt and incrementally revalidated a hundred times under the guard. Full capacities, zero-capacity compact plans, invalid descriptors, oversized allocation arithmetic, and membership-stamp exhaustion are explicit refusals.
 
-This is a worklet prerequisite, **not** actual AudioWorklet evidence. Stage 6 remains in progress.
+This prerequisite alone is **not** actual AudioWorklet evidence. The completed host verification follows.
+
+## Stage 6: independent native and actual AudioWorklet hosts
+
+Implemented `tests/rt_runtime_host`, a separate non-publishable helper workspace depending only on the public runtime API and target-specific test bindings. Its controller/compiler, wire codec, prepared render bridge, processor, and native examples do not use any Shoop backend/protocol/host. `scripts/run_rt_runtime_hosts.py` serves a dedicated localhost origin without COOP/COEP and drives a genuine AudioWorkletProcessor through ChromeDriver. Both actual OfflineAudioContext and live AudioContext ran successfully with `crossOriginIsolated === false` and independent non-shared Wasm instances.
+
+Verification on Linux x86_64 (kernel 7.0.3), through `nix develop`, with rustc 1.97.1, wasm-pack 0.15.0, wasm-bindgen 0.2.127, and matching Chromium/ChromeDriver **147.0.7727.137**:
+
+```sh
+RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py
+python3 scripts/run_rt_runtime_hosts.py --no-build
+RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug
+RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py --native-only --profile release
+RUSTFLAGS="-D warnings" cargo test -p rt_runtime
+RUSTFLAGS="-D warnings" cargo test -p rt_runtime --release
+RUSTFLAGS="-D warnings" cargo build --workspace
+python3 scripts/run_wasm_tests.py --runtime node --package rt_runtime
+python3 scripts/run_wasm_tests.py --runtime chrome --package rt_runtime
+python3 scripts/check_shoop_test_usage.py
+python3 scripts/check_rt_runtime_boundary.py
+python3 scripts/check_wasm_test_dependencies.py --package rt_runtime
+python3 -m unittest scripts/tests/test_rt_runtime_boundary.py
+cargo fmt --all -- --check
+cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
+```
+
+The pinned tool executables were prepended to PATH inside the development shell; `CHROME_BIN` selected Chromium 147. Node regression tests used Node 22.22.2. All commands passed. Core suites remain **86 native tests in each debug/release profile and 82 tests in each Node/Chromium runtime**; two boundary-script tests also pass. The helper's positive allocation/reallocation/deallocation canaries execute at bridge preparation, including release Wasm, and guarded native replay passes in both profiles.
+
+Checked-in structured results: `evidence/hosts-stage6.json`. The golden actual-worklet journal is `tests/rt_runtime_host/data/offline.rtj.gz` (uncompressed SHA-256 `fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237`). Fresh logs/journal/results are produced under `target/rt-runtime-host/reports`; native-only results explicitly say that the browser was not rerun.
+
+Measured/checked evidence:
+
+- **2,601 deterministic offline callbacks / 332,928 frames**. Every response byte and each callback's actual Web Audio sample hash matches both native hosts. Aggregate sample hash: **480331717**; MIDI hash: **3308430490**, **34 events**; independently compiled graph-stream hash: **487351092**. The entire actual offline output, including its post-disposal silent tail, also passes a separate sample-by-sample graph/gain/revision timeline reference.
+- The final live run processed **13,444 callbacks / 1,720,832 frames**. Its analyser received the expected worklet audio after replacement. Live hashes/totals are intentionally not equated with offline when message delivery adds idle callbacks; effective frames drive MIDI/capture expectations.
+- Both worklet instances stayed at **1,507,328 bytes** of ordinary Wasm memory after preparation. Maximum core work was **1,042 copied bytes / 512 validation-maintenance steps** against bounds **2,048 / 512**. Host wire copies are separately bounded by five fixed 512-byte frames in each direction plus fixed bridge temporaries/payload materialization; they are not hidden in the core counters.
+- Four normal requests plus an independent recovery request occupy all five credits. Duplicate-credit and 513-byte-envelope probes return their offending owners. With all five returned buffers withheld, rendering advances at least **2,048 frames** without memory growth. A packet prepared before the stall is delivered afterward: offline lateness is **1,984 frames**, separately confirmed by execution reporting. Cancellation returns the unchanged owning chunk for retry.
+- Graph staging, exact-frame gain/MIDI, state-preserving rewiring, stale epochs, malformed duplicate chunks, and stale stream identities are checked. The processor's retired frame counter must equal the accumulated processing duration across rewires.
+- Audio/MIDI capture prefixes and old pinned revisions remain immutable while rendering continues. **32,768 audio bytes** and **38,400 MIDI bytes** are uploaded/exported with exact byte checks; MIDI's trailing duration is preserved. These are 16x and 18.75x the callback's total copy budget, not single-callback transfers.
+- Shutdown verifies **4,096 free pages**, **16 free version descriptors**, **16 free snapshot leases**, zero reservations/retired pages/transfers/cursors/staging plans, and all seven plan owners accounted for (six free plus one active empty plan). Processor-owned leases are explicitly released. Worklet stop is acknowledged before Rust disposal outside `process`; live context closure and offline post-disposal silence are checked.
+- Chromium's AudioWorklet global actually lacks TextDecoder; both reports record the minimal binding-error UTF-8 fallback in use. Successful rendering uses numeric bindings. Rust heap guards do not establish lock freedom or make JavaScript GC/message delivery/OS scheduling hard-real-time; fixed loops and callback ownership paths also received a source audit.
+
+Stage 6 is complete. This is actual worklet evidence, unlike the earlier Chromium unit suites. Windows/macOS CI, longer mixed adversarial/property runs, applicable Miri checks, release performance evidence, deliberate gate-failure demonstrations, and final PR/CI/review delivery remain required by stages 7–8.

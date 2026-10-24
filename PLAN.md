@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stages 0–5 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–6 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -122,14 +122,14 @@ Completed: fixed-page upload/capture/snapshot lifecycle, reliable owning resourc
 
 Depends on stages 3–5; fixture scaffolding may be prepared earlier without bypassing contract tests.
 
-In progress: allocation-free prepared submission flags and reusable, incrementally materialized plan storage are implemented/tested as worklet prerequisites. Native/actual-worklet fixtures and wire credit validation remain pending; the implementation design is recorded in `docs/rt_runtime/HOST_FIXTURE.md`. Ordinary Chromium test results are not worklet evidence.
+Completed: shared guarded render/wire bridge, public-API native offline/two-thread examples, and real non-isolated offline/live AudioWorklet scenarios. Every offline reply byte and per-callback actual Web Audio sample hash matches native replay; all buffers/pages/leases recover before non-callback disposal. Commands and evidence: `tests/rt_runtime_host/README.md`, `docs/rt_runtime/HOST_FIXTURE.md`, and `docs/rt_runtime/VALIDATION.md`. Ordinary Chromium unit tests remain distinct from this worklet evidence.
 
-- [ ] Add deterministic offline and two-thread native examples using only the public crate API. Demonstrate graph edits, timed MIDI, resource replacement, capture, and snapshot reads.
-- [ ] Add a minimal independent Wasm/JavaScript test fixture with a real AudioWorklet. If packaging requires a helper Cargo manifest, keep it test-only; no additional production abstraction crate or dependency on Shoop's worklet/backend.
-- [ ] Implement a versioned bounded wire frame for the tested generic operations, sequence/epoch/revision fields, and chunked relocatable descriptors/resources. Reuse the same operation semantics as native; validate all decoded lengths and IDs.
-- [ ] Compile on the control side; preinitialize worklet memory and processor slots before rendering. Limit ingress and incremental materialization by credits and work budgets. Recycle transferable buffers and acknowledge their ownership; reject oversized frames before decoding payloads.
-- [ ] Run the fixture from an origin without COOP/COEP isolation headers and assert `crossOriginIsolated === false`; the current repository asset server supplies these headers, so add a fixture-specific serving mode rather than accidentally testing only the isolated case.
-- [ ] Verify: actual rendering and acknowledged updates, native/browser command-journal equivalence for on-time inputs, delayed messages, transfer saturation/cancellation, stale epochs, and teardown. Capture rendered output through a test sink/OfflineAudioContext where supported and exercise live AudioContext rendering too; never substitute a mock for the worklet check. Assert no Wasm memory growth or Rust heap operations after preparation. Record browser/JS limits separately. Commit.
+- [x] Add deterministic offline and two-thread native examples using only the public crate API. Demonstrate graph edits, timed MIDI, resource replacement, capture, and snapshot reads.
+- [x] Add a minimal independent Wasm/JavaScript test fixture with a real AudioWorklet. If packaging requires a helper Cargo manifest, keep it test-only; no additional production abstraction crate or dependency on Shoop's worklet/backend.
+- [x] Implement a versioned bounded wire frame for the tested generic operations, sequence/epoch/revision fields, and chunked relocatable descriptors/resources. Reuse the same operation semantics as native; validate all decoded lengths and IDs.
+- [x] Compile on the control side; preinitialize worklet memory and processor slots before rendering. Limit ingress and incremental materialization by credits and work budgets. Recycle transferable buffers and acknowledge their ownership; reject oversized frames before decoding payloads.
+- [x] Run the fixture from an origin without COOP/COEP isolation headers and assert `crossOriginIsolated === false`; the current repository asset server supplies these headers, so add a fixture-specific serving mode rather than accidentally testing only the isolated case.
+- [x] Verify: actual rendering and acknowledged updates, native/browser command-journal equivalence for on-time inputs, delayed messages, transfer saturation/cancellation, stale epochs, and teardown. Capture rendered output through a test sink/OfflineAudioContext where supported and exercise live AudioContext rendering too; never substitute a mock for the worklet check. Assert no Wasm memory growth or Rust heap operations after preparation. Record browser/JS limits separately. Commit.
 
 ### 7. Adversarial validation, benchmarks, documentation, and CI
 
@@ -157,7 +157,7 @@ Depends on all earlier stages. Do not mark complete for compile-only, skipped, o
 
 ## Validation commands
 
-Run in the environment selected by `.agents/info/build.md`. Add the exact independent AudioWorklet fixture command here once stage 6 establishes its entry point; the ordinary Chrome unit-test runner alone is insufficient.
+Run in the environment selected by `.agents/info/build.md`. The independent host runner requires the pinned Chromium/ChromeDriver 147 and wasm-pack 0.15.0; the ordinary Chrome unit-test runner alone is insufficient.
 
 ```sh
 # Targeted iteration and release guards
@@ -168,6 +168,12 @@ RUSTFLAGS="-D warnings" cargo build -p rt_runtime --target wasm32-unknown-unknow
 python3 scripts/run_wasm_tests.py --runtime node --package rt_runtime
 python3 scripts/run_wasm_tests.py --runtime chrome --package rt_runtime
 python3 scripts/check_wasm_test_dependencies.py --package rt_runtime
+
+# Independent native examples and ACTUAL non-isolated AudioWorklet
+python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug
+python3 scripts/run_rt_runtime_hosts.py --native-only --profile release
+RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py
+cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
 
 # Required repository checks; format before Rust commits
 cargo fmt --all

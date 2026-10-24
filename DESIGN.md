@@ -97,7 +97,7 @@ The baseline browser fixture uses a separate Wasm instance in an actual AudioWor
 
 Rust allocation-free processing does not make browser scheduling, structured cloning, or JavaScript GC hard-real-time. Recycle transferable buffers, limit in-flight messages, prohibit Wasm memory growth after startup, and measure actual worklet behavior. Keep these host limitations explicit rather than disguising them behind a thread abstraction.
 
-## Implementation decisions established through stage 5
+## Implementation decisions established through stage 6
 
 The executor now uses fixed processor slots with per-slot planar scratch and bounded MIDI arenas, rather than dynamically constructing port-reference vectors in callbacks. Preparation captures signatures and touches audio/MIDI storage. Graph plans contain only logical typed endpoints and execution ordering; the receiving validator checks every range, generation, dependency, and port type incrementally before activation. Rewiring retains slot state. Removing an unreferenced processor returns ownership to control and advances its generation; reinstalling requires the same prepared port signature. Increasing the slot/port capacity still requires stopping and preparing again.
 
@@ -111,7 +111,9 @@ The resource substrate now uses a single-owner fixed-page store with generation-
 
 Resource requests are now integrated with owning command completions, and processors receive a restricted resource I/O view. Copy/validation budgets are shared across control staging, graph validation, resource I/O, and retirement. Configured headroom reserves processor work within those totals, so background upload/export cannot consume the work provisioned for ongoing playback/capture. Request and result buffers return through reliable completions; snapshot/capture metadata distinguishes queued requests, actual cut frames, stale revisions, and stopped/incomplete prefixes. Playback fixtures keep the prior valid lease if a new revision cannot yet be pinned.
 
-Native/offline host examples and genuine non-shared-memory browser worklet materialization/transport remain required. Browser unit tests do not establish that host path.
+The independent test-only host now shares its processor, bounded wire codec, and guarded render bridge across native and actual AudioWorklet execution. A control-side compiler in a separate Wasm instance sends versioned relocatable records. Receiver-side pools prepare seven reusable plans, lane-separated cancellation flags, fixed payload/response buffers, and generation-checked export cursors. Four normal transferable credits and one recovery credit bound ingress; no ordinary allocating submission is used on that receiver. Completion recycling stays under the heap guard; a consistency-fault owning completion is parked until callbacks stop.
+
+A dedicated non-isolated localhost runner exercises real OfflineAudioContext and live AudioContext, checks independent ordinary Wasm memory and no growth, and observes actual Web Audio output. The deterministic offline journal is replayed in native offline and bounded two-thread hosts, comparing every response byte and callback sample hash. Native clock coordination occurs outside the guarded callback, not as a wait in rendering. Consumer stalls, delayed delivery, cancellation, malformed/stale transfers, and logical pool recovery precede explicit stop/dispose. JavaScript scheduling/GC and live transport lateness remain outside the Rust real-time claim. Browser unit tests remain separate from this host evidence; CI portability, adversarial runs, and performance validation are still required.
 
 ## Initial delivery and exclusions
 

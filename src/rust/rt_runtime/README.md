@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resource uploads, capture, snapshots, and processor I/O are integrated with reliable owning commands. Native/offline host examples and the real worklet fixture remain under development.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resource uploads, capture, snapshots, and processor I/O are integrated with reliable owning commands. Independent native/offline/two-thread examples and a real non-isolated AudioWorklet fixture are verified on Linux; cross-platform CI and broader adversarial/performance validation remain in progress.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -21,6 +21,10 @@ assert_eq!(channel, [0.0; 128]);
 Run `cargo test -p rt_runtime` and `cargo test -p rt_runtime --release`. Tests install a counting allocator with positive allocation/reallocation/deallocation canaries; the same assertions run in release and Wasm. Counts are measured only inside render scopes, not during test framework setup. A separate audit of callback-reachable code is required for locks/waits/I/O; allocator instrumentation does not detect those.
 
 Run `python3 scripts/check_rt_runtime_boundary.py` from the workspace root to audit production/build dependencies on all supported targets. The shared repository test attribute is a dev-only exception. Registering the browser-test feature must not introduce test support into the production dependency tree.
+
+## Independent host examples
+
+From the workspace root, run `python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug` (or `release`) for self-contained native examples replaying a checked-in real-worklet journal. Run `RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py` for fresh actual OfflineAudioContext/live AudioContext execution followed by native equivalence checks. The browser command requires the pinned Chromium/ChromeDriver and wasm-pack tools; see `tests/rt_runtime_host/README.md` for setup, bounds, shutdown, and limitations. Native replay alone is not a new browser test. The helper's browser bindings are test-only dependencies outside this crate.
 
 ## Graph preparation
 
