@@ -241,3 +241,27 @@ Measured/checked evidence:
 - Chromium's AudioWorklet global actually lacks TextDecoder; both reports record the minimal binding-error UTF-8 fallback in use. Successful rendering uses numeric bindings. Rust heap guards do not establish lock freedom or make JavaScript GC/message delivery/OS scheduling hard-real-time; fixed loops and callback ownership paths also received a source audit.
 
 Stage 6 is complete. This is actual worklet evidence, unlike the earlier Chromium unit suites. Windows/macOS CI, longer mixed adversarial/property runs, applicable Miri checks, release performance evidence, deliberate gate-failure demonstrations, and final PR/CI/review delivery remain required by stages 7–8.
+
+## Stage 7, milestone 1: seeded mixed/property coverage and Miri
+
+Added three portable test groups, using the shared test attribute and release-active heap guard:
+
+- `mixed_stress`: eight seeded fresh runtimes combine stateful graph rewiring/stale commits, exact-frame gain/MIDI, audio revision replacement, capture/prefix leases, incremental export, owning cancellation/refusal, five-credit stalls with independent MIDI recovery, and alternate graceful teardown/control-disconnect shutdown. A separate sample/event timeline checks every callback; processor destructor probes reject render-side destruction. The full run observed **22,143 callbacks, 1,008 replacements, 1,003 snapshots, 1,059 consumer stalls, 75/128 peak used pages, and 5/5 peak outstanding command owners**. All graceful shutdown pools recover; disconnected runtimes continue rendering before non-callback destruction and restart.
+- `resource_properties`: **65,536 seeded state-machine steps** over small fixed pools model audio/MIDI chunk offsets, incomplete/finished uploads, expected revisions, malformed MIDI rollback, concurrent snapshots/read cursors, resource removal/generation reuse, cancellation, and bounded reclamation. Rejections must preserve pool ownership; reads must match immutable reference bytes. Observed **292 commits, 17,515 verified read bytes, 23,408 explicit refusals, 521 malformed MIDI attempts, 28 resource removals, and full 8/8 version and lease occupancy**. Every seed recovers every page/reservation/version/lease.
+- `wire_properties`: the exact host-fixture codec is compiled into the core's test-only module. **16,384 generated/mutated headers** are compared with an independent scalar framing reference; **4,096 relocatable step/edge/endpoint cases** check round trips, every truncation, type/generation/reserved-field corruption, and overflowing offsets under the heap guard. Existing generated DAG/interpreter and malformed receiver tests continue to cover graph-level execution/validation.
+
+Verification through the same pinned Nix environment: **91 native tests passed in both debug and release; 87 tests passed in each Node/Chromium runtime**. Warning-denying workspace build, formatting, and shared-test policy passed. Commands were `cargo test -p rt_runtime -- --nocapture`, `cargo test -p rt_runtime --release`, `RUSTFLAGS="-D warnings" cargo build --workspace`, `python3 scripts/check_shoop_test_usage.py`, and both `scripts/run_wasm_tests.py --runtime {node,chrome} --package rt_runtime` variants. Detailed local log: `/tmp/rt-runtime-adversarial-verified.log`.
+
+`python3 scripts/run_rt_runtime_miri.py` pins **nightly-2026-05-04 / miri 0.1.0 (ad3a598ca4)**, uses default isolation/aliasing checks, rejects missing/zero-test results, and records individual logs plus structured results under `target/rt-runtime-miri`. **36 executions passed**: all contracts, wire/resource properties, reduced mixed stress, capture tests, nine transport lifecycle cases, owning resource cancellation/disconnect, and small two-thread SPSC runs under three interpreter seeds. Checked-in result: `evidence/miri-stage7.json`. An additional local Miri run of the original executor's state-preserving rewiring test also passed; it is not counted among the scripted 36.
+
+On this NixOS host the shell's RUSTUP_HOME is read-only. Installing Miri there failed with an explicit read-only-filesystem error; the supported workaround was a separate writable toolchain cache, not skipping Miri:
+
+```sh
+export RUSTUP_HOME="$HOME/.cache/rt-runtime-miri-rustup"
+rustup toolchain install nightly-2026-05-04 --profile minimal --component miri,rust-src --no-self-update
+python3 scripts/run_rt_runtime_miri.py
+```
+
+The interpreter runs explicitly smaller seeded counts and 32 two-thread operations; normal debug/release and applicable Wasm tests retain full counts, including 10,000 native two-thread operations. Loom's generator/FFI model and the long transport admission model run in the native suite rather than the selected Miri job. Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; their existing real-host/native gates remain separate. This is selected ownership/aliasing/concurrency evidence, not a whole-workspace/all-tests Miri claim. No new unsafe production code was introduced.
+
+Stage 7 remains incomplete: release performance measurements, remaining documentation/CI wiring, and deliberate allocator/browser gate-failure demonstrations are next.

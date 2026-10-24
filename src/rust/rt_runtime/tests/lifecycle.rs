@@ -312,6 +312,7 @@ fn deterministic_admission_model_preserves_fifo_and_recovers_all_credits() {
 
 #[shoop_test(no_wasm = "native two-thread SPSC stress with render allocator guard")]
 fn two_thread_stress_keeps_completion_and_state_publication_coherent() {
+    let operations = if cfg!(miri) { 32 } else { 10_000 };
     let (mut control, mut render) = channel::<u64, (), [u64; 2]>(config(4)).unwrap();
     let worker = std::thread::spawn(move || {
         for frame in 0..1_000_000 {
@@ -333,8 +334,8 @@ fn two_thread_stress_keeps_completion_and_state_publication_coherent() {
     });
     let mut sent = 0;
     let mut received = 0;
-    while received < 10_000 {
-        if sent < 10_000 {
+    while received < operations {
+        if sent < operations {
             match control.submit(Lane::Normal, sent) {
                 Ok(_) => sent += 1,
                 Err(error) => assert_eq!(error.error, Error::Full),

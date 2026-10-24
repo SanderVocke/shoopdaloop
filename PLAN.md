@@ -135,8 +135,10 @@ Completed: shared guarded render/wire bridge, public-API native offline/two-thre
 
 Depends on stages 1–6.
 
-- [ ] Add reproducible seeded adversarial runs mixing graph commits, resource revisions, timed MIDI, snapshots, consumer pauses, disconnects, and restarts. Run long enough to exercise slot/page reuse and track peak outstanding ownership.
-- [ ] Add fuzz/property coverage for plan/wire validation and resource chunk state machines. Run Miri on supported ownership/aliasing tests and any new unsafe buffer code; explicitly record tool exclusions and provide alternate tests rather than claiming unsupported coverage.
+In progress: mixed seeded stress, wire/resource state-machine properties, and pinned isolated Miri checks pass on the applicable native/Wasm paths. Evidence: `docs/rt_runtime/VALIDATION.md` and `evidence/miri-stage7.json`. Benchmarks, full documentation/CI wiring, and deliberate gate-failure demonstrations remain pending.
+
+- [x] Add reproducible seeded adversarial runs mixing graph commits, resource revisions, timed MIDI, snapshots, consumer pauses, disconnects, and restarts. Run long enough to exercise slot/page reuse and track peak outstanding ownership.
+- [x] Add fuzz/property coverage for plan/wire validation and resource chunk state machines. Run Miri on supported ownership/aliasing tests and any new unsafe buffer code; explicitly record tool exclusions and provide alternate tests rather than claiming unsupported coverage.
 - [ ] Add release benchmarks for idle, representative and near-capacity DAGs, MIDI bursts, sustained capture, and graph/resource transfers. Report configuration, callback duration distribution/max, work counters, transfer throughput, memory high-water marks, and refusal counts.
 - [ ] Keep performance acceptance based on enforced work/memory bounds and correctness. Record deadline misses on a specified local host; do not claim hard-real-time proof or speedups over the old engine from noisy CI timings. Investigate unexpected tail spikes before declaring completion.
 - [ ] Add API examples, capacity sizing guidance, real-time processor obligations, ownership/teardown rules, supported host matrix, and explicit capability limitations. Update `DESIGN.md` to match the implementation.
