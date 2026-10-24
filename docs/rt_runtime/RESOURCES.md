@@ -1,6 +1,6 @@
 # Resource implementation contract (stage 5)
 
-Status: the standalone fixed-page upload, immutable-revision snapshot, cursor, and reclamation APIs are implemented and tested. Capture/prefix-tail copying, shared executor budgets, and transport integration are still pending. The sections below remain the full stage-5 contract, not a claim that the entire resource feature is complete. This specializes `DESIGN.md` without changing PLAN.md A1–A8.
+Status: standalone fixed-page upload, capture, immutable prefix/revision snapshots, cursors, and reclamation are implemented and tested. Shared executor budgets, processor resource access, and transport integration are still pending. The sections below remain the full stage-5 contract, not a claim that the entire resource feature is complete. This specializes `DESIGN.md` without changing PLAN.md A1–A8.
 
 ## Ownership and fixed capacities
 
@@ -47,7 +47,7 @@ Snapshots select a coherent prefix at a callback boundary:
 - Subsequent capture may append to the original tail; the snapshot reads its private tail copy. It never observes later bytes through a changed length or mixed revision.
 - A version retained by a prefix lease may retain later appended pages as well. This intentionally conservative initial policy consumes bounded capacity rather than adding complex shared-page reclamation. Long-lived readers can exhaust capacity; that is visible and testable.
 
-Currentness is checked against the resource's live identity/revision. A capture prefix can be current at its cut and stale after another append; it is never represented as the final content of an ongoing capture. Removal/replacement leaves its bytes readable but changes currentness. Capture-active and incomplete status are separate from immutable snapshot metadata.
+Currentness is checked against the resource's live identity/revision and capture status. Accepted appends advance the content revision. Stopping capture or marking an incomplete prefix changes capture status without changing the bytes/revision, and still makes earlier capture-status snapshots stale. A capture prefix can be current at its cut and stale after another append; it is never represented as the final content of an ongoing capture. Removal/replacement leaves its bytes readable but changes currentness. Capture-active and incomplete status are separate from immutable snapshot metadata.
 
 ## Reading and playback
 

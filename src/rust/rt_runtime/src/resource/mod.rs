@@ -1,7 +1,9 @@
 //! Single-owner fixed-page resource storage. All allocation and final destruction
 //! happen at preparation/host teardown; rendering only changes fixed pool metadata.
 
+mod capture;
 mod format;
+pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
 #[cfg(test)]
 mod tests;
 use crate::{Error, Frame, PreparedConfig, ResourceId, Revision};
@@ -25,6 +27,7 @@ pub struct Snapshot {
     pub revision: Revision,
     pub description: Description,
     pub cut_frame: Frame,
+    pub capture: Option<CaptureInfo>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Currentness {
@@ -63,6 +66,7 @@ enum State {
     Receiving,
     Complete,
     Active,
+    Capturing,
     Retained,
     Retiring,
 }
@@ -79,6 +83,7 @@ struct Version {
     references: usize,
     parser: Parser,
     state: State,
+    capture: Option<CaptureInfo>,
 }
 #[derive(Clone, Copy)]
 struct Lease {
@@ -263,6 +268,7 @@ impl ResourceStore {
             references: 1,
             parser: Parser::default(),
             state: State::Receiving,
+            capture: None,
         });
         Ok(UploadId {
             slot: index as u32,
@@ -384,6 +390,9 @@ impl ResourceStore {
     fn detach(&mut self, id: UploadId) -> Result<(), Error> {
         let mut version = get(&self.versions, id.slot, id.generation)?;
         version.state = State::Retained;
+        if let Some(capture) = &mut version.capture {
+            capture.active = false;
+        }
         self.versions[id.slot as usize].value = Some(version);
         self.unreference(id)
     }
@@ -407,7 +416,41 @@ impl ResourceStore {
             .ok_or(Error::InvalidState)?;
         let mut version = get(&self.versions, active.slot, active.generation)?;
         let refs = version.references.checked_add(1).ok_or(Error::Exhausted)?;
-        let index = self.free_snapshots.pop().ok_or(Error::Capacity)?;
+        let cut_frame = if let Some(capture) = version.capture {
+            if cut_frame < capture.next_frame {
+                return Err(Error::InvalidFrame);
+            }
+            capture.next_frame
+        } else {
+            cut_frame
+        };
+        if self.free_snapshots.is_empty() {
+            return Err(Error::Capacity);
+        }
+        let mutable_tail = version.tail.filter(|&page| {
+            version.state == State::Capturing
+                && self.pages[page].used < self.config.limits().page_bytes
+        });
+        let private_tail = if let Some(tail) = mutable_tail {
+            let used = self.pages[tail].used;
+            if self.free_pages.len() == self.reserved_pages {
+                return Err(Error::Capacity);
+            }
+            if used > self.copy_remaining {
+                return Err(Error::Budget);
+            }
+            let page = self.free_pages.pop().ok_or(Error::InvalidState)?;
+            let start = tail * self.config.limits().page_bytes;
+            self.data
+                .copy_within(start..start + used, page * self.config.limits().page_bytes);
+            self.pages[page] = Page { next: None, used };
+            self.copy_remaining -= used;
+            self.work.copied_bytes += used;
+            Some(page)
+        } else {
+            None
+        };
+        let index = self.free_snapshots.pop().ok_or(Error::InvalidState)?;
         let snapshot = Snapshot {
             id: SnapshotId {
                 slot: index as u32,
@@ -417,12 +460,14 @@ impl ResourceStore {
             revision: version.revision,
             description: version.description,
             cut_frame,
+            capture: version.capture,
         };
         self.snapshots[index].value = Some(Lease {
             snapshot,
             version: active,
-            private_tail: None,
-            tail_start: 0,
+            private_tail,
+            tail_start: version.written / self.config.limits().page_bytes
+                * self.config.limits().page_bytes,
         });
         version.references = refs;
         self.versions[active.slot as usize].value = Some(version);
@@ -442,6 +487,8 @@ impl ResourceStore {
         Ok(
             if resource.active == Some(lease.version)
                 && resource.revision == lease.snapshot.revision
+                && get(&self.versions, lease.version.slot, lease.version.generation)?.capture
+                    == lease.snapshot.capture
             {
                 Currentness::Current
             } else {

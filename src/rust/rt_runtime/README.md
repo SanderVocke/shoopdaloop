@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. The standalone revisioned upload/snapshot store is implemented; capture, resource/executor integration, and the real worklet fixture remain under development.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. The standalone revisioned upload/capture/snapshot store is implemented; resource/executor integration and the real worklet fixture remain under development.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -56,9 +56,13 @@ The host **must service** `drain_midi_recovery(port, reserved_sink, frames)` bef
 
 Uploads reserve page credits before accepting data. Chunk length is limited by remaining page space and the callback transfer-byte budget; MIDI chunks also require one validation step per byte. A failed parser attempt consumes validation work but does not modify the stored prefix. `begin_callback` replenishes budgets once per callback, not once per request. `Budget` is explicit refusal, not success or implicit queuing.
 
-`snapshot` pins an immutable uploaded revision. Use its generation-checked cursor with bounded `read` calls; each call copies at most the remainder of one page. Poll currentness to distinguish a current version, replacement, or removed identity. A snapshot remains readable after replacement/removal. Release leases explicitly, cancel unused uploads, and call `reclaim` to incrementally recycle retired pages/descriptors within the remaining maintenance/validation budget. Final store destruction belongs after callbacks stop.
+`snapshot` pins an immutable uploaded revision or coherent captured prefix. Use its generation-checked cursor with bounded `read` calls; each call copies at most the remainder of one page. Poll currentness to distinguish a current version, replacement, or removed identity. A snapshot remains readable after replacement/removal. Release leases explicitly, cancel unused uploads, and call `reclaim` to incrementally recycle retired pages/descriptors within the remaining maintenance/validation budget. Final store destruction belongs after callbacks stop.
 
-`resource_slots` separately bounds resource identities, version/transfer descriptors, and snapshot leases. Long-lived readers retain old versions and can exhaust the fixed page pool; refusal is intentional. Exhausted handle generations permanently retire their slots instead of wrapping. Capture-prefix support and integration of resource commands/shared budgets into `GraphRuntime` remain pending. See `docs/rt_runtime/RESOURCES.md` for the complete stage-5 contract.
+`resource_slots` separately bounds resource identities, version/transfer descriptors, and snapshot leases. Long-lived readers retain old versions and can exhaust the fixed page pool; refusal is intentional. Exhausted handle generations permanently retire their slots instead of wrapping. Integration of resource commands/shared budgets into `GraphRuntime` remains pending. See `docs/rt_runtime/RESOURCES.md` for the complete stage-5 contract.
+
+`begin_capture` starts a fresh audio/MIDI revision. Append complete blocks using `capture_audio` or `capture_midi` with contiguous absolute engine frames. MIDI event offsets become resource-relative frames; empty MIDI blocks still advance duration. A capture snapshot shares complete pages and copies only its partial mutable tail under the same copy budget. Returned cut frames describe the actual captured prefix, not a later request time. Snapshot refusal leaves capture unchanged.
+
+Capture storage/copy-budget exhaustion atomically stops recording and reports an incomplete prefix. No part of the refused block is appended, and later capacity recovery does not silently resume after a gap: start a new capture explicitly. Applications should report recording failure without abandoning unrelated audio work. `stop_capture` freezes content without changing its byte revision; capture-status changes still make prior status snapshots stale. `info` and snapshot metadata distinguish active, stopped, and incomplete capture.
 
 ## Control ownership transport
 

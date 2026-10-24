@@ -110,7 +110,7 @@ Completed: conservative event/split/result reservations, exact-frame executor sc
 
 Depends on stages 2–4.
 
-Implementation contract: `docs/rt_runtime/RESOURCES.md`. Completed the independently tested fixed-page upload/immutable-revision snapshot lifecycle, including reservations, streamed parsing, stale handles, and incremental reclamation. Capture-prefix/tail-copy support and executor/transport integration remain pending; no stage-5 completion is claimed.
+Implementation contract: `docs/rt_runtime/RESOURCES.md`. Completed the independently tested fixed-page upload/capture/snapshot lifecycle, including reservations, streamed parsing, partial-tail copies, stale handles, explicit incomplete prefixes, and incremental reclamation. Executor/transport integration and its concurrent playback fixture remain pending; no stage-5 completion is claimed.
 
 - [x] Implement bounded resource/page/lease pools, checked metadata, upload IDs, chunk sequence/range validation, incremental validation, and cancellation. Reserve storage before accepting a transfer.
 - [ ] Implement expected-revision commits and immutable snapshot leases; activate only complete revisions. Return displaced storage through the lifecycle from stage 2, never final-reference-drop it on RT.

@@ -145,4 +145,21 @@ Verification through `nix develop`:
 - Tests cover missing/reordered/duplicate chunks, incomplete headers, decreasing MIDI times, invalid metadata/overflow, malformed-chunk rollback, exhausted copy/validation budgets, reserved-page competition, cancellation, stale commits, lease exhaustion, stale cursors, resource-ID reuse, and checked generation exhaustion without ABA reuse.
 - Resource operations and error paths in integration tests run under the same heap guard as rendering. Metadata and page arrays retain their backing allocations until non-RT store destruction; release only queues fixed-pool recycling.
 
-This milestone does **not** yet integrate the store with executor commands/processors or implement capture and partial-tail prefix snapshots. The complete stage-5 contract remains in `RESOURCES.md`; those paths and their shared callback budgets still require implementation and tests.
+That first milestone did not integrate the store with executor commands/processors or implement capture. The subsequent capture milestone follows; executor integration/shared callback budgets remain pending.
+
+## Stage 5, milestone 2: capture and immutable prefix snapshots
+
+Implemented atomic interleaved audio/MIDI capture blocks, contiguous checked engine-frame tracking, explicit stopped/incomplete status, and snapshots that share sealed full pages and copy only a mutable partial tail. Appends reserve their entire block's storage/copy work before writing. Exhaustion stops capture with its previous complete prefix intact; it cannot silently resume after losing a block. Snapshot cut frames report the actual captured prefix boundary, even when fetching later. Capture-status changes participate in currentness independently of byte revisions.
+
+Verification through `nix develop`:
+
+- Native warning-denying debug/release tests: 77 passed each; Node and Chromium: 73 passed each with the same pinned tools.
+- Warning-denying workspace build, formatting, shared-test policy, and four-target production dependency audit: pass.
+- Seven capture tests cover stereo byte-exact prefix snapshots while the original partial tail fills and new pages append; full-page snapshots copy no page bytes; partial snapshots charge precisely their copied tail bytes.
+- MIDI capture preserves complete note/SysEx packets, relative event frames, and duration through silent trailing blocks. Old snapshots retain their original duration and bytes after later writes.
+- Snapshot refusal due to exhausted copy budget or pages reserved by another upload does not consume a lease or mutate capture. Pool exhaustion preserves a complete prefix and reports its reason, stopped status, length, and cut frame.
+- Tests cover mismatched frame positions/channel shapes, invalid MIDI offsets, copy/validation budget exhaustion, frame overflow, stale capture handles after replacement, and no implicit restart after capacity returns.
+- Thirty-two seeded variable-length capture blocks produce pinned immutable prefixes across repeated tail mutations. Removal and release reclaim every page/version/lease under bounded maintenance work.
+- Native capture, snapshot, error, and reclamation scopes run under the allocation/reallocation/deallocation guard; all page storage remains preallocated.
+
+Still required for stage 5: bounded resource request/result integration, shared executor budgets with reserved processor I/O headroom, and a resource-backed playback/capture fixture running during large background upload/export. Standalone tests do not substitute for those callback integration checks.

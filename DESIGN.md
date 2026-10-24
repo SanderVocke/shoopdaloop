@@ -107,7 +107,9 @@ Scheduling now conservatively reserves one event, possible subrange split, and r
 
 MIDI routing includes reserved 32-message reset space per arena. Overflow resets internal processor inputs as well as external outputs, preventing dropped note-offs from leaving internal voices stuck. Host reset delivery uses an independent preallocated sink with acknowledged, budgeted draining; ordinary output remains suppressed until it finishes. Resets are CC120 followed by CC123 for all channels. Repeated faults do not restart a pending host reset. This conservative recovery policy is separate from musical/session behavior and is explicitly visible in diagnostics.
 
-Resource exchange and browser host fixtures are not finished; they remain required by the plan.
+The resource substrate now uses a single-owner fixed-page store with generation-checked identities, upload reservations, streamed MIDI validation, immutable revision/prefix leases, and incremental reclamation. Audio/MIDI capture appends complete blocks; prefix snapshots share sealed pages and copy only a mutable partial tail. Pool/work exhaustion reports a stopped, incomplete capture instead of overwriting data or resuming after a gap. Native reads use the same bounded-copy semantics as non-shared-memory browser reads rather than requiring a native publication thread.
+
+Resource integration into executor commands/processors and browser host fixtures are not finished; they remain required by the plan. Shared callback budgets must reserve processor I/O headroom so background upload/export cannot consume the work needed for ongoing playback/capture.
 
 ## Initial delivery and exclusions
 
