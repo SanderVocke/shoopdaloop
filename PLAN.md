@@ -99,6 +99,8 @@ Completed: compiler/descriptor validation, guarded execution, stable reusable pr
 
 Depends on stage 3.
 
+Progress: complete-message MIDI validation and a backpressure-safe bounded reset state machine are implemented/tested first, to establish malformed-input and recovery semantics before scheduler integration. Scheduling, reserved recovery output integration, and overflow reporting in the executor remain pending; this stage is not complete.
+
 - [ ] Implement bounded scheduled-operation storage and subrange processing for exact-frame parameters and MIDI, with documented equal-time and late-arrival policies.
 - [ ] Implement bounded MIDI 1.0 byte storage, short messages, SysEx limits, output writers, and stable fan-in ordering. Use checked timestamp arithmetic and explicitly reject unsupported/out-of-range data.
 - [ ] Implement visible event-overflow status and bounded note-release/reset recovery; reserve the required event capacity. Define behavior for future-schedule saturation and a full subrange budget without silently shifting already accepted on-time operations.

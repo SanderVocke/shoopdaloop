@@ -94,3 +94,18 @@ Verification through `nix develop`:
 - Invalid/zero host blocks do not consume pending transactions or advance graph state. All successful and failing executor callbacks above run with allocation/reallocation/deallocation assertions; processor destructors additionally assert they run outside rendering.
 
 Audit: receiver validation is bounded per callback; activation is ownership moves plus epoch update. Active membership checks are indexed. Port routing uses validated logical IDs and disjoint safe slice borrows. MIDI descriptor insertion is bounded by prepared event capacity; it is intentionally simple rather than an optimized merge implementation. Scheduling and MIDI overload recovery remain stage 4 work; no claim of graceful overflow recovery is made yet.
+
+## Stage 4, milestone 1: MIDI validation and reset state (stage incomplete)
+
+Added bounded complete-message MIDI 1.0 parsing, including short/system messages, note-on velocity-zero classification, explicitly limited SysEx, and rejection of undefined statuses, running-status fragments, malformed lengths/data bytes, and interleaved realtime bytes inside a SysEx packet. `MidiBuffer` now validates messages before accepting them; the generic borrowed `EventBuffer` remains format-independent.
+
+Defined and implemented the small `ResetState` protocol: a separate recovery path emits CC120 then CC123 for all 16 channels; a sink acknowledges only successfully admitted packets. Backpressure retains the current packet and repeated reset requests do not restart recovery. Executor-level reservation/refusal/reporting integration and scheduled operations are still pending.
+
+Verification through `nix develop`:
+
+- Warning-denying native debug/release tests: 45 passed each.
+- Node and Chromium package runners: 41 passed each using the previously recorded pinned tools.
+- Warning-denying workspace build, formatting, shared-test policy, and four-target dependency boundary: pass.
+- Five new guarded tests exhaust all 256 status bytes across short packet lengths, cover all channels and zero-velocity notes, SysEx size/framing errors, atomic writer refusal, and reset completion through a one-event/three-byte sink with repeated backpressure.
+
+These tests validate the MIDI primitives, not a completed runtime recovery or scheduling implementation.

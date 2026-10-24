@@ -231,6 +231,10 @@ impl MidiBuffer {
         ))
     }
     pub fn push(&mut self, offset: u32, frames: usize, payload: &[u8]) -> Result<(), Error> {
+        if payload.len() > self.bytes.len() {
+            return Err(Error::Full);
+        }
+        crate::midi::Message::parse(payload, self.bytes.len())?;
         let mut view = EventBuffer {
             events: &mut self.events,
             bytes: &mut self.bytes,
@@ -251,6 +255,7 @@ impl MidiBuffer {
         if self.event_len == self.events.len() || payload.len() > self.bytes.len() - self.byte_len {
             return Err(Error::Full);
         }
+        crate::midi::Message::parse(payload, self.bytes.len())?;
         let index = self.events[..self.event_len].partition_point(|event| event.offset <= offset);
         self.events.copy_within(index..self.event_len, index + 1);
         self.events[index] = Event {

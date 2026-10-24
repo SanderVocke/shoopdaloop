@@ -20,6 +20,7 @@ pub mod error;
 pub mod executor;
 pub mod graph;
 pub mod ids;
+pub mod midi;
 pub mod processor;
 pub mod render;
 pub mod transport;
