@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated configuration, checked IDs/clocks, bounded borrowed event storage, processor preparation/render contracts, an empty-graph render endpoint, a separate bounded ownership transport, and a deterministic DAG compiler with incremental receiver validation. Graph execution and resources are not implemented yet; the transport is not wired into rendering until typed runtime operations exist.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic typed DAG compilation/validation, stable processor slots, and transactional graph execution. Sample-accurate scheduled controls, MIDI overload recovery, resources, and the real worklet fixture remain under development.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -27,6 +27,16 @@ Run `python3 scripts/check_rt_runtime_boundary.py` from the workspace root to au
 `graph::Catalog` records prepared processor IDs and typed port signatures. `compile` lowers a `GraphDescription` into a deterministic immutable `PreparedPlan`, grouping incoming routes before each topologically ordered node and host-output routes last. No feedback graph is accepted. Host endpoints select inputs when used as sources and outputs when used as destinations; node endpoints select outputs as sources and inputs as destinations.
 
 `PreparedPlan::from_descriptor` also envelopes untrusted wire descriptors on the control side. It checks only storage limits, **not execution validity**. `PlanValidator` must certify the plan against the live catalog before activation. Initialize the validator outside rendering, call `begin`, and repeatedly call `advance` with the configured validation budget while keeping the candidate and catalog unchanged. Each step performs constant work and the tests guard all advances against heap operations. Raw descriptors contain no pointers or scratch offsets; validated node/port identities will determine scratch placement inside the executor. Do not execute a merely enveloped plan.
+
+## Graph execution
+
+`executor::GraphRuntime::prepare` accepts prepared processor slots and returns a control endpoint plus the single-owner runtime. Node signatures are captured outside rendering. Slot scratch is allocated and touched during preparation; `Processor::process` receives planar `AudioPorts` plus bounded MIDI input/output buffers. No temporary vectors of slice references are created during processing. `Box<dyn Processor>` is supported, or use a concrete application-defined processor enum.
+
+Submit `executor::Command::commit(expected_epoch, plan)` on the normal lane. Validation progresses under the callback's step budget while the old graph keeps rendering. A valid plan swaps atomically before that callback's samples; its displaced plan returns in the owning completion. Invalid or stale plans remain in their rejected completion for control-side disposal. Host output routing follows the last node in the same callback: no extra signal block and no clipping.
+
+Rewiring does not recreate processors. Remove a processor only after committing a graph that no longer references it; removal returns it for non-RT destruction. Removal advances its generation and the graph epoch. Reinstall a prepared processor with the next-generation ID and identical port counts into that reserved slot. This first implementation reserves slot/port capacity up front rather than performing dynamic buffer allocation during rendering. Structural edits all use the normal lane; recovery-lane structural commands are rejected to avoid reordering hazards.
+
+`GraphRuntime::process` takes a host `AudioBlock` and `MidiBlock`. It validates inputs, stages bounded control work, renders the graph, and publishes Copy diagnostics. Zero-frame calls do not consume control work. Invalid host shapes clear only bounded writable outputs and do not advance the clock. MIDI fan-in currently uses stable timestamp-sorted descriptor insertion with atomic source-capacity refusal; full message validation and overflow recovery are the next milestone.
 
 ## Control ownership transport
 

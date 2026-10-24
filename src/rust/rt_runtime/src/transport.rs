@@ -96,7 +96,7 @@ pub struct Completion<T, R> {
 pub struct Operation<'a, T> {
     pub sequence: Sequence,
     pub lane: Lane,
-    pub request: &'a T,
+    pub request: &'a mut T,
 }
 
 #[derive(Debug)]
@@ -333,10 +333,10 @@ impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
                 }
             }
         }
-        self.current.as_ref().map(|packet| Operation {
+        self.current.as_mut().map(|packet| Operation {
             sequence: packet.sequence,
             lane: packet.lane,
-            request: &packet.request,
+            request: &mut packet.request,
         })
     }
 
@@ -388,6 +388,12 @@ impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
                 Err(Error::Full)
             }
         }
+    }
+
+    /// Update acknowledgement metadata after a transaction activates; this does
+    /// not replenish callback budgets or change the ingress snapshot.
+    pub fn set_epoch(&mut self, epoch: Epoch) {
+        self.epoch = epoch;
     }
 
     pub fn counters(&self) -> WorkCounters {

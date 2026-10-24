@@ -75,4 +75,22 @@ Verification through `nix develop`:
 - Graph tests cover deterministic declaration-order independence, host passthrough and empty DAGs, typed fan-in/out descriptions, duplicate/cyclic/stale/missing identities, capacity/port errors, malformed descriptor spans, and 256 seeded eight-node DAGs.
 - All receiver validation advances run under the heap guard at budgets including one step per callback. Step counts do not depend on the selected batch budget and stay within the linear declared graph-size bound. Production code still forbids unsafe code.
 
-No sample-rendering/reference-interpreter comparison, graph activation, or concurrent rewiring result is claimed for this milestone. Those remain required before stage 3 can be completed.
+No sample-rendering/reference-interpreter comparison, graph activation, or concurrent rewiring result is claimed for this compiler-only milestone. Those are covered by the following executor milestone.
+
+## Stage 3, milestone 2: execution and transactional activation
+
+Implemented `executor::GraphRuntime` with stable preallocated processor slots, checked same-signature generation reuse, per-slot planar scratch and bounded MIDI arenas, normal-lane structural commands, epoch-checked incremental validation, atomic activation, and displaced-plan/processor return through owning completions. Processor scratch views are contiguous and borrowed; no callback builds vectors of references. Prepared audio/MIDI storage is explicitly touched. Structural commands cannot use the recovery lane and removal refuses active references.
+
+Verification through `nix develop`:
+
+- Warning-denying native debug/release tests: 40 passed each (1 unit + 12 core + 9 executor + 7 graph + 11 lifecycle).
+- Node and Chromium package runners: 36 passed each with the pinned tools previously recorded.
+- Warning-denying workspace build, formatting, shared-test usage, and four-target dependency boundary: pass.
+- Sixty-four seeded eight-node graphs match an independent scalar interpreter for four block partitions. Deterministic binary-fraction gains make comparisons exact; separate multichannel/fan-in/out tests cover summation, unclipped values and untouched output suffixes.
+- A stateful counter remains sample-continuous while rewiring incrementally validates, then switches destination only at the activation block boundary. Disconnected outputs remain silent.
+- MIDI merge tests preserve payloads (including SysEx) and order by offset and source, with equal-time events retained.
+- Stale and malformed plans leave the valid graph audible. Two undrained retirement completions exhaust admission credits without freeing in rendering. Rendering continues after control disconnect.
+- Removal of an active node is refused; after disconnecting it, its processor is destroyed only when the control completion is dropped. Stale-generation removal and incompatible-signature reinstall return explicit errors and preserve owning payloads.
+- Invalid/zero host blocks do not consume pending transactions or advance graph state. All successful and failing executor callbacks above run with allocation/reallocation/deallocation assertions; processor destructors additionally assert they run outside rendering.
+
+Audit: receiver validation is bounded per callback; activation is ownership moves plus epoch update. Active membership checks are indexed. Port routing uses validated logical IDs and disjoint safe slice borrows. MIDI descriptor insertion is bounded by prepared event capacity; it is intentionally simple rather than an optimized merge implementation. Scheduling and MIDI overload recovery remain stage 4 work; no claim of graceful overflow recovery is made yet.

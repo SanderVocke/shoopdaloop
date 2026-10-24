@@ -135,6 +135,24 @@ impl Catalog {
             .ok_or(Error::InvalidId)
     }
 
+    pub(crate) fn remove(&mut self, id: NodeId) -> Result<(), Error> {
+        self.node(id)?;
+        self.slots[id.slot() as usize] = None;
+        Ok(())
+    }
+
+    pub(crate) fn install(&mut self, spec: NodeSpec) -> Result<(), Error> {
+        let slot = self
+            .slots
+            .get_mut(spec.id.slot() as usize)
+            .ok_or(Error::InvalidId)?;
+        if slot.is_some() {
+            return Err(Error::InvalidState);
+        }
+        *slot = Some(spec);
+        Ok(())
+    }
+
     fn endpoint(&self, endpoint: Endpoint, source: bool) -> Result<(), Error> {
         let count = if let Some(id) = endpoint.node {
             let ports = self.node(id)?.ports;

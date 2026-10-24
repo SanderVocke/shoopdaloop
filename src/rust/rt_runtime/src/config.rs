@@ -128,6 +128,11 @@ impl Config {
         {
             return Err(Error::InvalidConfig);
         }
+        storage_product(
+            self.max_nodes,
+            1,
+            size_of::<Option<crate::graph::NodeSpec>>(),
+        )?;
         let audio_samples = storage_product(self.max_ports, self.max_frames, size_of::<f32>())?;
         let midi_bytes = storage_product(self.max_ports, self.midi_bytes_per_port, 1)?;
         let resource_bytes = storage_product(self.resource_pages, self.page_bytes, 1)?;

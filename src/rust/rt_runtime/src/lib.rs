@@ -4,9 +4,10 @@
 //! borrowed buffers and must not allocate, free, lock, wait, or perform I/O.
 //! Capacity and work-budget failures are explicit errors, not permission to grow.
 //!
-//! The render endpoint currently validates host blocks and emits silence. A separate
-//! ownership transport provides bounded native control/completion queues. Graph and
-//! resource execution are not yet implemented.
+//! [`executor::GraphRuntime`] executes typed DAGs with stable processor slots and
+//! bounded plan validation/activation. The low-level [`RenderRuntime`] provides
+//! host-block validation and the empty-graph clock. Scheduled controls and resource
+//! exchange are still under development.
 
 #![forbid(unsafe_code)]
 
@@ -16,6 +17,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 pub mod buffer;
 pub mod config;
 pub mod error;
+pub mod executor;
 pub mod graph;
 pub mod ids;
 pub mod processor;

@@ -16,6 +16,7 @@ pub enum Error {
     Cycle,
     PortType,
     StaleEpoch,
+    Busy,
 }
 
 impl std::fmt::Display for Error {
@@ -35,6 +36,7 @@ impl std::fmt::Display for Error {
             Self::Cycle => "graph contains a cycle",
             Self::PortType => "incompatible port types",
             Self::StaleEpoch => "graph epoch no longer matches",
+            Self::Busy => "object is still referenced by the active graph",
         })
     }
 }

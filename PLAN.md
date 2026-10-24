@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stages 0–2 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–3 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -87,13 +87,13 @@ Depends on stage 1; provides the foundation used by graph and resource transacti
 
 Depends on stages 1–2.
 
-Progress: compiler/descriptor-validator milestone implemented and tested; graph execution, processor slots, and transactional activation are still pending. See `docs/rt_runtime/VALIDATION.md`.
+Completed: compiler/descriptor validation, guarded execution, stable reusable processor slots, and transactional activation. Evidence: `docs/rt_runtime/VALIDATION.md`.
 
-- [ ] Implement typed DAG construction, deterministic topological compilation, checked routing/scratch layouts, generational processor slots, and a relocatable plan descriptor.
-- [ ] Supply minimal source/gain/mix/MIDI-pass and stateful reference processors for tests/examples. Separate processor preparation from execution; do not add a domain processor catalog to the core.
-- [ ] Implement bounded plan staging/validation and epoch-checked activation. Keep the active plan unchanged until validation completes. Preserve retained processor state; retire displaced plans and removed nodes only when safe.
-- [ ] Implement planar audio routing, deterministic summation and MIDI merge, variable block processing, and silence for disconnected outputs. Reject cycles and aliasing/range errors rather than relying on compiler trust.
-- [ ] Verify: reference-interpreter comparisons for generated small DAGs; fan-in/out, multichannel, retained state, malformed descriptors, stale concurrent preparations, capacity limits, and invalid block shapes. Render continuously during staged rewiring and full retirement queues under RT guards. Commit.
+- [x] Implement typed DAG construction, deterministic topological compilation, checked routing/scratch layouts, generational processor slots, and a relocatable plan descriptor.
+- [x] Supply minimal source/gain/mix/MIDI-pass and stateful reference processors for tests/examples. Separate processor preparation from execution; do not add a domain processor catalog to the core.
+- [x] Implement bounded plan staging/validation and epoch-checked activation. Keep the active plan unchanged until validation completes. Preserve retained processor state; retire displaced plans and removed nodes only when safe.
+- [x] Implement planar audio routing, deterministic summation and MIDI merge, variable block processing, and silence for disconnected outputs. Reject cycles and aliasing/range errors rather than relying on compiler trust.
+- [x] Verify: reference-interpreter comparisons for generated small DAGs; fan-in/out, multichannel, retained state, malformed descriptors, stale concurrent preparations, capacity limits, and invalid block shapes. Render continuously during staged rewiring and full retirement queues under RT guards. Commit.
 
 ### 4. Sample-accurate operations and MIDI overload behavior
 

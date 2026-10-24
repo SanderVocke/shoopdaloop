@@ -294,21 +294,22 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
         }
     }
     impl Processor for Gain {
-        fn process(&mut self, block: &mut ProcessBlock<'_, '_, '_>) -> Result<(), Error> {
-            for (input, output) in block
-                .audio
-                .inputs
-                .iter()
-                .zip(block.audio.outputs.iter_mut())
-            {
-                for (source, target) in input.iter().zip(output.iter_mut()).take(block.audio.frames)
-                {
-                    *target = *source * self.0;
-                }
+        fn ports(&self) -> rt_runtime::graph::PortCounts {
+            rt_runtime::graph::PortCounts {
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_inputs: 1,
+                midi_outputs: 1,
             }
-            for index in 0..block.midi_input.len() {
-                let (offset, bytes) = block.midi_input.get(index).ok_or(Error::InvalidEvent)?;
-                block.midi_output.push(offset, block.audio.frames, bytes)?;
+        }
+        fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
+            let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
+            for (source, target) in input.iter().zip(output) {
+                *target = *source * self.0;
+            }
+            for index in 0..block.midi_inputs[0].len() {
+                let (offset, bytes) = block.midi_inputs[0].get(index).ok_or(Error::InvalidEvent)?;
+                block.midi_outputs[0].push(offset, block.frames, bytes)?;
             }
             Ok(())
         }
@@ -318,28 +319,21 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
         .unwrap();
     let input = [1.0, -2.0, 3.0, -4.0];
     let mut output = [0.0; 4];
-    let mut in_events = [Event::default(); 1];
-    let mut in_bytes = [0u8; 3];
-    let mut out_events = [Event::default(); 1];
-    let mut out_bytes = [0u8; 3];
-    let mut midi_in = EventBuffer::new(&mut in_events, &mut in_bytes).unwrap();
-    let mut midi_out = EventBuffer::new(&mut out_events, &mut out_bytes).unwrap();
-    midi_in.push(2, 4, &[0x90, 60, 100]).unwrap();
+    let mut midi_in = [rt_runtime::buffer::MidiBuffer::new(1, 3).unwrap()];
+    let mut midi_out = [rt_runtime::buffer::MidiBuffer::new(1, 3).unwrap()];
+    midi_in[0].push(2, 4, &[0x90, 60, 100]).unwrap();
     assert_no_heap(|| {
         processor.process(&mut ProcessBlock {
-            audio: AudioBlock {
-                frame: Frame(0),
-                frames: 4,
-                inputs: &[&input],
-                outputs: &mut [&mut output],
-            },
-            midi_input: &midi_in,
-            midi_output: &mut midi_out,
+            frame: Frame(0),
+            frames: 4,
+            audio: rt_runtime::buffer::AudioPorts::new(&input, &mut output, 4, 0, 4).unwrap(),
+            midi_inputs: &midi_in,
+            midi_outputs: &mut midi_out,
         })
     })
     .unwrap();
     assert_eq!(output, [0.5, -1.0, 1.5, -2.0]);
-    assert_eq!(midi_out.get(0), Some((2, &[0x90, 60, 100][..])));
+    assert_eq!(midi_out[0].get(0), Some((2, &[0x90, 60, 100][..])));
 }
 
 #[shoop_test]

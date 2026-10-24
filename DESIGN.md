@@ -97,6 +97,14 @@ The baseline browser fixture uses a separate Wasm instance in an actual AudioWor
 
 Rust allocation-free processing does not make browser scheduling, structured cloning, or JavaScript GC hard-real-time. Recycle transferable buffers, limit in-flight messages, prohibit Wasm memory growth after startup, and measure actual worklet behavior. Keep these host limitations explicit rather than disguising them behind a thread abstraction.
 
+## Implementation decisions established through stage 3
+
+The executor now uses fixed processor slots with per-slot planar scratch and bounded MIDI arenas, rather than dynamically constructing port-reference vectors in callbacks. Preparation captures signatures and touches audio/MIDI storage. Graph plans contain only logical typed endpoints and execution ordering; the receiving validator checks every range, generation, dependency, and port type incrementally before activation. Rewiring retains slot state. Removing an unreferenced processor returns ownership to control and advances its generation; reinstalling requires the same prepared port signature. Increasing the slot/port capacity still requires stopping and preparing again.
+
+Native ownership transport uses `rtrb` and reserves return capacity until control receives each completion. A commit retains its dispatch slot only for finite, budgeted validation of an already complete descriptor; it must not wait there for further upload commands. Structural changes share one normal FIFO lane. The independent recovery lane is reserved for future release/reset operations; structural commands on it are rejected. Terminal and optional telemetry publication budgets are separate so telemetry cannot consume the terminal budget.
+
+These are implemented foundations, not a claim that resource exchange, timed scheduling, or browser host fixtures are finished. Those remain required by the plan.
+
 ## Initial delivery and exclusions
 
 Deliver the crate, documentation, deterministic/offline and two-thread native fixtures, a minimal real AudioWorklet fixture, small reference processors, contract tests, adversarial tests, and reproducible benchmarks. The fixtures prove the API without modifying Shoop's backend, protocol, application, or production JavaScript hosts.
