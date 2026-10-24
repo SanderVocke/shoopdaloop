@@ -53,6 +53,10 @@ pub enum Lane {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
     Applied,
+    Scheduled {
+        effective_frame: Frame,
+        late_by: u64,
+    },
     Rejected(Error),
     Cancelled,
 }

@@ -97,13 +97,17 @@ The baseline browser fixture uses a separate Wasm instance in an actual AudioWor
 
 Rust allocation-free processing does not make browser scheduling, structured cloning, or JavaScript GC hard-real-time. Recycle transferable buffers, limit in-flight messages, prohibit Wasm memory growth after startup, and measure actual worklet behavior. Keep these host limitations explicit rather than disguising them behind a thread abstraction.
 
-## Implementation decisions established through stage 3
+## Implementation decisions established through stage 4
 
 The executor now uses fixed processor slots with per-slot planar scratch and bounded MIDI arenas, rather than dynamically constructing port-reference vectors in callbacks. Preparation captures signatures and touches audio/MIDI storage. Graph plans contain only logical typed endpoints and execution ordering; the receiving validator checks every range, generation, dependency, and port type incrementally before activation. Rewiring retains slot state. Removing an unreferenced processor returns ownership to control and advances its generation; reinstalling requires the same prepared port signature. Increasing the slot/port capacity still requires stopping and preparing again.
 
-Native ownership transport uses `rtrb` and reserves return capacity until control receives each completion. A commit retains its dispatch slot only for finite, budgeted validation of an already complete descriptor; it must not wait there for further upload commands. Structural changes share one normal FIFO lane. The independent recovery lane is reserved for future release/reset operations; structural commands on it are rejected. Terminal and optional telemetry publication budgets are separate so telemetry cannot consume the terminal budget.
+Native ownership transport uses `rtrb` and reserves return capacity until control receives each completion. A commit retains its dispatch slot only for finite, budgeted validation of an already complete descriptor; it must not wait there for further upload commands. Structural changes share one normal FIFO lane. The independent recovery lane admits MIDI reset operations and is reserved for bounded release/recovery work; structural commands on it are rejected. Terminal and optional telemetry publication budgets are separate so telemetry cannot consume the terminal budget.
 
-These are implemented foundations, not a claim that resource exchange, timed scheduling, or browser host fixtures are finished. Those remain required by the plan.
+Scheduling now conservatively reserves one event, possible subrange split, and reliable execution-result slot for every outstanding operation. Capacity is the minimum of configured scheduled events, callback event budget, and subrange budget minus one. This deliberately limits far-future occupancy instead of guessing future host block boundaries. Admission and execution have distinct results; unread execution results retain credits. Exact-frame parameter/MIDI processing rebases events across subranges, and late delivery is explicitly reported. These reservations guarantee the limits under variable blocks without silently deferring accepted events.
+
+MIDI routing includes reserved 32-message reset space per arena. Overflow resets internal processor inputs as well as external outputs, preventing dropped note-offs from leaving internal voices stuck. Host reset delivery uses an independent preallocated sink with acknowledged, budgeted draining; ordinary output remains suppressed until it finishes. Resets are CC120 followed by CC123 for all channels. Repeated faults do not restart a pending host reset. This conservative recovery policy is separate from musical/session behavior and is explicitly visible in diagnostics.
+
+Resource exchange and browser host fixtures are not finished; they remain required by the plan.
 
 ## Initial delivery and exclusions
 

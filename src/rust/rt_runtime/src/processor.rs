@@ -26,9 +26,16 @@ pub trait Processor: Send {
     /// Queried during preparation, never by the render callback.
     fn ports(&self) -> PortCounts;
     fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error>;
+    /// Apply a bounded parameter mutation immediately before its target sample.
+    fn set_parameter(&mut self, _parameter: u32, _value: f32) -> Result<(), Error> {
+        Err(Error::InvalidParameter)
+    }
 }
 
 impl<P: Processor + ?Sized> Processor for Box<P> {
+    fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+        (**self).set_parameter(parameter, value)
+    }
     fn ports(&self) -> PortCounts {
         (**self).ports()
     }

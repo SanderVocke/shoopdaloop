@@ -6,8 +6,8 @@
 //!
 //! [`executor::GraphRuntime`] executes typed DAGs with stable processor slots and
 //! bounded plan validation/activation. The low-level [`RenderRuntime`] provides
-//! host-block validation and the empty-graph clock. Scheduled controls and resource
-//! exchange are still under development.
+//! host-block validation and the empty-graph clock. Scheduling uses explicit event,
+//! split and execution-result credits. Resource exchange is still under development.
 
 #![forbid(unsafe_code)]
 
@@ -23,6 +23,7 @@ pub mod ids;
 pub mod midi;
 pub mod processor;
 pub mod render;
+pub mod schedule;
 pub mod transport;
 
 pub use config::{Budgets, Config, PreparedConfig};

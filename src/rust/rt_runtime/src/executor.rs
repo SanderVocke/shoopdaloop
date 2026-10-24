@@ -5,7 +5,9 @@ use crate::graph::{
     Catalog, Connection, Endpoint, NodeSpec, PlanValidator, PortCounts, PortType, PreparedPlan,
     ValidationStatus,
 };
+use crate::midi::ResetState;
 use crate::processor::{ProcessBlock, Processor};
+use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
 use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence};
 
@@ -43,6 +45,12 @@ pub enum Command<P> {
     Install {
         prepared: Option<PreparedNode<P>>,
     },
+    Schedule {
+        at: Frame,
+        action: Action,
+        payload: Box<[u8]>,
+    },
+    ResetMidi,
 }
 impl<P> Command<P> {
     pub fn commit(expected_epoch: Epoch, plan: PreparedPlan) -> Self {
@@ -66,9 +74,40 @@ pub struct Diagnostics {
     pub nodes_processed: usize,
     pub connections_processed: usize,
     pub render_error: Option<Error>,
+    pub scheduled_events: usize,
+    pub subranges: usize,
+    pub transfer_bytes: usize,
+    pub midi_overflows: usize,
 }
 
-pub type Control<P> = ControlEndpoint<Command<P>, Retired<P>, Diagnostics>;
+pub struct Control<P> {
+    transport: ControlEndpoint<Command<P>, Retired<P>, Diagnostics>,
+    executions: schedule::Results,
+}
+impl<P> Control<P> {
+    pub fn submit(
+        &mut self,
+        lane: Lane,
+        request: Command<P>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P>>> {
+        self.transport.submit(lane, request)
+    }
+    pub fn try_completion(&mut self) -> Option<transport::Completion<Command<P>, Retired<P>>> {
+        self.transport.try_completion()
+    }
+    pub fn try_execution(&mut self) -> Option<Execution> {
+        self.executions.try_execution()
+    }
+    pub fn try_telemetry(&mut self) -> Option<Diagnostics> {
+        self.transport.try_telemetry()
+    }
+    pub fn outstanding(&self) -> usize {
+        self.transport.outstanding()
+    }
+    pub fn connected(&self) -> bool {
+        self.transport.connected()
+    }
+}
 type Ingress<P> = RenderEndpoint<Command<P>, Retired<P>, Diagnostics>;
 
 struct Buffers {
@@ -76,6 +115,7 @@ struct Buffers {
     output: Box<[f32]>,
     midi_input: Vec<MidiBuffer>,
     midi_output: Vec<MidiBuffer>,
+    injected: Vec<MidiBuffer>,
 }
 impl Buffers {
     fn new(config: PreparedConfig, ports: PortCounts) -> Result<Self, Error> {
@@ -90,18 +130,19 @@ impl Buffers {
             output: vec![0.0; ports.audio_outputs * limits.max_frames].into_boxed_slice(),
             midi_input: midi(ports.midi_inputs)?,
             midi_output: midi(ports.midi_outputs)?,
+            injected: midi(ports.midi_inputs)?,
         };
         for sample in buffers.input.iter_mut().chain(&mut buffers.output) {
             *std::hint::black_box(sample) = 0.0;
         }
         Ok(buffers)
     }
-    fn clear(&mut self, stride: usize, frames: usize) {
+    fn clear(&mut self, stride: usize, start: usize, frames: usize) {
         for channel in self.input.chunks_exact_mut(stride) {
-            channel[..frames].fill(0.0);
+            channel[start..start + frames].fill(0.0);
         }
         for channel in self.output.chunks_exact_mut(stride) {
-            channel[..frames].fill(0.0);
+            channel[start..start + frames].fill(0.0);
         }
         for port in self.midi_input.iter_mut().chain(&mut self.midi_output) {
             port.clear();
@@ -127,6 +168,9 @@ pub struct GraphRuntime<P> {
     diagnostics: Diagnostics,
     emergency: Option<Retired<P>>,
     ingress_fault: bool,
+    scheduler: Scheduler,
+    recovery: Vec<ResetState>,
+    recovery_remaining: Vec<usize>,
 }
 
 impl<P: Processor> GraphRuntime<P> {
@@ -165,8 +209,12 @@ impl<P: Processor> GraphRuntime<P> {
             recovery_per_cycle: 1,
             publications_per_cycle: limits.budgets.publications,
         })?;
+        let (executions, scheduler) = schedule::scheduler(config)?;
         Ok((
-            control,
+            Control {
+                transport: control,
+                executions,
+            },
             Self {
                 clock: RenderRuntime::new(config),
                 catalog,
@@ -179,6 +227,9 @@ impl<P: Processor> GraphRuntime<P> {
                 diagnostics: Diagnostics::default(),
                 emergency: None,
                 ingress_fault: false,
+                scheduler,
+                recovery: vec![ResetState::default(); limits.midi_outputs],
+                recovery_remaining: vec![0; limits.midi_outputs],
             },
         ))
     }
@@ -239,16 +290,33 @@ impl<P: Processor> GraphRuntime<P> {
             epoch: self.epoch,
             ..Diagnostics::default()
         };
+        self.recovery_remaining.fill(limits.budgets.events);
+        self.scheduler.begin_callback();
         self.ingress.begin_cycle(frame, self.epoch);
         self.apply_commands();
         self.diagnostics.epoch = self.epoch;
-        let result = self.run_graph(&mut audio, &mut midi);
+        let result = self.run_scheduled(&mut audio, &mut midi);
         if let Err(error) = result {
             audio.clear_bounded(limits.audio_outputs, frames);
             for port in midi.outputs.iter_mut() {
                 port.clear();
             }
+            for slot in self.slots.iter_mut().flatten() {
+                for input in &mut slot.buffers.injected {
+                    input.clear();
+                }
+            }
             self.diagnostics.render_error = Some(error);
+        }
+        if self.diagnostics.midi_overflows > 0 {
+            for recovery in &mut self.recovery {
+                recovery.request();
+            }
+        }
+        for (output, recovery) in midi.outputs.iter_mut().zip(&self.recovery) {
+            if recovery.pending() {
+                output.clear();
+            }
         }
         let _ = self.ingress.publish(self.diagnostics);
         result
@@ -260,12 +328,60 @@ impl<P: Processor> GraphRuntime<P> {
         }
         let limits = self.clock.config().limits();
         let mut remaining = limits.budgets.validation_steps;
+        let mut copy_budget = limits.budgets.transfer_bytes;
         for _ in 0..limits.budgets.commands {
             let Some(operation) = self.ingress.next_operation() else {
                 break;
             };
             let mut retired = None;
+            let mut admitted = None;
             let result = match operation.request {
+                Command::ResetMidi => {
+                    for reset in &mut self.recovery {
+                        reset.request();
+                    }
+                    Ok(())
+                }
+                Command::Schedule {
+                    at,
+                    action,
+                    payload,
+                } => {
+                    if operation.lane != Lane::Normal {
+                        Err(Error::InvalidState)
+                    } else if payload.len() > self.scheduler.payload_limit() {
+                        Err(Error::Capacity)
+                    } else if payload.len() > copy_budget {
+                        break;
+                    } else {
+                        let target =
+                            self.catalog
+                                .node(action.node())
+                                .and_then(|spec| match action {
+                                    Action::Midi { port, .. }
+                                        if *port as usize >= spec.ports.midi_inputs =>
+                                    {
+                                        Err(Error::InvalidGraph)
+                                    }
+                                    _ => Ok(()),
+                                });
+                        target
+                            .and_then(|()| {
+                                self.scheduler.admit(
+                                    operation.sequence,
+                                    *at,
+                                    self.diagnostics.frame,
+                                    *action,
+                                    payload,
+                                )
+                            })
+                            .map(|admission| {
+                                copy_budget -= payload.len();
+                                self.diagnostics.transfer_bytes += payload.len();
+                                admitted = Some(admission);
+                            })
+                    }
+                }
                 Command::Commit {
                     expected_epoch,
                     plan,
@@ -333,7 +449,10 @@ impl<P: Processor> GraphRuntime<P> {
             self.validating = None;
             self.ingress.set_epoch(self.epoch);
             let outcome = match result {
-                Ok(()) => Outcome::Applied,
+                Ok(()) => admitted.map_or(Outcome::Applied, |admission| Outcome::Scheduled {
+                    effective_frame: admission.effective_frame,
+                    late_by: admission.late_by,
+                }),
                 Err(error) => Outcome::Rejected(error),
             };
             // next_operation reserves a completion budget before lending a request.
@@ -354,46 +473,181 @@ impl<P: Processor> GraphRuntime<P> {
         self.emergency = retired;
     }
 
-    fn run_graph(
+    pub fn midi_recovery_pending(&self, port: usize) -> Result<bool, Error> {
+        self.recovery
+            .get(port)
+            .map(ResetState::pending)
+            .ok_or(Error::InvalidId)
+    }
+
+    /// Host recovery sink, separate from ordinary MIDI output. Reserve sink space
+    /// for resets and call at most once per output per callback. Full sinks retain
+    /// the exact next reset packet; ordinary output stays suppressed meanwhile.
+    pub fn drain_midi_recovery(
+        &mut self,
+        port: usize,
+        sink: &mut MidiBuffer,
+        frames: usize,
+    ) -> Result<usize, Error> {
+        let limits = self.clock.config().limits();
+        if frames == 0 || frames > limits.max_frames {
+            return Err(Error::InvalidShape);
+        }
+        let reset = self.recovery.get_mut(port).ok_or(Error::InvalidId)?;
+        let remaining = self
+            .recovery_remaining
+            .get_mut(port)
+            .ok_or(Error::InvalidId)?;
+        let mut emitted = 0;
+        for _ in 0..*remaining {
+            let Some(packet) = reset.peek() else {
+                break;
+            };
+            *remaining -= 1;
+            match sink.push(0, frames, &packet) {
+                Ok(()) => {
+                    reset.acknowledge()?;
+                    emitted += 1;
+                }
+                Err(Error::Full) => break,
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(emitted)
+    }
+
+    fn run_scheduled(
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
+    ) -> Result<(), Error> {
+        let limits = self.clock.config().limits();
+        let mut start = 0;
+        for _ in 0..limits.budgets.subranges {
+            if start == audio.frames {
+                return Ok(());
+            }
+            let at = audio.frame.checked_add(start)?;
+            for _ in 0..limits.budgets.events {
+                let Some(event) = self.scheduler.due(at) else {
+                    break;
+                };
+                let sequence = event.sequence;
+                let node = event.action.node();
+                let result = self
+                    .slots
+                    .get_mut(node.slot() as usize)
+                    .and_then(Option::as_mut)
+                    .filter(|slot| slot.id == node && slot.processor.is_some())
+                    .ok_or(Error::InvalidId)
+                    .and_then(|slot| match event.action {
+                        Action::Parameter {
+                            parameter, value, ..
+                        } => slot
+                            .processor
+                            .as_mut()
+                            .ok_or(Error::InvalidId)?
+                            .set_parameter(parameter, value),
+                        Action::Midi { port, .. } => {
+                            if !self.active.as_ref().is_some_and(|plan| plan.contains(node)) {
+                                return Err(Error::InvalidId);
+                            }
+                            let input = slot
+                                .buffers
+                                .injected
+                                .get_mut(port as usize)
+                                .ok_or(Error::InvalidGraph)?;
+                            let result = input.push(0, 1, event.payload);
+                            if result == Err(Error::Full) {
+                                input.force_reset(0);
+                            }
+                            result
+                        }
+                    });
+                if result == Err(Error::Full) {
+                    self.diagnostics.midi_overflows += 1;
+                }
+                self.scheduler.finish(sequence, at, result)?;
+                self.diagnostics.scheduled_events += 1;
+            }
+            let end = self.scheduler.next_frame().map_or(audio.frames, |frame| {
+                frame
+                    .0
+                    .saturating_sub(audio.frame.0)
+                    .min(audio.frames as u64) as usize
+            });
+            if end <= start {
+                return Err(Error::InvalidState);
+            }
+            self.run_graph_range(audio, midi, start, end - start)?;
+            self.diagnostics.subranges += 1;
+            start = end;
+        }
+        if start == audio.frames {
+            Ok(())
+        } else {
+            Err(Error::Capacity)
+        }
+    }
+
+    fn run_graph_range(
+        &mut self,
+        audio: &mut AudioBlock<'_, '_>,
+        midi: &mut MidiBlock<'_>,
+        start: usize,
+        frames: usize,
     ) -> Result<(), Error> {
         let Some(plan) = &self.active else {
             return Ok(());
         };
         let stride = self.clock.config().limits().max_frames;
-        let frames = audio.frames;
         let mut first_edge = 0;
         for step in &plan.descriptor().steps {
             let slot = self.slots[step.node.slot() as usize]
                 .as_mut()
                 .ok_or(Error::InvalidId)?;
-            slot.buffers.clear(stride, frames);
+            slot.buffers.clear(stride, start, frames);
             for edge in &plan.descriptor().connections[first_edge..step.input_end] {
-                route(&mut self.slots, *edge, audio, midi, stride)?;
+                record_midi_overflow(
+                    route(&mut self.slots, *edge, audio, midi, stride, start, frames),
+                    &mut self.diagnostics,
+                )?;
                 self.diagnostics.connections_processed += 1;
             }
             let slot = self.slots[step.node.slot() as usize]
                 .as_mut()
                 .ok_or(Error::InvalidId)?;
             let buffers = &mut slot.buffers;
+            for (input, injected) in buffers.midi_input.iter_mut().zip(&mut buffers.injected) {
+                record_midi_overflow(input.merge(injected, frames), &mut self.diagnostics)?;
+                injected.clear();
+            }
             let mut block = ProcessBlock {
-                frame: audio.frame,
+                frame: audio.frame.checked_add(start)?,
                 frames,
-                audio: AudioPorts::new(&buffers.input, &mut buffers.output, stride, 0, frames)?,
+                audio: AudioPorts::new(&buffers.input, &mut buffers.output, stride, start, frames)?,
                 midi_inputs: &buffers.midi_input,
                 midi_outputs: &mut buffers.midi_output,
             };
-            slot.processor
+            let result = slot
+                .processor
                 .as_mut()
                 .ok_or(Error::InvalidId)?
-                .process(&mut block)?;
+                .process(&mut block);
+            if result == Err(Error::Full) {
+                for output in &mut buffers.midi_output {
+                    output.force_reset(0);
+                }
+            }
+            record_midi_overflow(result, &mut self.diagnostics)?;
             self.diagnostics.nodes_processed += 1;
             first_edge = step.input_end;
         }
         for edge in &plan.descriptor().connections[first_edge..] {
-            route(&mut self.slots, *edge, audio, midi, stride)?;
+            record_midi_overflow(
+                route(&mut self.slots, *edge, audio, midi, stride, start, frames),
+                &mut self.diagnostics,
+            )?;
             self.diagnostics.connections_processed += 1;
         }
         Ok(())
@@ -456,6 +710,8 @@ fn route<P>(
     audio: &mut AudioBlock<'_, '_>,
     midi: &mut MidiBlock<'_>,
     stride: usize,
+    start: usize,
+    frames: usize,
 ) -> Result<(), Error> {
     match (edge.source.node, edge.destination.node) {
         (Some(source), Some(target)) => {
@@ -475,11 +731,11 @@ fn route<P>(
             let target = &mut target.ok_or(Error::InvalidId)?.buffers;
             match edge.source.kind {
                 PortType::Audio => mix(
-                    channel(&source.output, edge.source, stride, audio.frames),
-                    channel_mut(&mut target.input, edge.destination, stride, audio.frames),
+                    channel(&source.output, edge.source, stride, start, frames),
+                    channel_mut(&mut target.input, edge.destination, stride, start, frames),
                 ),
                 PortType::Midi => target.midi_input[edge.destination.port as usize]
-                    .merge(&source.midi_output[edge.source.port as usize], audio.frames)?,
+                    .merge(&source.midi_output[edge.source.port as usize], frames)?,
             }
         }
         (None, Some(target)) => {
@@ -489,11 +745,16 @@ fn route<P>(
                 .buffers;
             match edge.source.kind {
                 PortType::Audio => mix(
-                    &audio.inputs[edge.source.port as usize][..audio.frames],
-                    channel_mut(&mut target.input, edge.destination, stride, audio.frames),
+                    &audio.inputs[edge.source.port as usize][start..start + frames],
+                    channel_mut(&mut target.input, edge.destination, stride, start, frames),
                 ),
-                PortType::Midi => target.midi_input[edge.destination.port as usize]
-                    .merge(&midi.inputs[edge.source.port as usize], audio.frames)?,
+                PortType::Midi => target.midi_input[edge.destination.port as usize].merge_window(
+                    &midi.inputs[edge.source.port as usize],
+                    start,
+                    frames,
+                    0,
+                    frames,
+                )?,
             }
         }
         (Some(source), None) => {
@@ -503,31 +764,58 @@ fn route<P>(
                 .buffers;
             match edge.source.kind {
                 PortType::Audio => mix(
-                    channel(&source.output, edge.source, stride, audio.frames),
-                    &mut audio.outputs[edge.destination.port as usize][..audio.frames],
+                    channel(&source.output, edge.source, stride, start, frames),
+                    &mut audio.outputs[edge.destination.port as usize][start..start + frames],
                 ),
-                PortType::Midi => midi.outputs[edge.destination.port as usize]
-                    .merge(&source.midi_output[edge.source.port as usize], audio.frames)?,
+                PortType::Midi => midi.outputs[edge.destination.port as usize].merge_window(
+                    &source.midi_output[edge.source.port as usize],
+                    0,
+                    frames,
+                    start,
+                    audio.frames,
+                )?,
             }
         }
         (None, None) => match edge.source.kind {
             PortType::Audio => mix(
-                &audio.inputs[edge.source.port as usize][..audio.frames],
-                &mut audio.outputs[edge.destination.port as usize][..audio.frames],
+                &audio.inputs[edge.source.port as usize][start..start + frames],
+                &mut audio.outputs[edge.destination.port as usize][start..start + frames],
             ),
-            PortType::Midi => midi.outputs[edge.destination.port as usize]
-                .merge(&midi.inputs[edge.source.port as usize], audio.frames)?,
+            PortType::Midi => midi.outputs[edge.destination.port as usize].merge_window(
+                &midi.inputs[edge.source.port as usize],
+                start,
+                frames,
+                start,
+                audio.frames,
+            )?,
         },
     }
     Ok(())
 }
-fn channel(data: &[f32], endpoint: Endpoint, stride: usize, frames: usize) -> &[f32] {
-    let first = endpoint.port as usize * stride;
+fn channel(data: &[f32], endpoint: Endpoint, stride: usize, start: usize, frames: usize) -> &[f32] {
+    let first = endpoint.port as usize * stride + start;
     &data[first..first + frames]
 }
-fn channel_mut(data: &mut [f32], endpoint: Endpoint, stride: usize, frames: usize) -> &mut [f32] {
-    let first = endpoint.port as usize * stride;
+fn channel_mut(
+    data: &mut [f32],
+    endpoint: Endpoint,
+    stride: usize,
+    start: usize,
+    frames: usize,
+) -> &mut [f32] {
+    let first = endpoint.port as usize * stride + start;
     &mut data[first..first + frames]
+}
+fn record_midi_overflow(
+    result: Result<(), Error>,
+    diagnostics: &mut Diagnostics,
+) -> Result<(), Error> {
+    if result == Err(Error::Full) {
+        diagnostics.midi_overflows += 1;
+        Ok(())
+    } else {
+        result
+    }
 }
 fn mix(source: &[f32], target: &mut [f32]) {
     for (source, target) in source.iter().zip(target) {

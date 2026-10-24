@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic typed DAG compilation/validation, stable processor slots, and transactional graph execution. Sample-accurate scheduled controls, MIDI overload recovery, resources, and the real worklet fixture remain under development.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resources and the real worklet fixture remain under development.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -36,7 +36,19 @@ Submit `executor::Command::commit(expected_epoch, plan)` on the normal lane. Val
 
 Rewiring does not recreate processors. Remove a processor only after committing a graph that no longer references it; removal returns it for non-RT destruction. Removal advances its generation and the graph epoch. Reinstall a prepared processor with the next-generation ID and identical port counts into that reserved slot. This first implementation reserves slot/port capacity up front rather than performing dynamic buffer allocation during rendering. Structural edits all use the normal lane; recovery-lane structural commands are rejected to avoid reordering hazards.
 
-`GraphRuntime::process` takes a host `AudioBlock` and `MidiBlock`. It validates inputs, stages bounded control work, renders the graph, and publishes Copy diagnostics. Zero-frame calls do not consume control work. Invalid host shapes clear only bounded writable outputs and do not advance the clock. MIDI fan-in uses stable timestamp-sorted descriptor insertion with atomic source-capacity refusal. `MidiBuffer` accepts complete validated MIDI 1.0 packets, including bounded SysEx; hosts must resolve running status and separate interleaved realtime bytes first. The bounded `midi::ResetState` primitive is available, but reserved recovery output integration and runtime overflow reporting are not finished.
+`GraphRuntime::process` takes a host `AudioBlock` and `MidiBlock`. It validates inputs, stages bounded control work, renders the graph, and publishes Copy diagnostics. Zero-frame calls do not consume control work. Invalid host shapes clear only bounded writable outputs and do not advance the clock. MIDI fan-in uses stable timestamp-sorted descriptor insertion. `MidiBuffer` accepts complete validated MIDI 1.0 packets, including bounded SysEx; hosts must resolve running status and separate interleaved realtime bytes first. Ordinary writer refusal is atomic. Routing overflow replaces the affected input with reserved reset packets rather than allowing a partially routed note stream to strand internal voices; downstream reset propagation is explicit in diagnostics.
+
+## Scheduling and MIDI recovery
+
+Submit `Command::Schedule { at, action, payload }` on the normal lane using absolute sample frames. Parameter actions call the processor's bounded `set_parameter`; MIDI actions inject a validated packet into a node input. `Outcome::Scheduled` is **admission**, including effective frame and lateness, not application success. Poll `Control::try_execution` for the separate reliable execution result; reading it returns the scheduler's slot credit at the next callback. A target removed before execution produces an explicit failure rather than addressing its replacement.
+
+Initial admission is deliberately conservative: outstanding event/result credits are capped by `min(scheduled_events, budgets.events, budgets.subranges - 1)`. Every accepted event reserves a possible split even when several share a timestamp, guaranteeing bounds for arbitrary variable block partitions. A full far-future schedule or undrained execution results refuse new admission. No accepted event is silently shifted to fit a later callback. Late arrivals apply at the next available frame with lateness reported. Parameter values must be finite; unsupported parameters return execution errors.
+
+MIDI payload staging shares the callback transfer-byte budget. A queued message waiting for copy budget is not yet admitted. Scheduled events are ordered by absolute frame, node, parameter/MIDI kind, parameter or port, and sequence. Graph-routed MIDI sources retain canonical source order, with scheduled local injections after those sources at equal timestamps. Rendering splits at scheduled frames; MIDI offsets are rebased into each processor subrange and back to the host block.
+
+Each MIDI arena includes reserved space for 32 reset messages/96 bytes beyond its ordinary capacity. On internal route overflow, the processor receives CC120 then CC123 on all 16 channels through this reserved space. Ordinary events cannot overwrite it. On output/propagated overflow, the runtime suppresses ordinary host MIDI and holds an independent reset state per output; audio processing continues. Processors must handle reset messages and continue their audio work even when an ordinary MIDI writer refuses output.
+
+The host **must service** `drain_midi_recovery(port, reserved_sink, frames)` before delivering ordinary MIDI for that output. Use a separately reserved, preallocated sink and consume accepted reset messages; full sinks leave recovery pending. Repeated calls share a per-port per-callback `budgets.events` attempt limit. Repeated overflow does not restart an unfinished reset, and normal output resumes only after recovery drains. Internal reset work is separately bounded by 32 messages per affected port; ordinary per-port capacities and graph-size bounds still apply. `Command::ResetMidi` can use reserved recovery-lane admission when normal control is full.
 
 ## Control ownership transport
 

@@ -182,22 +182,34 @@ pub struct MidiBuffer {
     bytes: Box<[u8]>,
     event_len: usize,
     byte_len: usize,
+    event_capacity: usize,
+    byte_capacity: usize,
+    recovering: bool,
 }
 
 impl MidiBuffer {
     pub fn new(events: usize, bytes: usize) -> Result<Self, Error> {
-        if events
+        let reserved_events = events
+            .checked_add(crate::midi::ResetState::EVENTS)
+            .ok_or(Error::Capacity)?;
+        let reserved_bytes = bytes
+            .checked_add(crate::midi::ResetState::BYTES)
+            .ok_or(Error::Capacity)?;
+        if reserved_events
             .checked_mul(size_of::<Event>())
             .is_none_or(|n| n > i32::MAX as usize)
-            || bytes > i32::MAX as usize
+            || reserved_bytes > i32::MAX as usize
         {
             return Err(Error::Capacity);
         }
         let mut buffer = Self {
-            events: vec![Event::default(); events].into_boxed_slice(),
-            bytes: vec![0; bytes].into_boxed_slice(),
+            events: vec![Event::default(); reserved_events].into_boxed_slice(),
+            bytes: vec![0; reserved_bytes].into_boxed_slice(),
             event_len: 0,
             byte_len: 0,
+            event_capacity: events,
+            byte_capacity: bytes,
+            recovering: false,
         };
         for event in &mut buffer.events {
             *std::hint::black_box(event) = Event::default();
@@ -219,6 +231,28 @@ impl MidiBuffer {
     pub fn clear(&mut self) {
         self.event_len = 0;
         self.byte_len = 0;
+        self.recovering = false;
+    }
+    pub fn is_recovery(&self) -> bool {
+        self.recovering
+    }
+    pub(crate) fn force_reset(&mut self, offset: u32) {
+        for index in 0..crate::midi::ResetState::EVENTS {
+            let start = index * 3;
+            self.events[index] = Event {
+                offset,
+                start: start as u32,
+                len: 3,
+            };
+            self.bytes[start..start + 3].copy_from_slice(&[
+                0xb0 | (index / 2) as u8,
+                if index % 2 == 0 { 120 } else { 123 },
+                0,
+            ]);
+        }
+        self.event_len = crate::midi::ResetState::EVENTS;
+        self.byte_len = crate::midi::ResetState::BYTES;
+        self.recovering = true;
     }
     pub fn get(&self, index: usize) -> Option<(u32, &[u8])> {
         if index >= self.event_len {
@@ -231,13 +265,13 @@ impl MidiBuffer {
         ))
     }
     pub fn push(&mut self, offset: u32, frames: usize, payload: &[u8]) -> Result<(), Error> {
-        if payload.len() > self.bytes.len() {
+        if self.recovering || payload.len() > self.byte_capacity {
             return Err(Error::Full);
         }
-        crate::midi::Message::parse(payload, self.bytes.len())?;
+        crate::midi::Message::parse(payload, self.byte_capacity)?;
         let mut view = EventBuffer {
-            events: &mut self.events,
-            bytes: &mut self.bytes,
+            events: &mut self.events[..self.event_capacity],
+            bytes: &mut self.bytes[..self.byte_capacity],
             event_len: self.event_len,
             byte_len: self.byte_len,
         };
@@ -252,10 +286,13 @@ impl MidiBuffer {
         if offset as usize >= frames || payload.is_empty() {
             return Err(Error::InvalidEvent);
         }
-        if self.event_len == self.events.len() || payload.len() > self.bytes.len() - self.byte_len {
+        if self.recovering
+            || self.event_len == self.event_capacity
+            || payload.len() > self.byte_capacity - self.byte_len
+        {
             return Err(Error::Full);
         }
-        crate::midi::Message::parse(payload, self.bytes.len())?;
+        crate::midi::Message::parse(payload, self.byte_capacity)?;
         let index = self.events[..self.event_len].partition_point(|event| event.offset <= offset);
         self.events.copy_within(index..self.event_len, index + 1);
         self.events[index] = Event {
@@ -269,21 +306,53 @@ impl MidiBuffer {
         Ok(())
     }
     pub(crate) fn merge(&mut self, source: &Self, frames: usize) -> Result<(), Error> {
-        // Reserve the entire source before inserting: refusal never half-routes it.
-        if source.len() > self.events.len() - self.event_len
-            || source.byte_len() > self.bytes.len() - self.byte_len
-        {
-            return Err(Error::Full);
-        }
         if source.events[..source.event_len]
             .iter()
             .any(|event| event.offset as usize >= frames)
         {
             return Err(Error::InvalidEvent);
         }
-        for index in 0..source.len() {
+        self.merge_window(source, 0, frames, 0, frames)
+    }
+
+    pub(crate) fn merge_window(
+        &mut self,
+        source: &Self,
+        source_start: usize,
+        frames: usize,
+        target_start: usize,
+        target_frames: usize,
+    ) -> Result<(), Error> {
+        let source_end = source_start
+            .checked_add(frames)
+            .ok_or(Error::InvalidFrame)?;
+        let target_end = target_start
+            .checked_add(frames)
+            .ok_or(Error::InvalidFrame)?;
+        if target_end > target_frames || target_end > u32::MAX as usize {
+            return Err(Error::InvalidFrame);
+        }
+        if self.recovering || source.recovering {
+            self.force_reset(target_start as u32);
+            return Err(Error::Full);
+        }
+        let events = &source.events[..source.event_len];
+        let first = events.partition_point(|event| (event.offset as usize) < source_start);
+        let end = events.partition_point(|event| (event.offset as usize) < source_end);
+        let bytes: usize = events[first..end]
+            .iter()
+            .map(|event| event.len as usize)
+            .sum();
+        if end - first > self.event_capacity - self.event_len
+            || bytes > self.byte_capacity - self.byte_len
+        {
+            self.force_reset(target_start as u32);
+            return Err(Error::Full);
+        }
+        for index in first..end {
             let (offset, data) = source.get(index).ok_or(Error::InvalidEvent)?;
-            self.insert(offset, frames, data)?;
+            let offset = offset as usize - source_start + target_start;
+            self.insert(offset as u32, target_frames, data)?;
         }
         Ok(())
     }

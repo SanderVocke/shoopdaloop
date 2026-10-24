@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stages 0–3 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–4 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -99,12 +99,12 @@ Completed: compiler/descriptor validation, guarded execution, stable reusable pr
 
 Depends on stage 3.
 
-Progress: complete-message MIDI validation and a backpressure-safe bounded reset state machine are implemented/tested first, to establish malformed-input and recovery semantics before scheduler integration. Scheduling, reserved recovery output integration, and overflow reporting in the executor remain pending; this stage is not complete.
+Completed: conservative event/split/result reservations, exact-frame executor scheduling, bounded payload copying, separate admission/execution results, and internal/host MIDI reset recovery. Evidence: `docs/rt_runtime/VALIDATION.md`.
 
-- [ ] Implement bounded scheduled-operation storage and subrange processing for exact-frame parameters and MIDI, with documented equal-time and late-arrival policies.
-- [ ] Implement bounded MIDI 1.0 byte storage, short messages, SysEx limits, output writers, and stable fan-in ordering. Use checked timestamp arithmetic and explicitly reject unsupported/out-of-range data.
-- [ ] Implement visible event-overflow status and bounded note-release/reset recovery; reserve the required event capacity. Define behavior for future-schedule saturation and a full subrange budget without silently shifting already accepted on-time operations.
-- [ ] Verify: sample-zero/end-of-block/next-block events, equal timestamps from multiple sources, randomized block partitions, long frame counters, late events, MIDI byte/event floods, SysEx boundaries, and note-on/off recovery. Compare native/Wasm logical outputs; assert maximum subranges/events consumed per callback. Commit.
+- [x] Implement bounded scheduled-operation storage and subrange processing for exact-frame parameters and MIDI, with documented equal-time and late-arrival policies.
+- [x] Implement bounded MIDI 1.0 byte storage, short messages, SysEx limits, output writers, and stable fan-in ordering. Use checked timestamp arithmetic and explicitly reject unsupported/out-of-range data.
+- [x] Implement visible event-overflow status and bounded note-release/reset recovery; reserve the required event capacity. Define behavior for future-schedule saturation and a full subrange budget without silently shifting already accepted on-time operations.
+- [x] Verify: sample-zero/end-of-block/next-block events, equal timestamps from multiple sources, randomized block partitions, long frame counters, late events, MIDI byte/event floods, SysEx boundaries, and note-on/off recovery. Compare native/Wasm logical outputs; assert maximum subranges/events consumed per callback. Commit.
 
 ### 5. Revisioned resources, capture, and snapshots
 

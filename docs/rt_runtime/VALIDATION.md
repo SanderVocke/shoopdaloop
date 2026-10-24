@@ -108,4 +108,24 @@ Verification through `nix develop`:
 - Warning-denying workspace build, formatting, shared-test policy, and four-target dependency boundary: pass.
 - Five new guarded tests exhaust all 256 status bytes across short packet lengths, cover all channels and zero-velocity notes, SysEx size/framing errors, atomic writer refusal, and reset completion through a one-event/three-byte sink with repeated backpressure.
 
-These tests validate the MIDI primitives, not a completed runtime recovery or scheduling implementation.
+Those primitive-only tests are supplemented by the following executor/scheduler milestone.
+
+## Stage 4, milestone 2: exact-frame scheduling and integrated recovery
+
+Implemented fixed-capacity scheduling with conservative event/split reservations and a separate reliable execution-result queue. Pending and published-but-unread results retain credits; native control receipt returns credits for bounded recycling. Admission reports effective frame/lateness separately from execution. The executor splits at accepted timestamps, preserves host MIDI offsets across subranges, limits payload staging by the transfer-byte budget, and reports stale targets or unsupported processor parameters explicitly.
+
+Integrated MIDI overload recovery with reserved 32-event/96-byte storage per arena. Route overflow delivers resets to internal processors; output propagation also queues independent host resets. Ordinary host MIDI stays suppressed while recovery is pending. A separately reserved sink drains resets under a per-port callback attempt budget, retaining unsent packets under backpressure. Repeated overflow does not restart a pending reset. Normal audio continues in tested overflow paths; processors are obligated to handle reset packets and not abandon audio on ordinary MIDI writer refusal.
+
+Verification through `nix develop`:
+
+- Warning-denying native debug/release tests: 60 passed each (1 unit + 12 core + 18 executor + 7 graph + 11 lifecycle + 5 MIDI + 6 scheduler).
+- Node and Chromium package runners: 56 passed each, using the same pinned tools as prior milestones.
+- Warning-denying workspace build, formatting, shared-test policy, four-target dependency audit, and Wasm dependency isolation: pass.
+- Scheduling tests cover sample zero, same-time source/key/sequence ordering, last/next block boundaries, explicitly late frames, counters near `u64::MAX`, stale finish sequences, invalid payloads, future-capacity refusal, undrained result saturation, disconnect, and credit recovery.
+- Sixteen seeded variable-block partitions render the same eight-operation parameter journal sample-identically, with exact execution frames. Scheduled SysEx and host MIDI retain their original absolute timing across processor subranges.
+- A four-byte callback copy budget admits one four-byte SysEx at a time, delaying only admission of the second message; both execute at their accepted shared deadline.
+- Tiny-capacity MIDI fan-in continues audio while triggering host recovery. One-event/three-byte reserved sinks drain all 32 reset packets over bounded callbacks; repeated calls cannot replenish the budget. Normal MIDI resumes after recovery.
+- An internal synth fixture starts a voice, then receives a reserved reset after an overflowing input mix would otherwise lose a note-off; the voice stops and all 16 channels receive all-sound-off. This covers internal state, not merely outgoing port resets.
+- Recovery-lane reset admission succeeds while the normal command queue is full.
+
+Audit: native render and admission paths remain guarded against heap operations in all these tests. Scheduler vectors only insert within pre-reserved credits; payload pages are allocated/touched during preparation. `rtrb` transports Copy execution records and private recycle tokens; unexpected publication saturation retains a record rather than replaying or losing an operation. Per-callback scheduling is bounded by admitted slots, with at most one extra audio subrange. Ordinary MIDI work is bounded by prepared port/graph capacities; reset work adds at most 32 messages per affected internal port and the declared per-output drain budget. This is not a benchmark claim or a guarantee about arbitrary third-party processors.

@@ -24,6 +24,13 @@ struct TestProcessor {
     drops: Arc<AtomicUsize>,
 }
 impl Processor for TestProcessor {
+    fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+        if parameter != 0 {
+            return Err(Error::InvalidParameter);
+        }
+        self.gain = value;
+        Ok(())
+    }
     fn ports(&self) -> PortCounts {
         self.ports
     }
@@ -144,7 +151,9 @@ struct Harness {
 }
 impl Harness {
     fn new(nodes: Vec<PreparedNode<TestProcessor>>) -> Self {
-        let limits = config();
+        Self::with_limits(nodes, config())
+    }
+    fn with_limits(nodes: Vec<PreparedNode<TestProcessor>>, limits: Config) -> Self {
         let (control, runtime) = GraphRuntime::prepare(limits.prepare().unwrap(), nodes).unwrap();
         Self {
             control,
@@ -592,6 +601,523 @@ fn incompatible_slot_replacement_returns_its_processor_without_rt_destruction() 
     ));
     drop(result);
     assert_eq!(drops.load(Ordering::Relaxed), 2);
+}
+
+#[shoop_test]
+fn scheduled_parameters_apply_at_exact_frames_and_report_execution_separately() {
+    use rt_runtime::schedule::Action;
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut h = Harness::new(vec![node(0, 1.0, mono(), &drops)]);
+    h.install(GraphDescription {
+        nodes: vec![id(0)],
+        connections: vec![
+            audio(None, 0, Some(id(0)), 0),
+            audio(Some(id(0)), 0, None, 0),
+        ],
+    });
+    let start = h.runtime.next_frame();
+    for (offset, value) in [(0, 2.0), (3, 4.0)] {
+        h.submit(Command::Schedule {
+            at: Frame(start.0 + offset),
+            action: Action::Parameter {
+                node: id(0),
+                parameter: 0,
+                value,
+            },
+            payload: Box::new([]),
+        });
+    }
+    h.step(8);
+    assert_eq!(h.output[0], [2.0, 2.0, 2.0, 4.0, 4.0, 4.0, 4.0, 4.0]);
+    assert_eq!(h.runtime.diagnostics().scheduled_events, 2);
+    assert_eq!(h.runtime.diagnostics().subranges, 2);
+    for offset in [0, 3] {
+        assert_eq!(
+            h.control.try_completion().unwrap().outcome,
+            Outcome::Scheduled {
+                effective_frame: Frame(start.0 + offset),
+                late_by: 0
+            }
+        );
+        let execution = h.control.try_execution().unwrap();
+        assert_eq!(execution.actual_frame, Frame(start.0 + offset));
+        assert_eq!(execution.result, Ok(()));
+    }
+    assert!(h.control.try_execution().is_none());
+}
+
+#[shoop_test]
+fn block_edge_parameters_and_injected_midi_preserve_host_offsets_across_splits() {
+    use rt_runtime::schedule::Action;
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut h = Harness::new(vec![node(0, 1.0, mono(), &drops)]);
+    h.install(GraphDescription {
+        nodes: vec![id(0)],
+        connections: vec![
+            audio(None, 0, Some(id(0)), 0),
+            audio(Some(id(0)), 0, None, 0),
+            midi(None, 0, Some(id(0)), 0),
+            midi(Some(id(0)), 0, None, 0),
+        ],
+    });
+    let start = h.runtime.next_frame();
+    h.midi_in[0].push(2, 8, &[0x90, 60, 100]).unwrap();
+    h.midi_in[0].push(5, 8, &[0x80, 60, 0]).unwrap();
+    h.submit(Command::Schedule {
+        at: Frame(start.0 + 8),
+        action: Action::Parameter {
+            node: id(0),
+            parameter: 0,
+            value: 3.0,
+        },
+        payload: Box::new([]),
+    });
+    h.submit(Command::Schedule {
+        at: Frame(start.0 + 3),
+        action: Action::Midi {
+            node: id(0),
+            port: 0,
+        },
+        payload: vec![0xf0, 0x7d, 1, 0xf7].into_boxed_slice(),
+    });
+    h.step(8);
+    assert_eq!(h.output[0], [1.0; 8]);
+    assert_eq!(h.midi_out[0].len(), 3);
+    assert_eq!(h.midi_out[0].get(0), Some((2, &[0x90, 60, 100][..])));
+    assert_eq!(h.midi_out[0].get(1), Some((3, &[0xf0, 0x7d, 1, 0xf7][..])));
+    assert_eq!(h.midi_out[0].get(2), Some((5, &[0x80, 60, 0][..])));
+    assert_eq!(
+        h.control.try_execution().unwrap().actual_frame,
+        Frame(start.0 + 3)
+    );
+    assert!(h.control.try_execution().is_none());
+    h.midi_in[0].clear();
+    h.step(4);
+    assert_eq!(&h.output[0][..4], &[3.0; 4]);
+    assert_eq!(
+        h.control.try_execution().unwrap().actual_frame,
+        Frame(start.0 + 8)
+    );
+}
+
+#[shoop_test]
+fn late_schedules_and_processor_parameter_errors_are_explicit() {
+    use rt_runtime::schedule::Action;
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut h = Harness::new(vec![node(0, 1.0, mono(), &drops)]);
+    h.install(GraphDescription {
+        nodes: vec![id(0)],
+        connections: vec![
+            audio(None, 0, Some(id(0)), 0),
+            audio(Some(id(0)), 0, None, 0),
+        ],
+    });
+    let start = h.runtime.next_frame();
+    h.submit(Command::Schedule {
+        at: Frame(0),
+        action: Action::Parameter {
+            node: id(0),
+            parameter: 0,
+            value: 2.0,
+        },
+        payload: Box::new([]),
+    });
+    h.submit(Command::Schedule {
+        at: start,
+        action: Action::Parameter {
+            node: id(0),
+            parameter: 99,
+            value: 3.0,
+        },
+        payload: Box::new([]),
+    });
+    h.step(8);
+    assert_eq!(h.output[0], [2.0; 8]);
+    assert_eq!(
+        h.control.try_completion().unwrap().outcome,
+        Outcome::Scheduled {
+            effective_frame: start,
+            late_by: start.0
+        }
+    );
+    assert_eq!(h.control.try_execution().unwrap().late_by(), start.0);
+    assert_eq!(
+        h.control.try_execution().unwrap().result,
+        Err(Error::InvalidParameter)
+    );
+}
+
+#[shoop_test]
+fn midi_overflow_keeps_audio_running_and_recovers_through_reserved_one_event_sinks() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut limits = config();
+    limits.midi_events_per_port = 4;
+    limits.budgets.events = 1;
+    limits.budgets.subranges = 2;
+    let mut h = Harness::with_limits(vec![node(0, 2.0, mono(), &drops)], limits);
+    h.install(GraphDescription {
+        nodes: vec![id(0)],
+        connections: vec![
+            audio(None, 0, Some(id(0)), 0),
+            audio(Some(id(0)), 0, None, 0),
+            midi(None, 0, Some(id(0)), 0),
+            midi(None, 1, Some(id(0)), 0),
+            midi(Some(id(0)), 0, None, 0),
+        ],
+    });
+    for port in &mut h.midi_in {
+        for offset in 0..3 {
+            port.push(offset, 8, &[0x90, 60, 100]).unwrap();
+        }
+    }
+    h.step(8);
+    assert_eq!(h.output[0], [2.0; 8]);
+    assert!(h.runtime.diagnostics().midi_overflows >= 1);
+    assert!(h.midi_out.iter().all(MidiBuffer::is_empty));
+    for port in &mut h.midi_in {
+        port.clear();
+    }
+    let mut sink = MidiBuffer::new(1, 3).unwrap();
+    for index in 0..32 {
+        if index > 0 {
+            h.step(8);
+        }
+        for port in 0..2 {
+            assert!(h.runtime.midi_recovery_pending(port).unwrap());
+            sink.clear();
+            assert_eq!(
+                assert_no_heap(|| h.runtime.drain_midi_recovery(port, &mut sink, 8)).unwrap(),
+                1
+            );
+            assert_eq!(
+                sink.get(0),
+                Some((
+                    0,
+                    &[
+                        0xb0 | (index / 2) as u8,
+                        if index % 2 == 0 { 120 } else { 123 },
+                        0
+                    ][..]
+                ))
+            );
+            sink.clear();
+            assert_eq!(
+                assert_no_heap(|| h.runtime.drain_midi_recovery(port, &mut sink, 8)).unwrap(),
+                0
+            );
+        }
+        assert_eq!(h.output[0], [2.0; 8]);
+    }
+    assert!(!h.runtime.midi_recovery_pending(0).unwrap());
+    h.midi_in[0].push(0, 8, &[0x90, 61, 100]).unwrap();
+    h.step(8);
+    assert_eq!(h.midi_out[0].get(0), Some((0, &[0x90, 61, 100][..])));
+}
+
+#[shoop_test]
+fn sysex_copy_budget_defers_admission_without_delaying_an_accepted_deadline() {
+    use rt_runtime::schedule::Action;
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut limits = config();
+    limits.page_bytes = 4;
+    limits.budgets.transfer_bytes = 4;
+    let mut h = Harness::with_limits(vec![node(0, 1.0, mono(), &drops)], limits);
+    h.install(GraphDescription {
+        nodes: vec![id(0)],
+        connections: vec![midi(Some(id(0)), 0, None, 0)],
+    });
+    let start = h.runtime.next_frame();
+    for value in [1, 2] {
+        h.submit(Command::Schedule {
+            at: Frame(start.0 + 10),
+            action: Action::Midi {
+                node: id(0),
+                port: 0,
+            },
+            payload: vec![0xf0, 0x7d, value, 0xf7].into_boxed_slice(),
+        });
+    }
+    h.step(8);
+    assert_eq!(h.runtime.diagnostics().transfer_bytes, 4);
+    assert!(matches!(
+        h.control.try_completion().unwrap().outcome,
+        Outcome::Scheduled { late_by: 0, .. }
+    ));
+    assert!(h.control.try_completion().is_none());
+    assert!(h.control.try_execution().is_none());
+    h.step(8);
+    assert_eq!(h.runtime.diagnostics().transfer_bytes, 4);
+    assert!(matches!(
+        h.control.try_completion().unwrap().outcome,
+        Outcome::Scheduled { late_by: 0, .. }
+    ));
+    assert_eq!(h.midi_out[0].get(0), Some((2, &[0xf0, 0x7d, 1, 0xf7][..])));
+    assert_eq!(h.midi_out[0].get(1), Some((2, &[0xf0, 0x7d, 2, 0xf7][..])));
+    for _ in 0..2 {
+        assert_eq!(
+            h.control.try_execution().unwrap().actual_frame,
+            Frame(start.0 + 10)
+        );
+    }
+}
+
+#[shoop_test]
+fn scheduled_target_removed_before_execution_cannot_address_its_next_generation() {
+    use rt_runtime::schedule::Action;
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut h = Harness::new(vec![node(0, 1.0, mono(), &drops)]);
+    h.submit(Command::Schedule {
+        at: Frame(8),
+        action: Action::Parameter {
+            node: id(0),
+            parameter: 0,
+            value: 2.0,
+        },
+        payload: Box::new([]),
+    });
+    h.submit(Command::Remove { node: id(0) });
+    h.step(8);
+    assert!(matches!(
+        h.control.try_completion().unwrap().outcome,
+        Outcome::Scheduled { .. }
+    ));
+    assert_eq!(
+        h.control.try_completion().unwrap().outcome,
+        Outcome::Applied
+    );
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    assert!(h.control.try_execution().is_none());
+    h.step(8);
+    let execution = h.control.try_execution().unwrap();
+    assert_eq!(execution.actual_frame, Frame(8));
+    assert_eq!(execution.result, Err(Error::InvalidId));
+}
+
+#[shoop_test]
+fn reset_command_uses_reserved_recovery_admission_when_normal_control_is_full() {
+    use rt_runtime::schedule::Action;
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut h = Harness::new(vec![node(0, 1.0, mono(), &drops)]);
+    for value in [1.0, 2.0] {
+        h.submit(Command::Schedule {
+            at: Frame(1000),
+            action: Action::Parameter {
+                node: id(0),
+                parameter: 0,
+                value,
+            },
+            payload: Box::new([]),
+        });
+    }
+    let sequence = h
+        .control
+        .submit(Lane::Recovery, Command::ResetMidi)
+        .map_err(|error| error.error)
+        .unwrap()
+        .sequence();
+    h.step(8);
+    let completion = h.control.try_completion().unwrap();
+    assert_eq!(completion.sequence, sequence);
+    assert_eq!(completion.outcome, Outcome::Applied);
+    assert!(h.runtime.midi_recovery_pending(0).unwrap());
+    assert!(h.runtime.midi_recovery_pending(1).unwrap());
+}
+
+#[shoop_test]
+fn scheduled_journal_is_sample_identical_under_seeded_block_partitions() {
+    use rt_runtime::schedule::Action;
+    let drops = Arc::new(AtomicUsize::new(0));
+    let offsets = [0, 1, 7, 8, 15, 31, 32, 63];
+    for seed in 1..=16u32 {
+        let mut limits = config();
+        limits.command_slots = 16;
+        limits.budgets.commands = 16;
+        let mut h = Harness::with_limits(vec![node(0, 1.0, mono(), &drops)], limits);
+        h.install(GraphDescription {
+            nodes: vec![id(0)],
+            connections: vec![
+                audio(None, 0, Some(id(0)), 0),
+                audio(Some(id(0)), 0, None, 0),
+            ],
+        });
+        let start = h.runtime.next_frame();
+        for (index, offset) in offsets.iter().enumerate() {
+            h.submit(Command::Schedule {
+                at: Frame(start.0 + offset),
+                action: Action::Parameter {
+                    node: id(0),
+                    parameter: 0,
+                    value: (index + 1) as f32,
+                },
+                payload: Box::new([]),
+            });
+        }
+        let mut random = seed;
+        let mut rendered = 0;
+        while rendered < 64 {
+            random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+            let frames = (1 + random as usize % 8).min(64 - rendered);
+            h.step(frames);
+            for index in 0..frames {
+                let expected = offsets
+                    .iter()
+                    .filter(|&&offset| offset <= (rendered + index) as u64)
+                    .count() as f32;
+                assert_eq!(h.output[0][index], expected);
+            }
+            assert!(h.runtime.diagnostics().subranges <= limits.budgets.subranges);
+            assert!(h.runtime.diagnostics().scheduled_events <= limits.budgets.events);
+            rendered += frames;
+        }
+        for offset in offsets {
+            let execution = h.control.try_execution().unwrap();
+            assert_eq!(execution.actual_frame, Frame(start.0 + offset));
+            assert_eq!(execution.result, Ok(()));
+        }
+    }
+}
+
+#[shoop_test]
+fn overflow_delivers_reserved_resets_to_internal_processors_not_only_host_outputs() {
+    struct Synth {
+        active: bool,
+        resets: Arc<AtomicUsize>,
+    }
+    impl Processor for Synth {
+        fn ports(&self) -> PortCounts {
+            PortCounts {
+                audio_outputs: 1,
+                midi_inputs: 1,
+                ..PortCounts::default()
+            }
+        }
+        fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
+            for index in 0..block.midi_inputs[0].len() {
+                let (_, data) = block.midi_inputs[0].get(index).ok_or(Error::InvalidEvent)?;
+                match rt_runtime::midi::Message::parse(data, 3)?.kind() {
+                    rt_runtime::midi::MessageKind::NoteOn { .. } => self.active = true,
+                    rt_runtime::midi::MessageKind::NoteOff { .. } => self.active = false,
+                    rt_runtime::midi::MessageKind::ControlChange {
+                        controller: 120, ..
+                    } => {
+                        self.active = false;
+                        self.resets.fetch_add(1, Ordering::Relaxed);
+                    }
+                    _ => {}
+                }
+            }
+            block
+                .audio
+                .output(0)
+                .ok_or(Error::InvalidShape)?
+                .fill(if self.active { 1.0 } else { 0.0 });
+            Ok(())
+        }
+    }
+    let resets = Arc::new(AtomicUsize::new(0));
+    let limits = Config {
+        audio_inputs: 0,
+        audio_outputs: 1,
+        midi_inputs: 2,
+        midi_outputs: 0,
+        midi_events_per_port: 2,
+        ..config()
+    }
+    .prepare()
+    .unwrap();
+    let (mut control, mut runtime) = GraphRuntime::prepare(
+        limits,
+        vec![PreparedNode::new(
+            id(0),
+            Synth {
+                active: false,
+                resets: Arc::clone(&resets),
+            },
+        )],
+    )
+    .unwrap();
+    let plan = compile(
+        runtime.catalog(),
+        &GraphDescription {
+            nodes: vec![id(0)],
+            connections: vec![
+                midi(None, 0, Some(id(0)), 0),
+                midi(None, 1, Some(id(0)), 0),
+                audio(Some(id(0)), 0, None, 0),
+            ],
+        },
+    )
+    .unwrap();
+    control
+        .submit(Lane::Normal, Command::commit(Epoch(0), plan))
+        .map_err(|error| error.error)
+        .unwrap();
+    let mut input = [
+        MidiBuffer::new(2, 6).unwrap(),
+        MidiBuffer::new(2, 6).unwrap(),
+    ];
+    let mut output = [0.0; 8];
+    for _ in 0..32 {
+        let frame = runtime.next_frame();
+        assert_no_heap(|| {
+            runtime.process(
+                AudioBlock {
+                    frame,
+                    frames: 8,
+                    inputs: &[],
+                    outputs: &mut [&mut output],
+                },
+                MidiBlock {
+                    inputs: &input,
+                    outputs: &mut [],
+                },
+            )
+        })
+        .unwrap();
+        if control.try_completion().is_some() {
+            break;
+        }
+    }
+    assert_eq!(runtime.epoch(), Epoch(1));
+    input[0].push(0, 8, &[0x90, 60, 100]).unwrap();
+    let frame = runtime.next_frame();
+    assert_no_heap(|| {
+        runtime.process(
+            AudioBlock {
+                frame,
+                frames: 8,
+                inputs: &[],
+                outputs: &mut [&mut output],
+            },
+            MidiBlock {
+                inputs: &input,
+                outputs: &mut [],
+            },
+        )
+    })
+    .unwrap();
+    assert_eq!(output, [1.0; 8]);
+    input[0].push(0, 8, &[0x90, 61, 100]).unwrap();
+    input[1].push(0, 8, &[0x80, 60, 0]).unwrap();
+    let frame = runtime.next_frame();
+    assert_no_heap(|| {
+        runtime.process(
+            AudioBlock {
+                frame,
+                frames: 8,
+                inputs: &[],
+                outputs: &mut [&mut output],
+            },
+            MidiBlock {
+                inputs: &input,
+                outputs: &mut [],
+            },
+        )
+    })
+    .unwrap();
+    assert_eq!(output, [0.0; 8]);
+    assert_eq!(resets.load(Ordering::Relaxed), 16);
+    assert!(runtime.diagnostics().midi_overflows > 0);
 }
 
 #[shoop_test]
