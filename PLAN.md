@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stages 0–6 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–7 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -135,15 +135,15 @@ Completed: shared guarded render/wire bridge, public-API native offline/two-thre
 
 Depends on stages 1–6.
 
-In progress: seeded properties/stress, isolated Miri, seven release workloads, and deliberate native/browser failure gates pass. Evidence: `docs/rt_runtime/VALIDATION.md` and `docs/rt_runtime/PERFORMANCE.md`. Capacity guidance and full CI wiring remain pending.
+Completed: seeded properties/stress, isolated Miri, seven release workloads, capacity/API/lifecycle guidance, deliberate native/browser failure gates, and cross-platform CI scheduling. Evidence: `docs/rt_runtime/VALIDATION.md`, `docs/rt_runtime/PERFORMANCE.md`, and `docs/rt_runtime/GUIDE.md`. Actual remote platform/CI results and final delivery remain stage-8 requirements.
 
 - [x] Add reproducible seeded adversarial runs mixing graph commits, resource revisions, timed MIDI, snapshots, consumer pauses, disconnects, and restarts. Run long enough to exercise slot/page reuse and track peak outstanding ownership.
 - [x] Add fuzz/property coverage for plan/wire validation and resource chunk state machines. Run Miri on supported ownership/aliasing tests and any new unsafe buffer code; explicitly record tool exclusions and provide alternate tests rather than claiming unsupported coverage.
 - [x] Add release benchmarks for idle, representative and near-capacity DAGs, MIDI bursts, sustained capture, and graph/resource transfers. Report configuration, callback duration distribution/max, work counters, transfer throughput, memory high-water marks, and refusal counts.
 - [x] Keep performance acceptance based on enforced work/memory bounds and correctness. Record deadline misses on a specified local host; do not claim hard-real-time proof or speedups over the old engine from noisy CI timings. Investigate unexpected tail spikes before declaring completion.
-- [ ] Add API examples, capacity sizing guidance, real-time processor obligations, ownership/teardown rules, supported host matrix, and explicit capability limitations. Update `DESIGN.md` to match the implementation.
-- [ ] Wire native debug/release tests into the existing Linux/Windows/macOS matrix; discover core tests in Node/Chrome and explicitly run the AudioWorklet fixture in browser CI. Add dependency-boundary and allocator-canary gates; include artifacts for failures and benchmark reports without brittle timing thresholds.
-- [ ] Verify: each A1–A8 test group is scheduled, not merely checked in; guard canaries and browser fixture failures actually fail their jobs. Commit.
+- [x] Add API examples, capacity sizing guidance, real-time processor obligations, ownership/teardown rules, supported host matrix, and explicit capability limitations. Update `DESIGN.md` to match the implementation.
+- [x] Wire native debug/release tests into the existing Linux/Windows/macOS matrix; discover core tests in Node/Chrome and explicitly run the AudioWorklet fixture in browser CI. Add dependency-boundary and allocator-canary gates; include artifacts for failures and benchmark reports without brittle timing thresholds.
+- [x] Verify: each A1–A8 test group is scheduled, not merely checked in; guard canaries and browser fixture failures actually fail their jobs. Commit.
 
 ### 8. Final end-to-end validation and delivery
 

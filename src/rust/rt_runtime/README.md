@@ -22,6 +22,10 @@ Run `cargo test -p rt_runtime` and `cargo test -p rt_runtime --release`. Tests i
 
 Run `python3 scripts/check_rt_runtime_boundary.py` from the workspace root to audit production/build dependencies on all supported targets. The shared repository test attribute is a dev-only exception. Registering the browser-test feature must not introduce test support into the production dependency tree.
 
+## Capacity and lifecycle guide
+
+See `docs/rt_runtime/GUIDE.md` for sizing examples, processor obligations, explicit teardown, the scheduled host matrix, and capability limits. Run `cargo run -p rt_runtime --example gain_graph` (also `--release`) for a small complete guarded graph, exact-frame parameter change, and owning removal example. It verifies samples and execution results, not just compilation.
+
 ## Independent host examples
 
 From the workspace root, run `python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug` (or `release`) for self-contained native examples replaying a checked-in real-worklet journal. Run `RUSTFLAGS="-D warnings" python3 scripts/run_rt_runtime_hosts.py` for fresh actual OfflineAudioContext/live AudioContext execution followed by native equivalence checks. The browser command requires the pinned Chromium/ChromeDriver and wasm-pack tools; see `tests/rt_runtime_host/README.md` for setup, bounds, shutdown, and limitations. Native replay alone is not a new browser test. The helper's browser bindings are test-only dependencies outside this crate.

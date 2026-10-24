@@ -272,4 +272,29 @@ Added `examples/bounded_runtime.rs` and `scripts/benchmark_rt_runtime.py`. Seven
 
 Repeated gates through Nix: **91 tests each native debug/release, 87 each Node/Chromium**, warnings-denied workspace build, both workspace/helper formatting checks, shared-test policy, four-target dependency audit, and native debug journal replay. The first final tracing-inventory audit exposed the new crate's 17 uninventoried modules. They are now explicitly classified: this standalone library has no application tracing dependency, exposes bounded Copy diagnostics, and is not integrated into application execution. The closed inventory audit then passed; no tracing-policy rule was weakened. Logs: `/tmp/rt-runtime-performance-and-failures.log`, `/tmp/rt-runtime-bench-final-gates.log`, and `/tmp/rt-runtime-bench-followup-gates.log`.
 
-Stage 7 remains incomplete: capacity guidance and full CI wiring are next. Cross-platform execution and final PR/CI/review delivery remain pending.
+### Stage 7, final milestone: API guide, processor overload audit, and CI scheduling
+
+Added the executable `gain_graph` example, verified in debug/release: guarded public-API graph activation, a gain change at frame offset 64, separate admission/execution checks, empty-graph activation, owning processor removal, and non-callback destruction. `GUIDE.md` covers capacity arithmetic, shared budgets, recording/pinned-version sizing, processor obligations, explicit shutdown, host support, and exclusions. `DESIGN.md` matches the implemented architecture.
+
+The supplied worklet processor audit found that capture exhaustion propagated into unrelated audio, and an ordinary MIDI writer refusal could precede its private frame-count update. Capture pool/budget/revision exhaustion now preserves the reported incomplete capture while audio continues; audio/state advancement finishes before returning MIDI overflow for core reset recovery. Two portable guarded regression tests import the **exact fixture processor source** and verify continued samples/state, incomplete metadata, MIDI refusal, and complete pool recovery under capture exhaustion and 32 reset packets. These tests also pass under Miri.
+
+Final local verification: **93 native tests each debug/release; 89 tests each Node/Chromium; 38 selected Miri executions**. Both profile variants of `gain_graph`, native debug/release journal replays, the complete fresh real offline/live worklet scenario, and both expected browser failures passed. Normal offline sample/MIDI/graph hashes remain unchanged. Structured final evidence: `evidence/miri-stage7-final.json`, `evidence/hosts-stage7-final.json`. Logs: `/tmp/rt-runtime-stage7-final.log`, `/tmp/rt-runtime-stage7-miri-final.log`.
+
+CI scheduling in `.github/workflows/build_and_test.yml` now includes:
+
+| Acceptance | Scheduled evidence |
+| --- | --- |
+| A1 | Four-target dependency audit and its unit tests on native jobs; Wasm dependency audit includes the crate; existing application gates remain |
+| A2 | Explicit core tests, gain example, and offline/two-thread replay on all six native debug/release cells; metadata discovery in Node/Chromium; actual non-isolated worklet on web-debug |
+| A3 | Release-active guards in native/core Wasm tests and actual host path; six native violation probes in Linux-release benchmarks; two real-worklet failure probes |
+| A4–A6 | Reference DAG/scheduler/MIDI/resource/capture and generated mixed/property suites through core discovery on native/Wasm; cross-host journal checks |
+| A7 | Lifecycle, seeded ownership/pool stress, native Loom/two-thread tests, explicit shutdown checks, and a dedicated pinned Miri job |
+| A8 | Linux-release benchmark artifacts with no timing threshold; Miri logs, native-host reports, worklet reports/failure diagnostics, and existing shared Wasm artifacts |
+
+The Chromium change filter includes the crate, helper, and runner. Miri runs on every normal workflow invocation, with a 40-minute job limit and pinned nightly-2026-05-04. Native Linux-release records a shorter 4,096-callback benchmark trial using the same assertions; timing never decides pass/fail. Workflow syntax/action checks pass with actionlint 1.7.12 (`-shellcheck=`); its full shellcheck invocation reports four pre-existing SC2251 notices, reproduced against the committed baseline, and none in the added steps.
+
+Repository gates also passed: formatting, warnings-denied workspace build, shared-test policy, four-target boundary and Wasm isolation, boundary unit tests, and the closed tracing inventory. Using the prescribed **cargo-nextest 0.9.116**, the complete workspace suite passed **1,893 tests with the same four pre-existing skips** (`SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`; `/tmp/rt-runtime-full-repository-stage7.log`). The pinned musl nextest release was downloaded to a separate user cache and checked against its published SHA-256; the shell's newer nextest was not used for that gate.
+
+Existing application regressions also passed: warnings-denied Wasm application check, release production-worklet build, `trunk build`, and the hosted output-only Chromium smoke at 900×600. Commands came from the application README; no application source was integrated or altered. Log: `/tmp/rt-runtime-application-browser-regression.log`.
+
+Stage 7 is complete as implementation, local verification, and CI scheduling. Actual Windows/macOS CI results, final callback audit, PR delivery, green required checks, and automated review remain stage-8 requirements; configured jobs are not claimed as already executed.

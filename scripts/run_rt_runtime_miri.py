@@ -17,6 +17,7 @@ CASES = [
     ("resource_properties", [], 1),
     ("mixed_stress", [], 1),
     ("capture", [], 7),
+    ("host_processor", [], 2),
     ("lifecycle", ["--", "--skip", "deterministic_admission_model", "--skip", "cancellation_flag_model"], 9),
     ("resource_execution", ["resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"], 1),
 ]

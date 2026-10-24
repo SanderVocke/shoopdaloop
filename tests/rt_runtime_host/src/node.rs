@@ -2,7 +2,14 @@ use crate::{ports, QUANTUM};
 use rt_runtime::graph::PortCounts;
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::{Cursor, Format, Snapshot};
-use rt_runtime::{Error, ResourceId};
+use rt_runtime::{Error, ResourceId, Revision};
+
+fn recording(result: Result<Revision, Error>) -> Result<(), Error> {
+    match result {
+        Ok(_) | Err(Error::Capacity | Error::Budget | Error::Exhausted) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
 
 pub struct Node {
     pub playback: ResourceId,
@@ -67,26 +74,28 @@ impl Processor for Node {
             *output = -*sample;
         }
         if let Ok(capture) = block.resources.active_capture(self.audio_capture) {
-            block
-                .resources
-                .capture_audio(capture, block.frame, &samples[..block.frames])?;
+            recording(block.resources.capture_audio(
+                capture,
+                block.frame,
+                &samples[..block.frames],
+            ))?;
         }
         if let Ok(capture) = block.resources.active_capture(self.midi_capture) {
-            block.resources.capture_midi(
+            recording(block.resources.capture_midi(
                 capture,
                 block.frame,
                 block.frames,
                 &block.midi_inputs[0],
-            )?;
-        }
-        for index in 0..block.midi_inputs[0].len() {
-            let (offset, data) = block.midi_inputs[0].get(index).ok_or(Error::InvalidEvent)?;
-            block.midi_outputs[0].push(offset, block.frames, data)?;
+            ))?;
         }
         self.frames = self
             .frames
             .checked_add(block.frames as u64)
             .ok_or(Error::Exhausted)?;
+        for index in 0..block.midi_inputs[0].len() {
+            let (offset, data) = block.midi_inputs[0].get(index).ok_or(Error::InvalidEvent)?;
+            block.midi_outputs[0].push(offset, block.frames, data)?;
+        }
         Ok(())
     }
 }
