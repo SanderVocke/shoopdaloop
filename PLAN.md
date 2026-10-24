@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: planning only; no runtime implementation or Shoop integration performed.
+Status: stage 0 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -57,11 +57,11 @@ Stages are sequential unless explicitly stated otherwise. Keep each milestone ru
 
 ### 0. Establish branch, contracts, and validation matrix
 
-- [ ] Inspect the current worktree and preserve unrelated changes. Create an implementation branch from the committed proposal/design/plan state; do not reset the existing proposal branch.
-- [ ] Confirm workspace membership, test-attribute requirements, Wasm discovery metadata, browser runner headers, and native CI matrix. Record a baseline and any existing failures before implementation.
-- [ ] Write the API contract table: capacities, per-callback budgets, frame/sequence/epoch semantics, timestamp ordering, zero/invalid block behavior, saturation policies, shutdown, and processor obligations.
-- [ ] Map A1–A8 to named test groups. Specify small fixed-capacity configurations that force each exhaustion path; define example benchmark workloads and output metrics.
-- [ ] Verify: review the contracts against `DESIGN.md`; no implicit dependency on Shoop or mandatory Wasm shared memory. Commit the planning baseline before coding.
+- [x] Inspect the current worktree and preserve unrelated changes. Create an implementation branch from the committed proposal/design/plan state; do not reset the existing proposal branch.
+- [x] Confirm workspace membership, test-attribute requirements, Wasm discovery metadata, browser runner headers, and native CI matrix. Record a baseline and any existing failures before implementation.
+- [x] Write the API contract table: capacities, per-callback budgets, frame/sequence/epoch semantics, timestamp ordering, zero/invalid block behavior, saturation policies, shutdown, and processor obligations.
+- [x] Map A1–A8 to named test groups. Specify small fixed-capacity configurations that force each exhaustion path; define example benchmark workloads and output metrics.
+- [x] Verify: review the contracts against `DESIGN.md`; no implicit dependency on Shoop or mandatory Wasm shared memory. Commit the planning baseline before coding.
 
 ### 1. Crate skeleton, types, and real-time test instrumentation
 
