@@ -16,6 +16,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 pub mod buffer;
 pub mod config;
 pub mod error;
+pub mod graph;
 pub mod ids;
 pub mod processor;
 pub mod render;

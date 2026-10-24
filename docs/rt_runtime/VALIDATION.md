@@ -62,3 +62,17 @@ Verification through `nix develop`:
 - Loom explores the standard one-way cancellation flag observation race. It does not model `rtrb` internals; publication and queue ownership use the existing queue implementation rather than a new atomic protocol.
 
 Audit: admitted ownership count bounds the return queue (normal + recovery credits). Credits are released only on control-side receipt, not when commands leave the ingress queues. Unexpected return saturation retains the packet in a fixed slot rather than freeing or retrying indefinitely. Cancellation drops nothing on render; cancellation flags stay in the returning packet even if their tickets are gone. Recovery may reorder against normal operations, intentionally and explicitly; FIFO holds within each lane. RT `complete` misuse returns ownership in its error. All production code remains safe Rust; no mutex, wait, log, format, or I/O call is reachable from render transport methods.
+
+## Stage 3, milestone 1: compiler and descriptor validator (stage incomplete)
+
+Added typed audio/MIDI endpoints and processor signatures, deterministic DAG compilation, immutable relocatable plan envelopes, and a preallocated incremental receiver validator. Port capacities include host and registered node ports. The receiver checks node generations, ordering, duplicates, input ranges, typed endpoints and dependencies without accepting compiler output on trust. Descriptor envelope creation only checks storage bounds; it is explicitly not validation or permission to execute.
+
+Verification through `nix develop`:
+
+- Warning-denying native debug/release tests: 31 passed each (1 unit + 12 core + 7 graph + 11 lifecycle).
+- Node and Chromium package runners: 27 passed each with the same pinned tools as earlier stages.
+- Warning-denying workspace build, formatting, shared-test usage, and four-target dependency boundary: pass.
+- Graph tests cover deterministic declaration-order independence, host passthrough and empty DAGs, typed fan-in/out descriptions, duplicate/cyclic/stale/missing identities, capacity/port errors, malformed descriptor spans, and 256 seeded eight-node DAGs.
+- All receiver validation advances run under the heap guard at budgets including one step per callback. Step counts do not depend on the selected batch budget and stay within the linear declared graph-size bound. Production code still forbids unsafe code.
+
+No sample-rendering/reference-interpreter comparison, graph activation, or concurrent rewiring result is claimed for this milestone. Those remain required before stage 3 can be completed.

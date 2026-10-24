@@ -31,6 +31,8 @@ pub struct Config {
     pub max_frames: usize,
     pub audio_inputs: usize,
     pub audio_outputs: usize,
+    pub midi_inputs: usize,
+    pub midi_outputs: usize,
     pub max_nodes: usize,
     pub max_ports: usize,
     pub max_edges: usize,
@@ -51,6 +53,8 @@ impl Default for Config {
             max_frames: 128,
             audio_inputs: 2,
             audio_outputs: 2,
+            midi_inputs: 1,
+            midi_outputs: 1,
             max_nodes: 64,
             max_ports: 128,
             max_edges: 256,
@@ -115,6 +119,8 @@ impl Config {
         if positive.iter().any(|&value| value > MAX_STORAGE)
             || self.audio_inputs > self.max_ports
             || self.audio_outputs > self.max_ports
+            || self.midi_inputs > self.max_ports
+            || self.midi_outputs > self.max_ports
         {
             return Err(Error::Capacity);
         }

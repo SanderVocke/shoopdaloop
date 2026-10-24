@@ -87,6 +87,8 @@ Depends on stage 1; provides the foundation used by graph and resource transacti
 
 Depends on stages 1–2.
 
+Progress: compiler/descriptor-validator milestone implemented and tested; graph execution, processor slots, and transactional activation are still pending. See `docs/rt_runtime/VALIDATION.md`.
+
 - [ ] Implement typed DAG construction, deterministic topological compilation, checked routing/scratch layouts, generational processor slots, and a relocatable plan descriptor.
 - [ ] Supply minimal source/gain/mix/MIDI-pass and stateful reference processors for tests/examples. Separate processor preparation from execution; do not add a domain processor catalog to the core.
 - [ ] Implement bounded plan staging/validation and epoch-checked activation. Keep the active plan unchanged until validation completes. Preserve retained processor state; retire displaced plans and removed nodes only when safe.

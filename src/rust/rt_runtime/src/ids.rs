@@ -31,7 +31,7 @@ counter!(Sequence);
 
 macro_rules! identity {
     ($name:ident) => {
-        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+        #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name {
             slot: u32,
             generation: std::num::NonZeroU32,

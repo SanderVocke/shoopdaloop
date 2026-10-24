@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated configuration, checked IDs/clocks, bounded borrowed event storage, processor preparation/render contracts, an empty-graph render endpoint, and a separate bounded ownership transport. Graph execution and resources are not implemented yet; the transport is not wired into rendering until typed runtime operations exist.
+**Current milestone:** validated configuration, checked IDs/clocks, bounded borrowed event storage, processor preparation/render contracts, an empty-graph render endpoint, a separate bounded ownership transport, and a deterministic DAG compiler with incremental receiver validation. Graph execution and resources are not implemented yet; the transport is not wired into rendering until typed runtime operations exist.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -21,6 +21,12 @@ assert_eq!(channel, [0.0; 128]);
 Run `cargo test -p rt_runtime` and `cargo test -p rt_runtime --release`. Tests install a counting allocator with positive allocation/reallocation/deallocation canaries; the same assertions run in release and Wasm. Counts are measured only inside render scopes, not during test framework setup. A separate audit of callback-reachable code is required for locks/waits/I/O; allocator instrumentation does not detect those.
 
 Run `python3 scripts/check_rt_runtime_boundary.py` from the workspace root to audit production/build dependencies on all supported targets. The shared repository test attribute is a dev-only exception. Registering the browser-test feature must not introduce test support into the production dependency tree.
+
+## Graph preparation
+
+`graph::Catalog` records prepared processor IDs and typed port signatures. `compile` lowers a `GraphDescription` into a deterministic immutable `PreparedPlan`, grouping incoming routes before each topologically ordered node and host-output routes last. No feedback graph is accepted. Host endpoints select inputs when used as sources and outputs when used as destinations; node endpoints select outputs as sources and inputs as destinations.
+
+`PreparedPlan::from_descriptor` also envelopes untrusted wire descriptors on the control side. It checks only storage limits, **not execution validity**. `PlanValidator` must certify the plan against the live catalog before activation. Initialize the validator outside rendering, call `begin`, and repeatedly call `advance` with the configured validation budget while keeping the candidate and catalog unchanged. Each step performs constant work and the tests guard all advances against heap operations. Raw descriptors contain no pointers or scratch offsets; validated node/port identities will determine scratch placement inside the executor. Do not execute a merely enveloped plan.
 
 ## Control ownership transport
 

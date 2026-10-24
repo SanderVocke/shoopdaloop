@@ -12,6 +12,10 @@ pub enum Error {
     Full,
     Disconnected,
     InvalidState,
+    InvalidGraph,
+    Cycle,
+    PortType,
+    StaleEpoch,
 }
 
 impl std::fmt::Display for Error {
@@ -27,6 +31,10 @@ impl std::fmt::Display for Error {
             Self::Full => "bounded storage is full",
             Self::Disconnected => "peer endpoint disconnected",
             Self::InvalidState => "operation is invalid in the current state",
+            Self::InvalidGraph => "invalid graph descriptor or connection",
+            Self::Cycle => "graph contains a cycle",
+            Self::PortType => "incompatible port types",
+            Self::StaleEpoch => "graph epoch no longer matches",
         })
     }
 }
