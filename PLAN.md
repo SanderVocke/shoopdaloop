@@ -122,6 +122,8 @@ Completed: fixed-page upload/capture/snapshot lifecycle, reliable owning resourc
 
 Depends on stages 3–5; fixture scaffolding may be prepared earlier without bypassing contract tests.
 
+In progress: allocation-free prepared submission flags and reusable, incrementally materialized plan storage are implemented/tested as worklet prerequisites. Native/actual-worklet fixtures and wire credit validation remain pending; ordinary Chromium test results are not worklet evidence.
+
 - [ ] Add deterministic offline and two-thread native examples using only the public crate API. Demonstrate graph edits, timed MIDI, resource replacement, capture, and snapshot reads.
 - [ ] Add a minimal independent Wasm/JavaScript test fixture with a real AudioWorklet. If packaging requires a helper Cargo manifest, keep it test-only; no additional production abstraction crate or dependency on Shoop's worklet/backend.
 - [ ] Implement a versioned bounded wire frame for the tested generic operations, sequence/epoch/revision fields, and chunked relocatable descriptors/resources. Reuse the same operation semantics as native; validate all decoded lengths and IDs.

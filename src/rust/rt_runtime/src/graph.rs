@@ -210,8 +210,14 @@ pub struct PlanDescriptor {
 /// plans must pass receiver validation against the live catalog before activation.
 pub struct PreparedPlan {
     descriptor: PlanDescriptor,
-    membership: Vec<Option<NodeId>>,
+    membership: Vec<Membership>,
+    membership_stamp: u64,
     config: PreparedConfig,
+}
+#[derive(Clone, Copy, Default)]
+struct Membership {
+    stamp: u64,
+    node: Option<NodeId>,
 }
 
 impl PreparedPlan {
@@ -227,19 +233,105 @@ impl PreparedPlan {
         {
             return Err(Error::Capacity);
         }
-        let mut membership = vec![None; limits.max_nodes];
+        let mut membership = vec![Membership::default(); limits.max_nodes];
+        for slot in &mut membership {
+            *std::hint::black_box(slot) = Membership::default();
+        }
         for step in &descriptor.steps {
             if let Some(slot) = membership.get_mut(step.node.slot() as usize) {
-                *slot = Some(step.node);
+                *slot = Membership {
+                    stamp: 1,
+                    node: Some(step.node),
+                };
             }
         }
         Ok(Self {
             descriptor,
             membership,
+            membership_stamp: 1,
             config,
         })
     }
 
+    /// Prepare full-capacity, pre-touched descriptor storage for bounded receiver
+    /// materialization. Descriptor edits do not certify execution validity.
+    pub fn with_capacity(config: PreparedConfig) -> Result<Self, Error> {
+        let limits = config.limits();
+        for (count, size) in [
+            (limits.max_nodes, size_of::<NodeStep>()),
+            (limits.max_edges, size_of::<Connection>()),
+            (limits.max_nodes, size_of::<Membership>()),
+        ] {
+            if count
+                .checked_mul(size)
+                .is_none_or(|bytes| bytes > i32::MAX as usize)
+            {
+                return Err(Error::Capacity);
+            }
+        }
+        let step = NodeStep {
+            node: NodeId::from_parts(0, 1)?,
+            input_end: 0,
+        };
+        let endpoint = Endpoint {
+            node: None,
+            kind: PortType::Audio,
+            port: 0,
+        };
+        let edge = Connection {
+            source: endpoint,
+            destination: endpoint,
+        };
+        let mut descriptor = PlanDescriptor {
+            steps: vec![step; limits.max_nodes],
+            connections: vec![edge; limits.max_edges],
+        };
+        for value in &mut descriptor.steps {
+            *std::hint::black_box(value) = step;
+        }
+        for value in &mut descriptor.connections {
+            *std::hint::black_box(value) = edge;
+        }
+        descriptor.steps.clear();
+        descriptor.connections.clear();
+        Self::from_descriptor(config, descriptor)
+    }
+    /// Constant-work reset. Stamped membership avoids clearing every node slot in
+    /// a callback. Only invoke while exclusively owning an inactive plan.
+    pub fn begin_descriptor(&mut self) -> Result<(), Error> {
+        let stamp = self
+            .membership_stamp
+            .checked_add(1)
+            .ok_or(Error::Exhausted)?;
+        self.descriptor.steps.clear();
+        self.descriptor.connections.clear();
+        self.membership_stamp = stamp;
+        Ok(())
+    }
+    pub fn push_step(&mut self, step: NodeStep) -> Result<(), Error> {
+        if self.descriptor.steps.len() == self.descriptor.steps.capacity()
+            || self.descriptor.steps.len() == self.config.limits().max_nodes
+        {
+            return Err(Error::Capacity);
+        }
+        if let Some(slot) = self.membership.get_mut(step.node.slot() as usize) {
+            *slot = Membership {
+                stamp: self.membership_stamp,
+                node: Some(step.node),
+            };
+        }
+        self.descriptor.steps.push(step);
+        Ok(())
+    }
+    pub fn push_connection(&mut self, connection: Connection) -> Result<(), Error> {
+        if self.descriptor.connections.len() == self.descriptor.connections.capacity()
+            || self.descriptor.connections.len() == self.config.limits().max_edges
+        {
+            return Err(Error::Capacity);
+        }
+        self.descriptor.connections.push(connection);
+        Ok(())
+    }
     pub fn descriptor(&self) -> &PlanDescriptor {
         &self.descriptor
     }
@@ -249,7 +341,7 @@ impl PreparedPlan {
     pub fn contains(&self, id: NodeId) -> bool {
         self.membership
             .get(id.slot() as usize)
-            .is_some_and(|slot| *slot == Some(id))
+            .is_some_and(|slot| slot.stamp == self.membership_stamp && slot.node == Some(id))
     }
 }
 
@@ -498,5 +590,21 @@ impl PlanValidator {
         self.previous = Some(edge);
         self.edge += 1;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod staging_tests {
+    use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn exhausted_membership_stamp_preserves_the_prior_descriptor() {
+        let config = crate::Config::default().prepare().unwrap();
+        let mut plan = PreparedPlan::with_capacity(config).unwrap();
+        plan.membership_stamp = u64::MAX;
+        let node = NodeId::from_parts(0, 1).unwrap();
+        plan.push_step(NodeStep { node, input_end: 0 }).unwrap();
+        assert_eq!(plan.begin_descriptor(), Err(Error::Exhausted));
+        assert_eq!(plan.descriptor().steps.len(), 1);
+        assert!(plan.contains(node));
     }
 }

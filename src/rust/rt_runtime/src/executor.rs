@@ -93,10 +93,28 @@ pub struct Control<P> {
     config: PreparedConfig,
 }
 impl<P> Control<P> {
+    pub fn prepare_submissions(&mut self) -> Result<(), Error> {
+        self.transport.prepare_submissions()
+    }
     pub fn submit(
         &mut self,
         lane: Lane,
+        request: Command<P>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P>>> {
+        self.submit_inner(lane, request, false)
+    }
+    pub fn submit_prepared(
+        &mut self,
+        lane: Lane,
+        request: Command<P>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P>>> {
+        self.submit_inner(lane, request, true)
+    }
+    fn submit_inner(
+        &mut self,
+        lane: Lane,
         mut request: Command<P>,
+        prepared: bool,
     ) -> Result<transport::Ticket, transport::SubmitError<Command<P>>> {
         if let Command::Resource(command) = &mut request {
             command.reset_reply();
@@ -107,7 +125,11 @@ impl<P> Control<P> {
                 });
             }
         }
-        self.transport.submit(lane, request)
+        if prepared {
+            self.transport.submit_prepared(lane, request)
+        } else {
+            self.transport.submit(lane, request)
+        }
     }
     pub fn try_completion(&mut self) -> Option<transport::Completion<Command<P>, Retired<P>>> {
         self.transport.try_completion()

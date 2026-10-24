@@ -28,6 +28,8 @@ Run `python3 scripts/check_rt_runtime_boundary.py` from the workspace root to au
 
 `PreparedPlan::from_descriptor` also envelopes untrusted wire descriptors on the control side. It checks only storage limits, **not execution validity**. `PlanValidator` must certify the plan against the live catalog before activation. Initialize the validator outside rendering, call `begin`, and repeatedly call `advance` with the configured validation budget while keeping the candidate and catalog unchanged. Each step performs constant work and the tests guard all advances against heap operations. Raw descriptors contain no pointers or scratch offsets; validated node/port identities will determine scratch placement inside the executor. Do not execute a merely enveloped plan.
 
+For allocation-free receiver materialization, prepare a pool with `PreparedPlan::with_capacity`. While exclusively owning an inactive plan, use constant-work `begin_descriptor`, then bounded `push_step`/`push_connection` calls under the host's ingress budget. Stamped membership avoids clearing all node slots on reset. Full storage refuses rather than growing; compact compiler-produced plans may have smaller actual capacities. This does **not** validate a wire descriptor: the host checks framing/counts/IDs, and the normal incremental receiver validator still certifies execution before activation.
+
 ## Graph execution
 
 `executor::GraphRuntime::prepare` accepts prepared processor slots and returns a control endpoint plus the single-owner runtime. Node signatures are captured outside rendering. Slot scratch is allocated and touched during preparation; `Processor::process` receives planar `AudioPorts` plus bounded MIDI input/output buffers. No temporary vectors of slice references are created during processing. `Box<dyn Processor>` is supported, or use a concrete application-defined processor enum.
@@ -79,6 +81,8 @@ The renderer uses reserved plus unused control work; incremental reclamation use
 ## Control ownership transport
 
 `transport::channel<T, R, S>` creates control/render endpoints outside rendering. `T` is an application-defined operation payload, `R` is an owned retirement bundle, and `S: Copy` is a coherent telemetry value. The transport never executes queued closures. `submit` is control-side only; it returns a cancellation ticket or returns the original payload on refusal.
+
+A host that must enqueue without allocation can call `prepare_submissions` before callbacks begin, then use `submit_prepared`. This prepares separate cancellation-flag pools for normal/recovery lanes. Submission probes at most that lane's slot count, and the endpoint retains the flags' base owners. A ticket or completion still holding a flag prevents reuse and can cause explicit `Busy` even after the transport credit returns. Drop completed tickets/results before recycling ingress credits; an old ticket cannot cancel a newer operation. Ordinary `submit` remains allocating/control-only. The same methods are exposed by the executor control wrapper.
 
 One admission credit reserves an operation, its terminal completion, and an optional retirement bundle until the control side calls `try_completion`. The bundle can hold displaced objects prepared by the caller. Rendering borrows the current request with `next_operation`, then uses `complete` to return both ownership and a compact outcome. Errors from `complete` return the retirement bundle and must be retained rather than dropped on RT. Dropping a completion on the control side performs reclamation.
 

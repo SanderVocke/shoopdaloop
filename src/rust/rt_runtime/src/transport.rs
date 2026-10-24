@@ -126,6 +126,7 @@ pub struct ControlEndpoint<T, R, S> {
     normal_outstanding: usize,
     recovery_outstanding: usize,
     next_sequence: Sequence,
+    submission_flags: Vec<Arc<AtomicBool>>,
 }
 
 pub struct RenderEndpoint<T, R, S> {
@@ -178,6 +179,7 @@ pub fn channel<T, R, S: Copy>(
             normal_outstanding: 0,
             recovery_outstanding: 0,
             next_sequence: Sequence(1),
+            submission_flags: Vec::new(),
         },
         RenderEndpoint {
             normal: normal_rx,
@@ -197,33 +199,90 @@ pub fn channel<T, R, S: Copy>(
 }
 
 impl<T, R, S: Copy> ControlEndpoint<T, R, S> {
-    /// Control-side only: allocates a cancellation flag after checking admission.
-    pub fn submit(&mut self, lane: Lane, request: T) -> Result<Ticket, SubmitError<T>> {
+    /// Prepare one reusable cancellation flag per admission slot. The endpoint
+    /// retains the base owners; held tickets/completions prevent flag reuse.
+    pub fn prepare_submissions(&mut self) -> Result<(), Error> {
+        if self.outstanding() != 0 {
+            return Err(Error::Busy);
+        }
+        if self.submission_flags.is_empty() {
+            self.submission_flags = (0..self.config.normal_slots + self.config.recovery_slots)
+                .map(|_| Arc::new(AtomicBool::new(false)))
+                .collect();
+        }
+        Ok(())
+    }
+    fn admission(&self, lane: Lane) -> Result<Sequence, Error> {
         if self.normal.is_abandoned() {
-            return Err(SubmitError {
-                error: Error::Disconnected,
-                value: request,
-            });
+            return Err(Error::Disconnected);
         }
         let (outstanding, capacity) = match lane {
             Lane::Normal => (self.normal_outstanding, self.config.normal_slots),
             Lane::Recovery => (self.recovery_outstanding, self.config.recovery_slots),
         };
         if outstanding == capacity {
+            return Err(Error::Full);
+        }
+        self.next_sequence.checked_next()
+    }
+    /// Allocation-free submission after preparation. At most the lane's fixed
+    /// slot count is probed. Retained ticket handles can cause explicit Busy even
+    /// after a terminal completion is received; old tickets cannot cancel reuse.
+    pub fn submit_prepared(&mut self, lane: Lane, request: T) -> Result<Ticket, SubmitError<T>> {
+        let next = match self.admission(lane) {
+            Ok(next) => next,
+            Err(error) => {
+                return Err(SubmitError {
+                    error,
+                    value: request,
+                })
+            }
+        };
+        if self.submission_flags.is_empty() {
             return Err(SubmitError {
-                error: Error::Full,
+                error: Error::InvalidState,
                 value: request,
             });
         }
-        let Ok(next) = self.next_sequence.checked_next() else {
+        let range = match lane {
+            Lane::Normal => 0..self.config.normal_slots,
+            Lane::Recovery => self.config.normal_slots..self.submission_flags.len(),
+        };
+        let Some(flag) = self.submission_flags[range]
+            .iter()
+            .find(|flag| Arc::strong_count(flag) == 1)
+        else {
             return Err(SubmitError {
-                error: Error::Exhausted,
+                error: Error::Busy,
                 value: request,
             });
         };
+        flag.store(false, Ordering::Relaxed);
+        self.enqueue(lane, request, Arc::clone(flag), next)
+    }
+    /// Control-side only: allocates a cancellation flag after checking admission.
+    pub fn submit(&mut self, lane: Lane, request: T) -> Result<Ticket, SubmitError<T>> {
+        let next = match self.admission(lane) {
+            Ok(next) => next,
+            Err(error) => {
+                return Err(SubmitError {
+                    error,
+                    value: request,
+                })
+            }
+        };
+        self.enqueue(lane, request, Arc::new(AtomicBool::new(false)), next)
+    }
+    fn enqueue(
+        &mut self,
+        lane: Lane,
+        request: T,
+        cancelled: Arc<AtomicBool>,
+        next: Sequence,
+    ) -> Result<Ticket, SubmitError<T>> {
         let ticket = Ticket {
             sequence: self.next_sequence,
-            cancelled: Arc::new(AtomicBool::new(false)),
+            cancelled,
         };
         let packet = Completion {
             sequence: ticket.sequence,

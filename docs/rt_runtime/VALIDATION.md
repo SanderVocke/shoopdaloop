@@ -184,3 +184,19 @@ Verification through `nix develop`:
 - Native callback scopes, including resource command failures and pool recycling, remain guarded against heap operations. Page metadata and retirement-stack backing storage are pre-touched during preparation. No resource operation introduces locks, waits, I/O, or whole-resource work in a callback.
 
 This completes the resource milestone, not the host milestone: these Chrome results are browser unit/integration tests, **not an AudioWorklet claim**. Cross-platform CI, actual non-isolated worklet materialization/transfer credits, longer mixed adversarial runs, Miri, performance measurements, and final host equivalence remain required by stages 6–8.
+
+## Stage 6, prerequisite: allocation-free prepared ingress
+
+Added optional preallocated submission flags and reusable plan materialization APIs for a receiver running on an AudioWorklet thread. Ordinary control submission still allocates; `prepare_submissions` plus `submit_prepared` uses fixed, lane-separated flag pools. Held tickets/completions prevent flag reuse, giving explicit `Busy` rather than allowing stale cancellation or allocating a replacement. The endpoint retains each flag's base owner until non-render teardown. Admission scans at most the configured lane capacity, with no retries/waits.
+
+`PreparedPlan::with_capacity` pre-touches descriptor storage. Constant-work reset advances a checked membership stamp; each push copies one typed descriptor record without reallocating. Reuse remains private to the owner of an inactive plan, and it does not bypass receiver validation. Hosts must still bound wire decoding/materialization work and validate declared counts before submitting ownership.
+
+Verification through `nix develop`:
+
+- Native debug/release: **86 tests passed each**; Node/Chromium: **82 passed each**, with the same pinned tools as stage 5.
+- Warning-denying workspace build, formatting, shared-test policy and four-target production dependency audit: pass.
+- A thousand prepared submissions reuse flags under the heap guard. Cancellation reset, retained results/tickets, and independent recovery flags are exercised; no flag is reused while an old handle exists.
+- A prepared executor cycles one owning chunk buffer through 64 submissions/completions without allocation, reallocation, deallocation, or pointer change, guarding ingress as well as rendering.
+- A plan is rebuilt and incrementally revalidated a hundred times under the guard. Full capacities, zero-capacity compact plans, invalid descriptors, oversized allocation arithmetic, and membership-stamp exhaustion are explicit refusals.
+
+This is a worklet prerequisite, **not** actual AudioWorklet evidence. Stage 6 remains in progress.
