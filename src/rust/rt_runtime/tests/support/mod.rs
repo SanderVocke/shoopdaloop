@@ -98,6 +98,7 @@ pub fn assert_no_heap<R>(run: impl FnOnce() -> R) -> R {
     result
 }
 
+#[allow(dead_code)] // Shared support is compiled independently by each integration test.
 pub struct DropProbe<'a> {
     pub realtime_drops: &'a Cell<usize>,
     pub control_drops: &'a Cell<usize>,

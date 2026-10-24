@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stages 0–1 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–2 complete; implementation branch `feat/generic-rt-runtime`. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -77,11 +77,11 @@ Depends on stage 0.
 
 Depends on stage 1; provides the foundation used by graph and resource transactions.
 
-- [ ] Implement typed operations, bounded SPSC endpoints, sequences, completion slots, and coherent fixed-size telemetry. No synchronous waits in the runtime.
-- [ ] Implement admission credits covering commands, terminal completions, and retirement. Encode explicit ownership on full queues, rejection, cancellation, and disconnection; never discard an owning `Result` on RT.
-- [ ] Implement per-callback command/publication budgets and reserved control capacity for release/recovery operations. Expose deterministic counters for work performed and refused/deferred work.
-- [ ] Define stop/park/drain lifecycle: stop callbacks before final destruction; allow the control endpoint to disappear while rendering safely continues with bounded retained storage.
-- [ ] Verify: FIFO/order, duplicate/stale identity handling, tiny capacities, stalled consumers, repeated refusal, endpoint drop in either order, outstanding cancellation, and all destructor probes. Run a two-thread stress test and a deterministic state-machine model; use concurrency model checking for any newly introduced atomic publication protocol. Commit.
+- [x] Implement typed operations, bounded SPSC endpoints, sequences, completion slots, and coherent fixed-size telemetry. No synchronous waits in the runtime.
+- [x] Implement admission credits covering commands, terminal completions, and retirement. Encode explicit ownership on full queues, rejection, cancellation, and disconnection; never discard an owning `Result` on RT.
+- [x] Implement per-callback command/publication budgets and reserved control capacity for release/recovery operations. Expose deterministic counters for work performed and refused/deferred work.
+- [x] Define stop/park/drain lifecycle: stop callbacks before final destruction; allow the control endpoint to disappear while rendering safely continues with bounded retained storage.
+- [x] Verify: FIFO/order, duplicate/stale identity handling, tiny capacities, stalled consumers, repeated refusal, endpoint drop in either order, outstanding cancellation, and all destructor probes. Run a two-thread stress test and a deterministic state-machine model; use concurrency model checking for any newly introduced atomic publication protocol. Commit.
 
 ### 3. Graph compilation and allocation-free execution
 

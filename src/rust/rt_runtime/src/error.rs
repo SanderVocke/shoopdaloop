@@ -10,6 +10,8 @@ pub enum Error {
     InvalidId,
     InvalidEvent,
     Full,
+    Disconnected,
+    InvalidState,
 }
 
 impl std::fmt::Display for Error {
@@ -23,6 +25,8 @@ impl std::fmt::Display for Error {
             Self::InvalidId => "invalid or stale identity",
             Self::InvalidEvent => "invalid event range or timestamp",
             Self::Full => "bounded storage is full",
+            Self::Disconnected => "peer endpoint disconnected",
+            Self::InvalidState => "operation is invalid in the current state",
         })
     }
 }

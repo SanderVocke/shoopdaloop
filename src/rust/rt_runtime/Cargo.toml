@@ -14,8 +14,14 @@ workspace = true
 [features]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
+[dependencies]
+rtrb = { workspace = true }
+
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+loom = "0.7"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

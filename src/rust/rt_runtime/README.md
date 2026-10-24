@@ -2,7 +2,7 @@
 
 A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated configuration, checked IDs/clocks, bounded borrowed event storage, processor preparation/render contracts, and an empty-graph render endpoint. Graph execution, control transport, and resources are not implemented yet; do not infer those capabilities from the crate name.
+**Current milestone:** validated configuration, checked IDs/clocks, bounded borrowed event storage, processor preparation/render contracts, an empty-graph render endpoint, and a separate bounded ownership transport. Graph execution and resources are not implemented yet; the transport is not wired into rendering until typed runtime operations exist.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -21,5 +21,17 @@ assert_eq!(channel, [0.0; 128]);
 Run `cargo test -p rt_runtime` and `cargo test -p rt_runtime --release`. Tests install a counting allocator with positive allocation/reallocation/deallocation canaries; the same assertions run in release and Wasm. Counts are measured only inside render scopes, not during test framework setup. A separate audit of callback-reachable code is required for locks/waits/I/O; allocator instrumentation does not detect those.
 
 Run `python3 scripts/check_rt_runtime_boundary.py` from the workspace root to audit production/build dependencies on all supported targets. The shared repository test attribute is a dev-only exception. Registering the browser-test feature must not introduce test support into the production dependency tree.
+
+## Control ownership transport
+
+`transport::channel<T, R, S>` creates control/render endpoints outside rendering. `T` is an application-defined operation payload, `R` is an owned retirement bundle, and `S: Copy` is a coherent telemetry value. The transport never executes queued closures. `submit` is control-side only; it returns a cancellation ticket or returns the original payload on refusal.
+
+One admission credit reserves an operation, its terminal completion, and an optional retirement bundle until the control side calls `try_completion`. The bundle can hold displaced objects prepared by the caller. Rendering borrows the current request with `next_operation`, then uses `complete` to return both ownership and a compact outcome. Errors from `complete` return the retirement bundle and must be retained rather than dropped on RT. Dropping a completion on the control side performs reclamation.
+
+Call `begin_cycle` once per callback to snapshot visible work and set frame/epoch. Dequeues, automatic cancellation completions, and telemetry each have explicit limits; terminal and telemetry publication budgets are separate so telemetry cannot steal terminal capacity. Recovery admission is reserved independently and is serviced first; FIFO is preserved **within** each lane, not globally across them. Only use recovery for operations that do not need ordering behind normal work. A held current operation must finish before another can be borrowed, so lengthy staged transactions must not hold the dispatch slot while waiting for further commands.
+
+Cancellation is observed once at dequeue. Cancellation after that cut, including after application, does not undo an operation. A completion is the authority, not the ticket flag. Requests submitted after the callback's queue snapshot wait for the next callback. Sequence exhaustion refuses new requests instead of wrapping.
+
+There is no internal thread, blocking drain, or hidden executor. A disconnected control endpoint does not free render-owned objects: continue rendering or park the endpoint, then stop/join host callbacks before destroying it on a non-RT thread. A disconnected render endpoint rejects new submissions and returns their ownership. Destroying both endpoints after stopping safely reclaims held, queued, and completed payloads; clients must also release their received completions/tickets. Do not destroy the render endpoint inside a callback.
 
 See `docs/rt_runtime/CONTRACTS.md` and `docs/rt_runtime/VALIDATION.md` at the workspace root for intended API contracts and actual milestone evidence. `PLAN.md` and `DESIGN.md` define the remaining implementation and scope. No Shoop integration is included.

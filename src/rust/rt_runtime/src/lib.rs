@@ -4,10 +4,14 @@
 //! borrowed buffers and must not allocate, free, lock, wait, or perform I/O.
 //! Capacity and work-budget failures are explicit errors, not permission to grow.
 //!
-//! This crate is being implemented in stages. The initial render endpoint validates
-//! host blocks and emits silence; graph, transport, and resource facilities follow.
+//! The render endpoint currently validates host blocks and emits silence. A separate
+//! ownership transport provides bounded native control/completion queues. Graph and
+//! resource execution are not yet implemented.
 
 #![forbid(unsafe_code)]
+
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub mod buffer;
 pub mod config;
@@ -15,6 +19,7 @@ pub mod error;
 pub mod ids;
 pub mod processor;
 pub mod render;
+pub mod transport;
 
 pub use config::{Budgets, Config, PreparedConfig};
 pub use error::Error;

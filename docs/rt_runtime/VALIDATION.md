@@ -45,3 +45,20 @@ Verification (through the development shell):
 Wasm commands used the cached Node 22.22.2 and matching Chromium/ChromeDriver 147.0.7727.137 inside `nix develop`; reports are in `target/wasm-tests/dev/reports/{node,chrome}`. Native-only unwind tests account for the two-test difference. These are browser unit tests, not the stage-6 AudioWorklet fixture.
 
 Render audit: `process` only checks fixed shape/counts, clears at most configured output channels × frames, checks the frame counter, and updates plain state. Event append validates capacity/order before bounded slice copying; rejected appends leave both arenas unchanged. No reachable locks, waits, heap owners, formatting/logging, I/O, or unsafe code exist in the production crate. The test allocator's unsafe forwarding is isolated to test support with safety comments. Third-party processor behavior remains a documented obligation and will be guarded in fixtures.
+
+## Stage 2: bounded ownership transport
+
+Implemented generic SPSC control/render endpoints using `rtrb`, separate normal/recovery admission lanes, sequence IDs, best-effort cancellation tickets, owning terminal completions with retirement bundles, bounded coherent Copy telemetry, and per-cycle dequeue/publication limits. The transport is independent of the render endpoint until graph/runtime operations are defined. Explicit host stop/join followed by non-RT endpoint destruction is the shutdown contract; there is no internal thread or blocking drain.
+
+Verification through `nix develop`:
+
+- `RUSTFLAGS="-D warnings" cargo test -p rt_runtime`: 24 passed (1 unit, 12 core-contract, 11 lifecycle).
+- `RUSTFLAGS="-D warnings" cargo test -p rt_runtime --release`: same 24 passed, including RT heap guards and owning destructor probes.
+- `RUSTFLAGS="-D warnings" cargo build --workspace`: pass; Wasm production build also passed during this stage.
+- `cargo fmt --all`, shared-test usage, four-target production/build boundary, and Wasm dependency isolation checks: pass.
+- Node and Chromium package runners: 20 passed each with the same pinned tools as stage 1. Four native-only tests cover unwind handling, two-thread stress, and Loom.
+- Deterministic admission model: 5,000 cycles at each normal capacity 1–4, stalled completions, cancelled/normal requests, FIFO and credit conservation checks.
+- Two-thread stress: 10,000 ordered operations, coherent telemetry payload/complement pairs, and per-callback heap assertions. Shutdown exercised in both endpoint orders with queued/current/completed owners.
+- Loom explores the standard one-way cancellation flag observation race. It does not model `rtrb` internals; publication and queue ownership use the existing queue implementation rather than a new atomic protocol.
+
+Audit: admitted ownership count bounds the return queue (normal + recovery credits). Credits are released only on control-side receipt, not when commands leave the ingress queues. Unexpected return saturation retains the packet in a fixed slot rather than freeing or retrying indefinitely. Cancellation drops nothing on render; cancellation flags stay in the returning packet even if their tickets are gone. Recovery may reorder against normal operations, intentionally and explicitly; FIFO holds within each lane. RT `complete` misuse returns ownership in its error. All production code remains safe Rust; no mutex, wait, log, format, or I/O call is reachable from render transport methods.
