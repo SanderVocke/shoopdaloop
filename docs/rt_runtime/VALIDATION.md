@@ -299,7 +299,7 @@ Existing application regressions also passed: warnings-denied Wasm application c
 
 Stage 7 is complete as implementation, local verification, and CI scheduling. Configured jobs are not claimed as already executed.
 
-## Stage 8: final audit and remote delivery (in progress)
+## Stage 8: final audit and remote delivery
 
 PR: https://github.com/SanderVocke/shoopdaloop/pull/878. `AUDIT.md` records callback entry paths, finite loop/budget arguments, owning return/retirement/drop paths, resource and scheduler invariants, processor obligations, and the no-integration diff check. The final arithmetic audit added a preparation-time bound for aggregate diagnostic work across scheduled subranges: large individually valid capacities must not overflow wasm32 counters. Guarded contract tests cover rejecting products/aggregate counts without allocating, and accepting a large valid configuration. The prepared-plan allocation-overflow test still independently exercises plan metadata sizing using a one-frame configuration below the new work bound.
 
@@ -309,4 +309,18 @@ The initial PR could not start CI because upstream dependency updates conflicted
 
 The first coverage job failed in the existing application test `app_backend::tests::audio_port_peak_state_is_per_poll_cycle` (expected 0.8, observed 0.0), not a runtime test. Its uploaded Perfetto trace was inspected with the repository-pinned processor: bounds 292332449352–292444342183 ns, one audio callback, and no reported lost/drop/error stats. A graph-apply span overlaps that callback; this is evidence of timing overlap, not a proven root cause. Twenty unchanged local repeats with tracing/detail enabled passed. The failure and trace/log evidence are retained under `target/rt-runtime-ci` and `/tmp/rt-runtime-coverage-*`; no application code or test was changed, no test was skipped, and no CI gate was weakened. A new-head CI result remains required.
 
-No automated review or review request was present at the latest inspection. Final green required checks, current-head Windows/macOS evidence, and the final review check remain open; stage 8 is not complete.
+### Final source-head CI and review
+
+Source head **`fefe626b1ff866daaa16d55de9091668defc32e3`** passed the complete workflow, attempt 1: https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855. All ten jobs succeeded: six native debug/release cells, two web cells, Rust coverage, and Miri. Docs run `40145050906`, all four CodeQL language jobs in `40145050913`, and `codecov/project` / `codecov/patch` also passed. The prior application peak-meter failure did not recur; no application test or gate was modified to obtain this result.
+
+Downloaded artifacts were checked, not just job badges. `evidence/ci-stage8.json` retains the workflow/job URLs and results:
+
+- **Linux x86-64, Windows x86-64, and macOS ARM64, debug and release:** core tests, executable gain example, boundary audits, and both native replay modes pass. Every native replay matches **2,601 callbacks**, sample hash **480331717**, MIDI hash **3308430490**, and graph hash **487351092**.
+- **Complete shared repository Wasm suites:** Node reports **1,582 passed / two ignored**, Chromium **1,583 passed / two ignored**. The ignored tests are the existing intentional failure canaries, not runtime tests. `rt_runtime` reports **89 passed, zero ignored/failed** in each runtime.
+- **Actual CI AudioWorklet:** Chrome/ChromeDriver **147.0.7727.117**, independent ordinary Wasm memories, no isolation, no memory growth (1,507,328 bytes), and offline/native equivalence with the same hashes. The live run processed **12,398 callbacks / 1,586,944 frames**, with transport-dependent output checked against actual effective frames. Core work stayed at **1,042 bytes / 512 steps**. Both intentional processor/Rust heap failures produced the required nonzero child-runner exits.
+- **Miri:** all **38 selected executions** pass on the pinned toolchain. **CI benchmark:** 28,672 measured callbacks across seven cases, no observed misses, no heap/work/correctness failures; six expected native canary failures. No timing threshold was added.
+- Existing hosted/self-contained Chromium, multirealm tracing, Firefox Web Audio, packaging, and application regression steps passed in their applicable matrix cells.
+
+The final review check found **no submitted reviews, no review requests, and no automated code reviewer**. Codecov's informational comment reports **93.61% patch coverage** and increased project coverage; both coverage checks pass. It was reviewed and the aggregate-nextest coverage limitation was explained in a PR comment: separately executed fixtures/benchmarks are not included in that report, and no 100% coverage claim is made. A coverage comment/status is not represented as reviewer approval. CodeQL also passes; no code-review feedback remains unaddressed.
+
+Stages 0–8 are complete at the verified source head. The final documentation/evidence commit changes no runtime, test, fixture, or CI code; the PR checks remain the authoritative status for subsequent commit heads. No Shoop integration, production device/worklet adapter, hard-real-time browser guarantee, or old-engine speedup is claimed.

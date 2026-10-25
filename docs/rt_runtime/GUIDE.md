@@ -66,11 +66,11 @@ Ordinary control-side `submit` may allocate. Hosts enqueuing on a render/worklet
 
 ## Supported matrix and deliberate exclusions
 
-| Host | Scheduled verification | Local evidence |
+| Host | Scheduled verification | Recorded evidence |
 | --- | --- | --- |
 | Linux x86-64 | Debug/release tests, examples, native replay, benchmarks, Miri | Passed on the recorded Nix host |
-| Windows x86-64 | Debug/release tests, examples, native replay | CI execution required; not claimed from cross-target dependency inspection |
-| macOS ARM64 | Debug/release tests, examples, native replay | CI execution required |
+| Windows x86-64 | Debug/release tests, examples, native replay | Both CI cells passed; exact native replay hashes match Linux |
+| macOS ARM64 | Debug/release tests, examples, native replay | Both CI cells passed; exact native replay hashes match Linux |
 | Node Wasm | Shared core test suite | Passed with Node 22.22.2; not AudioWorklet evidence |
 | Chromium Wasm | Shared core tests on relevant PR changes and nightly/manual runs | Passed with Chromium 147 |
 | Real Chromium AudioWorklet | Independent offline/live worklet plus native equivalence and failure gates on web-debug CI | Passed without shared memory, threads, or cross-origin isolation |

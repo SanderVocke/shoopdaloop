@@ -1,6 +1,6 @@
 # Plan: initial generic real-time runtime crate
 
-Status: stages 0–7 complete; stage 8 in progress. Implementation branch `feat/generic-rt-runtime`; PR: https://github.com/SanderVocke/shoopdaloop/pull/878. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
+Status: stages 0–8 complete. Source head `fefe626b` passed CI run `40145050855`; final evidence is in `docs/rt_runtime/evidence/ci-stage8.json`. Implementation branch `feat/generic-rt-runtime`; PR: https://github.com/SanderVocke/shoopdaloop/pull/878. Evidence: `docs/rt_runtime/VALIDATION.md`; API contract/test matrix: `docs/rt_runtime/CONTRACTS.md`. No Shoop integration.
 
 Design: `DESIGN.md`. Broader motivation: `PROPOSAL.md`. This plan delivers a new `rt_runtime` library under `src/rust/rt_runtime`, retained in the existing workspace. It is not a relocation of the existing engine.
 
@@ -152,10 +152,10 @@ Depends on all earlier stages. Do not mark complete for compile-only, skipped, o
 - [x] Execute one public-API scenario in offline, two-thread native, and actual AudioWorklet hosts: start audio/MIDI routing; schedule exact-frame changes; stage and activate a new graph; capture; fetch a prefix; replace a large audio/MIDI resource; stall consumers to saturate queues; resume; verify outputs/completions; stop and reclaim everything.
 - [x] Compare deterministic sample/event results and effective revisions/frames across hosts for identically admitted journals. Use exact comparisons for copying/routing and documented tolerances for floating DSP; transport lateness must be reported, not hidden by comparisons.
 - [x] Re-run debug/release RT guards across successful, rejected, saturated, cancellation, and shutdown paths. Audit all callback-reachable ownership drops and budget loops. Confirm existing backend/application/protocol sources were not integrated or altered.
-- [ ] Run targeted and full repository gates below in the prescribed environment. Record commands/results and resolve introduced regressions; report any unavailable local platform checks and obtain their CI results before completion.
-- [ ] Commit final documentation/evidence. Push the implementation branch and create a PR describing scope, A1–A8 evidence, benchmarks, and deliberate limitations. Read `.agents/info/ci-debug.md` when inspecting CI failures; fix failures until required CI is green.
-- [ ] Check for automated PR reviews. Evaluate and address feedback with tests as appropriate, document justified disagreements, and repeat until the automated reviewer approves if one is present. Do not treat CI success alone as review approval.
-- [ ] Update this plan with completed checkboxes, validation evidence, remaining limitations, and PR link. No Shoop integration is required for completion.
+- [x] Run targeted and full repository gates below in the prescribed environment. Record commands/results and resolve introduced regressions; report any unavailable local platform checks and obtain their CI results before completion.
+- [x] Commit final documentation/evidence. Push the implementation branch and create a PR describing scope, A1–A8 evidence, benchmarks, and deliberate limitations. Read `.agents/info/ci-debug.md` when inspecting CI failures; fix failures until required CI is green.
+- [x] Check for automated PR reviews. Evaluate and address feedback with tests as appropriate, document justified disagreements, and repeat until the automated reviewer approves if one is present. Do not treat CI success alone as review approval.
+- [x] Update this plan with completed checkboxes, validation evidence, remaining limitations, and PR link. No Shoop integration is required for completion.
 
 ## Validation commands
 

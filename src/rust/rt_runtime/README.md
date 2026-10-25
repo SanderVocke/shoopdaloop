@@ -1,8 +1,8 @@
 # rt_runtime
 
-A generic audio/MIDI runtime crate under development. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
+A generic bounded audio/MIDI runtime crate. It does not depend on Shoop domain types, device APIs, or browser bindings. Test support is dev-only.
 
-**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resource uploads, capture, snapshots, and processor I/O are integrated with reliable owning commands. Independent native/offline/two-thread examples and a real non-isolated AudioWorklet fixture are verified on Linux; seeded adversarial models, selected Miri checks, and release benchmarks also pass. Cross-platform CI and final delivery remain in progress.
+**Current milestone:** validated capacities, bounded event storage, ownership transport, deterministic DAG execution/activation, stable processor slots, exact-frame scheduled parameters/MIDI, and bounded MIDI overload recovery. Revisioned resource uploads, capture, snapshots, and processor I/O are integrated with reliable owning commands. Independent native/offline/two-thread examples and a real non-isolated AudioWorklet fixture are verified on Linux; seeded adversarial models, selected Miri checks, and release benchmarks also pass. Linux, Windows, macOS, core Wasm, and actual AudioWorklet CI have passed. PR #878 and `docs/rt_runtime/evidence/ci-stage8.json` record delivery evidence.
 
 ```rust
 use rt_runtime::{Config, Frame, RenderRuntime};
@@ -104,4 +104,4 @@ Cancellation is observed once at dequeue. Cancellation after that cut, including
 
 There is no internal thread, blocking drain, or hidden executor. A disconnected control endpoint does not free render-owned objects: continue rendering or park the endpoint, then stop/join host callbacks before destroying it on a non-RT thread. A disconnected render endpoint rejects new submissions and returns their ownership. Destroying both endpoints after stopping safely reclaims held, queued, and completed payloads; clients must also release their received completions/tickets. Do not destroy the render endpoint inside a callback.
 
-See `docs/rt_runtime/CONTRACTS.md` and `docs/rt_runtime/VALIDATION.md` at the workspace root for intended API contracts and actual milestone evidence. `PLAN.md` and `DESIGN.md` define the remaining implementation and scope. No Shoop integration is included.
+See `docs/rt_runtime/CONTRACTS.md` and `docs/rt_runtime/VALIDATION.md` at the workspace root for intended API contracts and actual milestone evidence. `PLAN.md` and `DESIGN.md` define the completed initial implementation and deliberate scope limits. No Shoop integration is included.
