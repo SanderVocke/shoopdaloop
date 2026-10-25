@@ -14,6 +14,11 @@ The resolver API supports `submit`, retained `completion`/`take_completion`,
 `decisions`; only `commit` publishes state, terminal outcomes, and semantic
 events. Finish the selected interval before another submission or boundary.
 A failed or invalidated preview cannot be committed or expose valid decisions.
+`Decision::playback_discontinuity` is an authoritative, transactional media restart
+flag, independent of optional journal storage. Same-position seeks and explicit
+replacements can set it without changing visible state; final non-playing states
+clear it. Use this flag rather than diagnostic events to drive renderer smoothing
+and MIDI cleanup/restoration.
 
 Pending requests and unread terminal records share fixed reserved slots.
 Automatic wraps and sync pulses do not consume those slots. Journal capacity

@@ -67,6 +67,7 @@ struct Scratch {
     intents: Vec<Option<Intent>>,
     protected: Vec<Option<Priority>>,
     origins: Vec<Option<RequestId>>,
+    playback_discontinuities: Vec<bool>,
     pulses: Vec<bool>,
     delivered: Vec<bool>,
     masked: Vec<bool>,
@@ -103,7 +104,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
                 + size_of::<Decision>()
                 + size_of::<u32>()
                 + size_of::<ProgramAction>()
-                + 3,
+                + 4,
         ),
         (
             limits.pending_requests,
@@ -130,6 +131,7 @@ impl Resolver {
             limits.loop_slots,
             Decision {
                 state: State::new(dummy, 0),
+                playback_discontinuity: false,
                 origin: None,
             },
         );
@@ -160,6 +162,7 @@ impl Resolver {
                 intents: prepared(limits.loop_slots, None),
                 protected: prepared(limits.loop_slots, None),
                 origins: prepared(limits.loop_slots, None),
+                playback_discontinuities: prepared(limits.loop_slots, false),
                 pulses: prepared(limits.loop_slots, false),
                 delivered: prepared(limits.loop_slots, false),
                 masked: prepared(limits.loop_slots, false),
@@ -362,6 +365,7 @@ impl Resolver {
         scratch.program_actions.fill(ProgramAction::None);
         scratch.protected.fill(None);
         scratch.origins.fill(None);
+        scratch.playback_discontinuities.fill(false);
         scratch.pulses.fill(false);
         scratch.delivered.fill(false);
         scratch.masked.fill(false);
@@ -404,6 +408,8 @@ impl Resolver {
             }
             boundary.scratch.decisions.push(Decision {
                 state,
+                playback_discontinuity: state.plays()
+                    && boundary.scratch.playback_discontinuities[slot],
                 origin: boundary.scratch.origins[slot],
             });
         }
@@ -636,6 +642,8 @@ impl Boundary<'_> {
                 }
             }
             Ok((pulse, action)) => {
+                self.scratch.playback_discontinuities[target] |=
+                    playback_discontinuity(before, state, intent.transition);
                 if action != ProgramAction::None {
                     self.scratch.program_actions[target] = action;
                 }
@@ -706,6 +714,7 @@ impl Boundary<'_> {
                 if state.plays() && state.position == state.content_length {
                     state.cycles = state.cycles.checked_add(1).ok_or(Error::Exhausted)?;
                     state.position = 0;
+                    self.scratch.playback_discontinuities[slot] = true;
                     self.scratch.pulses[slot] = true;
                     self.event(id, EventKind::Wrap);
                 }
@@ -1041,6 +1050,20 @@ fn mode_transition(mode: Mode) -> Transition {
         Mode::Recording => Transition::Record {
             monitor_previous: false,
         },
+    }
+}
+
+fn playback_discontinuity(before: State, after: State, operation: Transition) -> bool {
+    if !after.plays() {
+        return false;
+    }
+    if !before.plays() {
+        return true;
+    }
+    match operation {
+        Transition::Seek { .. } | Transition::Replace { .. } => true,
+        Transition::Play { retrigger, .. } => retrigger || before.mode != Mode::Playing,
+        _ => false,
     }
 }
 

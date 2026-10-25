@@ -149,7 +149,7 @@ fn oracle(smooth: u32) -> [[f32; 2]; 40] {
 #[shoop_test]
 fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts() {
     let target = LoopId::from_parts(0, 1).unwrap();
-    for smooth in [0, 4] {
+    for (smooth, journal_events) in [(0, 0), (0, 1), (0, 1024), (4, 0), (4, 1), (4, 1024)] {
         let expected = oracle(smooth);
         for partitions in [vec![40], vec![1; 40], vec![7, 6, 4, 9, 14]] {
             let mut store = store();
@@ -164,7 +164,10 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                 store.read_index(new.id).unwrap(),
             ];
             let topology = compile(
-                Limits::default(),
+                Limits {
+                    journal_events,
+                    ..Limits::default()
+                },
                 &TopologyDescription {
                     loops: vec![LoopSpec {
                         id: target,
@@ -236,20 +239,10 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                     assert_eq!(store.read(&mut cursor, &mut [0; 16]), Ok(16));
                     loop {
                         let interval = resolver.preview(Frame(ceiling), &[]).unwrap();
-                        let state = resolver.decisions().unwrap()[0].state;
+                        let decision = resolver.decisions().unwrap()[0];
+                        let state = decision.state;
                         resolver.commit().unwrap();
-                        let restart = resolver.events().iter().any(|event| {
-                            event.frame == interval.start
-                                && matches!(
-                                    event.kind,
-                                    EventKind::Wrap
-                                        | EventKind::Transition(
-                                            Transition::Play { .. }
-                                                | Transition::Seek { .. }
-                                                | Transition::Replace { .. }
-                                        )
-                                )
-                        });
+                        let restart = decision.playback_discontinuity;
                         let start = interval.start.0 as usize;
                         let end = interval.end.0 as usize;
                         renderer
@@ -611,78 +604,87 @@ fn planar_capture_freezes_immediately_and_separate_playback_fx_capture_keeps_old
 #[shoop_test]
 fn one_sample_content_executes_every_wrap_without_a_renderer_clock_or_quota() {
     let target = LoopId::from_parts(0, 1).unwrap();
-    for partitions in [vec![64, 64], vec![1; 128], vec![7, 53, 19, 49]] {
-        let mut store = store();
-        let snapshot = upload(&mut store, 1, &[0.75]);
-        let index = store.read_index(snapshot.id).unwrap();
-        let mut renderer = AudioRenderer::prepare(1, 64, Smoothing::None).unwrap();
-        let topology = compile(
-            Limits::default(),
-            &TopologyDescription {
-                loops: vec![LoopSpec {
-                    id: target,
-                    kind: LoopKind::Primitive,
-                    length: 1,
-                    sync_source: None,
-                }],
-                triggers: vec![],
-                programs: vec![],
-            },
-        )
-        .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
-        let mut output = [0.; 128];
-        let mut wraps = 0;
-        assert_no_heap(|| {
-            resolver
-                .submit(Request {
-                    target,
-                    sequence: Sequence(1),
-                    at: Frame(0),
-                    timing: Timing::At,
-                    transition: Transition::Play {
-                        position: 0,
-                        retrigger: false,
-                    },
-                })
-                .unwrap();
-            let mut end = 0;
-            for frames in &partitions {
-                end += frames;
-                loop {
-                    let interval = resolver.preview(Frame(end), &[]).unwrap();
-                    let state = resolver.decisions().unwrap()[0].state;
-                    resolver.commit().unwrap();
-                    wraps += resolver
-                        .events()
-                        .iter()
-                        .filter(|e| e.kind == EventKind::Wrap)
-                        .count();
-                    assert_eq!(interval.end.0 - interval.start.0, 1);
-                    renderer
-                        .render(
-                            &mut store.render_io(),
-                            Playback {
-                                source: Some(index),
-                                position: state.position,
-                                gain: 1.,
-                                discontinuity: true,
-                            },
-                            &mut [&mut output[interval.start.0 as usize..interval.end.0 as usize]],
-                        )
-                        .unwrap();
-                    resolver.finish(interval.end).unwrap();
-                    if interval.end.0 == end {
-                        break;
+    for journal_events in [0, 1, 1024] {
+        for partitions in [vec![64, 64], vec![1; 128], vec![7, 53, 19, 49]] {
+            let mut store = store();
+            let snapshot = upload(&mut store, 1, &[0.75]);
+            let index = store.read_index(snapshot.id).unwrap();
+            let mut renderer = AudioRenderer::prepare(1, 64, Smoothing::None).unwrap();
+            let topology = compile(
+                Limits {
+                    journal_events,
+                    ..Limits::default()
+                },
+                &TopologyDescription {
+                    loops: vec![LoopSpec {
+                        id: target,
+                        kind: LoopKind::Primitive,
+                        length: 1,
+                        sync_source: None,
+                    }],
+                    triggers: vec![],
+                    programs: vec![],
+                },
+            )
+            .unwrap();
+            let mut resolver = Resolver::prepare(topology).unwrap();
+            let mut output = [0.; 128];
+            let mut wraps = 0;
+            assert_no_heap(|| {
+                resolver
+                    .submit(Request {
+                        target,
+                        sequence: Sequence(1),
+                        at: Frame(0),
+                        timing: Timing::At,
+                        transition: Transition::Play {
+                            position: 0,
+                            retrigger: false,
+                        },
+                    })
+                    .unwrap();
+                let mut end = 0;
+                for frames in &partitions {
+                    end += frames;
+                    loop {
+                        let interval = resolver.preview(Frame(end), &[]).unwrap();
+                        let decision = resolver.decisions().unwrap()[0];
+                        let state = decision.state;
+                        assert!(decision.playback_discontinuity);
+                        resolver.commit().unwrap();
+                        wraps += resolver
+                            .events()
+                            .iter()
+                            .filter(|e| e.kind == EventKind::Wrap)
+                            .count();
+                        assert_eq!(interval.end.0 - interval.start.0, 1);
+                        renderer
+                            .render(
+                                &mut store.render_io(),
+                                Playback {
+                                    source: Some(index),
+                                    position: state.position,
+                                    gain: 1.,
+                                    discontinuity: decision.playback_discontinuity,
+                                },
+                                &mut [
+                                    &mut output[interval.start.0 as usize..interval.end.0 as usize]
+                                ],
+                            )
+                            .unwrap();
+                        resolver.finish(interval.end).unwrap();
+                        if interval.end.0 == end {
+                            break;
+                        }
                     }
                 }
-            }
-            assert_eq!(output, [0.75; 128]);
-            assert_eq!(resolver.state(target).unwrap().cycles, 127);
-            assert_eq!(resolver.state(target).unwrap().position, 1);
-            assert_eq!(wraps, 127);
-        });
-        cleanup(&mut store, &[snapshot], &[snapshot.resource]);
+                assert_eq!(output, [0.75; 128]);
+                assert_eq!(resolver.state(target).unwrap().cycles, 127);
+                assert_eq!(resolver.state(target).unwrap().position, 1);
+                assert_eq!(wraps, if journal_events == 0 { 0 } else { 127 });
+            });
+            cleanup(&mut store, &[snapshot], &[snapshot.resource]);
+        }
     }
 }
 

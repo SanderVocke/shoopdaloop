@@ -13,6 +13,9 @@ pub struct Interval {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Decision {
     pub state: State,
+    /// Restart media DSP/state at this boundary, independently of journal space.
+    /// False when the final state has no playback; consumers then stop/clean up.
+    pub playback_discontinuity: bool,
     pub origin: Option<RequestId>,
 }
 

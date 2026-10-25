@@ -1,0 +1,277 @@
+{
+  "passed": true,
+  "base_commit": "287de2c280f7a08dd1ddab0f490c6c2d6727f624",
+  "scope": "Stage 5 authoritative playback discontinuities: fixed transactional effect flags independent of diagnostic journals, including same-state seeks, arbitration and nested snapshots. Stage 5 remains incomplete.",
+  "source_sha256": {
+    "src/rust/shoop_loop_engine/src/audio.rs": "79669f4c43eab3ca7333a9cd833d15be01885d759b66f830eda94e3d6dc7b064",
+    "src/rust/shoop_loop_engine/src/command.rs": "339250f2ef1cdef6842d76c6c9bc2cbc96d2732f904fbfc95c690bb7a5d9b53b",
+    "src/rust/shoop_loop_engine/src/config.rs": "fbb07338ac7c3757a50c43a2770d76e4ab80634e2370ab23cbd921f7a3024e43",
+    "src/rust/shoop_loop_engine/src/decision.rs": "167e8e5e5e3d26a8f5974e1b4c2ea15c3a5e90bed7da095e9aa49253b6504446",
+    "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+    "src/rust/shoop_loop_engine/src/lib.rs": "8b96e2c0da3206cca12d89846b3d79af1db01598a2613a34c6a18873889c5d2f",
+    "src/rust/shoop_loop_engine/src/program.rs": "8aac9fe15731351a63c8c84b27aec1d66a4f966f2674a4cb81b11d661e079c1d",
+    "src/rust/shoop_loop_engine/src/resolver.rs": "35b5c7d04e6c4b042de9054c12231f9e8947a1f86f9d3d9521320ce7647f7e96",
+    "src/rust/shoop_loop_engine/src/state.rs": "0898d13e09479efbd30e77e8c43923e20c30682aae7ec1547ea5a53fa81bebfa",
+    "src/rust/shoop_loop_engine/src/topology.rs": "70d3e0c6d33aca4308a8caa20bc5ffcf1cda2a12549f1c6b183872bb701fb986",
+    "src/rust/shoop_loop_engine/tests/audio.rs": "e3b3ebb013eb8826de281d7400e770dba0ae45d6ed69d6955f6c4218724aed2f",
+    "src/rust/shoop_loop_engine/tests/compiler.rs": "ae4303b55f17255a0daab325afac68b26add1bb6fc5a99768ba9d2aedfd11ece",
+    "src/rust/shoop_loop_engine/tests/composites.rs": "97d0d2b7d2a8e2e9d040116a4b93ed37a8b5dc538772d826bee175b2198da906",
+    "src/rust/shoop_loop_engine/tests/media_decisions.rs": "6311ab6ab61bf0bbdee2b8d2c050510567f857d9423e8bf1352c173c97f4c52a",
+    "src/rust/shoop_loop_engine/tests/resolver.rs": "4c6e5fe81d9d4007cf4267e70b2cde460fdf23b8bdc7151f8f1503bd867de24e",
+    "src/rust/shoop_loop_engine/tests/support/composite_reference.rs": "261acb54aec7869c8a6bc1b43a3d9b1ef07f96d70e878a086af8ecd57eb60345",
+    "src/rust/shoop_loop_engine/tests/support/reference.rs": "08a62cc1d9c502fee72cae2e717a73cd936e4c59e8db2c4858090095a7498b6a",
+    "scripts/run_rt_runtime_miri.py": "3e735dd5fbddc5e71c764355de094f06ff7a8324e34115438d10f1b9220c6aa0"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 1.45726780599216,
+      "log": "target/loop-layer-decisions-stage5/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 1.6349202440032968,
+      "log": "target/loop-layer-decisions-stage5/native-debug.log",
+      "sha256": "86847ab9dd9009473e709056af8ff768356ac73a4bf56159646a720ac490fe25"
+    },
+    {
+      "name": "native-release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine",
+        "--release"
+      ],
+      "exit_code": 0,
+      "seconds": 2.752933720999863,
+      "log": "target/loop-layer-decisions-stage5/native-release.log",
+      "sha256": "e59fd9c06194fc9b5b63a02979f274b54378561cbe94116ec9f5245b1565b1c1"
+    },
+    {
+      "name": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 2.5897710449935403,
+      "log": "target/loop-layer-decisions-stage5/workspace-build.log",
+      "sha256": "96c1d3ca67bd2cca3467f7f3ed1c5ff29de5d7aa5b35afc070ac26bb9284c4e2"
+    },
+    {
+      "name": "rustdoc",
+      "command": [
+        "cargo",
+        "doc",
+        "--locked",
+        "--no-deps",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6660763529944234,
+      "log": "target/loop-layer-decisions-stage5/rustdoc.log",
+      "sha256": "1a01c6925fa47c789ef1a1599cd8a4395055530c2aaec327e33997857bc1c53b"
+    },
+    {
+      "name": "runtime-boundary",
+      "command": [
+        "python3",
+        "scripts/check_rt_runtime_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.45255102901137434,
+      "log": "target/loop-layer-decisions-stage5/runtime-boundary.log",
+      "sha256": "95fff258fbfbb5302df71ca75a0206bdd8f984a6b3614e5b91c7bea8872e611a"
+    },
+    {
+      "name": "loop-boundary",
+      "command": [
+        "python3",
+        "scripts/check_loop_engine_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.42841387999942526,
+      "log": "target/loop-layer-decisions-stage5/loop-boundary.log",
+      "sha256": "f150d1cc802cf91ae2f59030cad02ccbbd3bf5fe55fed50315f343e33fb59617"
+    },
+    {
+      "name": "boundary-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.tests.test_rt_runtime_boundary",
+        "scripts.tests.test_loop_engine_boundary"
+      ],
+      "exit_code": 0,
+      "seconds": 0.04134085899568163,
+      "log": "target/loop-layer-decisions-stage5/boundary-tests.log",
+      "sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e"
+    },
+    {
+      "name": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.027257046996965073,
+      "log": "target/loop-layer-decisions-stage5/test-policy.log",
+      "sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    },
+    {
+      "name": "tracing-policy",
+      "command": [
+        "python3",
+        "scripts/check_tracing_coverage.py",
+        "--require-closed"
+      ],
+      "exit_code": 0,
+      "seconds": 0.04808723299356643,
+      "log": "target/loop-layer-decisions-stage5/tracing-policy.log",
+      "sha256": "1bb7e9e94d46b23d8e57135492f91b96222e1db0ca7bca5c3558ec99891036e1"
+    },
+    {
+      "name": "wasm-dependencies",
+      "command": [
+        "python3",
+        "scripts/check_wasm_test_dependencies.py",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.17725243100721855,
+      "log": "target/loop-layer-decisions-stage5/wasm-dependencies.log",
+      "sha256": "077ad4115bb6999f06ac6926c3a6f657925a3a589fafa1b457cc5fe74e2a4a59"
+    },
+    {
+      "name": "node",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "node",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 37.442487225998775,
+      "log": "target/loop-layer-decisions-stage5/node.log",
+      "sha256": "cffacd807ba51dae05740a58219e5d82d5c7fd13a3471618bce443d75f3e99d8"
+    },
+    {
+      "name": "chrome",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "chrome",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 28.25543800200103,
+      "log": "target/loop-layer-decisions-stage5/chrome.log",
+      "sha256": "ba3abdf665179680509413b6c5c05bcaba50b3adfaa3c7f28c5d30fa86461998"
+    },
+    {
+      "name": "nextest-version",
+      "command": [
+        "cargo",
+        "nextest",
+        "--version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.013867026995285414,
+      "log": "target/loop-layer-decisions-stage5/nextest-version.log",
+      "sha256": "1fd8e369e986ceaa3163325c547244c65dfa43b89824ddd27afe3dd43b0cb188"
+    },
+    {
+      "name": "workspace-tests",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--features",
+        "shoop_engine/app_backend",
+        "--profile",
+        "ci"
+      ],
+      "exit_code": 0,
+      "seconds": 37.88089456799207,
+      "log": "target/loop-layer-decisions-stage5/workspace-tests.log",
+      "sha256": "ac0ac08f776120e0f3cae6df5a5d9d5c1177814d903f7126a7d7cc0fb3bf11a7"
+    }
+  ],
+  "loop_native_per_profile": 63,
+  "wasm": [
+    {
+      "elapsed_seconds": 31.484192506992258,
+      "executed": 63,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.xml",
+      "listed": 63,
+      "log": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 63,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 63,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 27.66258474798815,
+      "executed": 63,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.xml",
+      "listed": 63,
+      "log": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 63,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 63,
+      "traces": {}
+    }
+  ],
+  "limitations": [
+    "This scoped loop milestone does not rerun the unchanged standalone runtime release/Wasm suites, native/worklet fixtures or generic runtime Miri cases. Their preceding full run remains historical audio-stage5 evidence.",
+    "Full workspace nextest and warning-denied workspace build are freshly executed.",
+    "Selected loop Miri is recorded separately; not a whole loop-suite Miri claim.",
+    "MIDI emission/restoration, runtime loop adapter, full lifecycle example, independent loop hosts and final CI/review remain pending."
+  ]
+}

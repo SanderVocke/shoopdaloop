@@ -1,0 +1,64 @@
+{
+  "scope": "Stage 5 authoritative media decisions, scoped loop validation. Stage 5 remains incomplete.",
+  "miri": {
+    "passed": true,
+    "package_filter": "shoop_loop_engine",
+    "toolchain": "nightly-2026-05-04",
+    "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+    "cases": [
+      {
+        "package": "shoop_loop_engine",
+        "target": "audio",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "00-audio-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-decisions-stage5/miri/00-audio-seed0.log",
+          "sha256": "f8551f2ead765c948c54b2310dec9e921fcfaa80116f9db7f149be11c06f2be1"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "media_decisions",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "01-media_decisions-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-decisions-stage5/miri/01-media_decisions-seed0.log",
+          "sha256": "6e654912b5e9af0e04f670d38fc8290541a0bf795ffd42340c139a5d8957b07b"
+        }
+      }
+    ],
+    "limitations": [
+      "Not a whole-workspace or whole-suite Miri claim.",
+      "Loom's generator/FFI model runs natively, not under Miri.",
+      "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+      "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+    ]
+  },
+  "miri_command": "nix develop --command bash -c 'export RUSTUP_HOME=\"$HOME/.cache/rt-runtime-miri-rustup\"; python3 scripts/run_rt_runtime_miri.py --package shoop_loop_engine'",
+  "journal_capacities": [
+    0,
+    1,
+    1024
+  ],
+  "audio": "Existing scalar/ramp and dense one-sample comparisons now consume authoritative decision flags at every journal capacity; original fully provisioned cases retained. Complete workloads run unchanged in Miri/Wasm.",
+  "media_cases": [
+    "Twenty-frame primitive table including same-state seek/replace, idempotent Play, retrigger, recording monitor continuity, monitored capture failure, stop and empty-content refusal; repeated previews.",
+    "Losing/cancelled/refused intents; retry discards prior candidate restart while retaining a later natural wrap.",
+    "Clock-reactive Stop masks an earlier start flag in the final decision; higher-priority reactive restart restores playback after pre-clock Stop.",
+    "Nested authoritative program snapshots emit only primitive flags even without a journal."
+  ],
+  "initial_failures": [],
+  "prior_full_baseline": {
+    "path": "docs/loop_layer/evidence/audio-stage5.json",
+    "sha256": "2e9501b84c509ec65107a2baa87b124d54fdab025c2c0377ef8bd8bb23b98bd9"
+  },
+  "limitations": [
+    "Ten fresh selected loop Miri executions, not a fresh 119-case combined run or full loop-suite Miri claim.",
+    "The preceding runtime/host/full selected Miri evidence is historical; no rt_runtime implementation changed in this milestone.",
+    "MIDI rendering/restoration, runtime loop adapter, full example/graph and independent loop hosts remain pending."
+  ]
+}
