@@ -22,6 +22,7 @@ flowchart LR
 | Live graph edits | Old graph keeps rendering during validation; complete plans activate at callback boundaries |
 | Sample-frame scheduling | Parameter changes and MIDI injections split rendering at their target frames |
 | Generic interval planning | Explicit shared decision bindings and per-consumer observations; no internal subdivision quota |
+| Required resource data access | Explicit `RenderIo` read/capture capability with saturating work counters, independent of background quotas; indexed/group lifecycle APIs remain pending |
 | Bounded ownership transfer | Accepted commands reserve completion space; replaced objects return for non-RT disposal |
 | Revisioned resources | Fixed-page uploads, recording, immutable snapshots, and incremental reads |
 | Explicit overload handling | Refusal instead of growing storage; reserved MIDI reset delivery |

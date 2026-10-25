@@ -1,6 +1,8 @@
-# Resource implementation contract (stage 5)
+# Resource implementation contract
 
-Status: fixed-page uploads, capture, immutable prefix/revision snapshots, cursors, reclamation, executor requests, shared budgets, and processor resource access are implemented and tested. Stage-5 evidence is recorded in `VALIDATION.md`. Actual worklet transport/materialization remains a separate stage-6 requirement. This specializes `DESIGN.md` without changing PLAN.md A1–A8.
+Fixed-page uploads, capture, immutable prefix/revision snapshots, cursors, reclamation, executor requests, and legacy shared-budget access were delivered by initial runtime Stage 5; its historical evidence remains in `VALIDATION.md` and `DONE_INITIAL_CRATE.md`. Host-fixture evidence is recorded separately. This specializes `DESIGN_RT_ENGINE.md` without changing the historical A1–A8 contract.
+
+The first loop-layer Stage 4 milestone adds restricted required data access through `ResourceIo::render()` / `ResourceStore::render_io()`. Reads and active single-resource audio/MIDI appends use the existing checked storage paths without charging background copy/validation credits. They still reject invalid identities/shapes/frames and physical exhaustion. Indexed positioning, reserved exact-frame activation/freeze, and coordinated capture groups remain unimplemented.
 
 ## Ownership and fixed capacities
 
@@ -61,9 +63,11 @@ A resource-backed playback fixture must continue using its previous valid cursor
 
 Version references count active ownership and snapshot leases. When the last reference is released, mark the descriptor retired in constant work. Reclaim its chain one bounded page step at a time, recycling pages and finally the descriptor generation. Do not traverse/free the entire chain in a release, replacement, or cancellation operation.
 
-The resource context shares callback transfer/maintenance budgets across commands and processors; constructing a new context does not replenish them. `resource_io_bytes` and `resource_io_steps` reserve processor headroom within the total budgets. Control leaves these credits untouched; at least one page/validation step remains available for control progress. Rendering can use reserved plus unused control capacity; reclamation runs afterward within the remaining maintenance steps. Capacity planning must account for reclamation delays when work budgets remain fully consumed. Page allocation, chunk copying, parser steps, partial-tail copying, cursor reading, and retirement all have explicit charges. Resource lengths at least 16 times the callback transfer limit must pass the same no-heap render guard as small resources.
+Legacy resource-context methods share callback transfer/maintenance budgets across commands and processors; constructing a new context does not replenish them. `resource_io_bytes` and `resource_io_steps` reserve processor headroom within the total budgets. Control leaves these credits untouched; at least one page/validation step remains available for control progress. Rendering can use reserved plus unused control capacity; reclamation runs afterward within the remaining maintenance steps. Capacity planning must account for reclamation delays when work budgets remain fully consumed. Page allocation, chunk copying, parser steps, partial-tail copying, cursor reading, and retirement all have explicit charges. Resource lengths at least 16 times the callback transfer limit must pass the same no-heap render guard as small resources.
 
-## Stage-5 evidence requirements (verified in VALIDATION.md)
+Required `RenderIo` data operations instead use independent `RenderWork` counters: attempted operations, copied bytes, and charged MIDI event-validation units. These saturate with an overflow flag rather than failing the render. The executor reports them separately and resets them only once per host callback. The capability has no budget reset, upload, lease-allocation, structural lifecycle, or reclamation methods. Optional snapshot-tail copies, transfers, and maintenance retain their quotas; required data access cannot replenish them. Per-operation bounds and fixed pool capacity remain, but there is no arbitrary aggregate render-work quota or deadline guarantee.
+
+## Initial Stage-5 evidence requirements (verified in VALIDATION.md)
 
 - Audio/MIDI byte/sample/event round trips, including duration with no final MIDI event.
 - Captured-prefix immutability across further appends, partial-tail mutation, replacement, removal, and resource-ID reuse.

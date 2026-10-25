@@ -331,3 +331,40 @@ The prior interval tests continue to verify frozen ingress and credit snapshots,
 The independent runtime fixture deliberately retains `NoPlanner` and its `RTR1` wire format; no new operation is disguised as a parameter or claimed to cross that legacy wire. Fresh native/browser runs still agree on **2601 offline callbacks / 332928 frames**, **34 MIDI events**, sample/MIDI/graph hashes **480331717 / 3308430490 / 487351092**, fixed **1507328-byte** memory, and a byte-identical historical journal. The fixture documentation now explicitly states that boundary.
 
 All Stage 3 checklist items are verified. This completes the **generic coordination layer**, not loop/media integration or any end-to-end LL-A acceptance. Required-render resource accounting/indexes/capture transactions remain Stage 4; the loop adapter, program staging, coherent domain state, and new actual loop AudioWorklet remain later stages. No hard callback deadline, production migration, or final-head CI is claimed.
+
+## Stage 4 — Required resource accounting foundation
+
+Milestone: `feat(rt-runtime): separate required render work from background quotas`, source base `c8414b68`. Evidence: `evidence/accounting-stage4.json` and `evidence/accounting-stage4-provenance.json`; raw gate logs and archived Miri case logs are under `target/loop-layer-accounting-stage4/`.
+
+### Implemented boundary
+
+`ResourceIo::render()` and `ResourceStore::render_io()` lend restricted `RenderIo` access for sequential reads and active single-resource audio/MIDI capture. A private explicit work class selects accounting in the same checked implementation, rather than inflating or temporarily resetting quotas. Required data operations cannot return `Budget` from background copy/validation exhaustion. They still validate shapes, frames, IDs/leases, semantic arithmetic and fixed physical capacity. This capability cannot upload, allocate a lease, change structural capture lifecycle, reclaim, or replenish allowances.
+
+`RenderWork` reports attempted data operations, copied bytes, and charged MIDI validation units; counters saturate and latch overflow. The executor publishes separate render counters and merges overflow into its non-semantic diagnostic flag. Both work classes reset only once per host callback. Direct legacy `ResourceIo` methods keep their quota/refusal behavior, headroom reservations, owning returns, and immutable snapshot semantics. Optional snapshot tails, transfers, validation and reclamation remain budgeted.
+
+### Verification
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **133 passed per profile** |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **129 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Prescribed full nextest workspace | **1986 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **76 passing executions**, including all four required-resource tests and eight planner-execution tests |
+| Production-trait lifetime proof | Positive build/run; deliberate retained-borrow mutation rejected with **E0502** |
+| Warning-denied workspace build/rustdoc; formatting; boundary, test, tracing and Wasm policies | Passed |
+| Planned-gain example debug/release | Passed |
+| Existing native debug/release and actual offline/live AudioWorklet | Passed; processor/heap failure canaries detected; historical journal unchanged |
+
+Four new heap-guarded tests cover required audio and MIDI work beyond exhausted background credits, unchanged legacy refusal, separate validation accounting, stale released cursors, immutable partial snapshot tails across continued capture/removal, bounded reclamation back to full pools, invalid shapes/frames, and explicit physical-capacity exhaustion retaining the complete prefix. A unit test verifies saturating diagnostic arithmetic never causes a budget refusal.
+
+The additional synthetic planner test executes **128 one-sample intervals per callback**, across two callbacks. Required reads complete **512 bytes per callback** while legacy reads retain exactly **64 bytes** of allowance and **112 refusals**. Render operation counts remain 128, with no allowance/counter refresh at interval or capability reborrow boundaries. The original legacy-only test remains intact through the shared fixture.
+
+Fresh existing-host replay retains **2601 offline callbacks / 332928 frames**, **34 MIDI events**, sample/MIDI/graph hashes **480331717 / 3308430490 / 487351092**, and fixed **1507328-byte** Wasm memory. Native and browser journals remain byte-identical to the historical golden.
+
+### Remaining work and limits
+
+Only the first Stage 4 checklist item is complete. Reads still use existing sequential cursors; captures are active single-resource appends, not coordinated group transactions. Indexed audio/MIDI positioning, checked new index ownership, prepared lifecycle/lease reservations, exact-frame freeze-to-play, group preflight/commit, and interval failure observations remain required. Existing IDs/cursors still have the documented same-store precondition; this milestone does not add cross-store identity enforcement.
+
+The existing worklet fixture still uses legacy access, so it is regression evidence, not actual-worklet execution of required `RenderIo` or the loop library. Package Node/Chromium tests exercise the new path in Wasm. No loop integration, group atomicity, deadline guarantee, full Stage 4 completion, final CI, or reviewer approval is inferred.

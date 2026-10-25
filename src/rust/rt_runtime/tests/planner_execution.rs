@@ -614,6 +614,9 @@ fn malformed_intervals_and_changed_view_storage_fault_before_consumers() {
 
 struct BudgetClock {
     cursor: rt_runtime::resource::Cursor,
+    render_cursor: rt_runtime::resource::Cursor,
+    start_cursor: rt_runtime::resource::Cursor,
+    required: bool,
     read: Arc<AtomicUsize>,
     refused: Arc<AtomicUsize>,
 }
@@ -643,6 +646,17 @@ impl Planner for BudgetClock {
             }
             Err(error) => return Err(error),
         }
+        if self.required {
+            if self.render_cursor.position() == 512 {
+                self.render_cursor = self.start_cursor;
+            }
+            let bytes = context
+                .resources
+                .render()
+                .read(&mut self.render_cursor, &mut [0; 4])?;
+            assert_eq!(bytes, 4);
+            self.read.fetch_add(bytes, Ordering::Relaxed);
+        }
         context.frame.checked_add(1)
     }
     fn finish(&mut self, context: FinishContext<'_, ()>) -> Result<(), Error> {
@@ -662,6 +676,13 @@ impl Processor<BudgetClock> for NoNodes {
 
 #[shoop_test]
 fn resource_allowances_are_not_replenished_by_planning_or_internal_intervals() {
+    check_resource_allowances(false);
+}
+#[shoop_test]
+fn required_render_access_and_diagnostics_share_one_callback_envelope() {
+    check_resource_allowances(true);
+}
+fn check_resource_allowances(required: bool) {
     use rt_runtime::resource::{Description, Format, ResourceStore};
     use rt_runtime::Revision;
     let mut config = limits();
@@ -694,6 +715,9 @@ fn resource_allowances_are_not_replenished_by_planning_or_internal_intervals() {
     let refused = Arc::new(AtomicUsize::new(0));
     let planner = BudgetClock {
         cursor,
+        render_cursor: cursor,
+        start_cursor: cursor,
+        required,
         read: read.clone(),
         refused: refused.clone(),
     };
@@ -726,7 +750,18 @@ fn resource_allowances_are_not_replenished_by_planning_or_internal_intervals() {
         .unwrap();
         assert_eq!(runtime.diagnostics().subranges, 128);
         assert_eq!(runtime.diagnostics().transfer_bytes, 64);
-        assert_eq!(read.load(Ordering::Relaxed), (callback as usize + 1) * 64);
+        let render_bytes = if required { 512 } else { 0 };
+        assert_eq!(runtime.diagnostics().render_copied_bytes, render_bytes);
+        assert_eq!(
+            runtime.diagnostics().render_operations,
+            if required { 128 } else { 0 }
+        );
+        assert_eq!(runtime.diagnostics().render_validation_steps, 0);
+        assert!(!runtime.diagnostics().counter_overflow);
+        assert_eq!(
+            read.load(Ordering::Relaxed),
+            (callback as usize + 1) * (64 + render_bytes)
+        );
         assert_eq!(
             refused.load(Ordering::Relaxed),
             (callback as usize + 1) * 112

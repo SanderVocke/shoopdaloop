@@ -138,6 +138,7 @@ impl ResourceStore {
         frame: Frame,
         frames: usize,
         bytes: usize,
+        class: WorkClass,
     ) -> Result<Version, Error> {
         let next_frame = frame
             .checked_add(frames)
@@ -160,13 +161,10 @@ impl ResourceStore {
         if pages > self.free_pages.len() - self.reserved_pages {
             return Err(self.halt_capture(id, Error::Capacity));
         }
-        if bytes > self.copy_remaining() {
-            return Err(self.halt_capture(id, Error::Budget));
-        }
+        self.charge_work(class, bytes, 0)
+            .map_err(|error| self.halt_capture(id, error))?;
         self.reserved_pages += pages;
         version.reserved += pages;
-        self.copy_remaining -= bytes;
-        self.work.copied_bytes += bytes;
         version.description.bytes = length;
         version.description.frames = duration;
         version.revision = revision;
@@ -221,6 +219,16 @@ impl ResourceStore {
         frame: Frame,
         samples: &[f32],
     ) -> Result<Revision, Error> {
+        self.capture_audio_with(id, frame, samples, WorkClass::Background)
+    }
+    pub(super) fn capture_audio_with(
+        &mut self,
+        id: CaptureId,
+        frame: Frame,
+        samples: &[f32],
+        class: WorkClass,
+    ) -> Result<Revision, Error> {
+        self.note_operation(class);
         let version = self.running_capture(id, frame)?;
         let Format::Audio { channels } = version.description.format else {
             return Err(Error::InvalidShape);
@@ -239,7 +247,7 @@ impl ResourceStore {
             .len()
             .checked_mul(4)
             .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
-        let mut version = self.reserve_capture(id, version, frame, frames, bytes)?;
+        let mut version = self.reserve_capture(id, version, frame, frames, bytes, class)?;
         for sample in samples {
             self.append_reserved(&mut version, &sample.to_le_bytes());
         }
@@ -255,6 +263,17 @@ impl ResourceStore {
         frames: usize,
         input: &MidiBuffer,
     ) -> Result<Revision, Error> {
+        self.capture_midi_with(id, frame, frames, input, WorkClass::Background)
+    }
+    pub(super) fn capture_midi_with(
+        &mut self,
+        id: CaptureId,
+        frame: Frame,
+        frames: usize,
+        input: &MidiBuffer,
+        class: WorkClass,
+    ) -> Result<Revision, Error> {
+        self.note_operation(class);
         let version = self.running_capture(id, frame)?;
         if version.description.format != Format::Midi || frames > self.config.limits().max_frames {
             return Err(Error::InvalidShape);
@@ -277,11 +296,8 @@ impl ResourceStore {
         {
             return Err(Error::InvalidEvent);
         }
-        if input.len() > self.steps_remaining() {
-            return Err(self.halt_capture(id, Error::Budget));
-        }
-        self.steps_remaining -= input.len();
-        self.work.validation_steps += input.len();
+        self.charge_work(class, 0, input.len())
+            .map_err(|error| self.halt_capture(id, error))?;
         let mut bytes = 0usize;
         for index in 0..input.len() {
             let (offset, data) = input.get(index).ok_or(Error::InvalidEvent)?;
@@ -294,7 +310,7 @@ impl ResourceStore {
                 .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
         }
         let base = version.description.frames;
-        let mut version = self.reserve_capture(id, version, frame, frames, bytes)?;
+        let mut version = self.reserve_capture(id, version, frame, frames, bytes, class)?;
         for index in 0..input.len() {
             let (offset, data) = input.get(index).expect("validated MIDI event");
             let mut header = [0u8; 12];

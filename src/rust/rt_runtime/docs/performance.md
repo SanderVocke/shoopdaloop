@@ -32,7 +32,7 @@ Choose realistic upper bounds, then measure a mixed workload—not just an idle 
 | `command_slots` | 64 | Outstanding normal commands, **including unread completions** |
 | `resource_slots` | 32 | Size of each separate identity, version, and snapshot pool |
 | `resource_pages`, `page_bytes` | 256 × 4096 | Fixed resource payload storage; includes retained/reserved content |
-| `resource_io_bytes`, `resource_io_steps` | 0 each | Callback headroom protected for processor resource I/O |
+| `resource_io_bytes`, `resource_io_steps` | 0 each | Callback headroom protected for legacy quota-based resource I/O and optional snapshots |
 
 | Per-callback budget | Default | What it limits |
 |---|---:|---|
@@ -81,7 +81,7 @@ capture write  2 × 128 × 4 = 1024 bytes
 processor minimum               2048 bytes/callback
 ```
 
-With 4096-byte pages, use at least `resource_io_bytes = 2048` and `budgets.transfer_bytes = 6144`. That leaves one page for control progress. Add headroom for concurrent voices, extra reads, and snapshot tail copies; this is not a universal preset. MIDI capture needs step headroom too.
+For the legacy quota-based path, with 4096-byte pages, use at least `resource_io_bytes = 2048` and `budgets.transfer_bytes = 6144`. That leaves one page for control progress. Add headroom for concurrent voices, extra reads, and snapshot tail copies; this is not a universal preset. Legacy MIDI capture needs step headroom too. Required `ResourceIo::render()` read/capture does not use this headroom: its work is counted separately and cannot be stopped by background quotas. Physical storage and per-operation shape limits still apply; optional snapshots remain budgeted. This distinction does not imply a deadline guarantee.
 
 One minute of stereo 48 kHz audio requires `60 × 48000 × 2 × 4 = 23,040,000` payload bytes, or **5625 pages** of 4096 bytes. Replacement, snapshots, and reclamation lag require additional space. The default 1 MiB pool is not a long-recording preset.
 

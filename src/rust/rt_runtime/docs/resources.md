@@ -21,12 +21,21 @@ ResourceId (stable identity)
 | Context | API | Budget/lifecycle owner |
 |---|---|---|
 | Running host control | `Command::resource(Request::...)` | Executor applies requests at callback boundaries and returns owning completions |
-| Processor | `ProcessBlock::resources` (`ResourceIo`) | Shared callback budgets; bounded read/capture/snapshot/metadata access |
+| Processor/planner, legacy/background access | `ResourceIo` | Shared callback budgets; bounded read/capture/snapshot/metadata access |
+| Required data access | `ResourceIo::render()` (`RenderIo`) | Fixed-capacity read/capture; counted independently, never throttled by background allowances |
 | Before startup / custom integration | `ResourceStore` directly | Caller manages `begin_callback`, reclamation, and final destruction |
 
 To preload content or playback leases, prepare a store and pass it to `GraphRuntime::prepare_with_resources`. Its configuration must match the runtime. Processors can retain IDs, snapshot IDs, and cursors from that same store.
 
 **IDs and cursors are scoped to one store.** Do not reuse them across independent runtime instances. Copying a snapshot handle does not create a new lease; release each acquired lease exactly once.
+
+## Required rendering versus background work
+
+`RenderIo::read`, `capture_audio`, and `capture_midi` use the same prepared storage, cursor/lease validation, frame/shape checks, and explicit physical-capacity failures as the legacy methods. They do not consume or replenish background byte/validation allowances. Reads copy at most one page remainder; audio appends remain bounded by configured frames and resource channels; MIDI appends remain bounded by configured arena capacities. They do not promise a CPU deadline.
+
+`ResourceStore::render_work()` reports attempted data operations, copied bytes, and charged MIDI event-validation units. These counters saturate and latch `counter_overflow`; they cannot refuse work. The executor publishes the same counts as `Diagnostics::render_operations`, `render_copied_bytes`, and `render_validation_steps`, merging overflow into `counter_overflow`. All counters reset once at the host callback boundary, not when a view is reborrowed or a planner chooses an interval.
+
+The capability cannot upload, allocate a snapshot lease, begin/stop capture, reclaim, or reset accounting. Optional snapshots and exports still use background allowances. Existing `ResourceIo` methods retain their quota-based behavior and reservations. Indexed positioning, prepared exact-frame lifecycle reservations, and coordinated multichannel append are not provided by this first accounting milestone; these single-resource append methods must not be mistaken for group transactions.
 
 ## Upload an immutable revision
 
@@ -115,7 +124,7 @@ BeginCapture → append contiguous blocks → StopCapture → frozen content
 - `BeginCapture` activates a fresh revision. Processor calls to `capture_audio` or `capture_midi` append at contiguous absolute engine frames.
 - Audio capture takes interleaved samples. MIDI offsets become resource-relative frames; empty MIDI blocks still extend duration.
 - Successful nonempty appends advance the revision. `stop_capture` freezes bytes without changing their revision, but its status change makes prior status snapshots stale.
-- Storage or work-budget exhaustion stops recording atomically: none of the refused append is stored. Earlier successful appends—including earlier subranges—remain valid. Capacity recovery does not silently resume after a gap.
+- Storage exhaustion (or work-budget exhaustion through the legacy access path) stops recording atomically: none of the refused append is stored. Earlier successful appends—including earlier subranges—remain valid. Capacity recovery does not silently resume after a gap.
 - Report capture failure through application state without abandoning unrelated audio processing. Propagating a capture error from `Processor::process` will instead fail/silence the host block.
 
 A running-capture snapshot shares complete pages and copies only its partial mutable tail. It needs one spare page when that tail exists, plus copy budget for its used bytes. Refusal leaves capture unchanged. `Snapshot::cut_frame` is the **actual captured prefix end**, not necessarily the time a control request was submitted. Inspect `capture.active` and `capture.incomplete` through snapshot metadata or `info`.
@@ -137,7 +146,7 @@ budgets.validation_steps
                                      unused steps can reclaim later
 ```
 
-Reservations are **inside**, not on top of, the total budgets. Defaults reserve zero. Size byte headroom for all processor reads, captures, and snapshot-tail copies in the worst callback; size step headroom for MIDI capture event checks. Reborrowing `ResourceIo` for another node or subrange does not reset counters. Background work cannot consume reserved headroom.
+Reservations are **inside**, not on top of, the total budgets. Defaults reserve zero. For legacy quota-based access, size byte headroom for all processor reads, captures, and snapshot-tail copies in the worst callback; size step headroom for MIDI capture event checks. Required `RenderIo` access does not need this headroom, but still needs sufficient physical storage; optional snapshot-tail copies remain budgeted. Reborrowing `ResourceIo` for another node or subrange does not reset counters. Background work cannot consume reserved headroom.
 
 Preparation requires at least one page of unreserved copy budget and one unreserved validation step. Reclamation runs after rendering with remaining validation steps, so sustained consumption can postpone page reuse.
 

@@ -8,7 +8,7 @@ One `GraphRuntime` owns one prepared planner and all media processors. `NoPlanne
 
 ## Generic API shape and lifetimes
 
-`GraphRuntime<P, L = NoPlanner>`, `Processor<L = NoPlanner>`, and the generic `Planner` contract now implement the decision/observation lifecycle. `PlanContext` and `FinishContext` currently expose the existing quota-sharing `ResourceIo`; later resource work must add the specified required-render capabilities. `PreparedNode`, `Command`, and `Control` also carry the defaulted planner parameter. The production-trait borrowing experiment is `prototypes/runtime_view_lifetime.rs`; retaining decisions across mutation fails with E0502. The planner provides associated plain-data types `Decision`, `Observation`, `Operation`, and domain terminal `Result`; these are `Copy` and cannot own heap objects. All associated storage/stride arithmetic is checked at preparation, including wasm32 ceilings. Observations have a defined initialized value for pre-touching scratch.
+`GraphRuntime<P, L = NoPlanner>`, `Processor<L = NoPlanner>`, and the generic `Planner` contract now implement the decision/observation lifecycle. `PlanContext` and `FinishContext` expose `ResourceIo`, including the new restricted `render()` capability for required data access. Existing direct methods retain shared quotas. Indexed access and prepared group lifecycle operations remain pending Stage 4 work. `PreparedNode`, `Command`, and `Control` also carry the defaulted planner parameter. The production-trait borrowing experiment is `prototypes/runtime_view_lifetime.rs`; retaining decisions across mutation fails with E0502. The planner provides associated plain-data types `Decision`, `Observation`, `Operation`, and domain terminal `Result`; these are `Copy` and cannot own heap objects. All associated storage/stride arithmetic is checked at preparation, including wasm32 ceilings. Observations have a defined initialized value for pre-touching scratch.
 
 The interface separates these responsibilities:
 
@@ -104,6 +104,8 @@ Payload buffers use existing owning completion/retirement mechanisms and prepare
 Frame, identity, revision, and request-sequence exhaustion remain semantic errors, not saturating identities. Preserve old configuration/API behavior only where it does not impose a hidden musical-work cap; document intentional migration of resource-I/O/subrange fields and update tests explicitly. Background quota zero/exhaustion cannot be treated as a capture-content failure in the new render path.
 
 Render-side access is a restricted capability. Consumers may use prepared read/capture handles and publish observations, but cannot reset accounting, mutate graph structure, allocate leases unexpectedly, or access arbitrary mutable resources. Planner access adds only the prepared lifecycle/reservation operations needed at a boundary. Generic resource methods remain free of loop semantics.
+
+Implemented accounting foundation: `RenderIo` provides sequential read and active single-resource audio/MIDI append using the same validation/storage paths with independent saturating `RenderWork` counters. It never consumes or resets background credits. It cannot create leases or change capture lifecycle. Background reservations and old quota-based APIs remain effective. This is not yet indexed positioning or a coordinated capture transaction; the remaining contract below is still required.
 
 ### Indexed access and recording readiness
 

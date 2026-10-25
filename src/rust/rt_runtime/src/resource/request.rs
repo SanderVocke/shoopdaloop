@@ -187,6 +187,10 @@ impl ResourceStore {
     }
 }
 impl ResourceIo<'_> {
+    /// Borrow required data access without consuming or replenishing background quotas.
+    pub fn render(&mut self) -> RenderIo<'_> {
+        self.store.render_io()
+    }
     pub fn copy_remaining(&self) -> usize {
         self.store.copy_remaining()
     }

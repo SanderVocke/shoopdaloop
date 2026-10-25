@@ -95,6 +95,9 @@ pub struct Diagnostics {
     pub reclaimed_pages: usize,
     pub reclaimed_versions: usize,
     pub counter_overflow: bool,
+    pub render_operations: usize,
+    pub render_copied_bytes: usize,
+    pub render_validation_steps: usize,
 }
 
 pub struct Control<P, L: Planner = NoPlanner> {
@@ -464,6 +467,11 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
         self.diagnostics.validation_steps = work.validation_steps;
         self.diagnostics.reclaimed_pages = work.reclaimed_pages;
         self.diagnostics.reclaimed_versions = work.reclaimed_versions;
+        let rendering = self.resources.render_work();
+        self.diagnostics.render_operations = rendering.operations;
+        self.diagnostics.render_copied_bytes = rendering.copied_bytes;
+        self.diagnostics.render_validation_steps = rendering.validation_steps;
+        self.diagnostics.counter_overflow |= rendering.counter_overflow;
         let _ = self.ingress.publish(self.diagnostics);
         result
     }

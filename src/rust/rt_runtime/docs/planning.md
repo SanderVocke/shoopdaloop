@@ -35,7 +35,7 @@ Ingress, event-credit recycling, resource accounting, validation, telemetry publ
 
 Normal external event/result capacity is `min(scheduled_events, budgets.events)`. A configured planner also has one independent recovery receipt. Planner boundaries consume no scheduler slots. Diagnostic traversal counters saturate and set `Diagnostics::counter_overflow`; diagnostic exhaustion cannot refuse rendering.
 
-`PlanContext` and `FinishContext` currently expose the existing restricted `ResourceIo`, with its shared callback quotas. Indexed required-render access and transactional capture are not implemented yet. Typed operations and retained receipts are described below; their delivery does not bypass current resource quotas.
+`PlanContext` and `FinishContext` expose restricted `ResourceIo`. Its direct methods retain shared callback quotas; `render()` borrows required read/capture access counted independently of those quotas. Neither reborrowing nor internal intervals reset allowances or diagnostics. Indexed positioning and transactional capture are not implemented yet. Typed operations and retained receipts are described below; delivery does not refresh any resource allowance.
 
 ## Typed operations and terminal receipts
 

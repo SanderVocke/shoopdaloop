@@ -2,7 +2,7 @@
 
 ## Status and execution contract
 
-Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–3 are verified; Stage 4 is next; stages 4–10 remain incomplete. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
+Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–3 are verified; Stage 4 has a verified resource-accounting milestone and remains in progress; stages 4–10 remain incomplete. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
 
 Governing inputs: `INTER_LOOP_PROCESSING.md`, `PROPOSAL_LOOP_LAYER.md`, and the proposed-evolution sections of `DESIGN_RT_ENGINE.md` and `PROPOSAL_RT_ENGINE.md`. `DONE_INITIAL_CRATE.md` and its evidence remain the historical record of the initial runtime, not acceptance criteria to rewrite retrospectively.
 
@@ -133,7 +133,7 @@ Progress: the planning-metadata/compiler/receiver-validation milestone is verifi
 
 Depends on: Stage 3 and Stage 1 resource/failure contracts. Required before loop media integration.
 
-- [ ] Split `ResourceStore`/`ResourceIo` accounting into background maintenance/transfer work and required rendering access. Keep background quotas and reservations effective across the entire host callback. Preserve finite per-operation work and fixed pool capacities; report render work independently rather than returning `Budget` solely for exceeding background allowances.
+- [x] Split `ResourceStore`/`ResourceIo` accounting into background maintenance/transfer work and required rendering access. Keep background quotas and reservations effective across the entire host callback. Preserve finite per-operation work and fixed pool capacities; report render work independently rather than returning `Budget` solely for exceeding background allowances.
 - [ ] Add prepared page/index access for audio seek/wrap and MIDI event/state positioning. Validate all offsets, generations, leases, and index ownership. Build indexes during upload/capture or incremental preparation; no whole-resource scan at seek, wrap, record-stop, or exact-frame activation.
 - [ ] Add capture preparation/reservation tokens and restricted render-side activation/freeze operations. Reserve lifecycle/version/lease capacity before promises are made; support exact-frame record-to-play with immediately usable frozen content/indexes.
 - [ ] Add generic group preflight/reservation/commit for coordinated audio/MIDI capture. Account for unknown downstream MIDI sizes using the specified reservation/staging strategy. Make all channels retain a common logical prefix on failure; release unused reservations without callback destruction. Never commit one channel and then silently fail another.
@@ -141,6 +141,8 @@ Depends on: Stage 3 and Stage 1 resource/failure contracts. Required before loop
 - [ ] Preserve immutable snapshots/currentness, old revision playback, active-capture tail isolation, deferred reclamation, and store-scoped handles. Test cancellation/disconnect between every new preparation/activation/release step.
 
 **Verification:** extend runtime resource/capture/property tests with indexed seeks across page boundaries, empty/large MIDI records, stale indices, immediate freeze/read, multichannel partial-capacity refusal, old leases during replacement, and full pool recovery. Under heap guards and Miri, tiny maintenance budgets must not interrupt otherwise provisioned rendering or be refreshed by interval iteration.
+
+Accounting milestone evidence: `docs/loop_layer/evidence/accounting-stage4.json` and `accounting-stage4-provenance.json`. Restricted required data access and callback-wide independent diagnostics are verified; the remaining Stage 4 items above are not implemented or complete.
 
 ### Stage 5 — Audio/MIDI renderers and coordinated loop facade
 

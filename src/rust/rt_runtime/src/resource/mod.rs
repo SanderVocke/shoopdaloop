@@ -3,8 +3,11 @@
 
 mod capture;
 mod format;
+mod render;
 mod request;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
+use render::WorkClass;
+pub use render::{RenderIo, RenderWork};
 pub use request::{Reply, Request, ResourceCommand, ResourceIo};
 #[cfg(test)]
 mod tests;
@@ -128,6 +131,7 @@ pub struct ResourceStore {
     copy_remaining: usize,
     steps_remaining: usize,
     work: Work,
+    render_work: RenderWork,
     control_phase: bool,
 }
 fn retirement_stack(count: usize) -> Vec<usize> {
@@ -201,6 +205,7 @@ impl ResourceStore {
             copy_remaining: 0,
             steps_remaining: 0,
             work: Work::default(),
+            render_work: RenderWork::default(),
             control_phase: false,
         })
     }
@@ -210,6 +215,7 @@ impl ResourceStore {
         self.copy_remaining = self.config.limits().budgets.transfer_bytes;
         self.steps_remaining = self.config.limits().budgets.validation_steps;
         self.work = Work::default();
+        self.render_work = RenderWork::default();
         self.control_phase = false;
     }
     pub fn config(&self) -> PreparedConfig {
@@ -548,6 +554,15 @@ impl ResourceStore {
     }
     /// Copy at most the remainder of one page. No whole-chain walk or implicit seek.
     pub fn read(&mut self, cursor: &mut Cursor, output: &mut [u8]) -> Result<usize, Error> {
+        self.read_with(cursor, output, WorkClass::Background)
+    }
+    fn read_with(
+        &mut self,
+        cursor: &mut Cursor,
+        output: &mut [u8],
+        class: WorkClass,
+    ) -> Result<usize, Error> {
+        self.note_operation(class);
         let lease = get(
             &self.snapshots,
             cursor.snapshot.slot,
@@ -574,17 +589,13 @@ impl ResourceStore {
         if count == 0 {
             return Err(Error::InvalidState);
         }
-        if count > self.copy_remaining() {
-            return Err(Error::Budget);
-        }
+        self.charge_work(class, count, 0)?;
         let start = page * page_bytes + offset;
         output[..count].copy_from_slice(&self.data[start..start + count]);
         cursor.position += count;
         if cursor.position % page_bytes == 0 {
             cursor.page = self.pages[page].next;
         }
-        self.copy_remaining -= count;
-        self.work.copied_bytes += count;
         Ok(count)
     }
     pub fn release_snapshot(&mut self, id: SnapshotId) -> Result<(), Error> {
