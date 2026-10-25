@@ -65,4 +65,5 @@ macro_rules! identity {
 }
 
 identity!(NodeId);
+identity!(PlannerId);
 identity!(ResourceId);

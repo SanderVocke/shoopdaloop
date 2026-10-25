@@ -1,0 +1,275 @@
+{
+  "scope": "Supplemental provenance for graph-stage3.json; retains the failed first full-workspace attempt and subsequent unchanged test investigation.",
+  "initial_workspace_attempt": {
+    "path": "target/loop-layer-graph-stage3/workspace-tests-first-failure.log",
+    "sha256": "ecfbaa6111dfcb5013c4940b99dba7695214801cb4d871593d738f0f8072839e",
+    "result": "1954 tests run: 1953 passed, 1 failed, 4 skipped",
+    "failing_test": "shoop_engine::jack_app_backend external_midi_fanout_respects_each_tracks_passthrough_mute",
+    "failure": "src/rust/shoop_engine/tests/jack_app_backend.rs:205:33: connecting monitored_dry_midi_send to monitored returned JACK error 22; diagnostic says source or destination may not be part of an active client."
+  },
+  "investigation": {
+    "command": "for i in $(seq 1 20); do cargo nextest run --locked -p shoop_engine --features app_backend --test jack_app_backend -E \"test(external_midi_fanout_respects_each_tracks_passthrough_mute)\" --profile ci; done",
+    "environment": "nix develop; RUSTFLAGS=-D warnings; cargo-nextest 0.9.116; no missing-backend allowance; no artificial load or resource limits",
+    "passed": 20,
+    "failed": 0,
+    "filtered_other_tests_per_run": 6,
+    "logs": [
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-1.log",
+        "sha256": "7b4416119d6cea0eea688fbc50090e6bd918c1d6c648d8d3803188932782f00f"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-2.log",
+        "sha256": "4d41256c4db76891e645ed5584028e366c6e7390635859e4d57b3f365736234c"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-3.log",
+        "sha256": "3bae7bd29388fb2cab9028582a93056d9e57338b2b9f942d0bf243ea832d01cb"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-4.log",
+        "sha256": "d6dae22f16f2fa1d242a28a25cca469169b661dc652813fc01efa62b18e09f6f"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-5.log",
+        "sha256": "b25760668020b9f813fe272341aa267bf4379bd8b8b8e103ed538cb989e183db"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-6.log",
+        "sha256": "2dab7c94ad5fe051ab0041430ddd4890ca7b3a60fb0c791dae5744d07ffaaa50"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-7.log",
+        "sha256": "ebc899359fd3a9bea1ed55de4b98fa77c18664bad19cd525c5d1519085183ab9"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-8.log",
+        "sha256": "5481523ace0e80dfd64bb56d2d5406a5ba9291e799cf53d32c13259e1d418985"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-9.log",
+        "sha256": "6ade2ea32b4d848ffae2471284d367943b450bb539f3688cb3c9030b23d782ce"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-10.log",
+        "sha256": "1967575f192598a4f071345620c1abdd8e24e8cbc753080c18a18c75b56b5fce"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-11.log",
+        "sha256": "3df1fb113f7e5cde95ba7cc538cb6b1c9e33134ae124f6e56759237892921780"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-12.log",
+        "sha256": "e2e9e699957db86c84eba348dbb72e0e4bc560264241f7752b5ce07c3a62e87b"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-13.log",
+        "sha256": "16c78640c6e2417cae78955ed3da380bf147e0090934d63c756d2383958400f7"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-14.log",
+        "sha256": "2d71c41f3e3ca8d73529220471d7ae3f9c2e1dc14189340aa48e40c15501cf55"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-15.log",
+        "sha256": "b4c12ed92948e05a82698a3bb0b815347ed588250a4e77755be77de56b64fa33"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-16.log",
+        "sha256": "0308e8bb6bd8af88280bc7782ae07c38db16eeb90110ce63c906338b252c7ac2"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-17.log",
+        "sha256": "517b173bd1f8ec0df84d0ee937f5c7603376e559e76ec8219727f9b306bde55c"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-18.log",
+        "sha256": "0c17d0a61e2804ee59a5ecb7cee165ad71d86bebeddbd2ed4649517042928842"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-19.log",
+        "sha256": "cf27ccd0beaf357bb0280f517403c6711113e67017c136599eb9ab223e2398c6"
+      },
+      {
+        "path": "target/loop-layer-graph-stage3/jack-repeat-20.log",
+        "sha256": "041d45347c2474b0c5f682cdc1eed5abc5a4f449b149dd13d0ce027a958e94b5"
+      }
+    ],
+    "dependency_tree": {
+      "path": "target/loop-layer-graph-stage3/engine-dependencies.log",
+      "sha256": "540288c039f9ee24c25812f3ee913316c0a5e5fc92438c3ceb763d67e48efa65"
+    },
+    "dependency_command": "cargo tree --locked -p shoop_engine -e normal,build",
+    "dependency_result": "No rt_runtime or shoop_loop_engine dependency appears in the tested engine normal/build tree.",
+    "conclusion": "Failure did not reproduce in 20 isolated runs or the subsequent full workspace run. No causal explanation is established; no code, timeout, filter, or gate was changed for the full rerun."
+  },
+  "full_rerun": {
+    "result": "1954 tests run: 1954 passed, 4 skipped",
+    "path": "target/loop-layer-graph-stage3/workspace-tests.log",
+    "sha256": "3f258abb5f621eda078a254bf930afa4d40d93d884456ead74a37563461cb4e3"
+  },
+  "host_reports": {
+    "result": {
+      "passed": true,
+      "reports": [
+        {
+          "bytes": 1507328,
+          "callbacks": 2601,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1507328,
+          "frames": 332928,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 3308430490,
+          "mode": "offline",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 480331717,
+          "type": "stopped"
+        },
+        {
+          "bytes": 1507328,
+          "callbacks": 13444,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1507328,
+          "frames": 1720832,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 4022855181,
+          "mode": "live",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 738985413,
+          "type": "stopped"
+        }
+      ],
+      "tools": {
+        "chrome": "Chromium 147.0.7727.137",
+        "chromedriver": "ChromeDriver 147.0.7727.137 (68ba233a543d25e75c30f1228dd3bafa2da96937-refs/tags/147.0.7727.137@{#0})"
+      },
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ],
+      "failure_canaries": [
+        {
+          "kind": "processor",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        },
+        {
+          "kind": "rust-heap",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        }
+      ]
+    },
+    "native-debug-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "debug",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "native-release-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "release",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    }
+  },
+  "journal": {
+    "bytes": 529292,
+    "sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+    "unchanged_historical_golden": true
+  },
+  "limitations": [
+    "Host evidence covers the existing runtime fixture, not a loop-library AudioWorklet.",
+    "Passing repeats do not identify or fix the original JACK failure."
+  ]
+}

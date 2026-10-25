@@ -22,6 +22,7 @@ pub mod executor;
 pub mod graph;
 pub mod ids;
 pub mod midi;
+pub mod planner;
 pub mod processor;
 pub mod render;
 pub mod resource;
@@ -30,5 +31,5 @@ pub mod transport;
 
 pub use config::{Budgets, Config, PreparedConfig};
 pub use error::Error;
-pub use ids::{Epoch, Frame, NodeId, ResourceId, Revision, Sequence};
+pub use ids::{Epoch, Frame, NodeId, PlannerId, ResourceId, Revision, Sequence};
 pub use render::RenderRuntime;

@@ -53,6 +53,7 @@ The [gain graph example](examples/gain_graph.rs) checks output samples, exact-fr
 
 ## Current boundaries
 
+- Generic planning metadata is available through `planner`, `Catalog::with_planner`, and `compile_planned`. Separate planning descriptors validate identity, prefix ordering, decision bindings, and observation storage without fake signal ports. Planner execution, typed views/operations, and internally selected intervals are not implemented yet; the executor still prepares signal-only catalogs.
 - Graphs are acyclic: no feedback edges or automatic delay compensation.
 - Processor slots and port signatures are reserved at startup. Rewiring is live; arbitrary new slots or larger signatures are not.
 - Audio processing uses planar `f32`; resource audio uses interleaved little-endian `f32`. Conversion, resampling, codecs, and playback DSP belong to the host/processors.

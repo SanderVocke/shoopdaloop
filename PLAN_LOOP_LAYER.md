@@ -2,7 +2,7 @@
 
 ## Status and execution contract
 
-Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–2 are verified; Stage 3 is next; stages 3–10 remain unverified. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
+Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–2 are verified; Stage 3 is in progress with a verified planning-metadata milestone; stages 3–10 remain incomplete. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
 
 Governing inputs: `INTER_LOOP_PROCESSING.md`, `PROPOSAL_LOOP_LAYER.md`, and the proposed-evolution sections of `DESIGN_RT_ENGINE.md` and `PROPOSAL_RT_ENGINE.md`. `DONE_INITIAL_CRATE.md` and its evidence remain the historical record of the initial runtime, not acceptance criteria to rewrite retrospectively.
 
@@ -116,6 +116,8 @@ Depends on: Stage 1. Covers LL-A1–LL-A5 and the logical portion of LL-A9.
 ### Stage 3 — Generic planner lifecycle, graph dependencies, and typed delivery
 
 Depends on: Stages 1–2; synthetic planners isolate runtime correctness from loop implementation.
+
+Progress: the planning-metadata/compiler/receiver-validation milestone is verified in `docs/loop_layer/evidence/graph-stage3.json`, with failure investigation and host provenance in `graph-stage3-provenance.json`. Separate planning descriptors preserve signal-only descriptor/wire compatibility. The production executor still has no planner lifecycle or typed delivery, so this stage remains incomplete.
 
 - [ ] Extend `graph.rs` descriptions, reusable descriptors, compiler, membership handling, and incremental receiver validation with explicit planner/consumer bindings and ordering dependencies. Validate missing/stale targets, duplicate bindings, invalid dependency order/cycles, and descriptor capacities without using signal connections as control edges.
 - [ ] Extend `processor.rs` and the executor with the finalized planner/view/observation interface. Retain a straightforward no-planner path for existing processors/examples. Prepare and pre-touch decision and observation storage; enforce view lifetimes and clear/reuse observations without aliasing or stale-frame access.

@@ -15,7 +15,7 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | Criterion | Planned implementation/evidence | Status |
 | --- | --- | --- |
 | LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
-| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver verified in Stage 2; generic runtime bindings/integration pending |
+| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver and standalone generic binding validation verified; runtime lifecycle/integration pending |
 | LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution verified; media/runtime/host proof pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
 | LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
@@ -212,3 +212,38 @@ At a boundary, each seeded member's delivered bit changes at most once; each pen
 The independent composite oracle interprets raw sections into a dense desired-state table and advances all clock/media state one sample at a time; it calls no production compiler, resolver, or sparse lookup. Generated references cover flat regular/explicit programs. Nested seeks, source stalls, valid cyclic sync, conflict priorities, and mixed composite/primitive cascades additionally have explicit expected cases and full-journal partition/declaration comparisons. Integrated randomized resource/media/host cases remain required in later stages.
 
 All Stage 2 checklist items are now verified. This completes the **pure logical layer only**: no generic runtime planner API, real media renderer, resource transaction, Miri extension, actual loop AudioWorklet fixture, production migration, or final-head CI is claimed. The initial runtime and historical evidence remain unchanged.
+
+## Stage 3 — Planning metadata milestone (stage remains in progress)
+
+Milestone: `feat(rt-runtime): validate explicit planner dependencies` (the commit introducing this section). Evidence: [`evidence/graph-stage3.json`](evidence/graph-stage3.json), with the initial workspace failure, investigation, and fresh host reports in [`evidence/graph-stage3-provenance.json`](evidence/graph-stage3-provenance.json). Source hashes identify the tested implementation on top of `e66a00b7124de4b90e201aa6ec01925ffe7787c7`; raw logs are under `target/loop-layer-graph-stage3/`.
+
+### Implemented structure
+
+- Generic `PlannerId` and planner/consumer signatures declare decision slots, observation storage, and payload limits without any loop-domain dependency.
+- `Catalog::with_planner` and `compile_planned` handle explicit bindings independently of the signal DAG. Several consumers may share one decision slot; required consumers need exactly one binding. Bindings are sorted by consumer identity, not incidental signal traversal order.
+- `PreparedPlan` owns a separate `PlanningDescriptor`. Keeping `PlanDescriptor` signal-only avoids an unnecessary legacy fixture wire-format change. Reusable staging preallocates/touches binding storage and clears it without allocation or deallocation.
+- Incremental receiver validation checks identities/generations, complete planner signatures, graph membership, unique/canonical bindings, slot bounds, and aggregate observation reservations. The single planning step is required before signal step zero; backward planning dependencies are invalid rather than simulated with signal edges. Existing signal DAG cycle/order validation remains independent.
+- Signal-only catalogs reject unsolicited planning metadata. No-planner compilation keeps its existing path; the existing host journal and golden evidence are unchanged.
+
+Eight new shared `planning_graph` tests cover canonicalization, validation-budget partition invariance, malformed/stale/missing/duplicate bindings, prefix/signature mismatch, aggregate observation storage, absent graph members, empty clock-only metadata, legacy compatibility, and guarded staged reuse/refusal. Validation and staged edits run under allocation/reallocation/deallocation guards; allocating control-side compilation is intentionally outside them.
+
+### Verification and retained failure
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **101 passed per profile**, including eight new planning-metadata tests |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **97 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Full prescribed nextest workspace rerun | **1954 passed**, four unchanged opt-in canaries skipped |
+| Warning-denied workspace build/rustdoc, workspace/host formatting | Passed |
+| Both four-target boundary audits, five Python boundary tests, shared test/Wasm/tracing policies | Passed |
+| Existing native fixture, debug/release offline and two-thread replay | Passed |
+| Fresh existing-runtime offline/live non-isolated AudioWorklet | Passed; fixed **1507328-byte** memory, native/browser offline agreement |
+| Processor and Rust heap worklet failure canaries | Both detected with expected child exit 1 |
+
+The **first** full workspace attempt had 1953 passes and one failure: unchanged JACK test `external_midi_fanout_respects_each_tracks_passthrough_mute` failed connecting `monitored_dry_midi_send` to `monitored` with error 22. The error message says a source or destination may not belong to an active client. Twenty isolated reruns passed without code changes or a missing-backend allowance; the subsequent unchanged full suite passed. The engine normal/build dependency tree contains neither new library. These facts do **not** establish the failure's cause or claim a fix. The original failure and all repeat log hashes remain in the provenance report; no test, timeout, or gate was weakened.
+
+Fresh host regression evidence retains **2601 offline callbacks / 332928 frames**, sample/MIDI/graph hashes **480331717 / 3308430490 / 487351092**, and **34 MIDI events**. The raw journal matches the historical golden byte-for-byte. This proves compatibility with the **existing runtime fixture**, not a new loop AudioWorklet. Package Wasm tests also remain distinct from actual worklet execution.
+
+The current executor still constructs signal-only catalogs. Planner views/observations, typed operations and pending runtime receipts, callback-wide accounting with internal intervals, integrated activation/retirement tests, and selected new Miri cases remain outstanding. **Stage 3 is not complete**, and no end-to-end LL-A criterion is claimed from this structural milestone.

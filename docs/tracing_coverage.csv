@@ -7,6 +7,7 @@ src/rust/rt_runtime/src/graph.rs,generic_realtime_library,excluded,Independent g
 src/rust/rt_runtime/src/ids.rs,generic_realtime_library,excluded,Identity and clock value types; no execution boundary to instrument.
 src/rust/rt_runtime/src/lib.rs,generic_realtime_library,excluded,Independent crate declarations; no application tracing dependency.
 src/rust/rt_runtime/src/midi.rs,generic_realtime_library,excluded,Independent bounded MIDI validation; no application tracing dependency.
+src/rust/rt_runtime/src/planner.rs,generic_realtime_library,excluded,Generic planning metadata and capacity validation; no application tracing dependency.
 src/rust/rt_runtime/src/processor.rs,generic_realtime_library,excluded,Processor interface definitions; host instrumentation must preserve callback obligations.
 src/rust/rt_runtime/src/render.rs,generic_realtime_library,excluded,Independent bounded render validation; no application tracing dependency.
 src/rust/rt_runtime/src/resource/capture.rs,generic_realtime_library,excluded,Independent bounded capture implementation; work and incomplete-state diagnostics are exposed to hosts.

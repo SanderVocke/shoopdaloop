@@ -1,0 +1,427 @@
+{
+  "passed": true,
+  "base_commit": "e66a00b7124de4b90e201aa6ec01925ffe7787c7",
+  "scope": "Stage 3 planning metadata/compiler/incremental validation milestone only; executor planner lifecycle and typed delivery are not implemented.",
+  "source_sha256": {
+    "src/rust/rt_runtime/examples/bounded_runtime.rs": "8ae0537611e3d0cbf4cf87c56d19996bcda7070a0482c86c7373c8c884e43fdf",
+    "src/rust/rt_runtime/examples/gain_graph.rs": "858a526f005a98b2057861e9d3006ef726b04a62838a3b4a8787549e59a08f4d",
+    "src/rust/rt_runtime/src/buffer.rs": "103e498c1949fc937439a2aeb24766db5c02bfe7f576eff1fa6b57c86fea1276",
+    "src/rust/rt_runtime/src/config.rs": "a3f6069c61866430b2f687c2b411d1c6a8bccacb1d889918fda2a652e58f96b7",
+    "src/rust/rt_runtime/src/error.rs": "8481d9e94b0c5b7c589af1cb91717ac51dda8594a1776038ae6b4e62bc8361b7",
+    "src/rust/rt_runtime/src/executor.rs": "878cb8f50bcf7ee9c097d72c5a63efd99bed7c7a71570995fd8afe9dff679355",
+    "src/rust/rt_runtime/src/graph.rs": "23843bf513a92f8c7a9d948a5bd92ff7770b21fb6bcaff7d7890389167c5b9c7",
+    "src/rust/rt_runtime/src/ids.rs": "5bbe51f53d13fa1e50b74095dc5a6f2e6ce5a23dfa4bb38b4ee818ba841d00fd",
+    "src/rust/rt_runtime/src/lib.rs": "61b57d79f1e78cc45c755479d82d9f7873e6867a0147fa2c8c386203e9f0ba61",
+    "src/rust/rt_runtime/src/midi.rs": "dac779e7eb74eab481f7003474bf248facdd2c2bd544fdb1d16703a721fe3276",
+    "src/rust/rt_runtime/src/planner.rs": "d8dc8d44be5875156577b974d2b6665c0588cf977d7fd858c81e68ef22dd2262",
+    "src/rust/rt_runtime/src/processor.rs": "b19ffe8b1c0c79fd595a86bda40282474b192329f6cfa138e7201d8467a70c61",
+    "src/rust/rt_runtime/src/render.rs": "396ce1bd7be0a9c675f7c7b1b69534a877247cc1e8c9746c773650aca6ce3184",
+    "src/rust/rt_runtime/src/resource/capture.rs": "d702131f55efc96fa82ff034dadc6d322d5e5a848e9e5b7153b229dc191617d9",
+    "src/rust/rt_runtime/src/resource/format.rs": "483eccc75fa022f1dcbff110647c4b5b63d8f638464b6e5a53c2b0050c6a52c0",
+    "src/rust/rt_runtime/src/resource/mod.rs": "30b31227963a630584a29960c6f0a78759a1c9e65a03bad1c51578fb2202a46c",
+    "src/rust/rt_runtime/src/resource/request.rs": "92cf0f0766a30fca0ba485ee0430779e4ac4e3a3540f0b342afbb77e14620370",
+    "src/rust/rt_runtime/src/resource/tests.rs": "d88b636c66a6847d6b20387b5001617251ac98fc68d6bc414918ead2b04b5914",
+    "src/rust/rt_runtime/src/schedule.rs": "9b35ec6d6f1f6644adcc1c2895978530c1d0001e02b77f01a4649f5f1a956e39",
+    "src/rust/rt_runtime/src/transport.rs": "639a31dbf0e5c9365bd2fc699d2229e5857dc81160dabd377ddc77519ac59a8e",
+    "src/rust/rt_runtime/tests/capture.rs": "c0c4ef82f24d71793cf484147dc15efbe3ba12c77ec6cce21ea0f02b818313a9",
+    "src/rust/rt_runtime/tests/contracts.rs": "9b60eb89c14a97197fad4482a90ff9dc0e8d42ad59cc79c0ce00ed7b5addbc3c",
+    "src/rust/rt_runtime/tests/executor.rs": "4d3411de6308e91b564edf032eda2e9c5ac53f04b57d04721e27566ad05cabf0",
+    "src/rust/rt_runtime/tests/graph.rs": "2dd9ad680a71d6dfab5a8826ea75189195105394a9e4fc21cfd4536f11db22c7",
+    "src/rust/rt_runtime/tests/host_processor.rs": "b9482c594ee7358304149b7fafeee49dbaf5b04cb60ef0ed7955764310fd8be4",
+    "src/rust/rt_runtime/tests/lifecycle.rs": "535c0b6c1688f3d485bd5fc3fa4619f87ef28713a15b67bd95124c2e53187686",
+    "src/rust/rt_runtime/tests/midi.rs": "051be5f9aad49939375b6b8f7ff7543b5bd9c6636a84b3d2d241454ee01ed95b",
+    "src/rust/rt_runtime/tests/mixed_stress.rs": "938659f7372373e2316d8c1f409ee32df7267f3544ef6f4b575f390a33db4d60",
+    "src/rust/rt_runtime/tests/planning_graph.rs": "8a7d3f0ddd7b2d27d7979687b65a293810f6d511567898db9a03d7e7494ecc44",
+    "src/rust/rt_runtime/tests/prepared_ingress.rs": "76886e69770d8e0ac0903cb46e701c5a26badef7ce1a2716ad27b709332621ac",
+    "src/rust/rt_runtime/tests/resource_execution.rs": "ca883b5bad80a1221601f4c972ced5ddc0e7ac7a8b3c359dddd246cd82dea17f",
+    "src/rust/rt_runtime/tests/resource_properties.rs": "c7f801e898b8a6a2edae2bf80830f5c708cd1a9b79609ce3f7ab4e02a0d6a225",
+    "src/rust/rt_runtime/tests/resources.rs": "ac91df131f77fba90244b4af73ae3543c847223f3ab2687820e8c9e76d449347",
+    "src/rust/rt_runtime/tests/schedule.rs": "51b4812ced66ad702219ed38138d95e53ef93b27950e9eb6fe6b787aed6ad713",
+    "src/rust/rt_runtime/tests/support/mod.rs": "ec81a124e39654adfdbad32f33a6a6da37f67508b4683347ca1d4d5db1c61699",
+    "src/rust/rt_runtime/tests/wire_properties.rs": "6b3394e3c3cc3dfb2e1f55b9b8f8bce0c10a25854faba9dd8b1949e8f7cd8b21",
+    "src/rust/shoop_loop_engine/src/command.rs": "339250f2ef1cdef6842d76c6c9bc2cbc96d2732f904fbfc95c690bb7a5d9b53b",
+    "src/rust/shoop_loop_engine/src/config.rs": "fbb07338ac7c3757a50c43a2770d76e4ab80634e2370ab23cbd921f7a3024e43",
+    "src/rust/shoop_loop_engine/src/decision.rs": "a0ac9283c0e0531068a6c1fe5159393f110de5879620cc8d0ef0284b64de73bb",
+    "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+    "src/rust/shoop_loop_engine/src/lib.rs": "1a289b74dc5b1d3dfd9a8b8626621adebeb6de5934b503d08cb6f9219ddabc24",
+    "src/rust/shoop_loop_engine/src/program.rs": "8aac9fe15731351a63c8c84b27aec1d66a4f966f2674a4cb81b11d661e079c1d",
+    "src/rust/shoop_loop_engine/src/resolver.rs": "33b5460a94a5366c3b493c63619300de9fa5deb1af96cf2eabee965766872b9e",
+    "src/rust/shoop_loop_engine/src/state.rs": "0898d13e09479efbd30e77e8c43923e20c30682aae7ec1547ea5a53fa81bebfa",
+    "src/rust/shoop_loop_engine/src/topology.rs": "70d3e0c6d33aca4308a8caa20bc5ffcf1cda2a12549f1c6b183872bb701fb986",
+    "src/rust/shoop_loop_engine/tests/compiler.rs": "ae4303b55f17255a0daab325afac68b26add1bb6fc5a99768ba9d2aedfd11ece",
+    "src/rust/shoop_loop_engine/tests/composites.rs": "97d0d2b7d2a8e2e9d040116a4b93ed37a8b5dc538772d826bee175b2198da906",
+    "src/rust/shoop_loop_engine/tests/resolver.rs": "4c6e5fe81d9d4007cf4267e70b2cde460fdf23b8bdc7151f8f1503bd867de24e",
+    "src/rust/shoop_loop_engine/tests/support/composite_reference.rs": "261acb54aec7869c8a6bc1b43a3d9b1ef07f96d70e878a086af8ecd57eb60345",
+    "src/rust/shoop_loop_engine/tests/support/reference.rs": "08a62cc1d9c502fee72cae2e717a73cd936e4c59e8db2c4858090095a7498b6a"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 1.3839150230051018,
+      "log": "target/loop-layer-graph-stage3/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "host-format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "tests/rt_runtime_host/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.054999594009132124,
+      "log": "target/loop-layer-graph-stage3/host-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 1.0980166579975048,
+      "log": "target/loop-layer-graph-stage3/native-debug.log",
+      "sha256": "21f6dec95169194e77425037617c15b4bb8c71708fb484363d016d36603c7352"
+    },
+    {
+      "name": "native-release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine",
+        "--release"
+      ],
+      "exit_code": 0,
+      "seconds": 0.35832407799898647,
+      "log": "target/loop-layer-graph-stage3/native-release.log",
+      "sha256": "78718a429c0ef919a06bf62c0751809e6f2890f0b9f2f58d68d8b376a659da23"
+    },
+    {
+      "name": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 1.3878928639896913,
+      "log": "target/loop-layer-graph-stage3/workspace-build.log",
+      "sha256": "f0c09eb4c2f4104214d6c64cbe08598e5dfaea03f11817ddc9031b4c0d2dc0bf"
+    },
+    {
+      "name": "rustdoc",
+      "command": [
+        "cargo",
+        "doc",
+        "--locked",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine",
+        "--no-deps"
+      ],
+      "exit_code": 0,
+      "seconds": 0.10410816899093334,
+      "log": "target/loop-layer-graph-stage3/rustdoc.log",
+      "sha256": "4289bdd1be3ea2d2d9f3ea256af88ca6d2d5694ea6d66343893eda397620654c"
+    },
+    {
+      "name": "runtime-boundary",
+      "command": [
+        "python3",
+        "scripts/check_rt_runtime_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.38976155400450807,
+      "log": "target/loop-layer-graph-stage3/runtime-boundary.log",
+      "sha256": "95fff258fbfbb5302df71ca75a0206bdd8f984a6b3614e5b91c7bea8872e611a"
+    },
+    {
+      "name": "loop-boundary",
+      "command": [
+        "python3",
+        "scripts/check_loop_engine_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4354128389968537,
+      "log": "target/loop-layer-graph-stage3/loop-boundary.log",
+      "sha256": "f150d1cc802cf91ae2f59030cad02ccbbd3bf5fe55fed50315f343e33fb59617"
+    },
+    {
+      "name": "boundary-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.tests.test_rt_runtime_boundary",
+        "scripts.tests.test_loop_engine_boundary"
+      ],
+      "exit_code": 0,
+      "seconds": 0.05278595098934602,
+      "log": "target/loop-layer-graph-stage3/boundary-tests.log",
+      "sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e"
+    },
+    {
+      "name": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.026507165006478317,
+      "log": "target/loop-layer-graph-stage3/test-policy.log",
+      "sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    },
+    {
+      "name": "tracing-policy",
+      "command": [
+        "python3",
+        "scripts/check_tracing_coverage.py",
+        "--require-closed"
+      ],
+      "exit_code": 0,
+      "seconds": 0.04476426700421143,
+      "log": "target/loop-layer-graph-stage3/tracing-policy.log",
+      "sha256": "1a4dcdeac9115ff2e3be643d02ecc613dffb042a2ad117a4f122c50833c97bdf"
+    },
+    {
+      "name": "wasm-dependencies",
+      "command": [
+        "python3",
+        "scripts/check_wasm_test_dependencies.py",
+        "--package",
+        "rt_runtime",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.2735132459929446,
+      "log": "target/loop-layer-graph-stage3/wasm-dependencies.log",
+      "sha256": "8de1404c607b20f65a308df4833b6ff959cf1aa5eb9a484d2434dd73541f4b72"
+    },
+    {
+      "name": "node",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "node",
+        "--package",
+        "rt_runtime",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 75.19945140100026,
+      "log": "target/loop-layer-graph-stage3/node.log",
+      "sha256": "569b229d16733e43c6e283cf56a9a0d7f20e97cbf06bfc7c8cab157e52f35377"
+    },
+    {
+      "name": "chrome",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "chrome",
+        "--package",
+        "rt_runtime",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 87.52323701699788,
+      "log": "target/loop-layer-graph-stage3/chrome.log",
+      "sha256": "f8eb0aa1a6a7bf7bdf4de5ed9e712d10e8493e413f5a9bc36c460369bafbe4e8"
+    },
+    {
+      "name": "nextest-version",
+      "command": [
+        "cargo",
+        "nextest",
+        "--version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.014182348997564986,
+      "log": "target/loop-layer-graph-stage3/nextest-version.log",
+      "sha256": "1fd8e369e986ceaa3163325c547244c65dfa43b89824ddd27afe3dd43b0cb188"
+    },
+    {
+      "name": "workspace-tests",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--features",
+        "shoop_engine/app_backend",
+        "--profile",
+        "ci"
+      ],
+      "exit_code": 0,
+      "seconds": 34.241580799993244,
+      "log": "target/loop-layer-graph-stage3/workspace-tests.log",
+      "sha256": "3f258abb5f621eda078a254bf930afa4d40d93d884456ead74a37563461cb4e3"
+    },
+    {
+      "name": "native-host-debug",
+      "command": [
+        "python3",
+        "scripts/run_rt_runtime_hosts.py",
+        "--native-only",
+        "--profile",
+        "debug"
+      ],
+      "exit_code": 0,
+      "seconds": 2.013171158003388,
+      "log": "target/loop-layer-graph-stage3/native-host-debug.log",
+      "sha256": "537d5beaf01fd54d3fe1c8c32d5d1ced52a71e279dc562944388451dbbe5590c"
+    },
+    {
+      "name": "native-host-release",
+      "command": [
+        "python3",
+        "scripts/run_rt_runtime_hosts.py",
+        "--native-only",
+        "--profile",
+        "release"
+      ],
+      "exit_code": 0,
+      "seconds": 2.462451464991318,
+      "log": "target/loop-layer-graph-stage3/native-host-release.log",
+      "sha256": "2c70586b7b44d58e3ad3007499a433866e2b067cff54a522c8fc4d8106c02299"
+    },
+    {
+      "name": "worklet",
+      "command": [
+        "python3",
+        "scripts/run_rt_runtime_hosts.py",
+        "--verify-failures"
+      ],
+      "exit_code": 0,
+      "seconds": 39.91929218999576,
+      "log": "target/loop-layer-graph-stage3/worklet.log",
+      "sha256": "fee4fd11ebb802a68c54ef0992706dcb8e2e77465d5bb4299de50d2cb9c2e76a"
+    }
+  ],
+  "native_tests_per_profile": {
+    "rt_runtime": 101,
+    "shoop_loop_engine": 53
+  },
+  "wasm": [
+    {
+      "elapsed_seconds": 61.1419592040038,
+      "executed": 97,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/rt_runtime-node.xml",
+      "listed": 97,
+      "log": "target/wasm-tests/dev/reports/node/rt_runtime-node.log",
+      "malformed": [],
+      "package": "rt_runtime",
+      "passed": 97,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 97,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 13.783350789002725,
+      "executed": 53,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.xml",
+      "listed": 53,
+      "log": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 53,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 53,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 70.86555431500892,
+      "executed": 97,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/rt_runtime-chrome.xml",
+      "listed": 97,
+      "log": "target/wasm-tests/dev/reports/chrome/rt_runtime-chrome.log",
+      "malformed": [],
+      "package": "rt_runtime",
+      "passed": 97,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 97,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 16.198542034006095,
+      "executed": 53,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.xml",
+      "listed": 53,
+      "log": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 53,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 53,
+      "traces": {}
+    }
+  ],
+  "environment": {
+    "wrapper": "nix develop",
+    "paths": [
+      "/home/sander/.cache/rt-runtime-nextest-0.9.116",
+      "/nix/store/qbj1w0y8ilv183jhdv2ws6dfhzph680p-nodejs-22.22.2/bin",
+      "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin",
+      "/nix/store/s6vs54z82hiz6d8sc63g4ckavl6fax4z-chromedriver-unwrapped-147.0.7727.137/bin"
+    ],
+    "CHROME_BIN": "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin/chromium",
+    "RUSTFLAGS": "-D warnings",
+    "RUSTDOCFLAGS": "-D warnings",
+    "workspace_SHOOP_ALLOW_MISSING_BACKENDS": "1"
+  },
+  "limitations": [
+    "New planning metadata validates standalone but the current executor still prepares only signal-only catalogs.",
+    "No typed views, observations, receipt delivery, or internal interval executor is claimed.",
+    "Browser fixture evidence is regression coverage of the existing runtime host, not a new loop AudioWorklet.",
+    "Native target dependency trees are metadata audits, not macOS/Windows execution.",
+    "Selected new Miri cases and final CI remain pending."
+  ]
+}

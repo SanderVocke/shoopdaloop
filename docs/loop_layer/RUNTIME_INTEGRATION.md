@@ -2,7 +2,7 @@
 
 ## Status and dependency boundary
 
-Stage-1 design for `PLAN_LOOP_LAYER.md`. Runtime implementation starts in Stage 3; these are not claims about today's public API. Musical rules are in `SEMANTICS.md`; `rt_runtime` must not depend on that document's mode/program types or on `shoop_loop_engine`.
+Stage-1 design for `PLAN_LOOP_LAYER.md`. Stage 3 has implemented the metadata/compiler/receiver-validation portion described below; the planner lifecycle, typed delivery, and resource integration remain design contracts, not claims about today's public API. Musical rules are in `SEMANTICS.md`; `rt_runtime` must not depend on that document's mode/program types or on `shoop_loop_engine`.
 
 One `GraphRuntime` owns one prepared planner and all media processors. `NoPlanner` is the default for existing graph users. A planner is a first-class execution dependency, not a processor with fictitious audio/MIDI ports. Multiple independent planners and parallel traversal are outside the first implementation; multiple musical loops/composites share the single resolver.
 
@@ -34,6 +34,8 @@ The concrete lifetime experiment is [`prototypes/interval_lifecycle.rs`](prototy
 No `Arc<Mutex<_>>`, `RefCell` peer access, `Any`/unchecked casts, raw-pointer view publication, seqlock retries, or lifetime extension is needed. Exact production parameter structs and names may be refined with documented compiler/test evidence, but these ownership phases and type boundaries are settled.
 
 ### Planner identity and graph descriptors
+
+**Implemented metadata milestone:** `planner::{PlannerSpec, ConsumerAccess, ConsumerSpec, PlanningStep, DecisionBinding, PlanningDescriptor}`, `PlannerId`, `Catalog::with_planner`, and `compile_planned` implement the structural contract. `PreparedPlan` owns planning metadata separately from its existing signal-only `PlanDescriptor`; reusable staging initializes binding capacity before rendering. The single planning step must be a prefix (`before_step == 0`), making backward planning dependencies unrepresentable as valid plans. Bindings are canonicalized by consumer identity, may share decision slots, and are validated incrementally. Aggregate observation reservations count only graph members. Existing signal-only catalogs reject unsolicited planning metadata; their descriptors and host wire format remain unchanged. The executor still prepares signal-only catalogs, so standalone validation is not yet planner execution or activation proof.
 
 Extend the catalog with optional planner metadata separate from processor port signatures. A prepared descriptor contains an explicit planning step and `DecisionBinding { planner, consumer, decision_slot }` records. Consumers remain ordinary signal nodes; each may have at most one decision binding, with one decision able to describe an entire logical loop's channels. A plain FX node need not consume a decision.
 
