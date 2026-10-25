@@ -212,6 +212,9 @@ impl ResourceIo<'_> {
     pub fn cursor(&self, snapshot: SnapshotId) -> Result<Cursor, Error> {
         self.store.cursor(snapshot)
     }
+    pub fn read_index(&self, snapshot: SnapshotId) -> Result<ReadIndex, Error> {
+        self.store.read_index(snapshot)
+    }
     pub fn read(&mut self, cursor: &mut Cursor, bytes: &mut [u8]) -> Result<usize, Error> {
         self.store.read(cursor, bytes)
     }

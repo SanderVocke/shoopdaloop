@@ -22,7 +22,7 @@ flowchart LR
 | Live graph edits | Old graph keeps rendering during validation; complete plans activate at callback boundaries |
 | Sample-frame scheduling | Parameter changes and MIDI injections split rendering at their target frames |
 | Generic interval planning | Explicit shared decision bindings and per-consumer observations; no internal subdivision quota |
-| Required resource data access | Explicit `RenderIo` read/capture capability with saturating work counters, independent of background quotas; indexed/group lifecycle APIs remain pending |
+| Required resource data access | Explicit `RenderIo` read/capture capability with saturating work counters, independent of background quotas; indexed byte positioning available; MIDI state indexes/group lifecycle APIs remain pending |
 | Bounded ownership transfer | Accepted commands reserve completion space; replaced objects return for non-RT disposal |
 | Revisioned resources | Fixed-page uploads, recording, immutable snapshots, and incremental reads |
 | Explicit overload handling | Refusal instead of growing storage; reserved MIDI reset delivery |
@@ -56,7 +56,7 @@ The [gain graph example](examples/gain_graph.rs) checks output samples, exact-fr
 
 ## Current boundaries
 
-- Generic planning supports borrowed decisions, observations, and internal intervals through `GraphRuntime<P, L = NoPlanner>`. Typed planner/processor operations retain reliable terminal receipts, with independent recovery admission. Planner resource access still shares the existing I/O quotas; indexed required-render access and capture transactions remain future work.
+- Generic planning supports borrowed decisions, observations, and internal intervals through `GraphRuntime<P, L = NoPlanner>`. Typed planner/processor operations retain reliable terminal receipts, with independent recovery admission. Required resource access and indexed byte positioning have separate saturating diagnostics, while legacy access retains shared quotas. MIDI event/state indexing and capture transactions remain future work.
 - Graphs are acyclic: no feedback edges or automatic delay compensation.
 - Processor slots and port signatures are reserved at startup. Rewiring is live; arbitrary new slots or larger signatures are not.
 - Audio processing uses planar `f32`; resource audio uses interleaved little-endian `f32`. Conversion, resampling, codecs, and playback DSP belong to the host/processors.

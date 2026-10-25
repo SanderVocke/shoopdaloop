@@ -16,6 +16,7 @@ CASES = [
     ("planning_graph", [], 8),
     ("planner_execution", [], 8),
     ("resource_render", [], 4),
+    ("resource_index", [], 5),
     ("typed_schedule", [], 7),
     ("typed_execution", [], 11),
     ("wire_properties", [], 3),

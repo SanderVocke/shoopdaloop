@@ -614,8 +614,7 @@ fn malformed_intervals_and_changed_view_storage_fault_before_consumers() {
 
 struct BudgetClock {
     cursor: rt_runtime::resource::Cursor,
-    render_cursor: rt_runtime::resource::Cursor,
-    start_cursor: rt_runtime::resource::Cursor,
+    index: rt_runtime::resource::ReadIndex,
     required: bool,
     read: Arc<AtomicUsize>,
     refused: Arc<AtomicUsize>,
@@ -647,13 +646,11 @@ impl Planner for BudgetClock {
             Err(error) => return Err(error),
         }
         if self.required {
-            if self.render_cursor.position() == 512 {
-                self.render_cursor = self.start_cursor;
-            }
-            let bytes = context
+            let mut cursor = context
                 .resources
                 .render()
-                .read(&mut self.render_cursor, &mut [0; 4])?;
+                .cursor_at(self.index, (context.frame.0 % 128) as usize * 4)?;
+            let bytes = context.resources.render().read(&mut cursor, &mut [0; 4])?;
             assert_eq!(bytes, 4);
             self.read.fetch_add(bytes, Ordering::Relaxed);
         }
@@ -715,8 +712,7 @@ fn check_resource_allowances(required: bool) {
     let refused = Arc::new(AtomicUsize::new(0));
     let planner = BudgetClock {
         cursor,
-        render_cursor: cursor,
-        start_cursor: cursor,
+        index: store.read_index(snapshot.id).unwrap(),
         required,
         read: read.clone(),
         refused: refused.clone(),
@@ -754,8 +750,16 @@ fn check_resource_allowances(required: bool) {
         assert_eq!(runtime.diagnostics().render_copied_bytes, render_bytes);
         assert_eq!(
             runtime.diagnostics().render_operations,
-            if required { 128 } else { 0 }
+            if required { 256 } else { 0 }
         );
+        let index_work = runtime.diagnostics().resource_index_work;
+        assert_eq!(index_work.background_steps, 0);
+        if required {
+            assert!(index_work.render_steps > 0 && index_work.render_steps <= 128 * 4);
+        } else {
+            assert_eq!(index_work.render_steps, 0);
+        }
+        assert!(!index_work.counter_overflow);
         assert_eq!(runtime.diagnostics().render_validation_steps, 0);
         assert!(!runtime.diagnostics().counter_overflow);
         assert_eq!(

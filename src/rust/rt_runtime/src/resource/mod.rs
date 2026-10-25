@@ -3,6 +3,9 @@
 
 mod capture;
 mod format;
+mod index;
+pub use index::{IndexWork, ReadIndex};
+use index::{PageIndex, VersionIndex};
 mod render;
 mod request;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
@@ -89,6 +92,7 @@ struct Version {
     parser: Parser,
     state: State,
     capture: Option<CaptureInfo>,
+    index: VersionIndex,
 }
 #[derive(Clone, Copy)]
 struct Lease {
@@ -101,9 +105,11 @@ struct Lease {
 struct Page {
     next: Option<usize>,
     used: usize,
+    index: PageIndex,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Cursor {
+    scope: u32,
     snapshot: SnapshotId,
     page: Option<usize>,
     position: usize,
@@ -115,6 +121,7 @@ impl Cursor {
 }
 
 pub struct ResourceStore {
+    scope: u32,
     config: PreparedConfig,
     data: Box<[u8]>,
     pages: Vec<Page>,
@@ -132,6 +139,7 @@ pub struct ResourceStore {
     steps_remaining: usize,
     work: Work,
     render_work: RenderWork,
+    index_work: IndexWork,
     control_phase: bool,
 }
 fn retirement_stack(count: usize) -> Vec<usize> {
@@ -180,6 +188,7 @@ impl ResourceStore {
                 return Err(Error::Capacity);
             }
         }
+        let scope = index::new_scope()?;
         let mut data = vec![0u8; config.resource_bytes()].into_boxed_slice();
         for byte in &mut data {
             *std::hint::black_box(byte) = 0;
@@ -189,6 +198,7 @@ impl ResourceStore {
             *std::hint::black_box(page) = Page::default();
         }
         Ok(Self {
+            scope,
             config,
             data,
             pages,
@@ -206,6 +216,7 @@ impl ResourceStore {
             steps_remaining: 0,
             work: Work::default(),
             render_work: RenderWork::default(),
+            index_work: IndexWork::default(),
             control_phase: false,
         })
     }
@@ -216,6 +227,7 @@ impl ResourceStore {
         self.steps_remaining = self.config.limits().budgets.validation_steps;
         self.work = Work::default();
         self.render_work = RenderWork::default();
+        self.index_work = IndexWork::default();
         self.control_phase = false;
     }
     pub fn config(&self) -> PreparedConfig {
@@ -316,6 +328,7 @@ impl ResourceStore {
             parser: Parser::default(),
             state: State::Receiving,
             capture: None,
+            index: VersionIndex::default(),
         });
         Ok(UploadId {
             slot: index as u32,
@@ -363,6 +376,7 @@ impl ResourceStore {
             }
             let page = self.free_pages.pop().ok_or(Error::InvalidState)?;
             self.pages[page] = Page::default();
+            self.index_append(&mut version, page, WorkClass::Background);
             if let Some(tail) = version.tail {
                 self.pages[tail].next = Some(page);
             } else {
@@ -490,7 +504,10 @@ impl ResourceStore {
             let start = tail * self.config.limits().page_bytes;
             self.data
                 .copy_within(start..start + used, page * self.config.limits().page_bytes);
-            self.pages[page] = Page { next: None, used };
+            self.pages[page] = Page {
+                used,
+                ..Page::default()
+            };
             self.copy_remaining -= used;
             self.work.copied_bytes += used;
             Some(page)
@@ -547,6 +564,7 @@ impl ResourceStore {
         let lease = get(&self.snapshots, snapshot.slot, snapshot.generation)?;
         let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
         Ok(Cursor {
+            scope: self.scope,
             snapshot,
             page: version.head,
             position: 0,
@@ -563,6 +581,9 @@ impl ResourceStore {
         class: WorkClass,
     ) -> Result<usize, Error> {
         self.note_operation(class);
+        if cursor.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
         let lease = get(
             &self.snapshots,
             cursor.snapshot.slot,

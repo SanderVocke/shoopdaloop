@@ -40,6 +40,9 @@ pub struct RenderIo<'a> {
     pub(super) store: &'a mut ResourceStore,
 }
 impl RenderIo<'_> {
+    pub fn cursor_at(&mut self, index: ReadIndex, offset: usize) -> Result<Cursor, Error> {
+        self.store.cursor_at_with(index, offset, WorkClass::Render)
+    }
     pub fn read(&mut self, cursor: &mut Cursor, output: &mut [u8]) -> Result<usize, Error> {
         self.store.read_with(cursor, output, WorkClass::Render)
     }

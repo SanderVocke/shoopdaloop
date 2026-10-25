@@ -175,7 +175,7 @@ impl ResourceStore {
             .next_frame = next_frame;
         Ok(version)
     }
-    fn append_reserved(&mut self, version: &mut Version, mut bytes: &[u8]) {
+    fn append_reserved(&mut self, version: &mut Version, mut bytes: &[u8], class: WorkClass) {
         let page_bytes = self.config.limits().page_bytes;
         while !bytes.is_empty() {
             if version
@@ -184,6 +184,7 @@ impl ResourceStore {
             {
                 let page = self.free_pages.pop().expect("reserved page credit");
                 self.pages[page] = Page::default();
+                self.index_append(version, page, class);
                 if let Some(tail) = version.tail {
                     self.pages[tail].next = Some(page);
                 } else {
@@ -249,7 +250,7 @@ impl ResourceStore {
             .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
         let mut version = self.reserve_capture(id, version, frame, frames, bytes, class)?;
         for sample in samples {
-            self.append_reserved(&mut version, &sample.to_le_bytes());
+            self.append_reserved(&mut version, &sample.to_le_bytes(), class);
         }
         Ok(self.publish_capture(id, version))
     }
@@ -316,8 +317,8 @@ impl ResourceStore {
             let mut header = [0u8; 12];
             header[..8].copy_from_slice(&(base + u64::from(offset)).to_le_bytes());
             header[8..].copy_from_slice(&(data.len() as u32).to_le_bytes());
-            self.append_reserved(&mut version, &header);
-            self.append_reserved(&mut version, data);
+            self.append_reserved(&mut version, &header, class);
+            self.append_reserved(&mut version, data, class);
         }
         Ok(self.publish_capture(id, version))
     }

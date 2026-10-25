@@ -368,3 +368,47 @@ Fresh existing-host replay retains **2601 offline callbacks / 332928 frames**, *
 Only the first Stage 4 checklist item is complete. Reads still use existing sequential cursors; captures are active single-resource appends, not coordinated group transactions. Indexed audio/MIDI positioning, checked new index ownership, prepared lifecycle/lease reservations, exact-frame freeze-to-play, group preflight/commit, and interval failure observations remain required. Existing IDs/cursors still have the documented same-store precondition; this milestone does not add cross-store identity enforcement.
 
 The existing worklet fixture still uses legacy access, so it is regression evidence, not actual-worklet execution of required `RenderIo` or the loop library. Package Node/Chromium tests exercise the new path in Wasm. No loop integration, group atomicity, deadline guarantee, full Stage 4 completion, final CI, or reviewer approval is inferred.
+
+## Stage 4 — Append-maintained page indexes and scoped reads
+
+Milestone: `feat(rt-runtime): index resource pages for scoped positional reads`, source base `effc7ba4`. Evidence: `evidence/index-stage4.json` and `evidence/index-stage4-provenance.json`; logs under `target/loop-layer-index-stage4/`, with the first broad failure preserved in `target/loop-layer-index-stage4-first-run/`.
+
+### Implementation and design choice
+
+Each data-page slot now embeds a balanced append-only index node; each version owns a fixed root/count. Increasing logical page ordinals permit single right-heavy rotations. Metadata storage is O(total prepared pages), avoiding a version-by-page cross product. Lookup and insertion are logarithmic in version pages; existing sequential links remain available. No index scan/build occurs at lease preparation, seek, wrap, capture stop, or frozen-content access. Pages and their index nodes recycle together under existing incremental reclamation.
+
+`read_index(snapshot_id)` creates a Copy handle referring to an existing lease in constant metadata work; it does not acquire ownership. `RenderIo::cursor_at` / `ResourceStore::cursor_at` accept checked byte offsets, including EOF, and create scoped cursors. Index and cursor scopes reject cross-store reuse even when raw slot/generation pairs coincide. Released/reused leases fail generation checks. Legacy raw resource/snapshot IDs still require their same-store precondition; opaque handles are not serialized capabilities between independent Wasm instances.
+
+`IndexWork` counts background/render metadata steps and saturating overflow; the executor exposes it in diagnostics. Background index insertion is bounded overhead of already admitted page materialization, not an additional content scan or work quota. Required lookup/capture indexing consumes no background allowance. Instance-scope allocation is preparation-only and refuses exhaustion. The representation choice and rationale are recorded in `RUNTIME_INTEGRATION.md`.
+
+### Verification
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **140 passed per profile** |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **136 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Prescribed full nextest workspace | **1993 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **81 passing executions**, including all five indexed-resource tests with their full workloads |
+| Lifetime proof | Positive build/run and intentional **E0502** refusal |
+| Warning-denied build/rustdoc, formatting, policies/boundary audits, examples | Passed |
+| Existing native and actual offline/live worklet regression; intentional failure canaries | Final broad rerun passed; earlier failures retained below |
+
+The flat-byte oracle compares every one of **4097 byte offsets**, then **4096 generated wrap/seek positions** using seed `0x0b29778f3a19fbe5`, identically on native, Wasm, and Miri. Reads respect page/prefix/output limits and at most 21 index visits. Guarded cases cover empty/audio/raw-MIDI data, partial immutable tails across further appends/tree rotations, immediate frozen-content access without index work, old leases after replacement/removal, stale/foreign handles, cancelled partial uploads, slot reuse, and full pool recovery. A separate native/Wasm unit test checks parent links, in-order ordinals, stored heights, AVL balance, and equivalence to the independent sequential page chain after every one of **1024 insertions**. Scope/counter exhaustion never wraps.
+
+The synthetic planner now performs an indexed seek and read at each of 128 one-sample intervals: 256 required operations and 512 copied bytes per callback, while legacy reads still receive only 64 bytes and report 112 refusals. Index counters reset once per callback and remain within the tree-height bound.
+
+### Failed runs and investigation
+
+The initial focused test compile passed a `Frame` to the existing resource-relative `u64` MIDI encoder; the test argument was corrected without changing production API, workload, or assertions. A reconstructed diagnostic note is retained.
+
+The first broad run passed all earlier gates but Chromium disconnected during the actual-worklet check. One isolated unchanged-artifact repeat reproduced `invalid session id`. Driver failures at **17:47:57.044** and **17:50:02.780** coincide with host suspend events. This is temporal evidence, not a proven cause or fix. No power settings or artificial resource constraints were changed. Ten subsequent isolated unchanged-artifact runs passed; the complete broad gate was then rerun successfully with both intentional failure canaries. Failed logs, driver diagnostics, kernel-event evidence and repeat records/hashes are retained. No timeout, flag, assertion, or test selection was weakened.
+
+The failed run also exposed stale success reports from a previous fixture run. The runner now deletes the selected result and browser summaries before starting; the failed isolated repeat confirmed these remained absent. This fixes report hygiene, not the browser disconnect.
+
+### Compatibility and limits
+
+The golden journal remains byte-identical: **2601 offline callbacks / 332928 frames**, **34 MIDI events**, sample/MIDI/graph hashes **480331717 / 3308430490 / 487351092**. Additional preallocated index/handle metadata increases fixture Wasm startup memory from the preceding **1507328** to **1703936 bytes**; it stays fixed throughout offline/live rendering. This is preparation growth, not callback allocation or a memory-growth exemption.
+
+The second Stage 4 checklist item remains incomplete: byte positioning is not MIDI event/time indexing or bounded note/controller restoration. Prepared capture lifecycle/lease reservations, group preflight/commit, and failure observations also remain pending. The existing actual-worklet fixture exercises index maintenance through legacy resource operations, not the new indexed-seek API or a loop-library worklet. No full Stage 4 or end-to-end LL-A completion is claimed.

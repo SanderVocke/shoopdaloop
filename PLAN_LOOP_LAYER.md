@@ -2,7 +2,7 @@
 
 ## Status and execution contract
 
-Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–3 are verified; Stage 4 has a verified resource-accounting milestone and remains in progress; stages 4–10 remain incomplete. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
+Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–3 are verified; Stage 4 has verified resource-accounting and page-index milestones and remains in progress; stages 4–10 remain incomplete. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
 
 Governing inputs: `INTER_LOOP_PROCESSING.md`, `PROPOSAL_LOOP_LAYER.md`, and the proposed-evolution sections of `DESIGN_RT_ENGINE.md` and `PROPOSAL_RT_ENGINE.md`. `DONE_INITIAL_CRATE.md` and its evidence remain the historical record of the initial runtime, not acceptance criteria to rewrite retrospectively.
 
@@ -142,7 +142,7 @@ Depends on: Stage 3 and Stage 1 resource/failure contracts. Required before loop
 
 **Verification:** extend runtime resource/capture/property tests with indexed seeks across page boundaries, empty/large MIDI records, stale indices, immediate freeze/read, multichannel partial-capacity refusal, old leases during replacement, and full pool recovery. Under heap guards and Miri, tiny maintenance budgets must not interrupt otherwise provisioned rendering or be refreshed by interval iteration.
 
-Accounting milestone evidence: `docs/loop_layer/evidence/accounting-stage4.json` and `accounting-stage4-provenance.json`. Restricted required data access and callback-wide independent diagnostics are verified; the remaining Stage 4 items above are not implemented or complete.
+Milestone evidence: `docs/loop_layer/evidence/{accounting,index}-stage4.json` and the corresponding provenance records. Required data accounting and append-maintained, store-scoped page-indexed byte positioning are verified. The index item remains unchecked because MIDI event/state checkpoints are not implemented; capture reservations, coordinated transactions, and their integration also remain incomplete.
 
 ### Stage 5 — Audio/MIDI renderers and coordinated loop facade
 

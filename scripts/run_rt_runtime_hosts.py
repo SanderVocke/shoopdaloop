@@ -155,6 +155,11 @@ def main():
     if args.failure_canary:
         REPORTS = REPORTS / ("failure-" + args.failure_canary)
     REPORTS.mkdir(parents=True, exist_ok=True)
+    report_name = f"native-{args.profile}-result.json" if args.native_only else "result.json"
+    (REPORTS / report_name).unlink(missing_ok=True)
+    if not args.native_only:
+        for name in ("browser.json", "browser-console.json"):
+            (REPORTS / name).unlink(missing_ok=True)
     (REPORTS / "journal.bin").unlink(missing_ok=True)
     manifest = str(FIXTURE / "Cargo.toml")
     if not args.no_build:
@@ -203,7 +208,6 @@ def main():
                 raise RuntimeError(f"{kind} did not fail through the expected browser path:\n{failed.stdout[-12000:]}")
             results.append({"kind": kind, "expected_failure_observed": True, "exit_code": failed.returncode})
         result["failure_canaries"] = results
-    report_name = f"native-{args.profile}-result.json" if args.native_only else "result.json"
     (REPORTS / report_name).write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
     print(f"reports: {REPORTS.relative_to(ROOT)}")

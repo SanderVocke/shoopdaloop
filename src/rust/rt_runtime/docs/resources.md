@@ -35,7 +35,19 @@ To preload content or playback leases, prepare a store and pass it to `GraphRunt
 
 `ResourceStore::render_work()` reports attempted data operations, copied bytes, and charged MIDI event-validation units. These counters saturate and latch `counter_overflow`; they cannot refuse work. The executor publishes the same counts as `Diagnostics::render_operations`, `render_copied_bytes`, and `render_validation_steps`, merging overflow into `counter_overflow`. All counters reset once at the host callback boundary, not when a view is reborrowed or a planner chooses an interval.
 
-The capability cannot upload, allocate a snapshot lease, begin/stop capture, reclaim, or reset accounting. Optional snapshots and exports still use background allowances. Existing `ResourceIo` methods retain their quota-based behavior and reservations. Indexed positioning, prepared exact-frame lifecycle reservations, and coordinated multichannel append are not provided by this first accounting milestone; these single-resource append methods must not be mistaken for group transactions.
+The capability cannot upload, allocate a snapshot lease, begin/stop capture, reclaim, or reset accounting. Optional snapshots and exports still use background allowances. Existing `ResourceIo` methods retain their quota-based behavior and reservations. Prepared exact-frame lifecycle reservations and coordinated multichannel append remain pending; these single-resource append methods must not be mistaken for group transactions.
+
+## Positional byte access
+
+`ResourceStore::read_index(snapshot_id)` or `ResourceIo::read_index` prepares a `ReadIndex` in constant metadata work. It borrows the existing lease rather than allocating or duplicating ownership. `RenderIo::cursor_at(index, byte_offset)` positions a cursor in logarithmic page-index steps; `ResourceStore::cursor_at` is also available to custom integrations. Reads then use the same page-bounded copy operation. Offset equal to prefix length denotes EOF; larger offsets fail. There is no content scan at prepare, seek, wrap, or freeze.
+
+A balanced append-only search tree is maintained as upload/capture pages arrive. Its nodes occupy the existing page metadata pool; storage is O(total pages), not a version-by-page cross product. Insertion/rebalancing and positional lookup take O(log version pages); sequential reads retain their direct next-page link. Snapshot cuts retain the version index and private-tail semantics across further appends, rotations, replacement, and removal. Reclamation still clears at most one data/index page per maintenance step.
+
+`ReadIndex` and all cursors carry an opaque store-instance scope and reject foreign/released handles. Legacy raw snapshot/resource IDs still require the documented same-store precondition at preparation. Scopes are allocated only before rendering, with checked exhaustion; handles are not portable between independent Wasm instances.
+
+`IndexWork` separately reports background/render metadata steps and saturating overflow through `Diagnostics::resource_index_work`. Upload index maintenance is bounded overhead of admitted page materialization, not a separate content scan or additional quota; existing transfer, parser, and reclamation budgets remain effective. Required lookup/append metadata work is counted without background throttling. These counters reset once per host callback.
+
+This indexes bytes for audio positioning and raw resource access. It does **not** yet implement MIDI event/time checkpoints or note/controller restoration; seeking to an arbitrary MIDI byte is not event positioning.
 
 ## Upload an immutable revision
 
@@ -99,7 +111,7 @@ Snapshot(resource) → Cursor(snapshot) → Read → Read → ... → ReleaseSna
                                   at most one page remainder per call
 ```
 
-A snapshot pins an immutable uploaded revision or a coherent captured prefix. Each cursor is sequential; reads do not perform a hidden whole-resource seek. A short read may merely reach a page boundary, not EOF. With the direct API, compare cursor position with snapshot byte length; an empty output buffer also returns zero.
+A snapshot pins an immutable uploaded revision or a coherent captured prefix. Each cursor advances sequentially; indexed positioning is explicit and reads do not perform a hidden whole-resource seek. A short read may merely reach a page boundary, not EOF. With the direct API, compare cursor position with snapshot byte length; an empty output buffer also returns zero.
 
 | `Currentness` | Meaning |
 |---|---|

@@ -2,7 +2,7 @@
 
 Fixed-page uploads, capture, immutable prefix/revision snapshots, cursors, reclamation, executor requests, and legacy shared-budget access were delivered by initial runtime Stage 5; its historical evidence remains in `VALIDATION.md` and `DONE_INITIAL_CRATE.md`. Host-fixture evidence is recorded separately. This specializes `DESIGN_RT_ENGINE.md` without changing the historical A1–A8 contract.
 
-The first loop-layer Stage 4 milestone adds restricted required data access through `ResourceIo::render()` / `ResourceStore::render_io()`. Reads and active single-resource audio/MIDI appends use the existing checked storage paths without charging background copy/validation credits. They still reject invalid identities/shapes/frames and physical exhaustion. Indexed positioning, reserved exact-frame activation/freeze, and coordinated capture groups remain unimplemented.
+The first loop-layer Stage 4 milestone adds restricted required data access through `ResourceIo::render()` / `ResourceStore::render_io()`. Reads and active single-resource audio/MIDI appends use the existing checked storage paths without charging background copy/validation credits. They still reject invalid identities/shapes/frames and physical exhaustion. An append-maintained balanced page index now provides store-scoped logarithmic byte positioning. MIDI event/state indexes, reserved exact-frame activation/freeze, and coordinated capture groups remain unimplemented.
 
 ## Ownership and fixed capacities
 
@@ -11,7 +11,7 @@ The resource store has one owner, normally the render runtime. Control never rec
 Prepare all storage before rendering:
 
 - `resource_pages * page_bytes` bytes of page storage, explicitly touched.
-- Fixed page metadata (next-page index and used length) and a free-page stack.
+- Fixed page metadata (sequential link, used length, and balanced index links/ordinal/height) and a free-page stack. Version index roots/counts are fixed metadata; no per-version dense page array is allocated.
 - `resource_slots` resource identities, `resource_slots` version/transfer descriptors, and `resource_slots` snapshot leases, each with checked generational reuse. These are separate fixed arrays using the same initial limit, not dynamically growing collections.
 - Fixed retirement bookkeeping and any incremental parser state.
 
@@ -53,7 +53,7 @@ Currentness is checked against the resource's live identity/revision and capture
 
 ## Reading and playback
 
-Use generation-checked sequential cursors over leased versions. Each cursor tracks its current page and offset so reading the next chunk is bounded by chunk size/page crossings, not by repeatedly walking from the resource head. Export and playback use the same immutable content semantics. No callback API flattens a whole resource or performs an unbudgeted random seek.
+Use generation-checked sequential cursors over leased versions. Each cursor tracks its current page and offset so reading the next chunk is bounded by chunk size/page crossings, not by repeatedly walking from the resource head. Export and playback use the same immutable content semantics. No callback API flattens or scans a whole resource to seek. `ReadIndex` pins no extra owner: it refers to an existing snapshot lease, checks instance scope/generation, and positions by byte offset in logarithmic tree steps. Sequential cursors also check store scope. Index nodes are maintained as pages arrive and reclaimed with their pages; freezing does not rebuild them. `IndexWork` separately counts background/render lookup and maintenance steps with saturating overflow. This bounded metadata work does not replenish background credits or introduce an internal work quota. MIDI event/state checkpoints remain pending.
 
 A fetch is a lease plus bounded chunk requests into preallocated buffers. Validate requested lengths/offsets and return end-of-prefix explicitly. Cancellation/release invalidates the lease generation and reclaims its private tail page incrementally. A dropped client must be drained/cancelled during host teardown; do not automatically reuse a live handle based on elapsed time.
 
