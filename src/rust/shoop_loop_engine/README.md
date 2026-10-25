@@ -7,7 +7,9 @@ identities/capacities, topology validation, sparse composite-plan compilation,
 and a fixed-storage primitive/composite timeline resolver. Prepared audio
 playback/capture operations now consume supplied interval positions, with indexed
 conversion, gain and discontinuity smoothing; see [audio operations](docs/audio.md).
-Runtime planner integration and MIDI media execution remain pending.
+Bounded [MIDI cleanup/restoration](docs/midi-restore.md) helpers establish known
+channel/key state with explicit output failures and ordering metadata. Runtime
+planner integration and MIDI media playback/capture remain pending.
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate

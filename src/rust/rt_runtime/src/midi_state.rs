@@ -26,14 +26,24 @@ impl NoteState {
         self.pressure
     }
 }
+/// Last observed selector family; a reset establishes the null RPN baseline.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ParameterFamily {
+    Rpn,
+    Nrpn,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChannelState {
     notes: [NoteState; 128],
     controllers: [Option<u8>; 128],
     program: Option<u8>,
+    program_bank: [Option<u8>; 2],
     pitch_bend: u16,
     pressure: Option<u8>,
     reset_controllers: bool,
+    parameter_family: Option<ParameterFamily>,
+    parameter_history_untracked: bool,
 }
 impl Default for ChannelState {
     fn default() -> Self {
@@ -45,9 +55,12 @@ impl Default for ChannelState {
             notes: [NoteState::default(); 128],
             controllers,
             program: None,
+            program_bank: [None; 2],
             pitch_bend: 8192,
             pressure: None,
             reset_controllers: false,
+            parameter_family: None,
+            parameter_history_untracked: false,
         }
     }
 }
@@ -61,6 +74,11 @@ impl ChannelState {
     pub fn program(&self) -> Option<u8> {
         self.program
     }
+    /// Bank selectors observed when the current program was selected. Later
+    /// bank messages may be pending for a future program change.
+    pub fn program_bank(&self) -> [Option<u8>; 2] {
+        self.program_bank
+    }
     pub fn pitch_bend(&self) -> u16 {
         self.pitch_bend
     }
@@ -70,6 +88,14 @@ impl ChannelState {
     /// Restoration must establish this baseline before replaying known controls.
     pub fn reset_controllers_seen(&self) -> bool {
         self.reset_controllers
+    }
+    pub fn parameter_family(&self) -> Option<ParameterFamily> {
+        self.parameter_family
+    }
+    /// Parameter data/relative commands occurred; their parameter-value history
+    /// is not represented by this channel/key projection.
+    pub fn parameter_history_untracked(&self) -> bool {
+        self.parameter_history_untracked
     }
     fn down(&self, controller: usize) -> bool {
         self.controllers[controller].is_some_and(|v| v >= 64)
@@ -110,6 +136,7 @@ impl ChannelState {
         self.pitch_bend = 8192;
         self.pressure = Some(0);
         self.reset_controllers = true;
+        self.parameter_family = Some(ParameterFamily::Rpn);
         for note in &mut self.notes {
             note.sostenuto = false;
             note.pressure = Some(0);
@@ -118,6 +145,7 @@ impl ChannelState {
     }
     fn control(&mut self, cc: u8, value: u8) {
         match cc {
+            96 | 97 => self.parameter_history_untracked = true,
             120 => self.notes_off(true),
             121 => self.reset_controls(),
             123 => self.notes_off(false),
@@ -137,6 +165,16 @@ impl ChannelState {
             }
             _ => {
                 self.controllers[cc as usize] = Some(value);
+                match cc {
+                    6 | 38 => self.parameter_history_untracked = true,
+                    98 | 99 => self.parameter_family = Some(ParameterFamily::Nrpn),
+                    100 | 101 => self.parameter_family = Some(ParameterFamily::Rpn),
+                    124 => self.controllers[125] = None,
+                    125 => self.controllers[124] = None,
+                    126 => self.controllers[127] = None,
+                    127 => self.controllers[126] = None,
+                    _ => {}
+                }
                 if matches!(cc, 124..=127) {
                     self.notes_off(false);
                 } else if matches!(cc, 64 | 69) {
@@ -191,7 +229,10 @@ impl MidiState {
             } => channel.control(controller, value),
             _ => match data[0] & 0xf0 {
                 0xa0 => channel.notes[data[1] as usize].pressure = Some(data[2]),
-                0xc0 => channel.program = Some(data[1]),
+                0xc0 => {
+                    channel.program = Some(data[1]);
+                    channel.program_bank = [channel.controllers[0], channel.controllers[32]];
+                }
                 0xd0 => channel.pressure = Some(data[1]),
                 0xe0 => channel.pitch_bend = u16::from(data[1]) | (u16::from(data[2]) << 7),
                 _ => {}

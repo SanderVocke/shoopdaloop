@@ -636,3 +636,46 @@ Every preview clears/rebuilds these flags before arbitration. Repeated previews 
 - All **15 scoped gates** passed: formatting, loop native debug/release, warning-denied workspace build/rustdoc, runtime/loop boundary checks and helper tests, test/tracing/Wasm dependency policies, Node/Chromium, pinned nextest version and full workspace tests. The focused tests passed on their first run. The ignored Nix SQLite-busy warning did not prevent success.
 
 No `rt_runtime` implementation changed here. Standalone runtime release/Wasm tests, native/actual-worklet fixtures, lifetime/authority prototypes and generic runtime Miri were **not freshly rerun** for this scoped milestone; their preceding full `audio-stage5` evidence remains historical. Future integrated/final gates still require their prescribed fresh runs. Stage 5 remains current: MIDI emission/restoration, planner/processor adapters, mixed-media capture/export, the separate-node graph, public full-lifecycle example and independent loop hosts remain required.
+
+## Stage 5 — Projected MIDI cleanup/restoration emission
+
+Milestone: `feat(loop-engine): emit ordered MIDI cleanup and restoration` (the commit introducing this section), base `c3526ff1`. Evidence: [`evidence/midi-restore-stage5.json`](evidence/midi-restore-stage5.json) and [`evidence/midi-restore-stage5-provenance.json`](evidence/midi-restore-stage5-provenance.json). Logs and archived Miri cases are under `target/loop-layer-midi-restore-stage5/`. Stage 5 remains incomplete.
+
+### Ordering refinements and interfaces
+
+The first emission implementation exposed information that latest-value controller arrays alone cannot express. A later bank-select packet may be pending for a future program change; using it before restoring the current program selects the wrong bank. Likewise both RPN and NRPN selector arrays may contain values while only the last family governs subsequent Data Entry, and opposed omni/mono modes must not be replayed as if all were current. These are representation refinements needed for the existing restoration contract, not a new timeline or device-state guarantee.
+
+The generic `MidiState` now retains the bank selectors observed at program change, a selector-family ordering hint, and an explicit untracked-parameter-history marker. Only the current member of each CC124/125 and CC126/127 pair remains cached. CC96/97 are momentary relative commands rather than persistent values. CC121 retains loaded/pending banks and untracked parameter history while establishing null selector defaults; System Reset clears the projection. Original recorded packets are unchanged, including parameter and opaque SysEx packets.
+
+`shoop_loop_engine::midi_restore::{cleanup, restore}` borrow state and emit complete packets through a bounded sink, with no allocation or state mutation. Cleanup releases active holds and projected keys rather than indiscriminately issuing normal-operation all-sound-off. Restoration orders reset markers, loaded bank/program, pending banks, controls/modes, selector state, pitch/pressure, holds, correctly latched sostenuto notes, remaining notes, released pedal-held keys, and poly pressure. Data Entry values are emitted only while selectors are temporarily null; known selectors are then restored with the last family last. No relative parameter command is synthesized.
+
+`Emission` exposes attempted/accepted packet counts, first error and untracked parameter history. After a sink refusal it completes its fixed traversal/counting without further sink calls or retries. A prefix is not success: the eventual processor must propagate Full through the runtime's reserved reset path after other required work. The helper itself does not deliver recovery. Conservative protocol bounds are **2096 cleanup events** and **8449 restoration events**, with three bytes/event sufficient; these are capacity bounds, not musical-work quotas.
+
+The existing projection does not reconstruct synthesizer voices/envelopes, vendor SysEx or RPN/NRPN parameter-value histories. The new warning makes parameter history explicit; temporary selector nulling prevents accidental writes rather than pretending to recover missing history. Protective selector nulling can affect previously unknown components; only known values are restored afterwards, and unknown components may remain null. This is not a claim that unknown state was reconstructed. Detailed API/ordering/failure contracts are in `src/rust/shoop_loop_engine/docs/midi-restore.md` and the runtime MIDI-state guide.
+
+### Verified behavior and gates
+
+Two new runtime tests cover program-bank snapshots versus pending selectors, selector family ordering, relative-command treatment, opposed mode replacement, reset retention and immutable copied state. Four loop tests cover:
+
+- Cleanup and sustain/hold/sostenuto restoration against an **independent key/pedal machine**. Only the recorded subset is latched; released pedal-held keys are not turned into held keys.
+- Loaded versus pending program bank and RPN/NRPN ordering against an **independent selector/bank machine**, including zero accidental parameter writes, correct reset ordering and omission of obsolete/relative commands.
+- Every channel/key/control/pressure path under the conservative fixed bounds, with known-state comparisons; the maximal cleanup emits exactly 2096 packets.
+- Zero/tiny-capacity and disconnected sinks, exact accepted/attempted counts, no retry after first failure, unchanged source state, and no false claim that the helper already invoked recovery.
+
+All complete workloads execute under heap guards, native debug/release, Node/Chromium and pinned Miri. The existing indexed-state, generated capture ownership and expanded journal-independent audio cases also rerun with the updated representation.
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **171 passed per profile** |
+| Loop native debug/release | **67 passed per profile** |
+| Runtime Node/Chromium | **167 passed per runtime** |
+| Loop Node/Chromium | **67 passed per runtime** |
+| Prescribed workspace nextest | **2038 passed**, four unchanged opt-in canaries skipped |
+| Fresh combined selected Miri | **125 executions**: 111 runtime plus fourteen loop cases |
+| Lifetime/authority prototypes | Positive builds/runs and deliberate **E0502/E0599** refusals |
+| Formatting, warning-denied build/rustdoc, examples, boundary/policy checks | Passed |
+| Existing native debug/release and actual offline/live worklet; both failure canaries | Passed; historical golden journal unchanged |
+
+The focused tests and all 21 broad gates passed on their first runs; no new failed run is being omitted. This full run supersedes the preceding scoped milestone's lack of fresh generic-runtime/host evidence, without rewriting its historical claims.
+
+These helpers do not yet implement indexed MIDI event playback/rebasing, input tracking/capture, integration with runtime reset delivery, the loop planner/processor facade, mixed-media export, the separate-node graph/example or the independent loop AudioWorklet. Those remain required Stage 5/later work. No full Stage 5, external device-state restoration, deadline, final CI or review approval is claimed.
