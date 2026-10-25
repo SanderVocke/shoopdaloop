@@ -1,0 +1,312 @@
+{
+  "passed": true,
+  "base_commit": "3a764206bf7f72609fabefb6e257f2c559e6d88b",
+  "scope": "Stage 2 primitive resolver milestone, not completed composite/resource/runtime integration.",
+  "source_sha256": {
+    "src/rust/shoop_loop_engine/src/command.rs": "7490c0eb1ef833137c4903e3ca90bdea345bd09cd9442b8f3c9cd3b94da6e708",
+    "src/rust/shoop_loop_engine/src/config.rs": "fbb07338ac7c3757a50c43a2770d76e4ab80634e2370ab23cbd921f7a3024e43",
+    "src/rust/shoop_loop_engine/src/decision.rs": "e92acec6af792d23fb31185d57a84e8d23da1ef342c19f1bf4ea27c6eb23bdea",
+    "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+    "src/rust/shoop_loop_engine/src/lib.rs": "5809620113f00c10e4a5a5d945ec82ded7d8574a7b803a34f0c960c106c0f481",
+    "src/rust/shoop_loop_engine/src/program.rs": "8aac9fe15731351a63c8c84b27aec1d66a4f966f2674a4cb81b11d661e079c1d",
+    "src/rust/shoop_loop_engine/src/resolver.rs": "0064957f3362f7b6f5f50852374940a65b33f48f1ddce2bef7f304fc12d5e951",
+    "src/rust/shoop_loop_engine/src/state.rs": "b8ff33f722857a23a7da394e4c6cad8d437310526b016e9f8c84e519494119a4",
+    "src/rust/shoop_loop_engine/src/topology.rs": "70d3e0c6d33aca4308a8caa20bc5ffcf1cda2a12549f1c6b183872bb701fb986",
+    "src/rust/shoop_loop_engine/tests/compiler.rs": "ae4303b55f17255a0daab325afac68b26add1bb6fc5a99768ba9d2aedfd11ece",
+    "src/rust/shoop_loop_engine/tests/resolver.rs": "4c6e5fe81d9d4007cf4267e70b2cde460fdf23b8bdc7151f8f1503bd867de24e",
+    "src/rust/shoop_loop_engine/tests/support/reference.rs": "b9f71a3695b9c1a80979ee2b6a89a99c8c99b1f2274f04da4836b7266515d2fe"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 1.3825150320044486,
+      "log": "target/loop-layer-primitive/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 1.9242032600013772,
+      "log": "target/loop-layer-primitive/native-debug.log",
+      "sha256": "5f12b40a082f22594e73bad537c33a88713eb04855e36a725e81361954739a0e"
+    },
+    {
+      "name": "native-release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine",
+        "--release"
+      ],
+      "exit_code": 0,
+      "seconds": 2.389163229003316,
+      "log": "target/loop-layer-primitive/native-release.log",
+      "sha256": "ad106a6e00d5a838ac9752d4162e897c624f7ee8870bd08a4358351359db6de0"
+    },
+    {
+      "name": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 2.4981116429989925,
+      "log": "target/loop-layer-primitive/workspace-build.log",
+      "sha256": "c4a328d8cafeef2ad93b2f3185e7cd08069f2648ae0bb1cf300a59129bd2644f"
+    },
+    {
+      "name": "rustdoc",
+      "command": [
+        "cargo",
+        "doc",
+        "--locked",
+        "-p",
+        "shoop_loop_engine",
+        "--no-deps"
+      ],
+      "exit_code": 0,
+      "seconds": 0.33803357400756795,
+      "log": "target/loop-layer-primitive/rustdoc.log",
+      "sha256": "bd53e870f6c2dbb65eb143439fa4284e6c43ebb8aa3e01c10efff9ff88cb4e49"
+    },
+    {
+      "name": "runtime-boundary",
+      "command": [
+        "python3",
+        "scripts/check_rt_runtime_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4488330160093028,
+      "log": "target/loop-layer-primitive/runtime-boundary.log",
+      "sha256": "95fff258fbfbb5302df71ca75a0206bdd8f984a6b3614e5b91c7bea8872e611a"
+    },
+    {
+      "name": "loop-boundary",
+      "command": [
+        "python3",
+        "scripts/check_loop_engine_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4061017469939543,
+      "log": "target/loop-layer-primitive/loop-boundary.log",
+      "sha256": "f150d1cc802cf91ae2f59030cad02ccbbd3bf5fe55fed50315f343e33fb59617"
+    },
+    {
+      "name": "boundary-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.tests.test_rt_runtime_boundary",
+        "scripts.tests.test_loop_engine_boundary"
+      ],
+      "exit_code": 0,
+      "seconds": 0.049782851012423635,
+      "log": "target/loop-layer-primitive/boundary-tests.log",
+      "sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e"
+    },
+    {
+      "name": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.02819477900629863,
+      "log": "target/loop-layer-primitive/test-policy.log",
+      "sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    },
+    {
+      "name": "tracing-policy",
+      "command": [
+        "python3",
+        "scripts/check_tracing_coverage.py",
+        "--require-closed"
+      ],
+      "exit_code": 0,
+      "seconds": 0.049734751009964384,
+      "log": "target/loop-layer-primitive/tracing-policy.log",
+      "sha256": "6f0f648f24b57a5dd4b95055014093ee07f6166018052e930df29df32cc8425d"
+    },
+    {
+      "name": "wasm-dependencies",
+      "command": [
+        "python3",
+        "scripts/check_wasm_test_dependencies.py",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.1672402459953446,
+      "log": "target/loop-layer-primitive/wasm-dependencies.log",
+      "sha256": "077ad4115bb6999f06ac6926c3a6f657925a3a589fafa1b457cc5fe74e2a4a59"
+    },
+    {
+      "name": "node",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "node",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 23.65287330999854,
+      "log": "target/loop-layer-primitive/node.log",
+      "sha256": "4500a496cb349c8b8d549621aeca6b15f2e0e26b2b607a0f86c1d7b478cf779f"
+    },
+    {
+      "name": "chrome",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "chrome",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 12.400632463992224,
+      "log": "target/loop-layer-primitive/chrome.log",
+      "sha256": "31ec6ba0ac7c0658f8e22149a8e66097a529d1368dbe9f94aaae39b7ed0dc267"
+    },
+    {
+      "name": "nextest-version",
+      "command": [
+        "cargo",
+        "nextest",
+        "--version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.017060248006600887,
+      "log": "target/loop-layer-primitive/nextest-version.log",
+      "sha256": "1fd8e369e986ceaa3163325c547244c65dfa43b89824ddd27afe3dd43b0cb188"
+    },
+    {
+      "name": "workspace-tests",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--features",
+        "shoop_engine/app_backend",
+        "--profile",
+        "ci"
+      ],
+      "exit_code": 0,
+      "seconds": 37.48014543700265,
+      "log": "target/loop-layer-primitive/workspace-tests.log",
+      "sha256": "4ceed6cb4e5db39829ca42534bfd26fa3e1da6111dbbafa27daba641977ea66d"
+    }
+  ],
+  "native": {
+    "loop_tests_per_profile": 36,
+    "runtime_tests_per_profile": 93,
+    "profiles": [
+      "debug",
+      "release"
+    ]
+  },
+  "wasm": [
+    {
+      "elapsed_seconds": 17.78831985000579,
+      "executed": 36,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.xml",
+      "listed": 36,
+      "log": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 36,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 36,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 11.95945604199369,
+      "executed": 36,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.xml",
+      "listed": 36,
+      "log": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 36,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 36,
+      "traces": {}
+    }
+  ],
+  "reference": {
+    "seed": "0x481c49f287bdf1e3",
+    "primitive_scripts": 256,
+    "requests_per_script": 32,
+    "frames_per_script": 64,
+    "partitions": [
+      "single callback",
+      "single-sample callbacks with reversed admission order",
+      "seeded irregular callbacks"
+    ],
+    "comparisons": [
+      "absolute transition/pulse journals",
+      "per-sample logical playback/capture decisions",
+      "every retained terminal outcome",
+      "final logical state"
+    ]
+  },
+  "guards": "Shared allocator counts allocation/reallocation/deallocation around submit, preview, commit, finish, cancellation, receipt recycling, and candidate replacement/refusal. Preparation and test oracle/journal collection are outside those scopes.",
+  "environment": {
+    "wrapper": "nix develop",
+    "paths": [
+      "/home/sander/.cache/rt-runtime-nextest-0.9.116",
+      "/nix/store/qbj1w0y8ilv183jhdv2ws6dfhzph680p-nodejs-22.22.2/bin",
+      "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin",
+      "/nix/store/s6vs54z82hiz6d8sc63g4ckavl6fax4z-chromedriver-unwrapped-147.0.7727.137/bin"
+    ],
+    "CHROME_BIN": "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin/chromium",
+    "RUSTFLAGS": "-D warnings",
+    "RUSTDOCFLAGS": "-D warnings",
+    "workspace_SHOOP_ALLOW_MISSING_BACKENDS": "1"
+  },
+  "limitations": [
+    "Composite descriptions compile but are explicitly rejected by this interim resolver.",
+    "Logical recording observations do not prove media/resource transactions or actual audio/MIDI output.",
+    "Not an AudioWorklet fixture, runtime planner adapter, or admission/recovery lane integration.",
+    "Native target dependency trees are metadata audits, not macOS/Windows execution.",
+    "Miri, broader multi-loop reference simulation, composite execution, and final CI remain pending."
+  ]
+}

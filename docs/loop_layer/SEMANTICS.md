@@ -16,7 +16,7 @@ The resolver owns musical state. Media renderers own cursors, MIDI state, smooth
 
 ## Primitive state and operations
 
-A primitive has mode `Stopped`, `Playing`, or `Recording`; logical length; position; playback cycle count; prepared content identity; optional sync source; and pending requests. Initially it is stopped with length/position/cycles zero.
+A primitive has mode `Stopped`, `Playing`, or `Recording`; logical length; position; playback cycle count; prepared content identity; optional sync source; and pending requests. It starts stopped with position/cycles zero; without prepared initial content its length is zero as well.
 
 | Operation | Meaning at the winning transition boundary |
 | --- | --- |
@@ -28,9 +28,11 @@ A primitive has mode `Stopped`, `Playing`, or `Recording`; logical length; posit
 | Seek | For Playing, position must satisfy `0 <= position < length`; retain mode and content, perform MIDI cleanup/restoration and audio discontinuity handling. Seek does not imply a trigger unless `retrigger` is requested. Reject seek during Recording or Stopped without changing state. |
 | Activate prepared content | Atomically select a complete prepared channel group/revision at F. The request specifies reset position or preservation; preservation must fit the new length. Invalid/stale candidates leave previous content and state intact. Old leases remain valid. |
 
-A playable zero-length primitive stays stopped: an attempted start has the explicit `EmptyContent` outcome, rather than entering a zero-duration wrap loop. An empty composite is a successful stopped no-op. Recording grows length by the successfully captured duration; a failed take never manufactures padding or resumes after a gap. A fresh start/retrigger resets playback cycle count; an ordinary wrap increments it once. Forwarded synchronization pulses do not increment media playback cycle count or reset an already-running playhead.
+A playable zero-length primitive stays stopped: an attempted start has the explicit `EmptyContent` outcome, rather than entering a zero-duration wrap loop. Finishing an empty active capture into playback fails this precondition transactionally: the capture continues, without freezing or fabricating content; an explicit Stop can instead finish an empty take. An empty composite is a successful stopped no-op. Recording grows length by the successfully captured duration; a failed take never manufactures padding or resumes after a gap. A fresh start/retrigger resets playback cycle count; an ordinary wrap increments it once. Forwarded synchronization pulses do not increment media playback cycle count or reset an already-running playhead.
 
 Playback wraps at its own logical length. A sync source supplies clock pulses for quantized requests and composites; it does not silently stretch media, change playback rate, or force the playhead to restart at every source pulse. Requests requiring alignment carry an explicit position/retrigger decision.
+
+Beginning a fresh recording emits a start clock edge, but recording alone creates no periodic wrap clock. Logical capture revision serials do not reuse a previously reached serial, even after selecting an older prepared revision.
 
 Recording normally has no playback output. With `monitor_previous`, the resolver additionally publishes the retained take's playback position/length and the new take's capture-prefix position; all playback channels share the former and all capture channels share the latter. They advance from the same absolute interval, not independent renderer clocks. Existing playback continues from its current position (or zero when starting from stopped), can feed FX, and can be captured into the new revision without overwriting its source. Its wraps still emit clock edges. Freeze-and-play explicitly selects the new take and resets its playhead/cycle count. If capture exhausts while monitoring, keep the old playback running and mark the new take incomplete; otherwise enter Stopped. This is separate media execution, not in-place overdub or full application dry/wet policy.
 

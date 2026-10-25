@@ -55,6 +55,7 @@ impl Limits {
         checked_storage(self.relations, size_of::<crate::topology::Trigger>())?;
         checked_storage(self.program_entries, size_of::<crate::program::Entry>())?;
         checked_storage(self.program_segments, size_of::<crate::program::Segment>())?;
+        crate::resolver::validate_storage(self)?;
         Ok(self)
     }
 }

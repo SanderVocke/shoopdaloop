@@ -106,7 +106,7 @@ Workspace formatting, the warning-denied locked workspace build, and the shared 
 
 ## Stage 2 — Compiler milestone (stage remains in progress)
 
-Milestone: `feat(loop-layer): add portable crate and prepared timing compiler` (the commit introducing this section). Evidence: [`evidence/compiler-stage2.json`](evidence/compiler-stage2.json). Source hashes identify the tested implementation on top of the Stage 1 commit; raw logs are under `target/loop-layer-compiler/`.
+Milestone: `3a764206bf7f72609fabefb6e257f2c559e6d88b` — `feat(loop-layer): add portable crate and prepared timing compiler`. Evidence: [`evidence/compiler-stage2.json`](evidence/compiler-stage2.json). Source hashes identify the tested implementation on top of the Stage 1 commit; raw logs are under `target/loop-layer-compiler/`.
 
 Implemented interfaces in `src/rust/shoop_loop_engine`:
 
@@ -132,4 +132,40 @@ Verification in the repository Nix environment:
 | Wasm test-dependency policy, Rust test policy, formatting, warning-denied workspace build | Passed |
 | Closed tracing inventory | Passed; 174 modules classified |
 
-These tests validate compilation and lookup only. They do **not** establish resolver interval/partition invariance, callback cascade execution, reliable pending requests, resource transactions, or loop AudioWorklet behavior. Compiler preparation is allowed to allocate; the guard does not falsely impose callback constraints on it. Stage 2 remains open for the resolver, fixed scratch/state, synthetic observations, independent musical simulator, and guarded rejection/replacement paths.
+These tests validate compilation and lookup only. They do **not** establish resolver interval/partition invariance, callback cascade execution, reliable pending requests, resource transactions, or loop AudioWorklet behavior. Compiler preparation is allowed to allocate; the guard does not falsely impose callback constraints on it. At this compiler milestone, Stage 2 remained open for the resolver, fixed scratch/state, synthetic observations, independent musical simulator, and guarded rejection/replacement paths.
+
+## Stage 2 — Primitive resolver milestone (stage remains in progress)
+
+Milestone: `feat(loop-layer): resolve primitive timelines with transactional previews` (the commit introducing this section). Evidence: [`evidence/primitive-stage2.json`](evidence/primitive-stage2.json). Exact commands, source/log hashes, counts, runtime summaries, and environment overrides are retained there; raw logs are under `target/loop-layer-primitive/`.
+
+### Implemented interfaces and ownership
+
+- `command`, `state`, `decision`, and `resolver` provide typed primitive operations, fixed pending/terminal records, immutable interval decisions, synthetic boundary observations, and authoritative logical positions.
+- `Resolver::preview` copies into prepared shadow storage and settles the boundary without publishing results, state, or pulses. `commit` swaps the prepared storage; `finish` advances only the selected nonempty interval. Invalidated/failed previews cannot be committed or expose valid decision views. Resource preflight integration is still pending; no retry work quota was introduced.
+- Prepared sync components are visited in canonical order. Each seeded member delivers its clock once; pending countdowns consume that edge once. Direct intent precedence, pre-clock stop masks, reactive starts/stops, automatic wraps, and same-frame trigger cascades share this algorithm. Extra host cuts do not seed clocks.
+- Pending and unread terminal records retain their slots. Cancellation and result recycling check generations; ordinary result stalls do not stop automatic progression. These are domain bookkeeping records, not a second owning transport. Runtime receipt/recovery-lane integration remains pending.
+- Topology replacement checks the expected epoch, preserves retained logical states, rejects active removal, revalidates pending targets/sources, and returns the old owner. Per-slot generation high-water marks prevent resurrection after removal. Returned/rejected descriptors are destroyed outside the guarded scope.
+- Storage sizing includes shadow states, receipts, decisions, pulse/eligibility marks, and both journals. Preparation initializes/touches storage; processing does not resize it. Journal overflow is saturating diagnostic loss, not a musical-work refusal.
+
+Three primitive edge cases are now explicit in `SEMANTICS.md`: supplied prepared initial metadata may establish a stopped loop's length; a fresh recording emits one start edge but no periodic recording clock; an empty finish-to-play fails transactionally without freezing, so the caller can continue recording or explicitly stop. The latter preserves atomic precondition failure and avoids fabricating a zero-duration playing state. Logical capture serials retain a high-water mark when an older content revision is selected. These clarify the specified behavior without changing scope or LL-A criteria.
+
+### Verification and limits
+
+| Gate | Observed result |
+| --- | --- |
+| Loop crate native debug/release | 36 tests per profile: 19 compiler + 17 resolver; no failures/ignored tests |
+| Existing runtime native debug/release | 93 tests per profile; no failures/ignored tests |
+| Loop crate Node/Chromium | 36 tests per runtime; no failures/ignored tests |
+| Independent single-sample primitive model | 256 generated scripts × 32 requests × 64 frames; complete journals, per-sample logical decisions, every terminal outcome, and final state compared across three partition/order profiles |
+| Same-frame execution | 256-node cascade under heap guards; direct/reactive conflict, valid/idle mutual sync, and source-stop tests |
+| Dense progression | One-sample loops over 128 frames; exact callback-end treatment and irregular/one-frame partition agreement |
+| Failure/ownership paths | Repeated unpublished preview/refusal, duplicate-observation rejection, cancelled/stalled receipts, stale identities, owner-returning replacement, empty finish, maximum countdown, frame/revision exhaustion |
+| Optional diagnostic storage | Disabled journal gives the same logical samples/state; diagnostic loss accounts for omitted events |
+| Full prescribed nextest workspace suite | 1929 passed; four unchanged existing opt-in canaries skipped |
+| Formatting, warning-denied workspace build/rustdoc, both dependency audits, five Python policy tests, Wasm/test/tracing policies | Passed; tracing inventory now covers 178 modules |
+
+Allocator guards cover each production resolver operation, including submission, preview, commit, finish, cancellation, recycling, and replacement/refusal, in native debug/release and Wasm. Preparation and the allocating test oracle/journal collection are deliberately outside those scopes. This is not yet a whole AudioWorklet callback safety claim.
+
+The independent reference advances one sample at a time and does not call the production resolver, component compiler, or interval selector. Its generated execution coverage is currently **single-primitive**; multi-loop timing has explicit expected-case and partition tests, not a completed generated multi-loop/composite simulator.
+
+Logical recording tests prove positions and observation timing, **not captured audio/MIDI or actual resource transactions**. Composite descriptions compile but are explicitly rejected by the interim resolver. Composite execution/reference tests, required render effects and media binding, generic planner/receipt integration, Miri, actual hosts, and final CI remain pending. No further Stage 2 checklist item or end-to-end LL-A criterion is marked complete on this partial milestone.

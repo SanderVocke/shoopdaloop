@@ -2,7 +2,7 @@
 
 ## Status and execution contract
 
-Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–1 are verified; Stage 2 is in progress (crate/compiler milestone verified); stages 3–10 remain pending. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
+Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–1 are verified; Stage 2 is in progress (crate/compiler and primitive resolver milestones verified); stages 3–10 remain pending. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
 
 Governing inputs: `INTER_LOOP_PROCESSING.md`, `PROPOSAL_LOOP_LAYER.md`, and the proposed-evolution sections of `DESIGN_RT_ENGINE.md` and `PROPOSAL_RT_ENGINE.md`. `DONE_INITIAL_CRATE.md` and its evidence remain the historical record of the initial runtime, not acceptance criteria to rewrite retrospectively.
 
