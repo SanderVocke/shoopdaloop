@@ -268,7 +268,8 @@ fn reusable_plans_materialize_incrementally_without_allocating_or_bypassing_vali
         }
         assert!(matches!(status, ValidationStatus::Invalid(_)));
         let huge = Config {
-            max_edges: i32::MAX as usize,
+            max_frames: 1,
+            max_edges: i32::MAX as usize / 2,
             ..config.limits()
         }
         .prepare()

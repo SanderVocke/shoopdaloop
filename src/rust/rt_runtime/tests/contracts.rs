@@ -130,6 +130,57 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
         );
         assert_eq!(
             Config {
+                max_edges: 5_000_000,
+                max_frames: 1024,
+                scheduled_events: 1024,
+                budgets: rt_runtime::Budgets {
+                    events: 1024,
+                    subranges: 1025,
+                    ..base.budgets
+                },
+                ..base
+            }
+            .prepare(),
+            Err(Error::Capacity)
+        );
+        assert_eq!(
+            Config {
+                max_nodes: 1,
+                max_ports: 1_000_000,
+                max_edges: 16_000_000,
+                midi_events_per_port: 1,
+                midi_bytes_per_port: 1,
+                scheduled_events: 128,
+                budgets: rt_runtime::Budgets {
+                    events: 128,
+                    subranges: 129,
+                    ..base.budgets
+                },
+                ..base
+            }
+            .prepare(),
+            Err(Error::Capacity)
+        );
+        assert_eq!(
+            Config {
+                max_edges: 10_000,
+                max_frames: 1024,
+                scheduled_events: 1024,
+                budgets: rt_runtime::Budgets {
+                    events: 1024,
+                    subranges: 1025,
+                    ..base.budgets
+                },
+                ..base
+            }
+            .prepare()
+            .unwrap()
+            .limits()
+            .max_edges,
+            10_000
+        );
+        assert_eq!(
+            Config {
                 page_bytes: 3,
                 ..base
             }

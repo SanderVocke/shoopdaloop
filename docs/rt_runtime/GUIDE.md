@@ -18,14 +18,14 @@ A typical application prepares all storage and processors before starting callba
 
 ## Capacity sizing
 
-Memory capacities and work budgets are separate. A large queue does not authorize draining it in one callback. Configuration is checked once by `Config::prepare`; arithmetic overflow, impossible reserves, and common native/Wasm storage ceilings are errors, not truncation.
+Memory capacities and work budgets are separate. A large queue does not authorize draining it in one callback. Configuration is checked once by `Config::prepare`; arithmetic overflow, impossible reserves, and common native/Wasm storage ceilings are errors, not truncation. Worst-case route/port/processor/event work across all possible subranges must also fit the common counter ceiling; individually representable capacities must not overflow diagnostics on wasm32.
 
 | Setting | Size for |
 | --- | --- |
 | `max_frames` | Largest host callback; processors must also accept smaller scheduled subranges |
 | `max_nodes`, `max_ports`, `max_edges` | Prepared slots, **all host plus node port counts**, and every typed route; fan-in/out adds edges |
 | `midi_events_per_port`, `midi_bytes_per_port` | Ordinary per-port messages and payloads, including worst-case fan-in; each arena additionally reserves 32 resets / 96 bytes |
-| `command_slots`, `recovery_slots` | Maximum accepted owning commands plus undrained terminal completions; reserve recovery independently |
+| `command_slots` | Maximum accepted normal-lane owning commands plus undrained terminal completions; the graph executor separately reserves one recovery slot. The lower-level `TransportConfig` exposes `normal_slots` and `recovery_slots` |
 | `scheduled_events` | Future events **plus unread execution results**, subject to the effective credit limit below |
 | `resource_slots` | Separate fixed arrays of identities, version/upload descriptors, and snapshot leases; replacement needs old and new versions concurrently |
 | `resource_pages`, `page_bytes` | Resident versions, reserved uploads, active capture, pinned old versions, snapshot tail copies, and bounded reclamation lag |
