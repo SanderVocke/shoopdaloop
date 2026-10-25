@@ -128,39 +128,35 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
             .prepare(),
             Err(Error::Capacity)
         );
-        assert_eq!(
-            Config {
-                max_edges: 5_000_000,
-                max_frames: 1024,
-                scheduled_events: 1024,
-                budgets: rt_runtime::Budgets {
-                    events: 1024,
-                    subranges: 1025,
-                    ..base.budgets
-                },
-                ..base
-            }
-            .prepare(),
-            Err(Error::Capacity)
-        );
-        assert_eq!(
-            Config {
-                max_nodes: 1,
-                max_ports: 1_000_000,
-                max_edges: 16_000_000,
-                midi_events_per_port: 1,
-                midi_bytes_per_port: 1,
-                scheduled_events: 128,
-                budgets: rt_runtime::Budgets {
-                    events: 128,
-                    subranges: 129,
-                    ..base.budgets
-                },
-                ..base
-            }
-            .prepare(),
-            Err(Error::Capacity)
-        );
+        assert!(Config {
+            max_edges: 5_000_000,
+            max_frames: 1024,
+            scheduled_events: 1024,
+            budgets: rt_runtime::Budgets {
+                events: 1024,
+                subranges: 1025,
+                ..base.budgets
+            },
+            ..base
+        }
+        .prepare()
+        .is_ok());
+        assert!(Config {
+            max_nodes: 1,
+            max_ports: 1_000_000,
+            max_edges: 16_000_000,
+            midi_events_per_port: 1,
+            midi_bytes_per_port: 1,
+            scheduled_events: 128,
+            budgets: rt_runtime::Budgets {
+                events: 128,
+                subranges: 129,
+                ..base.budgets
+            },
+            ..base
+        }
+        .prepare()
+        .is_ok());
         assert_eq!(
             Config {
                 max_edges: 10_000,
@@ -236,7 +232,6 @@ fn every_positive_capacity_and_budget_is_validated() {
         |c| &mut c.command_slots,
         |c| &mut c.budgets.commands,
         |c| &mut c.budgets.events,
-        |c| &mut c.budgets.subranges,
         |c| &mut c.budgets.transfer_bytes,
         |c| &mut c.budgets.validation_steps,
         |c| &mut c.budgets.publications,
@@ -384,6 +379,8 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
             midi_inputs: &midi_in,
             midi_outputs: &mut midi_out,
             resources: resources.io(),
+            decision: None,
+            observations: rt_runtime::planner::ObservationWriter::disabled(&mut 0),
         })
     })
     .unwrap();

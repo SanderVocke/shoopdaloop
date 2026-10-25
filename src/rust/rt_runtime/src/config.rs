@@ -6,6 +6,7 @@ use crate::Error;
 pub struct Budgets {
     pub commands: usize,
     pub events: usize,
+    /// Retained for source compatibility; ignored. Internal intervals have no quota.
     pub subranges: usize,
     pub transfer_bytes: usize,
     pub validation_steps: usize,
@@ -113,7 +114,6 @@ impl Config {
             self.command_slots,
             self.budgets.commands,
             self.budgets.events,
-            self.budgets.subranges,
             self.budgets.transfer_bytes,
             self.budgets.validation_steps,
             self.budgets.publications,
@@ -138,20 +138,6 @@ impl Config {
         {
             return Err(Error::InvalidConfig);
         }
-        // Routes, injected ports, processors, and scheduled events can each
-        // report MIDI overflow; their aggregate counter must also fit wasm32.
-        let events = self
-            .scheduled_events
-            .min(self.budgets.events)
-            .min(self.budgets.subranges - 1);
-        let ranges = self.max_frames.min(events + 1);
-        self.max_edges
-            .checked_add(self.max_ports)
-            .and_then(|work| work.checked_add(self.max_nodes))
-            .and_then(|work| work.checked_mul(ranges))
-            .and_then(|work| work.checked_add(events))
-            .filter(|&work| work <= MAX_STORAGE)
-            .ok_or(Error::Capacity)?;
         storage_product(
             self.max_nodes,
             1,

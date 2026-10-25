@@ -15,7 +15,7 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | Criterion | Planned implementation/evidence | Status |
 | --- | --- | --- |
 | LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
-| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver and standalone generic binding validation verified; runtime lifecycle/integration pending |
+| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver and generic runtime binding/view/interval lifecycle verified; domain delivery and loop integration pending |
 | LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution verified; media/runtime/host proof pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
 | LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
@@ -247,3 +247,46 @@ The **first** full workspace attempt had 1953 passes and one failure: unchanged 
 Fresh host regression evidence retains **2601 offline callbacks / 332928 frames**, sample/MIDI/graph hashes **480331717 / 3308430490 / 487351092**, and **34 MIDI events**. The raw journal matches the historical golden byte-for-byte. This proves compatibility with the **existing runtime fixture**, not a new loop AudioWorklet. Package Wasm tests also remain distinct from actual worklet execution.
 
 The current executor still constructs signal-only catalogs. Planner views/observations, typed operations and pending runtime receipts, callback-wide accounting with internal intervals, integrated activation/retirement tests, and selected new Miri cases remain outstanding. **Stage 3 is not complete**, and no end-to-end LL-A criterion is claimed from this structural milestone.
+
+## Stage 3 — Planner views and interval lifecycle milestone (stage remains in progress)
+
+Milestone: `feat(rt-runtime): execute prepared planner intervals` (the commit introducing this section). Evidence: [`evidence/interval-stage3.json`](evidence/interval-stage3.json) and [`evidence/interval-stage3-provenance.json`](evidence/interval-stage3-provenance.json); raw logs: `target/loop-layer-interval-stage3/`. The report hashes tested Rust sources on top of `f26fd217` and records exact commands, profiles, counts, and environment overrides.
+
+### Implemented lifecycle and compatibility
+
+- `Planner`, `NoPlanner`, `PlanContext`, `FinishContext`, `DecisionView`, and `ObservationWriter` implement the production safe-Rust borrow phases. `GraphRuntime`, `Processor`, `PrepareProcessor`, `PreparedNode`, `Command`, and `Control` carry a defaulted planner type; existing ordinary clients retain the no-planner path.
+- Preparation checks fixed decision dimensions and associated element-size arithmetic, initializes/touches observation storage, and captures processor planning signatures. Replacement must preserve both ports and planning access. The planner owns its prepared decision/state storage; consumers borrow only their validated immutable slot.
+- One callback snapshots ingress/recycles results and resets accounting. Its internal loop delivers due external actions, asks the planner for a positive interval no later than the next action/host end, traverses the signal DAG, and finishes observations. Empty signal graphs can still advance a configured planner. Zero-frame callbacks do nothing; end-boundary actions settle in the next nonempty callback.
+- Observation writers stamp producer identity and enforce each producer's declared allowance. Refusal preserves prior observations and another producer's reserved space. Each interval resets only the written length; stale values are not exposed or freed.
+- Invalid intervals and changed decision-slice length are explicit render errors before consumers run. Stale planner candidates return their owner while the prior graph/bindings keep rendering. Programming errors retain the existing output-clearing/advanced-outer-clock contract, not rollback.
+- External event/result capacity is now `min(scheduled_events, budgets.events)`. `Budgets::subranges` remains source-compatible but is ignored, including zero. This intentional migration removes the old coupling between external admission and musical interval counts. Existing event/result reservations and half-open timing remain intact.
+- Traversal/event/MIDI-overflow diagnostics saturate with `counter_overflow`. Configuration no longer refuses otherwise representable storage based only on a worst-case diagnostic work estimate. Frame/identity arithmetic remains checked and semantic.
+
+The new standalone crate guide `src/rust/rt_runtime/docs/planning.md` and `planned_gain` example describe the actual API and remaining limits. Historical initial scheduler evidence remains labeled historical; live scheduling/capacity/integration guides describe the new behavior.
+
+### Verification
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **109 passed per profile**: seven new executor tests and one diagnostic-overflow unit test |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **105 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Full prescribed nextest workspace | **1962 passed**, four unchanged existing opt-in canaries skipped |
+| Selected pinned Miri suite | **53 passing executions**, including all eight planning-metadata and seven planner-executor tests; existing lifecycle stress seeds 0/1/2 retained |
+| Production-trait lifetime proof | Positive executable compiles/runs; retained decision borrow across planner mutation fails with **E0502** |
+| Planned-gain example | Native debug/release checks exact samples, five intervals, and frame-13 parameter execution |
+| Formatting, warning-denied workspace build/rustdoc, dependency/test/tracing policies | Passed; both four-target audits and five Python policy tests retained |
+| Existing native and actual non-isolated offline/live AudioWorklet fixture | Passed in fresh runs; both failure canaries detected; historical journal unchanged |
+
+The synthetic pipeline binds source and capture-side consumers to the same decision around an ordinary FX node. Full samples and absolute MIDI events match across `[64]`, `[1 × 64]`, irregular partitions, reversed declarations, adaptive intervals, and one-sample intervals. A **128-interval callback with one external event credit and `subranges = 0`** processes all 384 consumer/FX calls under heap guards. Tests exercise per-consumer overflow isolation, stale graph refusal, malformed intervals, callback-end ownership, and zero callbacks.
+
+A prepared test producer enqueues work from inside traversal without allocating or locking. Its requests and returned event credits wait until the following host callback, never the next internal interval; telemetry is also published only once per callback. A separate planner borrows resource I/O on every interval: the 64-byte callback allowance is consumed once, not refreshed 128 times. This verifies preservation of the **current** resource quota, not completion of the required-render accounting change planned for Stage 4.
+
+The first Miri tool invocation timed out after 900 seconds while preparing/executing the synthetic cases with unnecessarily large default media pools. The report retains that partial attempt. Synthetic tests now use smaller prepared media capacities on **all** platforms; interval counts, assertions, and selections are unchanged. Full native/Wasm/host gates and all selected Miri cases subsequently passed. The Miri runner removes stale success reports at startup and retains partial output for per-case timeouts.
+
+Fresh existing-host evidence again has 2601 offline callbacks / 332928 frames, fixed 1507328-byte worklet memory, native/browser sample/MIDI/graph agreement, and a byte-identical historical golden. This is runtime compatibility evidence, **not a loop-library worklet**.
+
+### Outstanding Stage 3 work
+
+Typed domain operation delivery, retained pending runtime receipts, recovery-safe domain cancellation/stop under normal saturation, and their malformed/stale/ownership tests remain unimplemented. `operation_bytes` currently validates signatures only. Planner/consumer resource access still uses the initial shared `ResourceIo` quotas; required-render indexing and capture transactions remain Stage 4. The production loop resolver is not yet attached to this generic lifecycle. No Stage 3 completion or end-to-end LL-A claim follows from this milestone.

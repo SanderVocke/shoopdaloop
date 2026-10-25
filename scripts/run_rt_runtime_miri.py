@@ -13,6 +13,8 @@ TOOLCHAIN = "nightly-2026-05-04"
 REPORTS = ROOT / "target/rt-runtime-miri"
 CASES = [
     ("contracts", [], 12),
+    ("planning_graph", [], 8),
+    ("planner_execution", [], 7),
     ("wire_properties", [], 3),
     ("resource_properties", [], 1),
     ("mixed_stress", [], 1),
@@ -25,6 +27,7 @@ CASES = [
 
 def main():
     REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / "result.json").unlink(missing_ok=True)
     env = os.environ.copy()
     for key in ("RUSTC", "RUSTDOC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "MIRIFLAGS"):
         env.pop(key, None)
@@ -35,8 +38,13 @@ def main():
     for index, (target, arguments, minimum, seed) in enumerate(cases):
         case_env = {**env, "MIRIFLAGS": f"-Zmiri-seed={seed}"}
         command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", "rt_runtime", "--test", target, *arguments]
-        result = subprocess.run(command, cwd=ROOT, env=case_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=900)
         log = REPORTS / f"{index:02d}-{target}-seed{seed}.log"
+        try:
+            result = subprocess.run(command, cwd=ROOT, env=case_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=900)
+        except subprocess.TimeoutExpired as error:
+            output = error.stdout or ""
+            log.write_text(output.decode(errors="replace") if isinstance(output, bytes) else output)
+            raise RuntimeError(f"Miri case timed out: {target} seed {seed}; partial output: {log}") from error
         log.write_text(result.stdout)
         matches = re.findall(r"test result: ok\. (\d+) passed; (\d+) failed", result.stdout)
         passed = sum(int(count) for count, _ in matches)

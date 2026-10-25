@@ -49,14 +49,13 @@ Always drain both streams. Unsupported parameter IDs return execution errors. A 
 ```text
 outstanding event/result capacity = min(
     scheduled_events,
-    budgets.events,
-    budgets.subranges - 1
+    budgets.events
 )
 
-Default: min(256, 64, 64) = 64
+Default: min(256, 64) = 64
 ```
 
-Every admitted event reserves a possible split, even when events share a frame or are far in the future. Unread execution results retain the reservation. Raising `scheduled_events` alone may therefore do nothing. Use a bounded lookahead window rather than filling the scheduler with an entire long sequence.
+Every admitted event reserves an external delivery/result slot, even when events share a frame or are far in the future. Unread execution results retain the reservation. Internal planner intervals consume no such slots; the legacy `budgets.subranges` field is ignored. Raising `scheduled_events` alone may therefore do nothing. Use a bounded lookahead window rather than filling the scheduler with an entire long sequence.
 
 For equal timestamps, scheduled ordering is by node, then action kind (parameter before MIDI for that node), parameter/port, then submission sequence. This is not a global “all parameters before all MIDI” rule across nodes.
 

@@ -1,9 +1,9 @@
 //! Fixed-capacity scheduling and reliable execution-result credits.
 //!
-//! Admission conservatively reserves one event and one potential split for every
+//! Admission conservatively reserves one external event/result slot for every
 //! outstanding scheduled operation, regardless of how far in the future it lies.
-//! This guarantees bounds for arbitrary host block partitions without predicting
-//! their boundaries. Unread execution results retain their slot credit.
+//! This guarantees external delivery capacity across arbitrary host partitions.
+//! Internal planner intervals use no event credits. Unread results retain credit.
 
 use crate::midi::Message;
 use crate::{Error, Frame, NodeId, PreparedConfig, Sequence};
@@ -123,10 +123,7 @@ pub struct Scheduler {
 
 pub fn scheduler(config: PreparedConfig) -> Result<(Results, Scheduler), Error> {
     let limits = config.limits();
-    let capacity = limits
-        .scheduled_events
-        .min(limits.budgets.events)
-        .min(limits.budgets.subranges.saturating_sub(1));
+    let capacity = limits.scheduled_events.min(limits.budgets.events);
     if capacity == 0 {
         return Err(Error::InvalidConfig);
     }
@@ -206,7 +203,7 @@ impl Scheduler {
 
     /// Caller validates live target IDs/ports and debits the payload copy budget
     /// before invoking this method. This method validates payload format, slot and
-    /// split credits, and monotonic request identities before mutating any state.
+    /// result credits, and monotonic request identities before mutating any state.
     pub fn admit(
         &mut self,
         sequence: Sequence,

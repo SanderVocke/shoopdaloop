@@ -1,6 +1,6 @@
 # Runtime contracts and validation matrix
 
-The initial table below records the delivered runtime's contract; `DONE_INITIAL_CRATE.md` A1–A8 and the corresponding validation evidence are historical. The final section specifies the next coordination contract under `PLAN_LOOP_LAYER.md` LL-A1–LL-A12. Those extensions are not implemented yet; this distinction prevents initial scheduler/resource quotas from silently becoming future musical-work limits.
+The initial table below records the delivered runtime's contract; `DONE_INITIAL_CRATE.md` A1–A8 and the corresponding validation evidence are historical. The final section specifies the next coordination contract under `PLAN_LOOP_LAYER.md` LL-A1–LL-A12. Stage 3 has implemented generic planning, views/observations, internal intervals, and saturating diagnostics. Typed domain delivery and new resource accounting/transactions remain pending. The initial scheduler/subrange formulas below are historical, not limits on the new planner lifecycle.
 
 ## API and execution contracts
 
@@ -47,7 +47,9 @@ Every group must exercise tiny capacities (one/two slots and the minimum valid b
 
 Use recorded seeds/configurations, 48 kHz, and block sizes 32, 128, and 512 where supported. Measure idle, gain chains, fan-in/out DAGs, representative 16-node and near-configured-capacity graphs, short-MIDI/SysEx bursts, sustained bounded capture, and concurrent plan/resource staging. Report duration distribution/max and nominal deadline misses, operation/byte/split counters, transfer throughput, peak live storage, and refusal counts. Keep the active graph/data workload identical when comparing baseline versus concurrent control traffic. Timing is diagnostic on a named host, not a brittle CI pass threshold or a claim about the old engine.
 
-## Proposed coordination contract (Stage 1; implementation pending)
+## Coordination contract (Stage 1 design; Stage 3 partially implemented)
+
+Implemented in the interval milestone: `Planner`, `NoPlanner`, `GraphRuntime<P, L>`, `Processor<L>`, validated planner bindings, immutable interval views, producer-reserved observations, and one callback envelope with positive-progress internal intervals. External event/result capacity is now `min(scheduled_events, budgets.events)`; `budgets.subranges` is ignored. Traversal diagnostics saturate with `counter_overflow`, rather than rejecting configurations based on a worst-case counter estimate. The generic implementation remains domain-independent. Typed operations/pending receipts and required-render resource access/transactions are still outstanding. See `docs/loop_layer/VALIDATION.md` for exact tests, Miri, lifetime proof, and existing-host regression evidence.
 
 | Area | Required evolution and verification |
 | --- | --- |

@@ -108,6 +108,8 @@ fn exercise(pages: usize, midi_reset: bool) {
                 midi_inputs: &input,
                 midi_outputs: &mut output,
                 resources: store.io(),
+                decision: None,
+                observations: rt_runtime::planner::ObservationWriter::disabled(&mut 0),
             })
         });
         assert_eq!(

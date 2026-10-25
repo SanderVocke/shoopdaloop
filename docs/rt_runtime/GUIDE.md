@@ -18,7 +18,7 @@ A typical application prepares all storage and processors before starting callba
 
 ## Capacity sizing
 
-Memory capacities and work budgets are separate. A large queue does not authorize draining it in one callback. Configuration is checked once by `Config::prepare`; arithmetic overflow, impossible reserves, and common native/Wasm storage ceilings are errors, not truncation. Worst-case route/port/processor/event work across all possible subranges must also fit the common counter ceiling; individually representable capacities must not overflow diagnostics on wasm32.
+Memory capacities and work budgets are separate. A large queue does not authorize draining it in one callback. Configuration is checked once by `Config::prepare`; arithmetic overflow, impossible reserves, and common native/Wasm storage ceilings are errors, not truncation. Traversal diagnostics now saturate with `counter_overflow`; worst-case work estimates are not preparation limits or internal musical-work quotas.
 
 | Setting | Size for |
 | --- | --- |
@@ -39,7 +39,7 @@ Example: at 48 kHz, a 128-frame stereo reader needs 1,024 bytes per callback, an
 
 One minute of stereo `f32` at 48 kHz is 23,040,000 bytes, or 5,625 pages of 4,096 bytes. A concurrently staged replacement requires another full logical reservation; pinned old versions retain their pages too. A capture-prefix snapshot shares full pages and can require one private partial-tail page. Budget for the maximum outstanding leases, not merely the current revision. Resource length does not increase a single read/write command's copy limit. Recording is finite: exhaustion preserves a complete prefix and explicitly stops recording; it does not silently overwrite old data or resume after a gap.
 
-Scheduled credits are `min(scheduled_events, budgets.events, budgets.subranges - 1)`. Every event reserves a possible split and a reliable result, even if timestamps are equal. Increasing only `scheduled_events` cannot bypass the split/event limit. Drain **both** command completions and execution results; admission and application are distinct. Future events can intentionally occupy all credits until their results are consumed.
+Scheduled credits are `min(scheduled_events, budgets.events)`. Every external event reserves delivery and a reliable result, even if timestamps are equal. Internal planner intervals consume no such slots; `budgets.subranges` is retained but ignored. Increasing only `scheduled_events` cannot bypass the external event limit. Drain **both** command completions and execution results; admission and application are distinct. Future events can intentionally occupy all credits until their results are consumed.
 
 The host fixture separately bounds five 512-byte wire credits, plan materialization records, and export cursor slots. These are host protocol costs, not hidden extra core copy credits. A real host must likewise bound decoding, JS message queues, buffer ownership, and completion recycling around the core.
 

@@ -23,7 +23,9 @@ validate host buffers and frame
         ▼
 advance clock → snapshot queued work → stage commands / validate plan
         ▼
-apply due events → render subranges → reclaim within remaining budget
+repeat: due events → plan interval → borrowed views + signal DAG → observations
+        ▼
+reclaim within remaining budget
         ▼
 publish diagnostics → host drains MIDI recovery → host delivers outputs
 ```
@@ -40,6 +42,10 @@ publish diagnostics → host drains MIDI recovery → host delivers outputs
 Preallocate host MIDI buffers, recovery sinks, and any conversion scratch before starting. `process` clears ordinary host outputs itself; the host manages input buffers and separate recovery sinks.
 
 A processing error is **not a rollback**. Invalid host blocks leave the clock unchanged, but a processor error occurs after clock advance and possibly after state changes. On a propagated render error the runtime clears host audio/MIDI outputs, records `render_error`, and returns the error. Do not replay the same frame; consult `next_frame()`.
+
+## Optional planner
+
+Use `GraphRuntime<P, L = NoPlanner>` with `Processor<L>` and a prepared `Planner` to select internal intervals and share immutable decisions with consumers. See [Generic interval planning](planning.md) for preparation, explicit bindings, observation reservations, and the runnable planned-gain example. Internal intervals do not resnapshot ingress or refresh callback-wide allowances. The default `NoPlanner` retains ordinary processor usage.
 
 ## Graph edits
 
@@ -73,7 +79,7 @@ commit plan without node → await Applied
         → await Applied → commit plan using replacement
 ```
 
-The slot must have been declared at startup. Its replacement must use the exact same audio/MIDI port counts. Increasing `max_nodes` alone does not create installable slots. Stale IDs never target the replacement.
+The slot must have been declared at startup. Its replacement must use the exact same audio/MIDI port counts and planning-access signature. Increasing `max_nodes` alone does not create installable slots. Stale IDs never target the replacement.
 
 ## Commands, results, and backpressure
 

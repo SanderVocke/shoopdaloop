@@ -28,7 +28,7 @@ Choose realistic upper bounds, then measure a mixed workload—not just an idle 
 | `max_edges` | 256 | Connections in a candidate/active plan |
 | `midi_events_per_port` | 256 | Ordinary events in each MIDI arena, including worst-case fan-in |
 | `midi_bytes_per_port` | 4096 | Ordinary packet bytes per arena, including SysEx |
-| `scheduled_events` | 256 | Storage ceiling; effective outstanding capacity is also limited by event/split budgets |
+| `scheduled_events` | 256 | Storage ceiling; effective outstanding capacity is also limited by the external event budget |
 | `command_slots` | 64 | Outstanding normal commands, **including unread completions** |
 | `resource_slots` | 32 | Size of each separate identity, version, and snapshot pool |
 | `resource_pages`, `page_bytes` | 256 × 4096 | Fixed resource payload storage; includes retained/reserved content |
@@ -39,16 +39,16 @@ Choose realistic upper bounds, then measure a mixed workload—not just an idle 
 | `commands` | 8 | Command dispatch/dequeue work; cancellations also consume transport work |
 | `publications` | 8 | Terminal publication allowance; telemetry has a separate allowance so it cannot steal completion capacity |
 | `events` | 64 | Scheduler admission/execution bound; also host recovery attempts per output |
-| `subranges` | 65 | Maximum scheduled render partitions |
+| `subranges` | 65 | Legacy source-compatible field; ignored, including zero |
 | `transfer_bytes` | 4096 | Resource copies and scheduled MIDI payload staging, **not ordinary audio/MIDI routing** |
 | `validation_steps` | 32 | Graph validation, MIDI upload byte validation, MIDI capture checks, and resource reclamation |
 
-Host port counts and resource I/O reservations may be zero. Other capacities/budgets must be positive. `page_bytes` must be divisible by four, and `transfer_bytes` must cover at least one page. `GraphRuntime` also needs `subranges >= 2` for its scheduler, even without planned automation. Storage checks use a common `i32::MAX` byte/index ceiling; passing those checks is not a guarantee that the machine has enough memory.
+Host port counts and resource I/O reservations may be zero; the ignored `subranges` field may have any value. Other capacities/budgets must be positive. `page_bytes` must be divisible by four, and `transfer_bytes` must cover at least one page. Storage checks use a common `i32::MAX` byte/index ceiling; passing those checks is not a guarantee that the machine has enough memory.
 
 ### Common surprises at the defaults
 
 ```text
-scheduled event/result slots       min(256, 64, 65 - 1) = 64
+scheduled event/result slots       min(256, 64) = 64
 MIDI upload validation throughput  at most 32 bytes/callback before other work
 resource payload pool             256 × 4096 = 1 MiB (not total runtime memory)
 reserved processor resource I/O    zero — background commands can use the budget
@@ -156,7 +156,7 @@ For your own measurements:
 | `StaleEpoch` / `StaleRevision` | Refresh state and reconsider the edit; blindly retrying the same expectation will not fix it |
 | `Exhausted` | Counter/generation space cannot wrap; plan explicit reinitialization after safe shutdown |
 
-`Diagnostics` exposes nodes/connections processed, events/subranges, copied bytes, validation steps, MIDI overflows, reclamation counts, and render errors. Validation steps include resource maintenance—not just graph checks. `resource_usage()` gives pool counters to the runtime owner between callbacks. Telemetry is bounded and lossy; it is neither a timing profiler nor an authoritative command acknowledgement.
+`Diagnostics` exposes nodes/connections processed, events/subranges, copied bytes, validation steps, MIDI overflows, reclamation counts, and render errors. Validation steps include resource maintenance—not just graph checks. `resource_usage()` gives pool counters to the runtime owner between callbacks. Traversal/event/MIDI-overflow counters saturate and latch `counter_overflow`; diagnostic bounds do not refuse legitimate rendering. Telemetry is bounded and lossy; it is neither a timing profiler nor an authoritative command acknowledgement.
 
 ## Check the RT contract
 

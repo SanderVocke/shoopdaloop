@@ -36,7 +36,7 @@ fn parameter(slot: u32, key: u32) -> Action {
 }
 
 #[shoop_test]
-fn admission_reserves_event_split_and_reliable_result_credits() {
+fn admission_reserves_external_events_and_reliable_result_credits() {
     let (mut results, mut schedule) = scheduler(config(2)).unwrap();
     assert_eq!(schedule.capacity(), 2);
     assert_no_heap(|| {
@@ -248,7 +248,7 @@ fn conservative_reservations_guarantee_work_for_arbitrary_block_partitions() {
             scheduled_events: 64,
             budgets: Budgets {
                 events: event_budget,
-                subranges: 4,
+                subranges: 0,
                 ..Budgets::default()
             },
             ..Config::default()
@@ -256,7 +256,7 @@ fn conservative_reservations_guarantee_work_for_arbitrary_block_partitions() {
         .prepare()
         .unwrap();
         let (mut results, mut schedule) = scheduler(limits).unwrap();
-        let capacity = event_budget.min(3);
+        let capacity = event_budget;
         assert_eq!(schedule.capacity(), capacity);
         assert_no_heap(|| {
             for index in 0..capacity {
@@ -271,7 +271,7 @@ fn conservative_reservations_guarantee_work_for_arbitrary_block_partitions() {
                     .unwrap();
             }
             let mut start = 0;
-            for length in [1, 2, 3, 8] {
+            for length in [1, 2, 3, 8, 16] {
                 let end = start + length;
                 let mut applied = 0;
                 let mut splits = 1;
@@ -288,7 +288,7 @@ fn conservative_reservations_guarantee_work_for_arbitrary_block_partitions() {
                     applied += 1;
                 }
                 assert!(applied <= event_budget);
-                assert!(splits <= 4);
+                assert!(splits <= event_budget + 1);
                 start = end;
             }
         });
