@@ -390,6 +390,9 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
     pub fn midi_index_usage(&self) -> resource::MidiIndexUsage {
         self.resources.midi_index_usage()
     }
+    pub fn capture_group_usage(&self) -> resource::CaptureGroupUsage {
+        self.resources.capture_group_usage()
+    }
     pub fn resource_usage(&self) -> resource::PoolUsage {
         self.resources.usage()
     }
@@ -724,7 +727,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                                     requested_frame: event.requested_frame,
                                     recovery: event.lane == Lane::Recovery,
                                     payload: event.payload,
-                                    resources: self.resources.io(),
+                                    resources: self.resources.planner_io(at, at),
                                     receipts: event.receipts.reborrow(),
                                 },
                             )
@@ -822,7 +825,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                 self.planner.plan(PlanContext {
                     frame: at,
                     ceiling,
-                    resources: self.resources.io(),
+                    resources: self.resources.planner_io(at, ceiling),
                     receipts: self.scheduler.receipts(at),
                 })?
             } else {
@@ -853,7 +856,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                 self.planner.finish(FinishContext {
                     interval,
                     observations: self.observations.values(),
-                    resources: self.resources.io(),
+                    resources: self.resources.planner_io(selected, selected),
                     receipts: self.scheduler.receipts(selected),
                 })?;
             }

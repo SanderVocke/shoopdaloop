@@ -12,7 +12,10 @@ src/rust/rt_runtime/src/planner.rs,generic_realtime_library,excluded,Generic pla
 src/rust/rt_runtime/src/processor.rs,generic_realtime_library,excluded,Processor interface definitions; host instrumentation must preserve callback obligations.
 src/rust/rt_runtime/src/render.rs,generic_realtime_library,excluded,Independent bounded render validation; no application tracing dependency.
 src/rust/rt_runtime/src/resource/capture.rs,generic_realtime_library,excluded,Independent bounded capture implementation; work and incomplete-state diagnostics are exposed to hosts.
+src/rust/rt_runtime/src/resource/boundary.rs,generic_realtime_library,excluded,Restricted planner lifecycle and consumer staging capabilities; no host tracing dependencies.
 src/rust/rt_runtime/src/resource/format.rs,generic_realtime_library,excluded,Resource format value definitions; no execution boundary to instrument.
+src/rust/rt_runtime/src/resource/group.rs,generic_realtime_library,excluded,Prepared capture claims and lifecycle credits; plain-data outcomes and pool usage without host tracing dependencies.
+src/rust/rt_runtime/src/resource/group/interval.rs,generic_realtime_library,excluded,Prepared group interval reservations and staged commit; bounded render diagnostics without host tracing dependencies.
 src/rust/rt_runtime/src/resource/index.rs,generic_realtime_library,excluded,Prepared page indexing with independent work diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/midi_index.rs,generic_realtime_library,excluded,Fixed MIDI checkpoint rows and independent work diagnostics; no host dependency.
 src/rust/rt_runtime/src/resource/midi_read.rs,generic_realtime_library,excluded,Lease-scoped MIDI positioning and packet reads; no host dependency.

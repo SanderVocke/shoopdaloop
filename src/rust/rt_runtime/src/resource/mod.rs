@@ -1,8 +1,16 @@
 //! Single-owner fixed-page resource storage. All allocation and final destruction
 //! happen at preparation/host teardown; rendering only changes fixed pool metadata.
 
+mod boundary;
+pub use boundary::{CaptureBoundaryIo, PlannerResourceIo};
 mod capture;
 mod format;
+mod group;
+use group::CapturePool;
+pub use group::{
+    CaptureGroupConfig, CaptureGroupId, CaptureGroupInfo, CaptureGroupUsage, CaptureIntervalId,
+    CaptureMember, CapturePhase, CaptureTakeId,
+};
 mod index;
 mod midi_index;
 mod midi_read;
@@ -73,9 +81,11 @@ struct Slot<T> {
 struct Resource {
     active: Option<UploadId>,
     revision: Revision,
+    claim: Option<CaptureGroupId>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum State {
+    PreparedCapture,
     Receiving,
     Complete,
     Active,
@@ -147,6 +157,7 @@ pub struct ResourceStore {
     render_work: RenderWork,
     index_work: IndexWork,
     midi_indexes: MidiPool,
+    capture_groups: CapturePool,
     control_phase: bool,
 }
 fn retirement_stack(count: usize) -> Vec<usize> {
@@ -225,6 +236,7 @@ impl ResourceStore {
             render_work: RenderWork::default(),
             index_work: IndexWork::default(),
             midi_indexes: MidiPool::default(),
+            capture_groups: CapturePool::default(),
             control_phase: false,
         })
     }
@@ -288,14 +300,26 @@ impl ResourceStore {
         slot.value = Some(Resource {
             active: None,
             revision: Revision(0),
+            claim: None,
         });
         ResourceId::from_parts(index as u32, slot.generation)
     }
     pub fn revision(&self, id: ResourceId) -> Result<Revision, Error> {
         Ok(get(&self.resources, id.slot(), id.generation())?.revision)
     }
-    pub fn remove(&mut self, id: ResourceId) -> Result<(), Error> {
+    fn check_writer(
+        &self,
+        id: ResourceId,
+        claim: Option<CaptureGroupId>,
+    ) -> Result<Resource, Error> {
         let resource = get(&self.resources, id.slot(), id.generation())?;
+        if resource.claim != claim {
+            return Err(Error::InvalidState);
+        }
+        Ok(resource)
+    }
+    pub fn remove(&mut self, id: ResourceId) -> Result<(), Error> {
+        let resource = self.check_writer(id, None)?;
         if let Some(version) = resource.active {
             self.detach(version)?;
         }
@@ -313,7 +337,16 @@ impl ResourceStore {
         expected_revision: Revision,
         description: Description,
     ) -> Result<UploadId, Error> {
-        if self.revision(resource)? != expected_revision {
+        self.begin_upload_with(resource, expected_revision, description, None)
+    }
+    fn begin_upload_with(
+        &mut self,
+        resource: ResourceId,
+        expected_revision: Revision,
+        description: Description,
+        claim: Option<CaptureGroupId>,
+    ) -> Result<UploadId, Error> {
+        if self.check_writer(resource, claim)?.revision != expected_revision {
             return Err(Error::StaleRevision);
         }
         description.validate(self.config.resource_bytes())?;
@@ -452,11 +485,7 @@ impl ResourceStore {
         if version.state != State::Complete {
             return Err(Error::Incomplete);
         }
-        let mut resource = get(
-            &self.resources,
-            version.resource.slot(),
-            version.resource.generation(),
-        )?;
+        let mut resource = self.check_writer(version.resource, None)?;
         if resource.revision != version.expected_revision {
             return Err(Error::StaleRevision);
         }

@@ -139,6 +139,7 @@ impl ResourceStore {
     }
     pub fn stop_capture(&mut self, id: CaptureId) -> Result<Revision, Error> {
         let mut version = self.capture_version(id)?;
+        self.check_writer(version.resource, None)?;
         version.capture.as_mut().ok_or(Error::InvalidState)?.active = false;
         version.state = State::Active;
         self.versions[id.slot as usize].value = Some(version);
@@ -198,7 +199,12 @@ impl ResourceStore {
             .next_frame = next_frame;
         Ok(version)
     }
-    fn append_reserved(&mut self, version: &mut Version, mut bytes: &[u8], class: WorkClass) {
+    pub(super) fn append_reserved(
+        &mut self,
+        version: &mut Version,
+        mut bytes: &[u8],
+        class: WorkClass,
+    ) {
         let page_bytes = self.config.limits().page_bytes;
         while !bytes.is_empty() {
             if version
@@ -226,7 +232,7 @@ impl ResourceStore {
             bytes = &bytes[count..];
         }
     }
-    fn publish_capture(&mut self, id: CaptureId, version: Version) -> Revision {
+    pub(super) fn publish_capture(&mut self, id: CaptureId, version: Version) -> Revision {
         self.versions[id.slot as usize].value = Some(version);
         self.resources[version.resource.slot() as usize]
             .value
@@ -254,6 +260,7 @@ impl ResourceStore {
     ) -> Result<Revision, Error> {
         self.note_operation(class);
         let version = self.running_capture(id, frame)?;
+        self.check_writer(version.resource, None)?;
         let Format::Audio { channels } = version.description.format else {
             return Err(Error::InvalidShape);
         };
@@ -299,6 +306,7 @@ impl ResourceStore {
     ) -> Result<Revision, Error> {
         self.note_operation(class);
         let version = self.running_capture(id, frame)?;
+        self.check_writer(version.resource, None)?;
         if version.description.format != Format::Midi || frames > self.config.limits().max_frames {
             return Err(Error::InvalidShape);
         }

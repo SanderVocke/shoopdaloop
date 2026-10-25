@@ -19,11 +19,11 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution verified; media/runtime/host proof pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
 | LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
-| LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Pending new paths; original runtime baseline passes |
+| LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resource paths guarded in native/Wasm and selected Miri; integrated loop callback audit pending |
 | LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic typed receipts/recovery and selected Miri verified; integrated domain ownership pending |
-| LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Pending |
+| LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Generic group content/freeze/prefix cases verified; loop rendering/restoration/integration pending |
 | LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Pending |
-| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting and scoped byte/MIDI event/state indexing verified; lifecycle/group reservations and integrated failure observations pending |
+| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting, scoped indexing, prepared group transactions and synthetic boundary observations verified; complete group ownership/model and loop integration pending |
 | LL-A11 | New independent native/worklet fixture journals, actual Web Audio output, fixed-memory and failure gates; raw release measurements | Pending new fixture |
 | LL-A12 | Updated runtime/loop guides and executable examples, acceptance audit, milestone commits, final-head CI and review record | Pending |
 
@@ -478,3 +478,46 @@ The first two Stage 4 checklist items are now verified. Prepared lifecycle/versi
 ### Carried-forward checkpoint verification
 
 At confirmation of goal `mvo6lnim-1xzkd7`, the Stage 0–3 evidence files were compared byte-for-byte with their introducing commits, all of which are ancestors of the current branch. Recorded Rust hashes matched those milestone commits: 14 for the completed Stage 2 resolver, 50 for planning metadata, 52 for interval execution, and 54 for completed Stage 3 delivery. Current MIDI-index evidence matched all 63 recorded Rust source hashes, all 21 successful gate-log hashes, and all archived Miri case hashes (95 executions). This verifies provenance without presenting historical results as fresh executions or redoing completed implementation. The latest broad MIDI-index suite separately verifies current runtime/loop regressions. The plan and new goal tracker carry Stages 0–3 forward and continue Stage 4; unrelated `.pi/` data remains untracked.
+
+## Stage 4 — Prepared capture lifecycle and staged group transactions
+
+Milestone: `feat(rt-runtime): reserve and stage coherent capture groups` (the commit introducing this section), source base `127290dc`. Evidence: [`evidence/capture-stage4.json`](evidence/capture-stage4.json) and [`evidence/capture-stage4-provenance.json`](evidence/capture-stage4-provenance.json). Raw logs and archived Miri cases are under `target/loop-layer-capture-stage4/`. This is a substantial Stage 4 implementation milestone, not completion of the stage's remaining model/disconnect requirements.
+
+### Interfaces and invariants
+
+- `CaptureGroupConfig` opts into fixed group/member rows and staging regions. `bind_capture_group` validates every member before acquiring exclusive claims. Legacy remove/replace/start/stop/raw append cannot mutate managed resources; existing read leases remain usable. Release requires an idle group and preserves active frozen content until explicitly removed.
+- `prepare_capture_take` reserves all version, MIDI-row and final-snapshot slots before changing active content. `CaptureTakeId` carries store/group scope and a checked take sequence. Cancelled or completed takes cannot retarget a subsequent take. Unpublished reserved snapshot slots cannot be consumed by optional snapshots or read as ready leases.
+- Exact-frame activation validates the whole group before publishing new revisions. Freeze publishes the already reserved immutable leases without a mutable-tail copy, history scan, or new capacity acquisition. All members share the cut/incomplete reason. Empty freeze is a generic storage operation; empty record-to-play refusal remains a domain rule.
+- `CaptureIntervalId` adds checked interval identity. Preflight reserves exact audio bytes and conservative MIDI producer/event/payload/checkpoint bounds for every member before any data is staged. Failed preflight leaves all published prefixes unchanged. Unused reservations return on commit/cancel.
+- Consumers copy validated contributions into prepared staging. Missing/duplicate/malformed/over-bound members do not partially publish resource data. One exclusive commit updates all actual bytes, indexes, revisions and the common duration; no graph reader can interleave with intermediate publication or index rotations. Producer-bound violations after successful reservation are interface faults, not normal retroactive exhaustion observations.
+- Safe borrowing reuses the existing page append routine via a fixed 64-byte stack chunk rather than moving owning storage or duplicating page/index invariants. Three media-data copies are counted (input→staging→stack→pages); checkpoint copies are reported separately. No zero-copy or performance improvement is claimed.
+- Planner contexts now use `PlannerResourceIo`, dereferencing to existing resource methods and adding `CaptureBoundaryIo`. The runtime stamps frame/ceiling authority: activation/freeze at the current boundary, reservation within the current planning window, commit at the reserved end. Ordinary `ResourceIo` cannot acquire this capability; `RenderIo` adds only staged audio/MIDI writes. No capability can reset accounting or reclaim storage.
+
+The design and public guide are `CAPTURE_TRANSACTIONS_DESIGN.md` and `src/rust/rt_runtime/docs/capture-groups.md`. Source remains safe Rust, with no new host/application dependency or callback-side owning allocation.
+
+### Verified gates
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **167 passed per profile** |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **163 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Prescribed full nextest workspace | **2020 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **107 passing executions**, including all twelve new capture-group/boundary/planner cases |
+| Lifetime proof | Positive build/run and deliberate **E0502** refusal with the new planner resource context |
+| Capture authority proof | Planner capability compiles/runs; a consumer `ResourceIo::capture()` attempt fails with **E0599** |
+| Warning-denied build/rustdoc, formatting, boundary/policy checks, planned-gain debug/release | Passed |
+| Existing native debug/release and actual offline/live worklet; processor and heap canaries | Passed; fixed **1703936-byte** memory and unchanged historical journal |
+
+New tests cover atomic claims, earlier upload refusal, all unrelated version/lease/page-credit saturation after successful preparation, zero remaining background copy allowance, complete cancellation/reuse recovery over 32 cycles, foreign/stale groups and take/interval tokens, occupied freeze outputs, maximum-frame exhaustion, and explicit opt-in/shape limits. Immutable audio/MIDI prefix leases survive staging, later appends, and page-index rotations.
+
+Independent scalar content checks compare complete stereo bytes and original MIDI timestamps/packets across `[8,8]`, sixteen one-frame intervals, and `[3,2,5,6]`; bounded checkpoint seeks agree with the expected last-note state. Conservative checkpoint exhaustion retains the exact 24-frame common prefix. Partial/invalid staging remains unpublished and cancellable; all ordinary test teardowns restore page/version/snapshot/MIDI-row credits.
+
+The actual generic-runtime synthetic planner uses unknown downstream MIDI within its declared bound. At frame **24**, preflight exhaustion changes the dependent output **before sample 24**, freezes the common prefix, and leaves unrelated audio running. Full outputs agree across `[32]`, thirty-two one-frame callbacks, and `[7,9,5,11]`. Reserved interval staging is committed in `finish`; exported prefix/state and eventual credit recovery are checked. This is a generic observation-boundary proof, not loop-domain adaptation or a new loop AudioWorklet.
+
+### Retained development failures and remaining work
+
+Three initial focused attempts failed due to test setup: a missing `unwrap()` on `MidiBuffer::new`, a transfer allowance below the existing minimum page size, and insufficient declared staging space for the test's two MIDI members. The fixes supplied the correct buffer type, increased allowance and deliberate consumption together to 16 bytes (still leaving zero background credit), and provided the 448-byte staging shape needed to reach the intended checkpoint-row refusal. Workloads/assertions were not removed or weakened; original logs and hashes remain in provenance. The later complete broad run passed without retrying a failed gate.
+
+The existing worklet fixture remains legacy/no-planner regression coverage and does not opt into capture groups. New APIs execute in the package Wasm tests and synthetic native/Wasm planner, not yet in the required independent loop host. Complete generated group-state/ownership and disconnect-at-each-phase coverage, Stage 4 acceptance review, loop renderers/restoration, final-head CI and review remain pending. The remaining Stage 4 checklist items stay open until that verification is complete; successful core APIs alone do not close them.

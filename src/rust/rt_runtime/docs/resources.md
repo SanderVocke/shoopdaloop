@@ -35,7 +35,7 @@ To preload content or playback leases, prepare a store and pass it to `GraphRunt
 
 `ResourceStore::render_work()` reports attempted data operations, copied bytes, and charged MIDI event-validation units. These counters saturate and latch `counter_overflow`; they cannot refuse work. The executor publishes the same counts as `Diagnostics::render_operations`, `render_copied_bytes`, and `render_validation_steps`, merging overflow into `counter_overflow`. All counters reset once at the host callback boundary, not when a view is reborrowed or a planner chooses an interval.
 
-The capability cannot upload, allocate a snapshot lease, begin/stop capture, reclaim, or reset accounting. Optional snapshots and exports still use background allowances. Existing `ResourceIo` methods retain their quota-based behavior and reservations. Prepared exact-frame lifecycle reservations and coordinated multichannel append remain pending; these single-resource append methods must not be mistaken for group transactions.
+The capability cannot upload, allocate a snapshot lease, begin/stop capture, reclaim, or reset accounting. Optional snapshots and exports still use background allowances. Existing `ResourceIo` methods retain their quota-based behavior and reservations. Separate opt-in [capture groups](capture-groups.md) provide lifecycle reservations, exclusive claims, and staged coordinated commits. Planner contexts add frame-bound lifecycle authority; consumers receive only staged writes through `RenderIo`. Single-resource append methods reject managed members and are not group transactions.
 
 ## Positional byte access
 
@@ -47,7 +47,7 @@ A balanced append-only search tree is maintained as upload/capture pages arrive.
 
 `IndexWork` separately reports background/render metadata steps and saturating overflow through `Diagnostics::resource_index_work`. Upload index maintenance is bounded overhead of admitted page materialization, not a separate content scan or additional quota; existing transfer, parser, and reclamation budgets remain effective. Required lookup/append metadata work is counted without background throttling. These counters reset once per host callback.
 
-The page index positions bytes. Opt-in [MIDI checkpoint indexing](midi-indexing.md) adds event-boundary cursors, complete packet reads, and bounded state positioning. Seeking to an arbitrary MIDI byte is not event positioning. Restoration emission and coordinated capture transactions remain separate work.
+The page index positions bytes. Opt-in [MIDI checkpoint indexing](midi-indexing.md) adds event-boundary cursors, complete packet reads, and bounded state positioning. Seeking to an arbitrary MIDI byte is not event positioning. Restoration emission remains separate work; coordinated capture uses the explicit capture-group API rather than raw single-resource append.
 
 ## Upload an immutable revision
 

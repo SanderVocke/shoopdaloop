@@ -67,7 +67,7 @@ pub struct Interval {
 pub struct PlanContext<'a, O = (), R = ()> {
     pub frame: Frame,
     pub ceiling: Frame,
-    pub resources: crate::resource::ResourceIo<'a>,
+    pub resources: crate::resource::PlannerResourceIo<'a>,
     pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 
@@ -83,7 +83,7 @@ pub struct OperationContext<'a, O, R> {
     pub frame: Frame,
     pub recovery: bool,
     pub payload: &'a [u8],
-    pub resources: crate::resource::ResourceIo<'a>,
+    pub resources: crate::resource::PlannerResourceIo<'a>,
     pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 
@@ -96,7 +96,7 @@ pub struct Observation<O> {
 pub struct FinishContext<'a, V, O = (), R = ()> {
     pub interval: Interval,
     pub observations: &'a [Observation<V>],
-    pub resources: crate::resource::ResourceIo<'a>,
+    pub resources: crate::resource::PlannerResourceIo<'a>,
     pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 

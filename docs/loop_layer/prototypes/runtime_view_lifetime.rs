@@ -30,7 +30,7 @@ fn main() {
         PlanContext {
             frame: Frame(0),
             ceiling: Frame(128),
-            resources: resources.io(),
+            resources: resources.planner_io(Frame(0), Frame(128)),
             receipts: scheduler.receipts(Frame(0)),
         },
     )

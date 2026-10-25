@@ -179,7 +179,7 @@ impl ResourceCommand {
 /// A processor view cannot replenish budgets or apply structural resource edits.
 /// Reborrowing it for another node/subrange keeps the same callback counters.
 pub struct ResourceIo<'a> {
-    store: &'a mut ResourceStore,
+    pub(super) store: &'a mut ResourceStore,
 }
 impl ResourceStore {
     pub fn io(&mut self) -> ResourceIo<'_> {
