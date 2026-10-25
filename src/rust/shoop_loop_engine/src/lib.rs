@@ -4,6 +4,7 @@
 //! execution; host transport and devices are not part of this library.
 #![forbid(unsafe_code)]
 
+pub mod audio;
 pub mod command;
 pub mod config;
 pub mod decision;

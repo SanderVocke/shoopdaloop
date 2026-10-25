@@ -1,0 +1,27 @@
+# Prepared audio operations
+
+`audio::AudioRenderer` and `audio::AudioCapture` are low-level execution operations. They do not own loop mode, musical position, wrap occurrence, resource leases, or capture lifecycle authority. The resolver/planner supplies those decisions; its integrated runtime adapter remains separate work.
+
+## Preparation and playback
+
+Prepare a renderer with fixed channel count, maximum interval length, and `Smoothing`. All byte-conversion scratch and per-channel last-output/ramp anchors are allocated and pre-touched during preparation. Dimension arithmetic, including the aggregate scratch size, is checked against the common native/Wasm ceiling.
+
+For each interval, pass `Playback { source, position, gain, discontinuity }` plus planar output slices. `source` is a scoped `ReadIndex` over an existing lease; it does not acquire another lease. `None` writes immediate silence and resets smoothing. All output channels must have the same length within the prepared maximum. A zero-frame call does not change output or DSP state. Nonempty calls require finite gain; negative gain is supported. Audio sample values themselves are not sanitized.
+
+The operation obtains the pinned snapshot's actual metadata through `RenderIo::snapshot`, not caller-supplied metadata or the resource's newer active version. It validates channels and the complete half-open source range, then performs indexed positioning and sequential reads into prepared byte scratch. Little-endian interleaved `f32` becomes planar output. Removed/replaced resources remain playable through retained leases; stale or foreign indexes are refused.
+
+An interval must not cross a musical wrap. The resolver cuts at the wrap and supplies the new position and discontinuity flag; the renderer has no parallel playhead. `discontinuity` is required for start/retrigger/seek/wrap/replacement, not for an extra host callback cut. The production adapter must obtain it from authoritative boundary decisions, not a potentially exhausted diagnostic journal. The current test driver uses a sufficiently provisioned journal only to exercise the low-level API; the loss-independent production binding remains integration work. Gain is applied to each raw sample. `None` and `LinearRestart { frames: 0 }` are unsmoothed. For an N-frame restart, each channel retains its last actual output as an anchor, and sample i uses `anchor * (1 - (i+1)/N) + raw_gained_sample * ((i+1)/N)`. The ramp continues across host cuts; a new discontinuity restarts it from the last actual output. Stop has no release tail.
+
+Refused operations leave output and DSP state unchanged; scratch and resource diagnostic counters may have changed. This is not permission to replay a failed `GraphRuntime` callback: the runtime's frame/fault contract still applies. Necessary I/O does not consume or refresh background transfer allowance. Runtime resource-copy counters cover storage access, not every DSP/conversion instruction or a callback deadline.
+
+## Capture and distinct revisions
+
+Prepare `AudioCapture` with channel count and maximum interval size. `stage` converts planar inputs into its fixed interleaved sample scratch and stages one member of an already reserved capture interval. It cannot activate/freeze a take or commit the group. Invalid port shapes, interval sizes, stale tokens and duplicate contributions fail without publishing a partial prefix. The planner commits only after all members are staged.
+
+Playback and capture use distinct operations and can refer to different revisions of the same logical resource: read a retained immutable take, apply gain/FX, and stage the resulting samples into a fresh reserved take. A frozen take is immediately indexed/readable without an asynchronous build. The tests verify these operations directly, including old-content preservation, but do not yet establish the required separate-node runtime signal graph or public full-lifecycle example.
+
+## Verification boundary
+
+The six audio tests use the production resolver with an independent scalar sample/ramp oracle over three host partitions, plus mono/stereo/five-channel page crossings, 128 one-sample intervals, immediate freeze/read, separate old-playback/gain/new-capture operations, refusal/zero-frame/stale-scope cases and complete resource recovery. All operations run under heap guards, including failure paths; the full workloads are included in pinned Miri and package Node/Chromium runs.
+
+MIDI emission/restoration, runtime planner/processor adapters, coherent mixed-media export, the executable public example, and the independent loop AudioWorklet remain pending. This module is an audio foundation, not completion of Stage 5 or end-to-end loop acceptance.

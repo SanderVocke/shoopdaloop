@@ -1,0 +1,961 @@
+{
+  "scope": "Stage 5 audio foundation: lifetime/authority proofs, 115 Miri executions including all six loop audio tests, scalar sample/ramp checks and existing-host regressions.",
+  "lifetime_proof": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+      "sha256": "71e302165e7d070eafecacd5f1719f61ee22b84742ecdc36dc6d166ea1ca8ff7"
+    },
+    "library": {
+      "path": "target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+      "sha256": "80c3e6c23b379508a967f3e34b7c55e806bf8ac5c72e4cdada6fc07d33cb3da8"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-audio-stage5/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-audio-stage5/lifetime-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-audio-stage5/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-audio-stage5/lifetime-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-audio-stage5/lifetime",
+          "--cfg",
+          "compile_fail_reuse"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-audio-stage5/lifetime-refusal.log",
+        "sha256": "2d34c3a7ef74993380c6ae2a79de5e4e6b17e51db4630dae516bd713f156684e"
+      }
+    ],
+    "result": "Positive production-trait borrow compiles/runs; retained immutable decision borrow across planner mutation is refused with E0502."
+  },
+  "capture_authority": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/capture_authority.rs",
+      "sha256": "71392463238e3141ae65a48811e788c9de8cb09348e17c17b85a7a8a51ee9b01"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-audio-stage5/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-audio-stage5/authority-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-audio-stage5/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-audio-stage5/authority-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-audio-stage5/authority",
+          "--cfg",
+          "compile_fail_capture"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-audio-stage5/authority-refusal.log",
+        "sha256": "bd1c20387c03fea031b1e6590f4e5948b7acbb5829ce07f69247e0b62e9936c5"
+      }
+    ],
+    "result": "Planner capture authority compiles/runs; consumer ResourceIo cannot acquire it (E0599). Runtime boundary/ceiling checks are separately exercised by capture_boundary."
+  },
+  "miri": {
+    "passed": true,
+    "toolchain": "nightly-2026-05-04",
+    "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+    "cases": [
+      {
+        "package": "rt_runtime",
+        "target": "contracts",
+        "arguments": [],
+        "seed": 0,
+        "passed": 12,
+        "log": "00-contracts-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/00-contracts-seed0.log",
+          "sha256": "0b24cbaf40685107964dcbb28645751b7422054ef5a1c06cdf414f02990d2822"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "planning_graph",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "01-planning_graph-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/01-planning_graph-seed0.log",
+          "sha256": "852d2ccd25780e558ca3bba8b4028bec24c931ec165a44d5e4db9df7a4eb3ff5"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "planner_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 9,
+        "log": "02-planner_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/02-planner_execution-seed0.log",
+          "sha256": "fb090969b8dc1fda64eae39c09b8df7f4ed82123ec48dcca3cbe6241d9d7c6ca"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_render",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "03-resource_render-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/03-resource_render-seed0.log",
+          "sha256": "cb534cbae65d34597a1a60683bfd0230f65cf2d347648a9047be6c391a37cad0"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "04-resource_index-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/04-resource_index-seed0.log",
+          "sha256": "25059314095d03aef5f30578c8f851e2bce7f8e709940c34bdce72278c5490dd"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_state",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "05-midi_state-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/05-midi_state-seed0.log",
+          "sha256": "cdc6ad42709bf7827c84a0e45d7c08b02e7b6189d66754cc9aa3d6581e2f5e57"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "06-midi_index-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/06-midi_index-seed0.log",
+          "sha256": "7ae7e1992c0ef49f4a8d11cfc5d9a6e239c3c30c263fe7ee5ce2887eca586a57"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "typed_schedule",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "07-typed_schedule-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/07-typed_schedule-seed0.log",
+          "sha256": "06e2b89dd723aecb6a2014a14451b5e6da5d6f22eb0c83a0c4f7925bb9a14cc2"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "typed_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 11,
+        "log": "08-typed_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/08-typed_execution-seed0.log",
+          "sha256": "17ae5acb488dd62a2e6fa88e45fbabfa1e3f30d9c823855c7e07eedfa9f74029"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "wire_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "09-wire_properties-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/09-wire_properties-seed0.log",
+          "sha256": "b35ea07555ee3d200f73f15d1f85137b917ed6c1f9087134e38960b2d1fe9b2f"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "10-resource_properties-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/10-resource_properties-seed0.log",
+          "sha256": "32b4a7fc37fddc165c7f7f7127b3aed06fac4e206950b5d07851ed225d91215f"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "mixed_stress",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "11-mixed_stress-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/11-mixed_stress-seed0.log",
+          "sha256": "14a6314df8cc1fea06053dbeca0098e28ce04ad84b7b00e00cc5ee945641eda7"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "12-capture-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/12-capture-seed0.log",
+          "sha256": "800f8253c3620e35028f58dee4e75d01057f130e8f8c29623f506c2ee51b317a"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_groups",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "13-capture_groups-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/13-capture_groups-seed0.log",
+          "sha256": "ffdf0268808e1ebe305d26fff1fd6e59ea380ed559ce1754a9d50fa82d29d851"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_intervals",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "14-capture_group_intervals-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/14-capture_group_intervals-seed0.log",
+          "sha256": "da9d2db713ad9fb99909e6c452e205d45392bec6a2cb9daa005cf5817ba47329"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_planner",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "15-capture_group_planner-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/15-capture_group_planner-seed0.log",
+          "sha256": "389d1477544aaf02d006a7dd3cad082b45b3c5f7a2d82a25fd01b1d845b583a4"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_boundary",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "16-capture_boundary-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/16-capture_boundary-seed0.log",
+          "sha256": "fd90b3b543d1ee47eb953e7387faa0da8274530956ceef628f0bc30216a6668d"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_model",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "17-capture_group_model-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/17-capture_group_model-seed0.log",
+          "sha256": "04031aced65b976b1058ff7f099239bb11aa0f14a5641cea9db556265fff6c19"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_disconnect",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "18-capture_group_disconnect-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/18-capture_group_disconnect-seed0.log",
+          "sha256": "ca2536dd3f09f9ad2c061fac7fdeb283caef092125cf58fe5899db3c0064381c"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "host_processor",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "19-host_processor-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/19-host_processor-seed0.log",
+          "sha256": "2592dba9ab28e0222584ea970aa0bd43a749d70249cc8cbbd7b3a4466a1c86bf"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "--",
+          "--skip",
+          "deterministic_admission_model",
+          "--skip",
+          "cancellation_flag_model"
+        ],
+        "seed": 0,
+        "passed": 9,
+        "log": "20-lifecycle-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/20-lifecycle-seed0.log",
+          "sha256": "7592b8e1440ffc8d6c8ace092eac880175b4bce93d94e919d3d1017a11f5cf45"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_execution",
+        "arguments": [
+          "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "21-resource_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/21-resource_execution-seed0.log",
+          "sha256": "9965a181ba1febcb5181524986eb4741076c1c2ad8dad64442f660ddda7f1db3"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 1,
+        "passed": 1,
+        "log": "22-lifecycle-seed1.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/22-lifecycle-seed1.log",
+          "sha256": "3748027cc18af473a29faced9e0fc0624a1c1e289777e56fd8636ed9c3c67332"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 2,
+        "passed": 1,
+        "log": "23-lifecycle-seed2.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/23-lifecycle-seed2.log",
+          "sha256": "a4f778daadfee1e59f4900c601291479d37a39505b549c2b845b52ee5a9add47"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "audio",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "24-audio-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-audio-stage5/miri/24-audio-seed0.log",
+          "sha256": "7c22ee48e8a373abbaa86124ed94c87d5fff93091c6cdfe46b7a0db8c0fd53f8"
+        }
+      }
+    ],
+    "limitations": [
+      "Not a whole-workspace or whole-suite Miri claim.",
+      "Loom's generator/FFI model runs natively, not under Miri.",
+      "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+      "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+    ]
+  },
+  "miri_command": "nix develop --command bash -c 'export RUSTUP_HOME=\"$HOME/.cache/rt-runtime-miri-rustup\"; python3 scripts/run_rt_runtime_miri.py'",
+  "receipt_model": {
+    "seed": "0xa36b20472f5881d9",
+    "native_and_wasm_steps": 8192,
+    "miri_steps": 64,
+    "model": "Independent three-slot state/terminal FIFO model; compares delivery, completion, cancellation, credit snapshots, lane reservations, and complete draining back to baseline. Oracle storage is outside heap guards."
+  },
+  "midi_state_model": {
+    "seed": "0xad473b29385cc291",
+    "operations": 4096,
+    "miri_workload": "same full workload",
+    "oracle": "Independent ordered map of keys/held flags and separate channel pedal/pitch arrays, compared across all channels/keys after every 64 operations; targeted pressure/program/hold/reset/malformed cases supplement it."
+  },
+  "midi_index_oracle": {
+    "events": 273,
+    "queried_frames": 81,
+    "duration": 80,
+    "checkpoint_span": 8,
+    "method": "Linear event boundaries plus independent ordered map for notes/held flags, pedal state and program; equal-time bursts and a 257-byte SysEx span pages. Full workload is retained under Miri. Separate cases cover capture prefixes, exhaustion, rollback, stale/foreign scopes, reuse, empty and u64::MAX duration."
+  },
+  "capture_cases": {
+    "native_wasm_miri": "Retains the twelve preceding group/boundary/planner cases at full workload, plus the complete generated ownership model and fourteen disconnect cuts. Three content partitions; three runtime partitions with exhaustion changing sample 24; 32 prepare/cancel cycles; saturated lifecycle credits; immutable prefixes; stale tokens; producer-contract faults."
+  },
+  "initial_failures": [
+    {
+      "artifact": {
+        "path": "target/loop-layer-audio-stage5/focused-first.log",
+        "sha256": "1a7a769f88109a02830858fa9999f949f8cf0164915fada6580a70716f76a8ca"
+      },
+      "reason": "Used store method name on RenderIo; corrected to its existing stage_audio API."
+    },
+    {
+      "artifact": {
+        "path": "target/loop-layer-audio-stage5/focused-api.log",
+        "sha256": "4fd48c1b3c69d62fb173c5d0c98ee957107bc30a24757275de0a018b479f0961"
+      },
+      "reason": "Disambiguated loop Request import and replaced inaccessible private budget charging with actual public legacy reads of a prepared donor lease, preserving exhausted-budget assertions."
+    },
+    {
+      "artifact": {
+        "path": "target/loop-layer-audio-stage5/focused-six.log",
+        "sha256": "3f64cc3e90470cc4d56ff1c978ad2b603366cd9e15fea68d645f5d8571000f44"
+      },
+      "reason": "Test incorrectly assumed events() was cumulative. Accumulate each committed interval journal; retain the required total of 127 wraps."
+    }
+  ],
+  "audio_cases": {
+    "tests": 6,
+    "partitions": {
+      "sample_ramp": [
+        [
+          40
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          7,
+          6,
+          4,
+          9,
+          14
+        ]
+      ],
+      "capture": [
+        [
+          5
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "one_sample": [
+        [
+          64,
+          64
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          7,
+          53,
+          19,
+          49
+        ]
+      ]
+    },
+    "channels": [
+      1,
+      2,
+      5
+    ],
+    "miri_workload": "All six complete loop-crate tests; no cfg(miri) reduction.",
+    "oracle": "Independent scalar source position/sample/ramp recurrence; production resolver drives actual renderer intervals. Separate explicit input/FX capture expectations and full pool recovery. No complete mixed-media runtime adapter claim."
+  },
+  "prior_failures": "Prior capture-stage4-provenance.json retains the preceding milestone test-setup failures; those records are unchanged.",
+  "group_model": {
+    "seed": "0x7a49c83d502e19b6",
+    "steps_per_capacity": 1024,
+    "page_capacities": [
+      64,
+      16
+    ],
+    "miri_workload": "same complete 2048-step workload",
+    "method": "Independent active/prepared/pinned version, physical page/private-tail, reserved-page, final-lease and MIDI-row model. Checks counters/state after every action; complete original audio/MIDI snapshots and bounded state positions every 32 steps. Full final pool recovery.",
+    "actions": [
+      "release_snapshot",
+      "snapshot",
+      "cancel_take",
+      "activate",
+      "cancel_interval",
+      "stage_audio",
+      "stage_midi",
+      "commit",
+      "freeze",
+      "reserve",
+      "reserve_refusal",
+      "prepare",
+      "prepare_refusal"
+    ],
+    "counts": {
+      "64": [
+        115,
+        82,
+        6,
+        20,
+        43,
+        95,
+        79,
+        68,
+        20,
+        111,
+        0,
+        26,
+        310
+      ],
+      "16": [
+        112,
+        73,
+        9,
+        23,
+        17,
+        48,
+        39,
+        36,
+        23,
+        53,
+        10,
+        32,
+        504
+      ]
+    },
+    "prior_parameter_log": {
+      "path": "target/loop-layer-capture-ownership-stage4/model-capacities.log",
+      "sha256": "6504d3ec0b85bfebd4ddc3dd4eb1f79cff956ec8f6d444e774a0bbc061eaabb5"
+    }
+  },
+  "disconnect": {
+    "cuts": [
+      "unbound",
+      "bound",
+      "prepared",
+      "activated",
+      "reserved",
+      "audio-staged",
+      "all-staged",
+      "committed",
+      "frozen",
+      "first-lease-released",
+      "both-leases-released",
+      "group-released",
+      "prepared-cancelled",
+      "interval-cancelled"
+    ],
+    "method": "Queue payload-free recovery stop, disconnect the real control transport before delivery, then settle/cancel/freeze/release without callback heap/destruction. Runtime extraction destroys the processor off-render; explicit resource cleanup returns all pools. This tests a queued stop plus disconnect, not automatic disconnect-triggered musical stop."
+  },
+  "host_reports": {
+    "result": {
+      "passed": true,
+      "reports": [
+        {
+          "bytes": 1703936,
+          "callbacks": 2601,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1703936,
+          "frames": 332928,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 3308430490,
+          "mode": "offline",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 480331717,
+          "type": "stopped"
+        },
+        {
+          "bytes": 1703936,
+          "callbacks": 13444,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1703936,
+          "frames": 1720832,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 4022855181,
+          "mode": "live",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 738985413,
+          "type": "stopped"
+        }
+      ],
+      "tools": {
+        "chrome": "Chromium 147.0.7727.137",
+        "chromedriver": "ChromeDriver 147.0.7727.137 (68ba233a543d25e75c30f1228dd3bafa2da96937-refs/tags/147.0.7727.137@{#0})"
+      },
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ],
+      "failure_canaries": [
+        {
+          "kind": "processor",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        },
+        {
+          "kind": "rust-heap",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        }
+      ]
+    },
+    "native-debug-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "debug",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "native-release-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "release",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    }
+  },
+  "journal": {
+    "bytes": 529292,
+    "sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+    "unchanged_historical_golden": true
+  },
+  "limitations": [
+    "Existing-runtime host regression is not loop-library AudioWorklet proof.",
+    "MIDI rendering/restoration, loop-domain runtime adapters, separate-node signal graph/example and independent loop hosts remain pending."
+  ]
+}

@@ -40,6 +40,11 @@ pub struct RenderIo<'a> {
     pub(super) store: &'a mut ResourceStore,
 }
 impl RenderIo<'_> {
+    /// Metadata for the pinned prefix, not the resource's newer active version.
+    pub fn snapshot(&mut self, index: ReadIndex) -> Result<Snapshot, Error> {
+        self.store.note_operation(WorkClass::Render);
+        Ok(self.store.index_lease(index)?.snapshot)
+    }
     pub fn cursor_at(&mut self, index: ReadIndex, offset: usize) -> Result<Cursor, Error> {
         self.store.cursor_at_with(index, offset, WorkClass::Render)
     }

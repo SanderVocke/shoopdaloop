@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pinned, isolated Miri checks for rt_runtime ownership and borrowed buffers."""
+"""Pinned Miri checks for runtime ownership, borrowed buffers and loop rendering."""
 from __future__ import annotations
 
 import json
@@ -44,12 +44,13 @@ def main():
     for key in ("RUSTC", "RUSTDOC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "MIRIFLAGS"):
         env.pop(key, None)
     version = subprocess.check_output(["rustup", "run", TOOLCHAIN, "cargo", "miri", "--version"], cwd=ROOT, env=env, text=True).strip()
-    cases = [(target, arguments, minimum, 0) for target, arguments, minimum in CASES]
-    cases.extend(("lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
+    cases = [("rt_runtime", target, arguments, minimum, 0) for target, arguments, minimum in CASES]
+    cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
+    cases.append(("shoop_loop_engine", "audio", [], 6, 0))
     results = []
-    for index, (target, arguments, minimum, seed) in enumerate(cases):
+    for index, (package, target, arguments, minimum, seed) in enumerate(cases):
         case_env = {**env, "MIRIFLAGS": f"-Zmiri-seed={seed}"}
-        command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", "rt_runtime", "--test", target, *arguments]
+        command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", package, "--test", target, *arguments]
         log = REPORTS / f"{index:02d}-{target}-seed{seed}.log"
         try:
             result = subprocess.run(command, cwd=ROOT, env=case_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=900)
@@ -62,7 +63,7 @@ def main():
         passed = sum(int(count) for count, _ in matches)
         if result.returncode or passed < minimum or any(int(failed) for _, failed in matches):
             raise RuntimeError(f"Miri case failed or tests missing: {target} seed {seed}\n{result.stdout[-12000:]}")
-        record = {"target": target, "arguments": arguments, "seed": seed, "passed": passed, "log": log.name}
+        record = {"package": package, "target": target, "arguments": arguments, "seed": seed, "passed": passed, "log": log.name}
         results.append(record)
         print(json.dumps(record), flush=True)
     report = {"passed": True, "toolchain": TOOLCHAIN, "miri": version, "cases": results,

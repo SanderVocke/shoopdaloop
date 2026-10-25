@@ -4,8 +4,10 @@ Portable loop timing and audio/MIDI execution on `rt_runtime`.
 
 **Implementation in progress.** The current implementation provides checked
 identities/capacities, topology validation, sparse composite-plan compilation,
-and a fixed-storage primitive/composite timeline resolver. Runtime planner
-integration and audio/MIDI media execution remain pending.
+and a fixed-storage primitive/composite timeline resolver. Prepared audio
+playback/capture operations now consume supplied interval positions, with indexed
+conversion, gain and discontinuity smoothing; see [audio operations](docs/audio.md).
+Runtime planner integration and MIDI media execution remain pending.
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate
@@ -39,12 +41,12 @@ program starts at its selected iteration and stalls until explicitly repositione
 A stopped source can still relay clocks from its own source. Composite position
 is not a synthetic uniformly advancing media playhead.
 
-This API models logical capture positions and boundary failures; it does not
+The resolver API models logical capture positions and boundary failures; it does not
 yet own captured samples, deliver runtime receipts, or provide independent
 recovery-lane admission. Those integrations remain required plan milestones.
 
-The resolver owns authoritative timing; separate render operations will execute
-its interval decisions. Native and browser hosts use the same semantics;
+The resolver owns authoritative timing; separate render operations execute
+supplied interval decisions without their own playback clock. Native and browser hosts use the same semantics;
 transport, devices, UI, and AudioWorklet bindings stay outside this crate.
 
 The implementation contract and progress are tracked in the repository's

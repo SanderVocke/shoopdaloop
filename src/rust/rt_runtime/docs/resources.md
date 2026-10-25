@@ -1,5 +1,7 @@
 # Resources: upload, capture, and read
 
+`RenderIo::snapshot(ReadIndex)` returns the checked metadata for the pinned prefix, not a newer active resource version. It borrows the existing scoped lease without acquiring another lease or consuming background transfer credit. Audio renderers can validate format and duration before touching output.
+
 [Overview](../README.md) · [Host integration](integration.md) · [Capacity and performance](performance.md)
 
 `ResourceStore` holds audio/MIDI content in a fixed page pool. It provides revisioned storage and bounded copying—not a sampler, file decoder, resampler, or sequencer. Processors implement playback and recording behavior using that storage.

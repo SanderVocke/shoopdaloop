@@ -25,6 +25,7 @@ src/rust/rt_runtime/src/resource/request.rs,generic_realtime_library,excluded,Ty
 src/rust/rt_runtime/src/resource/tests.rs,test_support,excluded,Private resource generation-exhaustion tests; not a production execution boundary.
 src/rust/rt_runtime/src/schedule.rs,generic_realtime_library,excluded,Independent bounded scheduler; execution outcomes and work diagnostics are exposed to hosts.
 src/rust/rt_runtime/src/transport.rs,generic_realtime_library,excluded,Independent bounded ownership transport; completion and telemetry publication must not depend on application tracing.
+src/rust/shoop_loop_engine/src/audio.rs,portable_loop_library,excluded,Prepared domain audio rendering; host instrumentation remains outside the portable library and required I/O work is counted by the runtime.
 src/rust/shoop_loop_engine/src/command.rs,portable_loop_library,excluded,Plain-data musical requests and results; no host execution or tracing dependency.
 src/rust/shoop_loop_engine/src/config.rs,portable_loop_library,excluded,Independent storage validation; no host tracing dependency or render execution boundary.
 src/rust/shoop_loop_engine/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.

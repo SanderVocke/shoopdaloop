@@ -19,9 +19,9 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution verified; media/runtime/host proof pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
 | LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
-| LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resource paths guarded in native/Wasm and selected Miri; integrated loop callback audit pending |
+| LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resource and low-level loop audio paths guarded in native/Wasm and selected Miri; integrated loop callback audit pending |
 | LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic typed receipts/recovery, generated group ownership/content models, lifecycle-cut disconnects and selected Miri verified; integrated loop-domain ownership pending |
-| LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Generic group content/freeze/prefix cases verified; loop rendering/restoration/integration pending |
+| LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Generic group content/freeze/prefix and low-level audio playback/gain/capture verified; MIDI rendering/restoration and full loop integration pending |
 | LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Pending |
 | LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting, scoped indexing, prepared group transactions, synthetic boundary observations and complete generic group ownership/model checks verified; loop integration pending |
 | LL-A11 | New independent native/worklet fixture journals, actual Web Audio output, fixed-memory and failure gates; raw release measurements | Pending new fixture |
@@ -576,3 +576,43 @@ All 21 broad gates passed on the first complete run. The preceding focused model
 | Immutable leases/currentness/old revisions, tail isolation, incremental retirement, cancellation/disconnect/full recovery | Prior index/group cases plus the 2,048-action independent model and fourteen real transport disconnect cuts |
 
 All Stage 4 checklist items are verified. This closes the **generic resource layer**, not loop renderers/restoration, loop-domain control/adaptation, actual loop AudioWorklet execution, final-head CI, or reviewer approval. Stage 5 is current. No hard callback deadline or performance improvement is inferred from these correctness gates.
+
+## Stage 5 — Prepared audio rendering and capture foundation
+
+Milestone: `feat(loop-engine): add prepared audio rendering and capture` (the commit introducing this section), source base `37d13073`. Evidence: [`evidence/audio-stage5.json`](evidence/audio-stage5.json) and [`evidence/audio-stage5-provenance.json`](evidence/audio-stage5-provenance.json); raw logs and archived Miri cases are under `target/loop-layer-audio-stage5/`. This is a partial Stage 5 milestone, not completion of its integrated checklist.
+
+### Interfaces and evidence
+
+- `shoop_loop_engine::audio::{AudioRenderer, AudioCapture, Playback, Smoothing}` allocate/check/pre-touch fixed conversion and per-channel DSP storage at preparation. All channel/frame/aggregate-byte arithmetic uses the common native/Wasm ceiling. The renderer does not own mode, playback position, wrap occurrence, resource leases, or capture lifecycle authority.
+- Playback receives a scoped index, authoritative source position, finite gain and explicit discontinuity. The new generic `RenderIo::snapshot(index)` validates store/lease identity and returns pinned-prefix metadata without creating a lease or spending background transfer credits. Format/duration and complete output shape are checked before output/DSP mutation; little-endian interleaved data is read into fixed scratch and converted to planar output. Source intervals cannot cross wraps.
+- `None` source is immediate silence and resets smoothing. A zero-frame call has no DSP effect. Default/zero-length smoothing is exact raw gain. Linear restart retains the last actual output as its anchor, advances its ramp only for rendered samples, survives host cuts, and restarts on start/retrigger/seek/wrap/replacement. Refusal leaves output and DSP state unchanged, but does not authorize replaying a failed runtime callback.
+- Capture converts planar inputs into fixed interleaved scratch and stages one already reserved group member. It cannot activate/freeze/commit. Invalid shapes, duplicate contributions and stale interval tokens do not publish a prefix. Runtime work counters cover resource storage access, not all conversion/DSP instructions or a deadline guarantee.
+
+Six guarded loop-crate tests establish:
+
+1. A separately implemented scalar source-position/sample/ramp oracle agrees with the production resolver plus audio renderer over **40 frames**, gain 2, smoothing 0/4, start/seek/stop/restart/replacement and natural wraps. Host partitions are `[40]`, forty one-frame callbacks, and `[7,6,4,9,14]`. Required I/O continues after actual public legacy reads exhaust the callback's background allowance; it never refreshes it.
+2. Mono/stereo/**five-channel** interleaved regions cross 16-byte pages correctly, with negative gain. Retained leases remain playable after resource removal; metadata remains that of the pinned prefix.
+3. Stale/foreign scopes, wrong format, empty content, out-of-range/maximum positions and non-finite gain leave prior output/ramp state intact. Zero frames do not reset a pending ramp; Stop is immediate silence; invalid preparation arithmetic is refused.
+4. Planar capture over `[5]`, five one-frame intervals and `[2,3]` freezes and reads immediately. Separate old-playback/gain/new-capture operations double the new take while preserving the immutable old take, without background credit. This is an operation-level proof, not yet the required separate-node runtime graph.
+5. **128 one-sample intervals** produce every sample and exactly **127 interior wraps** under `[64,64]`, 128 one-frame callbacks and `[7,53,19,49]`. The wrap at 128 remains pending for the next nonempty interval; the renderer does not invent a clock or impose a subdivision quota.
+6. Missing/mismatched/oversized/zero-frame capture inputs, wrong reserved duration, duplicate staging and stale tokens retain an unpublished empty prefix. Cancellation and explicit teardown return all credits.
+
+All six workloads run unchanged in native debug/release, Node/Chromium and pinned Miri. The Miri runner now records the package for each case and includes the loop audio target; it does not claim that the full loop test suite has run under Miri.
+
+### Verified gates and retained failures
+
+| Gate | Observed result |
+| --- | --- |
+| Loop crate native debug/release | **59 passed per profile** |
+| Runtime native debug/release | **169 passed per profile** |
+| Loop crate Node/Chromium | **59 passed per runtime** |
+| Runtime Node/Chromium | **165 passed per runtime** |
+| Prescribed full nextest workspace | **2028 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **115 passing executions**: 109 runtime plus six complete loop audio cases |
+| Lifetime/authority proofs | Positive builds/runs; deliberate **E0502/E0599** refusals |
+| Warning-denied build/rustdoc, formatting, examples, boundary/policy gates | Passed |
+| Existing native debug/release and actual offline/live worklet, both failure canaries | Passed; unchanged historical journal and fixed **1703936-byte** memory |
+
+Three focused development failures are retained with hashes: using the store method name on `RenderIo` instead of its existing `stage_audio` API; ambiguous `Request` imports/private budget charging in the test (replaced with explicit import and real public legacy reads); and incorrectly treating the resolver's interval journal as cumulative. The last fix accumulates each committed interval's events and preserves the **127-wrap** assertion. No musical workload/assertion was reduced. All 21 subsequent broad gates passed in their first complete run; the ignored Nix SQLite-busy warning did not prevent success.
+
+The user-facing API contract is `src/rust/shoop_loop_engine/docs/audio.md`. The existing runtime worklet remains regression coverage and does not execute the new loop renderer; package Wasm tests do. MIDI playback/capture/restoration, planner/processor adapters, transactional loop/resource binding, coherent mixed-media export, the full separate-node playback→FX→recording graph, the public executable lifecycle example, and independent loop hosts remain pending. Stage 5 stays current; no end-to-end LL-A or final-delivery completion is claimed.
