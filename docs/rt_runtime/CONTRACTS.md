@@ -1,6 +1,6 @@
 # Runtime contracts and validation matrix
 
-This is the implementation contract table for the initial runtime. `PLAN.md` A1–A8 remain the acceptance criteria. Rows describe intended behavior until their test group is implemented; they are not claims of completed verification.
+The initial table below records the delivered runtime's contract; `DONE_INITIAL_CRATE.md` A1–A8 and the corresponding validation evidence are historical. The final section specifies the next coordination contract under `PLAN_LOOP_LAYER.md` LL-A1–LL-A12. Those extensions are not implemented yet; this distinction prevents initial scheduler/resource quotas from silently becoming future musical-work limits.
 
 ## API and execution contracts
 
@@ -46,3 +46,20 @@ Every group must exercise tiny capacities (one/two slots and the minimum valid b
 ## Benchmark workloads
 
 Use recorded seeds/configurations, 48 kHz, and block sizes 32, 128, and 512 where supported. Measure idle, gain chains, fan-in/out DAGs, representative 16-node and near-configured-capacity graphs, short-MIDI/SysEx bursts, sustained bounded capture, and concurrent plan/resource staging. Report duration distribution/max and nominal deadline misses, operation/byte/split counters, transfer throughput, peak live storage, and refusal counts. Keep the active graph/data workload identical when comparing baseline versus concurrent control traffic. Timing is diagnostic on a named host, not a brittle CI pass threshold or a claim about the old engine.
+
+## Proposed coordination contract (Stage 1; implementation pending)
+
+| Area | Required evolution and verification |
+| --- | --- |
+| Planning | One generic prepared planner with a no-planner default; explicit catalog/descriptor planner-consumer bindings. Synthetic planner tests must prove ordering without dummy signal edges, stale-ID refusal, and lifetime-safe decision/observation access. |
+| Callback envelope | Snapshot admission/recycle credits/reset maintenance and recovery allowances once. Select positive internal intervals up to the next external action/host end. Dense internal intervals cannot exhaust an arbitrary subdivision allowance. Finish observations at callback end; settle that boundary before the next rendered sample. |
+| Typed operations/results | Domain operations are typed plain data, not magic float parameters. A delivered pending operation retains its reliable runtime terminal receipt until completion/cancellation/failure; automatic transitions do not consume such credits. Test independent recovery admission under normal-result saturation. |
+| Fixed storage | Retain checked preparation capacities and immutable run-time storage for media, indexes, descriptors, views, observations, requests, and results. Refuse insufficient preparation explicitly; do not reinterpret a wave/subdivision CPU cutoff as a storage requirement. |
+| Background allowances | Command service, uploads/exports, descriptor/program validation, optional publication, and reclamation remain incremental and callback-budgeted. A held command cannot wait for a future upload command to complete its input. |
+| Required rendering | Prepared reads/index lookup, capture appends/checks, exact-frame activation/freeze, and finite internal transitions are counted but not throttled by a background quota. Verify tiny background allowances do not interrupt otherwise provisioned musical execution. |
+| Resource transactions | Version-scoped indexes and exclusive managed capture writers; group preflight before dependent samples, common-prefix append/freeze, reserved playback readiness, immutable old leases, and explicit failure/retirement. Test no whole-resource scan or asynchronous gap at record-to-play. |
+| Boundary preview | Provisional reservations/shadow state are not externally committed. A re-preview must latch an additional previously unlatched prepared group/activation failure; no duplicate pulse, receipt completion, generation advance, or publication. Musical failure decisions precede affected samples. |
+| Diagnostics | Counts may saturate with an overflow flag; observation limits never change musical execution. Semantic frames/IDs/revisions still use checked exhaustion, not wrapping or diagnostic-style saturation. |
+| Claim boundary | Allocation/deallocation-free, deterministic execution with finite application-dependent work; no guaranteed callback CPU/deadline bound. Planners, like processors, must honor their documented semantic and callback-safety contract. |
+
+The generic lifetime prototype is `docs/loop_layer/prototypes/interval_lifecycle.rs`; the integration/ownership specification is `docs/loop_layer/RUNTIME_INTEGRATION.md`. Musical clock/coalescing/conflict rules belong to the loop layer. Prototype success is not proof of production resource, scheduler, graph-validation, or AudioWorklet behavior. Implementation stages must replace proposed claims with actual API/tests and retain the initial evidence with its original scope.
