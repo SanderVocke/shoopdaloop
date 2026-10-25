@@ -4,7 +4,7 @@
 
 `PLAN_LOOP_LAYER.md` governs this implementation. Its LL-A1–LL-A12 criteria are immutable without user approval. The initial runtime record in `DONE_INITIAL_CRATE.md` and `docs/rt_runtime/evidence/` is preserved; passing baseline tests is not evidence that new loop-layer behavior exists.
 
-Execution was originally authorized through confirmed goal `mvnjf70y-cjcfar` and carried forward by confirmed goal `mvo6lnim-1xzkd7`. The new tracker carries completed Stages 0–3 forward and tracks the remaining Stage 4–10 work; it does not restart those implementations. The implementation branch is `feat/loop-execution-layer`, based on `cc6ccb4ac35114d61ef7e1c03ecc7f2fe81bb867`. At branch creation, [runtime PR #878](https://github.com/SanderVocke/shoopdaloop/pull/878) remained open against `master`, with that same head. The delivery PR should initially target `feat/generic-rt-runtime` unless the parent merges before delivery; recheck rather than assuming its future status.
+Execution was originally authorized through confirmed goal `mvnjf70y-cjcfar` and carried forward by confirmed goal `mvo6lnim-1xzkd7`. The new tracker carries completed Stages 0–3 forward without restarting those implementations. Stage 4 is now verified; Stage 5 is current and Stages 5–10 remain incomplete. The implementation branch is `feat/loop-execution-layer`, based on `cc6ccb4ac35114d61ef7e1c03ecc7f2fe81bb867`. At branch creation, [runtime PR #878](https://github.com/SanderVocke/shoopdaloop/pull/878) remained open against `master`, with that same head. The delivery PR should initially target `feat/generic-rt-runtime` unless the parent merges before delivery; recheck rather than assuming its future status.
 
 The pre-existing edits to `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `PROPOSAL_LOOP_LAYER.md`, plus the new plan, are the intended architecture baseline. Unrelated `.pi/` state is left untouched and untracked. No production application integration is included.
 
@@ -20,10 +20,10 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
 | LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
 | LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resource paths guarded in native/Wasm and selected Miri; integrated loop callback audit pending |
-| LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic typed receipts/recovery and selected Miri verified; integrated domain ownership pending |
+| LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic typed receipts/recovery, generated group ownership/content models, lifecycle-cut disconnects and selected Miri verified; integrated loop-domain ownership pending |
 | LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Generic group content/freeze/prefix cases verified; loop rendering/restoration/integration pending |
 | LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Pending |
-| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting, scoped indexing, prepared group transactions and synthetic boundary observations verified; complete group ownership/model and loop integration pending |
+| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting, scoped indexing, prepared group transactions, synthetic boundary observations and complete generic group ownership/model checks verified; loop integration pending |
 | LL-A11 | New independent native/worklet fixture journals, actual Web Audio output, fixed-memory and failure gates; raw release measurements | Pending new fixture |
 | LL-A12 | Updated runtime/loop guides and executable examples, acceptance audit, milestone commits, final-head CI and review record | Pending |
 
@@ -521,3 +521,58 @@ The actual generic-runtime synthetic planner uses unknown downstream MIDI within
 Three initial focused attempts failed due to test setup: a missing `unwrap()` on `MidiBuffer::new`, a transfer allowance below the existing minimum page size, and insufficient declared staging space for the test's two MIDI members. The fixes supplied the correct buffer type, increased allowance and deliberate consumption together to 16 bytes (still leaving zero background credit), and provided the 448-byte staging shape needed to reach the intended checkpoint-row refusal. Workloads/assertions were not removed or weakened; original logs and hashes remain in provenance. The later complete broad run passed without retrying a failed gate.
 
 The existing worklet fixture remains legacy/no-planner regression coverage and does not opt into capture groups. New APIs execute in the package Wasm tests and synthetic native/Wasm planner, not yet in the required independent loop host. Complete generated group-state/ownership and disconnect-at-each-phase coverage, Stage 4 acceptance review, loop renderers/restoration, final-head CI and review remain pending. The remaining Stage 4 checklist items stay open until that verification is complete; successful core APIs alone do not close them.
+
+## Stage 4 complete — Generated capture ownership and lifecycle-cut disconnects
+
+Milestone: `test(rt-runtime): verify capture ownership and disconnect cuts` (the commit introducing this section), based on core transaction commit `9aef981c`. Evidence: [`evidence/capture-ownership-stage4.json`](evidence/capture-ownership-stage4.json) and [`evidence/capture-ownership-stage4-provenance.json`](evidence/capture-ownership-stage4-provenance.json). Raw logs and archived Miri cases are under `target/loop-layer-capture-ownership-stage4/`. Earlier milestone evidence and failures remain unchanged.
+
+### Independent ownership/content model
+
+`capture_group_model` runs **1,024 actions each with 64 and 16 physical pages**, seed **`0x7a49c83d502e19b6`**. The complete 2,048-action workload is unchanged on native, Wasm, and Miri. An independent reference ledger tracks prepared/current/pinned versions, mutable-tail private pages, conservative interval-page reservations, reserved final leases, MIDI rows, revisions, capture metadata and currentness. It predicts admission/refusal before calling the store and checks all pool counters and visible metadata after each action. Retirement is drained through bounded maintenance calls rather than treated as immediate callback work.
+
+Original stereo samples and MIDI packets/timestamps are generated independently of the storage encoding. Every 32 actions, all retained snapshots are compared against their original prefixes, including state strictly before each seek frame. Reads use guarded required I/O. Repeated old leases, new takes, partial staging, cancellation and slot reuse must not change those immutable contents. The final teardown returns every page, version, snapshot and MIDI row.
+
+| Action | 64-page model | 16-page model |
+| --- | ---: | ---: |
+| Snapshot release / acquisition | 115 / 82 | 112 / 73 |
+| Take cancellation / activation | 6 / 20 | 9 / 23 |
+| Interval cancellation | 43 | 17 |
+| Audio / MIDI staging | 95 / 79 | 48 / 39 |
+| Commit / freeze | 68 / 20 | 36 / 23 |
+| Interval reservation / refusal | 111 / 0 | 53 / 10 |
+| Take preparation / refusal | 26 / 310 | 32 / 504 |
+
+The 64-page run does not claim physical interval exhaustion; the additional 16-page run supplies that coverage. Conservative checkpoint exhaustion remains covered by the existing exact-24-frame tests. Neither generator nor assertions are reduced under Miri.
+
+### Disconnect and quiescent teardown
+
+`capture_group_disconnect` exercises fourteen stable lifecycle cuts: unbound, bound, prepared, activated, interval-reserved, audio-staged, all-staged, committed, frozen, first/final lease released, group released, prepared take cancelled, and interval cancelled. It queues a payload-free classified recovery stop, **drops the actual control transport before delivery**, then processes the stop with no callback allocation/reallocation/deallocation. Pending intervals are cancelled before publication; prepared takes are cancelled; committed prefixes freeze at the runtime's actual boundary. Every reserved lease/page credit settles even though the receiver of completion results has disconnected.
+
+This verifies queued recovery plus disconnect, not automatic stop merely because a producer disappears. Group release/resource removal remain explicit owner cleanup rather than structural work smuggled into recovery. A prepared unbound processor is retained during callbacks and destroyed exactly once off-render. New `GraphRuntime::into_resources()` consumes a stopped runtime off-render and returns its store; other owners are destroyed. It does not discover or cancel domain handles lost by a planner: settle those first or retain handles. Explicit cleanup of the returned store restores all pools and group slots at every cut.
+
+### Final Stage 4 gates and checklist review
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **169 passed per profile** |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **165 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Prescribed full nextest workspace | **2022 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **109 passing executions**, including full generated model and all disconnect cuts |
+| Lifetime / authority proofs | Positive compilation/execution; deliberate **E0502 / E0599** refusals |
+| Formatting, warning-denied build/rustdoc, examples, boundary and test/tracing/Wasm policies | Passed |
+| Existing native debug/release and actual offline/live worklet, both failure canaries | Passed; unchanged historical journal and fixed **1703936-byte** memory |
+
+All 21 broad gates passed on the first complete run. The preceding focused model/disconnect runs also passed; there is no new failed run being omitted. The ignored Nix SQLite-busy warning did not prevent the Miri run from succeeding.
+
+| Stage 4 checklist obligation | Evidence |
+| --- | --- |
+| Required work versus background quotas, one callback envelope | `accounting-stage4`; repeated-interval planner tests; independent saturating diagnostics |
+| Prepared audio/MIDI indexes, bounded positioning and scoped identities | `index-stage4`, `midi-state-stage4`, `midi-index-stage4`; unchanged full page/event/state oracles and Miri |
+| Reserved lifecycle/version/MIDI-row/final-lease capacity; exact activation/freeze and immediate frozen access | `capture-stage4`; lifecycle saturation, stale tokens, empty/nonempty freeze/read, authority proofs |
+| Coordinated audio/MIDI preflight/staging/commit; unknown downstream MIDI bounds and common-prefix failure | `capture-stage4`; three content partitions, malformed/partial staging, conservative checkpoint limits; new independent 16-page model |
+| Failure observations before affected samples, no rollback | `capture_group_planner`: dependent sample changes at frame **24** under three host partitions, while unrelated audio continues |
+| Immutable leases/currentness/old revisions, tail isolation, incremental retirement, cancellation/disconnect/full recovery | Prior index/group cases plus the 2,048-action independent model and fourteen real transport disconnect cuts |
+
+All Stage 4 checklist items are verified. This closes the **generic resource layer**, not loop renderers/restoration, loop-domain control/adaptation, actual loop AudioWorklet execution, final-head CI, or reviewer approval. Stage 5 is current. No hard callback deadline or performance improvement is inferred from these correctness gates.

@@ -379,6 +379,12 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
     pub fn epoch(&self) -> Epoch {
         self.epoch
     }
+    /// Consume a stopped runtime off-render and retain its resource store for
+    /// explicit owner/lease cleanup or reuse. Other runtime owners are destroyed.
+    pub fn into_resources(self) -> resource::ResourceStore {
+        self.resources
+    }
+
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
     }

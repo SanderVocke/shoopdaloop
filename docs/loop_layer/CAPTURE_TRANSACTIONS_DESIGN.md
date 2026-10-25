@@ -1,6 +1,6 @@
 # Prepared capture groups and lifecycle transactions
 
-Status: implemented store lifecycle/staging and planner-capability milestone, verified in `evidence/capture-stage4.json` and its provenance record. Complete Stage 4 model/disconnect validation remains pending. The preceding MIDI-index milestone is `e64011b1`. This design implements the existing `RUNTIME_INTEGRATION.md` boundary contract without changing LL-A criteria.
+Status: implemented and verified generic Stage 4 store lifecycle/staging and planner-capability work. Core evidence is in `evidence/capture-stage4.json`; generated ownership/content model and lifecycle-cut disconnect evidence is in `evidence/capture-ownership-stage4.json`, with corresponding provenance records. The preceding MIDI-index milestone is `e64011b1`. This design implements the existing `RUNTIME_INTEGRATION.md` boundary contract without changing LL-A criteria.
 
 ## Representation and ownership
 
@@ -59,4 +59,4 @@ A synthetic planner must verify this sequence before loop adaptation: dependency
 - Cancellation/disconnect between each prepare/activate/reserve/stage/commit/freeze/release step; verify eventual complete pool recovery and no callback destruction.
 - Guards in native debug/release and Wasm, independent group-state/content reference cases, selected Miri, a synthetic observation-timing planner, and unchanged existing native/actual-worklet regression gates.
 
-The twelve new lifecycle/staging/boundary/synthetic-planner tests pass under native debug/release, Node/Chromium, heap guards and selected Miri. Complete model/disconnect coverage is still outstanding, so the remaining Stage 4 checklist items stay open pending that acceptance review. Loop renderer restoration and the independent loop AudioWorklet remain later stages.
+The twelve lifecycle/staging/boundary/synthetic-planner tests and two additional ownership-model/disconnect tests pass under native debug/release, Node/Chromium, heap guards and selected Miri. The model checks the same full 2,048 actions on every platform, predicts all pool credits and immutable content independently, and exercises 814 preparation and ten interval-capacity refusals. The disconnect test cuts the real control transport at fourteen lifecycle states after queuing recovery stop, then verifies settlement, off-render owner destruction, and complete explicit pool recovery. `GraphRuntime::into_resources()` supports quiescent off-render store extraction; callers must first settle domain owners or retain their handles. Stage 4's generic checklist is complete. Loop renderers/restoration, loop-domain integration and the independent loop AudioWorklet remain later stages.
