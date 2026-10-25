@@ -55,6 +55,7 @@ def main():
     cases.append(("shoop_loop_engine", "audio", [], 6, 0))
     cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi_restore", [], 4, 0))
+    cases.append(("shoop_loop_engine", "midi", [], 6, 0))
     if args.package:
         cases = [case for case in cases if case[0] == args.package]
     results = []

@@ -9,6 +9,7 @@ pub mod command;
 pub mod config;
 pub mod decision;
 pub mod ids;
+pub mod midi;
 pub mod midi_restore;
 pub mod program;
 pub mod resolver;

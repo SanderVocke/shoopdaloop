@@ -1,0 +1,281 @@
+{
+  "passed": true,
+  "base_commit": "f9f041ea465a7ead99b42ab735e489312f725de4",
+  "scope": "Stage 5 indexed MIDI operations: rebased complete packets, initial state and discontinuity restoration, continuous input tracking/capture, full logical advancement on output failure, and real generic-runtime recovery/audio-isolation proof. Complete loop facade remains pending.",
+  "source_sha256": {
+    "src/rust/shoop_loop_engine/src/audio.rs": "79669f4c43eab3ca7333a9cd833d15be01885d759b66f830eda94e3d6dc7b064",
+    "src/rust/shoop_loop_engine/src/command.rs": "339250f2ef1cdef6842d76c6c9bc2cbc96d2732f904fbfc95c690bb7a5d9b53b",
+    "src/rust/shoop_loop_engine/src/config.rs": "fbb07338ac7c3757a50c43a2770d76e4ab80634e2370ab23cbd921f7a3024e43",
+    "src/rust/shoop_loop_engine/src/decision.rs": "167e8e5e5e3d26a8f5974e1b4c2ea15c3a5e90bed7da095e9aa49253b6504446",
+    "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+    "src/rust/shoop_loop_engine/src/lib.rs": "e4386d75748fe1c1b872184b7cf1f2074d74c3eec289ae0dfeff627d1da339e2",
+    "src/rust/shoop_loop_engine/src/midi.rs": "ea410585ad388cfdacdb06efc858e32f274e77f095f666706e352c0218b3052a",
+    "src/rust/shoop_loop_engine/src/midi_restore.rs": "5cccf7e16e8502213fab7a8a9fc50a2ae33083d6a4eb06931d752edf07653322",
+    "src/rust/shoop_loop_engine/src/program.rs": "8aac9fe15731351a63c8c84b27aec1d66a4f966f2674a4cb81b11d661e079c1d",
+    "src/rust/shoop_loop_engine/src/resolver.rs": "35b5c7d04e6c4b042de9054c12231f9e8947a1f86f9d3d9521320ce7647f7e96",
+    "src/rust/shoop_loop_engine/src/state.rs": "0898d13e09479efbd30e77e8c43923e20c30682aae7ec1547ea5a53fa81bebfa",
+    "src/rust/shoop_loop_engine/src/topology.rs": "70d3e0c6d33aca4308a8caa20bc5ffcf1cda2a12549f1c6b183872bb701fb986",
+    "src/rust/shoop_loop_engine/tests/audio.rs": "e3b3ebb013eb8826de281d7400e770dba0ae45d6ed69d6955f6c4218724aed2f",
+    "src/rust/shoop_loop_engine/tests/compiler.rs": "ae4303b55f17255a0daab325afac68b26add1bb6fc5a99768ba9d2aedfd11ece",
+    "src/rust/shoop_loop_engine/tests/composites.rs": "97d0d2b7d2a8e2e9d040116a4b93ed37a8b5dc538772d826bee175b2198da906",
+    "src/rust/shoop_loop_engine/tests/media_decisions.rs": "6311ab6ab61bf0bbdee2b8d2c050510567f857d9423e8bf1352c173c97f4c52a",
+    "src/rust/shoop_loop_engine/tests/midi.rs": "32da82ff3723d5444e9d05e4004cab65b39d303b0b663d562d4935317db07053",
+    "src/rust/shoop_loop_engine/tests/midi_restore.rs": "beb5545b887d23272e0876d888ae421c8aebffe9cd934d0a609904bc3adba662",
+    "src/rust/shoop_loop_engine/tests/resolver.rs": "4c6e5fe81d9d4007cf4267e70b2cde460fdf23b8bdc7151f8f1503bd867de24e",
+    "src/rust/shoop_loop_engine/tests/support/composite_reference.rs": "261acb54aec7869c8a6bc1b43a3d9b1ef07f96d70e878a086af8ecd57eb60345",
+    "src/rust/shoop_loop_engine/tests/support/reference.rs": "08a62cc1d9c502fee72cae2e717a73cd936e4c59e8db2c4858090095a7498b6a",
+    "scripts/run_rt_runtime_miri.py": "445546f9251e463d6520f4d356b9b2e2bbf96bed6f983a3a2205c0a31b1d837f"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 1.4618031940044602,
+      "log": "target/loop-layer-midi-stage5/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 2.333446552991518,
+      "log": "target/loop-layer-midi-stage5/native-debug.log",
+      "sha256": "5cd963b873284b69d061ab9179b725ffbabb91203eda349b51421b454c06e189"
+    },
+    {
+      "name": "native-release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine",
+        "--release"
+      ],
+      "exit_code": 0,
+      "seconds": 3.102029749992653,
+      "log": "target/loop-layer-midi-stage5/native-release.log",
+      "sha256": "5681c80a81b271cb2acdda669de0e1ece7d9bed6db6dd7902af4a36133e5b594"
+    },
+    {
+      "name": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 2.5736528049892513,
+      "log": "target/loop-layer-midi-stage5/workspace-build.log",
+      "sha256": "75cdce81abb5e910e3d7023c3d5e5b33ca2d8f070072a4b740ccbd439f1dab2b"
+    },
+    {
+      "name": "rustdoc",
+      "command": [
+        "cargo",
+        "doc",
+        "--locked",
+        "--no-deps",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6901409150013933,
+      "log": "target/loop-layer-midi-stage5/rustdoc.log",
+      "sha256": "24d50b9d577a2d457a0b62b2582b5342bae8b9d66f265c06110327f496e2aaf7"
+    },
+    {
+      "name": "runtime-boundary",
+      "command": [
+        "python3",
+        "scripts/check_rt_runtime_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4018276889983099,
+      "log": "target/loop-layer-midi-stage5/runtime-boundary.log",
+      "sha256": "95fff258fbfbb5302df71ca75a0206bdd8f984a6b3614e5b91c7bea8872e611a"
+    },
+    {
+      "name": "loop-boundary",
+      "command": [
+        "python3",
+        "scripts/check_loop_engine_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.42646000999957323,
+      "log": "target/loop-layer-midi-stage5/loop-boundary.log",
+      "sha256": "f150d1cc802cf91ae2f59030cad02ccbbd3bf5fe55fed50315f343e33fb59617"
+    },
+    {
+      "name": "boundary-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.tests.test_rt_runtime_boundary",
+        "scripts.tests.test_loop_engine_boundary"
+      ],
+      "exit_code": 0,
+      "seconds": 0.06018514199240599,
+      "log": "target/loop-layer-midi-stage5/boundary-tests.log",
+      "sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e"
+    },
+    {
+      "name": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.026182148008956574,
+      "log": "target/loop-layer-midi-stage5/test-policy.log",
+      "sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    },
+    {
+      "name": "tracing-policy",
+      "command": [
+        "python3",
+        "scripts/check_tracing_coverage.py",
+        "--require-closed"
+      ],
+      "exit_code": 0,
+      "seconds": 0.05475891099194996,
+      "log": "target/loop-layer-midi-stage5/tracing-policy.log",
+      "sha256": "569bbeec5201f94fd72b501e155e7217976caddbf648b72ccde1f324f47d2b38"
+    },
+    {
+      "name": "wasm-dependencies",
+      "command": [
+        "python3",
+        "scripts/check_wasm_test_dependencies.py",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.18886297800054308,
+      "log": "target/loop-layer-midi-stage5/wasm-dependencies.log",
+      "sha256": "077ad4115bb6999f06ac6926c3a6f657925a3a589fafa1b457cc5fe74e2a4a59"
+    },
+    {
+      "name": "node",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "node",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 46.09474089500145,
+      "log": "target/loop-layer-midi-stage5/node.log",
+      "sha256": "3545f50722db90833cd788027870b733dc449466f5e6c6f77f7ebf980b9f5f1a"
+    },
+    {
+      "name": "chrome",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "chrome",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 38.57860687900393,
+      "log": "target/loop-layer-midi-stage5/chrome.log",
+      "sha256": "82c17c790bb3dd8013c49297930b973bb3a32ddf6f039542dc3e7df84b99fc6d"
+    },
+    {
+      "name": "nextest-version",
+      "command": [
+        "cargo",
+        "nextest",
+        "--version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.01494839700171724,
+      "log": "target/loop-layer-midi-stage5/nextest-version.log",
+      "sha256": "1fd8e369e986ceaa3163325c547244c65dfa43b89824ddd27afe3dd43b0cb188"
+    },
+    {
+      "name": "workspace-tests",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--features",
+        "shoop_engine/app_backend",
+        "--profile",
+        "ci"
+      ],
+      "exit_code": 0,
+      "seconds": 38.51932391599985,
+      "log": "target/loop-layer-midi-stage5/workspace-tests.log",
+      "sha256": "bb071430381dac1db42d7de9b27946683158faf4ba9f82551ce01a6018ca6870"
+    }
+  ],
+  "loop_native_per_profile": 73,
+  "wasm": [
+    {
+      "elapsed_seconds": 40.091576350998366,
+      "executed": 73,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.xml",
+      "listed": 73,
+      "log": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 73,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 73,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 38.07350146899989,
+      "executed": 73,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.xml",
+      "listed": 73,
+      "log": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 73,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 73,
+      "traces": {}
+    }
+  ],
+  "limitations": [
+    "This scoped loop milestone does not rerun the unchanged standalone runtime release/Wasm suites, native/worklet fixtures or generic runtime Miri cases. Their preceding full run remains historical midi-restore-stage5 evidence.",
+    "Full workspace nextest and warning-denied workspace build are freshly executed.",
+    "Selected loop Miri is recorded separately; not a whole loop-suite Miri claim.",
+    "Complete loop adapter, coherent mixed-media ownership/outcomes/export, full graph/example, independent loop hosts and final CI/review remain pending."
+  ]
+}

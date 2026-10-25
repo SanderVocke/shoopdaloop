@@ -1,6 +1,6 @@
 # MIDI cleanup and projected-state restoration
 
-`midi_restore::{cleanup, restore}` emit complete MIDI 1.0 packets through a bounded sink callback. They borrow a prepared `MidiState`; they do not allocate, mutate it, advance time, read media, acquire leases, or own a device. The caller supplies the exact event offset, performs cleanup before restoration, and delivers original events at that offset afterwards. Indexed playback/capture and runtime processor integration remain separate work.
+`midi_restore::{cleanup, restore}` emit complete MIDI 1.0 packets through a bounded sink callback. They borrow a prepared `MidiState`; they do not allocate, mutate it, advance time, read media, acquire leases, or own a device. The caller supplies the exact event offset, performs cleanup before restoration, and delivers original events at that offset afterwards. Indexed playback/capture is provided separately by [MIDI operations](midi.md); the full loop planner/processor facade remains integration work.
 
 ## Ordering and projection
 
@@ -28,4 +28,4 @@ This is the existing **channel/key projection**, not external synthesizer state.
 
 Tests compare cleanup and sostenuto/hold reconstruction with an independent key/pedal machine, independently check loaded versus pending banks and selector/data ordering, exercise every channel/key/controller/pressure against fixed capacity bounds, and verify full/refusing sinks without heap activity or retries. Runtime state tests cover the new ordering metadata, mutually exclusive modes, relative-command treatment and reset/copy behavior. Full native/Wasm/Miri workloads are retained.
 
-These are restoration building blocks. MIDI event positioning/rebasing/playback/capture, input tracking, coordinated runtime error recovery, the loop adapter and the actual loop AudioWorklet remain pending. No full Stage 5 or device-state guarantee follows from these helpers.
+These are restoration building blocks. The separate MIDI operations module now supplies positioning/rebasing/playback/capture, input tracking and a focused runtime recovery proof. The complete loop adapter and actual loop AudioWorklet remain pending. No full Stage 5 or device-state guarantee follows from these helpers.

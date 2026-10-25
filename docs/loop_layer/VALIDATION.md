@@ -678,4 +678,36 @@ All complete workloads execute under heap guards, native debug/release, Node/Chr
 
 The focused tests and all 21 broad gates passed on their first runs; no new failed run is being omitted. This full run supersedes the preceding scoped milestone's lack of fresh generic-runtime/host evidence, without rewriting its historical claims.
 
-These helpers do not yet implement indexed MIDI event playback/rebasing, input tracking/capture, integration with runtime reset delivery, the loop planner/processor facade, mixed-media export, the separate-node graph/example or the independent loop AudioWorklet. Those remain required Stage 5/later work. No full Stage 5, external device-state restoration, deadline, final CI or review approval is claimed.
+These helpers do not yet implement indexed MIDI event playback/rebasing, input tracking/capture, integration with runtime reset delivery, the loop planner/processor facade, mixed-media export, the separate-node graph/example or the independent loop AudioWorklet. Those remained required Stage 5/later work at this milestone. No full Stage 5, external device-state restoration, deadline, final CI or review approval is claimed.
+
+## Stage 5 — Indexed MIDI playback, input tracking and runtime recovery
+
+Milestone: `feat(loop-engine): render and capture indexed MIDI intervals` (the commit introducing this section), source base `f9f041ea`. Evidence: [`evidence/midi-stage5.json`](evidence/midi-stage5.json) and [`evidence/midi-stage5-provenance.json`](evidence/midi-stage5-provenance.json). Logs and twenty archived selected loop Miri executions are under `target/loop-layer-midi-stage5/`. This is a partial Stage 5 milestone.
+
+`midi::{MidiRenderer, MidiCapture, Playback, RenderReport}` now provide:
+
+- Prepared, pre-touched packet scratch and boxed channel projections. Positions/discontinuities remain supplied by the resolver; a scoped cursor and lookahead only validate contiguous media use. Source ownership stays with the caller.
+- Cleanup of the previous projection, bounded indexed state strictly before the supplied offset, ordered restoration, then complete original events with stable equal-time ordering and interval-relative offsets. Half-open intervals retain end-boundary events; explicit duration preserves trailing silence.
+- Logical media advancement through every original event despite output refusal. Reports distinguish attempted/accepted packets and first failure, with no retry or partial-delivery success claim. The processor must finish other required work and propagate output errors to runtime recovery.
+- Continuous input tracking while stopped, capture-start initial state, original-packet staging into an already-reserved group, and recovery-form input independent of ordinary input limits. Invalid input leaves tracking unchanged; staging faults do not retroactively undo valid observed input.
+
+Six guarded tests verify:
+
+1. An independent absolute packet oracle over whole/single/irregular partitions: initial held note, 257-byte SysEx crossing pages, equal-time note/pressure records, original release velocities and note-on-zero, bank/program changes, trailing silence and one-shot stop cleanup.
+2. Exact note ordering at seeks, wraps and replacement: cleanup, restoration of state before the target, then original events at that same offset. The replacement has a distinct initial held note and a release at offset zero.
+3. Input observed while stopped supplies a captured take's initial state. Frozen state/packets are readable immediately, with the interval's note-off excluded from the initial state but present at offset zero; staging publishes nothing before commit.
+4. Position overflow, discontinuity/continuity mismatch, stale lease, malformed interval bounds, capacity and preparation refusals; zero frames preserve renderer/tracker state.
+5. A real `GraphRuntime` producer→consumer graph: two original note-ons advance despite output overflow; reserved reset packets clear a seeded downstream held note even with only one ordinary event/three ordinary bytes admitted by the tracker; audio remains exactly 0.25; all 32 host reset packets drain. This is an operation/runtime integration proof, not the full loop facade or an independent loop host.
+6. **128 one-sample intervals** driven by the production resolver with journal capacity zero, compared against an independent complete-packet oracle over three host partitions. There is no mandatory timing quantum or journal dependency.
+
+| Fresh scoped gate | Observed result |
+| --- | --- |
+| Loop native debug/release | **73 passed per profile** |
+| Loop Node/Chromium | **73 passed per runtime** |
+| Prescribed workspace nextest | **2044 passed**, four unchanged opt-in canaries skipped |
+| Selected loop Miri | **20 executions**: audio6, media-decisions4, restoration4, indexed-MIDI6 |
+| Formatting, warning-denied workspace build/rustdoc, boundary/test/tracing/Wasm-dependency policies | Passed; all **15 scoped gates** succeeded |
+
+The first focused native run aborted with a stack overflow while processors contained large inline MIDI projections. The revised representation puts those projections in fixed prepared boxes, reducing their footprint in generic processor/command types without raising stack limits, reducing workloads or weakening heap guards. The exact overflowing stack frame was not captured, and the pre-fix source tree was not separately archived; the failure log and change rationale are retained rather than presenting it as a passing run. The subsequent focused run passed; the final complete-packet workload passed in all scoped configurations above.
+
+No generic runtime implementation changed. Standalone runtime release/Wasm, generic Miri, native/actual-worklet fixtures and lifetime/authority prototypes were **not freshly rerun** here; the preceding full `midi-restore-stage5` milestone remains their historical baseline. Twenty fresh loop Miri executions are not a fresh 131-case combined run. The full loop planner/processor adapter, coherent mixed-media binding/capture/export and public outcomes, separate-node playback→FX→recording graph/example, and independent loop AudioWorklet remain required. Stage 5 and final delivery remain open.

@@ -8,8 +8,10 @@ and a fixed-storage primitive/composite timeline resolver. Prepared audio
 playback/capture operations now consume supplied interval positions, with indexed
 conversion, gain and discontinuity smoothing; see [audio operations](docs/audio.md).
 Bounded [MIDI cleanup/restoration](docs/midi-restore.md) helpers establish known
-channel/key state with explicit output failures and ordering metadata. Runtime
-planner integration and MIDI media playback/capture remain pending.
+channel/key state with explicit output failures and ordering metadata.
+[Indexed MIDI operations](docs/midi.md) add packet playback, input tracking/capture
+and a focused runtime recovery proof. The complete loop planner/processor facade,
+coherent mixed-media outcomes/export and independent hosts remain pending.
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate

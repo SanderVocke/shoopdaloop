@@ -31,6 +31,7 @@ src/rust/shoop_loop_engine/src/config.rs,portable_loop_library,excluded,Independ
 src/rust/shoop_loop_engine/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.
 src/rust/shoop_loop_engine/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
 src/rust/shoop_loop_engine/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
+src/rust/shoop_loop_engine/src/midi.rs,portable_loop_library,excluded,Prepared indexed MIDI operations; explicit output reports and generic runtime diagnostics replace application tracing dependencies.
 src/rust/shoop_loop_engine/src/midi_restore.rs,portable_loop_library,excluded,Fixed-protocol MIDI state emission; bounded sink reports expose failures without application tracing dependencies.
 src/rust/shoop_loop_engine/src/program.rs,portable_loop_library,excluded,Control-side sparse program compiler and immutable lookup; checked results are exposed through the API.
 src/rust/shoop_loop_engine/src/resolver.rs,portable_loop_library,excluded,Independent fixed-storage resolver; guarded execution exposes frame-tagged semantic events and saturating diagnostic loss without application tracing.
