@@ -2,7 +2,7 @@
 
 ## Status and execution contract
 
-Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–1 are verified; stages 2–10 remain pending. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
+Implementation authorized by confirmed goal `mvnjf70y-cjcfar`. Stages 0–1 are verified; Stage 2 is in progress (crate/compiler milestone verified); stages 3–10 remain pending. Evidence and acceptance mapping are maintained in `docs/loop_layer/VALIDATION.md`.
 
 Governing inputs: `INTER_LOOP_PROCESSING.md`, `PROPOSAL_LOOP_LAYER.md`, and the proposed-evolution sections of `DESIGN_RT_ENGINE.md` and `PROPOSAL_RT_ENGINE.md`. `DONE_INITIAL_CRATE.md` and its evidence remain the historical record of the initial runtime, not acceptance criteria to rewrite retrospectively.
 
@@ -104,7 +104,7 @@ Depends on: Stage 0. Must finish before implementation choices are treated as se
 
 Depends on: Stage 1. Covers LL-A1–LL-A5 and the logical portion of LL-A9.
 
-- [ ] Create `src/rust/shoop_loop_engine` with workspace lint/test conventions and Wasm-test metadata; the existing `src/rust/*` workspace glob includes it. Update the root lockfile. Production dependencies start with `rt_runtime`; shared test support remains dev-only. Add a separate loop dependency-boundary audit and tests without weakening `check_rt_runtime_boundary.py`.
+- [x] Create `src/rust/shoop_loop_engine` with workspace lint/test conventions and Wasm-test metadata; the existing `src/rust/*` workspace glob includes it. Update the root lockfile. Production dependencies start with `rt_runtime`; shared test support remains dev-only. Add a separate loop dependency-boundary audit and tests without weakening `check_rt_runtime_boundary.py`.
 - [ ] Implement generation-checked logical IDs, typed loop requests, prepared topology/program compilation, and fixed-capacity resolver state/scratch. Compile structural data off-render; validate arithmetic, targets, program storage, supported nesting, and termination conditions before activation.
 - [ ] Implement primitive timing, sync/countdown transitions, same-frame propagation/conflict resolution, and prepared composite execution in one resolver. Return incremental interval decisions and consume synthetic execution observations without retaining all callback transitions.
 - [ ] Implement declared/derived scratch sizing and transactional rejection. Remove reliance on legacy `max_event_waves`, sub-block caps, and blanket sync-cycle rejection; do not replace them with differently named work caps.

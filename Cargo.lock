@@ -4409,6 +4409,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_loop_engine"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_plugin_protocol"
 version = "0.3.0"
 dependencies = [

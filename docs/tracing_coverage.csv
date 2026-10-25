@@ -16,6 +16,11 @@ src/rust/rt_runtime/src/resource/request.rs,generic_realtime_library,excluded,Ty
 src/rust/rt_runtime/src/resource/tests.rs,test_support,excluded,Private resource generation-exhaustion tests; not a production execution boundary.
 src/rust/rt_runtime/src/schedule.rs,generic_realtime_library,excluded,Independent bounded scheduler; execution outcomes and work diagnostics are exposed to hosts.
 src/rust/rt_runtime/src/transport.rs,generic_realtime_library,excluded,Independent bounded ownership transport; completion and telemetry publication must not depend on application tracing.
+src/rust/shoop_loop_engine/src/config.rs,portable_loop_library,excluded,Independent storage validation; no host tracing dependency or render execution boundary.
+src/rust/shoop_loop_engine/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
+src/rust/shoop_loop_engine/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
+src/rust/shoop_loop_engine/src/program.rs,portable_loop_library,excluded,Control-side sparse program compiler and immutable lookup; checked results are exposed through the API.
+src/rust/shoop_loop_engine/src/topology.rs,portable_loop_library,excluded,Control-side timing dependency compiler; no callback execution or host tracing dependency.
 src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

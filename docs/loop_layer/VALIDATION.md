@@ -14,7 +14,7 @@ These are required test/evidence groups, not claims of implementation. Add concr
 
 | Criterion | Planned implementation/evidence | Status |
 | --- | --- | --- |
-| LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Pending new crate; original runtime baseline passes |
+| LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
 | LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pending |
 | LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Pending |
@@ -84,7 +84,7 @@ This establishes a clean local regression baseline for the inspected source, not
 
 ## Stage 1 — Semantics and integration contract
 
-Milestone: `docs(loop-layer): specify timing semantics and planner ownership contract` (the commit introducing this section).
+Milestone: `7dfd657c7b908d79d6a95e6cb9e2c66c6a5bcb3b` — `docs(loop-layer): specify timing semantics and planner ownership contract`.
 
 - [`SEMANTICS.md`](SEMANTICS.md) specifies primitive/composite state, exact boundary ownership, typed request outcomes/cancellation, ready-versus-clock-reactive arbitration, pulse coalescing, source-stop behavior, seeking/replacement, media/MIDI discontinuities, and legacy behavior mapping.
 - Its termination model accepts pure sync strongly connected components, rejects internal state-changing action feedback/recursive containment, and walks the resulting component DAG. Clock delivery and pending eligibility have finite prepared identities, not a wave quota. Pre-clock and reactive phases distinguish suppression of an as-yet uncreated clock edge from attempted retraction of a delivered one.
@@ -103,3 +103,33 @@ Native debug and optimized runs each pass six assertion groups: a single callbac
 The deliberately invalid live-view-reuse configuration fails with `E0502` (`cannot borrow planner as mutable because it is also borrowed as immutable`). Ordinary native and Wasm builds pass with warnings denied. The Wasm binary was compiled, not executed; no AudioWorklet claim is made for this prototype. It has no allocator instrumentation and does not prove real resource transactions, graph validation, scheduler receipts, or musical behavior.
 
 Workspace formatting, the warning-denied locked workspace build, and the shared test-attribute policy pass. Full production/reference/heap/native-browser integration evidence remains pending as shown in the acceptance map; Stage 1 is a verified contract/prototype milestone, not completion of any end-to-end loop feature.
+
+## Stage 2 — Compiler milestone (stage remains in progress)
+
+Milestone: `feat(loop-layer): add portable crate and prepared timing compiler` (the commit introducing this section). Evidence: [`evidence/compiler-stage2.json`](evidence/compiler-stage2.json). Source hashes identify the tested implementation on top of the Stage 1 commit; raw logs are under `target/loop-layer-compiler/`.
+
+Implemented interfaces in `src/rust/shoop_loop_engine`:
+
+- Distinct generation-checked `LoopId`/`RequestId`, compact errors, checked `Limits`, workspace lint/test conventions, and Wasm-test metadata. Production dependencies contain only `rt_runtime` and its generic transitive dependency; shared test support is dev-only.
+- `TopologyDescription` → `PreparedTopology`: stable identities, target validation, canonical dependency ordering, iterative strongly connected component analysis, accepted pure synchronization cycles, rejected action-feedback components, and rejected recursive composite containment.
+- `ProgramDescription` → sparse `CompiledProgram`: sequential sections, parallel/delayed/repeated entries, child-first nested duration derivation, separate regular/explicit-mode classification, same-mode continuation normalization, half-open ranges, deterministic overlap selection, and binary-search lookup without scanning event history or allocating per tick.
+- A separate loop dependency audit and Python tests. The original runtime audit is unchanged and still rejects the loop crate as a runtime dependency. Five new source modules have explicit tracing-inventory classifications; no application tracing dependency was added.
+
+Verification in the repository Nix environment:
+
+| Gate | Observed result |
+| --- | --- |
+| New crate, native debug/release | 19 tests passed per profile; no failures/ignored tests |
+| New crate, Node/Chromium | 19 tests passed per runtime; no failures/ignored tests |
+| Independent graph reachability oracle | 4096 generated cases; accepted component membership/order and invalid action feedback checked |
+| Independent dense program table | 1024 generated programs; sparse lookup matches every represented tick/target |
+| Deep topology | 2048-node action chain; iterative compilation, not a wave-limited executor |
+| Long sparse program | One segment represents one billion ticks; guarded immutable lookup |
+| Shared heap guard | Positive allocation/deallocation canaries pass; value validation and immutable lookup are heap-free |
+| Full prescribed nextest workspace suite | 1912 passed; same four existing opt-in failure canaries skipped |
+| Both four-target production/build boundary audits | Passed; target trees are metadata checks, not Windows/macOS execution |
+| Python boundary-policy tests | 5 passed |
+| Wasm test-dependency policy, Rust test policy, formatting, warning-denied workspace build | Passed |
+| Closed tracing inventory | Passed; 174 modules classified |
+
+These tests validate compilation and lookup only. They do **not** establish resolver interval/partition invariance, callback cascade execution, reliable pending requests, resource transactions, or loop AudioWorklet behavior. Compiler preparation is allowed to allocate; the guard does not falsely impose callback constraints on it. Stage 2 remains open for the resolver, fixed scratch/state, synthetic observations, independent musical simulator, and guarded rejection/replacement paths.
