@@ -10,6 +10,8 @@ Submit `Command::Schedule { at, action, payload }` on `Lane::Normal`. `at` is an
 |---|---|---|
 | `Action::Parameter { node, parameter, value }` | Empty `Box<[u8]>`; finite value | Calls `set_parameter` before that frame's samples |
 | `Action::Midi { node, port }` | One complete validated MIDI 1.0 packet | Injects into that node's MIDI input at that frame |
+| `Action::Planner { planner, operation }` | Family-typed operation plus bounded borrowed bytes | Immediate or pending domain terminal result |
+| `Action::Processor { node, operation }` | Family-typed operation plus bounded borrowed bytes | Immediate typed processor result |
 
 The processor defines parameter IDs, units, ranges, and smoothing. The runtime provides timing, not interpolation.
 
@@ -57,7 +59,9 @@ Default: min(256, 64) = 64
 
 Every admitted event reserves an external delivery/result slot, even when events share a frame or are far in the future. Unread execution results retain the reservation. Internal planner intervals consume no such slots; the legacy `budgets.subranges` field is ignored. Raising `scheduled_events` alone may therefore do nothing. Use a bounded lookahead window rather than filling the scheduler with an entire long sequence.
 
-For equal timestamps, scheduled ordering is by node, then action kind (parameter before MIDI for that node), parameter/port, then submission sequence. This is not a global “all parameters before all MIDI” rule across nodes.
+For equal timestamps, planner targets precede processor targets. Within a processor target, ordering is parameter, MIDI, then typed processor operation, followed by parameter/port and submission sequence. This preserves ordinary node/kind/port ordering; it is not a global “all parameters before all MIDI” rule across nodes.
+
+A configured planner has one additional, independent recovery receipt; it does not consume the normal capacity above. See [Typed operations and recovery](planning.md#typed-operations-and-terminal-receipts) for pending tokens, queued cancellation, payload limits, and separate requested/delivery/terminal frames. `Execution::operation_result` is authoritative for the domain outcome; generic delivery success alone does not mean the domain action applied.
 
 ## MIDI buffers and ordering
 

@@ -64,10 +64,27 @@ pub struct Interval {
     pub end: Frame,
 }
 
-pub struct PlanContext<'a> {
+pub struct PlanContext<'a, O = (), R = ()> {
     pub frame: Frame,
     pub ceiling: Frame,
     pub resources: crate::resource::ResourceIo<'a>,
+    pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Disposition<R> {
+    Complete(R),
+    Pending,
+}
+
+pub struct OperationContext<'a, O, R> {
+    pub token: crate::schedule::ReceiptToken,
+    pub requested_frame: Frame,
+    pub frame: Frame,
+    pub recovery: bool,
+    pub payload: &'a [u8],
+    pub resources: crate::resource::ResourceIo<'a>,
+    pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -76,10 +93,11 @@ pub struct Observation<O> {
     pub value: O,
 }
 
-pub struct FinishContext<'a, O> {
+pub struct FinishContext<'a, V, O = (), R = ()> {
     pub interval: Interval,
-    pub observations: &'a [Observation<O>],
+    pub observations: &'a [Observation<V>],
     pub resources: crate::resource::ResourceIo<'a>,
+    pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 
 /// Implementations own initialized, pre-touched decision storage before runtime
@@ -88,14 +106,34 @@ pub struct FinishContext<'a, O> {
 pub trait Planner: Send {
     type Decision: Copy + Send + 'static;
     type Observation: Copy + Default + Send + 'static;
+    type Operation: Copy + Send + 'static;
+    type Result: Copy + Send + 'static;
 
     /// Queried only during preparation. None selects the signal-only lifecycle.
     fn spec(&self) -> Option<PlannerSpec>;
     fn decisions(&self) -> &[Self::Decision];
     /// Settle the current boundary and return frame < end <= ceiling.
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error>;
+    fn plan(
+        &mut self,
+        context: PlanContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<Frame, Error>;
     /// Consume this interval's observations without settling its end boundary.
-    fn finish(&mut self, context: FinishContext<'_, Self::Observation>) -> Result<(), Error>;
+    fn finish(
+        &mut self,
+        context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
+    ) -> Result<(), Error>;
+    /// Recovery is payload-free and must complete no later than planning at the
+    /// delivery frame. Structural edits and arbitrary deferred work are not safe.
+    fn recovery_safe(_operation: Self::Operation) -> bool {
+        false
+    }
+    fn operation(
+        &mut self,
+        _operation: Self::Operation,
+        _context: OperationContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<Disposition<Self::Result>, Error> {
+        Err(Error::InvalidEvent)
+    }
 }
 
 #[derive(Default)]
@@ -103,6 +141,8 @@ pub struct NoPlanner;
 impl Planner for NoPlanner {
     type Decision = ();
     type Observation = ();
+    type Operation = ();
+    type Result = ();
     fn spec(&self) -> Option<PlannerSpec> {
         None
     }

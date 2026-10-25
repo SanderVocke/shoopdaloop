@@ -7,8 +7,8 @@ use crate::graph::{
 };
 use crate::midi::ResetState;
 use crate::planner::{
-    ConsumerAccess, ConsumerSpec, DecisionView, FinishContext, Interval, NoPlanner, Observations,
-    PlanContext, Planner,
+    ConsumerAccess, ConsumerSpec, DecisionView, Disposition, FinishContext, Interval, NoPlanner,
+    Observations, OperationContext, PlanContext, Planner,
 };
 use crate::processor::{ProcessBlock, Processor};
 use crate::resource::{self, ResourceStore};
@@ -57,7 +57,7 @@ pub enum Command<P, L: Planner = NoPlanner> {
     },
     Schedule {
         at: Frame,
-        action: Action,
+        action: Action<L::Operation>,
         payload: Box<[u8]>,
     },
     ResetMidi,
@@ -99,7 +99,7 @@ pub struct Diagnostics {
 
 pub struct Control<P, L: Planner = NoPlanner> {
     transport: ControlEndpoint<Command<P, L>, Retired<P>, Diagnostics>,
-    executions: schedule::Results,
+    executions: schedule::Results<L::Operation, L::Result>,
     config: PreparedConfig,
 }
 impl<P, L: Planner> Control<P, L> {
@@ -144,7 +144,7 @@ impl<P, L: Planner> Control<P, L> {
     pub fn try_completion(&mut self) -> Option<transport::Completion<Command<P, L>, Retired<P>>> {
         self.transport.try_completion()
     }
-    pub fn try_execution(&mut self) -> Option<Execution> {
+    pub fn try_execution(&mut self) -> Option<Execution<L::Operation, L::Result>> {
         self.executions.try_execution()
     }
     pub fn try_telemetry(&mut self) -> Option<Diagnostics> {
@@ -218,7 +218,7 @@ pub struct GraphRuntime<P, L: Planner = NoPlanner> {
     diagnostics: Diagnostics,
     emergency: Option<Retired<P>>,
     ingress_fault: bool,
-    scheduler: Scheduler,
+    scheduler: Scheduler<L::Operation, L::Result>,
     recovery: Vec<ResetState>,
     recovery_remaining: Vec<usize>,
     resources: ResourceStore,
@@ -312,6 +312,10 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
         };
         let observations =
             Observations::new(signature.map_or(0, |spec| spec.observation_capacity))?;
+        let operation_bytes = nodes.iter().fold(
+            signature.map_or(0, |spec| spec.operation_bytes),
+            |bytes, node| bytes.max(node.access.operation_bytes),
+        );
         let limits = config.limits();
         let mut slots: Vec<_> = (0..limits.max_nodes).map(|_| None).collect();
         for node in nodes {
@@ -332,7 +336,8 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
             recovery_per_cycle: 1,
             publications_per_cycle: limits.budgets.publications,
         })?;
-        let (executions, scheduler) = schedule::scheduler(config)?;
+        let (executions, scheduler) =
+            schedule::typed_scheduler(config, operation_bytes, signature.is_some())?;
         Ok((
             Control {
                 transport: control,
@@ -493,8 +498,13 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                     action,
                     payload,
                 } => {
-                    if operation.lane != Lane::Normal {
+                    let recovery_safe = matches!(*action, Action::Planner { operation, .. } if L::recovery_safe(operation));
+                    if operation.lane == Lane::Recovery && !recovery_safe {
                         Err(Error::InvalidState)
+                    } else if operation.lane == Lane::Recovery
+                        && (!payload.is_empty() || *at > self.diagnostics.frame)
+                    {
+                        Err(Error::InvalidEvent)
                     } else if payload.len() > self.scheduler.payload_limit()
                         || payload.len() > limits.budgets.transfer_bytes - limits.resource_io_bytes
                     {
@@ -502,26 +512,25 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                     } else if payload.len() > self.resources.copy_remaining() {
                         break;
                     } else {
-                        let target =
-                            self.catalog
-                                .node(action.node())
-                                .and_then(|spec| match action {
-                                    Action::Midi { port, .. }
-                                        if *port as usize >= spec.ports.midi_inputs =>
-                                    {
-                                        Err(Error::InvalidGraph)
-                                    }
-                                    _ => Ok(()),
-                                });
-                        target
+                        validate_action(&self.catalog, *action, payload.len())
                             .and_then(|()| {
-                                self.scheduler.admit(
-                                    operation.sequence,
-                                    *at,
-                                    self.diagnostics.frame,
-                                    *action,
-                                    payload,
-                                )
+                                if operation.lane == Lane::Recovery {
+                                    self.scheduler.admit_recovery(
+                                        operation.sequence,
+                                        *at,
+                                        self.diagnostics.frame,
+                                        *action,
+                                        payload,
+                                    )
+                                } else {
+                                    self.scheduler.admit(
+                                        operation.sequence,
+                                        *at,
+                                        self.diagnostics.frame,
+                                        *action,
+                                        payload,
+                                    )
+                                }
                             })
                             .and_then(|admission| {
                                 self.resources.charge_external(payload.len(), 0)?;
@@ -675,55 +684,108 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
     ) -> Result<(), Error> {
-        let limits = self.clock.config().limits();
         let mut start = 0;
-        let mut remaining_events = limits.budgets.events;
+        let mut remaining_events = self.scheduler.delivery_limit();
         while start < audio.frames {
             let at = audio.frame.checked_add(start)?;
             for _ in 0..remaining_events {
-                let Some(event) = self.scheduler.due(at) else {
+                let Some(mut event) = self.scheduler.deliver(at) else {
                     break;
                 };
                 remaining_events -= 1;
-                let sequence = event.sequence;
-                let node = event.action.node();
-                let result = self
-                    .slots
-                    .get_mut(node.slot() as usize)
-                    .and_then(Option::as_mut)
-                    .filter(|slot| slot.id == node && slot.processor.is_some())
-                    .ok_or(Error::InvalidId)
-                    .and_then(|slot| match event.action {
-                        Action::Parameter {
-                            parameter, value, ..
-                        } => slot
-                            .processor
-                            .as_mut()
-                            .ok_or(Error::InvalidId)?
-                            .set_parameter(parameter, value),
-                        Action::Midi { port, .. } => {
-                            if !self.active.as_ref().is_some_and(|plan| plan.contains(node)) {
-                                return Err(Error::InvalidId);
+                match event.action {
+                    Action::Planner { planner, operation } => {
+                        let result = if self.catalog.planner().is_none_or(|spec| spec.id != planner)
+                        {
+                            Err(Error::InvalidId)
+                        } else {
+                            self.planner.operation(
+                                operation,
+                                OperationContext {
+                                    token: event.token,
+                                    frame: at,
+                                    requested_frame: event.requested_frame,
+                                    recovery: event.lane == Lane::Recovery,
+                                    payload: event.payload,
+                                    resources: self.resources.io(),
+                                    receipts: event.receipts.reborrow(),
+                                },
+                            )
+                        };
+                        match result {
+                            Ok(Disposition::Complete(value)) => {
+                                event.receipts.complete(event.token, Ok(value))?
                             }
-                            let input = slot
-                                .buffers
-                                .injected
-                                .get_mut(port as usize)
-                                .ok_or(Error::InvalidGraph)?;
-                            let result = input.push(0, 1, event.payload);
-                            if result == Err(Error::Full) {
-                                input.force_reset(0);
-                            }
-                            result
+                            Ok(Disposition::Pending) => {}
+                            Err(error) => event.receipts.complete(event.token, Err(error))?,
                         }
-                    });
-                if result == Err(Error::Full) {
-                    increment(
-                        &mut self.diagnostics.midi_overflows,
-                        &mut self.diagnostics.counter_overflow,
-                    );
+                    }
+                    action => {
+                        let node = action.node().ok_or(Error::InvalidId)?;
+                        let result = self
+                            .slots
+                            .get_mut(node.slot() as usize)
+                            .and_then(Option::as_mut)
+                            .filter(|slot| slot.id == node && slot.processor.is_some())
+                            .ok_or(Error::InvalidId)
+                            .and_then(|slot| match action {
+                                Action::Parameter {
+                                    parameter, value, ..
+                                } => slot
+                                    .processor
+                                    .as_mut()
+                                    .ok_or(Error::InvalidId)?
+                                    .set_parameter(parameter, value)
+                                    .map(|()| None),
+                                Action::Midi { port, .. } => {
+                                    if !self.active.as_ref().is_some_and(|plan| plan.contains(node))
+                                    {
+                                        return Err(Error::InvalidId);
+                                    }
+                                    let input = slot
+                                        .buffers
+                                        .injected
+                                        .get_mut(port as usize)
+                                        .ok_or(Error::InvalidGraph)?;
+                                    let result = input.push(0, 1, event.payload);
+                                    if result == Err(Error::Full) {
+                                        input.force_reset(0);
+                                    }
+                                    result.map(|()| None)
+                                }
+                                Action::Processor { operation, .. } => slot
+                                    .processor
+                                    .as_mut()
+                                    .ok_or(Error::InvalidId)?
+                                    .operation(
+                                        operation,
+                                        crate::processor::OperationContext {
+                                            frame: at,
+                                            requested_frame: event.requested_frame,
+                                            sequence: event.token.sequence(),
+                                            payload: event.payload,
+                                            resources: self.resources.io(),
+                                        },
+                                    )
+                                    .map(Some),
+                                Action::Planner { .. } => Err(Error::InvalidState),
+                            });
+                        if matches!(action, Action::Processor { .. }) {
+                            event.receipts.complete(
+                                event.token,
+                                result.and_then(|value| value.ok_or(Error::InvalidState)),
+                            )?;
+                        } else {
+                            if matches!(result, Err(Error::Full)) {
+                                increment(
+                                    &mut self.diagnostics.midi_overflows,
+                                    &mut self.diagnostics.counter_overflow,
+                                );
+                            }
+                            event.receipts.ordinary(event.token, result.map(|_| ()))?;
+                        }
+                    }
                 }
-                self.scheduler.finish(sequence, at, result)?;
                 increment(
                     &mut self.diagnostics.scheduled_events,
                     &mut self.diagnostics.counter_overflow,
@@ -744,10 +806,14 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                     frame: at,
                     ceiling,
                     resources: self.resources.io(),
+                    receipts: self.scheduler.receipts(at),
                 })?
             } else {
                 ceiling
             };
+            if self.scheduler.recovery_pending() {
+                return Err(Error::InvalidState);
+            }
             if selected <= at || selected > ceiling {
                 return Err(Error::InvalidFrame);
             }
@@ -771,6 +837,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                     interval,
                     observations: self.observations.values(),
                     resources: self.resources.io(),
+                    receipts: self.scheduler.receipts(selected),
                 })?;
             }
             increment(
@@ -883,6 +950,38 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
         }
         Ok(())
     }
+}
+
+fn validate_action<O: Copy>(
+    catalog: &Catalog,
+    action: Action<O>,
+    bytes: usize,
+) -> Result<(), Error> {
+    let limit = match action {
+        Action::Planner { planner, .. } => {
+            catalog
+                .planner()
+                .filter(|spec| spec.id == planner)
+                .ok_or(Error::InvalidId)?
+                .operation_bytes
+        }
+        Action::Processor { node, .. } => catalog.consumer(node)?.operation_bytes,
+        Action::Midi { node, port } => {
+            let spec = catalog.node(node)?;
+            if port as usize >= spec.ports.midi_inputs {
+                return Err(Error::InvalidGraph);
+            }
+            catalog.config().limits().midi_bytes_per_port
+        }
+        Action::Parameter { node, .. } => {
+            catalog.node(node)?;
+            return Ok(());
+        }
+    };
+    if bytes > limit {
+        return Err(Error::Capacity);
+    }
+    Ok(())
 }
 
 fn remove_processor<P>(

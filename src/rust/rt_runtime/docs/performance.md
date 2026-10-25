@@ -38,7 +38,7 @@ Choose realistic upper bounds, then measure a mixed workload—not just an idle 
 |---|---:|---|
 | `commands` | 8 | Command dispatch/dequeue work; cancellations also consume transport work |
 | `publications` | 8 | Terminal publication allowance; telemetry has a separate allowance so it cannot steal completion capacity |
-| `events` | 64 | Scheduler admission/execution bound; also host recovery attempts per output |
+| `events` | 64 | Normal scheduler admission/execution bound; also host MIDI recovery attempts per output. Planned runtimes reserve one additional domain-recovery receipt |
 | `subranges` | 65 | Legacy source-compatible field; ignored, including zero |
 | `transfer_bytes` | 4096 | Resource copies and scheduled MIDI payload staging, **not ordinary audio/MIDI routing** |
 | `validation_steps` | 32 | Graph validation, MIDI upload byte validation, MIDI capture checks, and resource reclamation |
@@ -48,7 +48,7 @@ Host port counts and resource I/O reservations may be zero; the ignored `subrang
 ### Common surprises at the defaults
 
 ```text
-scheduled event/result slots       min(256, 64) = 64
+normal event/result slots          min(256, 64) = 64; planned runtimes reserve one extra recovery slot
 MIDI upload validation throughput  at most 32 bytes/callback before other work
 resource payload pool             256 × 4096 = 1 MiB (not total runtime memory)
 reserved processor resource I/O    zero — background commands can use the budget
@@ -62,7 +62,7 @@ These are payload estimates, not a complete allocator/RSS accounting:
 |---|---|
 | Processor audio scratch | Prepared-node audio input/output ports × `max_frames` × 4 bytes |
 | Each MIDI arena | `(midi_events_per_port + 32) × size_of::<Event>() + midi_bytes_per_port + 96` |
-| Scheduled payloads | Effective event capacity × `min(midi_bytes_per_port, budgets.transfer_bytes)` |
+| Scheduled payloads | (Normal event capacity + optional recovery slot) × `min(max(midi_bytes_per_port, declared operation_bytes), budgets.transfer_bytes)` |
 | Resource payloads | `resource_pages × page_bytes` |
 | Additional storage | Processor state, slot/catalog/plan metadata, queues, resource metadata, scheduler records, host buffers, staging buffers |
 

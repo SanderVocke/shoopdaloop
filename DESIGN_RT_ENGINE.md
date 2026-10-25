@@ -1,6 +1,6 @@
 # Generic real-time runtime: initial design and coordination evolution
 
-The initial-design and implementation sections below describe the delivered crate. The final section proposes its next evolution for `INTER_LOOP_PROCESSING.md` and `PROPOSAL_LOOP_LAYER.md`; those facilities are not implemented yet. Historical limits remain an accurate description of the initial API, not a requirement to cap future internal musical transitions.
+The initial-design and implementation sections below describe the delivered crate. The final section proposes its next evolution for `INTER_LOOP_PROCESSING.md` and `PROPOSAL_LOOP_LAYER.md`; generic planner/delivery facilities are implemented in loop-layer Stage 3, while indexed resources and integrated loop/media execution remain later stages. Historical limits remain an accurate description of the initial API, not a requirement to cap future internal musical transitions.
 
 ## Purpose and boundary
 
@@ -177,12 +177,12 @@ First test the resolver independently, then the generic lifecycle with synthetic
 
 Longer preplanned span batches or reduced traversal are later optimizations. They require proof that intermediate observations cannot invalidate the plan; optional storage exhaustion must preserve incremental semantics. Implementation must update current API contracts and tests explicitly when these extensions land.
 
-### Stage-1 integration decisions (specified, not implemented)
+### Stage-1 integration decisions and Stage-3 generic implementation
 
 `docs/loop_layer/RUNTIME_INTEGRATION.md` specifies one generic prepared planner per runtime, defaulting to `NoPlanner`, with typed plain-data decisions, observations, operations, and terminal results. Catalog/descriptor planning metadata and consumer bindings are separate from signal ports. Immutable decision borrows end before the planner consumes observations; a compile-checked safe-Rust prototype exercises that lifetime separation and rejects mutation while a decision view remains borrowed.
 
-Pending musical requests retain generation-checked terminal receipts from the runtime's existing result machinery. They leave the timestamped due queue without releasing their terminal reservation; automatic wraps do not require such receipts. Recovery-safe cancellation/stop must remain admissible independently of normal pending-result capacity. Fixed receiver-side metadata staging supports native and browser program transfer without Rust pointers or a second ownership bus.
+Pending musical requests retain generation-checked terminal receipts from the runtime's existing result machinery. They leave the timestamped due queue without releasing their terminal reservation; automatic wraps do not require such receipts. Recovery-safe cancellation/stop must remain admissible independently of normal pending-result capacity. One independently reserved recovery receipt now supports payload-free cancellation/stop, with terminal completion required before advancing past delivery-frame planning. Domain outcomes and requested/delivered/terminal frames are distinct. Fixed receiver-side program staging remains a later requirement for native/browser transfer without Rust pointers or a second ownership bus.
 
 Resource work is divided into fixed storage/owners, external admission, budgeted background maintenance, counted required rendering, and non-semantic diagnostics. Prepared version-scoped indexes and group capture reservations must make freeze-to-play immediate. Failed preflight may re-preview an uncommitted boundary only by adding a new latched group/activation failure, giving a finite structural progress argument rather than an arbitrary retry allowance. No request outcome, generation, or musical event is published twice across previews. Required rendering cannot consume a throttled background-copy quota.
 
-The loop layer's precise pulse/conflict/termination model belongs in `docs/loop_layer/SEMANTICS.md`, not the generic executor. These specifications and the small prototype are contract-design evidence only; production implementation, heap guards, browser execution, and API migration remain later plan stages.
+The loop layer's precise pulse/conflict/termination model belongs in `docs/loop_layer/SEMANTICS.md`, not the generic executor. The generic planner lifecycle and typed receipt implementation now have guarded native/Wasm tests, selected Miri coverage, a production-trait lifetime proof, and existing-host regression evidence. Indexed resources, capture transactions, the loop adapter, and a real loop AudioWorklet remain later-stage requirements; generic fixture regression is not evidence for those features.

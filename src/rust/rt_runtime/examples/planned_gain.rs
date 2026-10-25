@@ -13,6 +13,11 @@ use rt_runtime::schedule::Action;
 use rt_runtime::transport::Lane;
 use rt_runtime::{Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId};
 
+#[derive(Clone, Copy)]
+enum GainOperation {
+    Set(f32),
+}
+
 struct AlternatingGain {
     decision: [f32; 1],
     id: PlannerId,
@@ -20,6 +25,8 @@ struct AlternatingGain {
 impl Planner for AlternatingGain {
     type Decision = f32;
     type Observation = usize;
+    type Operation = GainOperation;
+    type Result = f32;
     fn spec(&self) -> Option<PlannerSpec> {
         Some(PlannerSpec {
             id: self.id,
@@ -31,14 +38,17 @@ impl Planner for AlternatingGain {
     fn decisions(&self) -> &[f32] {
         &self.decision
     }
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn plan(&mut self, context: PlanContext<'_, GainOperation, f32>) -> Result<Frame, Error> {
         self.decision[0] = 1.0 + ((context.frame.0 / 8) % 2) as f32;
         Ok(context
             .frame
             .checked_add(8 - (context.frame.0 % 8) as usize)?
             .min(context.ceiling))
     }
-    fn finish(&mut self, context: FinishContext<'_, usize>) -> Result<(), Error> {
+    fn finish(
+        &mut self,
+        context: FinishContext<'_, usize, GainOperation, f32>,
+    ) -> Result<(), Error> {
         if context.observations.len() != 1
             || context.observations[0].value as u64
                 != context.interval.end.0 - context.interval.start.0
@@ -66,12 +76,17 @@ impl Processor<AlternatingGain> for Gain {
             operation_bytes: 0,
         }
     }
-    fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
-        if parameter != 0 {
+    fn operation(
+        &mut self,
+        operation: GainOperation,
+        _context: rt_runtime::processor::OperationContext<'_>,
+    ) -> Result<f32, Error> {
+        let GainOperation::Set(value) = operation;
+        if !value.is_finite() {
             return Err(Error::InvalidParameter);
         }
         self.parameter = value;
-        Ok(())
+        Ok(value)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, AlternatingGain>) -> Result<(), Error> {
         let gain = *block.decision.as_ref().ok_or(Error::InvalidState)?.value * self.parameter;
@@ -150,10 +165,9 @@ fn main() -> Result<(), Error> {
             Lane::Normal,
             Command::Schedule {
                 at: Frame(13),
-                action: Action::Parameter {
+                action: Action::Processor {
                     node,
-                    parameter: 0,
-                    value: 0.5,
+                    operation: GainOperation::Set(0.5),
                 },
                 payload: Box::new([]),
             },
@@ -182,6 +196,7 @@ fn main() -> Result<(), Error> {
     let execution = control.try_execution().ok_or(Error::InvalidState)?;
     assert_eq!(execution.actual_frame, Frame(13));
     assert_eq!(execution.result, Ok(()));
+    assert_eq!(execution.operation_result, Some(0.5));
     assert_eq!(runtime.diagnostics().subranges, 5);
     while control.try_completion().is_some() {}
     println!("planned gain: 32 checked samples, five intervals, one exact-frame event");

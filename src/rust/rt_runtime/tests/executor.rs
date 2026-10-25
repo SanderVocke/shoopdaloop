@@ -965,7 +965,7 @@ fn scheduled_journal_is_sample_identical_under_seeded_block_partitions() {
                     .count() as f32;
                 assert_eq!(h.output[0][index], expected);
             }
-            assert!(h.runtime.diagnostics().subranges <= limits.budgets.subranges);
+            assert!(h.runtime.diagnostics().subranges <= limits.budgets.events + 1);
             assert!(h.runtime.diagnostics().scheduled_events <= limits.budgets.events);
             rendered += frames;
         }

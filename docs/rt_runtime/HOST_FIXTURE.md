@@ -2,6 +2,8 @@
 
 Status: implemented and verified on Linux with native debug/release, real OfflineAudioContext, and live AudioContext. See `VALIDATION.md`, `evidence/hosts-stage6.json`, and `tests/rt_runtime_host/README.md` for commands and evidence. Cross-platform CI and broader adversarial/performance gates remain in stages 7–8. This fixture is test-only, not a production host adapter or a new production abstraction crate.
 
+The loop-layer Stage 3 regression keeps this fixture on `NoPlanner` and the existing `RTR1` wire format. New generic planner descriptors and typed operations are not carried by that codec. Native and actual worklet reruns retain the original byte-identical journal; loop-domain wire validation and host execution belong to the separate planned loop fixture.
+
 ## Packaging and shared logic
 
 Use a helper manifest under `tests/rt_runtime_host` with its own workspace, `publish = false`, and `cdylib`/`rlib` outputs. Depend on `rt_runtime` through its public API. Wasm bindings are target-specific fixture dependencies, never runtime production dependencies. Reuse the counting allocator from the runtime test support for native and Wasm fixture code.

@@ -2,7 +2,10 @@ use rt_runtime::planner::{NoPlanner, PlanContext, Planner};
 use rt_runtime::resource::ResourceStore;
 use rt_runtime::{Config, Error, Frame};
 
-fn settle<L: Planner>(planner: &mut L, context: PlanContext<'_>) -> Result<Frame, Error> {
+fn settle<L: Planner>(
+    planner: &mut L,
+    context: PlanContext<'_, L::Operation, L::Result>,
+) -> Result<Frame, Error> {
     let decisions = planner.decisions();
     #[cfg(compile_fail_reuse)]
     {
@@ -19,6 +22,8 @@ fn settle<L: Planner>(planner: &mut L, context: PlanContext<'_>) -> Result<Frame
 
 fn main() {
     let mut planner = NoPlanner;
+    let (_results, mut scheduler) =
+        rt_runtime::schedule::scheduler(Config::default().prepare().unwrap()).unwrap();
     let mut resources = ResourceStore::new(Config::default().prepare().unwrap()).unwrap();
     let end = settle(
         &mut planner,
@@ -26,6 +31,7 @@ fn main() {
             frame: Frame(0),
             ceiling: Frame(128),
             resources: resources.io(),
+            receipts: scheduler.receipts(Frame(0)),
         },
     )
     .unwrap();

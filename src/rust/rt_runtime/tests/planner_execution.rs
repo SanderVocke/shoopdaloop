@@ -56,6 +56,8 @@ struct Clock {
 impl Planner for Clock {
     type Decision = Decision;
     type Observation = usize;
+    type Operation = ();
+    type Result = ();
     fn spec(&self) -> Option<PlannerSpec> {
         Some(PlannerSpec {
             id: planner_id(),
@@ -618,6 +620,8 @@ struct BudgetClock {
 impl Planner for BudgetClock {
     type Decision = ();
     type Observation = ();
+    type Operation = ();
+    type Result = ();
     fn spec(&self) -> Option<PlannerSpec> {
         Some(PlannerSpec {
             id: planner_id(),

@@ -55,7 +55,7 @@ The [gain graph example](examples/gain_graph.rs) checks output samples, exact-fr
 
 ## Current boundaries
 
-- Generic planning supports borrowed decisions, observations, and internal intervals through `GraphRuntime<P, L = NoPlanner>`. Typed domain operation delivery and pending runtime receipts remain unimplemented. Planner resource access still shares the existing I/O quotas; indexed required-render access and capture transactions remain future work.
+- Generic planning supports borrowed decisions, observations, and internal intervals through `GraphRuntime<P, L = NoPlanner>`. Typed planner/processor operations retain reliable terminal receipts, with independent recovery admission. Planner resource access still shares the existing I/O quotas; indexed required-render access and capture transactions remain future work.
 - Graphs are acyclic: no feedback edges or automatic delay compensation.
 - Processor slots and port signatures are reserved at startup. Rewiring is live; arbitrary new slots or larger signatures are not.
 - Audio processing uses planar `f32`; resource audio uses interleaved little-endian `f32`. Conversion, resampling, codecs, and playback DSP belong to the host/processors.

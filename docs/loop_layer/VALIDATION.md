@@ -15,12 +15,12 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | Criterion | Planned implementation/evidence | Status |
 | --- | --- | --- |
 | LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
-| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver and generic runtime binding/view/interval lifecycle verified; domain delivery and loop integration pending |
+| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver and generic runtime binding/view/interval/typed-delivery lifecycle verified; loop integration pending |
 | LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution verified; media/runtime/host proof pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
 | LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
 | LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Pending new paths; original runtime baseline passes |
-| LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Pending new paths |
+| LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic typed receipts/recovery and selected Miri verified; integrated domain ownership pending |
 | LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Pending |
 | LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Pending |
 | LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Pending |
@@ -290,3 +290,44 @@ Fresh existing-host evidence again has 2601 offline callbacks / 332928 frames, f
 ### Outstanding Stage 3 work
 
 Typed domain operation delivery, retained pending runtime receipts, recovery-safe domain cancellation/stop under normal saturation, and their malformed/stale/ownership tests remain unimplemented. `operation_bytes` currently validates signatures only. Planner/consumer resource access still uses the initial shared `ResourceIo` quotas; required-render indexing and capture transactions remain Stage 4. The production loop resolver is not yet attached to this generic lifecycle. No Stage 3 completion or end-to-end LL-A claim follows from this milestone.
+
+## Stage 3 — Complete generic planning and typed delivery
+
+Milestone: `feat(rt-runtime): retain typed receipts with independent recovery` (the commit introducing this section). Evidence: [`evidence/delivery-stage3.json`](evidence/delivery-stage3.json) and [`evidence/delivery-stage3-provenance.json`](evidence/delivery-stage3-provenance.json). The source base is `6028f8f8`; raw logs are under `target/loop-layer-delivery-stage3/`. Earlier Stage 3 reports remain unchanged historical milestones.
+
+### Typed operations, receipts, and recovery
+
+`Planner::Operation` and `Planner::Result` define compact Copy/Send data. `Action::Planner` and `Action::Processor` use distinct generational target identities; ordinary parameter/MIDI actions remain available. Prepared signatures bound payload bytes, scheduler storage checks account for concrete operation/result sizes, and a larger typed-payload stride does not increase MIDI packet limits. `Action::target()` exposes the target kind; `node()` now returns an optional processor identity rather than inventing a node identity for a planner.
+
+Processor operations return immediate typed results. Planner operations receive a borrowed payload/resource/receipt context and return `Complete` or `Pending`. Delivery removes the event from the due queue while retaining its terminal reservation. A token combines runtime-instance scope, slot, and per-lane monotonic sequence; stale, foreign, duplicate, and premature completion attempts are explicit errors. Disjoint payload and receipt borrows allow safe completion during delivery without unchecked pointers or aliasing. Scope allocation is preparation-only; tokens are not portable capabilities between independent Wasm instances.
+
+Execution records distinguish requested, optional delivered, and terminal frames. Delivery lateness does not count legitimate pending time. Generic runtime success is separate from the domain terminal value, including refusal/cancellation/supersession. Queued typed cancellation produces no delivery and prevents subsequent execution; delivered pending cancellation completes the retained token. Ticket cancellation retains its original pre-dequeue cut. Original owning payloads return through command completions; Copy terminal records release their credits only through receipt and callback-boundary recycling.
+
+One additional recovery receipt is independent of all normal pending/unread results. Only classified payload-free, nonstructural planner recovery actions at or before the current frame are admitted. They must finish immediately or in planning at that frame; an unresolved recovery receipt faults before interval execution. Domain adapters must also reserve their own recovery state independently. Per-lane admission sequence checks permit priority recovery to precede older normal dequeue without incorrectly rejecting that normal command. Structural edits remain outside this lane, and finite held validation is not preempted.
+
+### Verification
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **127 passed per profile** |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **123 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Prescribed full nextest workspace | **1980 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **71 passing executions**, including seven receipt-model and eleven typed-executor tests; existing stress seeds retained |
+| Production-trait lifetime proof | Positive build/run and deliberate **E0502** refusal still pass with receipt contexts |
+| Planned-gain example, debug/release | Exact 32 samples, five intervals, typed processor result at frame 13 |
+| Warning-denied workspace build/rustdoc, formatting, boundary/test/Wasm/tracing policies | Passed; both four-target audits and five Python policy tests retained |
+| Existing native host debug/release and fresh offline/live AudioWorklet | Passed; both intentional failure canaries detected; unchanged golden journal |
+
+The independent receipt model runs **8192 generated steps** natively and in Wasm (64 explicitly reduced steps under Miri), with seed `0xa36b20472f5881d9`. It models three slots, queued/delivered/terminal/read states, normal/recovery reservations, and a terminal FIFO independently of scheduler internals. Every accepted action/result, requested/delivery/completion frame, cancellation, credit snapshot, and final return to full capacity is checked. Oracle allocation stays outside guarded production calls.
+
+Typed executor tests compare complete samples and terminal records across whole, one-sample, and irregular host partitions. They cover delayed completion, callback ends/zero callbacks, malformed payloads, domain refusal versus runtime error, exact-frame planner/processor/parameter ordering, queued and pending cancellation, stale planner IDs, processor retirement/reinstallation, and owning payload return. Recovery is exercised with every normal receipt pending or unread, including a full domain pending array and completion during planning before the first affected sample. Unsafe/future/payload-bearing recovery is refused; deliberately nonterminating recovery faults explicitly. Runtime `Full` from a typed operation does not masquerade as MIDI overflow.
+
+The prior interval tests continue to verify frozen ingress and credit snapshots, one telemetry publication per callback, shared resource allowances across 128 internal intervals, observation isolation, and stale-plan preservation. Source review confirms command/maintenance and host MIDI recovery allowances are reset only in the outer callback; delivery and receipt writers cannot replenish them. Native/Wasm guards cover success, refusal, cancellation, stale receipts, and owner retention; Miri exercises the corresponding borrow and ownership paths.
+
+### Compatibility and completion boundary
+
+The independent runtime fixture deliberately retains `NoPlanner` and its `RTR1` wire format; no new operation is disguised as a parameter or claimed to cross that legacy wire. Fresh native/browser runs still agree on **2601 offline callbacks / 332928 frames**, **34 MIDI events**, sample/MIDI/graph hashes **480331717 / 3308430490 / 487351092**, fixed **1507328-byte** memory, and a byte-identical historical journal. The fixture documentation now explicitly states that boundary.
+
+All Stage 3 checklist items are verified. This completes the **generic coordination layer**, not loop/media integration or any end-to-end LL-A acceptance. Required-render resource accounting/indexes/capture transactions remain Stage 4; the loop adapter, program staging, coherent domain state, and new actual loop AudioWorklet remain later stages. No hard callback deadline, production migration, or final-head CI is claimed.

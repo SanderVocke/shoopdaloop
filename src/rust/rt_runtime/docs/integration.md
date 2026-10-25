@@ -45,7 +45,7 @@ A processing error is **not a rollback**. Invalid host blocks leave the clock un
 
 ## Optional planner
 
-Use `GraphRuntime<P, L = NoPlanner>` with `Processor<L>` and a prepared `Planner` to select internal intervals and share immutable decisions with consumers. See [Generic interval planning](planning.md) for preparation, explicit bindings, observation reservations, and the runnable planned-gain example. Internal intervals do not resnapshot ingress or refresh callback-wide allowances. The default `NoPlanner` retains ordinary processor usage.
+Use `GraphRuntime<P, L = NoPlanner>` with `Processor<L>` and a prepared `Planner` to select internal intervals and share immutable decisions with consumers. See [Generic interval planning](planning.md) for preparation, explicit bindings, observation reservations, and the runnable planned-gain example. Internal intervals do not resnapshot ingress or refresh callback-wide allowances. The default `NoPlanner` retains ordinary processor usage. Typed planner operations may retain runtime receipts after delivery; processor operations are immediate. Recovery-safe planner cancellation/stop has one independent result slot and must finish before advancing beyond its delivery frame. See the planning guide for domain outcomes versus generic delivery success.
 
 ## Graph edits
 

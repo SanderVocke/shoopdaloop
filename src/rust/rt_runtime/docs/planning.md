@@ -12,7 +12,7 @@
 4. Call `compile_planned` with explicit `DecisionBinding` records. Each consumer has at most one binding; several consumers can share a slot. Ordinary FX nodes need no binding. The planning prefix, generations, signatures, membership, aggregate observation reservations, and independent signal DAG are validated before activation.
 5. Submit the plan through `Command<P, L>` and drain `Control<P, L>` completions. Replaced/rejected plans retain the ordinary owning-return contract.
 
-The runnable [planned gain example](../examples/planned_gain.rs) checks 32 samples, five internal intervals, and a parameter change at frame 13:
+The runnable [planned gain example](../examples/planned_gain.rs) checks 32 samples, five internal intervals, and a typed processor gain operation at frame 13:
 
 ```sh
 cargo run -p rt_runtime --example planned_gain
@@ -33,6 +33,30 @@ Zero-length host callbacks do nothing. Invalid planner intervals or changed deci
 
 Ingress, event-credit recycling, resource accounting, validation, telemetry publication, and host MIDI recovery remain one host-callback lifecycle. Returning results or traversing many intervals does not refresh those allowances. `Budgets::subranges` is ignored, including zero. Positive frame progress bounds interval count by actual frames, not an arbitrary subdivision quota. Finite same-frame settlement is the planner's responsibility. Application-dependent expensive work may miss a host deadline.
 
-External event/result capacity is `min(scheduled_events, budgets.events)`. Planner boundaries consume no scheduler slots. Diagnostic traversal counters saturate and set `Diagnostics::counter_overflow`; diagnostic exhaustion cannot refuse rendering.
+Normal external event/result capacity is `min(scheduled_events, budgets.events)`. A configured planner also has one independent recovery receipt. Planner boundaries consume no scheduler slots. Diagnostic traversal counters saturate and set `Diagnostics::counter_overflow`; diagnostic exhaustion cannot refuse rendering.
 
-`PlanContext` and `FinishContext` currently expose the existing restricted `ResourceIo`, with its shared callback quotas. Indexed required-render access and transactional capture are not implemented yet. Typed domain operations and pending runtime terminal receipts are also still pending: `operation_bytes` currently participates in signature validation but does not introduce an operation-delivery API. Do not encode domain requests in float parameters as a substitute.
+`PlanContext` and `FinishContext` currently expose the existing restricted `ResourceIo`, with its shared callback quotas. Indexed required-render access and transactional capture are not implemented yet. Typed operations and retained receipts are described below; their delivery does not bypass current resource quotas.
+
+## Typed operations and terminal receipts
+
+A planner family defines associated `Operation` and `Result` types as compact `Copy + Send + 'static` plain data. Submit `Action::Planner { planner, operation }` or `Action::Processor { node, operation }` through `Command::Schedule`. Targets are distinct generational identities. `operation_bytes` bounds borrowed payloads per planner/consumer; payloads also must fit prepared scheduler stride and callback transfer headroom. A larger typed payload arena does not enlarge the MIDI packet limit.
+
+`Processor::operation` returns an immediate typed result. `Planner::operation` receives an `OperationContext` with requested/delivery frames, a runtime-scoped `ReceiptToken`, borrowed payload/resources, and a restricted receipt writer. It returns `Disposition::Complete(result)` or `Disposition::Pending`. Pending delivery leaves the due queue but **does not release its result credit**. Retain only the token and prepared plain-data state, never the borrowed payload/context. Complete retained tokens with `context.receipts.complete(token, result)` during operation, planning, or finishing. Exactly one terminal write is accepted; stale, foreign-runtime, or duplicate tokens are rejected. Completion cannot be backdated before delivery.
+
+`Execution<Operation, Result>` separates:
+
+- `requested_frame`: external scheduled timestamp;
+- `delivered_frame: Option<Frame>`: actual delivery, or `None` for cancellation before delivery;
+- `actual_frame`: terminal completion/cancellation frame;
+- `result`: generic runtime delivery/receipt success or error;
+- `operation_result`: the domain's terminal value, which may itself say applied, refused, cancelled, or superseded.
+
+Generic `result == Ok(())` is **not** proof of domain application: inspect `operation_result`. `late_by()` measures delivery lateness, not time spent legitimately pending. Normal parameter/MIDI results keep `operation_result == None`. Both command completions and execution results must be drained; the former returns original owning payloads, while the latter releases receipt credit at a later callback boundary.
+
+## Recovery and cancellation
+
+Ticket cancellation retains its existing pre-dequeue cut. After delivery, a planner cancels pending domain work by completing its retained receipt with a domain cancellation outcome. `ReceiptWriter::cancel_queued(sequence, outcome)` can cancel a normal typed operation before delivery; ordinary parameter/MIDI automation retains its existing cancellation contract. Queued cancellation reports `delivered_frame == None` and prevents later delivery.
+
+A recovery-safe planner action may use `Lane::Recovery`. `Planner::recovery_safe` must classify only payload-free, nonstructural cancellation/stop-like operations. Future timestamps, payload bytes, ordinary parameter/MIDI actions, and unsafe operations are refused on that lane. One separately prepared recovery receipt remains available even when every normal receipt is pending or unread. Its terminal result must be produced immediately or during planning at the delivery frame, **before any interval advances**; leaving it unresolved is an explicit interface fault. A domain must likewise reserve its own recovery state independently of normal pending storage.
+
+Unread recovery results retain that one credit. Recovery admission does not preempt a held finite validation command. Per-lane monotonic admission sequences permit priority recovery to be dequeued before older normal traffic; the ordinary transport still assigns globally unique submission sequences. Receipt scope identities are local to a Rust/Wasm instance, not transferable capabilities across separate Wasm instances. Host codecs must preserve instance/generation boundaries and encode domain operations explicitly, never Rust pointers or float parameter IDs.

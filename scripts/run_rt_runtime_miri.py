@@ -15,6 +15,8 @@ CASES = [
     ("contracts", [], 12),
     ("planning_graph", [], 8),
     ("planner_execution", [], 7),
+    ("typed_schedule", [], 7),
+    ("typed_execution", [], 11),
     ("wire_properties", [], 3),
     ("resource_properties", [], 1),
     ("mixed_stress", [], 1),

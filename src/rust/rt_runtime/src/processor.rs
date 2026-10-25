@@ -23,6 +23,14 @@ pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
     pub observations: ObservationWriter<'a, L::Observation>,
 }
 
+pub struct OperationContext<'a> {
+    pub frame: Frame,
+    pub requested_frame: Frame,
+    pub sequence: crate::Sequence,
+    pub payload: &'a [u8],
+    pub resources: crate::resource::ResourceIo<'a>,
+}
+
 /// Implementations must not allocate, deallocate, lock, wait, perform I/O, or panic
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
@@ -34,6 +42,14 @@ pub trait Processor<L: Planner = NoPlanner>: Send {
     fn planning(&self) -> ConsumerAccess {
         ConsumerAccess::default()
     }
+    /// Typed processor operations are immediate; only planners may retain receipts.
+    fn operation(
+        &mut self,
+        _operation: L::Operation,
+        _context: OperationContext<'_>,
+    ) -> Result<L::Result, Error> {
+        Err(Error::InvalidEvent)
+    }
     /// Apply a bounded parameter mutation immediately before its target sample.
     fn set_parameter(&mut self, _parameter: u32, _value: f32) -> Result<(), Error> {
         Err(Error::InvalidParameter)
@@ -41,6 +57,13 @@ pub trait Processor<L: Planner = NoPlanner>: Send {
 }
 
 impl<L: Planner, P: Processor<L> + ?Sized> Processor<L> for Box<P> {
+    fn operation(
+        &mut self,
+        operation: L::Operation,
+        context: OperationContext<'_>,
+    ) -> Result<L::Result, Error> {
+        (**self).operation(operation, context)
+    }
     fn planning(&self) -> ConsumerAccess {
         (**self).planning()
     }
