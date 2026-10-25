@@ -1,168 +1,221 @@
 # Proposal: a portable loop-execution layer
 
-## Recommendation
+## Recommendation and governing decision
 
-Build a small, portable loop-execution layer next, rather than replacing the entire ShoopDaLoop backend at once. A working name is `shoop_loop_engine`.
+Build a portable `shoop_loop_engine` around a **loop timeline resolver and separate audio/MIDI renderers**, rather than replacing the entire backend at once or starting with independently clocked loop processors.
 
 Its purpose is:
 
-> Execute prepared audio/MIDI loops, with precisely defined timing, recording, playback, and transition semantics, on top of `rt_runtime`.
+> Resolve loop and composite timing coherently, then execute the resulting audio/MIDI intervals on top of `rt_runtime`.
 
-This is the first layer that understands what a loop means. It should not depend on the GUI, session files, audio devices, browser messaging, or plugin hosting.
+`INTER_LOOP_PROCESSING.md` governs inter-loop behavior: preserve sample-accurate interaction within a host block, settle finite same-frame cascades without per-hop delay, and do not truncate legitimate musical work at an arbitrary transition or subdivision quota. The engine owns correctness and termination; the application owns the CPU cost of the musical workload it requests.
 
-This document proposes an architectural direction, not an approved implementation plan. The generic runtime's proposal and design are retained in `PROPOSAL_RT_ENGINE.md` and `DESIGN_RT_ENGINE.md`.
+This proposal is not an implementation plan or a claim that the required runtime APIs already exist. `PROPOSAL_RT_ENGINE.md` and `DESIGN_RT_ENGINE.md` describe the generic foundation; the latter also identifies the proposed coordination extensions. `DONE_INITIAL_CRATE.md` remains the historical record of the delivered initial crate.
 
 ## Overall layering
 
 | Layer | Responsibility |
 | --- | --- |
-| Application/session policy | Tracks, user actions, composite-loop arrangements, undo, persistence, scripting |
-| Loop execution — build next | Loop positions, modes, coordinated audio/MIDI playback and recording, exact transition behavior |
-| `rt_runtime` | Bounded execution, graph routing, scheduled delivery, resources, ownership, overload, and retirement |
+| Application/session policy | Tracks, scenes, editing and preparing composite programs, user actions, undo, persistence, scripting |
+| Loop execution — build next | Authoritative loop/composite timing, trigger resolution, coordinated transitions, and audio/MIDI execution of interval decisions |
+| `rt_runtime` | Generic planning lifecycle and dependencies, signal DAG execution, prepared decision access, resources, ownership transport, admission, and retirement |
 
-Host adapters sit alongside these layers, connecting the engine to native audio/MIDI facilities or an AudioWorklet. They must not contain a second implementation of loop semantics.
+The planning facilities in the last row are proposed additions, not capabilities of today's `Processor::process` interface.
 
-The division of responsibility is:
+Host adapters connect these layers to native audio/MIDI facilities or an AudioWorklet. They must not contain another implementation of musical semantics.
 
-- Session policy decides **what should happen**.
-- Loop execution defines **exactly what that means for samples, MIDI, and recorded content**.
-- The runtime supplies **the bounded machinery that executes it**.
+- Session policy decides **what should happen** and prepares declarative programs or requests.
+- The loop layer defines **exactly what those requests mean for timing, samples, MIDI, and recorded content**.
+- The runtime supplies **the generic machinery for executing those decisions without callback allocation, locks, waits, or external I/O**.
 
-## Responsibilities of the next layer
+“Application-level resolver” means Shoop-specific functionality, not code running on the GUI thread. The resolver executes serially with its consumers under the render owner.
 
-### 1. A small loop state machine
+## Scope and ownership
 
-Separate loop mechanics from buffer processing:
+### 1. `LoopTimelineResolver`: authoritative musical timing
 
-- Stopped, playing, recording, and eventually replacement modes.
-- Loop position, length, and cycle count.
-- Start, stop, seek, and transition behavior.
-- The distinction between absolute engine frames and positions within a loop.
-- Explicit ordering when recording ends, playback starts, a loop wraps, or content changes at the same frame.
+The resolver owns:
 
-These mechanics should be deterministic enough to test without rendering audio.
+- Logical loop positions, lengths, modes, cycle counts, and pending transitions.
+- Synchronization relationships and simultaneous launch decisions.
+- Trigger occurrences, delivery, and same-frame propagation.
+- Execution semantics of prepared composite timelines.
+- Selection of the next relevant musical boundary.
+- Reactions to recording failures and other execution outcomes that affect later timing.
 
-The existing `BasicLoop` / `AudioMidiLoop` separation provides a useful starting idea, but the contracts should be rederived rather than those implementations ported wholesale. Their queues, state mirrors, and backend dependencies should not be carried into the new layer.
+The runtime retains the absolute engine-frame timebase. The resolver owns the musical interpretation of that timebase; renderers do not advance competing logical loop clocks.
 
-A useful internal interface would conceptually produce:
+Small per-loop state machines can remain independently testable components. They are owned and coordinated by the resolver, not independent processors discovering synchronization by reading one another's partially updated state.
 
-> For this span, play this region, capture these inputs, then perform this boundary transition.
+The existing `BasicLoop` / `AudioMidiLoop` split is useful evidence for separating mechanics from media execution. Extract and specify the existing behavior, but do not port its queues, mirrors, backend dependencies, or incidental traversal-order semantics wholesale.
 
-It need not allocate a list of spans. It can produce and consume spans incrementally under explicit bounds.
+### 2. Audio/MIDI renderers: execute interval decisions
 
-### 2. Audio and MIDI channel execution
+Renderers own media-processing state, not authoritative synchronization state:
 
-Channel execution implements media-specific behavior.
+**Audio:** prepared content access, playback cursors, gain, boundary smoothing, capture handles, and sample-processing state.
 
-**Audio:**
+**MIDI:** timestamped event access, playback cursors, note/controller state, capture state, and defined cleanup/restoration on start, stop, wrap, and seek.
 
-- Read regions from immutable content revisions.
-- Wrap playback.
-- Apply gain and defined boundary smoothing.
-- Capture input into prepared storage.
-- Select new content at an explicit boundary.
+MIDI is not an audio-channel abstraction with a different sample type. Its discontinuities require state transitions as well as position changes.
 
-**MIDI:**
+A coherent decision view conceptually specifies:
 
-- Read timestamped events and rebase their offsets.
-- Track relevant note/controller state.
-- Handle start, stop, wrap, and seek correctly.
-- Define note cleanup and state restoration.
-- Respect bounded event capacity and recovery behavior.
+> During absolute frames `[a, b)`, use this mode and content revision, play from this logical position, and capture these inputs.
 
-MIDI deserves its own implementation, not an audio-channel abstraction with a different sample type. MIDI discontinuities are state transitions, not merely changes in position.
+Implementation cursors are permitted, but must follow the published decision rather than become another synchronization authority. Renderers return compact observations when an outcome can affect future timing.
 
-### 3. Coordinated execution of a loop's channels
+### 3. One logical loop need not be one indivisible graph node
 
-An audio/MIDI loop should have one authoritative position and transition decision. Its channels must not independently calculate when recording ends or playback wraps.
+All channels of a logical loop share the resolver's position and transition decisions. That does not require playback and recording to execute together.
 
-The starting point should be one logical loop processor owning the loop clock and channel execution state, with multiple audio/MIDI ports exposed to the runtime graph. This gives coordinated transitions a manageable implementation boundary without requiring shared mutable state between graph nodes.
+For example:
 
-Channel-processing code should remain separable internally. Later dry/wet routing or effects may justify separate graph nodes for parts of a loop. The logical ownership boundary should not permanently dictate every physical routing boundary.
+```text
+Loop A playback → FX → Loop A recording
+```
 
-## Responsibilities that stay above this layer
+Playback and recording must be separable operations where routing requires it. Combining them into one indivisible processor would create an artificial signal cycle or force DSP into the coordinator. Their logical ownership and capture coherence remain coordinated even when their execution is separated.
 
-Keep the following out of the first implementation:
+## Timing dependencies and signal dependencies
 
-- Track and scene management.
-- Composite-loop editing and arrangement policy.
-- GUI selection, button behavior, and keyboard/MIDI bindings.
-- Session serialization and file loading.
-- Undo history.
-- Plugin discovery and process management.
-- Native/browser transport details.
+```text
+Timestamped requests / prepared musical programs
+                       │
+                       ▼
+              LoopTimelineResolver
+                │       │       │
+                │ explicit decision/order dependencies
+                ▼       ▼       ▼
+              Loop A  Loop B  Loop C
+              media execution operations
+                       │
+                signal DAG / FX / outputs
+```
 
-For example, the upper layer might request:
+Each affected consumer has an explicit dependency on the resolver's decisions. Ordering must not depend on node IDs, insertion order, or dummy audio/MIDI connections.
 
-> Launch these loops together at the next boundary of this synchronization source.
+Keep four concepts distinct:
 
-The execution layer makes that request precise and coherent. It does not decide which loops the user selected or how an arrangement expands into such requests.
+1. Musical synchronization relationships.
+2. Instantaneous causal relationships between trigger occurrences.
+3. Executor ordering and decision-publication dependencies.
+4. Audio/MIDI signal routes.
 
-This separation does **not** mean all timing decisions belong on the control thread. If a boundary depends on live recording or playback state, a bounded render-side coordinator must resolve it. Round-tripping through the UI thread would undermine sample accuracy.
+A cycle in synchronization relationships is not automatically a nonterminating instantaneous causal cycle or an illegal signal feedback path. The runtime can validate generic execution dependencies; the loop layer must validate musical causal semantics.
 
-## Expected extensions to the generic runtime
+## Incremental interval execution
 
-The runtime is a tested foundation, but it is not yet a complete looper substrate. Concrete use cases in this next layer should drive the necessary extensions.
+The baseline lifecycle is:
 
-### Typed processor/domain operations
+```text
+Begin host callback once; admit a finite snapshot of external work
+    ↓
+Settle transitions and finite cascades at the current boundary
+    ↓
+Publish the next nonempty interval's coherent decisions
+    ↓
+Execute dependent renderers and the signal DAG for that interval
+    ↓
+Collect observations needed by subsequent timing decisions
+    ↓
+Return to the resolver, or finish the host callback
+```
 
-The current scheduled processor interface handles parameters and MIDI. Operations such as finishing recording and starting playback should not be encoded as magic parameter numbers and `f32` values.
+Decision and observation storage is prepared before rendering. Views are read-only to consumers and storage is reused only after all consumers finish. Successive intervals need not accumulate in a retained whole-block transition list.
 
-Provide a bounded, typed operation path with explicit admission and execution outcomes. The runtime should supply generic delivery and ownership mechanisms; the loop layer should define the operations' musical meaning.
+No participant may cross a relevant boundary before its effects have been resolved. If an outcome can invalidate decisions partway through a proposed interval, its observation/activation boundary must be made explicit rather than reporting it too late. Recording failure, capture completion, and publication of newly playable content need precise contracts here.
 
-### Exact-frame recording lifecycle and coordinated transitions
+Boundary-at-callback-end semantics must ensure an occurrence is neither lost nor delivered twice. For identical timestamped inputs and sufficient prepared resources, musical output and transition journals must not depend on callback partitioning.
 
-Resource capture currently starts and stops through block-boundary commands. Sample-exact recording transitions, and coherent changes across several channels, need a carefully designed preparation/activation boundary.
+The resolver is a planning node with executor support, not an ordinary processor that happens to run first for an entire block. Repeated calls to the existing `GraphRuntime::process` are not a substitute: they would snapshot external work and replenish callback budgets repeatedly.
 
-Preparation should establish the required capacity and ownership before execution promises are made. The precise contract for coordinated activation and failure must be defined before implementation.
+## Termination and workload policy
 
-### Efficient positioning within media
+### Time-advancing work
 
-Resource cursors currently support sequential reads. Arbitrary audio seeking and MIDI event/state lookup must not become whole-resource scans in a callback.
+Each rendered interval must make progress toward the finite host-block end. A one-sample loop may legitimately wrap at every sample. Such work must not be deferred, dropped, or rejected merely because it exceeds a chosen wrap/subdivision count.
 
-Prepared indexing or bounded positioning primitives will be needed. Their memory and work costs should be explicit.
+### Same-frame work
 
-### Coherent domain state publication
+Define a constrained trigger model before implementation. Open semantic questions include:
 
-The UI will need loop mode, position, pending transitions, content revision, and capture status. Publish that information through bounded mechanisms, not locks around live processors.
+- Trigger-occurrence identity and delivery rules.
+- Whether a delivery can create a fresh occurrence at the same frame.
+- Whether starting an already-playing loop creates another trigger.
+- Ordering and conflict resolution for simultaneous start, stop, replace, wrap, and recording-completion actions.
+- Validation and reporting of nonterminating instantaneous behavior.
 
-The guiding rule is:
+Once-per-occurrence delivery can prevent circulation of one occurrence, but does not by itself prevent infinite creation of fresh occurrences. Termination must follow from the supported semantics and validation, not an arbitrary propagation-round counter. Do not reject all cyclic synchronization relationships as a shortcut.
 
-> Add generic mechanisms to `rt_runtime`; keep loop semantics in the loop layer.
+Arbitrary callbacks capable of inventing same-frame events are not the baseline coordination interface. They would require a separate explicit trust contract, not a claim of universal cycle detection.
 
-Do not implement a second scheduler, resource owner, or retirement system above the existing runtime. Necessary extensions should be validated through concrete loop scenarios rather than treating the initial runtime API as either untouchable or a reason to build parallel infrastructure.
+### Limits that remain appropriate
 
-## Performance and complexity principles
+Retain fixed capacities for prepared storage, retained events, resource pools, snapshots, and owning completions. External command ingestion remains bounded and cannot chase producers indefinitely. Storage exhaustion remains explicit; capture failure must not silently produce a supposedly complete but inconsistent multichannel take.
 
-Architectural choices matter more than the number of crates:
+Do not turn external admission credits or background-maintenance quotas into limits on required internal musical progression. An internal wrap should not consume an external command/completion slot merely to execute.
 
-- Use one runtime graph, not one runtime per loop.
-- Process spans of samples instead of introducing per-sample abstraction or command overhead.
-- Reuse runtime resources and leases rather than creating a second competing media store.
-- Keep structural preparation off the callback and retain processor state across graph edits.
-- Budget playback reads, recording writes, MIDI events, and loop-boundary work explicitly.
-- Define coordinated failure behavior. A channel exhausting recording capacity must not silently produce a supposedly complete but inconsistent multichannel take.
+The processing contract is:
 
-Initially, implement one crate with clearly separated modules. Do not immediately create separate crates for clocks, channels, transport, recording, and synchronization. Split crates when there is a useful independent boundary, not merely a different noun.
+> Allocation-free, deterministic processing with finite application-dependent work—not a guaranteed per-callback CPU bound.
 
-## First milestone: a narrow vertical slice
+Expose workload counts, timings, and exhaustion diagnostics. Expensive valid sessions may xrun; diagnostics or optional optimization limits must not change transition ordering or timing.
 
-Demonstrate:
+## Responsibilities above the loop layer
 
-> One logical loop with stereo audio and a MIDI channel can record, finish recording at an exact frame, start playback without an unintended silent block, wrap repeatedly, stop cleanly, and export a coherent snapshot.
+Keep track/scene organization, GUI behavior, bindings, persistence, undo, plugin management, and device/browser integration outside this layer.
 
-Verify this with:
+For composites, distinguish **editing and preparing the program** from **executing its timing semantics**. The former belongs above the loop layer; the latter belongs in the resolver so that primitive and composite timing do not become separate engines negotiating during rendering.
 
-- Different callback sizes.
-- Loop lengths not aligned to callback boundaries.
-- Very short loops.
-- Events exactly on recording and wrap boundaries.
-- MIDI notes spanning a boundary.
-- Capture exhaustion and stalled consumers.
-- The same command journal in native offline execution and a real AudioWorklet.
+A request such as “launch these loops together at the next boundary of this synchronization source” is chosen by application policy and resolved precisely by the loop layer. Timing dependent on live playback or recording state must not round-trip through the UI or external control queue.
 
-Then add a second loop and prove synchronized transitions before moving on to tracks, composites, effects, or UI integration.
+## Required generic runtime evolution
 
-## Summary
+### Planning lifecycle, dependencies, and views
 
-Build the loop-execution kernel next. It is the smallest layer that adds ShoopDaLoop's essential behavior while testing whether the runtime's timing, resource, and ownership abstractions are genuinely suitable for the application.
+Add a generic planning/dependency facility or equivalent explicit execution phase. It must support interval selection, prepared decision publication, dependent signal execution, and observation collection. The exact Rust API remains open; loop modes, trigger rules, and composite semantics must not enter the generic crate.
+
+Keep host-callback admission, accounting, and publication lifecycle distinct from internal musical intervals. Reconcile scheduled external actions and resolver-selected boundaries without delaying admitted actions or duplicating their execution.
+
+### Typed operations and exact-frame resource activation
+
+Do not encode recording or loop transitions as magic parameter numbers and `f32` values. Provide typed operations with explicit ownership, admission, and execution outcomes where needed.
+
+Current resource capture start/stop commands operate at block boundaries. Exact-frame capture, coherent multichannel activation, and record-to-play transitions require prepared capacity and explicit activation/failure semantics. A compact rendering observation returns to the resolver phase, not through an asynchronous external command round trip.
+
+### Positioning and media access
+
+Current resource cursors are sequential. Audio seeking and MIDI event/state lookup need prepared indexing or bounded positioning primitives; they must not scan entire resources in a callback. Reuse runtime storage and leases rather than introducing a competing media store.
+
+### Separate quota classes
+
+Audit existing subdivision, copy, validation, and diagnostic-count limits. Preserve external admission, background transfer throttling, and ownership guarantees. Do not let those quotas silently cap required internal loop work or make musical behavior depend on host block partitioning.
+
+In particular, distinguish work needed to execute admitted rendering from opportunistic uploads, exports, validation, and reclamation. Define preparation guarantees and explicit resource-failure behavior rather than treating a CPU quota as a musical transition rule. Diagnostic overflow needs a reporting policy, not altered musical execution.
+
+### Coherent state publication
+
+Publish mode, position, pending transitions, revision, and capture status through bounded mechanisms. Timing fields come from the resolver; renderer observations supply media execution status. Do not expose independently sampled mutable states as a coherent loop snapshot.
+
+The musical resolver is necessary domain scheduling. It must not duplicate the runtime's generic signal executor, ownership transport, resource lifecycle, or retirement infrastructure.
+
+## Implementation sequence and first milestones
+
+1. **Specify and test resolver semantics without audio.** Extract the intended existing primitive/composite timing behavior; cover same-frame cascades, simultaneous actions, valid mutual synchronization, and invalid nonterminating behavior.
+2. **Define decisions and observations.** Establish authoritative state ownership, interval-view lifetimes, exact observation boundaries, and coherent failure outcomes.
+3. **Extend the generic executor.** Prove explicit planner-to-consumer dependencies and interval execution using simple renderers and synthetic outcomes; reset callback admission/accounting only once.
+4. **Implement audio/MIDI renderers.** Keep playback and recording separable where signal routing requires it.
+5. **Prove a coordinated vertical slice.** A loop with stereo audio and MIDI records and starts playback at an exact frame; A's boundary triggers B and B triggers C at the same frame; playback can feed an FX test processor and recording; capture failure reaches the resolver at the correct boundary; snapshots and teardown remain coherent.
+6. **Verify partition-independent execution across hosts.** Compare transition journals and samples/events under different callback sizes, including one-sample loops, nonaligned lengths, callback-end boundaries, notes spanning transitions, finite dense cascades, storage exhaustion, and stalled consumers. Run native offline execution and a real non-shared-memory AudioWorklet under heap/lifetime guards.
+7. **Optimize only after semantic equivalence.** Measure representative workloads before batching plans or narrowing graph traversal.
+
+Single-loop tests remain useful building blocks, but inter-loop coordination is part of the initial architectural proof, not a feature appended after a self-contained loop processor is established. Full application integration, composite editing, and production plugin/device hosting remain later work.
+
+## Performance and manageable complexity
+
+Use one runtime graph, span-oriented media processing, prepared storage, and retained processor state. Start with one loop-layer crate containing clearly separated semantics, resolver, decision/observation, audio, MIDI, and runtime-integration modules. Create further crates only when an independently useful boundary emerges.
+
+Longer preplanned span batches are optional. They are valid only when intermediate rendering outcomes cannot invalidate the plan and sufficient prepared storage exists. Exhausting that optional storage must fall back to semantically equivalent incremental execution, not delay or drop transitions.
+
+The resolver is the architectural center, not a centralized DSP processor. It establishes coherent timing; individual renderers and the signal DAG execute media work. This makes synchronization fundamental without turning the next layer into another monolithic backend.

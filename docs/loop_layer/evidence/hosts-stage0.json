@@ -1,0 +1,93 @@
+{
+  "passed": true,
+  "reports": [
+    {
+      "bytes": 1507328,
+      "callbacks": 2601,
+      "cross_origin_isolated": false,
+      "decoder_fallback": true,
+      "finalBytes": 1507328,
+      "frames": 332928,
+      "graph_hash": 487351092,
+      "independent_instances": true,
+      "max_copy": 1042,
+      "max_steps": 512,
+      "midi_events": 34,
+      "midi_hash": 3308430490,
+      "mode": "offline",
+      "pressure": {
+        "continued_frames": 2048,
+        "delayed_lateness": 1984,
+        "duplicate_refusals": 1,
+        "held_credits": 5,
+        "oversized_refusals": 1
+      },
+      "sample_hash": 480331717,
+      "type": "stopped"
+    },
+    {
+      "bytes": 1507328,
+      "callbacks": 13444,
+      "cross_origin_isolated": false,
+      "decoder_fallback": true,
+      "finalBytes": 1507328,
+      "frames": 1720832,
+      "graph_hash": 487351092,
+      "independent_instances": true,
+      "max_copy": 1042,
+      "max_steps": 512,
+      "midi_events": 34,
+      "midi_hash": 4022855181,
+      "mode": "live",
+      "pressure": {
+        "continued_frames": 2048,
+        "delayed_lateness": 1984,
+        "duplicate_refusals": 1,
+        "held_credits": 5,
+        "oversized_refusals": 1
+      },
+      "sample_hash": 738985413,
+      "type": "stopped"
+    }
+  ],
+  "tools": {
+    "chrome": "Chromium 147.0.7727.137",
+    "chromedriver": "ChromeDriver 147.0.7727.137 (68ba233a543d25e75c30f1228dd3bafa2da96937-refs/tags/147.0.7727.137@{#0})"
+  },
+  "native": [
+    {
+      "mode": "offline",
+      "quanta": 2601,
+      "frames": 332928,
+      "sample_hash": 480331717,
+      "midi_hash": 3308430490,
+      "midi_events": 34,
+      "graph_hash": 487351092,
+      "max_copy": 1042,
+      "max_steps": 512
+    },
+    {
+      "mode": "two-thread",
+      "quanta": 2601,
+      "frames": 332928,
+      "sample_hash": 480331717,
+      "midi_hash": 3308430490,
+      "midi_events": 34,
+      "graph_hash": 487351092,
+      "max_copy": 1042,
+      "max_steps": 512
+    }
+  ],
+  "failure_canaries": [
+    {
+      "kind": "processor",
+      "expected_failure_observed": true,
+      "exit_code": 1
+    },
+    {
+      "kind": "rust-heap",
+      "expected_failure_observed": true,
+      "exit_code": 1
+    }
+  ]
+}

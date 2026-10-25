@@ -1,10 +1,12 @@
-# Generic real-time runtime: initial design
+# Generic real-time runtime: initial design and coordination evolution
+
+The initial-design and implementation sections below describe the delivered crate. The final section proposes its next evolution for `INTER_LOOP_PROCESSING.md` and `PROPOSAL_LOOP_LAYER.md`; those facilities are not implemented yet. Historical limits remain an accurate description of the initial API, not a requirement to cap future internal musical transitions.
 
 ## Purpose and boundary
 
 Implement `rt_runtime` at `src/rust/rt_runtime` as an independent library in the existing workspace. It owns generic audio/MIDI graph execution and the control/render boundary, not Shoop's loops, tracks, buses, sessions, or musical policy. No existing application backend will use it in this milestone.
 
-This is a fresh implementation informed by `shoop_engine`, not a compatibility layer or wholesale extraction. `PROPOSAL.md` describes the broader direction; this document and `PLAN.md` narrow it to the initial crate. Separate publication or a repository split is unnecessary.
+This is a fresh implementation informed by `shoop_engine`, not a compatibility layer or wholesale extraction. `PROPOSAL_RT_ENGINE.md` describes the broader direction; this document and the completed `DONE_INITIAL_CRATE.md` narrow it to the initial crate. Separate publication or a repository split is unnecessary.
 
 Production and build dependencies must not include `shoop_*`, UI frameworks, device drivers, or browser bindings. The repository's shared test attribute is permitted through dev-dependencies only. Browser glue belongs in a test/example fixture, not the portable core.
 
@@ -122,3 +124,55 @@ Deliver the crate, documentation, deterministic/offline and two-thread native fi
 Defer JACK/CPAL/Web MIDI device adapters, Shoop integration, plugin hosting, unbounded recording, feedback graphs, parallel DSP, graph buffer-reuse optimization, MIDI 2.0, automatic latency compensation, and optional shared-memory browser acceleration. These omissions must remain explicit capability limits.
 
 Validation combines sample-accurate reference comparisons, native/Wasm contract parity, allocator/deallocator canaries in debug and release, lifecycle/concurrency checks, saturated-queue and slow-reader stress, and real browser rendering during graph/resource updates. Performance reports record configuration, raw callback timings and tail latency, copy/validation work, ownership/page peaks, throughput, and deadline misses; noisy CI timing is not proof of hard-real-time deadlines or of superiority over Shoop's current engine. `docs/rt_runtime/GUIDE.md` documents capacity sizing, executable API examples, processor obligations, and stop/drain/dispose ordering. `docs/rt_runtime/PERFORMANCE.md` records reproducible measurements and deliberate gate-failure checks.
+
+## Proposed evolution: resolver-driven interval execution
+
+`INTER_LOOP_PROCESSING.md` governs the next integration: sample-accurate inter-loop interaction, no fixed interaction quantum or mandatory per-hop/block delay, and no arbitrary quota that truncates required finite musical transitions. This deliberately evolves the initial processing contract; it does not retroactively change the completed acceptance record or claim that the current scheduler already provides this behavior.
+
+### Responsibility boundary
+
+A Shoop-specific `LoopTimelineResolver` belongs in the loop layer. It owns authoritative loop/composite timing, trigger occurrences, simultaneous-action resolution, and musical interval selection. Per-loop renderers own media cursors, capture handles, MIDI state, and DSP state, and execute coherent decisions rather than independently discovering synchronization.
+
+The generic runtime must provide the planning lifecycle, explicit resolver-to-consumer dependencies, prepared decision/observation access, and interval signal execution. It must not contain loop modes, synchronization policy, or composite semantics. “Application-level” does not imply a control-thread round trip: planning and rendering execute serially under the render owner.
+
+### Executor lifecycle
+
+The conceptual lifecycle is:
+
+```text
+begin host callback and admit external work once
+  → settle the current boundary and finite same-frame cascades
+  → publish a coherent decision view for the next nonempty interval
+  → execute dependent render operations and the signal DAG
+  → collect observations at their defined semantic boundary
+  → repeat until the host block is complete
+finish callback
+```
+
+Decision storage is prepared and reused only after its consumers finish. Successive intervals do not require retaining a whole callback's transition history. An outcome that can invalidate later timing must be observed before affected execution crosses its boundary; whole-block preplanning cannot assume away capture failures or other such outcomes.
+
+Today's `Processor::process` cannot select the interval for the rest of the graph. Add a generic planning facility or equivalent explicit phase; the exact Rust API remains open. Repeatedly calling `GraphRuntime::process` is not that facility because it resets budgets and snapshots external work again. External timestamped actions and musical boundaries must be reconciled without duplicating admission or delaying already admitted actions.
+
+### Dependencies and signal structure
+
+Planner-to-consumer ordering must be explicit, not inferred from node IDs, insertion order, or dummy audio/MIDI routes. Retain the signal DAG independently. Playback and recording for one logical loop may be separate operations around an FX chain; do not force an artificial signal cycle by making the entire loop one indivisible processor.
+
+Execution observations return through the next planning phase, not a zero-delay signal feedback edge or external control queue. Musical sync relationships, instantaneous trigger causality, executor ordering, and signal routes are distinct structures. The loop layer validates musical termination; generic graph validation must not reject every cyclic sync relationship as if it were a signal cycle.
+
+### Work, storage, and termination
+
+Retain fixed storage capacities, owning admission/return credits, finite external command batches, and incremental background maintenance. Preserve allocation/deallocation-free, nonblocking callback operation. Do not charge each internal wrap or trigger to an arbitrary external event/result or subdivision allowance.
+
+The coordination contract is **allocation-free, deterministic processing with finite application-dependent work—not a guaranteed per-callback CPU bound**. An expensive valid workload may xrun; it must not be silently delayed, dropped, or reordered to fit a quota.
+
+Time-advancing intervals make progress through a finite block. Same-frame termination requires constrained event semantics and validation, including occurrence identity, creation/delivery rules, and simultaneous-action ordering. Once-per-occurrence delivery is insufficient if fresh occurrences can be invented indefinitely. Arbitrary application callbacks are not a substitute for a specified terminating model.
+
+Audit existing copy/validation quotas as well as subdivisions: distinguish required rendering work from throttled background transfers, and define preparation guarantees and explicit resource-failure behavior. Diagnostic counters and optional planning-buffer capacity must not become hidden musical-work limits. Appropriate counter-overflow reporting and interval-independent accounting remain API design work.
+
+### Additional integration requirements and verification
+
+Typed operations, prepared exact-frame capture activation/stop, coordinated multichannel failure semantics, efficient media positioning, and coherent domain state publication are also needed. Reuse the runtime's ownership and resource lifecycle rather than constructing parallel infrastructure in the loop layer.
+
+First test the resolver independently, then the generic lifecycle with synthetic consumers/outcomes, then coordinated audio/MIDI renderers. Compare transition journals and rendered output across host partitions, including finite same-frame cascades, valid mutual synchronization, invalid instantaneous behavior, dense one-sample loops, callback-end boundaries, capture failures, and playback/FX/recording routing. Verify native and actual non-shared-memory AudioWorklet execution under heap/lifetime guards.
+
+Longer preplanned span batches or reduced traversal are later optimizations. They require proof that intermediate observations cannot invalidate the plan; optional storage exhaustion must preserve incremental semantics. Implementation must update current API contracts and tests explicitly when these extensions land.

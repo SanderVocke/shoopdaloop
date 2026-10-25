@@ -1,5 +1,17 @@
 # Proposal: A Generic Real-Time Graph Runtime Crate
 
+## Status and next-layer direction
+
+This document retains the original architectural rationale for the generic runtime. The initial crate is delivered; `DESIGN_RT_ENGINE.md` describes its implementation and `DONE_INITIAL_CRATE.md` preserves the completed acceptance record. The original roadmap below is historical, not a statement that application integration is already complete.
+
+The next-layer direction is defined by `INTER_LOOP_PROCESSING.md` and `PROPOSAL_LOOP_LAYER.md`: a Shoop-specific timeline resolver owns authoritative loop/composite timing, while separate audio/MIDI renderers execute coherent interval decisions. Composite editing remains application policy; executing prepared composite timing belongs with primitive loop timing in that resolver.
+
+The runtime needs generic planning phases, explicit decision/ordering dependencies, prepared interval views and observations, and interval execution within a single host-callback lifecycle. These are proposed extensions, not capabilities obtained simply by placing an ordinary processor first in the current graph. Playback and recording can be separate signal operations; timing dependencies must not be encoded as dummy audio/MIDI edges.
+
+Preserve fixed storage, ownership credits, bounded external admission, and throttled background maintenance. Do not use those limits to impose arbitrary caps on required finite internal loop transitions or same-frame cascades. Their semantics must guarantee termination, and their execution must preserve sample timing without mandatory quantum/per-hop delay. For this coordination path the contract becomes allocation-free, deterministic processing with finite application-dependent work, not a guaranteed callback CPU bound. Expensive valid workloads may xrun rather than silently change musical behavior.
+
+This requires an explicit evolution of the initial scheduler and work-accounting contracts. It does not require moving musical semantics into the generic crate or duplicating its transport, media store, signal executor, or retirement system. The proposed integration and verification requirements are detailed in the final section of `DESIGN_RT_ENGINE.md`.
+
 ## Feasibility verdict
 
 A separate crate with a clean dependency and API boundary is feasible and potentially valuable. It does not need to be a separate repository or independently managed project.

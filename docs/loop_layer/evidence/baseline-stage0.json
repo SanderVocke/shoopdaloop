@@ -1,0 +1,251 @@
+{
+  "source_head": "cc6ccb4ac35114d61ef7e1c03ecc7f2fe81bb867",
+  "started_utc": "2026-10-25T08:01:56.351162+00:00",
+  "environment": {
+    "wrapper": "nix develop --command python3 /tmp/loop-layer-baseline.py",
+    "RUSTFLAGS": "-D warnings",
+    "PATH_prefix": [
+      "/home/sander/.cache/rt-runtime-nextest-0.9.116",
+      "/nix/store/qbj1w0y8ilv183jhdv2ws6dfhzph680p-nodejs-22.22.2/bin",
+      "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin",
+      "/nix/store/s6vs54z82hiz6d8sc63g4ckavl6fax4z-chromedriver-unwrapped-147.0.7727.137/bin"
+    ],
+    "CHROME_BIN": "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin/chromium"
+  },
+  "source_note": "No Rust/host implementation changes; pending architecture documentation and plan only.",
+  "cases": [
+    {
+      "name": "versions",
+      "command": "rustc --version; cargo --version; cargo nextest --version; wasm-pack --version; node --version; chromium --version; chromedriver --version; rustup target list --installed",
+      "exit_code": 0,
+      "seconds": 0.165,
+      "log": "target/loop-layer-baseline/versions.log",
+      "log_sha256": "9bd276e0f666ff4f52c18e90246df9db97c171096cc9c041b4a1de7b9b6636e1",
+      "test_summaries": []
+    },
+    {
+      "name": "format",
+      "command": "cargo fmt --all -- --check && cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check",
+      "exit_code": 0,
+      "seconds": 1.418,
+      "log": "target/loop-layer-baseline/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    },
+    {
+      "name": "runtime-debug",
+      "command": "cargo test --locked -p rt_runtime",
+      "exit_code": 0,
+      "seconds": 3.628,
+      "log": "target/loop-layer-baseline/runtime-debug.log",
+      "log_sha256": "fc8e2f73e13f2e0cd4941be10add86535166b4527259718b75e1a0ed3c48b29c",
+      "test_summaries": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "name": "runtime-release",
+      "command": "cargo test --locked -p rt_runtime --release",
+      "exit_code": 0,
+      "seconds": 0.265,
+      "log": "target/loop-layer-baseline/runtime-release.log",
+      "log_sha256": "3b210902cf3ef1e73962dfeac4692c0b74cbdcd414ffa931713a155ceb116a5f",
+      "test_summaries": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "name": "workspace-build",
+      "command": "cargo build --locked --workspace",
+      "exit_code": 0,
+      "seconds": 2.771,
+      "log": "target/loop-layer-baseline/workspace-build.log",
+      "log_sha256": "e1acb92c39f69004ab0e010ca4e3b6ea3f35201a8868b47223a50891be51f386",
+      "test_summaries": []
+    },
+    {
+      "name": "workspace-tests",
+      "command": "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci",
+      "exit_code": 0,
+      "seconds": 36.253,
+      "log": "target/loop-layer-baseline/workspace-tests.log",
+      "log_sha256": "4781b80f25ee6c5238bb1fd0fb5b3915e87af1476cdb67b03a852e64d423f865",
+      "test_summaries": [
+        "Summary [  32.788s] 1893 tests run: 1893 passed, 4 skipped"
+      ]
+    },
+    {
+      "name": "policy",
+      "command": "python3 scripts/check_shoop_test_usage.py && python3 scripts/check_rt_runtime_boundary.py && python3 -m unittest scripts.tests.test_rt_runtime_boundary && python3 scripts/check_wasm_test_dependencies.py --package rt_runtime && python3 scripts/check_tracing_coverage.py --require-closed",
+      "exit_code": 0,
+      "seconds": 0.666,
+      "log": "target/loop-layer-baseline/policy.log",
+      "log_sha256": "de9b50ca590a7539bd2e934055c8ece310c49eacc2f1e0c595c2c08c1e2d0cbd",
+      "test_summaries": []
+    },
+    {
+      "name": "native-debug",
+      "command": "python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug",
+      "exit_code": 0,
+      "seconds": 1.819,
+      "log": "target/loop-layer-baseline/native-debug.log",
+      "log_sha256": "537d5beaf01fd54d3fe1c8c32d5d1ced52a71e279dc562944388451dbbe5590c",
+      "test_summaries": []
+    },
+    {
+      "name": "native-release",
+      "command": "python3 scripts/run_rt_runtime_hosts.py --native-only --profile release",
+      "exit_code": 0,
+      "seconds": 0.115,
+      "log": "target/loop-layer-baseline/native-release.log",
+      "log_sha256": "2c70586b7b44d58e3ad3007499a433866e2b067cff54a522c8fc4d8106c02299",
+      "test_summaries": []
+    },
+    {
+      "name": "worklet",
+      "command": "python3 scripts/run_rt_runtime_hosts.py --verify-failures",
+      "exit_code": 0,
+      "seconds": 38.761,
+      "log": "target/loop-layer-baseline/worklet.log",
+      "log_sha256": "fee4fd11ebb802a68c54ef0992706dcb8e2e77465d5bb4299de50d2cb9c2e76a",
+      "test_summaries": []
+    },
+    {
+      "name": "wasm-node",
+      "command": "python3 scripts/run_wasm_tests.py --runtime node --package rt_runtime",
+      "exit_code": 0,
+      "seconds": 58.005,
+      "log": "target/loop-layer-baseline/wasm-node.log",
+      "log_sha256": "d4bec70ab172498edc505b5c6268efdfd727951805ddeae27043cd09c0d38c45",
+      "test_summaries": []
+    },
+    {
+      "name": "wasm-chrome",
+      "command": "python3 scripts/run_wasm_tests.py --runtime chrome --package rt_runtime",
+      "exit_code": 0,
+      "seconds": 67.221,
+      "log": "target/loop-layer-baseline/wasm-chrome.log",
+      "log_sha256": "91aabb736f9d84a6a0ff0bef707170bba73cac28aa7944ce67f799a0fc4037bf",
+      "test_summaries": []
+    }
+  ],
+  "passed": true,
+  "versions": [
+    "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "cargo-nextest 0.9.116 (2416f2fb1 2025-12-26)",
+    "release: 0.9.116",
+    "commit-hash: 2416f2fb1afcb91eb3d701f6dbbde2d82e7c24ad",
+    "commit-date: 2025-12-26",
+    "host: x86_64-unknown-linux-musl",
+    "wasm-pack 0.15.0",
+    "v22.22.2",
+    "Chromium 147.0.7727.137 ",
+    "ChromeDriver 147.0.7727.137 (68ba233a543d25e75c30f1228dd3bafa2da96937-refs/tags/147.0.7727.137@{#0})",
+    "wasm32-unknown-unknown",
+    "x86_64-unknown-linux-gnu"
+  ],
+  "baseline_scope": "Pre-implementation regression baseline only; no new loop-layer acceptance criterion is satisfied by these runs.",
+  "native_runtime_tests_per_profile": 93,
+  "workspace": {
+    "passed": 1893,
+    "skipped": 4,
+    "nextest": "0.9.116",
+    "ignored_tests": [
+      {
+        "binary": "shoop_common::nextest_capture_smoke",
+        "test": "intentional_failure_publishes_trace"
+      },
+      {
+        "binary": "shoop_wasm_test_support",
+        "test": "tests::native_result_failure_canary"
+      },
+      {
+        "binary": "shoop_wasm_test_support",
+        "test": "tests::shared_failure_canary_is_ignored_by_default"
+      },
+      {
+        "binary": "shoop_wasm_test_support",
+        "test": "tests::shared_result_failure_canary_is_ignored_by_default"
+      }
+    ]
+  },
+  "wasm_runtime_tests": [
+    {
+      "elapsed_seconds": 57.72350549600378,
+      "executed": 89,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/rt_runtime-node.xml",
+      "listed": 89,
+      "log": "target/wasm-tests/dev/reports/node/rt_runtime-node.log",
+      "malformed": [],
+      "package": "rt_runtime",
+      "passed": 89,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 89,
+      "traces": {},
+      "summary_log_sha256": "7ff5dda68939b70b7a478887c38deb362f5a259bbac1f85c0c1ab1c40dc4c846"
+    },
+    {
+      "elapsed_seconds": 66.7123897049969,
+      "executed": 89,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/rt_runtime-chrome.xml",
+      "listed": 89,
+      "log": "target/wasm-tests/dev/reports/chrome/rt_runtime-chrome.log",
+      "malformed": [],
+      "package": "rt_runtime",
+      "passed": 89,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 89,
+      "traces": {},
+      "summary_log_sha256": "dd0cb005f52c493913c7f5592b1c276d62c4cab48f6472de927030251e2d796f"
+    }
+  ],
+  "wasm_assets_note": "Package tests were freshly executed. The Wasm test runner reused its input-hash-validated application asset bundle, whose manifest still records its earlier build SHA; these package tests are not a fresh production-application smoke claim. The independent AudioWorklet fixture was separately built and run.",
+  "journal_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+  "limitations": [
+    "Linux local baseline; other native platforms are not newly executed by this stage.",
+    "No loop-layer code exists yet; baseline does not prove future semantics.",
+    "Browser/JavaScript/device scheduling has no hard-real-time guarantee.",
+    "Raw logs remain under target/loop-layer-baseline; hashes and structured results are retained here."
+  ]
+}
