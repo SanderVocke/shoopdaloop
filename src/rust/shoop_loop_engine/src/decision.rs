@@ -28,6 +28,9 @@ pub enum EventKind {
     Wrap,
     Pulse,
     CaptureExhausted,
+    Iteration { iteration: u64, passes: u64 },
+    ProgramEnd,
+    Refused(Error),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

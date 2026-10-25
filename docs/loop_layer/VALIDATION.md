@@ -15,10 +15,10 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | Criterion | Planned implementation/evidence | Status |
 | --- | --- | --- |
 | LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
-| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pending |
-| LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pending |
-| LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Pending |
-| LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pending |
+| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver verified in Stage 2; generic runtime bindings/integration pending |
+| LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution verified; media/runtime/host proof pending |
+| LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
+| LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
 | LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Pending new paths; original runtime baseline passes |
 | LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Pending new paths |
 | LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Pending |
@@ -136,7 +136,7 @@ These tests validate compilation and lookup only. They do **not** establish reso
 
 ## Stage 2 — Primitive resolver milestone (stage remains in progress)
 
-Milestone: `feat(loop-layer): resolve primitive timelines with transactional previews` (the commit introducing this section). Evidence: [`evidence/primitive-stage2.json`](evidence/primitive-stage2.json). Exact commands, source/log hashes, counts, runtime summaries, and environment overrides are retained there; raw logs are under `target/loop-layer-primitive/`.
+Milestone: `9f8c60f5d7896a155a45dff70da154434ddd9267` — `feat(loop-layer): resolve primitive timelines with transactional previews`. Evidence: [`evidence/primitive-stage2.json`](evidence/primitive-stage2.json). Exact commands, source/log hashes, counts, runtime summaries, and environment overrides are retained there; raw logs are under `target/loop-layer-primitive/`.
 
 ### Implemented interfaces and ownership
 
@@ -168,4 +168,47 @@ Allocator guards cover each production resolver operation, including submission,
 
 The independent reference advances one sample at a time and does not call the production resolver, component compiler, or interval selector. Its generated execution coverage is currently **single-primitive**; multi-loop timing has explicit expected-case and partition tests, not a completed generated multi-loop/composite simulator.
 
-Logical recording tests prove positions and observation timing, **not captured audio/MIDI or actual resource transactions**. Composite descriptions compile but are explicitly rejected by the interim resolver. Composite execution/reference tests, required render effects and media binding, generic planner/receipt integration, Miri, actual hosts, and final CI remain pending. No further Stage 2 checklist item or end-to-end LL-A criterion is marked complete on this partial milestone.
+Logical recording tests prove positions and observation timing, **not captured audio/MIDI or actual resource transactions**. At this primitive milestone, composite descriptions compiled but were explicitly rejected by the interim resolver. Composite execution/reference tests, required render effects and media binding, generic planner/receipt integration, Miri, actual hosts, and final CI were still pending. No further Stage 2 checklist item or end-to-end LL-A criterion was marked complete on that partial milestone.
+
+## Stage 2 — Complete pure primitive/composite resolver
+
+Milestone: `feat(loop-layer): execute prepared composites and verify pure resolver` (the commit introducing this section). Evidence: [`evidence/resolver-stage2.json`](evidence/resolver-stage2.json); raw logs: `target/loop-layer-stage2/`. The report identifies the Stage 2 primitive base commit and hashes every tested Rust source, including both independent simulation implementations.
+
+### Implemented composite contract
+
+`State::composite` contains iteration, pass count, and iteration-entry frame. Actual clock delivery remains separately recorded in `last_pulse`; composites never advance a synthetic sample playhead or mint periodic clocks from nominal units. `PlayIteration` and `SeekIteration` select prepared snapshots without replaying earlier events. Non-retriggering seeks reposition already-playing descendants without inventing new clock edges; fresh activations retain their normal start edge.
+
+The same component walk now executes regular repeating and explicit-mode one-pass programs, sequential/parallel/delayed/repeated entries, finite nesting, authoritative start/seek/stop, empty children, and primitive/composite interactions. Snapshot intents, explicit actions, inherited playback, direct requests, and natural progression use one precedence model. Program/cleanup/OnPulse ordinal ranges are disjoint; declaration order is irrelevant. Adjacent desired-mode continuations do not restart media at each clock tick or regular pass boundary.
+
+Nested authoritative snapshots carry the originating request for atomic preview refusal. Ordinary OnPulse actions and natural program advancement do not incorrectly claim a coincident request as their transaction origin. Actual automatic resource refusal remains a Stage 4 integration requirement, not something these logical tests pretend to execute.
+
+The contract now explicitly distinguishes iteration entry from actual clock time, and clarifies that stopped loops may relay incoming clocks while a genuinely idle source stalls its followers. This reconciles the separate clock/media rules rather than inventing a nominal fallback timer.
+
+Stopped program replacement resets prepared nominal metadata/cursors and returns the displaced owner. A changed running program is safely refused without state/ownership loss. **Stage 6 still must stage running replacements for the next iteration-zero boundary**; that integrated lifecycle requirement is not marked complete here.
+
+### Progress and storage argument
+
+Preparation bounds node slots, relations, program entries/segments, pending records, decision state, and scratch. The compiler rejects action edges inside strongly connected timing components and recursive containment, but accepts pure-sync components containing primitives or composites. Inter-component action order is acyclic.
+
+At a boundary, each seeded member's delivered bit changes at most once; each pending request consumes its single prepared source edge at most once. Composite target snapshots/differences are streamed once to downstream components. Preview retries publish nothing until committed. Every selected interval is nonempty and advances toward its finite ceiling. Thus dense work is finite and application-dependent, without an arbitrary wave/subrange counter or required callback-sized transition history. Optional journal loss cannot influence arbitration or state.
+
+### Verified gates
+
+| Gate | Observed result |
+| --- | --- |
+| Loop crate native debug/release | **53 passed per profile**: 19 compiler, 17 primitive, 17 composite tests; no failures/ignored tests |
+| Existing runtime native debug/release | **93 passed per profile** |
+| Loop crate Node/Chromium | **53 passed per runtime**; no failures/ignored tests |
+| Independent primitive single-sample simulation | 256 generated scripts × 32 requests × 64 frames; three partition/order profiles |
+| Independent composite dense simulation | 256 generated regular/explicit programs × 64 frames; full absolute journals, every logical media sample, and iteration/pass/entry-frame state match across three partition/order profiles |
+| Compiler references retained | 4096 independent reachability cases and 1024 sparse-versus-dense lookup cases |
+| Dense/deep actual execution | 65 nested program levels × 128 one-sample ticks, reversed declarations, `[128]` versus `[1 × 128]`; existing 256-node trigger cascade also passes |
+| Indexed extremes | A `u64::MAX`-tick sparse program starts near its end, seeks its child offset, and wraps without overflow or history replay |
+| Failure/replacement guards | Atomic descendant preview refusal; stale/removed identities and epochs; stopped replacement; running replacement refusal returns its owner |
+| Diagnostic saturation | Nested execution with one retained journal event per boundary preserves complete logical output/state |
+| Full prescribed nextest workspace suite | **1946 passed**, four unchanged existing opt-in canaries skipped |
+| Formatting, warning-denied build/rustdoc, dependency/test/tracing policies | Passed; both four-target boundary audits and five Python policy tests pass |
+
+The independent composite oracle interprets raw sections into a dense desired-state table and advances all clock/media state one sample at a time; it calls no production compiler, resolver, or sparse lookup. Generated references cover flat regular/explicit programs. Nested seeks, source stalls, valid cyclic sync, conflict priorities, and mixed composite/primitive cascades additionally have explicit expected cases and full-journal partition/declaration comparisons. Integrated randomized resource/media/host cases remain required in later stages.
+
+All Stage 2 checklist items are now verified. This completes the **pure logical layer only**: no generic runtime planner API, real media renderer, resource transaction, Miri extension, actual loop AudioWorklet fixture, production migration, or final-head CI is claimed. The initial runtime and historical evidence remain unchanged.

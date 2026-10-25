@@ -1,4 +1,4 @@
-//! Fixed-storage primitive boundary resolution with unpublished transactional previews.
+//! Fixed-storage boundary resolution with unpublished transactional previews.
 
 use crate::command::Record;
 use crate::config::checked_storage;
@@ -7,7 +7,11 @@ use crate::*;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Priority {
     Direct(Sequence),
-    Trigger { source: LoopId, ordinal: usize },
+    Action {
+        source: LoopId,
+        ordinal: usize,
+        inherited: bool,
+    },
 }
 
 impl Priority {
@@ -17,15 +21,23 @@ impl Priority {
             (Self::Direct(_), _) => true,
             (_, Self::Direct(_)) => false,
             (
-                Self::Trigger {
+                Self::Action {
                     source: a,
                     ordinal: x,
+                    inherited: inherited_a,
                 },
-                Self::Trigger {
+                Self::Action {
                     source: b,
                     ordinal: y,
+                    inherited: inherited_b,
                 },
-            ) => a < b || (a == b && x > y),
+            ) => {
+                if inherited_a != inherited_b {
+                    !inherited_a
+                } else {
+                    a < b || (a == b && x > y)
+                }
+            }
         }
     }
 }
@@ -38,8 +50,19 @@ struct Intent {
     origin: Option<RequestId>,
 }
 
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+enum ProgramAction {
+    #[default]
+    None,
+    Snapshot {
+        restart: bool,
+    },
+    Stop,
+}
+
 struct Scratch {
     states: Vec<Option<State>>,
+    program_actions: Vec<ProgramAction>,
     records: Vec<Option<Record>>,
     intents: Vec<Option<Intent>>,
     protected: Vec<Option<Priority>>,
@@ -79,6 +102,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
                 + size_of::<Option<RequestId>>()
                 + size_of::<Decision>()
                 + size_of::<u32>()
+                + size_of::<ProgramAction>()
                 + 3,
         ),
         (
@@ -96,16 +120,9 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
 }
 
 impl Resolver {
-    /// Preparation may allocate. Composite execution is not implemented yet.
+    /// Preparation may allocate; all execution storage is fixed afterwards.
     pub fn prepare(topology: PreparedTopology) -> Result<Self, Error> {
         let limits = topology.limits().validate()?;
-        if topology
-            .nodes()
-            .iter()
-            .any(|node| node.kind != LoopKind::Primitive)
-        {
-            return Err(Error::InvalidProgram);
-        }
         let mut states = prepared(limits.loop_slots, None);
         let mut loop_generations = prepared(limits.loop_slots, 0);
         let dummy = LoopId::from_parts(0, 1)?;
@@ -129,7 +146,7 @@ impl Resolver {
         preview_events.clear();
         events.clear();
         for node in topology.nodes() {
-            states[node.id.slot() as usize] = Some(State::new(node.id, node.length));
+            states[node.id.slot() as usize] = Some(initial_state(*node));
             loop_generations[node.id.slot() as usize] = node.id.generation();
         }
         Ok(Self {
@@ -138,6 +155,7 @@ impl Resolver {
             frame: Frame(0),
             scratch: Scratch {
                 states: states.clone(),
+                program_actions: prepared(limits.loop_slots, ProgramAction::None),
                 records: prepared(limits.pending_requests, None),
                 intents: prepared(limits.loop_slots, None),
                 protected: prepared(limits.loop_slots, None),
@@ -341,6 +359,7 @@ impl Resolver {
         scratch.states.copy_from_slice(&self.states);
         scratch.records.copy_from_slice(&self.records);
         scratch.intents.fill(None);
+        scratch.program_actions.fill(ProgramAction::None);
         scratch.protected.fill(None);
         scratch.origins.fill(None);
         scratch.pulses.fill(false);
@@ -438,12 +457,7 @@ impl Resolver {
             if self.committed || expected != self.epoch {
                 return Err(Error::InvalidState);
             }
-            if candidate.limits() != self.topology.limits()
-                || candidate
-                    .nodes()
-                    .iter()
-                    .any(|node| node.kind != LoopKind::Primitive)
-            {
+            if candidate.limits() != self.topology.limits() {
                 return Err(Error::InvalidProgram);
             }
             for state in self.states.iter().flatten() {
@@ -452,6 +466,17 @@ impl Resolver {
                 }
             }
             for node in candidate.nodes() {
+                if let Ok(state) = self.state(node.id) {
+                    if state.composite.is_some() != (node.kind == LoopKind::Composite) {
+                        return Err(Error::InvalidProgram);
+                    }
+                    if state.composite.is_some()
+                        && state.mode != Mode::Stopped
+                        && candidate.program(node.id) != self.topology.program(node.id)
+                    {
+                        return Err(Error::InvalidState);
+                    }
+                }
                 let slot = node.id.slot() as usize;
                 if self.state(node.id).is_err()
                     && node.id.generation() <= self.loop_generations[slot]
@@ -472,7 +497,16 @@ impl Resolver {
             self.states[slot] = Some(
                 self.scratch.states[slot]
                     .filter(|state| state.id == node.id)
-                    .unwrap_or_else(|| State::new(node.id, node.length)),
+                    .map(|mut state| {
+                        if state.composite.is_some()
+                            && candidate.program(node.id) != self.topology.program(node.id)
+                        {
+                            state.composite = Some(CompositeState::default());
+                            state.content_length = node.length;
+                        }
+                        state
+                    })
+                    .unwrap_or_else(|| initial_state(*node)),
             );
             self.loop_generations[slot] = node.id.generation();
         }
@@ -578,15 +612,33 @@ impl Boundary<'_> {
         }
         let mut state = self.scratch.states[target].expect("prepared state");
         let before = state;
-        match transition(&mut state, intent.transition) {
-            Err(reason) => self.terminal(
-                intent.request,
-                Outcome::Failed {
-                    frame: self.frame,
-                    reason,
-                },
-            ),
-            Ok(pulse) => {
+        let result = if let Some(program) = self.topology.program(state.id) {
+            composite_transition(
+                &mut state,
+                intent.transition,
+                program.iterations,
+                self.frame,
+            )
+        } else {
+            transition(&mut state, intent.transition).map(|pulse| (pulse, ProgramAction::None))
+        };
+        match result {
+            Err(reason) => {
+                self.terminal(
+                    intent.request,
+                    Outcome::Failed {
+                        frame: self.frame,
+                        reason,
+                    },
+                );
+                if intent.request.is_none() {
+                    self.event(state.id, EventKind::Refused(reason));
+                }
+            }
+            Ok((pulse, action)) => {
+                if action != ProgramAction::None {
+                    self.scratch.program_actions[target] = action;
+                }
                 self.scratch.states[target] = Some(state);
                 self.scratch.origins[target] = intent.origin;
                 self.terminal(intent.request, Outcome::Applied { frame: self.frame });
@@ -698,6 +750,7 @@ impl Boundary<'_> {
                 }
             }
             for id in component.iter().copied() {
+                self.emit_program(id)?;
                 if !self.scratch.delivered[id.slot() as usize] {
                     continue;
                 }
@@ -705,17 +758,169 @@ impl Boundary<'_> {
                     if trigger.source == id {
                         let intent = Intent {
                             transition: mode_transition(trigger.mode),
-                            priority: Priority::Trigger {
+                            priority: Priority::Action {
                                 source: id,
-                                ordinal,
+                                ordinal: 2 * self.topology.limits().program_entries + ordinal,
+                                inherited: false,
                             },
                             request: None,
-                            origin: self.scratch.origins[id.slot() as usize],
+                            origin: None,
                         };
                         self.offer(trigger.target.slot() as usize, intent);
                     }
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn emit_program(&mut self, id: LoopId) -> Result<(), Error> {
+        let Some(program) = self.topology.program(id) else {
+            return Ok(());
+        };
+        let slot = id.slot() as usize;
+        let mut state = self.scratch.states[slot].expect("prepared state");
+        let mut cursor = state.composite.expect("compiled composite");
+        let previous = cursor.iteration;
+        let mut action = self.scratch.program_actions[slot];
+        let origin = if action == ProgramAction::None {
+            None
+        } else {
+            self.scratch.origins[slot]
+        };
+        if action == ProgramAction::None {
+            if state.mode != Mode::Playing || !self.scratch.delivered[slot] {
+                return Ok(());
+            }
+            cursor.iteration = cursor.iteration.checked_add(1).ok_or(Error::Exhausted)?;
+            cursor.entered_at = Some(self.frame);
+            if cursor.iteration == program.iterations {
+                cursor.passes = cursor.passes.checked_add(1).ok_or(Error::Exhausted)?;
+                cursor.iteration = 0;
+                if program.kind == ProgramKind::Explicit {
+                    state.mode = Mode::Stopped;
+                    action = ProgramAction::Stop;
+                    self.event(id, EventKind::ProgramEnd);
+                }
+            }
+        }
+        if action != ProgramAction::Stop {
+            self.event(
+                id,
+                EventKind::Iteration {
+                    iteration: cursor.iteration,
+                    passes: cursor.passes,
+                },
+            );
+        }
+        state.composite = Some(cursor);
+        self.scratch.states[slot] = Some(state);
+        // The program is immutable, and every target belongs to a downstream
+        // component. No consumer can observe these intents before arbitration.
+        for index in 0..self
+            .topology
+            .program(id)
+            .expect("compiled program")
+            .targets()
+            .len()
+        {
+            let (target, old, selected, unit, inherited) = {
+                let program = self.topology.program(id).expect("compiled program");
+                let timeline = &program.targets()[index];
+                (
+                    timeline.target,
+                    timeline.at(previous),
+                    timeline.at(cursor.iteration),
+                    program.nominal_unit_frames,
+                    program.kind == ProgramKind::Regular,
+                )
+            };
+            let desired = if action == ProgramAction::Stop {
+                None
+            } else {
+                selected
+            };
+            if action == ProgramAction::None
+                && old.map(|segment| segment.mode) == desired.map(|segment| segment.mode)
+            {
+                continue;
+            }
+            let child = self.scratch.states[target.slot() as usize].expect("prepared target");
+            let ordinal = desired
+                .map_or(self.topology.limits().program_entries + index, |segment| {
+                    segment.ordinal as usize
+                });
+            let operation = match desired {
+                None => Transition::Stop,
+                Some(segment) if segment.mode == Mode::Stopped => Transition::Stop,
+                Some(segment) if segment.mode == Mode::Recording => Transition::Record {
+                    monitor_previous: false,
+                },
+                Some(segment) => {
+                    let offset = if matches!(action, ProgramAction::Snapshot { .. }) {
+                        (cursor.iteration - segment.occurrence_start)
+                            .checked_mul(unit)
+                            .ok_or(Error::Exhausted)?
+                    } else {
+                        0
+                    };
+                    let restart = !matches!(action, ProgramAction::Snapshot { restart: false });
+                    if let Some(nested) = self.topology.program(target) {
+                        let iteration = offset / nested.nominal_unit_frames;
+                        if nested.iterations == 0
+                            || (nested.kind == ProgramKind::Explicit
+                                && iteration >= nested.iterations)
+                        {
+                            Transition::Stop
+                        } else {
+                            let iteration = iteration % nested.iterations;
+                            if !restart && child.mode == Mode::Playing {
+                                Transition::SeekIteration {
+                                    iteration,
+                                    retrigger: false,
+                                }
+                            } else {
+                                Transition::PlayIteration {
+                                    iteration,
+                                    retrigger: true,
+                                }
+                            }
+                        }
+                    } else {
+                        let length = if child.mode == Mode::Recording {
+                            child.capture_frames
+                        } else {
+                            child.content_length
+                        };
+                        if length == 0 {
+                            Transition::Stop
+                        } else if !restart && child.mode == Mode::Playing {
+                            Transition::Seek {
+                                position: offset % length,
+                                retrigger: false,
+                            }
+                        } else {
+                            Transition::Play {
+                                position: offset % length,
+                                retrigger: true,
+                            }
+                        }
+                    }
+                }
+            };
+            self.offer(
+                target.slot() as usize,
+                Intent {
+                    transition: operation,
+                    priority: Priority::Action {
+                        source: id,
+                        ordinal,
+                        inherited,
+                    },
+                    request: None,
+                    origin,
+                },
+            );
         }
         Ok(())
     }
@@ -753,6 +958,71 @@ impl Boundary<'_> {
     }
 }
 
+fn initial_state(node: LoopSpec) -> State {
+    let mut state = State::new(node.id, node.length);
+    if node.kind == LoopKind::Composite {
+        state.composite = Some(CompositeState::default());
+    }
+    state
+}
+
+fn composite_transition(
+    state: &mut State,
+    operation: Transition,
+    iterations: u64,
+    frame: Frame,
+) -> Result<(bool, ProgramAction), Error> {
+    let mut cursor = state.composite.ok_or(Error::InvalidState)?;
+    let (iteration, retrigger, seeking) = match operation {
+        Transition::Stop => {
+            state.mode = Mode::Stopped;
+            cursor.iteration = 0;
+            cursor.entered_at = Some(frame);
+            state.composite = Some(cursor);
+            return Ok((false, ProgramAction::Stop));
+        }
+        Transition::Play {
+            position: 0,
+            retrigger,
+        } => (0, retrigger, false),
+        Transition::PlayIteration {
+            iteration,
+            retrigger,
+        } => (iteration, retrigger, false),
+        Transition::SeekIteration {
+            iteration,
+            retrigger,
+        } => (iteration, retrigger, true),
+        _ => return Err(Error::InvalidState),
+    };
+    if seeking && state.mode != Mode::Playing {
+        return Err(Error::InvalidState);
+    }
+    if !seeking && state.mode == Mode::Playing && !retrigger {
+        return Ok((false, ProgramAction::None));
+    }
+    if iterations == 0 && iteration == 0 && !seeking {
+        state.mode = Mode::Stopped;
+        return Ok((false, ProgramAction::Stop));
+    }
+    if iteration >= iterations {
+        return Err(Error::InvalidFrame);
+    }
+    state.mode = Mode::Playing;
+    cursor.iteration = iteration;
+    if !seeking || retrigger {
+        cursor.passes = 0;
+    }
+    cursor.entered_at = Some(frame);
+    state.composite = Some(cursor);
+    Ok((
+        !seeking || retrigger,
+        ProgramAction::Snapshot {
+            restart: !seeking || retrigger,
+        },
+    ))
+}
+
 fn prepared<T: Copy>(count: usize, value: T) -> Vec<T> {
     let mut storage = vec![value; count];
     for slot in &mut storage {
@@ -776,6 +1046,9 @@ fn mode_transition(mode: Mode) -> Transition {
 
 fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
     match operation {
+        Transition::PlayIteration { .. } | Transition::SeekIteration { .. } => {
+            Err(Error::InvalidState)
+        }
         Transition::Stop => {
             if state.mode == Mode::Recording {
                 state.content_length = state.capture_frames;

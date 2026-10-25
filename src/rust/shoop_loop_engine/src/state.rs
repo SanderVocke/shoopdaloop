@@ -2,6 +2,13 @@
 
 use crate::{Frame, LoopId, Mode, Revision};
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CompositeState {
+    pub iteration: u64,
+    pub passes: u64,
+    pub entered_at: Option<Frame>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct State {
     pub id: LoopId,
@@ -15,6 +22,7 @@ pub struct State {
     pub capture_incomplete: bool,
     pub monitor_previous: bool,
     pub last_pulse: Option<Frame>,
+    pub composite: Option<CompositeState>,
     pub(crate) revision_watermark: Revision,
 }
 
@@ -32,12 +40,14 @@ impl State {
             capture_incomplete: false,
             monitor_previous: false,
             last_pulse: None,
+            composite: None,
             revision_watermark: Revision(0),
         }
     }
 
     pub fn plays(self) -> bool {
-        self.content_length != 0
+        self.composite.is_none()
+            && self.content_length != 0
             && (self.mode == Mode::Playing
                 || (self.mode == Mode::Recording && self.monitor_previous))
     }

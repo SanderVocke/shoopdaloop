@@ -10,6 +10,14 @@ pub enum Timing {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Transition {
+    PlayIteration {
+        iteration: u64,
+        retrigger: bool,
+    },
+    SeekIteration {
+        iteration: u64,
+        retrigger: bool,
+    },
     Play {
         position: u64,
         retrigger: bool,
