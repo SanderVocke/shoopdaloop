@@ -1,0 +1,62 @@
+# Prepared capture groups and lifecycle transactions
+
+Status: implementation design for the remaining Stage 4 work, not shipped API or completion evidence. The verified MIDI-index milestone is `e64011b1`. This design implements the existing `RUNTIME_INTEGRATION.md` boundary contract without changing LL-A criteria.
+
+## Representation and ownership
+
+Use an opt-in, store-owned, fixed capture-group pool. Preparation declares group slots, maximum members per group, and staging bytes per group; check concrete native/Wasm storage products and initialize/touch all storage. Legacy stores need not allocate group rows or staging buffers. Each group occupies one fixed metadata row and one fixed staging region. Per-member records are plain data and retain resource/format identities, take-version and reserved final-lease identities, interval reservations, and staging offsets/lengths. No heap-owning object moves through a render decision or observation.
+
+A scoped generational `CaptureGroupId` identifies a managed group. Binding validates all members, duplicate resources, capacities and formats before taking any exclusive writer claim. Claims last for the entire managed-group lifetime, including stopped/frozen phases, not just while recording. Existing immutable read leases remain valid. Reject binding to a running unmanaged capture rather than silently changing its writer.
+
+Every legacy mutation that could bypass ownership must reject a claimed resource: remove, upload preparation/commit, capture start, raw capture append, and raw capture stop. A previously prepared upload cannot commit after a group acquires the resource. Read/info/currentness/snapshot/export remain available with their existing lease and optional-work limits. Internal group operations use private validated authority, never a public raw ID that can be guessed to bypass a claim.
+
+Releasing an idle group removes its claims and invalidates the group identity, preserving the resource's frozen active content and outstanding leases. Active or prepared takes must be explicitly settled/cancelled first. Ordinary final teardown remains off-render.
+
+## Lifecycle promises
+
+Proposed phases are idle, prepared take, recording, and recording with a reserved interval. Frozen content returns the group to idle while caller-owned playback snapshots remain leased.
+
+Preparing a take reserves **all** required version slots, MIDI-index rows/initial-state storage, and final playback-snapshot slots before returning success. Preflight the complete group before acquiring any of them. Resource identities/revisions and format declarations are validated. Caller-supplied MIDI initial states are copied into already prepared index rows; their values must describe the source before the first recorded event. Data pages remain finite interval reservations rather than a promise of unlimited recording.
+
+The final snapshot slots are removed from the free pool but remain unpublished: ordinary cursor/read/release APIs cannot treat them as usable leases before freeze. Track their generation and owner explicitly. Other optional snapshots cannot consume this promise. Cancelling a prepared take returns these reservations and MIDI rows, leaves old active content unchanged, and uses ordinary incremental retirement for version/page storage. Repeated or foreign cancellation is refused.
+
+Activation validates the complete prepared group before changing any active resource. At absolute F it installs every new take with duration zero and next-frame F; previous versions detach through existing reference retirement. Activation performs no upload, whole-content scan, unexpected lease acquisition, or background-budget charge. A stale/invalid activation leaves all prior active resources unchanged and the candidate cancellable.
+
+Freeze requires no in-flight interval and an exact common next-frame F. Validate all members and reserved snapshot slots first. Mark every take immutable and publish its reserved lease over `[start,F)` without copying a mutable tail: there will be no further writes to that version. Existing page and MIDI checkpoint indexes are already ready. Return snapshots through caller-prepared output storage, refusing insufficient or occupied output slots before mutation. Repeated freeze cannot duplicate ownership. Generic freeze may finish an empty take; the loop resolver separately refuses an empty record-to-play transition while permitting explicit Stop.
+
+Incomplete freeze records one common boundary/reason. A failed new-take preparation preserves prior playback. A running-take storage failure freezes the preceding complete prefix only when the planner commits that failure at the correct boundary; it is not rollback after dependent samples have rendered.
+
+## Interval reservation and staging
+
+Before rendering `[F,F+N)`, validate `0 < N <= max_frames`, every member's next-frame F, duration/revision arithmetic, storage limits, and staging shape. Known audio byte counts are exact. MIDI uses a declared producer bound on event count and total payload bytes, including any reserved recovery output that can reach the capture input. Its serialized bound is `12 * events + payload_bytes`. Also reserve checkpoint capacity for the maximum event count. Do not infer that an interval's actual MIDI will be small merely because it contains few frames.
+
+Conservative MIDI reservation may refuse before an exact-content strategy would. This is an explicit physical-storage consequence, not a CPU quota or discarded musical work. Return unused page/checkpoint headroom after commit; never refresh background allowances.
+
+Preflight all members before changing global reservation counters. A successful reservation captures versions/revisions, frame range, exact audio shapes, MIDI bounds, and required pages. Use a checked transaction sequence in the opaque interval token so cancelled or completed tokens cannot affect a later reservation of the same group. This private token identity is not a musical revision or published content change.
+
+Consumers stage their complete audio/MIDI contributions in the group's prepared byte region. Different signal nodes may supply different members; this supports playback → FX → recording without retaining borrowed input slices. Stage once per member, validate full shape/event bounds, and set readiness only after a complete valid contribution. Invalid staging preserves published resource data and leaves the transaction explicitly cancellable/faulted; it is not a normal capacity failure after a successful reservation.
+
+Do **not** append to published capture versions while collecting members. Besides partial group publication, index rotations before a version's root is published could break an interleaved reader. Stage first, then perform all resource appends and publication in one exclusive store call after every member is ready and all preconditions are validated. No other processor/read can interleave inside that commit. Existing leases retain immutable prefix/private-tail semantics.
+
+Commit uses actual staged sizes within the promises, materializes reserved pages, updates append-maintained page/MIDI indexes, publishes the same new duration for every member, and releases unused reservation credit. No fallible capacity acquisition remains after the mutation begins; unexpected violated invariants are programming faults, not ordinary incomplete observations. A missing member cannot produce a partially committed group.
+
+Keep borrowing safe without moving an owning pool out of the store: use disjoint staging/data field borrows within append helpers, or a private staged-source variant of the existing page append routine. Avoid retaining a staging slice across a method borrowing the whole store. Report staging and final data copies honestly in render diagnostics. Cancellation returns page reservations and resets lengths/readiness without scanning/clearing staging bytes or changing published versions.
+
+## Planner/consumer boundary
+
+Introduce a separate restricted boundary capability for prepared lifecycle/reservation/commit, distinct from ordinary required data access. Planner contexts should obtain it; consumer rendering gets only the staged-write capability and read access it needs. Neither capability exposes uploads, arbitrary new leases, reclamation, or budget resets. Raw `ResourceStore` preparation remains available before runtime handoff, with runtime admission integration added where needed.
+
+On preflight refusal at F, release other provisional interval reservations, latch the failed group/activation in prepared planner scratch, and re-preview from committed musical state. Every retry adds a previously unlatched failure from a finite prepared set; no retry quota changes music. Do not publish semantic results, occurrences or content changes during unsuccessful previews. Once stable, commit decisions and their required lifecycle effects, then render. Finish commits fully staged groups before advancing the resolver through the interval.
+
+A synthetic planner must verify this sequence before loop adaptation: dependency-sensitive output at F reflects an exhaustion observation at F, not at the end of the already-rendered interval. Unknown downstream MIDI must stay within its prepared promise; exceeding it is a programming/interface fault with the runtime's existing output-clearing/fault behavior, not retroactive capture rollback.
+
+## Required evidence
+
+- Saturate unrelated versions, leases, MIDI rows, data pages and background allowances after successful preparation; exact activation/freeze must retain the promised lifecycle credits.
+- Audio plus MIDI groups: page boundaries, trailing silence, empty capture, long/equal-time MIDI, immediate frozen index reads, and old immutable leases through replacement.
+- Refusal of any member preserves every active resource/prefix; successful commits share duration/cut and return unused conservative reservations.
+- Legacy bypass attempts, foreign/reused handles, duplicate members, stale revisions, duplicate/missing staged writes, cancelled/reused transaction tokens, semantic counter exhaustion, and invalid frame/shape/output storage.
+- Cancellation/disconnect between each prepare/activate/reserve/stage/commit/freeze/release step; verify eventual complete pool recovery and no callback destruction.
+- Guards in native debug/release and Wasm, independent group-state/content reference cases, selected Miri, a synthetic observation-timing planner, and unchanged existing native/actual-worklet regression gates.
+
+Until those implementations and checks pass, the remaining Stage 4 checklist items stay open. Loop renderer restoration and the independent loop AudioWorklet remain later stages.
