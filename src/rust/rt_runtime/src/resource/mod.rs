@@ -4,8 +4,13 @@
 mod capture;
 mod format;
 mod index;
+mod midi_index;
+mod midi_read;
 pub use index::{IndexWork, ReadIndex};
 use index::{PageIndex, VersionIndex};
+pub use midi_index::{MidiIndexConfig, MidiIndexInfo, MidiIndexUsage, MidiIndexWork};
+use midi_index::{MidiOwner, MidiPool};
+pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
 mod render;
 mod request;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
@@ -93,6 +98,7 @@ struct Version {
     state: State,
     capture: Option<CaptureInfo>,
     index: VersionIndex,
+    midi: Option<MidiOwner>,
 }
 #[derive(Clone, Copy)]
 struct Lease {
@@ -140,6 +146,7 @@ pub struct ResourceStore {
     work: Work,
     render_work: RenderWork,
     index_work: IndexWork,
+    midi_indexes: MidiPool,
     control_phase: bool,
 }
 fn retirement_stack(count: usize) -> Vec<usize> {
@@ -217,6 +224,7 @@ impl ResourceStore {
             work: Work::default(),
             render_work: RenderWork::default(),
             index_work: IndexWork::default(),
+            midi_indexes: MidiPool::default(),
             control_phase: false,
         })
     }
@@ -228,6 +236,7 @@ impl ResourceStore {
         self.work = Work::default();
         self.render_work = RenderWork::default();
         self.index_work = IndexWork::default();
+        self.midi_indexes.work = MidiIndexWork::default();
         self.control_phase = false;
     }
     pub fn config(&self) -> PreparedConfig {
@@ -329,6 +338,7 @@ impl ResourceStore {
             state: State::Receiving,
             capture: None,
             index: VersionIndex::default(),
+            midi: None,
         });
         Ok(UploadId {
             slot: index as u32,
@@ -363,11 +373,19 @@ impl ResourceStore {
         }
         self.steps_remaining -= validation;
         self.work.validation_steps += validation;
+        let prior_parser = version.parser;
         if version.description.format == Format::Midi {
             version.parser.consume(
                 bytes,
                 version.description.frames,
                 self.config.limits().midi_bytes_per_port,
+            )?;
+        }
+        if let Some(owner) = version.midi {
+            self.midi_indexes.preflight(
+                owner,
+                id,
+                version.parser.events() - prior_parser.events(),
             )?;
         }
         let page = if offset % page_bytes == 0 {
@@ -393,6 +411,22 @@ impl ResourceStore {
         self.data[start..start + bytes.len()].copy_from_slice(bytes);
         self.pages[page].used += bytes.len();
         version.written += bytes.len();
+        if let Some(owner) = version.midi {
+            let mut parser = prior_parser;
+            parser
+                .consume_records(
+                    bytes,
+                    version.description.frames,
+                    self.config.limits().midi_bytes_per_port,
+                    offset,
+                    |record| {
+                        self.midi_indexes
+                            .append(owner, record, WorkClass::Background)
+                    },
+                )
+                .expect("validated MIDI chunk and reserved checkpoints");
+            debug_assert_eq!(parser, version.parser);
+        }
         self.versions[id.slot as usize].value = Some(version);
         self.copy_remaining -= bytes.len();
         self.work.copied_bytes += bytes.len();
@@ -465,6 +499,9 @@ impl ResourceStore {
             .ok_or(Error::InvalidState)?;
         if version.references == 0 {
             version.state = State::Retiring;
+            if let Some(owner) = version.midi.take() {
+                self.midi_indexes.release(owner);
+            }
             self.retired_versions.push(id.slot as usize);
         }
         self.versions[id.slot as usize].value = Some(version);

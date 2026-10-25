@@ -43,7 +43,7 @@ Normal scheduled credits are `min(scheduled_events, budgets.events)`; a configur
 
 The host fixture separately bounds five 512-byte wire credits, plan materialization records, and export cursor slots. These are host protocol costs, not hidden extra core copy credits. A real host must likewise bound decoding, JS message queues, buffer ownership, and completion recycling around the core.
 
-Required `ResourceIo::render()` access instead uses independently counted reads and active audio/MIDI capture. It neither consumes nor refreshes background allowances; diagnostics saturate rather than refusing rendering. The capability cannot create leases, change lifecycle, or reclaim. Store-scoped `ReadIndex` supports logarithmic byte positioning; MIDI event/state indexes and coordinated capture transactions remain pending. Size physical storage and workload cost separately; optional snapshots still need background headroom.
+Required `ResourceIo::render()` access instead uses independently counted reads and active audio/MIDI capture. It neither consumes nor refreshes background allowances; diagnostics saturate rather than refusing rendering. The capability cannot create leases, change lifecycle, or reclaim. Store-scoped `ReadIndex` supports logarithmic byte positioning; opt-in fixed MIDI checkpoint rows provide bounded event/state positioning. Coordinated capture transactions remain pending. Size physical storage and workload cost separately; optional snapshots still need background headroom.
 
 ## Processor obligations
 

@@ -200,6 +200,9 @@ impl ResourceIo<'_> {
     pub fn info(&self, resource: ResourceId) -> Result<ResourceInfo, Error> {
         self.store.info(resource)
     }
+    pub fn midi_index_info(&self, resource: ResourceId) -> Result<MidiIndexInfo, Error> {
+        self.store.midi_index_info(resource)
+    }
     pub fn active_capture(&self, resource: ResourceId) -> Result<CaptureId, Error> {
         self.store.active_capture(resource)
     }

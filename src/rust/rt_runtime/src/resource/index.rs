@@ -128,6 +128,16 @@ impl ResourceStore {
             parent = self.pages[root].index.parent;
         }
     }
+    pub(super) fn index_lease(&self, index: ReadIndex) -> Result<Lease, Error> {
+        if index.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
+        get(
+            &self.snapshots,
+            index.snapshot.slot,
+            index.snapshot.generation,
+        )
+    }
     /// Constant metadata work; the page index was maintained while content arrived.
     /// The supplied legacy snapshot ID must belong to this store.
     pub fn read_index(&self, snapshot: SnapshotId) -> Result<ReadIndex, Error> {

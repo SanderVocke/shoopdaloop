@@ -616,6 +616,7 @@ struct BudgetClock {
     cursor: rt_runtime::resource::Cursor,
     index: rt_runtime::resource::ReadIndex,
     required: bool,
+    midi: Option<rt_runtime::resource::ReadIndex>,
     read: Arc<AtomicUsize>,
     refused: Arc<AtomicUsize>,
 }
@@ -654,6 +655,20 @@ impl Planner for BudgetClock {
             assert_eq!(bytes, 4);
             self.read.fetch_add(bytes, Ordering::Relaxed);
         }
+        if let Some(index) = self.midi {
+            let frame = context.frame.0 % 128;
+            let position = context.resources.render().midi_seek(index, frame)?;
+            assert_eq!(
+                position
+                    .state
+                    .channel(0)
+                    .unwrap()
+                    .note(60)
+                    .unwrap()
+                    .velocity(),
+                if frame > 0 && frame <= 64 { 100 } else { 0 }
+            );
+        }
         context.frame.checked_add(1)
     }
     fn finish(&mut self, context: FinishContext<'_, ()>) -> Result<(), Error> {
@@ -673,20 +688,36 @@ impl Processor<BudgetClock> for NoNodes {
 
 #[shoop_test]
 fn resource_allowances_are_not_replenished_by_planning_or_internal_intervals() {
-    check_resource_allowances(false);
+    check_resource_allowances(false, false);
 }
 #[shoop_test]
 fn required_render_access_and_diagnostics_share_one_callback_envelope() {
-    check_resource_allowances(true);
+    check_resource_allowances(true, false);
 }
-fn check_resource_allowances(required: bool) {
+#[shoop_test]
+fn midi_checkpoint_work_uses_one_callback_envelope() {
+    check_resource_allowances(true, true);
+}
+fn check_resource_allowances(required: bool, midi: bool) {
     use rt_runtime::resource::{Description, Format, ResourceStore};
     use rt_runtime::Revision;
     let mut config = limits();
     config.page_bytes = 64;
     config.budgets.transfer_bytes = 64;
     let config = config.prepare().unwrap();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = if midi {
+        ResourceStore::with_midi_indexing(
+            config,
+            rt_runtime::resource::MidiIndexConfig {
+                versions: 1,
+                checkpoints_per_version: 3,
+                replay_events: 1,
+            },
+        )
+        .unwrap()
+    } else {
+        ResourceStore::new(config).unwrap()
+    };
     let resource = store.create().unwrap();
     let upload = store
         .begin_upload(
@@ -710,10 +741,38 @@ fn check_resource_allowances(required: bool) {
     let cursor = store.cursor(snapshot.id).unwrap();
     let read = Arc::new(AtomicUsize::new(0));
     let refused = Arc::new(AtomicUsize::new(0));
+    let midi_index = if midi {
+        let resource = store.create().unwrap();
+        let initial = rt_runtime::midi_state::MidiState::default();
+        let upload = store
+            .begin_indexed_midi_upload(
+                resource,
+                Revision(0),
+                Description {
+                    format: Format::Midi,
+                    frames: 128,
+                    bytes: 30,
+                },
+                &initial,
+            )
+            .unwrap();
+        let mut bytes = [0; 30];
+        rt_runtime::resource::encode_midi_record(0, &[0x90, 60, 100], &mut bytes[..15]).unwrap();
+        rt_runtime::resource::encode_midi_record(64, &[0x80, 60, 0], &mut bytes[15..]).unwrap();
+        store.begin_callback();
+        store.write_upload(upload, 0, &bytes).unwrap();
+        store.finish_upload(upload).unwrap();
+        store.commit(upload).unwrap();
+        let snapshot = store.snapshot(resource, Frame(0)).unwrap();
+        Some(store.read_index(snapshot.id).unwrap())
+    } else {
+        None
+    };
     let planner = BudgetClock {
         cursor,
         index: store.read_index(snapshot.id).unwrap(),
         required,
+        midi: midi_index,
         read: read.clone(),
         refused: refused.clone(),
     };
@@ -747,11 +806,20 @@ fn check_resource_allowances(required: bool) {
         assert_eq!(runtime.diagnostics().subranges, 128);
         assert_eq!(runtime.diagnostics().transfer_bytes, 64);
         let render_bytes = if required { 512 } else { 0 };
-        assert_eq!(runtime.diagnostics().render_copied_bytes, render_bytes);
+        assert_eq!(
+            runtime.diagnostics().render_copied_bytes,
+            render_bytes + if midi { 780 } else { 0 }
+        );
         assert_eq!(
             runtime.diagnostics().render_operations,
-            if required { 256 } else { 0 }
+            (if required { 256 } else { 0 }) + if midi { 130 } else { 0 }
         );
+        let midi_work = runtime.diagnostics().midi_index_work;
+        assert_eq!(midi_work.state_copies, if midi { 128 } else { 0 });
+        assert_eq!(midi_work.background_records, 0);
+        assert_eq!(midi_work.render_records, 0);
+        assert_eq!(midi_work.replayed_records, 0);
+        assert!(!midi_work.counter_overflow);
         let index_work = runtime.diagnostics().resource_index_work;
         assert_eq!(index_work.background_steps, 0);
         if required {

@@ -47,7 +47,7 @@ A balanced append-only search tree is maintained as upload/capture pages arrive.
 
 `IndexWork` separately reports background/render metadata steps and saturating overflow through `Diagnostics::resource_index_work`. Upload index maintenance is bounded overhead of admitted page materialization, not a separate content scan or additional quota; existing transfer, parser, and reclamation budgets remain effective. Required lookup/append metadata work is counted without background throttling. These counters reset once per host callback.
 
-This indexes bytes for audio positioning and raw resource access. It does **not** yet implement MIDI event/time checkpoints or note/controller restoration; seeking to an arbitrary MIDI byte is not event positioning.
+The page index positions bytes. Opt-in [MIDI checkpoint indexing](midi-indexing.md) adds event-boundary cursors, complete packet reads, and bounded state positioning. Seeking to an arbitrary MIDI byte is not event positioning. Restoration emission and coordinated capture transactions remain separate work.
 
 ## Upload an immutable revision
 

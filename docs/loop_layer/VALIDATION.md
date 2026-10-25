@@ -4,7 +4,7 @@
 
 `PLAN_LOOP_LAYER.md` governs this implementation. Its LL-A1–LL-A12 criteria are immutable without user approval. The initial runtime record in `DONE_INITIAL_CRATE.md` and `docs/rt_runtime/evidence/` is preserved; passing baseline tests is not evidence that new loop-layer behavior exists.
 
-Execution was authorized through confirmed goal `mvnjf70y-cjcfar`. The implementation branch is `feat/loop-execution-layer`, based on `cc6ccb4ac35114d61ef7e1c03ecc7f2fe81bb867`. At branch creation, [runtime PR #878](https://github.com/SanderVocke/shoopdaloop/pull/878) remained open against `master`, with that same head. The delivery PR should initially target `feat/generic-rt-runtime` unless the parent merges before delivery; recheck rather than assuming its future status.
+Execution was originally authorized through confirmed goal `mvnjf70y-cjcfar` and carried forward by confirmed goal `mvo6lnim-1xzkd7`. The new tracker carries completed Stages 0–3 forward and tracks the remaining Stage 4–10 work; it does not restart those implementations. The implementation branch is `feat/loop-execution-layer`, based on `cc6ccb4ac35114d61ef7e1c03ecc7f2fe81bb867`. At branch creation, [runtime PR #878](https://github.com/SanderVocke/shoopdaloop/pull/878) remained open against `master`, with that same head. The delivery PR should initially target `feat/generic-rt-runtime` unless the parent merges before delivery; recheck rather than assuming its future status.
 
 The pre-existing edits to `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `PROPOSAL_LOOP_LAYER.md`, plus the new plan, are the intended architecture baseline. Unrelated `.pi/` state is left untouched and untracked. No production application integration is included.
 
@@ -23,7 +23,7 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic typed receipts/recovery and selected Miri verified; integrated domain ownership pending |
 | LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Pending |
 | LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Pending |
-| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Pending |
+| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting and scoped byte/MIDI event/state indexing verified; lifecycle/group reservations and integrated failure observations pending |
 | LL-A11 | New independent native/worklet fixture journals, actual Web Audio output, fixed-memory and failure gates; raw release measurements | Pending new fixture |
 | LL-A12 | Updated runtime/loop guides and executable examples, acceptance audit, milestone commits, final-head CI and review record | Pending |
 
@@ -438,3 +438,43 @@ The independent ordered-map oracle runs **4096 operations**, seed `0xad473b29385
 The existing host remains a regression fixture, not an execution test of this new state type or a loop AudioWorklet. Offline results retain **2601 callbacks / 332928 frames**, **34 MIDI events**, hashes **480331717 / 3308430490 / 487351092**, fixed **1703936-byte** memory, and the byte-identical golden journal. There were no gate failures in this milestone; earlier index-milestone browser failures remain recorded above, not rewritten.
 
 Stage 4 remains incomplete. Checkpoint storage and its reservations, incrementally built event/state positioning with a declared local replay bound, capture group lifecycle/transactions, and truthful failure observations are still pending. Actual restoration emission belongs to the later renderer work. No additional Stage 4 checklist item or end-to-end LL-A acceptance is marked complete.
+
+## Stage 4 — MIDI event/checkpoint indexing
+
+Milestone: `feat(rt-runtime): index MIDI events and checkpoint state` (the commit introducing this section), source base `df25525231d09023b567c65f65ae763f5914c1b5`. Evidence: [`evidence/midi-index-stage4.json`](evidence/midi-index-stage4.json) and [`evidence/midi-index-stage4-provenance.json`](evidence/midi-index-stage4-provenance.json); raw gates and archived Miri logs are under `target/loop-layer-midi-index-stage4/`.
+
+### Interfaces and preparation
+
+`ResourceStore::with_midi_indexing` opts into fixed `MidiIndexConfig` storage: indexed-version slots, a complete checkpoint row per version, and a positive local event-replay span. Legacy stores allocate no heavy MIDI rows. `begin_indexed_midi_upload` and `begin_indexed_midi_capture` attach an explicit initial protocol state; normal upload/capture lifecycle remains in use. Each version pins its row until the final reference is released. Reuse resets source identity/used length without scanning or clearing checkpoint state; data pages still retire incrementally. This deliberately declared version-by-checkpoint storage tradeoff is documented in [`MIDI_INDEX_DESIGN.md`](MIDI_INDEX_DESIGN.md) and the crate's `docs/midi-indexing.md` guide.
+
+Complete-record summaries incrementally maintain state and checkpoints during uploads/capture. A candidate upload parser and checkpoint capacity are checked before publishing any bytes or state from a chunk. Capture preflights metadata capacity before appending. Every packet counts toward replay spacing, including opaque packets. With C checkpoints and span K, a row supports at most C×K−1 packets; byte capacity can exhaust earlier. Valid content may exceed declared checkpoint capacity before its byte reservation fills, producing an explicit refusal rather than an unbounded scan. This is single-resource atomicity, not a coordinated capture transaction.
+
+`RenderIo::{midi_cursor,midi_next,midi_read}` provides scoped event iteration and complete original packet reads, including legacy validated MIDI content. `midi_seek` requires checkpoints, selects the last checkpoint strictly before the target within the immutable snapshot prefix, and replays fewer than the declared span. It returns projected state before the target and leaves all equal-frame events for playback. Header/short-packet lookup uses the page index; reconstruction skips long opaque bodies without removing them from playback. There is no whole-content build at freeze or position change. Output restoration emission remains a renderer responsibility.
+
+Opaque MIDI cursor/event handles validate store scope, lease/version, packet/prefix bounds and offsets. They refer to an existing lease, not a new owner. Old leased prefixes remain readable after capture appends, replacement, and removal. Raw legacy IDs retain their same-store precondition. `MidiIndexWork` reports indexed/replayed records and initial/checkpoint state copies; saturation is diagnostic, and counters reset once per host callback rather than per interval.
+
+### Verification
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **155 passed per profile** |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **151 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Prescribed full nextest workspace | **2008 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **95 passing executions**, including eight MIDI-index tests and nine planner-execution tests |
+| Production-trait lifetime proof | Positive build/run and deliberate **E0502** refusal |
+| Warning-denied build/rustdoc, formatting, policies/audits, examples | Passed |
+| Existing native debug/release and actual offline/live worklet; both failure canaries | Passed; historical golden journal unchanged |
+
+The independent seek oracle uses **273 packets**, dense equal-time groups, supplied initial state, and a **257-byte SysEx** spanning pages. It compares positions/original packets and independent ordered-map key/pedal/program state at all **81 target frames** of an 80-frame resource with span 8. Bytewise uploads exercise streaming boundaries. The full workload runs unchanged under Miri. Additional guarded cases cover partial capture snapshots and later appends, no-build freeze, upload/capture checkpoint exhaustion before prefix mutation, malformed-chunk atomicity, foreign/stale leases, old revisions, row reuse and full recovery, empty content, maximum-frame duration, and explicit legacy/unprepared refusal. A unit test separates saturating diagnostics from semantic event-count exhaustion.
+
+The synthetic planner performs 128 MIDI seeks in one callback with span-one checkpoints, checks state around frame 64, and observes exactly 128 checkpoint-state copies with no replay. Required work remains independent of the legacy 64-byte allowance and its 112 refusals. Counters reset at the next callback, not at each interval or resource borrow.
+
+Existing host results retain **2601 offline callbacks / 332928 frames**, **34 MIDI events**, hashes **480331717 / 3308430490 / 487351092**, and fixed **1703936-byte** memory. The actual runtime worklet is regression evidence only: its legacy configuration does not opt into the new MIDI pools and is not the required loop AudioWorklet. Package Wasm tests exercise the new APIs. No failed gate occurred in this broad run; earlier failures remain recorded in their own milestones.
+
+The first two Stage 4 checklist items are now verified. Prepared lifecycle/version/lease tokens, exact-frame reserved freeze-to-play, coordinated audio/MIDI transactions, and truthful integrated failure observations remain incomplete, as do all later loop renderer/host/final-delivery stages. This milestone does not complete Stage 4 or an end-to-end LL-A criterion.
+
+### Carried-forward checkpoint verification
+
+At confirmation of goal `mvo6lnim-1xzkd7`, the Stage 0–3 evidence files were compared byte-for-byte with their introducing commits, all of which are ancestors of the current branch. Recorded Rust hashes matched those milestone commits: 14 for the completed Stage 2 resolver, 50 for planning metadata, 52 for interval execution, and 54 for completed Stage 3 delivery. Current MIDI-index evidence matched all 63 recorded Rust source hashes, all 21 successful gate-log hashes, and all archived Miri case hashes (95 executions). This verifies provenance without presenting historical results as fresh executions or redoing completed implementation. The latest broad MIDI-index suite separately verifies current runtime/loop regressions. The plan and new goal tracker carry Stages 0–3 forward and continue Stage 4; unrelated `.pi/` data remains untracked.

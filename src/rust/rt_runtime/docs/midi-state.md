@@ -1,6 +1,6 @@
 # MIDI checkpoint state foundation
 
-`midi_state::MidiState` is a fixed, Copy, allocation-free projection of MIDI 1.0 channel/key messages. It has no clock, device, loop, or renderer authority. It is suitable as initial/checkpoint metadata; checkpoint pools, indexed event positioning, and restoration emission are not implemented by this type.
+`midi_state::MidiState` is a fixed, Copy, allocation-free projection of MIDI 1.0 channel/key messages. It has no clock, device, loop, or renderer authority. It is suitable as initial/checkpoint metadata; the resource store's [MIDI index](midi-indexing.md) supplies checkpoint pools and indexed event/state positioning. Restoration emission is not implemented by this type.
 
 ## State and updates
 
@@ -18,6 +18,6 @@ The reset policy follows the MIDI Association's [Response to Reset All Controlle
 
 ## Integration still required
 
-The planned index must preserve an initial state and checkpoints built incrementally while records arrive. Choose a declared maximum local replay span and reserve checkpoint storage before promises. Position before the requested media frame, restore tracked state, then deliver all equal-time events in original order. Neither this projection nor a byte cursor alone satisfies that contract.
+The resource index preserves an initial state and checkpoints built incrementally while records arrive, with reserved per-version rows and a declared maximum local replay span. Positioning returns state before the requested frame and retains equal-time events for playback. Renderer integration must still emit restoration and those events in the specified order; the value type alone is not a renderer.
 
 Future restoration must preserve reset markers, distinguish held from pedal-latched keys, order bank/program/controller/pressure/note operations deliberately, and expose output-capacity failures through runtime MIDI recovery. Protocol-state restoration is not a snapshot of an external synthesizer or device. No renderer or loop-worklet integration is claimed here.

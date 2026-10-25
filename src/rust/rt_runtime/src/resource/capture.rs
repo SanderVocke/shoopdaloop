@@ -72,6 +72,29 @@ impl ResourceStore {
                 bytes: 0,
             },
         )?;
+        self.activate_capture(id, frame)
+    }
+    pub fn begin_indexed_midi_capture(
+        &mut self,
+        resource: ResourceId,
+        expected_revision: Revision,
+        frame: Frame,
+        initial: &crate::midi_state::MidiState,
+    ) -> Result<CaptureId, Error> {
+        expected_revision.checked_next()?;
+        let id = self.begin_indexed_midi_upload(
+            resource,
+            expected_revision,
+            Description {
+                format: Format::Midi,
+                frames: 0,
+                bytes: 0,
+            },
+            initial,
+        )?;
+        self.activate_capture(id, frame)
+    }
+    fn activate_capture(&mut self, id: UploadId, frame: Frame) -> Result<CaptureId, Error> {
         self.finish_upload(id)?;
         self.commit(id)?;
         let mut version = get(&self.versions, id.slot, id.generation)?;
@@ -310,6 +333,11 @@ impl ResourceStore {
                 .and_then(|n| n.checked_add(data.len()))
                 .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
         }
+        if let Some(owner) = version.midi {
+            self.midi_indexes
+                .preflight(owner, id.version(), input.len() as u64)
+                .map_err(|error| self.halt_capture(id, error))?;
+        }
         let base = version.description.frames;
         let mut version = self.reserve_capture(id, version, frame, frames, bytes, class)?;
         for index in 0..input.len() {
@@ -319,6 +347,20 @@ impl ResourceStore {
             header[8..].copy_from_slice(&(data.len() as u32).to_le_bytes());
             self.append_reserved(&mut version, &header, class);
             self.append_reserved(&mut version, data, class);
+            if let Some(owner) = version.midi {
+                let mut short = [0; 3];
+                let count = data.len().min(3);
+                short[..count].copy_from_slice(&data[..count]);
+                self.midi_indexes.append(
+                    owner,
+                    format::RecordSummary {
+                        frame: base + u64::from(offset),
+                        end: version.written,
+                        short,
+                    },
+                    class,
+                );
+            }
         }
         Ok(self.publish_capture(id, version))
     }

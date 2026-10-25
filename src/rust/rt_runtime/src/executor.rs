@@ -99,6 +99,7 @@ pub struct Diagnostics {
     pub render_copied_bytes: usize,
     pub render_validation_steps: usize,
     pub resource_index_work: crate::resource::IndexWork,
+    pub midi_index_work: crate::resource::MidiIndexWork,
 }
 
 pub struct Control<P, L: Planner = NoPlanner> {
@@ -386,6 +387,9 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
     }
 
     /// Coherent pool counters, read by the runtime owner between callbacks.
+    pub fn midi_index_usage(&self) -> resource::MidiIndexUsage {
+        self.resources.midi_index_usage()
+    }
     pub fn resource_usage(&self) -> resource::PoolUsage {
         self.resources.usage()
     }
@@ -473,8 +477,10 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
         self.diagnostics.render_copied_bytes = rendering.copied_bytes;
         self.diagnostics.render_validation_steps = rendering.validation_steps;
         self.diagnostics.resource_index_work = self.resources.index_work();
-        self.diagnostics.counter_overflow |=
-            rendering.counter_overflow | self.diagnostics.resource_index_work.counter_overflow;
+        self.diagnostics.midi_index_work = self.resources.midi_index_work();
+        self.diagnostics.counter_overflow |= rendering.counter_overflow
+            | self.diagnostics.resource_index_work.counter_overflow
+            | self.diagnostics.midi_index_work.counter_overflow;
         let _ = self.ingress.publish(self.diagnostics);
         result
     }

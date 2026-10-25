@@ -40,7 +40,13 @@ impl Description {
 
 /// Incremental parser for u64-frame/u32-length MIDI records. No message-sized
 /// scratch or final whole-message rescan is required, including for SysEx.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
+pub(super) struct RecordSummary {
+    pub frame: u64,
+    pub end: usize,
+    pub short: [u8; 3],
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct Parser {
     header: [u8; 12],
     header_len: usize,
@@ -48,13 +54,28 @@ pub(crate) struct Parser {
     received: usize,
     status: u8,
     last_frame: u64,
+    short: [u8; 3],
+    events: u64,
 }
 impl Parser {
     pub fn complete(self) -> bool {
         self.header_len == 0 && self.message_len == 0
     }
+    pub fn events(self) -> u64 {
+        self.events
+    }
     pub fn consume(&mut self, bytes: &[u8], frames: u64, max_packet: usize) -> Result<(), Error> {
-        for &byte in bytes {
+        self.consume_records(bytes, frames, max_packet, 0, |_| {})
+    }
+    pub(super) fn consume_records(
+        &mut self,
+        bytes: &[u8],
+        frames: u64,
+        max_packet: usize,
+        offset: usize,
+        mut emit: impl FnMut(RecordSummary),
+    ) -> Result<(), Error> {
+        for (index, &byte) in bytes.iter().enumerate() {
             if self.message_len == 0 {
                 self.header[self.header_len] = byte;
                 self.header_len += 1;
@@ -100,9 +121,18 @@ impl Parser {
                 } else if byte >= 0x80 {
                     return Err(Error::InvalidEvent);
                 }
+                if self.received < 3 {
+                    self.short[self.received] = byte;
+                }
                 self.received += 1;
                 if self.received == self.message_len {
                     self.message_len = 0;
+                    self.events = self.events.checked_add(1).ok_or(Error::Exhausted)?;
+                    emit(RecordSummary {
+                        frame: self.last_frame,
+                        end: offset.checked_add(index + 1).ok_or(Error::Capacity)?,
+                        short: self.short,
+                    });
                 }
             }
         }
