@@ -22,6 +22,7 @@ pub mod executor;
 pub mod graph;
 pub mod ids;
 pub mod midi;
+pub mod midi_state;
 pub mod planner;
 pub mod processor;
 pub mod render;

@@ -412,3 +412,29 @@ The failed run also exposed stale success reports from a previous fixture run. T
 The golden journal remains byte-identical: **2601 offline callbacks / 332928 frames**, **34 MIDI events**, sample/MIDI/graph hashes **480331717 / 3308430490 / 487351092**. Additional preallocated index/handle metadata increases fixture Wasm startup memory from the preceding **1507328** to **1703936 bytes**; it stays fixed throughout offline/live rendering. This is preparation growth, not callback allocation or a memory-growth exemption.
 
 The second Stage 4 checklist item remains incomplete: byte positioning is not MIDI event/time indexing or bounded note/controller restoration. Prepared capture lifecycle/lease reservations, group preflight/commit, and failure observations also remain pending. The existing actual-worklet fixture exercises index maintenance through legacy resource operations, not the new indexed-seek API or a loop-library worklet. No full Stage 4 or end-to-end LL-A completion is claimed.
+
+## Stage 4 — Fixed MIDI checkpoint-state foundation
+
+Milestone: `feat(rt-runtime): add fixed MIDI channel and key state`, source base `bf94631f`. Evidence: `evidence/midi-state-stage4.json` and `evidence/midi-state-stage4-provenance.json`; raw gates and archived Miri logs under `target/loop-layer-midi-state-stage4/`.
+
+`midi_state::MidiState` adds fixed Copy metadata for sixteen channels and 128 keys/controller slots per channel. It distinguishes held and pedal-latched keys, retains latest velocities and supported pressure/program/pitch/controller values, treats velocity-zero note-ons as note-offs, and records reset baselines without inventing unknown device-specific defaults. Repeated note-ons remain separate media packets; the state projection is per key, not per synthesizer voice. No clock, loop, renderer, device, or host dependency is introduced. Packet validation precedes mutation; already validated messages avoid redundant validation. State copying and all updates are heap-free and bounded by protocol shape.
+
+The state/reset policy and MIDI Association references are recorded in `src/rust/rt_runtime/docs/midi-state.md`. It includes sustain/hold/sostenuto interactions, immediate all-sound-off versus pedal-aware all-notes-off, retained bank/program/volume/pan/sound/effects values on controller reset, known reset values, unknown defaults, and system-reset markers. Opaque SysEx/device effects and RPN/NRPN parameter histories are not synthesized by this protocol projection; original packets are not discarded from media. This is a state foundation, not completed capture/checkpoint or restoration behavior.
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **145 passed per profile** |
+| Loop crate native debug/release | **53 passed per profile** |
+| Runtime Node/Chromium | **141 passed per runtime** |
+| Loop crate Node/Chromium | **53 passed per runtime** |
+| Prescribed full nextest workspace | **1998 passed**, four unchanged opt-in canaries skipped |
+| Selected pinned Miri | **86 passing executions**, including all five new state tests at full workload |
+| Lifetime proof | Positive build/run and intentional **E0502** refusal |
+| Warning-denied build/rustdoc, formatting, policies/audits, examples | Passed |
+| Existing native debug/release and actual offline/live worklet; failure canaries | Passed; golden journal unchanged |
+
+The independent ordered-map oracle runs **4096 operations**, seed `0xad473b29385cc291`, with separate pedal/pitch arrays and full channel/key comparisons after every 64 operations. The same workload runs natively, in both Wasm runtimes, and under Miri. Targeted tests cover pedal interactions and velocities, channel isolation, reset/mode behavior, pressures/program/pitch, Copy snapshots, invalid indices, malformed/capacity refusal without mutation, and non-channel packets. All production updates/copies are heap guarded; reference allocation is outside the guard.
+
+The existing host remains a regression fixture, not an execution test of this new state type or a loop AudioWorklet. Offline results retain **2601 callbacks / 332928 frames**, **34 MIDI events**, hashes **480331717 / 3308430490 / 487351092**, fixed **1703936-byte** memory, and the byte-identical golden journal. There were no gate failures in this milestone; earlier index-milestone browser failures remain recorded above, not rewritten.
+
+Stage 4 remains incomplete. Checkpoint storage and its reservations, incrementally built event/state positioning with a declared local replay bound, capture group lifecycle/transactions, and truthful failure observations are still pending. Actual restoration emission belongs to the later renderer work. No additional Stage 4 checklist item or end-to-end LL-A acceptance is marked complete.

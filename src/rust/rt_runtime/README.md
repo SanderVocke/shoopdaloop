@@ -37,6 +37,7 @@ flowchart LR
 |---|---|
 | [Getting started](docs/getting-started.md) — a complete gain graph | [Host integration](docs/integration.md) — callbacks, graph edits, ownership, shutdown |
 | [Scheduling and MIDI](docs/scheduling-midi.md) — timing and overload recovery | [Resources](docs/resources.md) — upload, playback access, capture, export |
+| [MIDI checkpoint state](docs/midi-state.md) — fixed protocol-state projection; index integration pending | |
 | [Generic planning](docs/planning.md) — prepared decisions, observations, internal intervals | [Capacity and performance](docs/performance.md) — defaults, sizing, tuning |
 | Public API reference | `cargo doc -p rt_runtime --no-deps --open` |
 
