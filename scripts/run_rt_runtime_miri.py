@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import signal
 import subprocess
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLCHAIN = "nightly-2026-05-04"
@@ -42,8 +43,15 @@ CASES = [
 ]
 
 
-def run_case(command, env):
-    with subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+def run_case(command, env, log=None):
+    if log is not None:
+        with log.open("w") as output:
+            return _run_case(command, env, output, log)
+    return _run_case(command, env, subprocess.PIPE, None)
+
+
+def _run_case(command, env, stdout, log):
+    with subprocess.Popen(command, cwd=ROOT, env=env, stdout=stdout,
                           stderr=subprocess.STDOUT, text=True,
                           start_new_session=os.name == "posix") as child:
         try:
@@ -58,22 +66,13 @@ def run_case(command, env):
                 child.kill()
             output, _ = child.communicate()
             if isinstance(error, subprocess.TimeoutExpired):
-                error.output = output
+                error.output = log.read_text() if log is not None else output
             raise
-        return subprocess.CompletedProcess(command, child.returncode, output)
+        return subprocess.CompletedProcess(command, child.returncode,
+                                           log.read_text() if log is not None else output)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine"), help="Run one package's selected cases into a separate report directory")
-    args = parser.parse_args()
-    reports = REPORTS / args.package if args.package else REPORTS
-    reports.mkdir(parents=True, exist_ok=True)
-    (reports / "result.json").unlink(missing_ok=True)
-    env = os.environ.copy()
-    for key in ("RUSTC", "RUSTDOC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "MIRIFLAGS"):
-        env.pop(key, None)
-    version = subprocess.check_output(["rustup", "run", TOOLCHAIN, "cargo", "miri", "--version"], cwd=ROOT, env=env, text=True).strip()
+def selected_cases(package=None):
     cases = [("rt_runtime", target, arguments, minimum, 0) for target, arguments, minimum in CASES]
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
     cases.append(("shoop_loop_engine", "audio", [], 6, 0))
@@ -101,35 +100,76 @@ def main():
         cases.append(("shoop_loop_engine", "runtime", [name, "--", "--exact"], 1, 0))
     cases.append(("shoop_loop_engine", "topology_views", [], 3, 0))
     cases.append(("shoop_loop_engine", "interloop", [], 1, 0))
-    if args.package:
-        cases = [case for case in cases if case[0] == args.package]
+    if package:
+        cases = [case for case in cases if case[0] == package]
+    return cases
+
+
+def atomic_json(path, value):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(value, indent=2) + "\n")
+    temporary.replace(path)
+
+
+def interrupted(signum, _frame):
+    raise InterruptedError(f"Miri supervisor signal {signum}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine"), help="Run one package's selected cases")
+    parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
+    parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
+    args = parser.parse_args()
+    cases = selected_cases(args.package)
+    if args.list:
+        print(json.dumps({"toolchain": TOOLCHAIN, "cases": cases}))
+        return
+    if os.name == "posix":
+        signal.signal(signal.SIGTERM, interrupted)
+    reports = args.report_dir or (REPORTS / args.package if args.package else REPORTS)
+    reports.mkdir(parents=True, exist_ok=True)
+    (reports / "result.json").unlink(missing_ok=True)
+    progress = {"status": "running", "inventory": cases, "completed": [], "current": None}
+    atomic_json(reports / "progress.json", progress)
+    env = os.environ.copy()
+    for key in ("RUSTC", "RUSTDOC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "MIRIFLAGS"):
+        env.pop(key, None)
+    version = subprocess.check_output(["rustup", "run", TOOLCHAIN, "cargo", "miri", "--version"], cwd=ROOT, env=env, text=True).strip()
     results = []
     for index, (package, target, arguments, minimum, seed) in enumerate(cases):
         case_env = {**env, "MIRIFLAGS": f"-Zmiri-seed={seed}"}
         selection = ["--lib"] if target == "lib" else ["--test", target]
         command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", package, *selection, *arguments]
         log = reports / f"{index:02d}-{target}-seed{seed}.log"
+        progress["current"] = {"command": command, "log": log.name}
+        atomic_json(reports / "progress.json", progress)
+        case_started = time.monotonic()
         try:
-            result = run_case(command, case_env)
+            result = run_case(command, case_env, log)
         except subprocess.TimeoutExpired as error:
             output = error.stdout or ""
             log.write_text(output.decode(errors="replace") if isinstance(output, bytes) else output)
             raise RuntimeError(f"Miri case timed out: {target} seed {seed}; partial output: {log}") from error
-        log.write_text(result.stdout)
         matches = re.findall(r"test result: ok\. (\d+) passed; (\d+) failed", result.stdout)
         passed = sum(int(count) for count, _ in matches)
         if result.returncode or passed < minimum or any(int(failed) for _, failed in matches):
             raise RuntimeError(f"Miri case failed or tests missing: {target} seed {seed}\n{result.stdout[-12000:]}")
-        record = {"package": package, "target": target, "arguments": arguments, "seed": seed, "passed": passed, "log": log.name}
+        record = {"package": package, "target": target, "arguments": arguments, "seed": seed, "passed": passed, "log": log.name, "seconds": time.monotonic() - case_started}
         results.append(record)
+        progress["completed"] = results
+        progress["current"] = None
+        atomic_json(reports / "progress.json", progress)
         print(json.dumps(record), flush=True)
     report = {"passed": True, "package_filter": args.package, "toolchain": TOOLCHAIN, "miri": version, "cases": results,
               "limitations": ["Not a whole-workspace or whole-suite Miri claim.",
                               "Loom's generator/FFI model runs natively, not under Miri.",
                               "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
                               "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."]}
-    (reports / "result.json").write_text(json.dumps(report, indent=2))
-    print(f"Miri: {sum(case['passed'] for case in results)} passing executions; {reports.relative_to(ROOT)}")
+    atomic_json(reports / "result.json", report)
+    progress["status"] = "passed"
+    atomic_json(reports / "progress.json", progress)
+    print(f"Miri: {sum(case['passed'] for case in results)} passing executions; {reports}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,219 @@
+"""Synthetic supervisor fixtures: these tests do not execute or replace Miri."""
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+from scripts import run_rt_runtime_miri_jobs as jobs
+
+FIXTURE = r'''
+import json,os,signal,subprocess,sys
+from pathlib import Path
+inventory={"toolchain":"fixture","cases":[["rt_runtime","fixture",[],1,0]]}
+if "--list" in sys.argv:
+ print(json.dumps(inventory));sys.exit(0)
+reports=Path(sys.argv[sys.argv.index("--report-dir")+1]);reports.mkdir()
+mode=os.environ.get("MIRI_JOB_FIXTURE","pass")
+if mode=="missing":sys.exit(0)
+if mode=="sleep":
+ with (reports/"fixture.log").open("w") as stream:
+  child=subprocess.Popen([sys.executable,"-c","import time;print('partial output',flush=True);time.sleep(60)"],stdout=stream,start_new_session=True)
+  def stop(*args):raise InterruptedError("cancel fixture")
+  signal.signal(signal.SIGTERM,stop)
+  (reports/"case-pid").write_text(str(child.pid))
+  try:child.wait()
+  except InterruptedError:
+   try:os.killpg(child.pid,signal.SIGKILL)
+   except ProcessLookupError:pass
+   child.wait();sys.exit(143)
+ sys.exit(0)
+(reports/"fixture.log").write_text("test result: ok. 1 passed; 0 failed\n")
+(reports/"result.json").write_text(json.dumps({"passed":True,"package_filter":None,"toolchain":"fixture","miri":"synthetic fixture, not Miri","cases":[{"package":"rt_runtime","target":"fixture","arguments":[],"seed":0,"passed":1,"log":"fixture.log"}]}))
+'''
+
+
+@unittest.skipUnless(sys.platform == "linux", "Linux process identity/supervision")
+class MiriJobTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+        self.git("init", "-q")
+        self.git("config", "user.email", "fixture@example.invalid")
+        self.git("config", "user.name", "Fixture")
+        (self.repo / "scripts").mkdir()
+        (self.repo / jobs.RUNNER).write_text(FIXTURE)
+        (self.repo / "input.txt").write_text("original input")
+        self.git("add", ".")
+        self.git("commit", "-qm", "fixture")
+        (self.repo / ".pi").mkdir()
+        (self.repo / ".pi/private").write_text("not part of snapshot")
+        (self.repo / "uncommitted.rs").write_text("not in explicit commit")
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        shim = self.bin / "nix"
+        shim.write_text('#!/bin/sh\nwhile [ "$1" != "--command" ]; do shift; done\nshift\nexec "$@"\n')
+        shim.chmod(0o755)
+        self.environment = patch.dict(os.environ, {"PATH": str(self.bin) + os.pathsep + os.environ["PATH"]})
+        self.environment.start()
+        self.running = []
+
+    def git(self, *arguments):
+        return subprocess.check_output(["git", *arguments], cwd=self.repo, text=True).strip()
+
+    def tearDown(self):
+        for job in self.running:
+            process = json.loads((job / "process.json").read_text())
+            if jobs.alive(process):
+                os.kill(process["pid"], signal.SIGTERM)
+                self.wait(job)
+            child_path = job / "child.json"
+            if child_path.exists() and jobs.alive(json.loads(child_path.read_text())):
+                jobs.cancel(job)
+                deadline = time.monotonic() + 10
+                while jobs.alive(json.loads(child_path.read_text())) and time.monotonic() < deadline:
+                    time.sleep(0.02)
+            handle = jobs.LAUNCHED.pop(process["pid"], None)
+            if handle is not None:
+                handle.wait(timeout=10)
+        self.environment.stop()
+        for path in self.root.rglob("*"):
+            if path.is_dir() and not path.is_symlink():
+                path.chmod(path.stat().st_mode | 0o700)
+        self.temporary.cleanup()
+
+    def prepare(self, mode="pass"):
+        job = jobs.prepare_job(self.repo, self.root / "jobs", "fixture-stage", "HEAD", None)
+        data = json.loads((job / "job.json").read_text())
+        data["environment"]["MIRI_JOB_FIXTURE"] = mode
+        jobs.write_json(job / "job.json", data)
+        return job
+
+    def launch(self, job):
+        jobs.launch(job)
+        self.running.append(job)
+
+    def wait(self, job):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            state = jobs.status(job)
+            if state["status"] not in ("running", "queued"):
+                return state
+            time.sleep(0.02)
+        self.fail("Synthetic background fixture did not terminate")
+
+    def test_detached_snapshot_survives_development_edits_and_collects(self):
+        job = self.prepare()
+        original = self.git("rev-parse", "HEAD")
+        self.launch(job)
+        (self.repo / "input.txt").write_text("changed during background execution")
+        self.git("add", "input.txt")
+        self.git("commit", "-qm", "later development")
+        self.assertEqual((job / "source/input.txt").read_text(), "original input")
+        self.assertFalse((job / "source/.pi").exists())
+        self.assertFalse((job / "source/uncommitted.rs").exists())
+        self.assertEqual(self.wait(job)["status"], "passed")
+        result = jobs.collect(job)
+        self.assertEqual(result["executions"], 1)
+        self.assertEqual(json.loads((job / "collected.json").read_text())["job"]["commit"], original)
+
+    def test_cli_refuses_a_second_active_job(self):
+        job = self.prepare("sleep")
+        self.launch(job)
+        with patch.object(jobs, "ROOT", self.repo), patch.object(sys, "argv", [
+            "jobs", "start", "--stage", "fixture-stage", "--commit", "HEAD",
+            "--jobs-dir", str(self.root / "jobs"),
+        ]), self.assertRaisesRegex(RuntimeError, "already active"):
+            jobs.main()
+
+    def test_zero_exit_without_complete_report_is_not_a_pass(self):
+        job = self.prepare("missing")
+        self.launch(job)
+        self.assertEqual(self.wait(job)["status"], "failed")
+        with self.assertRaisesRegex(RuntimeError, "Cannot collect"):
+            jobs.collect(job)
+
+    def test_result_count_and_log_tampering_are_detected(self):
+        job = self.prepare()
+        self.launch(job)
+        self.assertEqual(self.wait(job)["status"], "passed")
+        report_path = job / "reports/result.json"
+        original = report_path.read_text()
+        report = json.loads(original)
+        report["cases"][0]["passed"] = 2
+        report_path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(RuntimeError, "count/seed mismatch"):
+            jobs.collect(job)
+        report_path.write_text(original)
+        (job / "reports/fixture.log").write_text("test result: ok. 1 passed; 0 failed\nchanged\n")
+        with self.assertRaisesRegex(RuntimeError, "Artifacts changed"):
+            jobs.collect(job)
+        report["cases"] = []
+        report_path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(RuntimeError, "Incomplete case inventory"):
+            jobs.collect(job)
+
+    def test_snapshot_tampering_and_missing_supervisor_do_not_pass(self):
+        job = self.prepare()
+        self.assertEqual(jobs.status(job)["status"], "interrupted")
+        self.launch(job)
+        self.assertEqual(self.wait(job)["status"], "passed")
+        source = job / "source/input.txt"
+        source.chmod(0o644)
+        source.write_text("tampered")
+        with self.assertRaisesRegex(RuntimeError, "Source snapshot changed"):
+            jobs.collect(job)
+        self.assertFalse(jobs.alive({"pid": 999999999, "start_ticks": None}))
+
+    def test_lost_supervisor_is_not_success_and_orphan_runner_can_be_cancelled(self):
+        job = self.prepare("sleep")
+        self.launch(job)
+        deadline = time.monotonic() + 10
+        while not (job / "reports/case-pid").exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertTrue((job / "reports/case-pid").exists())
+        supervisor = json.loads((job / "process.json").read_text())
+        os.kill(supervisor["pid"], signal.SIGKILL)
+        jobs.LAUNCHED[supervisor["pid"]].wait(timeout=5)
+        self.assertEqual(jobs.status(job)["status"], "orphaned")
+        with self.assertRaisesRegex(RuntimeError, "Cannot collect"):
+            jobs.collect(job)
+        self.assertEqual(jobs.cancel(job)["status"], "orphan-cleanup-requested")
+        child = json.loads((job / "child.json").read_text())
+        deadline = time.monotonic() + 10
+        while jobs.alive(child) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertFalse(jobs.alive(child))
+        self.assertIsNone(jobs.identity(int((job / "reports/case-pid").read_text())))
+        self.assertEqual(jobs.status(job)["status"], "interrupted")
+
+    def test_cancellation_keeps_partial_output_and_reaps_case_group(self):
+        job = self.prepare("sleep")
+        self.launch(job)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            log = job / "reports/fixture.log"
+            if (job / "reports/case-pid").exists() and log.exists() and "partial output" in log.read_text():
+                break
+            time.sleep(0.02)
+        else:
+            self.fail("Fixture did not reach its synthetic case")
+        case_pid = int((job / "reports/case-pid").read_text())
+        supervisor = json.loads((job / "process.json").read_text())
+        os.kill(supervisor["pid"], signal.SIGTERM)
+        self.assertEqual(self.wait(job)["status"], "cancelled")
+        self.assertIsNone(jobs.identity(case_pid))
+        self.assertIn("partial output", log.read_text())
+        with self.assertRaisesRegex(RuntimeError, "Cannot collect"):
+            jobs.collect(job)
+
+
+if __name__ == "__main__":
+    unittest.main()

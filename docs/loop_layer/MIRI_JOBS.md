@@ -14,11 +14,17 @@ Do not repeatedly launch full/package suites during ordinary iteration. Final
 coverage remains required; a complete stage run can also satisfy it only with a
 verified match of the full required inventory and relevant inputs.
 
+Use [`scripts/run_rt_runtime_miri_jobs.py`](../../scripts/run_rt_runtime_miri_jobs.py)
+for launch/status/collection; [MIRI_BACKGROUND.md](MIRI_BACKGROUND.md) documents the
+commands, committed-snapshot requirement, Linux-only wrapper and failure handling.
+No real background interpreter job is currently launched for the smaller tooling
+step. The existing interrupted partial evidence remains unchanged.
+
 ## Job record requirements
 
 Each new job records:
 
-- Job ID and state: queued, running, passed, failed, interrupted, cancelled or
+- Job ID and state: queued, running, passed, failed, orphaned, interrupted, cancelled or
   superseded. A missing supervisor/result is not success.
 - Immutable source snapshot/commit, relevant dependency and runner/configuration
   hashes, pinned toolchain, and reproduction command.
@@ -40,11 +46,12 @@ launching a new job after every edit.
 | Job / evidence | State | Verified scope | Outstanding obligation |
 | --- | --- | --- | --- |
 | `facade-topology-stage6`, interrupted foreground invocation | Interrupted; orphan process group terminated | 171 completed selected executions: 119 runtime and 52 loop, including all six new `runtime_topology` cases | Seven selected loop executions were not completed/reported; no full 178-execution pass or whole-invocation wall duration exists. No immediate repeat/resume is scheduled solely for this smaller step; include required coverage in the consolidated Stage 6 run |
-| Background supervisor/snapshot support | Not implemented yet | Plan approved; no claim of a running background job | Implement/test durable launch, isolation, status and collection before relying on unattended runs |
+| Background supervisor/snapshot support | Implemented; 14 Python tests pass | Immutable committed exports, detached Linux supervisor, streamed output, exact inventory/hash collection and cancellation/descendant cleanup tested with synthetic fixtures | First actual interpreter use remains the consolidated applicable stage run; no real Miri pass is claimed by these infrastructure tests |
 | Final implementation Miri selection | Pending | Historical/milestone runs retain their original scope | Run and collect the complete required final selection against the final implementation snapshot; reconcile later changes and final-head CI |
 
 The interrupted invocation used the working-tree candidate based on `9bab9ddf`,
-not a committed final implementation. Its 104 Rust source hashes are recorded in
+subsequently committed as `d89f96a7`; it was not a committed final implementation
+when tested. Its 104 Rust source hashes are recorded in
 `evidence/facade-topology-stage6.json` and were rechecked during interruption
 cleanup. The broad 25-gate pass is separate from Miri completion.
 
