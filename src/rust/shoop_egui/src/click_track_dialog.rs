@@ -189,70 +189,64 @@ impl ClickTrackDialog {
                 if let Some(message) = &self.validation_message {
                     ui.colored_label(colors::STRONG_ERROR, message);
                 }
-                if state.click_track.preview_status != ClickTrackPreviewStatus::Idle
-                    && !state.click_track.preview_message.is_empty()
-                {
-                    let color =
-                        if state.click_track.preview_status == ClickTrackPreviewStatus::Failed {
-                            colors::STRONG_ERROR
-                        } else {
-                            colors::FOREGROUND
-                        };
-                    ui.colored_label(color, &state.click_track.preview_message);
-                }
                 ui.separator();
-                ui.horizontal_wrapped(|ui| {
-                    let preview_button = ui
-                        .add_enabled(
-                            validation.is_ok()
-                                && draft.kind == ClickTrackKind::Audio
-                                && self.preview_available,
-                            egui::Button::new("Preview (System)"),
-                        )
-                        .on_disabled_hover_text(if self.preview_available {
-                            "Preview requires valid audio click settings"
-                        } else {
-                            "Audio preview is unavailable on this system"
-                        });
-                    #[cfg(test)]
-                    {
-                        self.preview_rect = Some(preview_button.rect);
-                        self.preview_enabled = preview_button.enabled();
-                    }
-                    if preview_button.clicked() {
-                        preview = Some(crate::ClickTrackPreviewOutput::System);
-                    }
-                    let master = ui
-                        .add_enabled(
-                            validation.is_ok()
-                                && draft.kind == ClickTrackKind::Audio
-                                && state.click_track.master_preview_available,
-                            egui::Button::new("Preview (Master bus)"),
-                        )
-                        .on_disabled_hover_text(if state.click_track.master_preview_available {
-                            "Preview requires valid audio click settings"
-                        } else {
-                            "Master bus preview is unavailable in this runtime"
-                        });
-                    #[cfg(test)]
-                    {
-                        self.master_rect = Some(master.rect);
-                    }
-                    if master.clicked() {
-                        preview = Some(crate::ClickTrackPreviewOutput::MasterBus);
-                    }
-                    let active = matches!(
-                        state.click_track.preview_status,
-                        ClickTrackPreviewStatus::Queued | ClickTrackPreviewStatus::Playing
-                    );
-                    let stop_button = ui.add_enabled(active, egui::Button::new("Stop"));
-                    #[cfg(test)]
-                    {
-                        self.stop_rect = Some(stop_button.rect);
-                    }
-                    if stop_button.clicked() {
-                        stop = true;
-                    }
+                ui.group(|ui| {
+                    ui.strong("Preview");
+                    ui.horizontal_wrapped(|ui| {
+                        let master = ui
+                            .add_enabled(
+                                validation.is_ok()
+                                    && draft.kind == ClickTrackKind::Audio
+                                    && state.click_track.master_preview_available,
+                                egui::Button::new("Master"),
+                            )
+                            .on_disabled_hover_text(
+                                if state.click_track.master_preview_available {
+                                    "Preview requires valid audio click settings"
+                                } else {
+                                    "Master bus preview is unavailable in this runtime"
+                                },
+                            );
+                        #[cfg(test)]
+                        {
+                            self.master_rect = Some(master.rect);
+                        }
+                        if master.clicked() {
+                            preview = Some(crate::ClickTrackPreviewOutput::MasterBus);
+                        }
+                        let preview_button = ui
+                            .add_enabled(
+                                validation.is_ok()
+                                    && draft.kind == ClickTrackKind::Audio
+                                    && self.preview_available,
+                                egui::Button::new("System"),
+                            )
+                            .on_disabled_hover_text(if self.preview_available {
+                                "Preview requires valid audio click settings"
+                            } else {
+                                "Audio preview is unavailable on this system"
+                            });
+                        #[cfg(test)]
+                        {
+                            self.preview_rect = Some(preview_button.rect);
+                            self.preview_enabled = preview_button.enabled();
+                        }
+                        if preview_button.clicked() {
+                            preview = Some(crate::ClickTrackPreviewOutput::System);
+                        }
+                        let active = matches!(
+                            state.click_track.preview_status,
+                            ClickTrackPreviewStatus::Queued | ClickTrackPreviewStatus::Playing
+                        );
+                        let stop_button = ui.add_enabled(active, egui::Button::new("Stop"));
+                        #[cfg(test)]
+                        {
+                            self.stop_rect = Some(stop_button.rect);
+                        }
+                        if stop_button.clicked() {
+                            stop = true;
+                        }
+                    });
                 });
                 ui.horizontal(|ui| {
                     let generate_button =
@@ -647,9 +641,11 @@ mod tests {
             crate::initialize(&context);
             let mut state = state();
             state.click_track.master_preview_available = true;
+            state.click_track.preview_message = "preview state must remain hidden".to_owned();
             let mut dialog = ClickTrackDialog::default();
             dialog.set_preview_available(system_available);
             dialog.open(&state.tracks[0].loops[0], &state.click_track);
+            let painted = std::cell::RefCell::new(Vec::new());
             let frame = |dialog: &mut ClickTrackDialog, state: &AppState, events| {
                 let mut intents = Vec::new();
                 let mut output = context.run_ui(
@@ -665,12 +661,34 @@ mod tests {
                         intents = dialog.show(&context, state);
                     },
                 );
+                fn collect_text(shape: &egui::Shape, text: &mut Vec<String>) {
+                    match shape {
+                        egui::Shape::Text(shape) => text.push(shape.galley.text().to_owned()),
+                        egui::Shape::Vec(shapes) => {
+                            for shape in shapes {
+                                collect_text(shape, text);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let mut text = Vec::new();
+                for shape in &output.shapes {
+                    collect_text(&shape.shape, &mut text);
+                }
+                *painted.borrow_mut() = text;
                 output.textures_delta.clear();
                 intents
             };
             frame(&mut dialog, &state, Vec::new());
             frame(&mut dialog, &state, Vec::new());
             assert_eq!(dialog.preview_enabled, system_available);
+            for label in ["Preview", "Master", "System", "Stop"] {
+                assert!(
+                    painted.borrow().iter().any(|text| text == label),
+                    "missing preview control: {label}"
+                );
+            }
             let click = |dialog: &mut ClickTrackDialog, state: &AppState, pos| {
                 frame(
                     dialog,
@@ -722,6 +740,10 @@ mod tests {
             }
             state.click_track.preview_status = ClickTrackPreviewStatus::Playing;
             frame(&mut dialog, &state, Vec::new());
+            assert!(!painted
+                .borrow()
+                .iter()
+                .any(|text| text == &state.click_track.preview_message));
             let stop = dialog.stop_rect.unwrap().center();
             assert_eq!(
                 click(&mut dialog, &state, stop),
