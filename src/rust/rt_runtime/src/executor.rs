@@ -2,13 +2,13 @@
 
 use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer};
 use crate::graph::{
-    Catalog, Connection, Endpoint, NodeSpec, PlanValidator, PortCounts, PortType, PreparedPlan,
-    ValidationStatus,
+    compile_planned, Catalog, Connection, Endpoint, GraphDescription, NodeSpec, PlanValidator,
+    PortCounts, PortType, PreparedPlan, ValidationStatus,
 };
 use crate::midi::ResetState;
 use crate::planner::{
-    ConsumerAccess, ConsumerSpec, DecisionView, Disposition, FinishContext, Interval, NoPlanner,
-    Observations, OperationContext, PlanContext, Planner,
+    ConsumerAccess, ConsumerSpec, DecisionBinding, DecisionView, Disposition, FinishContext,
+    Interval, NoPlanner, Observations, OperationContext, PlanContext, Planner,
 };
 use crate::processor::{ProcessBlock, Processor};
 use crate::resource::{self, ResourceStore};
@@ -253,6 +253,25 @@ impl<P: Processor> GraphRuntime<P> {
 }
 
 impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+    /// Compile and install the initial graph during off-render preparation.
+    /// Returns epoch one at frame zero; no callback, ingress credit, receipt or
+    /// planner/processor execution is used. Failure drops inputs off-render.
+    pub fn prepare_with_initial_graph(
+        config: PreparedConfig,
+        nodes: Vec<PreparedNode<P, L>>,
+        planner: L,
+        resources: ResourceStore,
+        graph: &GraphDescription,
+        bindings: &[DecisionBinding],
+    ) -> Result<(Control<P, L>, Self), Error> {
+        let (control, mut runtime) =
+            Self::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
+        let plan = compile_planned(&runtime.catalog, graph, bindings)?;
+        runtime.epoch = runtime.epoch.checked_next()?;
+        runtime.active = Some(plan);
+        Ok((control, runtime))
+    }
+
     pub fn prepare_with_planner(
         config: PreparedConfig,
         nodes: Vec<PreparedNode<P, L>>,
@@ -383,6 +402,13 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
     /// explicit owner/lease cleanup or reuse. Other runtime owners are destroyed.
     pub fn into_resources(self) -> resource::ResourceStore {
         self.resources
+    }
+
+    /// Consume a stopped runtime off-render, retaining the planner's owner
+    /// ledger with its store for explicit domain cleanup. Other owners drop here.
+    /// This does not settle pending operations or emit device cleanup messages.
+    pub fn into_planner_and_resources(self) -> (L, resource::ResourceStore) {
+        (self.planner, self.resources)
     }
 
     pub fn next_frame(&self) -> Frame {

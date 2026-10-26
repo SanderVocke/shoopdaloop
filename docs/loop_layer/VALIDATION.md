@@ -756,3 +756,29 @@ Four guarded tests verify:
 Fresh scoped gates: **77 loop tests per native profile and per Node/Chromium runtime**, **2051 workspace passes/four existing skips**, and **24 selected loop Miri executions** (audio6, media-decisions4, capture-decisions4, restoration4, indexed-MIDI6). All fifteen scoped gates, including warning-denied workspace build/docs, formatting and policy/boundary checks, passed. Complete new workloads run unchanged under native/Wasm/Miri.
 
 The initial test fixture used integer `Entry.duration` values rather than `Option<u64>`, producing **E0308**; changing them to `Some(2)` corrected the fixture without reducing workload/assertions. Its failed compile log is retained. No generic runtime implementation changed here; standalone runtime release/Wasm, generic Miri, lifetime/authority prototypes and native/actual-worklet fixtures were not freshly rerun. The preceding `prepared-interval-stage5` full run remains their historical baseline. Twenty-four fresh loop Miri executions are not a fresh 138-case combined run. Complete resource-to-resolver wiring, coordinated mixed-media ownership/export, separate-node graph/example and independent loop hosts remain required; Stage 5 stays open.
+
+## Stage 5 — Initial graph, retained owner ledger and direct audio ports
+
+Milestone: `feat(runtime): prepare initial graphs and scoped audio port access` (the commit introducing this section), source base `48ee8de2`. Evidence: [`evidence/facade-preparation-stage5.json`](evidence/facade-preparation-stage5.json) and [`evidence/facade-preparation-stage5-provenance.json`](evidence/facade-preparation-stage5-provenance.json); logs are under `target/loop-layer-facade-preparation-stage5/`.
+
+The facade design requires startup without a hidden warm-up interval and teardown without losing its ownership ledger. `GraphRuntime::prepare_with_initial_graph` now compiles/validates signal routes and planner bindings off-render and returns epoch one at frame zero. It invokes no planner/processor, callback, ingress command or receipt during preparation. `into_planner_and_resources` consumes a stopped runtime off-render while retaining both ledger and store for explicit cleanup. It does not settle pending requests or send MIDI to a stopped device.
+
+`AudioRenderer::render_ports` and `AudioCapture::stage_ports` share conversion/DSP logic with the existing slice APIs through scoped enum adapters. They access only output/input windows respectively, allocate no temporary reference vector, and retain no callback borrow.
+
+Three new runtime tests verify initial planned execution at frame zero under a one-step background validation budget, zero-call no-ops, retained-ledger pool recovery and off-render destruction; missing/wrong/out-of-range bindings and a signal cycle refused during preparation; and NoPlanner startup followed by normal live commit epochs and owning receipts. Two new loop cases compare five-channel offset output windows against both an independent ramp oracle and the slice API, preserving surrounding samples and DSP state on refusals/zero frames; and stage an exact stereo input window through prepared reservation/activation/freeze, checking original interleaved bytes and unpublished failed contributions.
+
+| Fresh gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **177 passed per profile** |
+| Loop native debug/release | **79 passed per profile** |
+| Runtime Node/Chromium | **173 passed per runtime** |
+| Loop Node/Chromium | **79 passed per runtime** |
+| Prescribed workspace nextest | **2056 passed**, four unchanged opt-in canaries skipped |
+| Selected Miri | **143 fresh executions across two explicit batches**: 117 runtime plus 26 loop cases |
+| Lifetime/authority prototypes | Positive builds/runs and deliberate **E0502/E0599** refusals |
+| Formatting, warning-denied build/docs, examples and policy/boundary checks | Passed |
+| Existing native debug/release and actual offline/live worklet, both failure canaries | Passed; historical golden journal unchanged |
+
+The initial fixture compared a `Sequence` with a submission `Ticket` (**E0308**); it was corrected to `Ticket.sequence()` without changing assertions/workload. All 21 broad gates passed. The first Miri invocation hit the **outer 1800-second tool deadline after 137 passing executions**, during the final MIDI target. No canonical combined runner success report was written, and no Miri process remained running. Completed logs and source hashes were retained; the final six MIDI cases then passed unchanged with the same seed, toolchain and per-target 900-second bound. `miri.execution_batches` records both commands/results. This is a complete fresh selected-case set, **not one uninterrupted runner pass**; the timed-out canonical `result.json` remains absent. No workload, heap guard or assertion was weakened.
+
+All five new case workloads run unchanged under native/Wasm/Miri. The full loop planner/processor facade, coherent mixed-media capture/export and public state, separate-node graph/example, independent loop hosts and final delivery remain pending. Stage 5 remains open.

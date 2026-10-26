@@ -1,6 +1,7 @@
 //! Prepared audio conversion and DSP. Positions and discontinuities come from
 //! the authoritative interval decision; these renderers never advance a clock.
 
+use rt_runtime::buffer::AudioPorts;
 use rt_runtime::resource::{CaptureIntervalId, Format, ReadIndex, RenderIo};
 use rt_runtime::Error;
 
@@ -67,6 +68,42 @@ fn shape(
     }
     Ok(frames.unwrap_or(0))
 }
+enum Outputs<'a, 'b> {
+    Slices(&'a mut [&'b mut [f32]]),
+    Ports(&'a mut AudioPorts<'b>),
+}
+impl Outputs<'_, '_> {
+    fn count(&self) -> usize {
+        match self {
+            Self::Slices(value) => value.len(),
+            Self::Ports(value) => value.output_count(),
+        }
+    }
+    fn channel(&mut self, channel: usize) -> &mut [f32] {
+        match self {
+            Self::Slices(value) => value[channel],
+            Self::Ports(value) => value.output(channel).expect("declared output port"),
+        }
+    }
+}
+enum Inputs<'a, 'b> {
+    Slices(&'a [&'b [f32]]),
+    Ports(&'a AudioPorts<'b>),
+}
+impl Inputs<'_, '_> {
+    fn count(&self) -> usize {
+        match self {
+            Self::Slices(value) => value.len(),
+            Self::Ports(value) => value.input_count(),
+        }
+    }
+    fn channel(&self, channel: usize) -> &[f32] {
+        match self {
+            Self::Slices(value) => value[channel],
+            Self::Ports(value) => value.input(channel).expect("declared input port"),
+        }
+    }
+}
 impl AudioRenderer {
     pub fn prepare(
         channels: usize,
@@ -106,10 +143,31 @@ impl AudioRenderer {
         playback: Playback,
         outputs: &mut [&mut [f32]],
     ) -> Result<(), Error> {
+        self.render_output(io, playback, Outputs::Slices(outputs))
+    }
+
+    /// Render directly into runtime ports without retaining channel borrows.
+    /// Only the output ports and their current interval are written.
+    pub fn render_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        outputs: &mut AudioPorts<'_>,
+    ) -> Result<(), Error> {
+        self.render_output(io, playback, Outputs::Ports(outputs))
+    }
+
+    fn render_output(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        mut outputs: Outputs<'_, '_>,
+    ) -> Result<(), Error> {
+        let channels = outputs.count();
         let frames = shape(
             self.channels,
             self.max_frames,
-            outputs.iter().map(|p| p.len()),
+            (0..channels).map(|channel| outputs.channel(channel).len()),
         )?;
         if frames == 0 {
             return Ok(());
@@ -118,8 +176,8 @@ impl AudioRenderer {
             return Err(Error::InvalidParameter);
         }
         let Some(index) = playback.source else {
-            for output in outputs {
-                output.fill(0.0);
+            for channel in 0..channels {
+                outputs.channel(channel).fill(0.0);
             }
             self.last.fill(0.0);
             self.anchor.fill(0.0);
@@ -167,7 +225,8 @@ impl AudioRenderer {
             } else {
                 1.0
             };
-            for (channel, output) in outputs.iter_mut().enumerate() {
+            for channel in 0..channels {
+                let output = outputs.channel(channel);
                 let byte = (frame * self.channels + channel) * 4;
                 let raw =
                     f32::from_le_bytes(self.bytes[byte..byte + 4].try_into().expect("four bytes"))
@@ -207,17 +266,39 @@ impl AudioCapture {
         member: usize,
         inputs: &[&[f32]],
     ) -> Result<(), Error> {
+        self.stage_input(io, interval, member, Inputs::Slices(inputs))
+    }
+
+    /// Stage directly from runtime input ports; output ports are not observed.
+    pub fn stage_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        interval: CaptureIntervalId,
+        member: usize,
+        inputs: &AudioPorts<'_>,
+    ) -> Result<(), Error> {
+        self.stage_input(io, interval, member, Inputs::Ports(inputs))
+    }
+
+    fn stage_input(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        interval: CaptureIntervalId,
+        member: usize,
+        inputs: Inputs<'_, '_>,
+    ) -> Result<(), Error> {
+        let channels = inputs.count();
         let frames = shape(
             self.channels,
             self.max_frames,
-            inputs.iter().map(|p| p.len()),
+            (0..channels).map(|channel| inputs.channel(channel).len()),
         )?;
         if frames == 0 {
             return Err(Error::InvalidFrame);
         }
         for frame in 0..frames {
-            for (channel, input) in inputs.iter().enumerate() {
-                self.interleaved[frame * self.channels + channel] = input[frame];
+            for channel in 0..channels {
+                self.interleaved[frame * self.channels + channel] = inputs.channel(channel)[frame];
             }
         }
         io.stage_audio(

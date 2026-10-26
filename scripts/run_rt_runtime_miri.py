@@ -16,6 +16,7 @@ CASES = [
     ("contracts", [], 12),
     ("planning_graph", [], 8),
     ("planner_execution", [], 9),
+    ("initial_graph", [], 3),
     ("resource_render", [], 4),
     ("resource_index", [], 5),
     ("midi_state", [], 5),
@@ -54,6 +55,7 @@ def main():
     cases = [("rt_runtime", target, arguments, minimum, 0) for target, arguments, minimum in CASES]
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
     cases.append(("shoop_loop_engine", "audio", [], 6, 0))
+    cases.append(("shoop_loop_engine", "audio_ports", [], 2, 0))
     cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi_restore", [], 4, 0))

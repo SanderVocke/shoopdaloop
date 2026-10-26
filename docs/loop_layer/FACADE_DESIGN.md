@@ -32,10 +32,10 @@ Conservative MIDI reservation may fail earlier than an exact future-output bound
 
 ## Graph and lifecycle integration
 
-- Initial preparation must establish validated planner bindings and the actual signal graph before musical execution begins, rather than hiding a silent warm-up interval. A preparation-only runtime constructor accepting a graph/planning description is a suitable generic extension; it can compile/validate off-render and return epoch one at frame zero.
+- Initial preparation must establish validated planner bindings and the actual signal graph before musical execution begins, rather than hiding a silent warm-up interval. `GraphRuntime::prepare_with_initial_graph` now provides the generic preparation path: it compiles/validates the graph and bindings off-render and returns epoch one at frame zero. Facade role validation still has to precede it.
 - The facade must validate required capture/input-tracking consumers, expected decision slots and media shapes. A generic structural descriptor alone does not prove domain role correctness. Do not expose unrestricted graph replacement as though these additional invariants had been checked. Live graph/topology/program replacement must preserve them transactionally in Stage 6.
-- Audio consumers need safe direct `AudioPorts` access without allocating temporary vectors of channel borrows or retaining callback references. Keep the existing slice APIs and share conversion/DSP logic with scoped port adapters.
-- Quiescent teardown must retain the planner's owner ledger while extracting resources. A generic off-render extraction returning both planner and store would let the facade explicitly cancel/freeze/release groups, media and exports, rather than dropping the only copy of their handles. Device cleanup still occurs before stopping callbacks; extraction cannot emit MIDI to a stopped device.
+- Audio consumers need safe direct `AudioPorts` access without allocating temporary vectors of channel borrows or retaining callback references. `AudioRenderer::render_ports` and `AudioCapture::stage_ports` now share conversion/DSP logic with the existing slice APIs through scoped adapters. Complete loop consumers still need implementation.
+- Quiescent teardown must retain the planner's owner ledger while extracting resources. `GraphRuntime::into_planner_and_resources` now returns both planner and store off-render. The facade still needs to explicitly cancel/freeze/release groups, media and exports from that retained ledger, rather than dropping the only copy of their handles. Device cleanup still occurs before stopping callbacks; extraction cannot emit MIDI to a stopped device.
 
 ## Required evidence
 
