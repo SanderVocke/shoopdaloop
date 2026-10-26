@@ -79,6 +79,7 @@ jobs:
             --lcov --output-path lcov.info
 
       - name: Publish Rust coverage to Codecov
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
