@@ -9,6 +9,17 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
+      nightly_flavor:
+        description: Run only a selected CPAL-free nightly build flavor
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - all
+          - linux
+          - macos-intel
+          - macos-intel-10.15
       perfetto_failure_canary:
         description: Run the intentional nextest failure-capture canary
         required: false
@@ -33,6 +44,7 @@ env:
 
 jobs:
   rust_coverage:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Rust coverage (Linux)
     runs-on: ubuntu-24.04
     steps:
@@ -98,41 +110,28 @@ jobs:
 
   without_cpal:
     name: Nightly without CPAL (${{ matrix.flavor }})
-    if: github.event_name == 'schedule'
-    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.nightly_flavor != 'none')
+    runs-on: ${{ matrix.flavor == 'linux' && 'ubuntu-24.04' || 'macos-15-intel' }}
     env:
+      NATIVE_BUILD_TARGET: ${{ matrix.flavor == 'linux' && 'x86_64-unknown-linux-gnu' || 'x86_64-apple-darwin' }}
       RUSTFLAGS: "-D warnings"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - flavor: linux
-            os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            macos_deployment_target: ""
-          - flavor: macos-intel
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-            macos_deployment_target: ""
-          - flavor: macos-intel-10.15
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-            macos_deployment_target: "10.15"
+        flavor: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.nightly_flavor != 'all' && format('["{0}"]', inputs.nightly_flavor) || '["linux","macos-intel","macos-intel-10.15"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ env.NATIVE_BUILD_TARGET }}
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: without-cpal-${{ matrix.flavor }}
       - name: Configure macOS deployment target
-        if: matrix.macos_deployment_target != ''
-        env:
-          DEPLOYMENT_TARGET: ${{ matrix.macos_deployment_target }}
-        run: printf 'MACOSX_DEPLOYMENT_TARGET=%s\n' "$DEPLOYMENT_TARGET" >> "$GITHUB_ENV"
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: echo 'MACOSX_DEPLOYMENT_TARGET=10.15' >> "$GITHUB_ENV"
       - name: Linux native dependencies
         if: runner.os == 'Linux'
         run: |
@@ -144,13 +143,13 @@ jobs:
         shell: bash
         run: |
           cargo tree --locked --workspace --no-default-features --features shoopdaloop/native-fx \
-            --target ${{ matrix.target }} --edges normal,build,dev --prefix none --format '{p}' > dependency-tree.txt
+            --target ${{ env.NATIVE_BUILD_TARGET }} --edges normal,build,dev --prefix none --format '{p}' > dependency-tree.txt
           if grep -E '^(cpal|rodio) v' dependency-tree.txt; then
             echo 'CPAL-free builds must not enable CPAL or Rodio, including through test dependencies.'
             exit 1
           fi
       - name: Build without CPAL or Rodio
-        run: cargo build --locked -p shoopdaloop --no-default-features --features native-fx --target ${{ matrix.target }}
+        run: cargo build --locked -p shoopdaloop --no-default-features --features native-fx --target ${{ env.NATIVE_BUILD_TARGET }}
       - uses: taiki-e/install-action@v2
         if: runner.os == 'Linux'
         with:
@@ -162,6 +161,7 @@ jobs:
         run: cargo nextest run --locked --workspace --no-default-features --features shoopdaloop/native-fx,shoop_engine/app_backend --profile ci
 
   build_and_test:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
     runs-on: ${{ matrix.os }}
     strategy:
