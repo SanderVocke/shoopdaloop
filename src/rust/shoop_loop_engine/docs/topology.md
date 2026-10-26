@@ -9,8 +9,8 @@ collections; compilation is not a callback operation.
 
 [Topology staging](topology-staging.md) now adds a canonical native/Wasm encoding,
 reusable maximum-capacity receiver storage, incremental validation and owning
-extraction/recycling. These components do **not** yet provide live facade
-topology/graph activation.
+extraction/recycling. The facade's separate [fixed-graph activation path](topology-activation.md)
+adds identity checks and receipts while preserving existing roles/resources.
 
 ## Lookup and lifetime contract
 
@@ -107,6 +107,7 @@ changed running program is still safely refused. Stopped replacement resets its
 cursor and nominal duration under the existing rules.
 
 The runtime facade does not expose unrestricted mutation through this standalone
-API. Iteration-zero running-program changes and transactional facade/graph/media
-activation remain Stage 6 work. Read-only flat views do not substitute for that
-transaction or for a reliable owning transport protocol.
+API. Its staged fixed-graph path preserves exact logical identities and media-role
+bindings; iteration-zero running changes and general graph/role-generation
+transactions remain Stage 6 work. Read-only flat views alone do not substitute
+for those transactions or for reliable owning transport.

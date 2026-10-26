@@ -14,6 +14,77 @@ Governing inputs: `INTER_LOOP_PROCESSING.md`, `PROPOSAL_LOOP_LAYER.md`, and the 
 
 For each stage, record changed interfaces, commands/results, evidence paths, limitations, and the milestone commit. Do not mark a stage complete on the strength of proposed tests or unverified claims.
 
+### Background Miri execution (user-approved scheduling change)
+
+Miri is an asynchronous verification lane, not a foreground development barrier.
+Launch the required selection as a supervised background job, then continue
+implementation, focused native tests, documentation and other gates. Do not wait
+in a long-running tool call merely to keep the interpreter alive. Implementation
+commits and subsequent development may proceed with explicitly recorded pending
+Miri evidence; do not call an applicable stage fully verified until its required
+consolidated evidence has been collected and checked. Smaller steps may be
+committed and recorded as implemented/native-verified without an individual Miri
+run; explicitly identify the stage-level Miri evidence still pending. This changes
+scheduling and run frequency, not LL-A1–LL-A12, workloads, guards, failure policy
+or final delivery requirements.
+
+- **Frequency:** default to **one consolidated Miri invocation per applicable
+  numbered-stage milestone**, covering that stage's affected/new cases and
+  necessary regression/dependency coverage. Accumulate smaller steps into that
+  run; do not launch a full or package Miri suite for every helper, refactor,
+  test addition, documentation update or implementation commit. Queue the job
+  when the stage's implementation is ready, then continue subsequent development
+  while it runs. Record why a stage does or does not need Miri. Additional focused
+  runs are justified for an actual Miri failure, a concrete safety regression,
+  or relevant changes after a stage snapshot; record the reason and run the
+  smallest adequate affected selection rather than routinely repeating the full
+  suite. Failed/interrupted jobs still need verified recovery, not a waived gate.
+  The final delivery selection remains mandatory. An already complete stage run
+  may also satisfy that final Miri obligation only when its full required inventory
+  and exact relevant source/dependency/toolchain/configuration inputs still match;
+  document the comparison rather than claiming a new run. Historical evidence is
+  retained without retroactively imposing this cadence on completed stages.
+- **Immutable input:** run each job in a detached worktree or isolated source
+  snapshot, never the mutable development checkout. Record the commit and, for
+  uncommitted work, a complete reproducible snapshot/patch including relevant new
+  files and a content manifest. Include Cargo manifests/lockfiles, test support,
+  runner, configuration and pinned toolchain. Exclude `.pi/`, credentials and
+  unrelated local state. Give the job isolated build and report directories.
+- **Durable supervision:** detach the supervisor from the interactive tool call;
+  persist a job ID, process identity, command, package/target/filter/seed inventory,
+  expected counts, source identity, start time and artifact paths before starting.
+  Persist per-case output/status and an atomic terminal result. Preserve the
+  existing 900-second per-command watchdog and process-group cleanup. A session
+  interruption must not leave an unsupervised interpreter or fabricate success.
+- **Development loop:** use focused native tests and cheap policies for immediate
+  feedback. Accumulate affected Miri cases for the applicable stage milestone;
+  normally allow one Miri job at a time to limit contention. Continue useful work rather
+  than polling tightly. Check results at natural checkpoints and before making
+  verification claims. Keep job state and outstanding verification debt in
+  [`docs/loop_layer/MIRI_JOBS.md`](docs/loop_layer/MIRI_JOBS.md).
+- **Freshness and reuse:** a pass proves only its recorded source/dependency
+  snapshot and test inventory. Later relevant source, dependency, test or runner
+  changes require refreshed affected coverage at the next applicable stage/final
+  verification barrier, not an immediate run after every edit. Reuse unchanged results
+  only with explicit source/dependency comparison and scope labels; do not label
+  old-head results as a fresh new-head run. Coalesce queued obsolete jobs where
+  useful, but retain their cancelled/superseded status and any completed evidence.
+- **Result collection:** require the supervisor's terminal success, all selected
+  cases/seeds and expected counts, passing test summaries, and matching source
+  and artifact hashes. Pending, missing, interrupted or timed-out jobs are not
+  passes. Preserve failures and investigate them; do not weaken assertions,
+  reduce required workloads or raise watchdogs to obtain green. Separate batches
+  may cover a declared inventory, but are never described as one uninterrupted
+  invocation. Record monotonic wall time, not Miri's simulated harness time.
+- **Acceptance barriers, not editing barriers:** keep applicable stages awaiting
+  their consolidated Miri run explicitly unverified while development continues.
+  Smaller steps have no separate routine Miri barrier. Before final delivery,
+  finish and verify the complete prescribed final Miri selection against the
+  final implementation tree, reconcile every job/debt entry, and obtain required
+  final-head green CI and review status. No final acceptance claim or delivery
+  may bypass a pending/failed/missing required Miri result. If implementation
+  changes after that run, refresh affected evidence and required final-head CI.
+
 ## Goals and scope
 
 1. Evolve `rt_runtime` to support generic planner-led interval execution, typed domain-operation delivery, prepared decision/observation storage, and resource access suitable for sample-exact looping.
@@ -189,6 +260,8 @@ The compiled-representation prerequisite is now flat metadata with borrowed prog
 
 The following receiver milestone implements `topology::staging::Stager`: pre-touched reusable banks, canonical fixed-width LTP1 encoding, transactional ordered chunks, scope/generation checks, incremental timing/dependency validation, and owning extraction/recycling. Independent byte,512-graph reachability and128-program raw-entry references, malformed inputs,128 guarded owner exchanges and active-clock isolation pass. `topology-staging-stage6{,-provenance}.json` records runtime178/loop106 native,174/106 per Wasm runtime, workspace2084/four existing skips,25 gates and **53 fresh selected loop Miri executions in one invocation**, with new staging borrow/move and existing lifetime/authority proofs. No fresh combined171 Miri claim. Timing readiness does not validate graph/resource/view-binding compatibility; live facade operations, transactional activation, iteration-zero running changes and remaining lifecycle stress are still open.
 
+The next implementation step exposes opt-in fixed-graph facade staging/activation, reliable payload and execution results, callback-shared record/validation allowances, retained rejected/retired owners, and coherent graph/topology epoch cuts. It preserves exact loop IDs/kinds and media-role bindings; changed running programs still refuse. Six new integrated tests include complete independent audio/MIDI/journal/public-state checks and activation during monitored capture with immutable prefix/full exports. `facade-topology-stage6{,-provenance}.json` records **runtime179/loop112 native,175/112 per Wasm runtime,workspace2091/four existing skips and25 broad gates**. The interrupted Miri invocation completed119 runtime+52 loop executions (including all six new cases), not a complete178 pass; seven executions remain uncompleted/unreported. Under the revised cadence, no smaller-step rerun is scheduled: the consolidated Stage6 Miri run and general graph/role-generation/iteration-zero activation remain pending. See the Miri job ledger for the preserved partial evidence.
+
 - [ ] Connect sync/countdown, trigger, and composite requests to the typed runtime path. Keep external request admission, pending musical state, cancellation, actual transition outcome, and automatic recurring events distinct; reserve reliable result storage for externally requested terminal outcomes.
 - [ ] Implement prepared topology/program activation and replacement with runtime graph/loop generation checks. Define and enforce a consistent activation boundary across view bindings, resources, and program state. Failed/stale candidates leave the current working configuration intact; displaced owners retire off-render.
 - [ ] Implement primitive/composite stop, seek, nested activation, and program replacement using the Stage 1 precedence rules. Exercise active/pending/stopped states and same-frame primitive → composite → primitive interactions, not just standalone composite simulation.
@@ -217,7 +290,8 @@ Depends on: Stage 6. Covers LL-A11 portability and host evidence.
 Depends on: Stages 3–7. No optimization may weaken LL-A3–LL-A10.
 
 - [ ] Extend seeded model/property testing for programs, occurrence delivery, descriptors, typed operations, resource indexes, capture transactions, and partition invariance. Include adversarial arithmetic, counter/generation exhaustion, reused slots, saturated retained-event storage, and malformed wire records; assert rejected operations preserve prior valid state/ownership.
-- [ ] Extend the pinned `scripts/run_rt_runtime_miri.py` runner with explicit package/target/filter/minimum-count records for the new runtime and loop cases, retaining its existing checks and isolation. Run selected lifetime/lease/decision-view/capture tests and multiple concurrency seeds; retain full-length native stress when Miri uses documented shorter loops.
+- [ ] Extend the pinned `scripts/run_rt_runtime_miri.py` runner with explicit package/target/filter/minimum-count records for the new runtime and loop cases, retaining its existing checks and isolation. Run selected lifetime/lease/decision-view/capture tests and multiple concurrency seeds as the consolidated applicable stage-level background selection under the execution contract above, not once per smaller step; retain full-length native stress when Miri uses documented shorter loops.
+- [ ] Provide and verify durable background-job launch/status/collection support with immutable snapshots, isolated outputs, expected inventories, stale-source detection, interruption/failure recording and process-group cleanup. Prove that editing the development tree cannot change an in-flight job's inputs, and that missing or incomplete results cannot be reported as passing.
 - [ ] Add `scripts/benchmark_loop_engine.py` and a guarded release example. Measure idle/no-planner overhead, multiple audio/MIDI loops, short-loop/dense cascades, composite nesting, indexed seek/replacement, playback/FX/capture, and simultaneous uploads/exports. Preserve scalar/media correctness checks and preallocated timing records.
 - [ ] Report raw callback timing distributions/maxima/deadline misses, frames/intervals/transitions, graph visits, render versus maintenance copies/steps, storage high-water marks, ownership credits, and source/toolchain/hardware/configuration. Vary loop counts and lengths to show workload scaling. Timing is evidence, not an arbitrary xrun-free CI requirement or an unsupported speedup claim.
 - [ ] Audit every new callback-reachable path for heap destruction, locks, I/O, retries, hidden full-content scans, and accidentally refreshed quotas. Exercise deliberate allocation/reallocation/deallocation violations in debug/release and Wasm so guards cannot silently disappear.
@@ -244,7 +318,7 @@ Depends on: implemented Stages 3–8; update affected API docs during those stag
 Depends on: all prior stages. Completes LL-A12; do not stop at local success.
 
 - [ ] Run the complete final gate set below from the final implementation tree, including existing application/browser smoke checks. Record actual discovered/passed/skipped counts and reasons; do not copy initial-crate totals or treat unexpected skips as success.
-- [ ] Rerun the coordinated reference/partition suite, mixed saturation/exhaustion teardown, actual offline/live worklet, failure canaries, selected Miri, and release benchmarks. Verify artifacts contain real results and full logical resource/owner recovery, not just successful command exits.
+- [ ] Rerun the coordinated reference/partition suite, mixed saturation/exhaustion teardown, actual offline/live worklet, failure canaries, selected Miri, and release benchmarks. Launch final Miri in the background against the frozen final implementation snapshot while other gates run; collect and verify its complete result before final acceptance. Reconcile the Miri job ledger and refresh evidence invalidated by subsequent implementation changes. Verify artifacts contain real results and full logical resource/owner recovery, not just successful command exits.
 - [ ] Commit each remaining meaningful milestone, documentation, plan progress, and evidence. Push the dedicated branch and open/update the PR with scope, architectural/API changes, semantic decisions, tests, limitations, and LL-A acceptance mapping. Do not merge without a separate request.
 - [ ] Watch required CI to green on the final PR head, including all native matrix cells, full Node/Chromium/application checks, actual worklet, ownership checks, and documentation/policy gates. Inspect/download representative artifacts; verify head SHA/run attempt and fixture hashes/counts. Fix failures, rerun behavioral gates, commit, and push as needed; never weaken a gate to obtain green status.
 - [ ] Check PR reviews, inline comments, and check-run feedback for automated review. Repeatedly address applicable feedback, explain justified disagreements, and request reruns/re-review until the reviewer approves. If no automated reviewer is configured or available, record that explicitly; passing CI is not reviewer approval.
@@ -275,6 +349,7 @@ python3 scripts/run_wasm_tests.py --runtime node --package rt_runtime --package 
 python3 scripts/run_wasm_tests.py --runtime chrome --package rt_runtime --package shoop_loop_engine
 python3 scripts/run_rt_runtime_hosts.py --verify-failures
 python3 scripts/run_loop_engine_hosts.py --verify-failures
+# Job payload: execute in a supervised immutable background snapshot, then collect/verify.
 python3 scripts/run_rt_runtime_miri.py
 python3 scripts/benchmark_rt_runtime.py
 python3 scripts/benchmark_loop_engine.py

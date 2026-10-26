@@ -18,15 +18,18 @@ separate playback/input consumers, transactional capture preflight, reliable typ
 outcomes, coherent state/export and explicit cleanup. Run the public
 `coordinated_loop` example for stereo/MIDI record→play, wraps, seek, replacement,
 export and teardown. Its new integration validation is tracked separately from
-completed foundation evidence. Live topology/program replacement, independent
-loop hosts and later acceptance stages remain pending.
+completed foundation evidence. General live topology/graph/role replacement,
+changed-running programs, independent loop hosts and later acceptance remain pending.
 
 Compiled topology now uses [flat metadata and borrowed views](docs/topology.md),
 with checked linear byte accounting and canonical sparse lookup. Program/target
 view copies do not acquire owners; target lists use `get`/iteration.
 [Prepared topology staging](docs/topology-staging.md) adds canonical native/Wasm
 encoding, transactional ordered chunks, incremental validation and owning bank
-recycling. It validates timing metadata, not live facade graph/media activation.
+recycling. It validates timing metadata, not graph/media compatibility.
+[Fixed-graph facade activation](docs/topology-activation.md) adds reliable typed
+operations, callback-shared allowances, retained owners and coherent epoch cuts
+while preserving existing logical identities, role bindings and the signal graph.
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate

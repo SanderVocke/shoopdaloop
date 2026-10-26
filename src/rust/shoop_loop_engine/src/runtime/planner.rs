@@ -13,6 +13,8 @@ impl LoopPlanner {
         if let Ok(row) = self.row(target) {
             Ok(Cut {
                 frame,
+                graph_epoch: self.graph_epoch,
+                topology_epoch: self.resolver.epoch(),
                 state,
                 playback: self.ledger.playback(target)?,
                 latest: self.ledger.latest(target)?,
@@ -23,6 +25,8 @@ impl LoopPlanner {
         } else {
             Ok(Cut {
                 frame,
+                graph_epoch: self.graph_epoch,
+                topology_epoch: self.resolver.epoch(),
                 state,
                 playback: None,
                 latest: None,
@@ -485,6 +489,10 @@ impl LoopPlanner {
         Ok(())
     }
     pub(super) fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+        self.topologies.cleanup().map_err(|error| match error {
+            Failure::Runtime(error) => error,
+            Failure::Timeline(error) => runtime_error(error),
+        })?;
         for slot in 0..self.rows.len() {
             let Some(row) = self.rows[slot] else { continue };
             if let Some(interval) = row.interval {
@@ -550,7 +558,7 @@ impl Planner for LoopPlanner {
             id: self.settings.planner,
             decision_slots: self.views.len(),
             observation_capacity: self.rows.iter().flatten().count() * 2,
-            operation_bytes: 0,
+            operation_bytes: self.topologies.operation_bytes(),
         })
     }
     fn decisions(&self) -> &[View] {
@@ -560,6 +568,7 @@ impl Planner for LoopPlanner {
         matches!(
             operation,
             Operation::Cancel { .. }
+                | Operation::TopologyCancel { .. }
                 | Operation::Transition {
                     timing: Timing::At,
                     transition: Transition::Stop,
@@ -572,7 +581,66 @@ impl Planner for LoopPlanner {
         operation: Operation,
         mut context: OperationContext<'_, Operation, Reply>,
     ) -> Result<Disposition<Reply>, Error> {
+        self.graph_epoch = context.graph_epoch;
+        self.topologies.callback(context.callback_start);
         let result = (|| -> Result<Disposition<Reply>, Failure> {
+            if !context.payload.is_empty()
+                && !matches!(
+                    operation,
+                    Operation::TopologyBegin { .. } | Operation::TopologyAppend { .. }
+                )
+            {
+                return Err(Error::InvalidShape.into());
+            }
+            let topology_status = match operation {
+                Operation::TopologyBegin { slot } => {
+                    Some(self.topologies.begin(slot, context.payload)?)
+                }
+                Operation::TopologyAppend { id, first_record } => {
+                    self.topologies.append(id, first_record, context.payload)?;
+                    Some(id)
+                }
+                Operation::TopologyStatus { id } => Some(id),
+                Operation::TopologyValidate { id } => {
+                    let progress = self.topologies.validate(id)?;
+                    return Ok(Disposition::Complete(Reply::TopologyProgress {
+                        id,
+                        progress,
+                    }));
+                }
+                Operation::TopologyCancel { id } => {
+                    self.topologies.cancel(id)?;
+                    Some(id)
+                }
+                Operation::TopologyRecycle { id } => {
+                    self.topologies.recycle(id)?;
+                    Some(id)
+                }
+                Operation::TopologyActivate {
+                    id,
+                    graph_epoch,
+                    topology_epoch,
+                } => {
+                    if graph_epoch != context.graph_epoch {
+                        return Err(Error::InvalidState.into());
+                    }
+                    let topology_epoch =
+                        self.topologies
+                            .activate(id, topology_epoch, &mut self.resolver)?;
+                    return Ok(Disposition::Complete(Reply::TopologyActivated {
+                        id,
+                        graph_epoch,
+                        topology_epoch,
+                    }));
+                }
+                _ => None,
+            };
+            if let Some(id) = topology_status {
+                return Ok(Disposition::Complete(Reply::TopologyStatus {
+                    id,
+                    status: self.topologies.status(id)?,
+                }));
+            }
             match operation {
                 Operation::Cancel { sequence } => {
                     if let Some(pending) = self
@@ -712,11 +780,20 @@ impl Planner for LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
+                Operation::TopologyBegin { .. }
+                | Operation::TopologyAppend { .. }
+                | Operation::TopologyValidate { .. }
+                | Operation::TopologyStatus { .. }
+                | Operation::TopologyCancel { .. }
+                | Operation::TopologyRecycle { .. }
+                | Operation::TopologyActivate { .. } => unreachable!("topology operation handled"),
             }
         })();
         Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))))
     }
     fn plan(&mut self, mut context: PlanContext<'_, Operation, Reply>) -> Result<Frame, Error> {
+        self.graph_epoch = context.graph_epoch;
+        self.topologies.callback(context.callback_start);
         if context.frame != self.resolver.frame() {
             return Err(Error::InvalidFrame);
         }

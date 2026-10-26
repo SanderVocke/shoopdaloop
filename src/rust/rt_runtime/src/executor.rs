@@ -754,6 +754,8 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                             self.planner.operation(
                                 operation,
                                 OperationContext {
+                                    graph_epoch: self.epoch,
+                                    callback_start: audio.frame,
                                     token: event.token,
                                     frame: at,
                                     requested_frame: event.requested_frame,
@@ -855,6 +857,8 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
             let ceiling = audio.frame.checked_add(end)?;
             let selected = if self.catalog.planner().is_some() {
                 self.planner.plan(PlanContext {
+                    graph_epoch: self.epoch,
+                    callback_start: audio.frame,
                     frame: at,
                     ceiling,
                     resources: self.resources.planner_io(at, ceiling),

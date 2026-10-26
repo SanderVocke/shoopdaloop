@@ -13,11 +13,14 @@ use rt_runtime::{
     resource::*,
     schedule::{self, ReceiptToken},
     transport::{self, Lane},
-    Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
+    Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
 mod planner;
 mod processor;
+mod topology;
+use crate::topology::staging::{Progress, StageId, Status};
 pub use processor::Node;
+pub use topology::TopologySettings;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Failure {
@@ -85,6 +88,30 @@ pub enum Selection {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    TopologyBegin {
+        slot: usize,
+    },
+    TopologyAppend {
+        id: StageId,
+        first_record: usize,
+    },
+    TopologyValidate {
+        id: StageId,
+    },
+    TopologyStatus {
+        id: StageId,
+    },
+    TopologyCancel {
+        id: StageId,
+    },
+    TopologyRecycle {
+        id: StageId,
+    },
+    TopologyActivate {
+        id: StageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     Transition {
         target: LoopId,
         timing: Timing,
@@ -128,6 +155,8 @@ pub enum Operation {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cut {
     pub frame: Frame,
+    pub graph_epoch: Epoch,
+    pub topology_epoch: Epoch,
     pub state: State,
     pub playback: Option<media::MediaId>,
     pub latest: Option<media::MediaId>,
@@ -137,6 +166,19 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    TopologyStatus {
+        id: StageId,
+        status: Status,
+    },
+    TopologyProgress {
+        id: StageId,
+        progress: Progress,
+    },
+    TopologyActivated {
+        id: StageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     Done,
     Failed(Failure),
     Transition(crate::Completion),
@@ -247,6 +289,8 @@ pub struct LoopPlanner {
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
+    topologies: topology::Topologies,
+    graph_epoch: Epoch,
     ledger: media::Ledger,
     rows: Box<[Option<Row>]>,
     inputs: Box<[MidiState]>,
@@ -276,6 +320,15 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
         at: Frame,
         operation: Operation,
     ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
+        self.submit_payload(lane, at, operation, Box::new([]))
+    }
+    pub fn submit_payload(
+        &mut self,
+        lane: Lane,
+        at: Frame,
+        operation: Operation,
+        payload: Box<[u8]>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
         self.control.submit_prepared(
             lane,
             Command::Schedule {
@@ -284,7 +337,7 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
                     planner: self.planner,
                     operation,
                 },
-                payload: Box::new([]),
+                payload,
             },
         )
     }
@@ -359,7 +412,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
     pub fn prepare_with_observer(
         config: PreparedConfig,
         topology: PreparedTopology,
-        mut resources: ResourceStore,
+        resources: ResourceStore,
         settings: Settings,
         bindings: Vec<Binding>,
         imports: Vec<media::Input>,
@@ -367,6 +420,35 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
         graph: GraphDescription,
         observer: Box<dyn BoundaryObserver>,
     ) -> Result<(Controller<P>, Self), Failure> {
+        Self::prepare_with_staging(
+            config,
+            topology,
+            resources,
+            settings,
+            bindings,
+            imports,
+            effects,
+            graph,
+            TopologySettings::default(),
+            Some(observer),
+        )
+    }
+    /// Prepare reusable timing candidates for the fixed graph and existing role identities.
+    /// Changed running programs remain refused; no graph or logical-role replacement is exposed.
+    pub fn prepare_with_staging(
+        config: PreparedConfig,
+        topology: PreparedTopology,
+        mut resources: ResourceStore,
+        settings: Settings,
+        bindings: Vec<Binding>,
+        imports: Vec<media::Input>,
+        effects: Vec<(NodeId, P)>,
+        graph: GraphDescription,
+        staging: TopologySettings,
+        observer: Option<Box<dyn BoundaryObserver>>,
+    ) -> Result<(Controller<P>, Self), Failure> {
+        let (topologies, topology) = topology::Topologies::prepare(topology, staging)?;
+        let observer = observer.unwrap_or_else(|| Box::new(NoObserver));
         let limits = topology.limits();
         let cfg = config.limits();
         if settings.normal_requests == 0 || settings.normal_requests >= limits.pending_requests {
@@ -602,6 +684,8 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             observer,
             settings,
             resolver,
+            topologies,
+            graph_epoch: Epoch(1),
             ledger,
             rows,
             inputs,

@@ -41,8 +41,10 @@ Zero-channel/no-MIDI primitives are valid timing-only loops. Composites do not
 have media bindings. Effects implement `Processor<LoopPlanner>` and must declare
 no planner access; they receive ordinary signal ports and may implement
 `set_parameter`. Node identity, port and signal-cycle validation still applies.
-No unrestricted live graph replacement is exposed. Transactional live
-loop/graph/program replacement is subsequent integration work.
+No unrestricted live graph replacement is exposed. The opt-in
+[fixed-graph topology activation path](topology-activation.md) supports prepared
+timing changes with unchanged logical IDs/kinds and media-role bindings. General
+graph/role replacement and changed-running iteration-zero activation remain work.
 
 Provision two capture groups per media-bearing primitive, with separate resource
 identities for their audio and MIDI members. The facade creates these resources

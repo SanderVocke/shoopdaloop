@@ -1179,3 +1179,85 @@ Nix SQLite-busy warning did not fail a gate. This does not complete Stage 6:
 facade receipts/transport integration, atomic graph/domain/media activation,
 changed-running iteration-zero behavior and broader lifecycle stress remain open.
 Actual loop-host and final CI/review acceptance remain later work.
+
+## Stage 6 — Fixed-graph facade topology activation
+
+Implementation milestone: `feat(loop-engine): expose fixed-graph topology staging and activation`
+(the commit introducing this section), base `9bab9ddf`. This is an implemented,
+broad-tested integration slice, **not Stage 6 completion or a complete stage-level
+Miri pass**. Evidence: [`facade-topology-stage6.json`](evidence/facade-topology-stage6.json)
+and [`facade-topology-stage6-provenance.json`](evidence/facade-topology-stage6-provenance.json).
+Logs: `target/loop-layer-facade-topology-stage6/`.
+
+Generic planner operation/plan contexts now carry authoritative graph epoch and
+enclosing callback start. A guarded generic test proves these values across
+internal intervals, graph replacement and a zero-frame callback. NoPlanner keeps
+its signal-only behavior. The production lifetime prototype is updated and all
+positive/negative view, staging and capture-authority proofs pass freshly.
+
+The opt-in facade prepares candidate banks plus a maximum-capacity initial owner.
+Typed begin/append/validate/status/cancel/activate/recycle operations use reliable
+receipts and owning payload returns. Work allowances are shared across a whole
+callback, not replenished at musical boundaries. Ready candidates survive failed
+activation; successful activation retains the displaced owner until explicit
+recycling. Recovery cancels unpublished candidates independently of normal
+request/result slots. State/export cuts carry graph/topology epochs.
+
+This path preserves the signal graph, exact logical IDs/kinds, media-role bindings,
+resource claims and selected content. Changed programs must already be stopped;
+a Stop queued at the same frame has not yet settled when activation is delivered.
+General graph/role-generation transactions and next-iteration-zero running changes
+remain open. See the [public contract](../../src/rust/shoop_loop_engine/docs/topology-activation.md).
+
+Six guarded cases establish:
+
+- Complete independent stereo samples, absolute MIDI packets, ordered journals,
+  every observer-provided public State field, epoch cuts and retained export bytes
+  for a staged stopped-program change. Whole/single/irregular partitions, reversed
+  declarations and journals0/1/1024 agree. Failed running/stale activation retains
+  the candidate; same-frame Play/query uses the newly activated configuration.
+- Two-record/three-step callback work limits remain shared across separately
+  scheduled operations and one-sample internal intervals. Validation resumes with
+  exact progress. Recovery cancels Ready storage with32 normal receipt slots
+  stalled while128 automatic frames continue.
+- Stale/foreign stage IDs, incompatible logical generations, malformed syntax and
+  semantic records, and unexpected payloads preserve the working clock/configuration.
+- Pre-delivery transport cancellation preserves the candidate; a later successful
+  sync-source change terminates an already delivered `u64::MAX` countdown with
+  MissingSync and exact requested/delivered/terminal frames.
+- Idempotent guarded cleanup recovers Receiving/Validating/Ready/Failed/Taken-retired
+  banks, media references and resource pools after controller disposal.
+- Activation during monitored stereo/MIDI recording preserves the take, exact FX
+  output, complete restoration/original packets, immutable prefix/full audio and
+  MIDI bytes, all initial MIDI channels and full resource recovery across three
+  partitions. Positive capacity is provisioned for replaying captured restoration
+  originals, not just original note traffic.
+
+Receiver preparation now explicitly writes through black-box references to touch
+metadata and scratch, including vectors subsequently cleared for reuse. This
+strengthens preparation intent without changing callback workloads or asserting
+an OS paging/deadline guarantee.
+
+Fresh broad results: **179 runtime/112 loop native per profile**, **175/112 per
+Node/Chromium**, **2091 workspace passes/four existing skips**, **25 broad gates**,
+104 source hashes, closed tracing inventory200 (56 excluded/33 direct/111 indirect),
+and unchanged existing native/actual generic-worklet golden and failure canaries.
+These generic hosts do not substitute for the future independent loop hosts.
+
+Miri was interrupted when the goal was paused. **171 selected executions completed:
+119 runtime and52 loop**, including the new context and all six facade cases.
+The dense case's supervisor disappeared; orphan process group2424461 was explicitly
+terminated. Completed logs, source hashes, runner and cleanup record are archived
+in `miri-interrupted/partial.json`; in-memory output of the incomplete case was
+not recovered. There is **no full178 pass or whole-invocation wall measurement**.
+The seven uncompleted/unreported cases remain recorded in [MIRI_JOBS.md](MIRI_JOBS.md).
+The user-approved cadence defers routine Miri reruns to the consolidated applicable
+stage, rather than rerunning for this smaller step.
+
+Retained setup failures include incorrect State/resource-command API use,
+Option<Frame> typing, insufficient positive-fixture scheduler payload stride,
+summing an already cumulative dropped-journal counter, and attempting to construct
+a crate-private State. The reference now independently checks all public fields;
+no API was exposed or assertion removed to bypass that privacy boundary. Failed
+logs remain in provenance; their intermediate source trees were not archived.
+An ignored Nix SQLite-busy warning did not fail a broad gate.

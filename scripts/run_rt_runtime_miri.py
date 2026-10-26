@@ -24,7 +24,7 @@ CASES = [
     ("midi_restore_state", [], 2),
     ("midi_index", [], 8),
     ("typed_schedule", [], 7),
-    ("typed_execution", [], 11),
+    ("typed_execution", [], 12),
     ("wire_properties", [], 3),
     ("resource_properties", [], 1),
     ("mixed_stress", [], 1),
@@ -80,6 +80,7 @@ def main():
     cases.append(("shoop_loop_engine", "audio_ports", [], 2, 0))
     cases.append(("shoop_loop_engine", "lib", [], 2, 0))
     cases.append(("shoop_loop_engine", "topology_staging", [], 7, 0))
+    cases.append(("shoop_loop_engine", "runtime_topology", [], 6, 0))
     cases.append(("shoop_loop_engine", "media", [], 4, 0))
     cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))

@@ -61,8 +61,15 @@ fn next_scope(counter: &AtomicU32) -> Result<u32, Error> {
         })
         .map_err(|_| Error::Exhausted)
 }
+fn initialized<T: Clone>(count: usize, value: T) -> Vec<T> {
+    let mut data = vec![value.clone(); count];
+    for item in &mut data {
+        *std::hint::black_box(item) = value.clone();
+    }
+    data
+}
 fn pretouched<T: Clone>(count: usize, value: T) -> Vec<T> {
-    let mut data = vec![value; count];
+    let mut data = initialized(count, value);
     data.clear();
     data
 }

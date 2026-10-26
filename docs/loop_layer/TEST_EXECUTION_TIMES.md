@@ -160,6 +160,27 @@ per-test wall-time attribution or guaranteed CI margin is claimed. Evidence:
 `topology-staging-stage6.json` and
 `target/loop-layer-topology-staging-stage6/miri-wall.json`.
 
+## Fixed-graph facade activation observations
+
+The next Stage 6 broad run passed25 gates with179 runtime/112 loop native tests,
+175/112 per Wasm environment and2091 workspace passes/four existing skips. Under
+the same warm-cache/concurrent-Miri conditions, monotonic command wall times were:
+
+| Scope | Wall time |
+| --- | ---: |
+| Native debug / release | 9.56 s / 14.08 s |
+| Node / Chromium | 214.44 s / 238.42 s |
+| Workspace nextest | 46.05 s |
+| Existing actual generic worklet and canaries | 40.53 s |
+| All25 broad gate commands | **576.34 s (9m36s)** |
+
+The Miri invocation was interrupted on goal pause after171 completed executions
+(119 runtime/52 loop) out of178 registered. No complete invocation wall duration
+was produced; do not infer one from simulated per-test times or orphan-process
+elapsed time. Partial evidence and outstanding stage-level coverage are recorded
+in [MIRI_JOBS.md](MIRI_JOBS.md). Under the revised cadence, this smaller step does
+not trigger another routine Miri run.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.
@@ -168,9 +189,16 @@ per-test wall-time attribution or guaranteed CI margin is claimed. Evidence:
 2. The two package Wasm commands account for about seven minutes of this warm
    broad run. Run both for portability changes; do not count Node as browser
    evidence or package browser tests as actual AudioWorklet evidence.
-3. Miri dominates turnaround and deserves separately planned execution/artifact
-   collection. Preserve the complete selected set and explicit filters/counts;
-   label partial runs honestly and retain timeout output.
+3. Miri dominates turnaround. Per the user-approved plan change, run it in
+   supervised background jobs against immutable snapshots while development and
+   other gates continue, normally **once per applicable numbered-stage milestone**
+   rather than for each smaller step or commit. Accumulate affected cases; use
+   extra focused runs only for recorded failure/safety/freshness reasons. Track
+   jobs and verification debt in [MIRI_JOBS.md](MIRI_JOBS.md). Collect and verify
+   the complete required results before declaring applicable stages verified or
+   making final delivery; a background launch is not a pass. Preserve
+   the complete selected set and explicit filters/counts, label separate/partial
+   runs honestly, and retain failure/interruption output.
 4. Collect cold-cache, CI matrix, machine-load and per-command Miri wall times
    before setting scheduling expectations. The Windows/macOS, full application
    browser suite, future loop host and future loop benchmarks are **not measured

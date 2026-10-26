@@ -24,6 +24,7 @@ fn planner() -> PlannerId {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Op {
+    Context,
     Set(u32),
     Delay { until: u64, value: u32 },
     Cancel(Sequence),
@@ -37,12 +38,18 @@ enum Op {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Reply {
+    Context {
+        epoch: Epoch,
+        callback_start: Frame,
+        frame: Frame,
+    },
     Applied(u32),
     Cancelled,
     Stopped,
     Refused,
 }
 struct Domain {
+    context_mode: bool,
     value: [u32; 1],
     pending: [Option<(ReceiptToken, Frame, u32)>; 4],
     recovery: Option<ReceiptToken>,
@@ -75,6 +82,14 @@ impl Planner for Domain {
         mut context: OperationContext<'_, Op, Reply>,
     ) -> Result<Disposition<Reply>, Error> {
         match operation {
+            Op::Context => {
+                self.context_mode = true;
+                Ok(Disposition::Complete(Reply::Context {
+                    epoch: context.graph_epoch,
+                    callback_start: context.callback_start,
+                    frame: context.frame,
+                }))
+            }
             Op::Set(value) => {
                 self.value[0] = value;
                 Ok(Disposition::Complete(Reply::Applied(value)))
@@ -151,6 +166,11 @@ impl Planner for Domain {
                     .receipts
                     .complete(token, Ok(Reply::Applied(value)))?;
             }
+        }
+        if self.context_mode {
+            self.value[0] = (context.graph_epoch.0 * 1000
+                + context.callback_start.0 * 100
+                + context.frame.0) as u32;
         }
         Ok(context.frame.checked_add(1)?.min(context.ceiling))
     }
@@ -255,6 +275,7 @@ impl Harness {
             config(events),
             vec![PreparedNode::new(node(), Gain { factor: 1 })],
             Domain {
+                context_mode: false,
                 value: [1],
                 pending: [None; 4],
                 recovery: None,
@@ -353,6 +374,39 @@ impl Harness {
             .map(|completion| completion.outcome)
             .collect()
     }
+}
+
+#[shoop_test]
+fn graph_epoch_and_callback_origin_are_authoritative_across_internal_intervals() {
+    let mut h = Harness::new(16);
+    let first = h.operation(Lane::Normal, 0, Op::Context, &[]);
+    let second = h.operation(Lane::Normal, 2, Op::Context, &[]);
+    let third = h.operation(Lane::Normal, 3, Op::Context, &[]);
+    h.step(3).unwrap();
+    assert_eq!(&h.output[..3], &[1000., 1001., 1002.]);
+    let mut replies = h.replies();
+    h.drain();
+    h.graph(true);
+    h.step(0).unwrap();
+    assert_eq!(h.runtime.epoch(), Epoch(1));
+    assert!(h.replies().is_empty());
+    h.step(2).unwrap();
+    assert_eq!(&h.output[..2], &[2303., 2304.]);
+    replies.extend(h.replies());
+    assert_eq!(replies.len(), 3);
+    for (sequence, epoch, start, frame) in [(first, 1, 0, 0), (second, 1, 0, 2), (third, 2, 3, 3)] {
+        let reply = replies.iter().find(|r| r.sequence == sequence).unwrap();
+        assert_eq!(reply.result, Ok(()));
+        assert_eq!(
+            reply.operation_result,
+            Some(Reply::Context {
+                epoch: Epoch(epoch),
+                callback_start: Frame(start),
+                frame: Frame(frame),
+            })
+        );
+    }
+    h.drain();
 }
 
 #[shoop_test]

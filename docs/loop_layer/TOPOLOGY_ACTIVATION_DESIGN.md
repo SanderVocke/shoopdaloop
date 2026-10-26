@@ -1,10 +1,11 @@
 # Live topology/program activation — remaining Stage 6 design work
 
-**Live activation design; no live-activation API is implemented yet.**
-The coordinated facade, first integrated inter-loop reference scenario, flat
-compiled metadata and bounded staging/validation/recycling are verified. They do
-not expose live facade topology/program/graph replacement. The full Stage 6 contract and later
-receiver/host requirements remain unchanged.
+**General activation remains design work; a fixed-graph facade path is implemented.**
+The coordinated facade, inter-loop reference scenario, flat metadata and receiver
+are followed by typed staging and activation with unchanged logical IDs/kinds,
+media-role bindings and signal graph. Its broad gates pass; complete stage-level
+Miri remains pending under the background/stage-level cadence. The full Stage 6
+contract and later host requirements remain unchanged.
 
 ## Existing limitations
 
@@ -18,9 +19,11 @@ receiver/host requirements remain unchanged.
   expected epoch and generation watermarks, and requires removed loops stopped.
   It safely refuses changed running programs; it does not implement their required
   iteration-zero activation.
-- The facade currently installs one validated initial graph and intentionally
-  hides generic live mutation. Generic graph validation alone cannot establish
-  loop role/resource/program invariants.
+- The facade installs one validated initial graph and hides generic live graph
+  mutation. `prepare_with_staging` enables fixed-graph timing changes and stopped
+  program replacement. It checks authoritative graph/topology epochs and exact
+  logical identities/kinds, preserving all media-role/resource bindings. General
+  graph validation alone cannot establish replacement role/resource invariants.
 - Planner operations/results are Copy values. Putting an owning compiled topology
   inside an operation, or transferring native Rust pointers between Wasm instances,
   is not an acceptable delivery design.
@@ -34,9 +37,11 @@ retained resource/callback borrows. Program-relative segment ranges preserve
 program equality across unrelated global-table relocation. Reusable receiver
 storage and its checked lifecycle are implemented; LTP1 encodes explicit
 little-endian integer fields rather than transferring internal usize ranges or
-Rust layouts. The next integration must associate ready identities with reliable
-facade operation outcomes and graph/topology epochs, and reserve compatible
-retirement/recycling storage before any activation.
+Rust layouts. The fixed-graph integration associates ready identities with reliable facade
+operation outcomes and authoritative graph/topology epochs. It prepares a
+maximum-capacity initial owner and reserves a retirement slot before activation;
+rejected candidates stay Ready and displaced owners await explicit recycling.
+General graph/role-generation compatibility and iteration-zero activation remain.
 
 Storage must be derived from total declared limits, not an accidental
 programs × targets × maximum-segments expansion. Allocation/pre-touch belongs to
@@ -60,6 +65,29 @@ a usable bounded staging protocol. Nor may later MessagePort handlers compile or
 allocate replacement owners on the worklet thread outside the process guard as
 a workaround. The actual receiver/host integration must meet the same prepared
 ownership contract.
+
+## Implemented fixed-graph integration slice
+
+`runtime::TopologySettings` provisions candidate banks and whole-callback record/
+validation allowances; generic contexts now carry graph epoch and callback origin.
+Begin/append/validate/status/cancel/activate/recycle use reliable typed operations
+and owning scheduled payload returns. Validation is explicit optional preparation;
+it does not wait for future ingress or refresh budgets at internal intervals.
+Recovery can cancel unpublished candidates without normal request/result credits.
+
+Activation occurs at operation delivery before musical preview. It preserves
+exact logical IDs/kinds, signal graph, physical roles, resources and selections;
+changed programs must already be stopped. A same-frame queued Stop has not yet
+settled and is not enough for that precondition. Post-settlement state/export cuts
+carry both epochs. Rejected candidates and retired owners remain held in prepared
+storage; stopped cleanup recovers every candidate phase without callback disposal.
+
+See the [public guide](../../src/rust/shoop_loop_engine/docs/topology-activation.md)
+and `facade-topology-stage6{,-provenance}.json` for six integrated independent
+sample/MIDI/journal/state/capture/export and ownership tests. The broad 25-gate
+pass is separate from the interrupted Miri invocation (171 completed of178;
+seven uncompleted/unreported). This slice does not close Stage 6 or replace the
+requirements below.
 
 ## Atomic boundary requirements
 

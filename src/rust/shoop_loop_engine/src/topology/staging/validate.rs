@@ -103,19 +103,19 @@ impl Validator {
         crate::config::checked_storage(bytes, 1)
     }
     pub fn prepare(limits: Limits) -> Self {
-        let nodes = || vec![usize::MAX; limits.loop_slots].into_boxed_slice();
+        let nodes = || initialized(limits.loop_slots, usize::MAX).into_boxed_slice();
         Self {
             phase: Phase::Nodes(0),
             slots: nodes(),
             programs: nodes(),
-            owners: vec![usize::MAX; limits.program_entries].into_boxed_slice(),
+            owners: initialized(limits.program_entries, usize::MAX).into_boxed_slice(),
             groups: nodes(),
             marks: nodes(),
             degrees: nodes(),
             queue: nodes(),
-            ordinal_program: vec![usize::MAX; limits.program_entries].into_boxed_slice(),
-            ordinal_owner: vec![0; limits.program_entries].into_boxed_slice(),
-            ordinal_mode: vec![Mode::Stopped; limits.program_entries].into_boxed_slice(),
+            ordinal_program: initialized(limits.program_entries, usize::MAX).into_boxed_slice(),
+            ordinal_owner: initialized(limits.program_entries, 0).into_boxed_slice(),
+            ordinal_mode: initialized(limits.program_entries, Mode::Stopped).into_boxed_slice(),
             edges: pretouched(
                 limits.relations,
                 Relation {

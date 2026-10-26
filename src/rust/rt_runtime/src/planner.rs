@@ -65,6 +65,9 @@ pub struct Interval {
 }
 
 pub struct PlanContext<'a, O = (), R = ()> {
+    pub graph_epoch: crate::Epoch,
+    /// Start of the enclosing nonempty host callback, not the internal interval.
+    pub callback_start: Frame,
     pub frame: Frame,
     pub ceiling: Frame,
     pub resources: crate::resource::PlannerResourceIo<'a>,
@@ -78,6 +81,9 @@ pub enum Disposition<R> {
 }
 
 pub struct OperationContext<'a, O, R> {
+    pub graph_epoch: crate::Epoch,
+    /// Stable across every operation and planning interval in this callback.
+    pub callback_start: Frame,
     pub token: crate::schedule::ReceiptToken,
     pub requested_frame: Frame,
     pub frame: Frame,
@@ -123,7 +129,7 @@ pub trait Planner: Send {
         context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
     ) -> Result<(), Error>;
     /// Recovery is payload-free and must complete no later than planning at the
-    /// delivery frame. Structural edits and arbitrary deferred work are not safe.
+    /// delivery frame. Active structural edits and arbitrary deferred work are not safe.
     fn recovery_safe(_operation: Self::Operation) -> bool {
         false
     }

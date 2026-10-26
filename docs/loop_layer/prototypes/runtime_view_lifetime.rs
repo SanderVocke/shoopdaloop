@@ -28,6 +28,8 @@ fn main() {
     let end = settle(
         &mut planner,
         PlanContext {
+            graph_epoch: rt_runtime::Epoch(0),
+            callback_start: Frame(0),
             frame: Frame(0),
             ceiling: Frame(128),
             resources: resources.planner_io(Frame(0), Frame(128)),

@@ -40,6 +40,7 @@ src/rust/shoop_loop_engine/src/resolver.rs,portable_loop_library,excluded,Indepe
 src/rust/shoop_loop_engine/src/runtime/mod.rs,portable_loop_library,excluded,Portable prepared facade and typed control; bounded state and receipts expose outcomes without application tracing dependencies.
 src/rust/shoop_loop_engine/src/runtime/planner.rs,portable_loop_library,excluded,Guarded coordinated boundary execution; semantic journals and optional prepared observers expose diagnostics without application tracing.
 src/rust/shoop_loop_engine/src/runtime/processor.rs,portable_loop_library,excluded,Guarded playback and capture consumers; generic runtime work and explicit MIDI overflow observations remain accounted.
+src/rust/shoop_loop_engine/src/runtime/topology.rs,portable_loop_library,excluded,Prepared topology ingestion and owning activation/recycling; typed receipts and coherent epochs expose outcomes without callback tracing.
 src/rust/shoop_loop_engine/src/state.rs,portable_loop_library,excluded,Plain-data authoritative state; no execution boundary to instrument.
 src/rust/shoop_loop_engine/src/topology.rs,portable_loop_library,excluded,Prepared timing metadata and borrowed views expose checked results without a host tracing dependency.
 src/rust/shoop_loop_engine/src/topology/staging.rs,portable_loop_library,excluded,Guarded metadata ingestion and owning recycling expose scoped status and progress without application tracing.

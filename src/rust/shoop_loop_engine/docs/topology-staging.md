@@ -6,9 +6,9 @@ on the callback. It is portable native/Wasm code with no browser dependency.
 
 **Ready means timing metadata is validated.** It does not certify runtime graph
 bindings, media/resource compatibility, current activation epochs or historical
-loop-generation watermarks. The facade does not yet expose live activation using
-this receiver. Do not bypass that missing transaction with unrestricted mutation
-of a running facade.
+loop-generation watermarks. The facade adds a restricted
+[fixed-graph activation path](topology-activation.md) with its own identity and
+compatibility checks. Do not bypass those checks with unrestricted live mutation.
 
 ## Preparation and lifecycle
 
@@ -155,8 +155,8 @@ Append performs two bounded syntax/canonicalization passes; the second appends
 typed records into prepared vectors. It is not a zero-copy path. Its budget counts
 records, not actual machine instructions or all transport copies. Preparation,
 encoding, ingress, validation, extraction and recycling have different ownership
-and accounting responsibilities; the eventual facade/host adapter must preserve
-those distinctions.
+and accounting responsibilities. The facade shares allowances across an entire
+callback; the future actual-worklet adapter must preserve those distinctions.
 
 ## Evidence and remaining integration
 
@@ -167,9 +167,10 @@ transitive reachability, 128 nested regular/explicit images against raw entries,
 progress while another candidate is incomplete/failed. Scope/generation exhaustion
 and production-type borrow/move refusals are also checked.
 
-These results do not implement generation/epoch/resource/view-binding preflight
-for the runtime facade, reliable candidate-operation receipts, cancellation tied
-to those receipts, atomic graph/domain activation, or next-iteration-zero running
-program changes. The existing standalone resolver still safely refuses changed
-running programs. Those remain Stage 6 work; the actual loop AudioWorklet remains
-Stage 7 work.
+The subsequent facade integration adds reliable candidate-operation receipts,
+scoped cancellation, retained rejection/retirement, callback-shared work and
+fixed-graph epoch-checked activation. It preserves the existing logical identities,
+media-role bindings and signal graph. General graph/domain/role-generation
+transactions and next-iteration-zero running program changes remain Stage 6 work;
+the standalone resolver still safely refuses changed running programs. Actual
+loop AudioWorklet acceptance remains Stage 7 work.

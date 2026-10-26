@@ -27,6 +27,14 @@ cargo run -p rt_runtime --release --example planned_gain
 - `Planner::finish(FinishContext)` receives only values written in this interval and advances through the interval; it must not settle its end boundary. The runtime clears observation length before the next traversal, without clearing or freeing the backing allocation.
 - A configured planner advances even with no active signal graph; in that case it receives no consumer observations. A `None` preparation signature selects the signal-only lifecycle and requires empty decisions and ordinary consumer signatures.
 
+`PlanContext` and planner `OperationContext` include `graph_epoch`, the active
+runtime graph identity, and `callback_start`, the enclosing nonempty host callback's
+absolute start. `frame` still denotes the current internal/delivery boundary.
+The callback origin remains unchanged across every internal interval and operation;
+planners can use it to reset private background allowances once, not per interval.
+These are runtime-provided identities, not a new musical clock. Manual context
+construction in standalone prototypes must now supply both fields.
+
 Zero-length host callbacks do nothing. Invalid planner intervals or changed decision-slice length are explicit render errors before consumers run. As with processor errors, a propagated failure is not rollback: outputs are cleared and the outer clock has already advanced. Hosts must not replay the failed frame.
 
 ## Accounting and current limits
