@@ -13,8 +13,13 @@ channel/key state with explicit output failures and ordering metadata.
 and a focused runtime recovery proof. A [fixed media ledger](docs/media.md) now
 shares snapshot ownership across resident content, playback, latest takes,
 pending pins and checked exports, with explicit quiescent cleanup.
-The complete loop planner/processor facade,
-coherent mixed-media outcomes/export and independent hosts remain pending.
+The [coordinated runtime facade](docs/runtime.md) now joins these components with
+separate playback/input consumers, transactional capture preflight, reliable typed
+outcomes, coherent state/export and explicit cleanup. Run the public
+`coordinated_loop` example for stereo/MIDI record→play, wraps, seek, replacement,
+export and teardown. Its new integration validation is tracked separately from
+completed foundation evidence. Live topology/program replacement, independent
+loop hosts and later acceptance stages remain pending.
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate
@@ -60,9 +65,10 @@ latched at one boundary. For atomic request-origin families use `Refused`, which
 has precedence regardless of observation order. Target-only refusal does not
 reject a parent composite or its other children.
 
-The resolver API models logical capture positions and boundary failures; it does not
-yet own captured samples, deliver runtime receipts, or provide independent
-recovery-lane admission. Those integrations remain required plan milestones.
+The standalone resolver models logical capture positions and boundary failures;
+it does not own captured samples. The runtime facade supplies the media ledger,
+prepared group lifecycle, runtime receipts and independent recovery-lane admission.
+Do not mix standalone resolver mutation with a running facade.
 
 The resolver owns authoritative timing; separate render operations execute
 supplied interval decisions without their own playback clock. Native and browser hosts use the same semantics;

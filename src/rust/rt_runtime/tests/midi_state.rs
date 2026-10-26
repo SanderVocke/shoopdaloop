@@ -10,10 +10,113 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 fn send(state: &mut MidiState, data: &[u8]) {
     assert_no_heap(|| state.apply_packet(data, 4096)).unwrap();
 }
+fn roundtrip(state: &MidiState) {
+    assert_no_heap(|| {
+        let channels = std::array::from_fn(|channel| *state.channel(channel as u8).unwrap());
+        assert_eq!(
+            MidiState::from_channels(channels, state.system_reset_seen()),
+            *state
+        );
+    });
+}
 fn note(state: &MidiState, channel: u8, key: u8) -> (u8, bool, bool) {
     let n = state.channel(channel).unwrap().note(key).unwrap();
     (n.velocity(), n.held(), n.sostenuto())
 }
+#[shoop_test]
+fn repeated_pedal_values_match_an_independent_three_hold_ledger() {
+    let mut state = MidiState::default();
+    let mut keys = BTreeMap::<(u8, u8), (u8, bool, bool)>::new();
+    let mut pedals = [[0u8; 3]; 16];
+    let mut seed = 0xcc46_4669_a5a5_a5a5u64;
+    for step in 0..1024 {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        let channel = ((seed >> 32) % 16) as u8;
+        let key = 60 + ((seed >> 40) % 8) as u8;
+        let action = seed % 8;
+        let mut packet = [0xb0 | channel, 0, 0];
+        match action {
+            0 => {
+                let velocity = 1 + ((seed >> 16) % 127) as u8;
+                packet = [0x90 | channel, key, velocity];
+                let entry = keys.entry((channel, key)).or_default();
+                entry.0 = velocity;
+                entry.1 = true;
+            }
+            1 => {
+                packet = [0x80 | channel, key, 0];
+                keys.entry((channel, key)).or_default().1 = false;
+            }
+            2..=4 => {
+                let pedal = (action - 2) as usize;
+                let value = [0, 1, 63, 64, 65, 127][((seed >> 8) % 6) as usize];
+                packet[1] = [64, 66, 69][pedal];
+                packet[2] = value;
+                if pedal == 1 {
+                    let old = pedals[channel as usize][1];
+                    for (&(ch, _), entry) in &mut keys {
+                        if ch == channel {
+                            if value < 64 {
+                                entry.2 = false;
+                            } else if old < 64 {
+                                entry.2 = entry.1;
+                            }
+                        }
+                    }
+                }
+                pedals[channel as usize][pedal] = value;
+            }
+            5..=7 => {
+                packet[1] = [120, 123, 121][(action - 5) as usize];
+                for (&(ch, _), entry) in &mut keys {
+                    if ch == channel {
+                        match action {
+                            5 => *entry = (0, false, false),
+                            6 => entry.1 = false,
+                            _ => entry.2 = false,
+                        }
+                    }
+                }
+                if action == 7 {
+                    pedals[channel as usize] = [0; 3];
+                }
+            }
+            _ => unreachable!(),
+        }
+        for (&(ch, _), entry) in &mut keys {
+            if ch == channel
+                && !entry.1
+                && !entry.2
+                && pedals[ch as usize][0] < 64
+                && pedals[ch as usize][2] < 64
+            {
+                entry.0 = 0;
+            }
+        }
+        send(&mut state, &packet);
+        for ch in 0..16 {
+            if ch == channel || step % 64 == 0 {
+                for key in 0..128 {
+                    assert_eq!(
+                        note(&state, ch, key),
+                        keys.get(&(ch, key)).copied().unwrap_or_default(),
+                        "step {step} packet {packet:?}"
+                    );
+                }
+                for (index, cc) in [64, 66, 69].into_iter().enumerate() {
+                    assert_eq!(
+                        state.channel(ch).unwrap().controller(cc),
+                        Some(pedals[ch as usize][index])
+                    );
+                }
+            }
+        }
+    }
+    roundtrip(&state);
+}
+
 #[shoop_test]
 fn held_and_pedal_latched_keys_keep_velocities_and_channels_independent() {
     let mut state = MidiState::default();
@@ -111,6 +214,7 @@ fn channel_modes_and_reset_baselines_do_not_invent_unknown_controller_values() {
     }
     send(&mut state, &[0xff]);
     assert!(state.system_reset_seen());
+    roundtrip(&state);
     let initial = MidiState::default();
     for ch in 0..16 {
         assert_eq!(state.channel(ch), initial.channel(ch));
@@ -241,6 +345,7 @@ fn generated_note_and_sustain_projection_matches_an_independent_map() {
         };
         send(&mut state, &packet);
         if step % 64 == 63 {
+            roundtrip(&state);
             for channel in 0..16 {
                 assert_eq!(
                     state.channel(channel).unwrap().pitch_bend(),

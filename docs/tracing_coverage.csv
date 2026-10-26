@@ -37,6 +37,9 @@ src/rust/shoop_loop_engine/src/midi.rs,portable_loop_library,excluded,Prepared i
 src/rust/shoop_loop_engine/src/midi_restore.rs,portable_loop_library,excluded,Fixed-protocol MIDI state emission; bounded sink reports expose failures without application tracing dependencies.
 src/rust/shoop_loop_engine/src/program.rs,portable_loop_library,excluded,Control-side sparse program compiler and immutable lookup; checked results are exposed through the API.
 src/rust/shoop_loop_engine/src/resolver.rs,portable_loop_library,excluded,Independent fixed-storage resolver; guarded execution exposes frame-tagged semantic events and saturating diagnostic loss without application tracing.
+src/rust/shoop_loop_engine/src/runtime/mod.rs,portable_loop_library,excluded,Portable prepared facade and typed control; bounded state and receipts expose outcomes without application tracing dependencies.
+src/rust/shoop_loop_engine/src/runtime/planner.rs,portable_loop_library,excluded,Guarded coordinated boundary execution; semantic journals and optional prepared observers expose diagnostics without application tracing.
+src/rust/shoop_loop_engine/src/runtime/processor.rs,portable_loop_library,excluded,Guarded playback and capture consumers; generic runtime work and explicit MIDI overflow observations remain accounted.
 src/rust/shoop_loop_engine/src/state.rs,portable_loop_library,excluded,Plain-data authoritative state; no execution boundary to instrument.
 src/rust/shoop_loop_engine/src/topology.rs,portable_loop_library,excluded,Control-side timing dependency compiler; no callback execution or host tracing dependency.
 src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.

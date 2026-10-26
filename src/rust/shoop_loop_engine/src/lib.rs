@@ -14,6 +14,7 @@ pub mod midi;
 pub mod midi_restore;
 pub mod program;
 pub mod resolver;
+pub mod runtime;
 pub mod state;
 pub mod topology;
 

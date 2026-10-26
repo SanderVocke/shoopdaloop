@@ -4,7 +4,7 @@
 
 `PLAN_LOOP_LAYER.md` governs this implementation. Its LL-A1–LL-A12 criteria are immutable without user approval. The initial runtime record in `DONE_INITIAL_CRATE.md` and `docs/rt_runtime/evidence/` is preserved; passing baseline tests is not evidence that new loop-layer behavior exists.
 
-Execution was originally authorized through confirmed goal `mvnjf70y-cjcfar` and carried forward by confirmed goal `mvo6lnim-1xzkd7`. The new tracker carries completed Stages 0–3 forward without restarting those implementations. Stage 4 is now verified; Stage 5 is current and Stages 5–10 remain incomplete. The implementation branch is `feat/loop-execution-layer`, based on `cc6ccb4ac35114d61ef7e1c03ecc7f2fe81bb867`. At branch creation, [runtime PR #878](https://github.com/SanderVocke/shoopdaloop/pull/878) remained open against `master`, with that same head. The delivery PR should initially target `feat/generic-rt-runtime` unless the parent merges before delivery; recheck rather than assuming its future status.
+Execution was originally authorized through confirmed goal `mvnjf70y-cjcfar` and carried forward by confirmed goal `mvo6lnim-1xzkd7`. The new tracker carries completed Stages 0–3 forward without restarting those implementations. Stages 4–5 are now verified; Stage 6 is current and Stages 6–10 remain incomplete. The implementation branch is `feat/loop-execution-layer`, based on `cc6ccb4ac35114d61ef7e1c03ecc7f2fe81bb867`. At branch creation, [runtime PR #878](https://github.com/SanderVocke/shoopdaloop/pull/878) remained open against `master`, with that same head. The delivery PR should initially target `feat/generic-rt-runtime` unless the parent merges before delivery; recheck rather than assuming its future status.
 
 The pre-existing edits to `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `PROPOSAL_LOOP_LAYER.md`, plus the new plan, are the intended architecture baseline. Unrelated `.pi/` state is left untouched and untracked. No production application integration is included.
 
@@ -15,15 +15,15 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | Criterion | Planned implementation/evidence | Status |
 | --- | --- | --- |
 | LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
-| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Pure resolver and generic runtime binding/view/interval/typed-delivery lifecycle verified; loop integration pending |
-| LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution verified; media/runtime/host proof pending |
+| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Resolver, generic planner lifecycle and coordinated primitive facade/role validation verified; live topology/program integration pending |
+| LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution and actual facade 128 one-sample media boundaries verified; integrated cascades/composites and independent hosts pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
-| LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals/logical decisions match; audio/MIDI/host comparisons pending |
-| LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resource and low-level loop audio paths guarded in native/Wasm and selected Miri; integrated loop callback audit pending |
-| LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic typed receipts/recovery, generated group ownership/content models, lifecycle-cut disconnects and selected Miri verified; integrated loop-domain ownership pending |
-| LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Generic group content/freeze/prefix and low-level audio playback/gain/capture verified; MIDI rendering/restoration and full loop integration pending |
+| LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals and coordinated primitive sample/packet/content/journal oracles match across partitions/orders; integrated composites and independent hosts pending |
+| LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resources and full primitive facade guarded in native debug/release/Wasm and selected Miri; later whole-layer audit and independent-host canaries pending |
+| LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic ownership models plus integrated media pins/exports/cancellation/recovery/faulted teardown verified; live replacement and later stress remain pending |
+| LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Stage 5 complete: indexed audio/MIDI, exact record→play/seek/replacement/cleanup, coherent export, actual separate FX capture graph, common-prefix exhaustion and public lifecycle example |
 | LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Pending |
-| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting, scoped indexing, prepared group transactions, synthetic boundary observations and complete generic group ownership/model checks verified; loop integration pending |
+| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting/indexing/groups and coordinated preflight/settlement verified, including optional export Budget refusal without musical interruption; later mixed integration/audit pending |
 | LL-A11 | New independent native/worklet fixture journals, actual Web Audio output, fixed-memory and failure gates; raw release measurements | Pending new fixture |
 | LL-A12 | Updated runtime/loop guides and executable examples, acceptance audit, milestone commits, final-head CI and review record | Pending |
 
@@ -806,3 +806,133 @@ Four guarded integration cases cover saturation and role changes, pending retent
 The initial private test included the allocator implementation inside a library enforcing `forbid(unsafe_code)`, causing nine unsafe-code lint errors. The existing support implementation was relocated **byte-for-byte unchanged** into `shoop_wasm_test_support::heap`, already a dev-only dependency, and re-exported to integration tests. The independent host includes that pure helper source directly without acquiring a production dependency on the shared harness. The private case retains its full allocator guard; production unsafe prohibitions and assertions were not relaxed. The failed compile log is retained. All 21 broad gates passed, followed by a complete fresh 148-execution Miri result; this supersedes the prior milestone's timed-out canonical report without rewriting its two-batch provenance.
 
 This is ownership-component acceptance, not coordinated-facade acceptance. A caller-supplied export frame is not proof of a settled musical-state cut. Logical revision allocation, actual boundary preflight/re-preview and freeze/activation, coherent active-prefix acquisition, typed public outcomes/state, separate playback→FX→capture graph/example and independent loop hosts remain pending. Stage 5 remains open.
+
+## Stage 5 complete — Coordinated runtime facade and public lifecycle
+
+Milestone: `feat(loop-engine): coordinate runtime capture playback and coherent exports`
+(the commit introducing this section), source base `915fd0b2`. Evidence:
+[`facade-stage5.json`](evidence/facade-stage5.json) and
+[`facade-stage5-provenance.json`](evidence/facade-stage5-provenance.json).
+Logs are under `target/loop-layer-facade-stage5/`; the initial broad/Miri run and
+complete hashed pre-refinement Rust sources are retained under
+`target/loop-layer-facade-stage5-first/`.
+
+`runtime::{Engine, Controller, Stopped}` connects the resolver, fixed media ledger,
+separate playback/input consumers, prepared capture groups and actual signal DAG.
+Preparation validates domain roles and imported content, reserves imported logical
+revision watermarks and installs the initial graph without a warm-up callback.
+Two capture banks permit transactional repeated Record. Boundary planning reserves
+metadata/takes/intervals, latches a new refusal on every retry, freezes/activates
+only after stable preview, and commits once before sample F. Finish validates
+producer identities, commits staged common prefixes and then advances the resolver.
+
+Typed operations retain reliable runtime receipts separately from pending resolver
+records; media selections retain independent pins. Recovery Stop/cancel has an
+independent domain slot as well as generic recovery storage. State/export replies
+use a post-settlement/pre-render cut. Active-prefix snapshot failure releases
+unpublished members without interrupting recording. Immutable MIDI initial state
+is returned in channel-sized replies; `MidiState::from_channels` reassembles the
+same exported projection without message replay. Quiescent extraction retains the
+ledger/store for explicit idempotent disposal, including partially staged faults.
+
+### Integrated checks and Stage 5 checklist mapping
+
+All ten `shoop_loop_engine --test runtime` cases run their complete workloads under
+native debug/release, Node, Chromium and Miri. The shared allocator guards cover
+processing, prepared admission, result draining and cleanup; effect destruction
+asserts it occurs off-render.
+
+| Stage 5 requirement | Implemented evidence |
+| --- | --- |
+| Resolver-driven audio, gain/smoothing, wrap/seek/revisions | `audio`/`audio_ports` foundations plus integrated scalar stereo sample arrays, replacement/seek and `integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts` |
+| Indexed MIDI, tracking/restoration, rebasing, SysEx and overflow/reset | Existing complete `midi_restore`/`midi` suites (including 257-byte SysEx and real-runtime overflow/reset/audio isolation), plus full facade original/restoration/cleanup packet comparisons and exported initial-state reconstruction |
+| Typed runtime integration and single clock | Main coordinated case, requested/delivered/terminal late-result checks, validated producer roles, and `facade_role_validation_invalid_operations_and_imported_revision_exhaustion_are_checked` |
+| Coherent group capture/state/export and refusal isolation | Exact immediate record→play; half-open recording prefix; repeated Record; imported revision seven followed by capture eight; checkpoint/metadata/tail-copy refusals; independently predicted page-exhaustion prefix; no partial export |
+| Separate playback → FX → recording with immutable previous content | Actual host-input/playback → mixing/gain → capture/host graph; simultaneous monitored playback and new recording; independent captured stereo/MIDI bytes and retained old revisions |
+| Executable full public lifecycle | `examples/coordinated_loop.rs`: stereo/MIDI record at frame one, immediate interior play at four, repeated wraps, seek, distinct second recording, retained-original replacement, stop, initial-state/audio/MIDI export and complete release/reclaim |
+
+The main sample/packet/event oracle runs whole, single-sample and irregular host
+partitions, reversed graph declaration order and journals 0/1/1024. The dense case
+executes **128 one-sample boundaries** with all 32 normal runtime results unread,
+checks all samples and **8,702 MIDI packets** before recovery Stop, then checks its
+two cleanup packets and complete semantic journals/loss counters. No diagnostic
+or external-result credit controls autonomous progression.
+
+Failure cases check conservative checkpoint refusal without a false start pulse;
+a repeated Record refused by metadata capacity while the old take continues;
+optional snapshot `Budget` failure after one member was acquired, without leaking
+its lease; and page exhaustion predicted from an independent page-reservation
+formula across three partitions. Exhausted audio/MIDI share the exact completed
+prefix/incomplete reason while live audio continues. Different failure positions
+under insufficient resources are explicit, not a sufficient-resource partition
+invariance claim. Cancellation covers queued and delivered work; recovery works
+with normal domain/runtime results saturated. Stopped extraction recovers both
+active takes and an audio-staged/MIDI-contract-fault interval. Imported resource
+handles are removed separately after internal cleanup, recovering every configured
+page/version/snapshot and media reference.
+
+### Fresh verification
+
+| Gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **178 passed per profile** |
+| Loop native debug/release | **94 passed per profile** |
+| Runtime Node/Chromium | **174 passed per runtime** |
+| Loop Node/Chromium | **94 passed per runtime** |
+| Prescribed workspace nextest | **2072 passed**, four unchanged opt-in canaries skipped |
+| Selected Miri | **159 fresh passing executions**, 118 runtime + 41 loop, one complete invocation |
+| Production lifetime/authority proofs | Positive builds/runs and deliberate **E0502/E0599** refusals |
+| Public loop example | Debug/release executions and Wasm compilation; the latter is not execution |
+| Broad driver | **25 gates passed**, including warning-denied workspace build/docs, both examples, policies and runner-hygiene tests |
+| Existing native debug/release and actual offline/live worklet, both failure canaries | Passed; historical golden unchanged |
+
+Provenance verifies **96 current Rust source hashes**, all 25 gate logs, archived
+Miri logs and both production proofs. Tracing inventory covers 196 modules
+(excluded52/direct33/indirect111); portable boundaries remain independent of
+application tracing. The prior unsafe heap helper and production prohibitions
+are unchanged.
+
+### Retained failures and refinements
+
+Initial compile/setup errors included an incorrect Diagnostics path/AudioBlock
+lifetime, wrong configuration field names, insufficient graph port capacity, and
+asserting scheduled admission as Applied. A four-row MIDI checkpoint fixture
+correctly refused the declared 512-event interval; the positive fixture provisions
+eight rows, while a dedicated negative case retains four and verifies refusal.
+The replacement MIDI oracle initially assumed a restart when recording begins
+while already monitoring playing content. The existing authoritative contract
+requires continuity; the corrected oracle still compares every packet, including
+initial-state restoration when the new take is subsequently played. Initial
+tracing inventory omissions were corrected. All failed logs are retained; not
+every early intermediate failed source tree was archived.
+
+The first Miri invocation completed **155 executions** then reached the unchanged
+**900-second wall watchdog** on the dense facade case. No canonical success was
+written. Its complete source tree and completed/partial logs are archived. A left
+running interpreter child was observed and explicitly terminated; the runner now
+kills/reaps the process group on timeout and preserves captured output. Three
+Python tests verify result preservation, timeout cleanup and the exit race.
+
+Repeated pedal values were needlessly rescanning keys. The projection now updates
+controller values without redundant scans when pedal up/down state is unchanged,
+and release-unheld returns immediately when another sustain/hold remains down.
+An independent **1,024-action** three-hold ordered-map oracle, seed
+**`0xcc464669a5a5a5a5`**, checks held/latch/key state and controller values after each
+action, including reset and channel modes. Its full workload runs unchanged on all
+platforms. The unchanged dense musical test then passed in **890.36 seconds wall**.
+The final dense playback-only fixture also reduces unused index storage from
+8 versions × 8 rows to 2 × 1, sufficient for its two one/two-packet imports at
+replay span 128. No frames, events, profiles, assertions, guards or stack limits
+were reduced; other recording/exhaustion fixture capacities are unchanged.
+The final full selected run passes the same watchdog. Miri's printed harness
+elapsed values use a simulated clock; they are not host wall measurements or a
+stable performance claim.
+
+Requested timing notes, with measured command durations and scope/cache/concurrency
+caveats, are in [TEST_EXECUTION_TIMES.md](TEST_EXECUTION_TIMES.md).
+
+**Stage 5 is complete.** This does not complete integrated inter-loop/composite
+lifecycle or live graph/program replacement (Stage 6), independent loop native/
+AudioWorklet hosts (Stage 7), later adversarial/performance/CI work, or final
+unmerged-PR/final-head-CI/review delivery. Existing generic hosts remain regressions,
+not substitute loop-host acceptance.

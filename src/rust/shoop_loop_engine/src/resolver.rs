@@ -199,6 +199,27 @@ impl Resolver {
             .filter(|state| state.id == id)
             .ok_or(Error::InvalidId)
     }
+    pub(crate) fn reserve_media_revision(
+        &mut self,
+        id: LoopId,
+        revision: Revision,
+    ) -> Result<(), Error> {
+        if self.frame != Frame(0)
+            || self.committed
+            || self.preview.is_some()
+            || self.records.iter().any(Option::is_some)
+        {
+            return Err(Error::InvalidState);
+        }
+        if self.topology.node(id)?.kind != LoopKind::Primitive {
+            return Err(Error::InvalidState);
+        }
+        let state = self.states[id.slot() as usize]
+            .as_mut()
+            .ok_or(Error::InvalidId)?;
+        state.revision_watermark = state.revision_watermark.max(revision);
+        Ok(())
+    }
     pub fn events(&self) -> &[Event] {
         &self.events
     }

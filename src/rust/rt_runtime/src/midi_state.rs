@@ -101,9 +101,11 @@ impl ChannelState {
         self.controllers[controller].is_some_and(|v| v >= 64)
     }
     fn release_unheld(&mut self) {
-        let sustain = self.down(64) || self.down(69);
+        if self.down(64) || self.down(69) {
+            return;
+        }
         for note in &mut self.notes {
-            if !note.held && !note.sostenuto && !sustain {
+            if !note.held && !note.sostenuto {
                 note.velocity = 0;
             }
         }
@@ -152,18 +154,19 @@ impl ChannelState {
             66 => {
                 let was_down = self.down(66);
                 self.controllers[66] = Some(value);
-                if value < 64 {
+                if value < 64 && was_down {
                     for note in &mut self.notes {
                         note.sostenuto = false;
                     }
-                } else if !was_down {
+                    self.release_unheld();
+                } else if value >= 64 && !was_down {
                     for note in &mut self.notes {
                         note.sostenuto = note.held;
                     }
                 }
-                self.release_unheld();
             }
             _ => {
+                let released_hold = matches!(cc, 64 | 69) && self.down(cc as usize) && value < 64;
                 self.controllers[cc as usize] = Some(value);
                 match cc {
                     6 | 38 => self.parameter_history_untracked = true,
@@ -177,7 +180,7 @@ impl ChannelState {
                 }
                 if matches!(cc, 124..=127) {
                     self.notes_off(false);
-                } else if matches!(cc, 64 | 69) {
+                } else if released_hold {
                     self.release_unheld();
                 }
             }
@@ -190,6 +193,14 @@ pub struct MidiState {
     system_reset: bool,
 }
 impl MidiState {
+    /// Reassemble exported opaque channel projections. Callers must use channels
+    /// and the reset marker from the same immutable state cut.
+    pub fn from_channels(channels: [ChannelState; 16], system_reset_seen: bool) -> Self {
+        Self {
+            channels,
+            system_reset: system_reset_seen,
+        }
+    }
     pub fn system_reset_seen(&self) -> bool {
         self.system_reset
     }

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +20,7 @@ CASES = [
     ("initial_graph", [], 3),
     ("resource_render", [], 4),
     ("resource_index", [], 5),
-    ("midi_state", [], 5),
+    ("midi_state", [], 6),
     ("midi_restore_state", [], 2),
     ("midi_index", [], 8),
     ("typed_schedule", [], 7),
@@ -39,6 +40,27 @@ CASES = [
     ("lifecycle", ["--", "--skip", "deterministic_admission_model", "--skip", "cancellation_flag_model"], 9),
     ("resource_execution", ["resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"], 1),
 ]
+
+
+def run_case(command, env):
+    with subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True,
+                          start_new_session=os.name == "posix") as child:
+        try:
+            output, _ = child.communicate(timeout=900)
+        except BaseException as error:
+            if os.name == "posix":
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                child.kill()
+            output, _ = child.communicate()
+            if isinstance(error, subprocess.TimeoutExpired):
+                error.output = output
+            raise
+        return subprocess.CompletedProcess(command, child.returncode, output)
 
 
 def main():
@@ -62,6 +84,19 @@ def main():
     cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi_restore", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi", [], 6, 0))
+    for name in (
+        "coordinated_stereo_midi_record_play_seek_export_and_repeated_capture_match_independent_oracles",
+        "scenarios::prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_coherent",
+        "scenarios::stopped_input_initial_state_and_half_open_prefix_export_survive_immediate_play",
+        "scenarios::capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes",
+        "scenarios::running_capture_exhaustion_preserves_independently_predicted_common_prefix_and_live_audio",
+        "scenarios::recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits",
+        "scenarios::stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners",
+        "scenarios::dense_one_sample_media_keeps_all_128_boundaries_with_unread_external_results",
+        "scenarios::facade_role_validation_invalid_operations_and_imported_revision_exhaustion_are_checked",
+        "scenarios::integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts",
+    ):
+        cases.append(("shoop_loop_engine", "runtime", [name, "--", "--exact"], 1, 0))
     if args.package:
         cases = [case for case in cases if case[0] == args.package]
     results = []
@@ -71,7 +106,7 @@ def main():
         command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", package, *selection, *arguments]
         log = reports / f"{index:02d}-{target}-seed{seed}.log"
         try:
-            result = subprocess.run(command, cwd=ROOT, env=case_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=900)
+            result = run_case(command, case_env)
         except subprocess.TimeoutExpired as error:
             output = error.stdout or ""
             log.write_text(output.decode(errors="replace") if isinstance(output, bytes) else output)
