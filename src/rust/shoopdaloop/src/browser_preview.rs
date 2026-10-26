@@ -109,7 +109,7 @@ impl BrowserPreviewPlayer {
         })
     }
 
-    fn stop_active(&mut self) {
+    pub fn stop_active(&mut self) {
         if let Some(active) = self.active.take() {
             let scheduled: &AudioScheduledSourceNode = active.source.unchecked_ref();
             scheduled.set_onended(None);

@@ -50,12 +50,21 @@ From the repository root:
 cargo build -p shoopdaloop
 cargo run -p shoopdaloop
 
-# Build and run without native FX dependencies.
+# JACK and Carla hosting, without CPAL or Rodio.
+cargo build -p shoopdaloop --no-default-features --features native-fx
+cargo run -p shoopdaloop --no-default-features --features native-fx
+
+# JACK without CPAL, Rodio, or Carla hosting.
 cargo build -p shoopdaloop --no-default-features
 cargo run -p shoopdaloop --no-default-features
+
+# CPAL and system previews, without Carla hosting.
+cargo build -p shoopdaloop --no-default-features --features cpal
 ```
 
 The executable is written to `target/debug/` or `target/release/`. No generated launcher is needed. Source-tree builds gracefully mark Carla processors unavailable unless a packaged runtime is present; developers can select a matching runtime with the absolute-path overrides `SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR`. Run `shoopdaloop --probe-carla-native` to validate it without opening the GUI, or `shoopdaloop --probe-carla-native-ui` to exercise every external UI lifecycle.
+
+The default-enabled `cpal` feature includes CPAL+midir audio and Rodio system-output previews. Disable default features to remove both CPAL and Rodio, for example when building on an older Intel Mac whose OS cannot link CPAL’s newer CoreAudio APIs. JACK, Lua MIDI control, built-in effects, and Master-bus click previews remain available. This does not guarantee a particular minimum macOS version for all other dependencies.
 
 On first native launch, ShoopDaLoop uses the dummy/offline driver. Open **Settings → Audio** to configure JACK or CPAL+midir and confirm a runtime switch.
 

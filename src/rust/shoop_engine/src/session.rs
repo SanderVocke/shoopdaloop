@@ -340,6 +340,7 @@ pub struct ChannelMapping {
 #[derive(Debug, Default)]
 pub struct Session {
     ports: Vec<Port>,
+    audio_preview: Option<crate::audio_preview::AudioPreview>,
     loops: Vec<AudioMidiLoop>,
     channels: Vec<ChannelMapping>,
     /// Desired pass-through wiring used to build the next prepared graph.
@@ -449,6 +450,7 @@ pub struct Topology {
     /// MIDI channel indices per loop, in channel order.
     midi_by_loop: Vec<Vec<usize>>,
     n_loops: usize,
+    preview_processor: Option<usize>,
     /// `graph_request_id` when this was taken, so an install can say what it covers.
     graph_id: u64,
 }
@@ -492,6 +494,7 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
         port_connections,
         midi_by_loop,
         n_loops,
+        preview_processor,
         graph_id,
     } = topology;
 
@@ -506,7 +509,11 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
         node_actions[n.0] = NodeAction::PortProcess(i);
     }
     for (i, &n) in node_map.processor_process.iter().enumerate() {
-        node_actions[n.0] = NodeAction::ProcessorProcess(i);
+        node_actions[n.0] = if preview_processor == Some(i) {
+            NodeAction::PreviewProcess
+        } else {
+            NodeAction::ProcessorProcess(i)
+        };
     }
     for (i, &n) in node_map.loop_process.iter().enumerate() {
         node_actions[n.0] = NodeAction::LoopProcess(i);
@@ -561,6 +568,7 @@ enum NodeAction {
     PortPrepare(usize),
     PortProcess(usize),
     ProcessorProcess(usize),
+    PreviewProcess,
     LoopProcess(usize),
     ChannelPrepare(usize),
     ChannelProcess(usize),
@@ -1459,6 +1467,9 @@ impl Session {
             return Err(SessionError::NoSuchPort(port));
         }
 
+        if let Some(preview) = &mut self.audio_preview {
+            preview.outputs.retain(|&output| output != port);
+        }
         self.port_connections.remove(&port);
         // Both directions: leaving this port as someone else's target would keep it in the graph.
         for targets in self.port_connections.values_mut() {
@@ -2202,6 +2213,20 @@ impl Session {
 
     // --- schedule ---
 
+    pub fn configure_audio_preview(
+        &mut self,
+        preview: &mut Option<crate::audio_preview::AudioPreview>,
+    ) {
+        std::mem::swap(&mut self.audio_preview, preview);
+        self.note_graph_change();
+    }
+
+    pub fn replace_audio_preview(&mut self, request_id: u64, samples: &mut Arc<[f32]>) {
+        if let Some(preview) = &mut self.audio_preview {
+            preview.replace(request_id, samples);
+        }
+    }
+
     fn describe(&self) -> GraphDesc {
         GraphDesc {
             ports: self
@@ -2253,6 +2278,11 @@ impl Session {
                         .map(PortIdx)
                         .collect(),
                 })
+                .chain(self.audio_preview.iter().map(|preview| ProcessorDesc {
+                    name: "master_preview".to_owned(),
+                    input_ports: Vec::new(),
+                    output_ports: preview.outputs.iter().copied().map(PortIdx).collect(),
+                }))
                 .collect(),
             loops: (0..self.loops.len())
                 .map(|_| LoopDesc {
@@ -2294,6 +2324,7 @@ impl Session {
             port_connections: self.port_connections.clone(),
             midi_by_loop,
             n_loops: self.loops.len(),
+            preview_processor: self.audio_preview.as_ref().map(|_| self.processors.len()),
             graph_id: self.graph_request_id,
         }
     }
@@ -2453,6 +2484,7 @@ impl Session {
                         }
                         self.profiler.finish(Stage::PortProcess, began);
                     }
+                    NodeAction::PreviewProcess => self.process_audio_preview(n_frames),
                     NodeAction::ProcessorProcess(i) => {
                         let began = self.profiler.begin();
                         self.process_processor(i, n_frames);
@@ -2502,6 +2534,21 @@ impl Session {
         }
         self.profiler.end_cycle();
         self.schedule = steps;
+    }
+
+    fn process_audio_preview(&mut self, n_frames: usize) {
+        if let Some(preview) = &mut self.audio_preview {
+            let outputs = std::mem::take(&mut preview.outputs);
+            let samples = preview.next_block(n_frames);
+            for &output in &outputs {
+                for (destination, sample) in
+                    self.ports[output].buffer(n_frames).iter_mut().zip(samples)
+                {
+                    *destination += *sample;
+                }
+            }
+            preview.outputs = outputs;
+        }
     }
 
     /// Runs one processor after its routed inputs and before its output ports.

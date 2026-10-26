@@ -9,6 +9,7 @@ use crate::graph_scheduler::{GraphScheduler, DEFAULT_WINDOW};
 use crate::realtime_lock_guard::Mutex;
 use anyhow::{anyhow, Result};
 use arc_swap::ArcSwap;
+#[cfg(feature = "cpal")]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 pub use engine::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
@@ -18,7 +19,9 @@ pub use engine::{
     ProfilingReport, ProfilingReportItem,
 };
 use shoop_settings::CarlaHostingMode;
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+#[cfg(feature = "cpal")]
+use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
@@ -484,12 +487,14 @@ struct JackBackend {
     maybe_process_callback: Option<ProcessCallback>,
 }
 
+#[cfg(feature = "cpal")]
 struct CpalMidiInputEndpoint {
     name: String,
     capture: engine::midir_driver::MidiCapture,
     _conn: engine::midir_driver::MidiCaptureConnection,
 }
 
+#[cfg(any(feature = "cpal", test))]
 #[derive(Clone)]
 struct CpalDecoupledMidiPort {
     port_id: engine::PortId,
@@ -497,6 +502,7 @@ struct CpalDecoupledMidiPort {
     queue: Arc<Mutex<Vec<MidiEvent>>>,
 }
 
+#[cfg(feature = "cpal")]
 struct CpalMidiOutputEndpoint {
     name: String,
     playback: engine::midir_driver::MidiPlayback,
@@ -504,9 +510,13 @@ struct CpalMidiOutputEndpoint {
 
 struct CpalBackend {
     stale_graph_cycles: Arc<AtomicU32>,
+    #[cfg(feature = "cpal")]
     _output: Option<cpal::Stream>,
+    #[cfg(feature = "cpal")]
     _input: Option<cpal::Stream>,
+    #[cfg(feature = "cpal")]
     sample_rate: u32,
+    #[cfg(feature = "cpal")]
     configured_buffer_size: u32,
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
@@ -518,7 +528,9 @@ struct CpalBackend {
 // also requires cpal 0.17, preventing an upgrade to 0.18, where the bound
 // is fixed. The streams are always reached through a `Mutex`, so the audio
 // thread stays the sole owner of the underlying CoreAudio state -- promise by hand here.
+#[cfg(feature = "cpal")]
 unsafe impl Send for CpalBackend {}
+#[cfg(feature = "cpal")]
 unsafe impl Sync for CpalBackend {}
 
 impl JackBackend {
@@ -563,6 +575,7 @@ impl JackBackend {
     }
 }
 
+#[cfg(feature = "cpal")]
 fn cpal_device_label(device: &cpal::Device) -> String {
     device
         .description()
@@ -570,10 +583,12 @@ fn cpal_device_label(device: &cpal::Device) -> String {
         .unwrap_or_else(|_| "cpal".to_string())
 }
 
+#[cfg(feature = "cpal")]
 fn cpal_host_label(id: cpal::HostId) -> String {
     format!("{id:?}").to_lowercase()
 }
 
+#[cfg(feature = "cpal")]
 fn select_cpal_host(wanted: &str) -> Result<cpal::Host> {
     if wanted == "default" || wanted.is_empty() {
         return Ok(cpal::default_host());
@@ -585,6 +600,7 @@ fn select_cpal_host(wanted: &str) -> Result<cpal::Host> {
     cpal::host_from_id(id).map_err(|e| anyhow!("Could not open CPAL host {wanted}: {e}"))
 }
 
+#[cfg(feature = "cpal")]
 fn limit_cpal_channels(current: u16, wanted: &str) -> u16 {
     if wanted == "all" || wanted.is_empty() {
         current
@@ -597,6 +613,7 @@ fn limit_cpal_channels(current: u16, wanted: &str) -> u16 {
     }
 }
 
+#[cfg(feature = "cpal")]
 fn apply_cpal_config_options(
     mut config: cpal::StreamConfig,
     sample_rate: u32,
@@ -613,6 +630,7 @@ fn apply_cpal_config_options(
     config
 }
 
+#[cfg(feature = "cpal")]
 fn select_cpal_device<I>(devices: I, wanted: &str) -> Option<cpal::Device>
 where
     I: IntoIterator<Item = cpal::Device>,
@@ -628,18 +646,22 @@ where
         .find(|d| cpal_device_label(d) == wanted || cpal_device_label(d).contains(wanted))
 }
 
+#[cfg(feature = "cpal")]
 fn selector_is_all(v: &[String]) -> bool {
     v.is_empty() || v.iter().any(|s| s == "all")
 }
+#[cfg(feature = "cpal")]
 fn selector_is_none(v: &[String]) -> bool {
     v.iter().any(|s| s == "none")
 }
+#[cfg(feature = "cpal")]
 fn selector_matches(v: &[String], idx: usize, name: &str) -> bool {
     selector_is_all(v)
         || v.iter()
             .any(|s| s == &idx.to_string() || s == name || name.contains(s))
 }
 
+#[cfg(any(feature = "cpal", test))]
 fn stage_virtual_audio_inputs(
     session: &mut engine::Session,
     connections: &[(engine::PortId, String)],
@@ -674,6 +696,7 @@ fn stage_virtual_audio_inputs(
     }
 }
 
+#[cfg(any(feature = "cpal", test))]
 fn collect_virtual_audio_outputs(
     session: &engine::Session,
     connections: &[(engine::PortId, String)],
@@ -698,6 +721,7 @@ fn collect_virtual_audio_outputs(
     }
 }
 
+#[cfg(any(feature = "cpal", test))]
 fn route_virtual_midi_inputs(
     session: &mut engine::Session,
     connections: &[(engine::PortId, String)],
@@ -733,6 +757,7 @@ fn route_virtual_midi_inputs(
     }
 }
 
+#[cfg(any(feature = "cpal", test))]
 fn drain_decoupled_midi_output_events(
     connections: &[(engine::PortId, String)],
     output_name: &str,
@@ -763,6 +788,7 @@ fn drain_decoupled_midi_output_events(
     out
 }
 
+#[cfg(feature = "cpal")]
 impl CpalBackend {
     fn start(
         engine: engine::Engine,
@@ -2839,6 +2865,39 @@ impl BackendSession {
         })
     }
 
+    pub fn configure_audio_preview(
+        &self,
+        outputs: &[AudioPort],
+        finished: Arc<AtomicU64>,
+    ) -> Result<CommandSequence> {
+        if outputs
+            .iter()
+            .any(|port| !Arc::ptr_eq(&port.shared, &self.shared))
+        {
+            return Err(anyhow!("preview output belongs to another session"));
+        }
+        let outputs = outputs
+            .iter()
+            .map(|port| {
+                port.control
+                    .ready_id()
+                    .map(|id| id.index())
+                    .ok_or_else(|| anyhow!("preview output is not ready"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut preview = Some(engine::audio_preview::AudioPreview::new(outputs, finished));
+        Ok(self.shared.send_topology(move |session| {
+            session.configure_audio_preview(&mut preview);
+        })?)
+    }
+
+    pub fn replace_audio_preview(&self, request_id: u64, mut samples: Arc<[f32]>) -> Result<()> {
+        let sequence = self.shared.send_control(move |session| {
+            session.replace_audio_preview(request_id, &mut samples);
+        })?;
+        self.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+    }
+
     pub fn register_external_processor(
         &self,
         title: &str,
@@ -3181,6 +3240,7 @@ struct DriverInner {
     jack: Option<Arc<Mutex<JackBackend>>>,
     cpal: Option<Arc<Mutex<CpalBackend>>>,
     cpal_settings: Option<CpalMidiAudioDriverSettings>,
+    #[cfg(any(feature = "cpal", test))]
     cpal_decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
     maybe_process_callback: Option<ProcessCallback>,
 }
@@ -3306,6 +3366,11 @@ impl AudioDriver {
         driver_type: AudioDriverType,
         _maybe_callback: Option<ProcessCallback>,
     ) -> Result<Self> {
+        if !driver_type_supported(driver_type) {
+            return Err(anyhow!(
+                "{driver_type:?} support was disabled at build time"
+            ));
+        }
         Ok(Self {
             inner: Arc::new(Mutex::new(DriverInner {
                 driver_type,
@@ -3318,6 +3383,7 @@ impl AudioDriver {
                 jack: None,
                 cpal: None,
                 cpal_settings: None,
+                #[cfg(any(feature = "cpal", test))]
                 cpal_decoupled_midi_ports: Arc::new(Mutex::new(Vec::new())),
                 maybe_process_callback: _maybe_callback,
             })),
@@ -3348,6 +3414,7 @@ impl AudioDriver {
     fn attach_session(&self, shared: &Arc<SharedSession>) {
         self.inner.lock().unwrap().session = Some(Arc::downgrade(shared));
     }
+    #[cfg(feature = "cpal")]
     fn activate_cpal(&self, shared: &Arc<SharedSession>) -> Result<()> {
         let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if i.driver_type != AudioDriverType::Cpal && i.driver_type != AudioDriverType::CpalTest
@@ -3389,6 +3456,10 @@ impl AudioDriver {
         i.dummy.settings_mut().buffer_size =
             backend.configured_buffer_size.max(settings.buffer_size);
         i.cpal = Some(Arc::new(Mutex::new(backend)));
+        Ok(())
+    }
+    #[cfg(not(feature = "cpal"))]
+    fn activate_cpal(&self, _shared: &Arc<SharedSession>) -> Result<()> {
         Ok(())
     }
     #[tracing::instrument(name = "engine.driver.start", skip_all)]
@@ -3693,6 +3764,9 @@ impl AudioDriver {
         port_id: engine::PortId,
         queue: Arc<Mutex<Vec<MidiEvent>>>,
     ) -> Result<()> {
+        #[cfg(not(any(feature = "cpal", test)))]
+        let _ = port_id;
+        #[cfg(any(feature = "cpal", test))]
         self.inner
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -8832,6 +8906,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    #[cfg(feature = "cpal")]
     fn cpal_test_backend_publishes_mock_virtual_audio_ports() {
         let driver = AudioDriver::new(AudioDriverType::CpalTest, None).expect("driver");
         let settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
@@ -8866,6 +8941,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    #[cfg(feature = "cpal")]
     fn cpal_backend_exposes_virtual_audio_ports_through_app_api_when_device_available() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipping optional real CPAL smoke; set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
