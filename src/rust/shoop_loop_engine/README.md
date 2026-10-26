@@ -54,6 +54,13 @@ must already be stopped. Changed running programs are safely refused here;
 staging their replacement until iteration zero remains an integration milestone.
 Dispose returned/rejected topologies off-render.
 
+[`probe_program_boundary`](docs/program-boundaries.md) inspects a composite's
+unpublished control/clock cut before its old child actions are emitted. It reuses
+normal arbitration and cursor advancement without publishing state/receipts or
+creating a committable interval. Its zero-entry predicate distinguishes an actual
+entry from a cursor stalled at zero. This is not candidate activation authority;
+transactional running-program replacement remains pending.
+
 Composites execute sequential/parallel/delayed/repeated prepared entries and
 finite nesting. Regular programs repeat; explicit-mode programs execute one
 pass. `PlayIteration` selects a starting iteration and `SeekIteration` selects

@@ -4,6 +4,10 @@ use crate::command::Record;
 use crate::config::checked_storage;
 use crate::*;
 
+#[cfg(test)]
+#[path = "resolver_tests.rs"]
+mod tests;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Priority {
     Direct(Sequence),
@@ -75,6 +79,24 @@ struct Scratch {
     decisions: Vec<Decision>,
     events: Vec<Event>,
     dropped: u64,
+}
+
+/// Unpublished state at a composite's action-emission cut, not activation authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProgramBoundary {
+    pub frame: Frame,
+    pub topology_epoch: Epoch,
+    pub state: State,
+}
+
+impl ProgramBoundary {
+    /// True only on entry to zero, not while an idle source leaves the cursor there.
+    pub fn enters_zero(self) -> bool {
+        self.state.mode == Mode::Playing
+            && self.state.composite.is_some_and(|cursor| {
+                cursor.iteration == 0 && cursor.entered_at == Some(self.frame)
+            })
+    }
 }
 
 pub struct Resolver {
@@ -328,12 +350,35 @@ impl Resolver {
         Ok(CancelResult::Cancelled)
     }
 
-    /// All preflight retries start from committed state and the same retained inputs.
-    pub fn preview(
+    /// Resolve the target's controls and clock without emitting its child actions.
+    ///
+    /// Invalidates any earlier uncommitted preview. Committed state, receipts, journals and
+    /// epochs remain unchanged; this does not create a committable interval or
+    /// certify a replacement candidate. Reprobe after changing retained inputs.
+    pub fn probe_program_boundary(
         &mut self,
-        ceiling: Frame,
+        target: LoopId,
         observations: &[Observation],
-    ) -> Result<Interval, Error> {
+    ) -> Result<ProgramBoundary, Error> {
+        self.begin_preview(Frame(self.frame.0.saturating_add(1)), observations)?;
+        if self.topology.node(target)?.kind != LoopKind::Composite {
+            return Err(Error::InvalidProgram);
+        }
+        Boundary {
+            topology: &self.topology,
+            scratch: &mut self.scratch,
+            frame: self.frame,
+            observations,
+        }
+        .settle(Some(target))?;
+        Ok(ProgramBoundary {
+            frame: self.frame,
+            topology_epoch: self.epoch,
+            state: self.scratch.states[target.slot() as usize].expect("prepared composite"),
+        })
+    }
+
+    fn begin_preview(&mut self, ceiling: Frame, observations: &[Observation]) -> Result<(), Error> {
         if self.committed {
             return Err(Error::InvalidState);
         }
@@ -407,13 +452,23 @@ impl Resolver {
         scratch.events.clear();
         scratch.decisions.clear();
         scratch.dropped = 0;
+        Ok(())
+    }
+
+    /// All preflight retries start from committed state and the same retained inputs.
+    pub fn preview(
+        &mut self,
+        ceiling: Frame,
+        observations: &[Observation],
+    ) -> Result<Interval, Error> {
+        self.begin_preview(ceiling, observations)?;
         let mut boundary = Boundary {
             topology: &self.topology,
-            scratch,
+            scratch: &mut self.scratch,
             frame: self.frame,
             observations,
         };
-        boundary.settle()?;
+        boundary.settle(None)?;
         let mut end = ceiling.0;
         for record in boundary.scratch.records.iter().flatten() {
             if record.terminal.is_none() && record.effective > self.frame {
@@ -726,7 +781,7 @@ impl Boundary<'_> {
         }
     }
 
-    fn settle(&mut self) -> Result<(), Error> {
+    fn settle(&mut self, probe: Option<LoopId>) -> Result<(), Error> {
         for observation in self.observations {
             if let Observation::CaptureExhausted { target } = *observation {
                 let slot = target.slot() as usize;
@@ -812,6 +867,10 @@ impl Boundary<'_> {
                 }
             }
             for id in component.iter().copied() {
+                if probe == Some(id) {
+                    self.advance_program(id)?;
+                    return Ok(());
+                }
                 self.emit_program(id)?;
                 if !self.scratch.delivered[id.slot() as usize] {
                     continue;
@@ -836,9 +895,12 @@ impl Boundary<'_> {
         Ok(())
     }
 
-    fn emit_program(&mut self, id: LoopId) -> Result<(), Error> {
+    fn advance_program(
+        &mut self,
+        id: LoopId,
+    ) -> Result<Option<(u64, ProgramAction, Option<RequestId>)>, Error> {
         let Some(program) = self.topology.program(id) else {
-            return Ok(());
+            return Ok(None);
         };
         let slot = id.slot() as usize;
         let mut state = self.scratch.states[slot].expect("prepared state");
@@ -852,7 +914,7 @@ impl Boundary<'_> {
         };
         if action == ProgramAction::None {
             if state.mode != Mode::Playing || !self.scratch.delivered[slot] {
-                return Ok(());
+                return Ok(None);
             }
             cursor.iteration = cursor.iteration.checked_add(1).ok_or(Error::Exhausted)?;
             cursor.entered_at = Some(self.frame);
@@ -877,6 +939,17 @@ impl Boundary<'_> {
         }
         state.composite = Some(cursor);
         self.scratch.states[slot] = Some(state);
+        Ok(Some((previous, action, origin)))
+    }
+
+    fn emit_program(&mut self, id: LoopId) -> Result<(), Error> {
+        let Some((previous, action, origin)) = self.advance_program(id)? else {
+            return Ok(());
+        };
+        let cursor = self.scratch.states[id.slot() as usize]
+            .expect("prepared composite")
+            .composite
+            .expect("compiled composite");
         // The program is immutable, and every target belongs to a downstream
         // component. No consumer can observe these intents before arbitration.
         for index in 0..self

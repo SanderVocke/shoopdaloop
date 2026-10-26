@@ -1261,3 +1261,49 @@ a crate-private State. The reference now independently checks all public fields;
 no API was exposed or assertion removed to bypass that privacy boundary. Failed
 logs remain in provenance; their intermediate source trees were not archived.
 An ignored Nix SQLite-busy warning did not fail a broad gate.
+
+## Stage 6 — Unpublished program-cut prerequisite (stage remains open)
+
+`Resolver::probe_program_boundary` now shares ordinary shadow initialization,
+control/clock settlement and checked cursor advancement, but stops before the
+selected program's child and trigger actions. The returned frame/epoch/state and
+zero-entry predicate distinguish a real zero cut from a stalled cursor. Probing
+publishes no receipts, musical state, events, frame or epoch; it invalidates an
+uncommitted preview, cannot be committed, and cannot invalidate an already
+committed interval. This is not a candidate capability or running-program
+replacement. The owning activation/retirement transaction remains future work.
+
+Evidence: [`program-probe-stage6.json`](evidence/program-probe-stage6.json) and
+[`program-probe-stage6-provenance.json`](evidence/program-probe-stage6-provenance.json),
+logs `target/loop-layer-program-probe-stage6/`, and the
+[API guide](../../src/rust/shoop_loop_engine/docs/program-boundaries.md).
+
+- One private guarded test inspects scratch to prove old recording/playback/stop
+  and trigger actions have not been emitted; provisional request outcomes remain
+  unpublished, including explicit-program end.
+- Three integration tests independently check128-frame regular/explicit clocks
+  across whole/single/irregular partitions, reversed declarations, journals0/1/1024
+  and two fully occupied unread request slots. Full decisions, journals and loss
+  counters also agree with execution without probes.
+- Eleven same-frame cases cover Stop, seek, restart, idempotent Play, cancellation,
+  refusal, supersession, reactive Stop and source-stop suppression. Nested-family
+  and upstream capture-start refusals, stale/primitive IDs, duplicate observations,
+  protected committed intervals and changed epochs are covered separately.
+- A production-type positive/E0502 compile proof rejects a retained decision borrow
+  across the mutable probe. No borrowed view is converted into activation authority.
+
+Fresh results: **116 loop tests per native debug/release and Node/Chromium**, **2095
+workspace passes/four existing skips**, **19 scoped gates**,106 Rust source hashes,
+and closed tracing inventory201 (57 excluded/33 direct/111 indirect). Formatting,
+warning-denied workspace build/rustdoc, debug/release example and Wasm example
+compilation, boundary/test/Wasm/tracing policies and14 Miri-helper Python tests pass.
+The unchanged standalone runtime/native/actual generic-worklet results remain
+historical; those hosts were not rerun by this scoped driver. No new actual loop
+AudioWorklet acceptance is claimed.
+
+No unexpected test/compiler failure occurred in this step; the E0502 refusal is
+intentional. Four new Miri executions are registered (one library and three
+`program_boundaries`), bringing the current inventory to182=119runtime+63loop.
+They and affected resolver regressions are deferred to the consolidated applicable
+stage run. The historical interrupted171/178 remains partial, not a fresh182 pass.
+Stage6 and the later acceptance stages remain incomplete.

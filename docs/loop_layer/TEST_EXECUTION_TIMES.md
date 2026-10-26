@@ -181,6 +181,24 @@ elapsed time. Partial evidence and outstanding stage-level coverage are recorded
 in [MIRI_JOBS.md](MIRI_JOBS.md). Under the revised cadence, this smaller step does
 not trigger another routine Miri run.
 
+## Unpublished program-probe scoped observations
+
+The next smaller Stage6 step ran19 scoped gates sequentially, with no concurrent
+Miri invocation. Warm caches and the same local environment apply. From
+`evidence/program-probe-stage6.json`:
+
+| Scope | Whole-command wall time |
+| --- | ---: |
+| Loop116 native debug / release | 4.23 / 6.13 s |
+| Loop116 Node / Chromium | 88.24 / 88.84 s |
+| Workspace nextest,2095 passes/four existing skips | 38.94 s |
+| Fourteen Miri-helper Python tests (not interpretation) | 0.96 s |
+| All19 scoped commands | **234.41 s (3m54s)** |
+
+No standalone runtime package/Wasm or generic host rerun is hidden in these
+numbers. No Miri duration exists for this step: new/affected coverage is queued
+for the consolidated stage milestone rather than a routine smaller-step rerun.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

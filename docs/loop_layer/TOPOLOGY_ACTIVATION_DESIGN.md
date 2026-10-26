@@ -110,6 +110,33 @@ logical loop generation they currently serve. Required MIDI cleanup, input-state
 continuity/reset, resource claims and initial media selection need explicit tests,
 not an assumption that changing a decision ID is sufficient.
 
+## Implemented unpublished program-cut prerequisite
+
+`Resolver::probe_program_boundary` now shares normal input validation, shadow
+initialization, control/clock settlement and cursor advancement, but stops before
+the selected composite's child or trigger actions. Its `ProgramBoundary` reports
+the old configuration's prospective frame/epoch/state and distinguishes a true
+playing entry to zero from an idle cursor still sitting there. No receipt, event,
+epoch or committed state is published; probing invalidates an earlier uncommitted
+preview and cannot itself be committed. A committed interval remains protected.
+
+This split avoids evaluating the old zero-iteration actions merely to discover an
+activation cut. It does not authorize activation from a cached probe or establish
+candidate/graph/resource compatibility. The future owning transaction still must
+recheck inputs and coordinate candidate selection, capture preflight, cancellation,
+retirement and one final publication. No replacement policy or acceptance scope
+has been reduced by adding this prerequisite.
+
+Four guarded tests cover private non-emission assertions,128-frame independent
+regular/explicit clocks and full comparisons with non-probed execution across
+partitions/orders/journals, eleven same-frame control cases, nested/upstream
+capture refusals, stale inputs and phase/epoch handling. A production-type E0502
+proof rejects retaining a decision borrow across probing. See the
+[API guide](../../src/rust/shoop_loop_engine/docs/program-boundaries.md),
+`program-probe-stage6{,-provenance}.json` and the Miri ledger. The19 scoped gates
+pass (loop116 per native profile and Node/Chromium,workspace2095/four skips);
+new/affected Miri coverage remains deferred to the consolidated Stage6 run.
+
 ## Running programs and settlement
 
 Stopped/pending program replacement can activate at its requested ready boundary.
