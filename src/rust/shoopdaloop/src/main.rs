@@ -7026,6 +7026,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_preview_buttons_share_cancellation_and_ignore_stale_results() {
         let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
@@ -7137,6 +7138,7 @@ mod tests {
         });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
         let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
