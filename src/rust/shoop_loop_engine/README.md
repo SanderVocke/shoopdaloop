@@ -10,7 +10,10 @@ conversion, gain and discontinuity smoothing; see [audio operations](docs/audio.
 Bounded [MIDI cleanup/restoration](docs/midi-restore.md) helpers establish known
 channel/key state with explicit output failures and ordering metadata.
 [Indexed MIDI operations](docs/midi.md) add packet playback, input tracking/capture
-and a focused runtime recovery proof. The complete loop planner/processor facade,
+and a focused runtime recovery proof. A [fixed media ledger](docs/media.md) now
+shares snapshot ownership across resident content, playback, latest takes,
+pending pins and checked exports, with explicit quiescent cleanup.
+The complete loop planner/processor facade,
 coherent mixed-media outcomes/export and independent hosts remain pending.
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,

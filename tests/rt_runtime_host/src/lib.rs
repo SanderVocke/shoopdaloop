@@ -1,6 +1,6 @@
 //! Test-only native/AudioWorklet fixture. No Shoop application or device adapter.
 
-#[path = "../../../src/rust/rt_runtime/tests/support/mod.rs"]
+#[path = "../../../src/rust/shoop_wasm_test_support/src/heap.rs"]
 mod allocation_guard;
 #[global_allocator]
 static ALLOCATOR: allocation_guard::TrackingAllocator = allocation_guard::TrackingAllocator;

@@ -782,3 +782,27 @@ Three new runtime tests verify initial planned execution at frame zero under a o
 The initial fixture compared a `Sequence` with a submission `Ticket` (**E0308**); it was corrected to `Ticket.sequence()` without changing assertions/workload. All 21 broad gates passed. The first Miri invocation hit the **outer 1800-second tool deadline after 137 passing executions**, during the final MIDI target. No canonical combined runner success report was written, and no Miri process remained running. Completed logs and source hashes were retained; the final six MIDI cases then passed unchanged with the same seed, toolchain and per-target 900-second bound. `miri.execution_batches` records both commands/results. This is a complete fresh selected-case set, **not one uninterrupted runner pass**; the timed-out canonical `result.json` remains absent. No workload, heap guard or assertion was weakened.
 
 All five new case workloads run unchanged under native/Wasm/Miri. The full loop planner/processor facade, coherent mixed-media capture/export and public state, separate-node graph/example, independent loop hosts and final delivery remain pending. Stage 5 remains open.
+
+## Stage 5 — Fixed mixed-media ownership ledger
+
+Milestone: `feat(loop-engine): retain mixed media through checked ownership slots` (the commit introducing this section), source base `1411a4fd`. Evidence: [`evidence/media-ownership-stage5.json`](evidence/media-ownership-stage5.json) and [`evidence/media-ownership-stage5-provenance.json`](evidence/media-ownership-stage5-provenance.json); logs are under `target/loop-layer-media-ownership-stage5/`.
+
+`media::Ledger` owns each adopted audio/MIDI snapshot once while resident content, fixed playback/latest roles, pending pins and exports retain checked references. Media reservations precede promised capture activation; publication validates the entire mixed-media input before making it readable. Scope, owner generation, snapshot metadata, format/channel count, common duration, MIDI indexing and duplicate ownership are checked. Pending pins and external exports have independent fixed pools; neither consumes internal role storage. Final reference release invalidates the slot and releases both leases; generic page reclamation remains incremental. Unbinding preserves external/pending/resident owners. Explicit quiescent cleanup recovers all remaining references without pretending to stop music or emit device cleanup.
+
+Four guarded integration cases cover saturation and role changes, pending retention through resident retirement, source removal, complete sample/packet reads, malformed/foreign/unindexed/duplicate inputs, cancelled reservations, stale tokens, owner-generation reuse and full cleanup. An independent **2,048-action** ledger model, seed **`0x87a4439cdd3517ab`**, predicts all resident/role/pin/export references, live metadata and snapshot credits after every action; it checks complete content throughout and exercises all ten action classes more than twenty times. A guarded private case verifies actual **`u32::MAX`** media/pin/export generation retirement. All five workloads are unchanged on native/Wasm/Miri.
+
+| Fresh gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **177 passed per profile** |
+| Loop native debug/release | **84 passed per profile** |
+| Runtime Node/Chromium | **173 passed per runtime** |
+| Loop Node/Chromium | **84 passed per runtime** |
+| Prescribed workspace nextest | **2061 passed**, four unchanged opt-in canaries skipped |
+| Selected Miri | **148 fresh passing executions**, 117 runtime plus 31 loop, in one complete runner invocation |
+| Lifetime/authority prototypes | Positive builds/runs and deliberate **E0502/E0599** refusals |
+| Formatting, warning-denied build/docs, examples, policy/boundary checks | Passed |
+| Existing native debug/release and actual offline/live worklet, both failure canaries | Passed; historical golden journal unchanged |
+
+The initial private test included the allocator implementation inside a library enforcing `forbid(unsafe_code)`, causing nine unsafe-code lint errors. The existing support implementation was relocated **byte-for-byte unchanged** into `shoop_wasm_test_support::heap`, already a dev-only dependency, and re-exported to integration tests. The independent host includes that pure helper source directly without acquiring a production dependency on the shared harness. The private case retains its full allocator guard; production unsafe prohibitions and assertions were not relaxed. The failed compile log is retained. All 21 broad gates passed, followed by a complete fresh 148-execution Miri result; this supersedes the prior milestone's timed-out canonical report without rewriting its two-batch provenance.
+
+This is ownership-component acceptance, not coordinated-facade acceptance. A caller-supplied export frame is not proof of a settled musical-state cut. Logical revision allocation, actual boundary preflight/re-preview and freeze/activation, coherent active-prefix acquisition, typed public outcomes/state, separate playback→FX→capture graph/example and independent loop hosts remain pending. Stage 5 remains open.

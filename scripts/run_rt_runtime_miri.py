@@ -56,6 +56,8 @@ def main():
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
     cases.append(("shoop_loop_engine", "audio", [], 6, 0))
     cases.append(("shoop_loop_engine", "audio_ports", [], 2, 0))
+    cases.append(("shoop_loop_engine", "lib", [], 1, 0))
+    cases.append(("shoop_loop_engine", "media", [], 4, 0))
     cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi_restore", [], 4, 0))
@@ -65,7 +67,8 @@ def main():
     results = []
     for index, (package, target, arguments, minimum, seed) in enumerate(cases):
         case_env = {**env, "MIRIFLAGS": f"-Zmiri-seed={seed}"}
-        command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", package, "--test", target, *arguments]
+        selection = ["--lib"] if target == "lib" else ["--test", target]
+        command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", package, *selection, *arguments]
         log = reports / f"{index:02d}-{target}-seed{seed}.log"
         try:
             result = subprocess.run(command, cwd=ROOT, env=case_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=900)

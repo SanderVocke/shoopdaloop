@@ -31,6 +31,8 @@ src/rust/shoop_loop_engine/src/config.rs,portable_loop_library,excluded,Independ
 src/rust/shoop_loop_engine/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.
 src/rust/shoop_loop_engine/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
 src/rust/shoop_loop_engine/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
+src/rust/shoop_loop_engine/src/media.rs,portable_loop_library,excluded,Fixed media ownership and checked exports; host tracing stays outside the portable library and generic resource work remains accounted.
+src/rust/shoop_loop_engine/src/media_tests.rs,test_support,excluded,Private generation-exhaustion tests under the shared allocator guard; not a production execution boundary.
 src/rust/shoop_loop_engine/src/midi.rs,portable_loop_library,excluded,Prepared indexed MIDI operations; explicit output reports and generic runtime diagnostics replace application tracing dependencies.
 src/rust/shoop_loop_engine/src/midi_restore.rs,portable_loop_library,excluded,Fixed-protocol MIDI state emission; bounded sink reports expose failures without application tracing dependencies.
 src/rust/shoop_loop_engine/src/program.rs,portable_loop_library,excluded,Control-side sparse program compiler and immutable lookup; checked results are exposed through the API.
@@ -175,6 +177,7 @@ src/rust/shoop_tracing/src/lib.rs,mixed_realtime_and_control,instrumented_direct
 src/rust/shoop_tracing/src/raw.rs,mixed_realtime_and_control,instrumented_direct,Owns the bounded import-free raw Wasm producer and static metadata catalog.
 src/rust/shoop_tracing/src/test_capture.rs,non_realtime_support,instrumented_direct,"Owns native per-attempt capture policy, identity, unwind handling, and retention."
 src/rust/shoop_wasm_runtime_tests/src/lib.rs,test_infrastructure,excluded,Wasm-only integration-test declarations; not part of the application runtime.
+src/rust/shoop_wasm_test_support/src/heap.rs,test_infrastructure,excluded,Allocator and destructor instrumentation for test binaries; tracing allocator hooks would recurse into the instrumentation.
 src/rust/shoop_wasm_test_support/src/lib.rs,test_infrastructure,excluded,Cross-target test harness support; not part of the application runtime.
 src/rust/shoop_worklet_client/src/host_midi.rs,non_realtime_support,instrumented_indirect,Runs within traced application and browser MIDI orchestration; a separate span would duplicate its owning boundary.
 src/rust/shoop_worklet_client/src/lib.rs,application_ui_and_control,instrumented_indirect,Runs within traced application polling and intent orchestration; a separate span would duplicate its owning boundary.
