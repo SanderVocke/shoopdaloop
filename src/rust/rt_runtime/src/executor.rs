@@ -1,6 +1,7 @@
 //! Single-owner graph executor with stable processor slots and transactional plans.
 
 use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer};
+use crate::graph::activation::{GraphAccess, GraphStages, StageId};
 use crate::graph::{
     compile_planned, Catalog, Connection, Endpoint, GraphDescription, NodeSpec, PlanValidator,
     PortCounts, PortType, PreparedPlan, ValidationStatus,
@@ -45,6 +46,16 @@ impl<P: Processor<L>, L: Planner> PreparedNode<P, L> {
 }
 
 pub enum Command<P, L: Planner = NoPlanner> {
+    StageGraph {
+        slot: usize,
+        expected_epoch: Epoch,
+        plan: Option<PreparedPlan>,
+        /// Filled only after complete validation and owning admission.
+        id: Option<StageId>,
+    },
+    ReleaseGraph {
+        id: StageId,
+    },
     Commit {
         expected_epoch: Epoch,
         plan: Option<PreparedPlan>,
@@ -64,6 +75,14 @@ pub enum Command<P, L: Planner = NoPlanner> {
     Resource(resource::ResourceCommand),
 }
 impl<P, L: Planner> Command<P, L> {
+    pub fn stage_graph(slot: usize, expected_epoch: Epoch, plan: PreparedPlan) -> Self {
+        Self::StageGraph {
+            slot,
+            expected_epoch,
+            plan: Some(plan),
+            id: None,
+        }
+    }
     pub fn resource(request: resource::Request) -> Self {
         Self::Resource(resource::ResourceCommand::new(request))
     }
@@ -211,11 +230,25 @@ struct Slot<P> {
     buffers: Buffers,
 }
 
+fn activation_compatible<P>(
+    slots: &[Option<Slot<P>>],
+    candidate: &PreparedPlan,
+) -> Result<(), Error> {
+    for slot in slots.iter().flatten() {
+        if !candidate.contains(slot.id) && slot.buffers.injected.iter().any(|port| !port.is_empty())
+        {
+            return Err(Error::Busy);
+        }
+    }
+    Ok(())
+}
+
 pub struct GraphRuntime<P, L: Planner = NoPlanner> {
     clock: RenderRuntime,
     catalog: Catalog,
     slots: Vec<Option<Slot<P>>>,
     active: Option<PreparedPlan>,
+    graph_stages: GraphStages,
     validator: PlanValidator,
     validating: Option<Sequence>,
     epoch: Epoch,
@@ -373,6 +406,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                 catalog,
                 slots,
                 active: None,
+                graph_stages: GraphStages::disabled(),
                 validator: PlanValidator::new(config),
                 validating: None,
                 epoch: Epoch(0),
@@ -388,6 +422,16 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                 observations,
             },
         ))
+    }
+
+    /// Allocate fixed graph-owner slots before the first nonempty callback.
+    /// May be called once; validation and later activation never allocate storage.
+    pub fn prepare_graph_staging(&mut self, candidates: usize) -> Result<(), Error> {
+        if self.clock.next_frame() != Frame(0) || self.graph_stages.enabled() {
+            return Err(Error::InvalidState);
+        }
+        self.graph_stages = GraphStages::prepare(candidates, self.clock.config())?;
+        Ok(())
     }
 
     /// Borrow the catalog only from the owner while no callback is active. Hosts
@@ -479,6 +523,8 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
         self.resources.control_phase(false);
         self.diagnostics.epoch = self.epoch;
         let result = self.run_scheduled(&mut audio, &mut midi);
+        self.diagnostics.epoch = self.epoch;
+        self.ingress.set_epoch(self.epoch);
         if let Err(error) = result {
             audio.clear_bounded(limits.audio_outputs, frames);
             for port in midi.outputs.iter_mut() {
@@ -532,6 +578,61 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
             let mut retired = None;
             let mut admitted = None;
             let result = match operation.request {
+                Command::StageGraph {
+                    slot,
+                    expected_epoch,
+                    plan,
+                    id,
+                } => {
+                    if operation.lane != Lane::Normal || id.is_some() {
+                        Err(Error::InvalidState)
+                    } else if *expected_epoch != self.epoch {
+                        Err(Error::StaleEpoch)
+                    } else if let Err(error) = self.graph_stages.can_stage(*slot) {
+                        Err(error)
+                    } else if let Some(error) = plan
+                        .as_ref()
+                        .and_then(|p| self.graph_stages.accepts(p).err())
+                    {
+                        Err(error)
+                    } else if let Some(candidate) = plan.as_ref() {
+                        if self.validating != Some(operation.sequence) {
+                            self.validator.begin();
+                            self.validating = Some(operation.sequence);
+                        }
+                        let progress = self.validator.advance(
+                            candidate,
+                            &self.catalog,
+                            self.resources.steps_remaining(),
+                        );
+                        match self.resources.charge_external(0, progress.steps) {
+                            Err(error) => Err(error),
+                            Ok(()) => match progress.status {
+                                ValidationStatus::Pending => break,
+                                ValidationStatus::Invalid(error) => Err(error),
+                                ValidationStatus::Valid => {
+                                    *id = Some(self.graph_stages.install(
+                                        *slot,
+                                        self.epoch,
+                                        plan.take().expect("validated candidate"),
+                                    ));
+                                    Ok(())
+                                }
+                            },
+                        }
+                    } else {
+                        Err(Error::InvalidGraph)
+                    }
+                }
+                Command::ReleaseGraph { id } => {
+                    if operation.lane != Lane::Normal {
+                        Err(Error::InvalidState)
+                    } else {
+                        self.graph_stages
+                            .release(*id)
+                            .map(|owner| retired = owner.map(Retired::Plan))
+                    }
+                }
                 Command::Resource(command) => {
                     if operation.lane == Lane::Recovery && !command.recovery_safe() {
                         Err(Error::InvalidState)
@@ -661,7 +762,9 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                     }
                 }
             };
-            self.validating = None;
+            if self.validating == Some(operation.sequence) {
+                self.validating = None;
+            }
             self.ingress.set_epoch(self.epoch);
             let outcome = match result {
                 Ok(()) => admitted.map_or(Outcome::Applied, |admission| Outcome::Scheduled {
@@ -755,6 +858,13 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                                 operation,
                                 OperationContext {
                                     graph_epoch: self.epoch,
+                                    graphs: GraphAccess::new(
+                                        &mut self.graph_stages,
+                                        &mut self.active,
+                                        &mut self.epoch,
+                                        event.lane == Lane::Normal,
+                                        &|candidate| activation_compatible(&self.slots, candidate),
+                                    ),
                                     callback_start: audio.frame,
                                     token: event.token,
                                     frame: at,
@@ -858,6 +968,13 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
             let selected = if self.catalog.planner().is_some() {
                 self.planner.plan(PlanContext {
                     graph_epoch: self.epoch,
+                    graphs: GraphAccess::new(
+                        &mut self.graph_stages,
+                        &mut self.active,
+                        &mut self.epoch,
+                        true,
+                        &|candidate| activation_compatible(&self.slots, candidate),
+                    ),
                     callback_start: audio.frame,
                     frame: at,
                     ceiling,

@@ -234,6 +234,27 @@ the consolidated applicable stage run. No interpreter duration exists for this
 slice. Standalone runtime/package-Wasm and generic host reruns are not included;
 package Chromium remains distinct from the required actual loop AudioWorklet.
 
+## Generic graph activation prerequisite observation
+
+The final25 broad gates in `graph-activation-stage6.json` total **582.89 seconds**
+of summed monotonic command wall time on the same warm local Linux/Nix host.
+Native runtime/loop debug and release took1.74/0.53s; both-package Node227.66s,
+Chromium257.80s; workspace nextest44.10s; native host debug/release1.85/3.02s;
+actual generic-worklet regressions plus both canaries40.42s. The14 helper tests
+passed in0.95s. Borrow/authority prototypes, the native exact-filter mirror and
+additional `gain_graph` debug/release executions are separate from this25-gate sum.
+
+The earlier638.18s broad pass predates the held-normal recovery correction and is
+retained in `first-broad/`. A subsequent batch was interrupted by the user pause;
+the next failed on the generated webdriver configuration left by that termination.
+Both archives remain distinct from the final complete pass. Their in-memory gate
+timings were lost; neither batch is counted as success or included in582.89s.
+
+These are observed warm timings, not CI margin, cold-cache results or deadline
+thresholds. Nine new Miri executions bring the registered selection to206; they
+have no interpreter timing yet. Existing generic-host execution is not evidence
+for the still-required independent loop AudioWorklet.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

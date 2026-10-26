@@ -1,0 +1,30 @@
+{
+  "scope": "Concurrent documentation recheck before graph/recovery slice commit; original baseline retained.",
+  "changed_inputs": [
+    {
+      "path": "src/rust/rt_runtime/docs/part-1-process-audio/01-the-runtime-and-the-host.md",
+      "sha256": "6abaca197159e86b688c717d9daf46a63ad78a58631fc06debc58a06587af853",
+      "review_status": "concurrent draft changed; full backfill review remains pending"
+    },
+    {
+      "path": "src/rust/rt_runtime/docs/part-1-process-audio/02-your-first-audio-graph.md",
+      "sha256": "98cca968e44da207861d8bb1631d2051c1016dd0f83131ae834cd4f4078eddf6",
+      "review_status": "concurrent draft changed; full backfill review remains pending"
+    },
+    {
+      "path": "src/rust/rt_runtime/docs/part-1-process-audio/03-writing-processors.md",
+      "sha256": "0bb9f02a34a9b00743fcce6b4ffd6e641daf78afbd122d832f5beed465872dc1",
+      "review_status": "concurrent draft changed; full backfill review remains pending"
+    },
+    {
+      "path": "src/rust/rt_runtime/docs/part-1-process-audio/04-connecting-an-audio-callback.md",
+      "sha256": "10f5887744f1dc1996c4ada689d8c10be831a5548393566c543e4cdd7eb7f6fc",
+      "review_status": "concurrent draft changed; full backfill review remains pending"
+    },
+    {
+      "path": "src/rust/rt_runtime/docs/part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md",
+      "sha256": "5c4d8919afacbdd5225b0cef08566c981c667884baefaaf3aa38d24ab9ec5edc",
+      "review_status": "re-read; source excerpt marker added, no semantic change needed"
+    }
+  ]
+}

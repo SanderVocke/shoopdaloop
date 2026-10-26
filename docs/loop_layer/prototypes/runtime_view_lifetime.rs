@@ -29,6 +29,7 @@ fn main() {
         &mut planner,
         PlanContext {
             graph_epoch: rt_runtime::Epoch(0),
+            graphs: rt_runtime::graph::activation::GraphAccess::disabled(),
             callback_start: Frame(0),
             frame: Frame(0),
             ceiling: Frame(128),

@@ -4,6 +4,8 @@
 //! scratch offsets. Prepared plans own immutable descriptors; activation/retirement
 //! transfers that ownership without rebuilding or freeing on the render thread.
 
+pub mod activation;
+
 use crate::planner::{
     ConsumerAccess, ConsumerSpec, DecisionBinding, PlannerSpec, PlanningDescriptor, PlanningStep,
 };
@@ -283,6 +285,32 @@ struct Membership {
 }
 
 impl PreparedPlan {
+    /// Retained metadata bytes, including spare vector capacity but not allocator overhead.
+    pub fn storage_bytes(&self) -> Result<usize, Error> {
+        let mut bytes = size_of::<Self>();
+        for (count, size) in [
+            (self.descriptor.steps.capacity(), size_of::<NodeStep>()),
+            (
+                self.descriptor.connections.capacity(),
+                size_of::<Connection>(),
+            ),
+            (self.membership.capacity(), size_of::<Membership>()),
+            (
+                self.planning.bindings.capacity(),
+                size_of::<DecisionBinding>(),
+            ),
+        ] {
+            bytes = count
+                .checked_mul(size)
+                .and_then(|n| bytes.checked_add(n))
+                .ok_or(Error::Capacity)?;
+        }
+        if bytes > i32::MAX as usize {
+            return Err(Error::Capacity);
+        }
+        Ok(bytes)
+    }
+
     /// Control-side envelope for an untrusted descriptor. Only storage bounds are
     /// checked here. This deliberately does not certify graph validity.
     pub fn from_descriptor(

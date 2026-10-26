@@ -136,6 +136,7 @@ pub struct RenderEndpoint<T, R, S> {
     telemetry: Producer<S>,
     config: TransportConfig,
     current: Option<Completion<T, R>>,
+    parked_normal: Option<Completion<T, R>>,
     pending_return: Option<Completion<T, R>>,
     normal_remaining: usize,
     recovery_remaining: usize,
@@ -188,6 +189,7 @@ pub fn channel<T, R, S: Copy>(
             telemetry: telemetry_tx,
             config,
             current: None,
+            parked_normal: None,
             pending_return: None,
             normal_remaining: 0,
             recovery_remaining: 0,
@@ -344,6 +346,15 @@ impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
         self.counters = WorkCounters::default();
         self.normal_remaining = self.normal.slots().min(self.config.operations_per_cycle);
         self.recovery_remaining = self.recovery.slots().min(self.config.recovery_per_cycle);
+        if self.recovery_remaining > 0
+            && self
+                .current
+                .as_ref()
+                .is_some_and(|p| p.lane == Lane::Normal)
+        {
+            debug_assert!(self.parked_normal.is_none());
+            self.parked_normal = self.current.take();
+        }
         self.flush_return();
     }
 
@@ -367,6 +378,11 @@ impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
             while self.counters.operations < self.config.operations_per_cycle
                 && self.counters.completions < self.config.publications_per_cycle
             {
+                if self.recovery_remaining == 0 && self.parked_normal.is_some() {
+                    // Already dequeued: preserve FIFO and the original cancellation observation.
+                    self.current = self.parked_normal.take();
+                    break;
+                }
                 let packet = if self.recovery_remaining > 0 {
                     self.recovery_remaining -= 1;
                     self.recovery.pop().ok()

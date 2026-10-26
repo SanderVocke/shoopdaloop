@@ -17,9 +17,13 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 197)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 119)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 206)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 128)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 78)
+        for _, _, arguments, _, _ in runner.selected_cases():
+            if "--exact" in arguments:
+                self.assertIn("--", arguments)
+                self.assertLess(arguments.index("--"), arguments.index("--exact"))
 
     def test_case_output_can_stream_to_a_durable_file(self):
         with tempfile.TemporaryDirectory() as directory:

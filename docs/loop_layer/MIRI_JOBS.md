@@ -18,8 +18,8 @@ Use [`scripts/run_rt_runtime_miri_jobs.py`](../../scripts/run_rt_runtime_miri_jo
 for launch/status/collection; [MIRI_BACKGROUND.md](MIRI_BACKGROUND.md) documents the
 commands, committed-snapshot requirement, Linux-only wrapper and failure handling.
 No real background interpreter job has been launched for the subsequent smaller
-program-probe, owning-transaction or facade-adapter steps. The current required
-inventory is197=119runtime+78loop. The interrupted partial evidence remains unchanged.
+program-probe, owning-transaction, facade-adapter or generic graph-permit steps.
+The current required inventory is206=128runtime+78loop. The interrupted partial evidence remains unchanged.
 
 ## Job record requirements
 
@@ -51,6 +51,7 @@ launching a new job after every edit.
 | Unpublished program-boundary probe prerequisite | Deferred to consolidated Stage6 run | Four new executions registered: one private library case and three `program_boundaries` cases; native/release/Node/Chromium/workspace gates pass | Include these and affected resolver regressions in the stage snapshot. Current selected inventory is182=119runtime+63loop, not a completed run |
 | Standalone owning single-program transaction | Deferred to consolidated Stage6 run | Nine `program_changes` executions registered; native/release/Node/Chromium/workspace gates pass | Include the new owner/activation cases and affected resolver regressions in the stage snapshot. Current inventory is191=119runtime+72loop; no fresh interpreter pass is claimed |
 | Fixed-graph facade owning program activation and permanent quiescence | Deferred to consolidated Stage6 run | Five new `runtime_topology` cases and one new `program_changes` case registered; native/release/Node/Chromium/workspace gates pass | Include all new and affected resolver/facade lifecycle cases. Current inventory is197=119runtime+78loop; no interpreter run for this slice |
+| Generic staged-graph activation capability | Deferred to consolidated Stage6 run | Seven guarded `graph_activation` cases, one guarded held-request recovery transport case and one exact private scope/generation/epoch case registered; both packages' native/Node/Chromium, workspace, generic hosts/canaries and lifetime proofs pass | Include new cases and affected executor/planner/graph/transport regressions. Current inventory is206=128runtime+78loop. Exact-filter Cargo/harness argument separation is checked by helper tests and a native mirror, not a Miri invocation |
 | Final implementation Miri selection | Pending | Historical/milestone runs retain their original scope | Run and collect the complete required final selection against the final implementation snapshot; reconcile later changes and final-head CI |
 
 The interrupted invocation used the working-tree candidate based on `9bab9ddf`,

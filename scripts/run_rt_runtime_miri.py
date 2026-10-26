@@ -19,6 +19,8 @@ CASES = [
     ("planning_graph", [], 8),
     ("planner_execution", [], 9),
     ("initial_graph", [], 3),
+    ("graph_activation", [], 7),
+    ("lib", ["graph::activation::tests::stage_scope_generation_and_epoch_exhaustion_preserve_unpublished_owners", "--", "--exact"], 1),
     ("resource_render", [], 4),
     ("resource_index", [], 5),
     ("midi_state", [], 6),
@@ -38,7 +40,7 @@ CASES = [
     ("capture_group_model", [], 1),
     ("capture_group_disconnect", [], 1),
     ("host_processor", [], 2),
-    ("lifecycle", ["--", "--skip", "deterministic_admission_model", "--skip", "cancellation_flag_model"], 9),
+    ("lifecycle", ["--", "--skip", "deterministic_admission_model", "--skip", "cancellation_flag_model"], 10),
     ("resource_execution", ["resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"], 1),
 ]
 

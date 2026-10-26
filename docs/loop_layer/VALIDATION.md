@@ -1439,3 +1439,133 @@ transactions, broader mixed stress and consolidated Stage6 verification remain
 open. The restricted controller cannot yet exercise a real intervening live graph
 change; its planning-time epoch recheck needs that later integrated case.
 Independent loop hosts, final-head CI and review acceptance remain pending.
+
+## Stage 6 — Generic graph-bank and activation-permit prerequisite
+
+The generic runtime now separates validated graph ownership from publication.
+`prepare_graph_staging` allocates fixed owner slots before rendering; normal-lane
+`StageGraph` validates incrementally and returns a scoped StageId in the owning
+command completion. Ready candidates and Taken retirement slots retain exactly
+one graph owner, returned through `ReleaseGraph` and normal completion credits.
+NoPlanner and legacy commit/remove/install paths remain available.
+
+Planner contexts lend `GraphAccess`, whose exclusive permit preflights identity,
+current/validated epoch, next epoch, actual-capacity retirement budget and pending
+MIDI compatibility. The caller finishes all fallible domain work before publishing
+its state and consuming an infallible graph/epoch swap. Dropping the permit changes
+nothing. This is graph authority, not arbitrary domain rollback, role cleanup or
+processor/resource construction. Conservative aggregate preparation arithmetic and
+`PreparedPlan::storage_bytes` account for vector capacities rather than row counts.
+
+Review exposed a same-frame compatibility hazard: planning occurs after due MIDI
+injections, so removing an injected target could strand its buffer until a later
+graph. Preflight now refuses Busy and leaves the old graph to consume the packet.
+Operation-time activation precedes MIDI delivery under existing scheduler ordering;
+a subsequently missing target fails InvalidId. Recovery operation contexts cannot
+activate even if a synthetic planner over-classifies that operation as recovery-safe.
+
+Evidence: [`graph-activation-stage6.json`](evidence/graph-activation-stage6.json),
+[`graph-activation-stage6-provenance.json`](evidence/graph-activation-stage6-provenance.json),
+logs `target/loop-layer-graph-activation-stage6/`, and the
+[archived API notes](../../src/rust/rt_runtime/docs-previous/graph-activation.md).
+The new book is owned by the separate documentation worker; current changes are
+specified in `src/rust/rt_runtime/docs-changes-loop-layer/`, not applied to its
+chapters. That handoff currently covers this graph/recovery slice; earlier-stage
+backfill and final publication remain pending.
+
+Seven guarded integration cases verify:
+
+1. Complete independent audio, absolute MIDI and domain/epoch cuts: operation-time
+   and deferred activation7 across whole/single/irregular callbacks and reversed
+   declarations. Callback-end7 remains unpublished until a nonempty callback;
+   zero callbacks leave MIDI and epoch untouched. New routes/bindings and domain
+   values appear together, with correct delivered/actual result frames.
+2. Dropped/refused permits, wrong/foreign/stale IDs and epochs, busy owners,
+   overallocated candidate and displaced metadata, recovery refusal and stage
+   generation reuse preserve both owners and working output.
+3. One-step validation keeps the old graph running; malformed descriptors and
+   pre-dequeue cancellation return original owners without issuing new IDs.
+   Deferred cancellation and release-before-activation resolve without publication.
+   Continuous recovery is serviced while both staged and legacy validation retain
+   progress with one validation step per callback.
+4. All16 normal results remain unread while128 one-sample intervals execute;
+   independent recovery cannot force a graph swap. Rendering continues after
+   controller disappearance while ready/retired owners remain retained.
+5. Removing/reinstalling an inactive physical node changes catalog generation and
+   epoch, making a staged reference stale; its owner returns and revalidation
+   rejects the old generation, without changing active output.
+6. A delivered injected MIDI packet prevents planning-time removal, is consumed
+   once, and never replays after that node returns. The operation-before-MIDI case
+   instead rejects the missing target at delivery.
+7. NoPlanner stages/releases the same owner128 times, then uses legacy commit;
+   output and normal owning lifecycle remain intact.
+
+One private edge case verifies nonwrapping scope/generation/epoch exhaustion,
+aggregate-size rejection before allocation, initial activation without a displaced
+owner, and inert authority. The seven integration cases run heap/destructor guards;
+the private arithmetic/identity case is separate, not claimed heap-instrumented.
+
+A guarded transport case separately checks parking/resumption with one/two
+publication slots, cancelled recovery, late cancellation of an already-dequeued
+normal request, FIFO order, unread owning returns and off-render disconnected
+cleanup of current/parked/queued owners. Parking uses one fixed inline slot,
+creates no admission credit, and never rechecks the old cancellation observation.
+
+Fresh results: **runtime188/loop131 native per profile**, **runtime184/loop131 in
+Node and Chromium**, **2119 workspace passes/four existing skips**, **25 broad
+gates**,110 Rust source hashes and103 unchanged preceding sources. Tracing
+inventory203 closes at59 excluded/33 direct/111 indirect. Seven positive production
+prototypes and18 expected compile refusals pass, including five new graph authority
+checks: E0502 graph/candidate views, E0505 permit consumption, E0515 escaping
+borrowed authority, and E0624 private construction. Existing planner/resource/loop
+lifetime proofs were refreshed against the changed context schema.
+
+Generic native debug/release offline/two-thread and actual non-isolated browser
+host regressions pass. Offline hashes remain samples480331717/MIDI3308430490/
+graph487351092 for2601 callbacks/332928 frames/34 MIDI events. Offline/live memory
+remains1,703,936 bytes initial=final. Both processor and Rust-heap canaries fail as
+intended; the golden raw journal hash is unchanged. This remains generic-host
+regression evidence, not actual loop-host acceptance.
+
+`focused-expanded.log` retains one fixture-order failure: it assumed MIDI preceded
+a planner operation solely by submission sequence (observed sequence3 before2).
+The established scheduler orders planner operations first. The corrected case
+uses deferred planning activation to test already-delivered MIDI, and separately
+checks operation-time activation before injection. No assertion/workload was
+removed. The intermediate failing fixture source was not archived.
+
+Inspection also caught a missing Cargo/test-harness separator in the new exact Miri
+filter before any interpreter launch. The filter now includes `--`, a helper
+assertion checks all exact-filter separators, and a native mirror discovers/passes
+exactly one case. The helper gate was refreshed (14 tests); its earlier passing
+log is retained. Neither helper execution nor that native mirror is Miri evidence.
+
+The expanded recovery regression initially failed at `execution` because the
+second callback could not obtain a recovery result while normal validation held
+the transport's current slot. `recovery-pre-fix/` retains the failed log, tracked
+source patch against the recorded base, and both new Rust source files needed to
+reproduce it. The correction parks the normal owner before servicing the next
+callback's eligible recovery and preserves validation progress across unrelated
+completions. The unchanged expanded assertion then passes for staged and legacy
+validation. `first-broad/` preserves the preceding successful25-gate snapshot;
+all broad gates were repeated after this behavioral correction.
+
+The first corrected-source broad batch was interrupted when the user paused work
+for documentation coordination (exit143; `interrupted-pause/`). Completed gate
+names remain recorded, but in-memory command timings were lost and copied logs for
+later gates may predate that batch. The next attempt correctly refused a generated
+`webdriver.json` left behind by the termination (`stale-webdriver/`). Its contents
+and timestamp matched the interrupted browser runner; no active runner remained.
+The file was archived before retrying, not overwritten or treated as a user file.
+The final25-gate run passes in582.89s; both unsuccessful batches remain distinct.
+
+The public `gain_graph` example also runs successfully in debug/release, separately
+from the25-gate sum, supporting the unchanged approved chapter7 walkthrough.
+Documentation baseline hashes and specific change notes preserve the user's
+concurrent rewrite without claiming a complete Stage9 handoff or finished book.
+
+Nine new selected executions bring the inventory to206=128runtime+78loop, still
+awaiting consolidated Stage6 Miri. Historical171/178 remains partial and cannot
+certify changed executor/planner inputs. General loop graph/role-generation/media
+transactions, broader mixed stress, independent loop hosts and final delivery
+remain open. No stage completion or deadline guarantee follows from this slice.

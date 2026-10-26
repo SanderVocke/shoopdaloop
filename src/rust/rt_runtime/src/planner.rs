@@ -66,6 +66,7 @@ pub struct Interval {
 
 pub struct PlanContext<'a, O = (), R = ()> {
     pub graph_epoch: crate::Epoch,
+    pub graphs: crate::graph::activation::GraphAccess<'a>,
     /// Start of the enclosing nonempty host callback, not the internal interval.
     pub callback_start: Frame,
     pub frame: Frame,
@@ -82,6 +83,7 @@ pub enum Disposition<R> {
 
 pub struct OperationContext<'a, O, R> {
     pub graph_epoch: crate::Epoch,
+    pub graphs: crate::graph::activation::GraphAccess<'a>,
     /// Stable across every operation and planning interval in this callback.
     pub callback_start: Frame,
     pub token: crate::schedule::ReceiptToken,

@@ -4,6 +4,7 @@ src/rust/rt_runtime/src/config.rs,generic_realtime_library,excluded,Independent 
 src/rust/rt_runtime/src/error.rs,generic_realtime_library,excluded,Compact error definitions; no execution boundary to instrument.
 src/rust/rt_runtime/src/executor.rs,generic_realtime_library,excluded,Independent bounded renderer; no application tracing dependency. Hosts can observe Copy work and fault diagnostics outside rendering.
 src/rust/rt_runtime/src/graph.rs,generic_realtime_library,excluded,Independent graph compiler and bounded validator; no application tracing dependency.
+src/rust/rt_runtime/src/graph/activation.rs,generic_realtime_library,excluded,Generic scoped graph activation capabilities; bounded stage status and authoritative epochs expose outcomes without application tracing.
 src/rust/rt_runtime/src/ids.rs,generic_realtime_library,excluded,Identity and clock value types; no execution boundary to instrument.
 src/rust/rt_runtime/src/lib.rs,generic_realtime_library,excluded,Independent crate declarations; no application tracing dependency.
 src/rust/rt_runtime/src/midi_state.rs,generic_realtime_library,excluded,Fixed MIDI protocol-state projection; no host tracing dependency.

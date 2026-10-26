@@ -90,13 +90,68 @@ or final delivery requirements.
 1. Evolve `rt_runtime` to support generic planner-led interval execution, typed domain-operation delivery, prepared decision/observation storage, and resource access suitable for sample-exact looping.
 2. Implement `src/rust/shoop_loop_engine` as a portable library containing one authoritative loop/composite timeline resolver and separate audio/MIDI render operations.
 3. Prove coordinated recording, playback, inter-loop triggering, and prepared composite execution in native and actual non-shared-memory AudioWorklet hosts.
-4. Update runtime API documentation, architecture documents, examples, audits, and validation evidence to describe the implemented contracts accurately.
+4. Prepare a complete documentation change set for the separate documentation worker's final pass, rather than editing the documentation in place. Keep executable examples, implementation audits and validation evidence accurate; final published documentation must still match the implemented contracts.
 
 Here, “RT backend changes” means the runtime and its integration with the new loop library. Switching the production `shoop_backend`, `Session`, application protocol, or production worklet to this library is **not** part of this milestone.
 
 **Included loop capabilities:** stopped/playing/recording; immediate and timestamped start/stop/seek; sync-source/cycle-delayed transitions; lengths, positions, cycle counts, and same-frame trigger propagation; stereo and configurable prepared audio channels plus MIDI; exact-frame record-to-play; prepared content-revision replacement; gain and an explicit boundary-smoothing policy; coherent multichannel capture/snapshots; separable playback and recording around a test FX processor. Prepared composites include sequential/parallel entries, delays and repetitions, regular repeating playback, explicit-mode one-pass programs using supported modes, and finite nesting. Editing those programs is outside the render layer.
 
 **Excluded:** complete legacy API/behavior compatibility, in-place overdub/replacing modes, prerecord/preplay and latency compensation, full dry/wet application-mode policy, track/scene/UI integration, persistence/undo/scripting execution, plugin hosting, device adapters, signal feedback graphs, parallel DSP, resampling, MIDI 2.0, unlimited recording, shared-memory acceleration, and guaranteed callback deadlines. An ordinary gain/FX test node is sufficient to prove routing; no production plugin host is required.
+
+## Documentation change-set handoff — no in-place documentation edits
+
+The user is rewriting the documentation with a separate documentation worker.
+For all remaining implementation stages, including Stage 9, **do not edit the
+book, archived guides, README documentation or other authored documentation in
+place**. Instead, write what must change or be added under the new sibling folder
+`src/rust/rt_runtime/docs-changes-loop-layer/`. This overrides earlier instructions
+to directly update documentation; completed historical checklist entries remain
+historical. Do not revert existing edits or alter the user's concurrent drafts.
+Maintaining this implementation plan, test/evidence reports and operational
+verification ledgers is separate from rewriting documentation and remains required.
+
+The change set is an actionable handoff, not a second book or a collection of
+vague reminders. It must cover **all loop-layer-related documentation deltas**,
+including work already implemented in earlier stages, not just subsequent edits:
+
+- Read the current `src/rust/rt_runtime/docs/README.md`, its five-part/nineteen-
+  chapter structure and affected chapter contents, alongside relevant material in
+  `src/rust/rt_runtime/docs-previous/`. Both trees are read-only inputs for this
+  worker. Record the reviewed source revision and documentation baseline (file
+  paths and hashes for uncommitted drafts); recheck evolving drafts before handoff.
+- Add `docs-changes-loop-layer/README.md` as an index and coverage checklist. Map
+  every chapter and relevant archived guide to a change note, or explicitly record
+  that no loop-layer-related change is needed and why. Empty chapters are not
+  evidence of completeness: use the archived material and implemented APIs to
+  identify all required additions.
+- Mirror the book's `part-*` directories and numbered chapter filenames inside
+  `docs-changes-loop-layer/` for chapter-specific notes. These files describe
+  changes for the corresponding destination chapter; do not write replacements
+  into `docs/` or backport new API prose into `docs-previous/`.
+- Each note identifies the destination and reviewed baseline; existing statements
+  to correct, remove or qualify; missing concepts/APIs to add; exact implemented
+  behavior and rationale; preparation/capacity formulas, ownership/lifetimes,
+  timing, failure and recovery implications; and relevant source symbols, tests,
+  examples and evidence. Supply concrete verified snippets/commands or example
+  requirements where useful, with expected results and verification status.
+  Distinguish shipped behavior from pending implementation and historical evidence.
+- Include cross-cutting notes for README/contents/navigation, API/rustdoc changes,
+  terminology and shared contracts, plus follow-up notes for repository runtime
+  documents, architecture documents, loop-library guides and fixture READMEs.
+  Name the intended destination files so the documentation worker can apply the
+  complete change set without rediscovering implementation decisions. Preserve
+  historical measurements and acceptance evidence rather than relabeling them.
+- Use `docs-previous/changing-parameters.md` as the eventual chapter-style reference:
+  task/example-led explanations, ordered API steps, result checks, and relevant
+  ownership/timing/failure details. The notes should give the documentation worker
+  the facts and verified examples needed for that style, not duplicate entire
+  finished chapters or copy obsolete relative links from archived guides.
+- Maintain and reconcile these notes as implementation and the user's drafts
+  evolve. Record gaps already covered by a newer draft to avoid duplicate or
+  conflicting instructions. The separate documentation worker applies the notes
+  in a **later final pass**; this worker verifies handoff coverage, not publication.
+  A complete change set does not mean the book has been updated. Final LL-A12
+  documentation acceptance remains pending until that pass is applied and checked.
 
 ## Immutable acceptance criteria
 
@@ -215,7 +270,7 @@ Depends on: Stage 3 and Stage 1 resource/failure contracts. Required before loop
 
 Milestone evidence: `docs/loop_layer/evidence/{accounting,index,midi-state,midi-index}-stage4.json` and the corresponding provenance records. Required data accounting, append-maintained scoped page indexing, fixed MIDI channel/key state, opt-in checkpoint rows, complete event/packet access, and bounded state positioning are verified. The MIDI-index milestone (`e64011b1`) passes 155 runtime tests per native profile, 151 per Wasm runtime, 2008 workspace tests (four existing canaries skipped), and 95 selected Miri executions, plus existing native/actual-worklet regressions. At that milestone, capture lifecycle/lease reservations, coordinated transactions, and observation integration remained incomplete. Renderer restoration emission remains Stage 5 work.
 
-The subsequent prepared capture-transaction milestone implements exclusive writer claims, reserved version/MIDI-index/final-lease capacity, scoped take/interval tokens, all-member staging/commit, common-prefix freeze, and planner-only frame/ceiling-bound authority. See `docs/loop_layer/CAPTURE_TRANSACTIONS_DESIGN.md`, the crate's `docs/capture-groups.md`, and `docs/loop_layer/evidence/capture-stage4{,-provenance}.json`. Verified results: 167 runtime tests per native profile, 163 per Wasm runtime, 2020 workspace passes/four existing skips, 107 selected Miri executions, lifetime/authority compile-fail proofs, and existing native/actual-worklet regressions. That milestone left generated group ownership/content models and lifecycle-cut disconnect validation open.
+The subsequent prepared capture-transaction milestone implements exclusive writer claims, reserved version/MIDI-index/final-lease capacity, scoped take/interval tokens, all-member staging/commit, common-prefix freeze, and planner-only frame/ceiling-bound authority. See `docs/loop_layer/CAPTURE_TRANSACTIONS_DESIGN.md`, the historical crate guide now preserved at `src/rust/rt_runtime/docs-previous/capture-groups.md`, and `docs/loop_layer/evidence/capture-stage4{,-provenance}.json`. Verified results: 167 runtime tests per native profile, 163 per Wasm runtime, 2020 workspace passes/four existing skips, 107 selected Miri executions, lifetime/authority compile-fail proofs, and existing native/actual-worklet regressions. That milestone left generated group ownership/content models and lifecycle-cut disconnect validation open.
 
 Stage 4 is now complete with `docs/loop_layer/evidence/capture-ownership-stage4{,-provenance}.json`: an independent 2,048-action model predicts page/version/lease/MIDI-row usage, currentness and immutable original content; fourteen real control-transport disconnect cuts verify queued recovery settlement, off-render owner destruction, and full explicit pool recovery. The full workloads pass unchanged under Miri and Wasm. Final Stage 4 results: 169 runtime tests per native profile, 165 per Wasm runtime, 2022 workspace passes/four existing skips, 109 selected Miri executions, lifetime/authority compile-fail proofs, and unchanged existing native/actual-worklet regressions. `docs/loop_layer/VALIDATION.md` maps every Stage 4 checklist item to evidence. This closes generic resource integration, not the Stage 5 loop renderers or later loop-host/end-to-end acceptance.
 
@@ -269,6 +324,8 @@ The standalone owning-program slice now retains one candidate and normal request
 
 The following fixed-graph facade slice now connects `ProgramActivate` to Ready receiver owners, reliable runtime/domain receipts, authoritative epochs and actual capture preflight. Failed/cancelled candidates return Ready; displaced owners stay in retirement banks until explicit recycle. Permanent quiescence enables stopped/faulted owner recovery without finishing unrendered intervals or rolling back published state. Five new facade cases and one core lifecycle case verify independent complete audio/MIDI/state/journals, immutable capture exports, family refusal, full normal domain slots/unread receipts, cancellation/generations, stale replacement, disconnect and post-publication faults. `facade-program-stage6{,-provenance}.json` records **loop131 per native profile and Node/Chromium,workspace2110/four existing skips,19 scoped gates and four production borrowing refusals**. The current Miri inventory is197=119runtime+78loop; no new interpreter invocation was launched for this smaller slice. General graph/role-generation transactions, broader mixed lifecycle stress and consolidated Stage6 verification remain open; the restricted controller cannot yet test an intervening live signal-graph change.
 
+The generic graph-publication prerequisite now provides opt-in validated owner banks, scoped stage IDs, reliable release and borrow-scoped activation permits in planner contexts. After all fallible domain preflight, the permit swaps graph/epoch/retirement infallibly. Actual vector capacities and aggregate retained storage are checked; pending injected MIDI prevents unsafe target removal, and recovery operations cannot activate. Seven guarded integration cases, one guarded transport case and one private exhaustion case cover exact audio/MIDI/domain cuts, ownership/stalls/cancellation, physical catalog generations, same-frame MIDI and128 NoPlanner owner exchanges. A reproduced recovery obstruction during held validation is fixed by one prepared parking slot, preserved validator progress and unchanged cancellation/FIFO semantics. `graph-activation-stage6{,-provenance}.json` now records **runtime188/loop131 native,184/131 Node/Chromium,workspace2119/four existing skips,25 broad gates,7 positive/18 negative lifetime/authority proofs**, plus unchanged generic native/actual-worklet regressions, canaries, golden semantics and fixed1,703,936-byte memory. The final broad pass took582.89s. The earlier pre-recovery snapshot, user-pause interruption and stale generated webdriver-file refusal remain archived separately, not counted as final passes. Documentation changes are handed off in `src/rust/rt_runtime/docs-changes-loop-layer/`; this initial graph/recovery slice does not complete earlier-stage backfill or the documentation worker's final pass. The current Miri inventory is206=128runtime+78loop, registered but not newly interpreted. This is the generic prerequisite, not completed loop graph/role-generation/media integration; Stage6 remains open.
+
 - [ ] Implement prepared topology/program activation and replacement with runtime graph/loop generation checks. Define and enforce a consistent activation boundary across view bindings, resources, and program state. Failed/stale candidates leave the current working configuration intact; displaced owners retire off-render.
 - [ ] Implement primitive/composite stop, seek, nested activation, and program replacement using the Stage 1 precedence rules. Exercise active/pending/stopped states and same-frame primitive → composite → primitive interactions, not just standalone composite simulation.
 - [ ] Publish coherent loop/composite state and capture metadata tagged with frame/program identity. Use bounded snapshot/telemetry mechanisms; no UI locks, mixed-time field reads, or retry-until-consistent loops. Snapshot refusal must not block musical execution.
@@ -306,26 +363,40 @@ Depends on: Stages 3–7. No optimization may weaken LL-A3–LL-A10.
 
 **Verification:** CI definitions and helper-script tests pass locally where applicable; new jobs fail on injected semantic/guard failures and missing tests/artifacts. Review dense-workload tails with recorded evidence rather than reducing required work. Identify any unavailable platform checks as pending until remote CI runs them.
 
-### Stage 9 — Runtime documentation, examples, and final contract audit
+### Stage 9 — Documentation change-set handoff, examples, and final contract audit
 
-Depends on: implemented Stages 3–8; update affected API docs during those stages as well.
+Depends on: implemented Stages 3–8; accumulate documentation change notes during those stages as well. Follow **Documentation change-set handoff — no in-place documentation edits** above. The separate documentation worker owns the later publication pass.
 
-- [ ] Update `src/rust/rt_runtime/README.md`, crate/module rustdoc, and all crate-local guides: `docs/getting-started.md`, `integration.md`, `scheduling-midi.md`, `resources.md`, and `performance.md`. Describe planner/no-planner paths, dependency/view lifetimes, typed delivery, callback versus interval lifecycle, changed capacity formulas, media indexing/capture groups, separate work classes, failure/termination obligations, and shutdown. Keep these guides self-contained within the crate.
-- [ ] Update repository runtime documents: `docs/rt_runtime/{CONTRACTS,RESOURCES,GUIDE,AUDIT,HOST_FIXTURE,PERFORMANCE,VALIDATION}.md`. Clearly distinguish current contracts from dated initial evidence; add new audit/evidence sections rather than falsifying earlier measurements or test runs. Retain `DONE_INITIAL_CRATE.md` unchanged.
-- [ ] Update `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `PROPOSAL_LOOP_LAYER.md` from proposed capability to implemented status only where demonstrated; preserve rationale and list remaining limitations. Cross-check consistency with `INTER_LOOP_PROCESSING.md` without silently changing its decision.
-- [ ] Write the loop crate README and user-facing preparation, commands/composites, recording/MIDI, state/export, and host-integration guides. Finalize `docs/loop_layer/{SEMANTICS,RUNTIME_INTEGRATION,VALIDATION}.md` and add callback/ownership audit and performance reports with acceptance/evidence links.
-- [ ] Add/run executable generic planner and coordinated-loop examples; update both standalone fixture READMEs and any changed wire/journal version descriptions. Check Markdown links, rustdoc/doctests, code snippets, advertised commands, and capacity arithmetic against the final code.
+- [ ] Create and maintain `src/rust/rt_runtime/docs-changes-loop-layer/README.md`, the chapter-specific change notes and cross-cutting/follow-up notes. Inventory all documentation impacts of Stages 0–8 and subsequent fixes against the current `docs/` and `docs-previous/`, including already-implemented changes. Record baseline identities, coverage, verified facts/examples, unresolved questions and explicit no-change findings.
+- [ ] Write change instructions for `src/rust/rt_runtime/README.md`, `src/rust/rt_runtime/docs/README.md`, and crate/module rustdoc, identifying API and navigation updates without editing those destinations. Do not recreate the moved flat guides.
+- [ ] Complete the chapter change notes using the topic-to-chapter map below and the example-led style reference. Resolve current filenames from the contents page; mirror those paths under `docs-changes-loop-layer/`. The table names eventual documentation-worker destinations, not files this worker should edit:
+
+  | Eventual destination under `src/rust/rt_runtime/docs/` | Required coverage in the corresponding change notes |
+  | --- | --- |
+  | `part-1-process-audio/` | **1–4:** runtime/host responsibilities, first graph, processor implementation, callback integration; preparation and borrowed buffers, callback safety, and the ordinary NoPlanner path. |
+  | `part-2-control-a-running-graph/` | **5–8:** commands/completions/ownership, routing/live edits, exact-sample parameters, MIDI processing/scheduling; admission versus execution, owning returns, timing, cancellation, overload and recovery. |
+  | `part-3-work-with-stored-media/` | **9–12:** loading/reading resources, recording/export, MIDI event seeking, MIDI state/checkpointed seeking; indexed access, immutable snapshots, capacities and failure behavior. |
+  | `part-4-coordinate-processors-and-changes/` | **13:** planner-led intervals, dependency/view lifetimes and observations. **14:** typed application operations and retained outcomes. **15:** staged graph validation, coordinated activation permits, epochs and retirement. **16:** coordinated resource recording, preflight, capture groups and coherent publication. |
+  | `part-5-configure-and-operate-the-runtime/` | **17:** capacity formulas, separate work classes, diagnostics and termination/failure obligations without an arbitrary internal-work cutoff. **18:** prepared allocation-free submission and bounded ingress. **19:** stop, cancellation, disconnect, retirement and off-render reclamation. |
+
+- [ ] Add follow-up change notes for `docs/rt_runtime/{CONTRACTS,RESOURCES,GUIDE,AUDIT,HOST_FIXTURE,PERFORMANCE,VALIDATION}.md`. Specify current-contract corrections and new audit/evidence references without falsifying earlier measurements or test runs. Retain `DONE_INITIAL_CRATE.md` unchanged.
+- [ ] Record required changes to `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `PROPOSAL_LOOP_LAYER.md`: proposed-to-implemented transitions only where demonstrated, rationale, remaining limitations and consistency with `INTER_LOOP_PROCESSING.md`. Do not silently change its decision or rewrite these documents in place.
+- [ ] Record all required additions/corrections to the loop crate README and preparation, commands/composites, recording/MIDI, state/export and host-integration guides, and documentation follow-ups for `docs/loop_layer/{SEMANTICS,RUNTIME_INTEGRATION,VALIDATION}.md`. Continue producing actual callback/ownership audits, performance reports and acceptance evidence as implementation artifacts; link them from the change notes rather than substituting proposed prose for measured results.
+- [ ] Add/run executable generic planner and coordinated-loop examples. Record required changes to both standalone fixture READMEs and wire/journal descriptions. Verify snippets, commands, capacity arithmetic and referenced source/examples in the change set against final code. Specify correct links for the nested chapter destinations and the checks the documentation worker must run after applying the notes; do not edit chapter navigation here.
 - [ ] Audit LL-A1–LL-A12 item by item. Record exact test names/artifacts, intentional legacy semantic differences, unsupported features, and evidence limits. No claim of compatibility, lossless unbounded MIDI/recording, browser hard real time, or measured performance outside the tested configuration.
+- [ ] Hand the complete indexed change set to the separate documentation worker for the later final pass. Track publication and final documentation checks separately; do not mark LL-A12 documentation acceptance complete merely because the notes are ready.
 
-**Verification:** warning-denied rustdoc and examples pass; documentation describes no stale blanket subdivision/render-I/O CPU limit and no unimplemented API as shipped. A reader can prepare, run, observe, and dispose the new layer from the public docs without studying the old backend.
+**Handoff verification:** every affected chapter, archived-guide topic and cross-document follow-up is covered by actionable change notes or a justified no-change finding. Baselines, source/evidence references, snippets, commands and capacity arithmetic are checked; warning-denied rustdoc and executable examples pass where applicable. No implementation-worker rewrite of the protected documentation trees is required to complete this handoff.
+
+**Later documentation-worker verification:** after applying the notes, check the actual book/README/API documentation, Markdown navigation, rustdoc/doctests and examples against final code. The published docs must describe no stale blanket subdivision/render-I/O CPU limit or unimplemented API as shipped, and must support preparation, execution, observation and disposal without studying the old backend. Preserve archived guides, dated evidence and the user's chapter work. This final-pass result, not the handoff alone, satisfies the documentation part of LL-A12.
 
 ### Stage 10 — Final end-to-end validation and delivery
 
-Depends on: all prior stages. Completes LL-A12; do not stop at local success.
+Depends on: all prior stages, including the separate documentation worker's final pass and its verification. A completed Stage 9 change-set handoff alone does not satisfy this dependency. Completes LL-A12; do not stop at local success.
 
 - [ ] Run the complete final gate set below from the final implementation tree, including existing application/browser smoke checks. Record actual discovered/passed/skipped counts and reasons; do not copy initial-crate totals or treat unexpected skips as success.
 - [ ] Rerun the coordinated reference/partition suite, mixed saturation/exhaustion teardown, actual offline/live worklet, failure canaries, selected Miri, and release benchmarks. Launch final Miri in the background against the frozen final implementation snapshot while other gates run; collect and verify its complete result before final acceptance. Reconcile the Miri job ledger and refresh evidence invalidated by subsequent implementation changes. Verify artifacts contain real results and full logical resource/owner recovery, not just successful command exits.
-- [ ] Commit each remaining meaningful milestone, documentation, plan progress, and evidence. Push the dedicated branch and open/update the PR with scope, architectural/API changes, semantic decisions, tests, limitations, and LL-A acceptance mapping. Do not merge without a separate request.
+- [ ] Commit each remaining meaningful milestone, documentation change notes, plan progress, and evidence; include the separately applied documentation final pass before final delivery. Push the dedicated branch and open/update the PR with scope, architectural/API changes, semantic decisions, tests, limitations, and LL-A acceptance mapping. Do not merge without a separate request.
 - [ ] Watch required CI to green on the final PR head, including all native matrix cells, full Node/Chromium/application checks, actual worklet, ownership checks, and documentation/policy gates. Inspect/download representative artifacts; verify head SHA/run attempt and fixture hashes/counts. Fix failures, rerun behavioral gates, commit, and push as needed; never weaken a gate to obtain green status.
 - [ ] Check PR reviews, inline comments, and check-run feedback for automated review. Repeatedly address applicable feedback, explain justified disagreements, and request reruns/re-review until the reviewer approves. If no automated reviewer is configured or available, record that explicitly; passing CI is not reviewer approval.
 - [ ] Close the acceptance/evidence checklist and update this plan. After any final commit, verify CI for that new head; record final run/review links in the PR so evidence bookkeeping does not falsely attribute an older green run to newer code. Report the delivered PR/head, remaining limitations, and whether it is unmerged.

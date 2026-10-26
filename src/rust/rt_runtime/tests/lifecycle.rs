@@ -66,6 +66,104 @@ fn transport_configuration_rejects_invalid_capacities() {
 }
 
 #[shoop_test]
+fn recovery_preempts_held_normal_without_rechecking_cancellation_or_bypassing_fifo() {
+    for publications in [1, 2] {
+        for cancelled in [false, true] {
+            let drops = Arc::new(AtomicUsize::new(0));
+            let mut settings = config(2);
+            settings.publications_per_cycle = publications;
+            let (mut control, mut render) = channel::<Owned, Owned, u32>(settings).unwrap();
+            let first = control.submit(Lane::Normal, owned(1, &drops)).unwrap();
+            let second = control.submit(Lane::Normal, owned(2, &drops)).unwrap();
+            assert_no_heap(|| {
+                render.begin_cycle(Frame(0), Epoch(0));
+                assert_eq!(render.next_operation().unwrap().sequence, first.sequence());
+            });
+            first.cancel();
+            let recovery = control.submit(Lane::Recovery, owned(3, &drops)).unwrap();
+            if cancelled {
+                recovery.cancel();
+            }
+            let mut retired = (!cancelled).then(|| owned(4, &drops));
+            assert_no_heap(|| {
+                render.begin_cycle(Frame(1), Epoch(7));
+                if !cancelled {
+                    assert_eq!(
+                        render.next_operation().unwrap().sequence,
+                        recovery.sequence()
+                    );
+                    render.complete(Outcome::Applied, retired.take()).unwrap();
+                }
+                if publications == 1 {
+                    assert!(render.next_operation().is_none());
+                } else {
+                    assert_eq!(render.next_operation().unwrap().sequence, first.sequence());
+                    render.complete(Outcome::Applied, None).unwrap();
+                    assert!(render.next_operation().is_none());
+                }
+                assert_eq!(render.counters().operations, 1);
+                assert_eq!(render.counters().completions, publications);
+                render.begin_cycle(Frame(2), Epoch(7));
+                if publications == 1 {
+                    assert_eq!(render.next_operation().unwrap().sequence, first.sequence());
+                    render.complete(Outcome::Applied, None).unwrap();
+                    assert!(render.next_operation().is_none());
+                    render.begin_cycle(Frame(3), Epoch(7));
+                }
+                assert_eq!(render.next_operation().unwrap().sequence, second.sequence());
+                render.complete(Outcome::Applied, None).unwrap();
+            });
+            assert_eq!(drops.load(Ordering::Relaxed), 0);
+            let result = control.try_completion().unwrap();
+            assert_eq!(
+                (result.sequence, result.frame),
+                (recovery.sequence(), Frame(1))
+            );
+            assert_eq!(
+                result.outcome,
+                if cancelled {
+                    Outcome::Cancelled
+                } else {
+                    Outcome::Applied
+                }
+            );
+            assert_eq!(
+                result.retired.as_ref().map(|r| r.id),
+                (!cancelled).then_some(4)
+            );
+            drop(result);
+            let result = control.try_completion().unwrap();
+            assert_eq!(result.sequence, first.sequence());
+            assert_eq!(result.outcome, Outcome::Applied);
+            assert_eq!(result.frame, Frame(if publications == 1 { 2 } else { 1 }));
+            drop(result);
+            let result = control.try_completion().unwrap();
+            assert_eq!(result.sequence, second.sequence());
+            drop(result);
+            assert_eq!(control.outstanding(), 0);
+            assert_eq!(drops.load(Ordering::Relaxed), if cancelled { 3 } else { 4 });
+        }
+    }
+    let drops = Arc::new(AtomicUsize::new(0));
+    let (mut control, mut render) = channel::<Owned, (), u32>(config(2)).unwrap();
+    control.submit(Lane::Normal, owned(1, &drops)).unwrap();
+    control.submit(Lane::Normal, owned(2, &drops)).unwrap();
+    assert_no_heap(|| {
+        render.begin_cycle(Frame(0), Epoch(0));
+        assert_eq!(render.next_operation().unwrap().request.id, 1);
+    });
+    control.submit(Lane::Recovery, owned(3, &drops)).unwrap();
+    assert_no_heap(|| {
+        render.begin_cycle(Frame(1), Epoch(0));
+        assert_eq!(render.next_operation().unwrap().request.id, 3);
+    });
+    drop(control);
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    drop(render);
+    assert_eq!(drops.load(Ordering::Relaxed), 3);
+}
+
+#[shoop_test]
 fn full_return_queue_retains_credits_and_recovery_has_reserved_admission() {
     let drops = Arc::new(AtomicUsize::new(0));
     let (mut control, mut render) = channel::<Owned, Owned, (u32, u32)>(config(2)).unwrap();
