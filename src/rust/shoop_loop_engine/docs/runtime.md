@@ -222,7 +222,11 @@ cleanup as appropriate. `Engine::into_stopped` is quiescent/off-render: it destr
 processors/runtime owners and preserves planner plus resource store. It does not
 send MIDI or settle pending requests after the device stops.
 
-`Stopped::cleanup` explicitly cancels reserved intervals/prepared takes, freezes
+`Stopped::cleanup` permanently quiesces the resolver, cancelling nonterminal
+requests without advancing time or undoing published state. It recovers pending
+or displaced program owners even if rendering faulted after publication and before
+interval finish. This is not resumable execution or an implicit musical Stop.
+It explicitly cancels reserved intervals/prepared takes, freezes
 remaining active prefixes for disposal, releases every ledger ownership category,
 releases groups and removes internally created resources. It is idempotent and
 also recovers a partially staged faulted interval. Drive generic reclamation to
@@ -233,6 +237,7 @@ The guarded integration tests compare independent complete samples, MIDI packets
 semantic journals, initial states and exported content across whole/single/irregular
 partitions and declaration orders, including journal saturation, stalled results,
 refusal/recovery and explicit full pool recovery. Their package-Wasm execution is
-not an actual loop AudioWorklet. Inter-loop/composite activation/replacement,
-independent loop hosts, performance and final CI/review acceptance remain separate
-plan milestones.
+not an actual loop AudioWorklet. [Fixed-graph topology/program activation](topology-activation.md)
+now has guarded integrated coverage, including running zero-cut changes. General
+graph/role-generation transactions, independent loop hosts, performance and final
+CI/review acceptance remain separate plan milestones.

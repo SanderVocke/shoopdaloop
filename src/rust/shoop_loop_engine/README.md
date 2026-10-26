@@ -18,9 +18,8 @@ separate playback/input consumers, transactional capture preflight, reliable typ
 outcomes, coherent state/export and explicit cleanup. Run the public
 `coordinated_loop` example for stereo/MIDI record→play, wraps, seek, replacement,
 export and teardown. Its new integration validation is tracked separately from
-completed foundation evidence. General live topology/graph/role replacement,
-facade integration of changed-running programs, independent loop hosts and later
-acceptance remain pending.
+completed foundation evidence. General live graph/role-generation replacement,
+independent loop hosts and later acceptance remain pending.
 
 Compiled topology now uses [flat metadata and borrowed views](docs/topology.md),
 with checked linear byte accounting and canonical sparse lookup. Program/target
@@ -55,8 +54,11 @@ must already be stopped. Changed running programs are safely refused by that
 immediate replacement API. The standalone [`stage_program`](docs/program-changes.md)
 path retains one prepared program candidate, selects a zero/stopped cut, preflights
 without publication, and swaps owners only on commit. It preserves logical
-identities, sync/trigger metadata and other programs. Facade integration and general
-graph/role transactions remain pending. Dispose returned/rejected owners off-render.
+identities, sync/trigger metadata and other programs. The facade's `ProgramActivate`
+connects that transaction to receiver banks, reliable runtime receipts and capture
+preflight. General graph/role transactions remain pending. `quiesce()` permanently
+ends resolver execution so faulted/stopped teardown can collect owners without
+finishing an unrendered interval. Dispose returned/rejected owners off-render.
 
 [`probe_program_boundary`](docs/program-boundaries.md) inspects a composite's
 unpublished control/clock cut before its old child actions are emitted. It reuses

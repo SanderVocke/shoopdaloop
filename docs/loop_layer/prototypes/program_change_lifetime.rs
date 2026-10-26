@@ -33,6 +33,8 @@ fn main() {
     let decisions = resolver.decisions().unwrap();
     #[cfg(hold_decision)]
     resolver.take_program_change(request).unwrap();
+    #[cfg(hold_quiesce)]
+    resolver.quiesce();
     assert_eq!(decisions[0].state.id, target);
     let result = resolver.take_program_change(request).unwrap().unwrap();
     let retired_view = result.topology.program(target).unwrap();
@@ -41,4 +43,8 @@ fn main() {
     assert_eq!(retired_view.source, target);
     #[cfg(not(hold_retired))]
     drop(result);
+    resolver.quiesce();
+    assert!(resolver.is_quiescent());
+    assert_eq!(resolver.frame(), Frame(1));
+    assert_eq!(resolver.preview(Frame(2), &[]), Err(Error::InvalidState));
 }

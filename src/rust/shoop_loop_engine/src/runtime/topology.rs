@@ -12,6 +12,8 @@ struct Slot {
     id: Option<StageId>,
     ready: Option<PreparedTopology>,
     retired: Option<PreparedTopology>,
+    program: Option<RequestId>,
+    discard: bool,
     progress: Progress,
 }
 pub(super) struct Topologies {
@@ -58,6 +60,8 @@ impl Topologies {
                 id: None,
                 ready: None,
                 retired: None,
+                program: None,
+                discard: false,
                 progress: Progress {
                     used: 0,
                     total_steps: 0,
@@ -167,9 +171,20 @@ impl Topologies {
         }
         Ok(progress)
     }
-    pub(super) fn cancel(&mut self, id: StageId) -> Result<(), Failure> {
+    pub(super) fn cancel(&mut self, id: StageId, resolver: &mut Resolver) -> Result<(), Failure> {
         let index = self.slot(id)?;
         let slot = &mut self.slots[index];
+        if let Some(request) = slot.program {
+            if resolver
+                .completion(request)?
+                .is_some_and(|result| matches!(result.outcome, crate::Outcome::Applied { .. }))
+            {
+                return Err(Error::InvalidState.into());
+            }
+            resolver.cancel(request)?;
+            slot.discard = true;
+            return Ok(());
+        }
         if let Some(owner) = slot.ready.take() {
             if let Err((error, owner)) = slot.stager.recycle(owner) {
                 slot.ready = Some(owner);
@@ -224,15 +239,71 @@ impl Topologies {
         }
         Ok(resolver.epoch())
     }
-    pub(super) fn cleanup(&mut self) -> Result<(), Failure> {
+    pub(super) fn stage_program(
+        &mut self,
+        id: StageId,
+        target: LoopId,
+        expected: Epoch,
+        sequence: Sequence,
+        at: Frame,
+        resolver: &mut Resolver,
+    ) -> Result<RequestId, Failure> {
+        let index = self.slot(id)?;
+        let slot = &mut self.slots[index];
+        if slot.program.is_some() || slot.retired.is_some() {
+            return Err(Error::InvalidState.into());
+        }
+        let candidate = slot.ready.take().ok_or(Error::InvalidState)?;
+        match resolver.stage_program(expected, target, sequence, at, candidate) {
+            Ok(request) => {
+                slot.program = Some(request);
+                slot.discard = false;
+                Ok(request)
+            }
+            Err((error, candidate)) => {
+                slot.ready = Some(candidate);
+                Err(error.into())
+            }
+        }
+    }
+    pub(super) fn collect_program(
+        &mut self,
+        id: StageId,
+        request: RequestId,
+        resolver: &mut Resolver,
+    ) -> Result<(), Failure> {
+        let index = self.slot(id)?;
+        let slot = &mut self.slots[index];
+        if slot.program != Some(request) {
+            return Err(Error::InvalidId.into());
+        }
+        let result = resolver
+            .take_program_change(request)?
+            .ok_or(Error::InvalidState)?;
+        slot.program = None;
+        if result.activated_epoch.is_some() {
+            slot.retired = Some(result.topology);
+        } else {
+            slot.ready = Some(result.topology);
+        }
+        if slot.discard {
+            slot.discard = false;
+            self.cancel(id, resolver)?;
+        }
+        Ok(())
+    }
+    pub(super) fn cleanup(&mut self, resolver: &mut Resolver) -> Result<(), Failure> {
         for index in 0..self.slots.len() {
             let Some(id) = self.slots[index].id else {
                 continue;
             };
+            if let Some(request) = self.slots[index].program {
+                self.collect_program(id, request, resolver)?;
+            }
             if self.slots[index].retired.is_some() {
                 self.recycle(id)?;
             } else if self.status(id)? != Status::Idle {
-                self.cancel(id)?;
+                self.cancel(id, resolver)?;
             }
         }
         Ok(())

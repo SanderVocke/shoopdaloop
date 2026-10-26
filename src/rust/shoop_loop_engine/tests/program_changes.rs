@@ -850,3 +850,101 @@ fn old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_app
         drop(owner);
     }
 }
+
+#[shoop_test]
+fn permanent_quiescence_recovers_pending_speculative_and_committed_owners_without_advancing_time() {
+    for phase in 0..5 {
+        let old = prepared(&description(false, false), 1024);
+        let new = prepared(&description(true, false), 1024);
+        let mut r = Resolver::prepare(prepared(&description(false, false), 1024)).unwrap();
+        if phase == 3 {
+            start(&mut r);
+        }
+        let candidate = prepared(&description(true, false), 1024);
+        let change = assert_no_heap(|| {
+            r.stage_program(
+                Epoch(0),
+                id(5),
+                Sequence(3),
+                Frame(u64::from(phase == 3)),
+                candidate,
+            )
+        })
+        .unwrap();
+        if phase > 0 {
+            assert_no_heap(|| r.preview(Frame(1), &[])).unwrap();
+            if phase > 1 {
+                assert_no_heap(|| r.commit()).unwrap();
+            }
+            if phase == 4 {
+                assert_no_heap(|| r.finish(Frame(1))).unwrap();
+            }
+        }
+        let state = r.state(id(5)).unwrap();
+        let frame = r.frame();
+        let epoch = r.epoch();
+        assert!(!r.is_quiescent());
+        assert_no_heap(|| {
+            r.quiesce();
+            r.quiesce();
+        });
+        assert!(r.is_quiescent());
+        assert_eq!(
+            (r.frame(), r.epoch(), r.state(id(5)).unwrap()),
+            (frame, epoch, state)
+        );
+        assert_eq!(
+            assert_no_heap(|| r.preview(Frame(10), &[])),
+            Err(Error::InvalidState)
+        );
+        assert_eq!(
+            assert_no_heap(|| r.probe_program_boundary(id(5), &[])),
+            Err(Error::InvalidState)
+        );
+        assert_eq!(assert_no_heap(|| r.commit()), Err(Error::InvalidState));
+        assert_eq!(
+            assert_no_heap(|| r.finish(Frame(1))),
+            Err(Error::InvalidState)
+        );
+        assert_eq!(
+            assert_no_heap(|| r.submit(Request {
+                target: id(5),
+                sequence: Sequence(4),
+                at: frame,
+                timing: Timing::At,
+                transition: play(false)
+            })),
+            Err(Error::InvalidState)
+        );
+        let result = assert_no_heap(|| r.take_program_change(change))
+            .unwrap()
+            .unwrap();
+        let applied = phase == 2 || phase == 4;
+        assert_eq!(
+            result.completion.outcome,
+            if applied {
+                Outcome::Applied { frame: Frame(0) }
+            } else {
+                Outcome::Cancelled { frame }
+            }
+        );
+        assert_eq!(result.activated_epoch, applied.then_some(Epoch(1)));
+        assert_eq!(
+            result.topology.program(id(5)),
+            if applied {
+                old.program(id(5))
+            } else {
+                new.program(id(5))
+            }
+        );
+        let candidate = prepared(&description(true, false), 1024);
+        let (error, candidate) =
+            assert_no_heap(|| r.stage_program(epoch, id(5), Sequence(5), frame, candidate))
+                .unwrap_err();
+        assert_eq!(error, Error::InvalidState);
+        let (error, candidate) =
+            assert_no_heap(|| r.replace_topology(epoch, candidate)).unwrap_err();
+        assert_eq!(error, Error::InvalidState);
+        drop(candidate);
+    }
+}

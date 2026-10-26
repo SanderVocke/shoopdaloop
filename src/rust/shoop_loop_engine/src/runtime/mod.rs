@@ -112,6 +112,12 @@ pub enum Operation {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    ProgramActivate {
+        id: StageId,
+        target: LoopId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     Transition {
         target: LoopId,
         timing: Timing,
@@ -179,6 +185,12 @@ pub enum Reply {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    ProgramChanged {
+        id: StageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+        completion: crate::Completion,
+    },
     Done,
     Failed(Failure),
     Transition(crate::Completion),
@@ -245,6 +257,11 @@ struct Row {
 }
 #[derive(Clone, Copy)]
 enum PendingKind {
+    Program {
+        id: StageId,
+        request: RequestId,
+        graph_epoch: Epoch,
+    },
     Transition {
         request: RequestId,
         pin: Option<media::PinId>,

@@ -115,6 +115,7 @@ pub struct Resolver {
     preview: Option<Interval>,
     preview_program_epoch: Option<Epoch>,
     program_change: Option<ProgramChange>,
+    quiescent: bool,
     committed: bool,
     events: Vec<Event>,
     dropped_events: u64,
@@ -206,10 +207,29 @@ impl Resolver {
             preview: None,
             preview_program_epoch: None,
             program_change: None,
+            quiescent: false,
             committed: false,
             events,
             dropped_events: 0,
         })
+    }
+
+    /// Permanently end execution before reclaiming owners after stopped/faulted extraction.
+    /// Does not advance time, undo published state, or invent completion of a rendered prefix.
+    pub fn quiesce(&mut self) {
+        self.quiescent = true;
+        self.committed = false;
+        self.preview = None;
+        self.preview_program_epoch = None;
+        for record in self.records.iter_mut().flatten() {
+            if record.terminal.is_none() {
+                record.terminal = Some(Outcome::Cancelled { frame: self.frame });
+            }
+        }
+    }
+
+    pub fn is_quiescent(&self) -> bool {
+        self.quiescent
     }
 
     pub fn frame(&self) -> Frame {
@@ -234,7 +254,8 @@ impl Resolver {
         id: LoopId,
         revision: Revision,
     ) -> Result<(), Error> {
-        if self.frame != Frame(0)
+        if self.quiescent
+            || self.frame != Frame(0)
             || self.committed
             || self.preview.is_some()
             || self.records.iter().any(Option::is_some)
@@ -276,7 +297,7 @@ impl Resolver {
     }
 
     fn submit_record(&mut self, request: Request) -> Result<RequestId, Error> {
-        if self.committed {
+        if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
         let target = self.topology.node(request.target)?;
@@ -401,7 +422,7 @@ impl Resolver {
     }
 
     fn begin_preview(&mut self, ceiling: Frame, observations: &[Observation]) -> Result<(), Error> {
-        if self.committed {
+        if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
         self.preview = None;
@@ -598,7 +619,7 @@ impl Resolver {
         candidate: PreparedTopology,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
         let validation = (|| {
-            if self.committed || expected != self.epoch {
+            if self.quiescent || self.committed || expected != self.epoch {
                 return Err(Error::InvalidState);
             }
             if candidate.limits() != self.topology.limits() {

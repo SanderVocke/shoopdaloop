@@ -1360,3 +1360,82 @@ interrupted171/178 remains partial. The standalone transaction is not yet wired 
 facade receiver-bank ownership, runtime execution tokens, graph-epoch rechecks or
 actual capture-bank preflight. General graph/role transactions, remaining mixed
 stress, consolidated Stage6 Miri and later host/delivery acceptance remain open.
+
+## Stage 6 — Fixed-graph facade owning program activation (stage remains open)
+
+The adapter now connects a Ready receiver bank to `Resolver::stage_program`, a
+normal domain slot and the runtime's reliable execution token. `ProgramActivate`
+checks the authoritative graph epoch and expected topology epoch. Fixed logical
+identities/sync/triggers/other programs preserve graph, role and resource bindings.
+Actual capture preparation/first-interval reservation receives candidate decisions;
+family refusal re-previews the old working configuration before publication.
+`ProgramChanged` and coherent State/Export replies identify the settled cut.
+After finish, internal collection restores a failed/cancelled candidate to Ready
+or retains the displaced owner until explicit recycle, independent of unread
+external results. Recovery `TopologyCancel` also recycles a cancelled unpublished
+owner after that collection point. Raw Program musical tags remain invalid.
+
+A render fault may follow configuration publication but precede interval finish.
+Permanent `Resolver::quiesce` now permits final owner recovery without pretending
+the interval rendered or rolling back the published configuration. It preserves
+state/time/epoch and terminal outcomes, cancels nonterminal requests, invalidates
+decisions and forbids execution. Stopped cleanup uses actual capture-store prefix
+information and remains idempotent. This is final teardown, not pause/resume or
+musical Stop; design reasoning is in `TOPOLOGY_ACTIVATION_DESIGN.md`.
+
+Evidence: [`facade-program-stage6.json`](evidence/facade-program-stage6.json),
+[`facade-program-stage6-provenance.json`](evidence/facade-program-stage6-provenance.json),
+logs `target/loop-layer-facade-program-stage6/`, and the
+[facade guide](../../src/rust/shoop_loop_engine/docs/topology-activation.md).
+
+Six new guarded cases cover:
+
+1. Full independent stereo samples, original/restoration/cleanup MIDI, ordered
+   journals and every State field across whole/single/irregular callbacks,
+   declaration reversal and journal capacities0/1/1024. A request delivered3
+   activates6; old immutable exported media remains readable with the new cut epoch.
+2. Real playback→FX→capture banks, Record6→Play8, exact prefix/full immutable audio
+   and MIDI exports, versus a fully occupied media ledger refusing the whole
+   configuration at6. Refusal preserves the old playback, epoch and revision,
+   leaves no Program/Record event, and returns the candidate Ready.
+3. Pending sequence/stage cancellation, an idle clock, intervening topology
+   replacement, controller disappearance, and an FX fault after activation6 but
+   before finish. All banks/resources recover; cleanup twice remains safe.
+4. Graph/topology/target/stage/raw-tag delivery refusals, pre-dequeue ticket
+   cancellation, stopped activation without a new pulse, receiver recycling and
+   stale stage-generation rejection without losing the current Ready owner.
+5. One busy program-owner slot, sixteen occupied normal domain slots, unread
+   results,130 source wraps, independent recovery cancellation and a later
+   successful bank retry while both displaced owners and15 pending musical
+   requests remain retained. Internal clock progress never needs result reads.
+6. Standalone quiescence before preview, during speculation, during applied or
+   pending committed intervals, and after finish: unchanged state/time, permanent
+   execution refusal and exact rejected/displaced owner return.
+
+Fresh results: **131 loop tests per native debug/release and Node/Chromium**, **2110
+workspace passes/four existing skips**, **19 scoped gates**,108 Rust source hashes
+and101 unchanged preceding Rust sources. Tracing inventory remains202
+(58 excluded/33 direct/111 indirect). Warning-denied workspace build/rustdoc,
+examples, formatting, dependency/boundary/test/tracing policies and14 Miri-helper
+Python tests pass. The production positive lifetime program runs; negative
+E0505/E0502/E0505/E0502 cases protect candidate move, result collection, retired
+owner destruction and quiescence across retained views.
+
+Retained unsuccessful runs are fixture/inventory corrections, not weakened gates:
+`focused-first.log` has E0689 from an untyped integer range; `focused-second.log`
+uses nonexistent `Resolver::new` instead of `prepare`; `focused-third.log` refuses
+fixture preparation because one media slot cannot hold both initial primitive
+media identities. The refusal fixture now has exactly two occupied slots, so the
+intended capture admission still fails Capacity. `first/checks.log` and
+`first/miri-helper-tests.log` preserve the broad run stopped by the old191-case
+inventory assertion; the exact expected count was updated to197 to include all
+six added executions. Earlier intermediate source trees were not archived.
+
+No Miri interpreter was launched for this smaller slice. Current inventory197
+(119runtime+78loop) is registered, not passed; historical171/178 remains partial.
+Standalone runtime/package-Wasm and generic native/worklet host results were not
+freshly rerun; workspace regressions were. General graph/role-generation
+transactions, broader mixed stress and consolidated Stage6 verification remain
+open. The restricted controller cannot yet exercise a real intervening live graph
+change; its planning-time epoch recheck needs that later integrated case.
+Independent loop hosts, final-head CI and review acceptance remain pending.

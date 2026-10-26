@@ -19,10 +19,11 @@ contract and later host requirements remain unchanged.
   expected epoch and generation watermarks, and requires removed loops stopped.
   It safely refuses changed running programs. The separate standalone
   `stage_program` transaction now implements a single-program zero/stopped cut;
-  its facade integration and general graph/role transaction remain open.
+  the facade now integrates it through `ProgramActivate`. General graph/role
+  transactions remain open.
 - The facade installs one validated initial graph and hides generic live graph
-  mutation. `prepare_with_staging` enables fixed-graph timing changes and stopped
-  program replacement. It checks authoritative graph/topology epochs and exact
+  mutation. `prepare_with_staging` enables fixed-graph timing changes and owning
+  single-program zero/stopped-cut replacement. It checks authoritative graph/topology epochs and exact
   logical identities/kinds, preserving all media-role/resource bindings. General
   graph validation alone cannot establish replacement role/resource invariants.
 - Planner operations/results are Copy values. Putting an owning compiled topology
@@ -181,11 +182,45 @@ borrows. Nine Miri cases are queued for the consolidated stage run, not run here
 See `program-change-stage6{,-provenance}.json` and the
 [owning API guide](../../src/rust/shoop_loop_engine/docs/program-changes.md).
 
-This is standalone resolver support, not completed facade/host activation.
-Receiver-bank handoff/recycling, reliable runtime execution-token association,
-authoritative graph-epoch rechecks, actual capture-bank preflight and stopped
-cleanup still need adapter integration. General simultaneous graph/role-generation
-transactions, broader mixed stress and full Stage6 verification remain open.
+That milestone was standalone resolver support. The following adapter connects
+it to the facade; general simultaneous graph/role-generation transactions, broader
+mixed stress and full Stage6 verification remain open.
+
+## Implemented fixed-graph program-bank adapter
+
+`ProgramActivate` transfers a Ready receiver owner into `stage_program`, associating
+its StageId/RequestId with the reserved runtime execution token. Admission failure
+returns the same owner to Ready. The callback's actual graph epoch is checked on
+delivery and rechecked while pending; fixed logical identities/sync/triggers/other
+programs preserve all resource and physical-role compatibility. Candidate decisions
+pass through the existing real capture preparation/first-interval reservation and
+monotonic family-refusal loop. No rollback follows publication.
+
+At commit, coherent queries and `ProgramChanged` expose the configuration cut.
+After interval finish, collection returns a rejected/cancelled candidate to Ready
+or stores the displaced owner in the slot's retirement bank. It does not wait for
+external receipt consumption. A delivered sequence cancellation retains Ready;
+recovery `TopologyCancel` additionally requests recycling after finish, reporting
+Taken until that safe collection point. Applied changes cannot be cancelled.
+
+A render fault can occur after program publication and before interval finish.
+Previously the core collection precondition would strand that owner during stopped
+cleanup. The explicit solution is permanent `Resolver::quiesce`, not fake interval
+completion or rollback: retain published state/time/results, cancel outstanding
+nonterminal requests, invalidate decisions, forbid future execution, and permit
+owner collection. The facade invokes it only after consuming the running engine.
+Resource cleanup then uses its own actual committed capture prefix. This changes
+teardown capability, not musical precedence or acceptance scope.
+
+Five new guarded facade cases cover full media/state/journal references, real
+capture versus family refusal, request/owner pressure, cancellation/generations,
+stale replacement, disconnect and post-publication fault recovery. A standalone
+five-phase quiescence case and E0502 borrow refusal protect terminal extraction.
+`facade-program-stage6{,-provenance}.json` records131 loop tests per native/Wasm
+profile,2110 workspace passes/four existing skips and19 scoped gates. The current
+197-case Miri inventory is registered, not yet interpreted. This controller cannot
+exercise an intervening live signal-graph change; that recheck needs an integrated
+case when general graph transactions exist.
 
 ## Running programs and settlement
 

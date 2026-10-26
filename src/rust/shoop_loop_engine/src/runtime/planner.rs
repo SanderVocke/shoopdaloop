@@ -471,6 +471,16 @@ impl LoopPlanner {
                 continue;
             }
             let reply = match pending.kind {
+                PendingKind::Program { id, request, .. } => self
+                    .resolver
+                    .completion(request)
+                    .map_err(runtime_error)?
+                    .map(|completion| Reply::ProgramChanged {
+                        id,
+                        graph_epoch: self.graph_epoch,
+                        topology_epoch: self.resolver.epoch(),
+                        completion,
+                    }),
                 PendingKind::Transition { request, .. } => self
                     .resolver
                     .completion(request)
@@ -489,10 +499,13 @@ impl LoopPlanner {
         Ok(())
     }
     pub(super) fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
-        self.topologies.cleanup().map_err(|error| match error {
-            Failure::Runtime(error) => error,
-            Failure::Timeline(error) => runtime_error(error),
-        })?;
+        self.resolver.quiesce();
+        self.topologies
+            .cleanup(&mut self.resolver)
+            .map_err(|error| match error {
+                Failure::Runtime(error) => error,
+                Failure::Timeline(error) => runtime_error(error),
+            })?;
         for slot in 0..self.rows.len() {
             let Some(row) = self.rows[slot] else { continue };
             if let Some(interval) = row.interval {
@@ -609,7 +622,7 @@ impl Planner for LoopPlanner {
                     }));
                 }
                 Operation::TopologyCancel { id } => {
-                    self.topologies.cancel(id)?;
+                    self.topologies.cancel(id, &mut self.resolver)?;
                     Some(id)
                 }
                 Operation::TopologyRecycle { id } => {
@@ -642,6 +655,35 @@ impl Planner for LoopPlanner {
                 }));
             }
             match operation {
+                Operation::ProgramActivate {
+                    id,
+                    target,
+                    graph_epoch,
+                    topology_epoch,
+                } => {
+                    if graph_epoch != context.graph_epoch {
+                        return Err(Error::InvalidState.into());
+                    }
+                    let slot = self.pending_slot(context.recovery)?;
+                    let request = self.topologies.stage_program(
+                        id,
+                        target,
+                        topology_epoch,
+                        context.token.sequence(),
+                        context.requested_frame,
+                        &mut self.resolver,
+                    )?;
+                    self.pending[slot] = Some(Pending {
+                        token: context.token,
+                        kind: PendingKind::Program {
+                            id,
+                            request,
+                            graph_epoch,
+                        },
+                        forwarded: false,
+                    });
+                    Ok(Disposition::Pending)
+                }
                 Operation::Cancel { sequence } => {
                     if let Some(pending) = self
                         .pending
@@ -650,7 +692,9 @@ impl Planner for LoopPlanner {
                         .find(|p| p.token.sequence() == sequence)
                         .copied()
                     {
-                        if let PendingKind::Transition { request, .. } = pending.kind {
+                        if let PendingKind::Transition { request, .. }
+                        | PendingKind::Program { request, .. } = pending.kind
+                        {
                             self.resolver.cancel(request)?;
                         } else {
                             return Err(Error::InvalidState.into());
@@ -751,7 +795,10 @@ impl Planner for LoopPlanner {
                             )
                         }
                         Operation::Transition { transition, .. } => {
-                            if matches!(transition, Transition::Replace { .. }) {
+                            if matches!(
+                                transition,
+                                Transition::Program | Transition::Replace { .. }
+                            ) {
                                 return Err(Error::InvalidEvent.into());
                             }
                             (transition, None)
@@ -798,6 +845,27 @@ impl Planner for LoopPlanner {
             return Err(Error::InvalidFrame);
         }
         self.failures.clear();
+        for pending in self.pending.iter().flatten() {
+            if let PendingKind::Program {
+                request,
+                graph_epoch,
+                ..
+            } = pending.kind
+            {
+                if graph_epoch != context.graph_epoch
+                    && self
+                        .resolver
+                        .completion(request)
+                        .map_err(runtime_error)?
+                        .is_none()
+                {
+                    self.failures.push(crate::Observation::Refused {
+                        request,
+                        reason: crate::Error::InvalidState,
+                    });
+                }
+            }
+        }
         let end = loop {
             self.cancel_intervals(&mut context.resources)?;
             let interval = self
@@ -901,6 +969,14 @@ impl Planner for LoopPlanner {
                     if let Some(pin) = pin {
                         self.ledger.release_pin(&mut context.resources, pin)?;
                     }
+                }
+                if let PendingKind::Program { id, request, .. } = pending.kind {
+                    self.topologies
+                        .collect_program(id, request, &mut self.resolver)
+                        .map_err(|error| match error {
+                            Failure::Runtime(error) => error,
+                            Failure::Timeline(error) => runtime_error(error),
+                        })?;
                 }
                 self.pending[index] = None;
             }

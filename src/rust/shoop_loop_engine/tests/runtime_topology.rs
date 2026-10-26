@@ -82,7 +82,9 @@ fn description(changed: bool, reverse: bool) -> TopologyDescription {
         }],
     }
 }
-struct Fx;
+struct Fx {
+    fault: Option<Frame>,
+}
 impl Drop for Fx {
     fn drop(&mut self) {
         assert!(!support::is_rendering());
@@ -98,6 +100,9 @@ impl Processor<LoopPlanner> for Fx {
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        if self.fault == Some(block.frame) {
+            return Err(Error::InvalidState);
+        }
         for channel in 0..2 {
             for frame in 0..block.frames {
                 let value = block.audio.input(channel).unwrap()[frame] * 0.5;
@@ -199,6 +204,16 @@ struct Harness {
 }
 impl Harness {
     fn new(media: bool, journal: usize, reverse: bool, staging: TopologySettings) -> Self {
+        Self::options(media, journal, reverse, staging, 8, None)
+    }
+    fn options(
+        media: bool,
+        journal: usize,
+        reverse: bool,
+        staging: TopologySettings,
+        media_slots: usize,
+        fault: Option<Frame>,
+    ) -> Self {
         let config = Config {
             max_frames: 32,
             max_nodes: 5,
@@ -314,12 +329,16 @@ impl Harness {
             Settings {
                 planner: PlannerId::from_parts(0, 1).unwrap(),
                 normal_requests: 16,
-                media_slots: 8,
+                media_slots,
                 export_slots: 4,
             },
             bindings,
             owned,
-            if media { vec![(node(4), Fx)] } else { vec![] },
+            if media {
+                vec![(node(4), Fx { fault })]
+            } else {
+                vec![]
+            },
             graph,
             staging,
             media.then(|| Box::new(Log::new()) as Box<dyn BoundaryObserver>),
@@ -541,6 +560,14 @@ fn activate(id: StageId, epoch: u64) -> Operation {
         id,
         graph_epoch: Epoch(1),
         topology_epoch: Epoch(epoch),
+    }
+}
+fn program_activate(id: StageId) -> Operation {
+    Operation::ProgramActivate {
+        id,
+        target: self::id(2),
+        graph_epoch: Epoch(1),
+        topology_epoch: Epoch(0),
     }
 }
 fn restore(frame: u64, output: &mut Vec<(u64, Vec<u8>)>) {
@@ -1567,4 +1594,801 @@ fn staged_fixed_graph_activation_preserves_media_and_matches_independent_timelin
             }
         }
     }
+}
+
+#[shoop_test]
+fn running_program_bank_activation_matches_independent_media_states_and_ordered_journals() {
+    for (parts, journal, reverse) in [
+        (vec![11], 1024, false),
+        (vec![1; 11], 0, true),
+        (vec![2, 5, 1, 3], 1, false),
+        (vec![1; 11], 1024, true),
+    ] {
+        let mut h = Harness::new(true, journal, reverse, staging());
+        let candidate = compile(limits(journal), &description(true, reverse)).unwrap();
+        let staged = h.ready(0, &candidate);
+        h.op(2, play(0));
+        h.op(2, play(2));
+        let change = h.op(3, program_activate(staged));
+        let exported = h.op(
+            6,
+            Operation::Export {
+                target: id(1),
+                selection: Selection::Playback,
+            },
+        );
+        let state = h.op(6, Operation::State { target: id(2) });
+        h.op(12, stop(0));
+        h.op(12, stop(2));
+        for frames in parts {
+            h.step(frames);
+        }
+        h.drain();
+        let Reply::ProgramChanged {
+            id: actual,
+            graph_epoch,
+            topology_epoch,
+            completion,
+        } = h.reply(change)
+        else {
+            panic!("program receipt")
+        };
+        assert_eq!(
+            (actual, graph_epoch, topology_epoch),
+            (staged, Epoch(1), Epoch(1))
+        );
+        assert_eq!(
+            (
+                completion.sequence,
+                completion.requested,
+                completion.effective,
+                completion.outcome
+            ),
+            (
+                change,
+                Frame(3),
+                Frame(3),
+                Outcome::Applied { frame: Frame(6) }
+            )
+        );
+        let execution = h.replies.iter().find(|r| r.sequence == change).unwrap();
+        assert_eq!(execution.delivered_frame, Some(Frame(3)));
+        assert_eq!(execution.actual_frame, Frame(6));
+        let Reply::State(cut) = h.reply(state) else {
+            panic!("state")
+        };
+        assert_eq!(
+            (
+                cut.frame,
+                cut.graph_epoch,
+                cut.topology_epoch,
+                cut.state.content_length
+            ),
+            (Frame(6), Epoch(1), Epoch(1), 3)
+        );
+        assert_eq!(cut.state.composite.unwrap().iteration, 0);
+        assert_eq!(cut.state.composite.unwrap().passes, 1);
+        let expected: Vec<_> = [0f32, 0., 2., 4., 6., 8., 0., 2., 4., 0., 2., 4., 0.]
+            .into_iter()
+            .map(|v| [v, v * 10.])
+            .collect();
+        assert_eq!(h.samples, expected);
+        let mut packets = Vec::new();
+        restore(2, &mut packets);
+        packets.push((4, vec![0x80, 60, 45]));
+        restore(7, &mut packets);
+        packets.push((9, vec![0x80, 60, 0]));
+        restore(10, &mut packets);
+        packets.push((12, vec![0x80, 60, 0]));
+        assert_eq!(h.packets, packets);
+        let Reply::Export {
+            id: export,
+            cut,
+            media,
+        } = h.reply(exported)
+        else {
+            panic!("export")
+        };
+        assert_eq!(
+            (cut.frame, cut.topology_epoch, cut.state.mode),
+            (Frame(6), Epoch(1), Mode::Stopped)
+        );
+        assert_eq!(
+            (
+                media.view.description.frames,
+                media.view.description.revision
+            ),
+            (4, Revision(0))
+        );
+        let audio: Vec<_> = [4f32, 8., 12., 16.]
+            .into_iter()
+            .flat_map(|v| [v, v * 10.])
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        assert_eq!(read_export(&mut h, export, false), audio);
+        assert_eq!(read_export(&mut h, export, true), encoded_midi());
+        let at = h.engine.next_frame().0;
+        h.op(at, Operation::Release { export });
+        let recycle = h.op(at, Operation::TopologyRecycle { id: staged });
+        h.step(1);
+        h.drain();
+        assert_eq!(
+            h.reply(recycle),
+            Reply::TopologyStatus {
+                id: staged,
+                status: Status::Idle
+            }
+        );
+        let log = h.finish().unwrap();
+        let mut complete = Vec::new();
+        for f in 2..=12 {
+            let mut push = |target, kind| {
+                complete.push(Event {
+                    frame: Frame(f),
+                    target: id(target),
+                    kind,
+                })
+            };
+            if f == 6 {
+                push(2, EventKind::Transition(Transition::Program));
+            }
+            if f == 12 {
+                push(0, EventKind::Transition(Transition::Stop));
+                push(2, EventKind::Transition(Transition::Stop));
+            } else {
+                push(
+                    0,
+                    if f == 2 {
+                        EventKind::Transition(Transition::Play {
+                            position: 0,
+                            retrigger: true,
+                        })
+                    } else {
+                        EventKind::Wrap
+                    },
+                );
+                push(0, EventKind::Pulse);
+                if f == 2 {
+                    push(
+                        2,
+                        EventKind::Transition(Transition::Play {
+                            position: 0,
+                            retrigger: true,
+                        }),
+                    );
+                }
+                push(2, EventKind::Pulse);
+                push(
+                    2,
+                    EventKind::Iteration {
+                        iteration: if f < 6 { f - 2 } else { (f - 6) % 3 },
+                        passes: if f < 6 { 0 } else { 1 + (f - 6) / 3 },
+                    },
+                );
+            }
+            if [2, 7, 10].contains(&f) {
+                push(
+                    1,
+                    EventKind::Transition(Transition::Play {
+                        position: 0,
+                        retrigger: true,
+                    }),
+                );
+            }
+            if [6, 9, 12].contains(&f) {
+                push(1, EventKind::Transition(Transition::Stop));
+            } else {
+                push(1, EventKind::Pulse);
+            }
+        }
+        let mut expected = Vec::new();
+        for f in 2..=12 {
+            expected.extend(
+                complete
+                    .iter()
+                    .filter(|e| e.frame == Frame(f))
+                    .take(journal)
+                    .copied(),
+            );
+        }
+        assert_eq!(log.events, expected);
+        assert_eq!(log.dropped, (complete.len() - expected.len()) as u64);
+        for f in 0usize..=12 {
+            for slot in 0..3 {
+                let mut expected = log.states[0][slot].unwrap();
+                match slot {
+                    0 => {
+                        expected.mode = if (2..12).contains(&f) {
+                            Mode::Playing
+                        } else {
+                            Mode::Stopped
+                        };
+                        expected.cycles = f.saturating_sub(2).min(9) as u64;
+                        expected.last_pulse = (f >= 2).then_some(Frame(f.min(11) as u64));
+                    }
+                    1 => {
+                        let start = if (2..6).contains(&f) {
+                            Some(2)
+                        } else if (7..9).contains(&f) {
+                            Some(7)
+                        } else if (10..12).contains(&f) {
+                            Some(10)
+                        } else {
+                            None
+                        };
+                        if let Some(start) = start {
+                            expected.mode = Mode::Playing;
+                            expected.position = (f - start) as u64;
+                        }
+                        expected.last_pulse = match f {
+                            0..=1 => None,
+                            2..=5 => Some(Frame(f as u64)),
+                            6 => Some(Frame(5)),
+                            7..=8 => Some(Frame(f as u64)),
+                            9 => Some(Frame(8)),
+                            _ => Some(Frame(f.min(11) as u64)),
+                        };
+                    }
+                    2 => {
+                        expected.mode = if (2..12).contains(&f) {
+                            Mode::Playing
+                        } else {
+                            Mode::Stopped
+                        };
+                        expected.content_length = if f < 6 { 4 } else { 3 };
+                        expected.last_pulse = (f >= 2).then_some(Frame(f.min(11) as u64));
+                        expected.composite = Some(state::CompositeState {
+                            iteration: if f < 2 || f == 12 {
+                                0
+                            } else if f < 6 {
+                                (f - 2) as u64
+                            } else {
+                                ((f - 6) % 3) as u64
+                            },
+                            passes: if f < 6 {
+                                0
+                            } else {
+                                (1 + (f.min(11) - 6) / 3) as u64
+                            },
+                            entered_at: (f >= 2).then_some(Frame(f as u64)),
+                        });
+                    }
+                    _ => unreachable!(),
+                }
+                assert_eq!(
+                    log.states[f][slot].unwrap(),
+                    expected,
+                    "frame {f} slot {slot}"
+                );
+            }
+        }
+    }
+}
+
+#[shoop_test]
+fn program_capture_preflight_uses_real_banks_and_preserves_old_media_on_family_refusal() {
+    for refused in [false, true] {
+        for parts in [vec![11], vec![1; 11], vec![3, 2, 6]] {
+            let mut h = Harness::options(
+                true,
+                1024,
+                false,
+                staging(),
+                if refused { 2 } else { 8 },
+                None,
+            );
+            let mut changed = description(false, false);
+            changed.programs[0].sections[0].entries = vec![
+                Entry {
+                    target: id(1),
+                    delay: 0,
+                    duration: Some(2),
+                    repetitions: 1,
+                    mode: Some(Mode::Recording),
+                },
+                Entry {
+                    target: id(1),
+                    delay: 2,
+                    duration: Some(2),
+                    repetitions: 1,
+                    mode: Some(Mode::Playing),
+                },
+            ];
+            let candidate = compile(limits(1024), &changed).unwrap();
+            let staged = h.ready(0, &candidate);
+            h.op(2, play(0));
+            h.op(2, play(2));
+            let change = h.op(3, program_activate(staged));
+            let state = h.op(6, Operation::State { target: id(1) });
+            let prefix = h.op(
+                7,
+                Operation::Export {
+                    target: id(1),
+                    selection: Selection::Recording,
+                },
+            );
+            let frozen = h.op(
+                8,
+                Operation::Export {
+                    target: id(1),
+                    selection: if refused {
+                        Selection::Playback
+                    } else {
+                        Selection::Latest
+                    },
+                },
+            );
+            h.op(12, stop(0));
+            h.op(12, stop(2));
+            for frames in parts {
+                h.step(frames);
+            }
+            h.drain();
+            let Reply::ProgramChanged {
+                topology_epoch,
+                completion,
+                ..
+            } = h.reply(change)
+            else {
+                panic!("change")
+            };
+            assert_eq!(topology_epoch, Epoch(u64::from(!refused)));
+            assert_eq!(
+                completion.outcome,
+                if refused {
+                    Outcome::Failed {
+                        frame: Frame(6),
+                        reason: shoop_loop_engine::Error::Capacity,
+                    }
+                } else {
+                    Outcome::Applied { frame: Frame(6) }
+                }
+            );
+            let Reply::State(cut) = h.reply(state) else {
+                panic!("cut")
+            };
+            assert_eq!(cut.topology_epoch, topology_epoch);
+            assert_eq!(
+                cut.state.mode,
+                if refused {
+                    Mode::Playing
+                } else {
+                    Mode::Recording
+                }
+            );
+            assert_eq!(cut.state.capture_revision, Revision(u64::from(!refused)));
+            assert_eq!(cut.state.capture_frames, 0);
+            assert_eq!(cut.state.content_revision, Revision(0));
+            assert_eq!(cut.capture_failure, refused.then_some(Error::Capacity));
+            let values = if refused {
+                [0f32, 0., 2., 4., 6., 8., 2., 4., 6., 8., 2., 4., 0.]
+            } else {
+                [0f32, 0., 2., 4., 6., 8., 0., 0., 0., 0., 0., 0., 0.]
+            };
+            assert_eq!(
+                h.samples,
+                values.into_iter().map(|v| [v, v * 10.]).collect::<Vec<_>>()
+            );
+            let mut packets = Vec::new();
+            restore(2, &mut packets);
+            packets.push((4, vec![0x80, 60, 45]));
+            if refused {
+                restore(6, &mut packets);
+                packets.push((8, vec![0x80, 60, 45]));
+                restore(10, &mut packets);
+                packets.push((12, vec![0x80, 60, 0]));
+            } else {
+                restore(8, &mut packets);
+                packets.pop();
+            }
+            assert_eq!(h.packets, packets);
+            let mut exports = Vec::new();
+            if refused {
+                assert_eq!(
+                    h.reply(prefix),
+                    Reply::Failed(Failure::Runtime(Error::InvalidState))
+                );
+            } else {
+                let Reply::Export { id, cut, media } = h.reply(prefix) else {
+                    panic!("prefix")
+                };
+                assert_eq!(
+                    (
+                        cut.frame,
+                        media.view.description.frames,
+                        media.view.description.revision
+                    ),
+                    (Frame(7), 1, Revision(1))
+                );
+                assert_eq!(read_export(&mut h, id, false), vec![0; 8]);
+                assert_eq!(read_export(&mut h, id, true), Vec::<u8>::new());
+                exports.push(id);
+            }
+            let Reply::Export { id, cut, media } = h.reply(frozen) else {
+                panic!("frozen")
+            };
+            assert_eq!(cut.frame, Frame(8));
+            assert_eq!(
+                (
+                    media.view.description.frames,
+                    media.view.description.revision
+                ),
+                if refused {
+                    (4, Revision(0))
+                } else {
+                    (2, Revision(1))
+                }
+            );
+            if !refused {
+                assert_eq!(read_export(&mut h, id, false), vec![0; 16]);
+                assert_eq!(read_export(&mut h, id, true), Vec::<u8>::new());
+            }
+            exports.push(id);
+            let at = h.engine.next_frame().0;
+            for export in exports {
+                h.op(at, Operation::Release { export });
+            }
+            let status = h.op(at, Operation::TopologyStatus { id: staged });
+            h.step(1);
+            h.drain();
+            assert_eq!(
+                h.reply(status),
+                Reply::TopologyStatus {
+                    id: staged,
+                    status: if refused {
+                        Status::Ready
+                    } else {
+                        Status::Taken
+                    }
+                }
+            );
+            let log = h.finish().unwrap();
+            assert_eq!(
+                log.events
+                    .iter()
+                    .filter(|e| e.kind == EventKind::Transition(Transition::Program))
+                    .count(),
+                usize::from(!refused)
+            );
+            if refused {
+                assert!(!log
+                    .events
+                    .iter()
+                    .any(|e| matches!(e.kind, EventKind::Transition(Transition::Record { .. }))));
+            }
+        }
+    }
+}
+
+#[shoop_test]
+fn pending_program_cancellation_disconnect_and_fault_extraction_return_every_bank_owner() {
+    for phase in 0..5 {
+        let fault = (phase == 4).then_some(Frame(6));
+        let mut h = Harness::options(phase == 4, 0, false, staging(), 8, fault);
+        let candidate = compile(limits(0), &description(true, false)).unwrap();
+        let staged = h.ready(0, &candidate);
+        h.op(2, play(0));
+        h.op(2, play(2));
+        let change = h.op(3, program_activate(staged));
+        if phase != 4 {
+            h.op(4, stop(0));
+        }
+        h.step(3);
+        h.drain();
+        assert!(!h.replies.iter().any(|r| r.sequence == change));
+        if phase < 2 {
+            let op = if phase == 0 {
+                Operation::Cancel { sequence: change }
+            } else {
+                Operation::TopologyCancel { id: staged }
+            };
+            h.send(Lane::Recovery, 5, op, Box::new([]));
+            h.step(1);
+            h.drain();
+            let Reply::ProgramChanged {
+                completion,
+                topology_epoch,
+                ..
+            } = h.reply(change)
+            else {
+                panic!("cancelled")
+            };
+            assert_eq!(completion.outcome, Outcome::Cancelled { frame: Frame(5) });
+            assert_eq!(topology_epoch, Epoch(0));
+            let status = h.op(6, Operation::TopologyStatus { id: staged });
+            h.step(1);
+            h.drain();
+            assert_eq!(
+                h.reply(status),
+                Reply::TopologyStatus {
+                    id: staged,
+                    status: if phase == 0 {
+                        Status::Ready
+                    } else {
+                        Status::Idle
+                    }
+                }
+            );
+        } else if phase == 3 {
+            // A second candidate changes the epoch while the first waits on a stopped clock.
+            let replacement = compile(limits(0), &description(false, false)).unwrap();
+            let other = h.ready(1, &replacement);
+            let at = h.engine.next_frame().0;
+            h.op(at, activate(other, 0));
+            h.step(1);
+            h.drain();
+            let Reply::ProgramChanged {
+                completion,
+                topology_epoch,
+                ..
+            } = h.reply(change)
+            else {
+                panic!("stale")
+            };
+            assert_eq!(topology_epoch, Epoch(1));
+            assert_eq!(
+                completion.outcome,
+                Outcome::Failed {
+                    frame: Frame(at),
+                    reason: shoop_loop_engine::Error::InvalidState
+                }
+            );
+        } else if phase == 4 {
+            let [left, right] = &mut h.output;
+            assert_eq!(
+                assert_no_heap(|| h.engine.process(
+                    AudioBlock {
+                        frame: Frame(5),
+                        frames: 3,
+                        inputs: &[],
+                        outputs: &mut [&mut left[..3], &mut right[..3]]
+                    },
+                    MidiBlock {
+                        inputs: &[],
+                        outputs: &mut h.midi
+                    },
+                )),
+                Err(Error::InvalidState)
+            );
+            h.drain();
+            let Reply::ProgramChanged {
+                completion,
+                topology_epoch,
+                ..
+            } = h.reply(change)
+            else {
+                panic!("published before render fault")
+            };
+            assert_eq!(topology_epoch, Epoch(1));
+            assert_eq!(completion.outcome, Outcome::Applied { frame: Frame(6) });
+        }
+        // Includes a still-pending owner and an activated owner in an unfinished interval.
+        h.finish();
+    }
+}
+
+#[shoop_test]
+fn program_delivery_validation_and_queued_cancellation_preserve_ready_bank_generations() {
+    let mut h = Harness::new(false, 0, false, staging());
+    let candidate = compile(limits(0), &description(true, false)).unwrap();
+    let staged = h.ready(0, &candidate);
+    let wrong_stage = StageId::from_parts(staged.parts()[0], staged.parts()[1] + 1).unwrap();
+    for (operation, error) in [
+        (
+            Operation::ProgramActivate {
+                id: staged,
+                target: id(2),
+                graph_epoch: Epoch(0),
+                topology_epoch: Epoch(0),
+            },
+            Failure::Runtime(Error::InvalidState),
+        ),
+        (
+            Operation::ProgramActivate {
+                id: staged,
+                target: id(2),
+                graph_epoch: Epoch(1),
+                topology_epoch: Epoch(1),
+            },
+            Failure::Timeline(shoop_loop_engine::Error::InvalidState),
+        ),
+        (
+            Operation::ProgramActivate {
+                id: staged,
+                target: id(1),
+                graph_epoch: Epoch(1),
+                topology_epoch: Epoch(0),
+            },
+            Failure::Timeline(shoop_loop_engine::Error::InvalidProgram),
+        ),
+        (
+            program_activate(wrong_stage),
+            Failure::Timeline(shoop_loop_engine::Error::InvalidId),
+        ),
+        (
+            Operation::Transition {
+                target: id(2),
+                timing: Timing::At,
+                transition: Transition::Program,
+            },
+            Failure::Runtime(Error::InvalidEvent),
+        ),
+    ] {
+        let at = h.engine.next_frame().0;
+        let rejected = h.op(at, operation);
+        let status = h.op(at, Operation::TopologyStatus { id: staged });
+        h.step(1);
+        h.drain();
+        assert_eq!(h.reply(rejected), Reply::Failed(error));
+        assert_eq!(
+            h.reply(status),
+            Reply::TopologyStatus {
+                id: staged,
+                status: Status::Ready
+            }
+        );
+    }
+    let at = h.engine.next_frame();
+    let ticket = assert_no_heap(|| h.control.submit(Lane::Normal, at, program_activate(staged)))
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    ticket.cancel();
+    h.step(1);
+    let completion = assert_no_heap(|| h.control.try_completion()).unwrap();
+    assert_eq!(
+        (completion.sequence, completion.outcome),
+        (ticket.sequence(), TransportOutcome::Cancelled)
+    );
+    assert!(assert_no_heap(|| h.control.try_execution()).is_none());
+    let at = h.engine.next_frame().0;
+    let applied = h.op(at, program_activate(staged));
+    let state = h.op(at, Operation::State { target: id(2) });
+    h.step(1);
+    h.drain();
+    assert!(
+        matches!(h.reply(applied), Reply::ProgramChanged { topology_epoch: Epoch(1), completion: Completion { outcome: Outcome::Applied { frame }, .. }, .. } if frame == Frame(at))
+    );
+    let Reply::State(cut) = h.reply(state) else {
+        panic!("cut")
+    };
+    assert_eq!(
+        (
+            cut.state.mode,
+            cut.state.last_pulse,
+            cut.state.content_length
+        ),
+        (Mode::Stopped, None, 3)
+    );
+    let at = h.engine.next_frame().0;
+    h.op(at, Operation::TopologyRecycle { id: staged });
+    h.step(1);
+    h.drain();
+    let replacement = h.ready(0, &candidate);
+    assert_ne!(staged, replacement);
+    let at = h.engine.next_frame().0;
+    let stale = h.op(at, program_activate(staged));
+    let status = h.op(at, Operation::TopologyStatus { id: replacement });
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(stale),
+        Reply::Failed(Failure::Timeline(shoop_loop_engine::Error::InvalidId))
+    );
+    assert_eq!(
+        h.reply(status),
+        Reply::TopologyStatus {
+            id: replacement,
+            status: Status::Ready
+        }
+    );
+    h.finish();
+}
+
+#[shoop_test]
+fn full_normal_domain_slots_and_unread_program_results_allow_clock_progress_and_recovery() {
+    let mut h = Harness::new(false, 0, false, staging());
+    let candidate = compile(limits(0), &description(true, false)).unwrap();
+    let first = h.ready(0, &candidate);
+    let second = h.ready(1, &candidate);
+    h.op(4, play(0));
+    h.op(4, play(2));
+    h.step(1);
+    let change = h.op(5, program_activate(first));
+    let occupied = h.op(5, program_activate(second));
+    let wait = Operation::Transition {
+        target: id(1),
+        timing: Timing::AfterTicks {
+            source: id(0),
+            skip: 10_000,
+        },
+        transition: Transition::Stop,
+    };
+    let mut waiting = Vec::new();
+    for _ in 0..15 {
+        waiting.push(h.op(5, wait));
+    }
+    h.step(4);
+    waiting.push(h.op(9, wait));
+    let full = h.op(10, program_activate(second));
+    for frames in [32, 32, 32, 28] {
+        h.step(frames);
+    }
+    assert_eq!(h.engine.next_frame(), Frame(133));
+    h.send(
+        Lane::Recovery,
+        133,
+        Operation::Cancel {
+            sequence: waiting[0],
+        },
+        Box::new([]),
+    );
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(occupied),
+        Reply::Failed(Failure::Timeline(shoop_loop_engine::Error::Capacity))
+    );
+    assert_eq!(
+        h.reply(full),
+        Reply::Failed(Failure::Runtime(Error::Capacity))
+    );
+    assert!(matches!(
+        h.reply(change),
+        Reply::ProgramChanged {
+            topology_epoch: Epoch(1),
+            completion: Completion {
+                outcome: Outcome::Applied { frame: Frame(8) },
+                ..
+            },
+            ..
+        }
+    ));
+    assert!(matches!(
+        h.reply(waiting[0]),
+        Reply::Transition(Completion {
+            outcome: Outcome::Cancelled { frame: Frame(133) },
+            ..
+        })
+    ));
+    assert!(waiting[1..]
+        .iter()
+        .all(|seq| !h.replies.iter().any(|r| r.sequence == *seq)));
+    let state = h.op(134, Operation::State { target: id(0) });
+    h.step(1);
+    h.drain();
+    let Reply::State(cut) = h.reply(state) else {
+        panic!("clock")
+    };
+    assert_eq!(
+        (
+            cut.frame,
+            cut.state.mode,
+            cut.state.cycles,
+            cut.state.last_pulse
+        ),
+        (Frame(134), Mode::Playing, 130, Some(Frame(134)))
+    );
+    let retry = h.op(
+        135,
+        Operation::ProgramActivate {
+            id: second,
+            target: id(2),
+            graph_epoch: Epoch(1),
+            topology_epoch: Epoch(1),
+        },
+    );
+    h.step(3);
+    h.drain();
+    assert!(matches!(
+        h.reply(retry),
+        Reply::ProgramChanged {
+            topology_epoch: Epoch(2),
+            completion: Completion {
+                outcome: Outcome::Applied { frame: Frame(137) },
+                ..
+            },
+            ..
+        }
+    ));
+    // Both displaced banks and fifteen never-delivered musical requests remain retained.
+    h.finish();
 }

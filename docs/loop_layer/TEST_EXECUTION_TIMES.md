@@ -219,6 +219,21 @@ stage run. These timings do not predict their interpreter cost or establish a
 callback deadline. Standalone runtime/package-Wasm and generic-host reruns are not
 included in this scoped observation.
 
+## Fixed-graph facade program-bank integration observation
+
+On the same warm local Linux/Nix machine, the final19 scoped gates in
+`facade-program-stage6.json` took **231.40 seconds** in summed monotonic command
+wall durations. Native debug/release took1.08/0.29s, Node93.47s, Chromium93.07s,
+workspace nextest39.19s and the14 helper tests0.93s. These particularly warm native
+commands followed an earlier broad run stopped at the stale191-case helper
+inventory assertion; that failed run is retained in the milestone's `first/`
+archive and is not included in231.40s. No cold-build or CI-margin claim follows.
+
+The six added selected Miri executions and affected lifecycle regressions await
+the consolidated applicable stage run. No interpreter duration exists for this
+slice. Standalone runtime/package-Wasm and generic host reruns are not included;
+package Chromium remains distinct from the required actual loop AudioWorklet.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

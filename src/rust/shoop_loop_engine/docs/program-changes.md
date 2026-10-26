@@ -3,8 +3,9 @@
 `Resolver::stage_program(expected_epoch, target, sequence, at, candidate)` retains
 a prepared topology until a program change can be selected and committed. It
 returns a normal `RequestId`; admission is not activation. The coordinated facade
-does **not yet expose this owning path**: its existing fixed-graph activation
-operation still requires changed programs already stopped.
+exposes the same transaction through staged-bank `ProgramActivate`; see
+[topology activation](topology-activation.md). Its separate immediate
+`TopologyActivate` operation still requires changed programs already stopped.
 
 ## Scope, capacity and ownership
 
@@ -34,6 +35,15 @@ identity without returning the owner would lose the ownership contract. Collecti
 is forbidden during a committed interval; finishing the interval permits it.
 Request-slot generations advance normally, so stale handles cannot collect or
 cancel a reused slot. Unread outcomes/owners do not stop automatic music.
+
+For final teardown, `quiesce()` permanently disables further execution, invalidates
+speculative decisions and cancels outstanding nonterminal requests at the last
+logical frame. It permits owner collection even after an unfinished committed
+interval. Already-published state, epoch and results remain unchanged; no time is
+advanced and no unrendered interval is declared finished. This is not pause/resume,
+rollback, musical Stop or resource cleanup. `is_quiescent()` reports the terminal
+lifecycle state. The caller must separately recover resources and destroy owners
+off-render; the facade's stopped cleanup coordinates that work.
 
 `Transition::Program` is the receipt/journal tag for this transaction, not a raw
 musical command. Direct `submit` of that tag is rejected without a candidate.
@@ -96,14 +106,14 @@ external-producer retry or arbitrary musical-work limit. These costs are not a
 constant-time operation or a callback deadline guarantee.
 
 This standalone API does not update a runtime signal graph, physical role bindings,
-resource claims or logical generations. The facade must still connect staged
+resource claims or logical generations. The fixed-graph facade now connects staged
 receiver owners, reliable execution tokens, graph-epoch checks, capture-family
 preflight and stopped cleanup to it. General graph/role transactions, broader
 mixed lifecycle stress and independent loop hosts remain incomplete Stage6–7 work.
 
 ## Evidence
 
-Nine guarded native/release/Node/Chromium cases cover:
+The original nine guarded native/release/Node/Chromium cases cover:
 
 - independent complete positions/cycles/cursors and ordered journals across whole,
   single and irregular partitions, reversed declarations and journals0/1/1024;
@@ -126,3 +136,11 @@ registered, not claimed interpreted. The initial empty-program fixture wrongly
 expected a caller-supplied length of42; compilation derives the empty program's
 nominal length as0. That failed log is retained, and nonempty length publication
 is checked separately. No workload or guard was reduced.
+
+The subsequent facade milestone adds a tenth standalone case covering quiescence
+before preview, during speculation, during an applied or still-pending committed
+interval, and after finish. It checks unchanged state/time, permanent execution
+refusal and correct candidate/displaced owner return. An additional E0502 proof
+rejects quiescence across a retained decision borrow. These and the five new facade
+cases are covered by [facade-program-stage6.json](../../../../docs/loop_layer/evidence/facade-program-stage6.json);
+no new Miri invocation is claimed.

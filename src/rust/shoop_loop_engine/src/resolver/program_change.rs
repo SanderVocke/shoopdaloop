@@ -81,7 +81,7 @@ impl Resolver {
         candidate: PreparedTopology,
     ) -> Result<RequestId, (Error, PreparedTopology)> {
         let result = (|| {
-            if self.committed || self.epoch != expected {
+            if self.quiescent || self.committed || self.epoch != expected {
                 return Err(Error::InvalidState);
             }
             if self.program_change.is_some() {
