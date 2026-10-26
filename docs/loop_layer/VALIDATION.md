@@ -1019,4 +1019,77 @@ remain before Stage 6 can complete. No independent loop host or final CI/review
 acceptance is claimed. Additional scoped timing observations are in
 [TEST_EXECUTION_TIMES.md](TEST_EXECUTION_TIMES.md). The remaining flat-metadata,
 receiver staging, atomic activation and running-program constraints are recorded
-as design-only in [TOPOLOGY_ACTIVATION_DESIGN.md](TOPOLOGY_ACTIVATION_DESIGN.md).
+in [TOPOLOGY_ACTIVATION_DESIGN.md](TOPOLOGY_ACTIVATION_DESIGN.md).
+
+## Stage 6 — Flat compiled topology and borrowed metadata views
+
+Milestone: `refactor(loop-engine): flatten compiled topology metadata and borrow views`
+(the commit introducing this section), source base `198fe288`. Evidence:
+[`topology-storage-stage6.json`](evidence/topology-storage-stage6.json) and
+[`topology-storage-stage6-provenance.json`](evidence/topology-storage-stage6-provenance.json);
+logs under `target/loop-layer-topology-storage-stage6/`. This implements a
+representation prerequisite, not receiver staging or live activation.
+
+Compiled topology now owns seven flat arrays rather than nested program/target/
+segment/component owners. Borrowed program and target views retain logarithmic
+sparse lookup; target and component iteration is exact-sized and double-ended.
+Target segment ranges are relative to the containing program's narrowed segment
+slice, so inserting unrelated metadata earlier in global tables does not falsely
+change an existing running program. Canonical declaration-order behavior, sync
+SCCs, sparse timelines, owning replacement/refusal and resolver semantics remain
+unchanged.
+
+The public view adaptation is documented in the
+[compiled topology guide](../../src/rust/shoop_loop_engine/docs/topology.md).
+`program()`/`target()` return borrowed view values, target lists use `get` or
+iteration rather than an owned-target slice, and components expose member slices
+instead of separate boxes. Copying/cloning a view does not acquire an owner.
+`PreparedTopology::storage_bytes()` reports header plus owned array bytes;
+`Limits::topology_storage_bytes()` reports a checked aggregate maximum at declared
+limits. Aggregate metadata now must fit `i32::MAX`, in addition to existing
+individual-array/resolver checks. This is an explicit preparation-capacity
+constraint, not a musical-work quota. It excludes compiler scratch, allocator
+overhead and future receiver/candidate storage.
+
+Three new guarded tests independently check:
+
+- Sparse overlap/resumption mode/ordinal/occurrence intervals, canonical order
+  with a mutual-sync component, forward/backward iterator behavior, empty
+  topology/program, out-of-range access and stale generation.
+- Insertion of an earlier unrelated program while another runs: preserved program
+  identity/state, accepted replacement and owning return, retained unread
+  requests, changed-running/stale-epoch owning refusals, then valid stopped
+  replacement and cursor/duration reset.
+- Exact linear owned/max byte scaling for 1/2/4/8/16/32 programs; changing duration
+  from one billion to `u64::MAX` does not change storage. Half-open endpoints and
+  aggregate/arithmetic overflow are checked without allocation.
+
+The production-type `topology_view_lifetime.rs` prototype builds/runs with explicit
+public view types; three deliberate E0502 variants reject program, target and
+component borrows used after replacement. The existing runtime decision-lifetime
+and consumer capture-authority proofs also freshly pass their positive paths and
+E0502/E0599 negative checks.
+
+Fresh verification: **178 runtime / 98 loop tests per native profile**, **174/98
+per Node and Chromium runtime**, **2076 workspace passes/four existing skips**,
+and all **25 broad gates** including warning-denied workspace build/rustdoc,
+examples, policy audits, existing native hosts and actual offline/live generic
+worklet with both failure canaries. Its historical golden is unchanged. No new
+unexpected compile/behavioral failure occurred; an ignored Nix SQLite-busy
+warning did not fail a gate.
+
+**45 selected loop Miri executions pass in one fresh invocation**, including all
+ten facade cases, the complete interloop target and all three new tests, with
+unchanged workloads/guards and the 900-second per-command watchdog. Measured
+whole-invocation wall time was **3057.90 seconds (50m58s)**. The full runner now
+registers 163 executions, but the preceding 118 generic-runtime executions remain
+historical; this is **not** a fresh combined 163 run. Provenance verifies 98 current
+Rust source hashes, 64 unchanged runtime/shared-support source hashes, all 25 gate
+logs, archived Miri logs and the typed borrow/authority proofs.
+
+The output is still allocated to compiled content size. Reusable maximum-capacity
+receiver banks, bounded wire chunks, incremental validation, graph/domain/media
+activation, changed-running iteration-zero behavior and broader lifecycle stress
+remain Stage 6 work. The generic host regressions are not independent loop-host
+acceptance. No Stage 6 completion, final CI/review approval or deadline guarantee
+is claimed.

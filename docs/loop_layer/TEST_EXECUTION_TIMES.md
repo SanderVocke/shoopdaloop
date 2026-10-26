@@ -107,6 +107,33 @@ run. The runner now registers that total, but the earlier full 159-case evidence
 is historical. Package selection can materially reduce iteration time; these
 numbers do not authorize omitting the full final acceptance gates.
 
+## Flat-topology refactor observations
+
+The next Stage 6 run restored the broad two-package/native/actual-generic-worklet
+regression set and ran **all selected loop Miri cases**. Warm caches and concurrent
+broad/Miri execution again apply. These are monotonic **wall** measurements, not
+Miri's simulated harness time:
+
+| Scope | Wall time |
+| --- | ---: |
+| Runtime 178 + loop 98, native debug command | 3.78 s |
+| Runtime 178 + loop 98, native release command | 5.40 s |
+| Runtime 174 + loop 98, Node | 201.66 s |
+| Runtime 174 + loop 98, Chromium | 221.70 s |
+| Workspace nextest, 2,076 passes / four existing skips | 39.78 s |
+| Existing actual offline/live generic worklet and both canaries | 38.83 s |
+| All 25 broad gate commands, sequential within their runner | **519.24 s (8m39s)** |
+| Selected loop Miri, 45 executions in one complete invocation | **3057.90 s (50m58s)** |
+
+The Miri total includes tool startup, compilation and all selected loop targets
+(including the ten facade filters, complete interloop case and three new metadata
+view/storage tests), plus minimal archive/report work. Generic-runtime Miri was
+not rerun; 163 is the newly registered full selection count, **not** this run's
+execution count. The per-command 900-second watchdog stayed unchanged and no
+workload was reduced. Timing evidence is in `topology-storage-stage6.json` and
+`target/loop-layer-topology-storage-stage6/miri-wall.json`. This observation does
+not establish a refactor speedup or stable CI margin.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

@@ -21,6 +21,11 @@ export and teardown. Its new integration validation is tracked separately from
 completed foundation evidence. Live topology/program replacement, independent
 loop hosts and later acceptance stages remain pending.
 
+Compiled topology now uses [flat metadata and borrowed views](docs/topology.md),
+with checked linear byte accounting and canonical sparse lookup. Program/target
+view copies do not acquire owners; target lists use `get`/iteration. This is
+preparation for bounded receiver staging, not a live activation API.
+
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate
 `decisions`; only `commit` publishes state, terminal outcomes, and semantic

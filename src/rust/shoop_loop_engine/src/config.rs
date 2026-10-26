@@ -55,8 +55,24 @@ impl Limits {
         checked_storage(self.relations, size_of::<crate::topology::Trigger>())?;
         checked_storage(self.program_entries, size_of::<crate::program::Entry>())?;
         checked_storage(self.program_segments, size_of::<crate::program::Segment>())?;
+        self.topology_storage_bytes()?;
         crate::resolver::validate_storage(self)?;
         Ok(self)
+    }
+
+    /// Checked maximum owned compiled-metadata bytes at these limits. Excludes
+    /// allocating compiler scratch, resolver state and future receiver staging.
+    /// This checks representability, not logical configuration validity.
+    pub fn topology_storage_bytes(self) -> Result<usize, Error> {
+        crate::topology::storage_bytes(
+            self.loop_slots,
+            self.relations,
+            self.loop_slots,
+            self.program_entries,
+            self.program_segments,
+            self.loop_slots,
+            self.loop_slots,
+        )
     }
 }
 

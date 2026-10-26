@@ -1,16 +1,18 @@
 # Live topology/program activation — remaining Stage 6 design work
 
-**Design constraints and implementation direction, not an implemented API.**
-The coordinated facade and first integrated inter-loop reference scenario are
-verified. They do not expose live topology/program/graph replacement. The full
-Stage 6 contract and later receiver/host requirements remain unchanged.
+**Live activation design; no live-activation API is implemented yet.**
+The coordinated facade, first integrated inter-loop reference scenario and flat
+compiled-metadata/borrowed-view refactor are verified. They do not expose live
+topology/program/graph replacement. The full Stage 6 contract and later
+receiver/host requirements remain unchanged.
 
 ## Existing limitations
 
-- `PreparedTopology` owns nested boxed node/trigger/program/component arrays.
-  Program targets own their segment arrays. This is suitable for allocating
-  control-side compilation, but not for changing arbitrary shapes in a preallocated
-  worklet receiver without constructing/destroying owners on the render thread.
+- The nested compiled-owner representation has been replaced by seven flat
+  arrays with typed borrowed views and checked aggregate byte accounting. See
+  `topology-storage-stage6{,-provenance}.json`. Arrays are currently sized for
+  compiled content; maximum-capacity receiver banks, reuse, chunks and incremental
+  validation are still absent. Allocating compiler scratch remains off-render.
 - `Resolver::replace_topology` returns displaced/rejected owners, validates the
   expected epoch and generation watermarks, and requires removed loops stopped.
   It safely refuses changed running programs; it does not implement their required
@@ -24,10 +26,13 @@ Stage 6 contract and later receiver/host requirements remain unchanged.
 
 ## Representation and receiver direction
 
-Investigate flat, prepared metadata arenas with explicit counts/ranges for nodes,
-triggers, programs, target timelines, segments and sync-component membership.
-Borrowed typed views should preserve indexed lookup and safe lifetimes without
-self-references, temporary vectors or retained resource/callback borrows.
+Compiled output now has flat arrays/ranges for nodes, triggers, programs, target
+timelines, segments and sync-component membership. Borrowed typed views preserve
+indexed lookup and safe lifetimes without self-references, temporary vectors or
+retained resource/callback borrows. Program-relative segment ranges preserve
+program equality across unrelated global-table relocation. Next build reusable
+maximum-capacity receiver storage and its checked staging/validation lifecycle;
+internal usize ranges are not a portable wire representation.
 
 Storage must be derived from total declared limits, not an accidental
 programs × targets × maximum-segments expansion. Allocation/pre-touch belongs to

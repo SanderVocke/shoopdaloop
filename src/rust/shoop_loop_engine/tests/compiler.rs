@@ -152,7 +152,7 @@ fn mutual_sync_is_one_component_but_state_changing_feedback_is_invalid() {
     input.loops[1].sync_source = Some(id(0));
     let prepared = compile(Limits::default(), &input).unwrap();
     assert_eq!(prepared.components().len(), 1);
-    assert_eq!(&*prepared.components()[0], &[id(0), id(1)]);
+    assert_eq!(&prepared.components()[0], &[id(0), id(1)]);
     input.triggers.push(Trigger {
         source: id(0),
         target: id(1),

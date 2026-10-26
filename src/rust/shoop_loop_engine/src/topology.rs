@@ -1,6 +1,9 @@
 //! Prepared timing dependencies are independent of audio/MIDI signal routes.
 
-use crate::program::{compile_program, expanded_entries, CompiledProgram};
+use crate::program::{
+    compile_program, expanded_entries, CompiledProgram, ProgramRecord, Segment, TableRange,
+    TargetRecord,
+};
 use crate::{Error, Limits, LoopId, Mode, ProgramDescription};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,8 +41,11 @@ pub struct PreparedTopology {
     limits: Limits,
     nodes: Box<[LoopSpec]>,
     triggers: Box<[Trigger]>,
-    programs: Box<[CompiledProgram]>,
-    components: Box<[Box<[LoopId]>]>,
+    programs: Box<[ProgramRecord]>,
+    targets: Box<[TargetRecord]>,
+    segments: Box<[Segment]>,
+    components: Box<[TableRange]>,
+    members: Box<[LoopId]>,
     relation_count: usize,
 }
 
@@ -60,19 +66,128 @@ impl PreparedTopology {
     pub fn triggers(&self) -> &[Trigger] {
         &self.triggers
     }
-    pub fn program(&self, id: LoopId) -> Option<&CompiledProgram> {
+    pub fn program(&self, id: LoopId) -> Option<CompiledProgram<'_>> {
         self.programs
             .binary_search_by_key(&id, |program| program.source)
             .ok()
-            .map(|index| &self.programs[index])
+            .map(|index| {
+                CompiledProgram::from_record(&self.programs[index], &self.targets, &self.segments)
+            })
     }
-    pub fn components(&self) -> &[Box<[LoopId]>] {
-        &self.components
+    pub fn components(&self) -> Components<'_> {
+        Components {
+            ranges: &self.components,
+            members: &self.members,
+        }
     }
     pub fn relation_count(&self) -> usize {
         self.relation_count
     }
+    /// Header plus owned flat table bytes, excluding compiler scratch and the
+    /// allocator's overhead. Empty tables do not acquire separate allocations.
+    pub fn storage_bytes(&self) -> usize {
+        storage_bytes(
+            self.nodes.len(),
+            self.triggers.len(),
+            self.programs.len(),
+            self.targets.len(),
+            self.segments.len(),
+            self.components.len(),
+            self.members.len(),
+        )
+        .expect("validated topology storage")
+    }
 }
+
+pub(crate) fn storage_bytes(
+    nodes: usize,
+    triggers: usize,
+    programs: usize,
+    targets: usize,
+    segments: usize,
+    components: usize,
+    members: usize,
+) -> Result<usize, Error> {
+    let mut bytes = size_of::<PreparedTopology>();
+    for (count, element) in [
+        (nodes, size_of::<LoopSpec>()),
+        (triggers, size_of::<Trigger>()),
+        (programs, size_of::<ProgramRecord>()),
+        (targets, size_of::<TargetRecord>()),
+        (segments, size_of::<Segment>()),
+        (components, size_of::<TableRange>()),
+        (members, size_of::<LoopId>()),
+    ] {
+        bytes = bytes
+            .checked_add(crate::config::checked_storage(count, element)?)
+            .ok_or(Error::Capacity)?;
+    }
+    crate::config::checked_storage(bytes, 1)
+}
+
+/// Borrowed component membership in canonical dependency order.
+#[derive(Clone, Copy, Debug)]
+pub struct Components<'a> {
+    ranges: &'a [TableRange],
+    members: &'a [LoopId],
+}
+impl<'a> Components<'a> {
+    pub fn len(&self) -> usize {
+        self.ranges.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
+    pub fn get(&self, index: usize) -> Option<&'a [LoopId]> {
+        self.ranges
+            .get(index)
+            .map(|range| range.slice(self.members))
+    }
+    pub fn last(&self) -> Option<&'a [LoopId]> {
+        self.ranges.last().map(|range| range.slice(self.members))
+    }
+    pub fn iter(&self) -> ComponentIter<'a> {
+        ComponentIter {
+            ranges: self.ranges.iter(),
+            members: self.members,
+        }
+    }
+}
+impl std::ops::Index<usize> for Components<'_> {
+    type Output = [LoopId];
+    fn index(&self, index: usize) -> &Self::Output {
+        self.get(index).expect("component index")
+    }
+}
+impl<'a> IntoIterator for Components<'a> {
+    type Item = &'a [LoopId];
+    type IntoIter = ComponentIter<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+#[derive(Clone)]
+pub struct ComponentIter<'a> {
+    ranges: std::slice::Iter<'a, TableRange>,
+    members: &'a [LoopId],
+}
+impl<'a> Iterator for ComponentIter<'a> {
+    type Item = &'a [LoopId];
+    fn next(&mut self) -> Option<Self::Item> {
+        self.ranges.next().map(|range| range.slice(self.members))
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.ranges.size_hint()
+    }
+}
+impl DoubleEndedIterator for ComponentIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.ranges
+            .next_back()
+            .map(|range| range.slice(self.members))
+    }
+}
+impl ExactSizeIterator for ComponentIter<'_> {}
 
 fn index(nodes: &[LoopSpec], id: LoopId) -> Result<usize, Error> {
     nodes
@@ -245,15 +360,57 @@ pub fn compile(
     if components.len() != groups.len() {
         return Err(Error::InstantaneousDependencyCycle);
     }
+    let mut programs = Vec::with_capacity(compiled.len());
+    let mut targets = Vec::new();
+    let mut segments = Vec::new();
+    for program in compiled.into_values() {
+        let target_start = targets.len();
+        let segment_start = segments.len();
+        for target in program.targets {
+            // Relative ranges make a program's semantic equality independent of
+            // unrelated programs inserted earlier in the global tables.
+            targets.push(TargetRecord {
+                target: target.target,
+                segments: TableRange {
+                    start: segments.len() - segment_start,
+                    len: target.segments.len(),
+                },
+            });
+            segments.extend_from_slice(&target.segments);
+        }
+        programs.push(ProgramRecord {
+            source: program.source,
+            kind: program.kind,
+            nominal_unit_frames: program.nominal_unit_frames,
+            iterations: program.iterations,
+            targets: TableRange {
+                start: target_start,
+                len: targets.len() - target_start,
+            },
+            segments: TableRange {
+                start: segment_start,
+                len: segments.len() - segment_start,
+            },
+        });
+    }
+    let mut ranges = Vec::with_capacity(components.len());
+    let mut members = Vec::with_capacity(nodes.len());
+    for component in components {
+        ranges.push(TableRange {
+            start: members.len(),
+            len: component.len(),
+        });
+        members.extend_from_slice(&component);
+    }
     Ok(PreparedTopology {
         limits,
         nodes: nodes.into_boxed_slice(),
         triggers: triggers.into_boxed_slice(),
-        programs: compiled
-            .into_values()
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        components: components.into_boxed_slice(),
+        programs: programs.into_boxed_slice(),
+        targets: targets.into_boxed_slice(),
+        segments: segments.into_boxed_slice(),
+        components: ranges.into_boxed_slice(),
+        members: members.into_boxed_slice(),
         relation_count: relations.len(),
     })
 }

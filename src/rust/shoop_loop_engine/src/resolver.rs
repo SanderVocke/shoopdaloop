@@ -888,7 +888,7 @@ impl Boundary<'_> {
         {
             let (target, old, selected, unit, inherited) = {
                 let program = self.topology.program(id).expect("compiled program");
-                let timeline = &program.targets()[index];
+                let timeline = program.targets().get(index).expect("compiled target");
                 (
                     timeline.target,
                     timeline.at(previous),

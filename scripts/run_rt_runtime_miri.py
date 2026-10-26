@@ -97,6 +97,7 @@ def main():
         "scenarios::integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts",
     ):
         cases.append(("shoop_loop_engine", "runtime", [name, "--", "--exact"], 1, 0))
+    cases.append(("shoop_loop_engine", "topology_views", [], 3, 0))
     cases.append(("shoop_loop_engine", "interloop", [], 1, 0))
     if args.package:
         cases = [case for case in cases if case[0] == args.package]

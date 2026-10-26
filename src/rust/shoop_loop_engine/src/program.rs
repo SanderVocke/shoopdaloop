@@ -47,14 +47,14 @@ pub struct Segment {
     pub ordinal: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TargetTimeline {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TargetTimeline<'a> {
     pub target: LoopId,
-    segments: Box<[Segment]>,
+    segments: &'a [Segment],
 }
 
-impl TargetTimeline {
-    pub fn segments(&self) -> &[Segment] {
+impl<'a> TargetTimeline<'a> {
+    pub fn segments(&self) -> &'a [Segment] {
         &self.segments
     }
 
@@ -71,32 +71,156 @@ impl TargetTimeline {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompiledProgram {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TableRange {
+    pub start: usize,
+    pub len: usize,
+}
+impl TableRange {
+    pub fn slice<T>(self, values: &[T]) -> &[T] {
+        &values[self.start..self.start + self.len]
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TargetRecord {
+    pub target: LoopId,
+    pub segments: TableRange,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProgramRecord {
     pub source: LoopId,
     pub kind: ProgramKind,
     pub nominal_unit_frames: u64,
     pub iterations: u64,
-    targets: Box<[TargetTimeline]>,
-    segment_count: usize,
+    pub targets: TableRange,
+    pub segments: TableRange,
 }
 
-impl CompiledProgram {
-    pub fn targets(&self) -> &[TargetTimeline] {
-        &self.targets
+/// Borrowed target metadata and segments; copying this view acquires no owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TargetTimelines<'a> {
+    records: &'a [TargetRecord],
+    segments: &'a [Segment],
+}
+impl<'a> TargetTimelines<'a> {
+    pub fn len(&self) -> usize {
+        self.records.len()
     }
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+    pub fn get(&self, index: usize) -> Option<TargetTimeline<'a>> {
+        self.records.get(index).map(|record| TargetTimeline {
+            target: record.target,
+            segments: record.segments.slice(self.segments),
+        })
+    }
+    pub fn iter(&self) -> TargetIter<'a> {
+        TargetIter {
+            records: self.records.iter(),
+            segments: self.segments,
+        }
+    }
+}
+impl<'a> IntoIterator for TargetTimelines<'a> {
+    type Item = TargetTimeline<'a>;
+    type IntoIter = TargetIter<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+#[derive(Clone)]
+pub struct TargetIter<'a> {
+    records: std::slice::Iter<'a, TargetRecord>,
+    segments: &'a [Segment],
+}
+impl<'a> Iterator for TargetIter<'a> {
+    type Item = TargetTimeline<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.records.next().map(|record| TargetTimeline {
+            target: record.target,
+            segments: record.segments.slice(self.segments),
+        })
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.records.size_hint()
+    }
+}
+impl DoubleEndedIterator for TargetIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.records.next_back().map(|record| TargetTimeline {
+            target: record.target,
+            segments: record.segments.slice(self.segments),
+        })
+    }
+}
+impl ExactSizeIterator for TargetIter<'_> {}
 
-    pub fn target(&self, id: LoopId) -> Option<&TargetTimeline> {
+/// Borrowed immutable program view backed by one topology's flat tables.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CompiledProgram<'a> {
+    pub source: LoopId,
+    pub kind: ProgramKind,
+    pub nominal_unit_frames: u64,
+    pub iterations: u64,
+    targets: TargetTimelines<'a>,
+}
+impl<'a> CompiledProgram<'a> {
+    pub(crate) fn from_record(
+        record: &ProgramRecord,
+        targets: &'a [TargetRecord],
+        segments: &'a [Segment],
+    ) -> Self {
+        Self {
+            source: record.source,
+            kind: record.kind,
+            nominal_unit_frames: record.nominal_unit_frames,
+            iterations: record.iterations,
+            targets: TargetTimelines {
+                records: record.targets.slice(targets),
+                segments: record.segments.slice(segments),
+            },
+        }
+    }
+    pub fn targets(&self) -> TargetTimelines<'a> {
         self.targets
+    }
+    pub fn target(&self, id: LoopId) -> Option<TargetTimeline<'a>> {
+        self.targets
+            .records
             .binary_search_by_key(&id, |target| target.target)
             .ok()
-            .map(|index| &self.targets[index])
+            .and_then(|index| self.targets.get(index))
     }
+    pub fn segment_count(&self) -> usize {
+        self.targets.segments.len()
+    }
+    pub fn nominal_frames(&self) -> Result<u64, Error> {
+        self.iterations
+            .checked_mul(self.nominal_unit_frames)
+            .ok_or(Error::Exhausted)
+    }
+}
 
+pub(crate) struct BuiltTarget {
+    pub target: LoopId,
+    pub segments: Box<[Segment]>,
+}
+pub(crate) struct BuiltProgram {
+    pub source: LoopId,
+    pub kind: ProgramKind,
+    pub nominal_unit_frames: u64,
+    pub iterations: u64,
+    pub targets: Box<[BuiltTarget]>,
+    segment_count: usize,
+}
+impl BuiltProgram {
+    pub fn targets(&self) -> &[BuiltTarget] {
+        &self.targets
+    }
     pub fn segment_count(&self) -> usize {
         self.segment_count
     }
-
     pub fn nominal_frames(&self) -> Result<u64, Error> {
         self.iterations
             .checked_mul(self.nominal_unit_frames)
@@ -148,7 +272,7 @@ pub(crate) fn compile_program(
     description: &ProgramDescription,
     limits: Limits,
     length: impl Fn(LoopId) -> Result<u64, Error>,
-) -> Result<CompiledProgram, Error> {
+) -> Result<BuiltProgram, Error> {
     let count = expanded_entries(description, limits)?;
     let mut explicit = false;
     let mut implicit = false;
@@ -226,12 +350,12 @@ pub(crate) fn compile_program(
                 ordinal: winner.ordinal,
             });
         }
-        targets.push(TargetTimeline {
+        targets.push(BuiltTarget {
             target,
             segments: segments.into_boxed_slice(),
         });
     }
-    let program = CompiledProgram {
+    let program = BuiltProgram {
         source: description.source,
         kind: if explicit {
             ProgramKind::Explicit
