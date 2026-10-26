@@ -97,7 +97,8 @@ jobs:
           retention-days: 14
 
   without_cpal:
-    name: Without CPAL (${{ matrix.target }})
+    name: Nightly without CPAL (${{ matrix.flavor }})
+    if: github.event_name == 'schedule'
     runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: "-D warnings"
@@ -107,10 +108,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - flavor: linux
+            os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-          - os: macos-15
+            macos_deployment_target: ""
+          - flavor: macos-intel
+            os: macos-15-intel
             target: x86_64-apple-darwin
+            macos_deployment_target: ""
+          - flavor: macos-intel-10.15
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            macos_deployment_target: "10.15"
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -118,7 +127,12 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: without-cpal-${{ matrix.target }}
+          shared-key: without-cpal-${{ matrix.flavor }}
+      - name: Configure macOS deployment target
+        if: matrix.macos_deployment_target != ''
+        env:
+          DEPLOYMENT_TARGET: ${{ matrix.macos_deployment_target }}
+        run: printf 'MACOSX_DEPLOYMENT_TARGET=%s\n' "$DEPLOYMENT_TARGET" >> "$GITHUB_ENV"
       - name: Linux native dependencies
         if: runner.os == 'Linux'
         run: |
