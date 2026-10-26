@@ -1,18 +1,19 @@
 # Live topology/program activation — remaining Stage 6 design work
 
 **Live activation design; no live-activation API is implemented yet.**
-The coordinated facade, first integrated inter-loop reference scenario and flat
-compiled-metadata/borrowed-view refactor are verified. They do not expose live
-topology/program/graph replacement. The full Stage 6 contract and later
+The coordinated facade, first integrated inter-loop reference scenario, flat
+compiled metadata and bounded staging/validation/recycling are verified. They do
+not expose live facade topology/program/graph replacement. The full Stage 6 contract and later
 receiver/host requirements remain unchanged.
 
 ## Existing limitations
 
-- The nested compiled-owner representation has been replaced by seven flat
-  arrays with typed borrowed views and checked aggregate byte accounting. See
-  `topology-storage-stage6{,-provenance}.json`. Arrays are currently sized for
-  compiled content; maximum-capacity receiver banks, reuse, chunks and incremental
-  validation are still absent. Allocating compiler scratch remains off-render.
+- Flat metadata now has canonical LTP1 encoding and maximum-capacity Stager
+  storage with scoped ordered chunks, incremental validation and owning reuse.
+  See `topology-staging-stage6{,-provenance}.json`. Control compilation remains
+  content-sized; receiver-originated owners retain capacity. Compiler scratch and
+  all actual storage destruction remain off-render. Timing readiness does not
+  establish graph/resource/role-binding activation compatibility.
 - `Resolver::replace_topology` returns displaced/rejected owners, validates the
   expected epoch and generation watermarks, and requires removed loops stopped.
   It safely refuses changed running programs; it does not implement their required
@@ -30,9 +31,12 @@ Compiled output now has flat arrays/ranges for nodes, triggers, programs, target
 timelines, segments and sync-component membership. Borrowed typed views preserve
 indexed lookup and safe lifetimes without self-references, temporary vectors or
 retained resource/callback borrows. Program-relative segment ranges preserve
-program equality across unrelated global-table relocation. Next build reusable
-maximum-capacity receiver storage and its checked staging/validation lifecycle;
-internal usize ranges are not a portable wire representation.
+program equality across unrelated global-table relocation. Reusable receiver
+storage and its checked lifecycle are implemented; LTP1 encodes explicit
+little-endian integer fields rather than transferring internal usize ranges or
+Rust layouts. The next integration must associate ready identities with reliable
+facade operation outcomes and graph/topology epochs, and reserve compatible
+retirement/recycling storage before any activation.
 
 Storage must be derived from total declared limits, not an accidental
 programs × targets × maximum-segments expansion. Allocation/pre-touch belongs to
@@ -41,12 +45,15 @@ reuse may not. Canonical ordering, sparse/billion-tick programs, valid pure-sync
 cycles, rejected action cycles and recursive programs must retain their existing
 semantics and independent tests.
 
-Receiver staging needs checked scopes/generations, finite bounded chunks and a
-sealed candidate identity. Materialization/validation is background work; a held
-command must not wait for a later producer chunk. Validation must establish
-bounds, complete references, media-role shapes, sparse timeline invariants and
-the dependency/progress properties before activation. A partially filled or
-malformed candidate cannot become a readable active program.
+Receiver staging now checks scopes/generations, finite bounded ordered chunks,
+complete timing references, sparse invariants, recursive/action dependencies and
+canonical strong sync components. A partially filled or malformed image is not
+readable as a topology. Media-role shapes and runtime graph/resource compatibility
+still need activation preflight. Materialization/validation is background work;
+no held call waits for another chunk. The adapter must debit one callback's
+remaining work allowance rather than refresh it at each internal musical interval;
+on validation/append error, conservatively charge the offered allowance because
+there is no successful progress tuple.
 
 Preloading only the particular future fixture variants is not a substitute for
 a usable bounded staging protocol. Nor may later MessagePort handlers compile or

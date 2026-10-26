@@ -134,6 +134,32 @@ workload was reduced. Timing evidence is in `topology-storage-stage6.json` and
 `target/loop-layer-topology-storage-stage6/miri-wall.json`. This observation does
 not establish a refactor speedup or stable CI margin.
 
+## Topology-staging observations
+
+The subsequent Stage 6 receiver run used the same broad gate set and concurrent,
+warm-cache conditions. Monotonic command/invocation wall measurements:
+
+| Scope | Wall time |
+| --- | ---: |
+| Runtime 178 + loop 106, native debug | 4.93 s |
+| Runtime 178 + loop 106, native release | 5.91 s |
+| Runtime 174 + loop 106, Node | 207.72 s |
+| Runtime 174 + loop 106, Chromium | 228.72 s |
+| Workspace nextest, 2,084 passes / four existing skips | 40.13 s |
+| Existing actual generic worklet and both canaries | 38.69 s |
+| All 25 broad gate commands | **534.12 s (8m54s)** |
+| Selected loop Miri, 53 executions in one invocation | **3270.64 s (54m31s)** |
+
+The seven new staging cases run early in the selected loop Miri sequence so their
+failures would be found before the longer established media/facade cases. They
+include 512 graph cases and 128 generated nested-program images without a reduced
+Miri workload. The new private exhaustion test also runs. The full registered
+selection is now 171, but only the 53 loop executions are fresh in this invocation;
+118 generic-runtime executions remain historical. No watchdog change, speedup,
+per-test wall-time attribution or guaranteed CI margin is claimed. Evidence:
+`topology-staging-stage6.json` and
+`target/loop-layer-topology-staging-stage6/miri-wall.json`.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

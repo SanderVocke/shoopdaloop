@@ -7,6 +7,8 @@ use crate::program::{
 use crate::{Error, Limits, LoopId, Mode, ProgramDescription};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod staging;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LoopKind {
     Primitive,
@@ -39,13 +41,13 @@ pub struct TopologyDescription {
 #[derive(Debug, Eq, PartialEq)]
 pub struct PreparedTopology {
     limits: Limits,
-    nodes: Box<[LoopSpec]>,
-    triggers: Box<[Trigger]>,
-    programs: Box<[ProgramRecord]>,
-    targets: Box<[TargetRecord]>,
-    segments: Box<[Segment]>,
-    components: Box<[TableRange]>,
-    members: Box<[LoopId]>,
+    nodes: Vec<LoopSpec>,
+    triggers: Vec<Trigger>,
+    programs: Vec<ProgramRecord>,
+    targets: Vec<TargetRecord>,
+    segments: Vec<Segment>,
+    components: Vec<TableRange>,
+    members: Vec<LoopId>,
     relation_count: usize,
 }
 
@@ -83,17 +85,17 @@ impl PreparedTopology {
     pub fn relation_count(&self) -> usize {
         self.relation_count
     }
-    /// Header plus owned flat table bytes, excluding compiler scratch and the
-    /// allocator's overhead. Empty tables do not acquire separate allocations.
+    /// Header plus owned flat table capacity, excluding compiler scratch and
+    /// allocator overhead. Receiver storage retains capacity for later reuse.
     pub fn storage_bytes(&self) -> usize {
         storage_bytes(
-            self.nodes.len(),
-            self.triggers.len(),
-            self.programs.len(),
-            self.targets.len(),
-            self.segments.len(),
-            self.components.len(),
-            self.members.len(),
+            self.nodes.capacity(),
+            self.triggers.capacity(),
+            self.programs.capacity(),
+            self.targets.capacity(),
+            self.segments.capacity(),
+            self.components.capacity(),
+            self.members.capacity(),
         )
         .expect("validated topology storage")
     }
@@ -404,13 +406,13 @@ pub fn compile(
     }
     Ok(PreparedTopology {
         limits,
-        nodes: nodes.into_boxed_slice(),
-        triggers: triggers.into_boxed_slice(),
-        programs: programs.into_boxed_slice(),
-        targets: targets.into_boxed_slice(),
-        segments: segments.into_boxed_slice(),
-        components: ranges.into_boxed_slice(),
-        members: members.into_boxed_slice(),
+        nodes: nodes.into_boxed_slice().into_vec(),
+        triggers: triggers.into_boxed_slice().into_vec(),
+        programs: programs.into_boxed_slice().into_vec(),
+        targets: targets.into_boxed_slice().into_vec(),
+        segments: segments.into_boxed_slice().into_vec(),
+        components: ranges.into_boxed_slice().into_vec(),
+        members: members.into_boxed_slice().into_vec(),
         relation_count: relations.len(),
     })
 }

@@ -41,7 +41,10 @@ src/rust/shoop_loop_engine/src/runtime/mod.rs,portable_loop_library,excluded,Por
 src/rust/shoop_loop_engine/src/runtime/planner.rs,portable_loop_library,excluded,Guarded coordinated boundary execution; semantic journals and optional prepared observers expose diagnostics without application tracing.
 src/rust/shoop_loop_engine/src/runtime/processor.rs,portable_loop_library,excluded,Guarded playback and capture consumers; generic runtime work and explicit MIDI overflow observations remain accounted.
 src/rust/shoop_loop_engine/src/state.rs,portable_loop_library,excluded,Plain-data authoritative state; no execution boundary to instrument.
-src/rust/shoop_loop_engine/src/topology.rs,portable_loop_library,excluded,Control-side timing dependency compiler; no callback execution or host tracing dependency.
+src/rust/shoop_loop_engine/src/topology.rs,portable_loop_library,excluded,Prepared timing metadata and borrowed views expose checked results without a host tracing dependency.
+src/rust/shoop_loop_engine/src/topology/staging.rs,portable_loop_library,excluded,Guarded metadata ingestion and owning recycling expose scoped status and progress without application tracing.
+src/rust/shoop_loop_engine/src/topology/staging/codec.rs,portable_loop_library,excluded,Bounded canonical metadata encoding and decoding use explicit results without application tracing.
+src/rust/shoop_loop_engine/src/topology/staging/validate.rs,portable_loop_library,excluded,Incremental fixed-storage validation exposes bounded step progress and explicit semantic refusals.
 src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

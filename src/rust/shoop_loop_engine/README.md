@@ -23,8 +23,10 @@ loop hosts and later acceptance stages remain pending.
 
 Compiled topology now uses [flat metadata and borrowed views](docs/topology.md),
 with checked linear byte accounting and canonical sparse lookup. Program/target
-view copies do not acquire owners; target lists use `get`/iteration. This is
-preparation for bounded receiver staging, not a live activation API.
+view copies do not acquire owners; target lists use `get`/iteration.
+[Prepared topology staging](docs/topology-staging.md) adds canonical native/Wasm
+encoding, transactional ordered chunks, incremental validation and owning bank
+recycling. It validates timing metadata, not live facade graph/media activation.
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate

@@ -1093,3 +1093,89 @@ activation, changed-running iteration-zero behavior and broader lifecycle stress
 remain Stage 6 work. The generic host regressions are not independent loop-host
 acceptance. No Stage 6 completion, final CI/review approval or deadline guarantee
 is claimed.
+
+## Stage 6 — Reusable topology receiver and incremental validation
+
+Milestone: `feat(loop-engine): stage and validate portable topology images in fixed storage`
+(the commit introducing this section), source base `11cad0f4`. Evidence:
+[`topology-staging-stage6.json`](evidence/topology-staging-stage6.json) and
+[`topology-staging-stage6-provenance.json`](evidence/topology-staging-stage6-provenance.json);
+logs under `target/loop-layer-topology-staging-stage6/`. This implements receiver
+readiness and ownership, not live facade activation.
+
+`topology::staging::Stager` prepares/pre-touches maximum-capacity metadata and
+validation scratch. LTP1 uses explicit little-endian 64-byte headers/records,
+checked limits/counts and canonical zero reserved bytes, not native Rust layouts
+or cross-instance pointers. Ordered chunks have a finite record budget; syntax,
+scope, offset and budget refusal leaves the whole chunk unconsumed. Incomplete
+and semantically failed candidates are unreadable. No held call waits for a later
+message. Validation advances a finite state machine under a supplied step budget;
+zero budget does no work.
+
+Readiness checks exact-generation references, program ownership/nominal length,
+complete ranges, sparse segment modes/ordinals, unique component membership,
+recursive programs, deduplicated sync/action relations, strong pure-sync SCCs
+and canonical dependency order. Multi-node pure-sync components must follow their
+single-source links through exactly all members back to the start; a cycle plus
+a downstream tree is not accepted as an SCC. The implementation uses linear fixed
+scratch and constant-sized work steps, but its simple duplicate-edge and component
+scans have quadratic worst-case total preparation work. This is background
+progress, not a musical subdivision limit or a deadline claim.
+
+`take` transfers a ready owner; `recycle` accepts compatible fully provisioned
+storage and returns rejected owners unchanged. Private vectors retain capacity,
+so cancellation/reuse does not allocate, grow or free storage. Control compilation
+remains content-sized. Scope allocation is preparation-only; generations never
+wrap. Ready certifies timing metadata, not graph/resource/view-binding compatibility
+or historical activation watermarks. The
+[receiver guide](../../src/rust/shoop_loop_engine/docs/topology-staging.md) documents
+wire fields, ownership, conservative budget charging on errors and integration
+limitations.
+
+Seven guarded integration tests plus a private exhaustion test cover:
+
+- An independent exact header/body golden and full native/Wasm roundtrips under
+  1/2/7/14-record chunks and 1/3/unlimited validation budgets; zero-budget behavior,
+  stale tokens, unchanged out-of-range output and complete bank reuse.
+- Header/syntax/reserved-byte/enum/generation/offset/budget/foreign-scope refusal,
+  partial-chunk atomicity, and rejected undersized/wrong-limit owners. Two
+  receivers exchange compatible buffers without callback destruction.
+- 21 semantic/structural mutations, recursive/action cycles, latched unreadable
+  failure and subsequent full reuse.
+- **512** three-node sync/action graphs against independent transitive reachability
+  and canonical SCC ordering, including expected cycle refusals. False SCC merging
+  and incorrect ready-group tie order are separately rejected.
+- **128** owning standalone-resolver exchanges with stale-epoch returns and
+  alternating receiver recycling; actual buffers remain owned until off-render
+  disposal.
+- **128** active one-frame resolver intervals while another candidate is partially
+  received and fails validation. Exact positions/cycles/pulses, unchanged active
+  epoch and an unread result are preserved.
+- **128** nested regular/explicit images against raw-entry mode/duration arithmetic,
+  reversed declarations, mixed budgets and a sparse `u64::MAX` endpoint.
+- Final generation/scope exhaustion without wrap or poisoning shared test state.
+
+The new production-type staging prototype builds/runs, rejects a later-used view
+across cancel/take with E0502, and rejects recycling a still-borrowed owner with
+E0505. Existing topology/runtime borrowed-view and capture-authority positive and
+negative proofs were also freshly rerun.
+
+Fresh results: **178 runtime / 106 loop native tests per profile**, **174/106 per
+Node/Chromium runtime**, **2084 workspace passes/four existing skips**, and all
+**25 broad gates**. Existing native and actual offline/live generic worklet
+regressions/canaries pass with unchanged golden. **53 selected loop Miri executions
+pass in one invocation**, including all new cases and all previous selected loop
+cases, with unchanged workloads/guards and the 900-second per-command watchdog.
+Measured whole-invocation wall time is **3270.64 seconds (54m31s)**. The full runner
+now registers 171; the preceding 118 generic-runtime executions remain historical,
+not a fresh combined 171 claim. Provenance verifies 102 current source hashes,
+64 unchanged runtime/shared-support sources, 25 gate logs, archived Miri and all
+borrow/move/authority proofs. Tracing inventory is 199 modules: 55 excluded,
+33 direct and 111 indirect.
+
+There were no unexpected compilation or behavioral failures. Expected negative
+compilation checks and malformed-input refusals remain in the evidence. An ignored
+Nix SQLite-busy warning did not fail a gate. This does not complete Stage 6:
+facade receipts/transport integration, atomic graph/domain/media activation,
+changed-running iteration-zero behavior and broader lifecycle stress remain open.
+Actual loop-host and final CI/review acceptance remain later work.

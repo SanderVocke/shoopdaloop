@@ -7,9 +7,10 @@ has no separately allocated target list per program, segment list per target, or
 membership list per component. Compiler scratch may still use temporary nested
 collections; compilation is not a callback operation.
 
-This representation prepares for bounded receiver staging. It does **not** yet
-provide a wire codec, reusable maximum-capacity receiver banks, incremental
-validation or live facade topology/graph activation.
+[Topology staging](topology-staging.md) now adds a canonical native/Wasm encoding,
+reusable maximum-capacity receiver storage, incremental validation and owning
+extraction/recycling. These components do **not** yet provide live facade
+topology/graph activation.
 
 ## Lookup and lifetime contract
 
@@ -59,7 +60,10 @@ flat storage nor nominal duration creates a second musical clock.
 
 `PreparedTopology::storage_bytes()` reports its header plus the actual owned
 flat-array bytes. It excludes allocator overhead and temporary compiler scratch.
-Empty arrays do not require separate allocations.
+Control-side compilation sizes arrays to content; its empty arrays do not require
+separate allocations. Receiver-originated topologies retain their maximum prepared
+capacities even when logical tables are empty, and the byte count includes those
+capacities.
 
 `Limits::topology_storage_bytes()` reports the checked maximum compiled metadata
 size at the declared limits. This is a representability calculation, not full
@@ -88,7 +92,9 @@ same bytes. Native/Wasm element widths may differ; use the sizing methods rather
 than assuming a wire layout. Internal `usize` ranges are **not** a wire format.
 
 These byte estimates do not include resolver state, media pools, retired owners,
-additional candidate banks or future receiver validation scratch. They are not a
+additional candidate banks or receiver validation scratch. Use
+`Stager::required_storage_bytes` for a fully provisioned receiver, and account for
+separately retained owners without double-counting exchanged allocations. They are not a
 callback-time or CPU deadline guarantee.
 
 ## Replacement remains an owning operation
