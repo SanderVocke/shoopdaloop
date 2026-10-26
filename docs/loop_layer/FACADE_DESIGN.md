@@ -1,0 +1,42 @@
+# Coordinated loop facade — implementation design
+
+**Design only.** The generic capture transaction APIs and audio/MIDI operations are verified; this document does not claim the facade, graph/example, export lifecycle or independent loop hosts are implemented. It records the remaining Stage 5 implementation choices without changing the plan's acceptance criteria.
+
+## Ownership and preparation
+
+- One loop planner contains the resolver, fixed media-binding/receipt/failure scratch, and coherent public state. Runtime frames remain authoritative; only resolver decisions determine musical modes/positions.
+- Playback and capture are distinct processors. A capture processor continues observing connected MIDI input while stopped, so its last completed input projection describes state strictly before the next boundary. Current-interval input events remain events, not initial capture state.
+- Each media-bearing primitive has two prepared capture groups with distinct resources. Repeated Record starts a new logical capture revision even when already recording. An alternate idle group permits preparation of the replacement before the old take freezes; never mutate the leased playback revision in place.
+- A fixed media-slot pool owns snapshot leases once. Playback, latest completed take, prepared replacements and external exports reference those slots through checked identities/refcounts. A slot releases its underlying snapshots exactly once when no reference remains. This avoids inventing a second media store or duplicating a lease merely to retain a frozen revision for export.
+- Reserve a media metadata slot as well as generic take versions/index rows/final leases before promising capture activation. Storage exhaustion is an explicit domain refusal; no external completion credit is needed by autonomous starts/wraps.
+- Prepare/read-validate imported audio/MIDI snapshots off-render: formats, channel counts, shared duration, scope and MIDI indexing. Domain take revisions are distinct from the resource revisions incremented by interval commits. Prepared replacement operations select validated resident media, rather than trusting arbitrary lengths/revisions supplied by a command.
+
+## Stable boundary execution
+
+1. Deliver the finite admitted typed operations and retain runtime receipt tokens for unresolved resolver requests. Reserve an independent domain recovery slot as well as the runtime's recovery reservation.
+2. Preview the resolver at the runtime ceiling. Compare committed and candidate capture revisions to identify new takes, restarts, finishes and continued recording; do not infer changes from the optional journal.
+3. Prepare new takes using the input projection at this boundary. Reserve their first intervals with `reserve_prepared`; reserve continuing takes normally. Keep provisional take/metadata owners across retries when still applicable, but cancel provisional intervals before re-previewing a different interval.
+4. Latch failures in fixed scratch. For an authoritative request-origin family, use `Refused`; for an autonomous capture start, use `CaptureUnavailable`; for a failed append to an existing take, use `CaptureExhausted`. Refused restart and old-take exhaustion may coexist. Every retry adds a previously unlatched failure. No arbitrary retry/subdivision cap or callback-credit reset is permitted.
+5. Once stable, freeze ended takes at F, activate prepared replacements at F, update pinned playback bindings, and commit the resolver once. A record-to-play decision must see the new immutable indexes before sample/event F. Empty record-to-play remains the resolver's refusal, not an empty freeze followed by silence.
+6. Publish immutable decisions to playback/capture consumers, render the actual signal DAG, and commit staged capture groups in finish before advancing the resolver. Input state, overflow/incomplete observations and public cuts must use the same interval and checked producer identity.
+
+Conservative MIDI reservation may fail earlier than an exact future-output bound, as already documented by the generic capture contract. With sufficient prepared resources, interval invariance remains mandatory. Capacity failures must still preserve a truthful common prefix and affect dependent decisions before samples cross their boundary; no retroactive rollback is available.
+
+## Receipts, observations and coherent export
+
+- `ReceiptToken::sequence()` supplies request ordering. Preserve requested, delivered and musical terminal frames. A resolver result can be inspected after commit and forwarded at F; recycle the resolver's retained completion after finish, because its `take_completion` API intentionally forbids mutation while decisions are committed/borrowed.
+- Cancellation distinguishes queued runtime work from already-delivered resolver requests. Stop/cancel recovery must not need another normal request slot, metadata allocation or unread-result credit.
+- Public state/snapshot requests have an explicit cut phase. Prefer a post-settlement, pre-render cut at F so simultaneous transitions and frozen media agree. Optional publication failure must not stop musical execution.
+- Export tokens retain media-slot ownership, not borrowed pointers or an unpinned copy of a snapshot ID. Existing runtime resource requests perform bounded reads into owning return buffers. Releasing an export invalidates its checked token and decrements the media reference.
+- An active recording snapshot acquires all channel prefixes at the same boundary without interleaved rendering. If optional acquisition fails partway, release unpublished temporary leases and return a truthful refusal; never publish a partial group. Tail-copy work remains background-accounted. Frozen playback export can retain an existing media slot without copying content.
+
+## Graph and lifecycle integration
+
+- Initial preparation must establish validated planner bindings and the actual signal graph before musical execution begins, rather than hiding a silent warm-up interval. A preparation-only runtime constructor accepting a graph/planning description is a suitable generic extension; it can compile/validate off-render and return epoch one at frame zero.
+- The facade must validate required capture/input-tracking consumers, expected decision slots and media shapes. A generic structural descriptor alone does not prove domain role correctness. Do not expose unrestricted graph replacement as though these additional invariants had been checked. Live graph/topology/program replacement must preserve them transactionally in Stage 6.
+- Audio consumers need safe direct `AudioPorts` access without allocating temporary vectors of channel borrows or retaining callback references. Keep the existing slice APIs and share conversion/DSP logic with scoped port adapters.
+- Quiescent teardown must retain the planner's owner ledger while extracting resources. A generic off-render extraction returning both planner and store would let the facade explicitly cancel/freeze/release groups, media and exports, rather than dropping the only copy of their handles. Device cleanup still occurs before stopping callbacks; extraction cannot emit MIDI to a stopped device.
+
+## Required evidence
+
+Implement and verify the complete public lifecycle example and actual separate playback→gain/FX→capture nodes. Check stereo plus MIDI record→immediate play, wraps, seeks, prepared replacement, stop cleanup, coherent exports, repeated recording, resource refusal/isolation and complete owner recovery. Compare independent sample/packet/content expectations across host partitions and valid declaration orders, with journal exhaustion and stalled external results. Native debug/release, Wasm and heap/destructor guards remain mandatory; existing generic fixtures do not substitute for the independent loop hosts.

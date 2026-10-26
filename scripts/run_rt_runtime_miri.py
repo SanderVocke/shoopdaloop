@@ -55,6 +55,7 @@ def main():
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
     cases.append(("shoop_loop_engine", "audio", [], 6, 0))
     cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
+    cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi_restore", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi", [], 6, 0))
     if args.package:

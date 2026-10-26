@@ -1,0 +1,116 @@
+{
+  "scope": "Stage 5 autonomous capture preflight decisions, scoped loop validation. Stage 5 remains incomplete.",
+  "miri": {
+    "passed": true,
+    "package_filter": "shoop_loop_engine",
+    "toolchain": "nightly-2026-05-04",
+    "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+    "cases": [
+      {
+        "package": "shoop_loop_engine",
+        "target": "audio",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "00-audio-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-decisions-stage5/miri/00-audio-seed0.log",
+          "sha256": "d0cb9694feffbca18c15f70525f811fbbbc54b61a4b2d3f94c4c5a3328cbec6a"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "media_decisions",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "01-media_decisions-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-decisions-stage5/miri/01-media_decisions-seed0.log",
+          "sha256": "bdd7aa029807c24141586bc43558f0c1ddf378ee6d27fce292052439287dc211"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "capture_decisions",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "02-capture_decisions-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-decisions-stage5/miri/02-capture_decisions-seed0.log",
+          "sha256": "b06c4ff4e667dd1290f12e762295d3eb212eda2fb9b377152ff92e67e4e9dea7"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi_restore",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "03-midi_restore-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-decisions-stage5/miri/03-midi_restore-seed0.log",
+          "sha256": "3c5847ce985f9e39b9a7e4281b262f08a089022506fe270fb9ae2346a8c50658"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "04-midi-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-decisions-stage5/miri/04-midi-seed0.log",
+          "sha256": "e7a6f7b764c01f5089fd6a40bba01371878ae26d841c69cfdc10bf53ba3dc599"
+        }
+      }
+    ],
+    "limitations": [
+      "Not a whole-workspace or whole-suite Miri claim.",
+      "Loom's generator/FFI model runs natively, not under Miri.",
+      "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+      "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+    ]
+  },
+  "miri_command": "nix develop --command bash -c 'export RUSTUP_HOME=\"$HOME/.cache/rt-runtime-miri-rustup\"; python3 scripts/run_rt_runtime_miri.py --package shoop_loop_engine'",
+  "journal_capacities": [
+    0,
+    1,
+    1024
+  ],
+  "audio": "Existing scalar/ramp and dense one-sample comparisons now consume authoritative decision flags at every journal capacity; original fully provisioned cases retained. Complete workloads run unchanged in Miri/Wasm.",
+  "capture_decisions": {
+    "tests": 4,
+    "workload": "Complete workloads on native/Wasm/Miri: autonomous pulse suppression and unrelated request isolation; 128 one-sample intervals across three host partitions and journals 0/1/1024, with every external request slot occupied; restart refusal versus running exhaustion; both failure classes under one external slot; request-family priority independent of observation order; composite family versus target refusal and malformed target checks."
+  },
+  "media_cases": [
+    "Twenty-frame primitive table including same-state seek/replace, idempotent Play, retrigger, recording monitor continuity, monitored capture failure, stop and empty-content refusal; repeated previews.",
+    "Losing/cancelled/refused intents; retry discards prior candidate restart while retaining a later natural wrap.",
+    "Clock-reactive Stop masks an earlier start flag in the final decision; higher-priority reactive restart restores playback after pre-clock Stop.",
+    "Nested authoritative program snapshots emit only primitive flags even without a journal."
+  ],
+  "initial_failures": [
+    {
+      "artifact": {
+        "path": "target/loop-layer-capture-decisions-stage5/focused-first.log",
+        "sha256": "161a0a22a0d5ba53c94b3eb389e277faed719f89f71b2b72a354fe6f4acf0edd"
+      },
+      "reason": "Initial new test fixture used integer Entry.duration values instead of Option<u64>, producing E0308. Corrected to Some(2) without changing workload or assertions."
+    }
+  ],
+  "midi_cases": {
+    "tests": 6,
+    "workload": "Full native/Wasm/Miri workloads: independent absolute packet oracle and 257-byte SysEx; same-frame restoration ordering; stopped input and frozen initial state; invalid/stale/zero-frame calls; actual runtime overflow/reset graph preserving audio and clearing seeded downstream note; complete packet comparison across 128 one-sample intervals and three host partitions."
+  },
+  "prior_full_baseline": {
+    "path": "docs/loop_layer/evidence/prepared-interval-stage5.json",
+    "sha256": "b684cb6bba3c0fb75bb68ef970e28180dcebe541f4d3b002f8916b9710792664"
+  },
+  "limitations": [
+    "Twenty-four fresh selected loop Miri executions, not a fresh 138-case combined run or full loop-suite Miri claim.",
+    "The preceding runtime/host/full selected Miri evidence is historical; no rt_runtime implementation changed in this milestone.",
+    "Complete loop facade, coherent mixed-media outcomes/export, full example/graph and independent loop hosts remain pending."
+  ]
+}

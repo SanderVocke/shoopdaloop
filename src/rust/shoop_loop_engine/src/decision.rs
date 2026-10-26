@@ -21,8 +21,19 @@ pub struct Decision {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Observation {
-    CaptureExhausted { target: LoopId },
-    Refused { request: RequestId, reason: Error },
+    CaptureExhausted {
+        target: LoopId,
+    },
+    /// Refuse capture starts/restarts for this primitive at the preview boundary.
+    /// Use `Refused` instead when an entire request-origin family must fail.
+    CaptureUnavailable {
+        target: LoopId,
+        reason: Error,
+    },
+    Refused {
+        request: RequestId,
+        reason: Error,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

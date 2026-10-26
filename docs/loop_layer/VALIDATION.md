@@ -739,3 +739,20 @@ Real transport disconnect coverage grows from fourteen to **seventeen cuts**, re
 | Existing native debug/release and actual offline/live worklet, both failure canaries | Passed; historical golden journal unchanged |
 
 The focused run and all 21 broad gates passed without a new failed run. The three new cases and expanded disconnect workload are unchanged under native/Wasm/Miri. This fresh full run supersedes the preceding scoped milestone's lack of fresh runtime/host gates without rewriting that historical scope. The full loop facade, coherent mixed-media publication/export, separate-node graph/example, independent loop hosts, final CI and review remain pending. Stage 5 remains current.
+
+## Stage 5 — Autonomous capture preflight decisions
+
+Milestone: `feat(loop-engine): refuse autonomous capture starts transactionally` (the commit introducing this section), source base `813f8311`. Evidence: [`evidence/capture-decisions-stage5.json`](evidence/capture-decisions-stage5.json) and [`evidence/capture-decisions-stage5-provenance.json`](evidence/capture-decisions-stage5-provenance.json); logs and archived Miri executions are under `target/loop-layer-capture-decisions-stage5/`.
+
+`Observation::CaptureUnavailable { target, reason }` adds a primitive-target refusal for capture starts/restarts, including autonomous trigger/composite work that has no request ID. It preserves the previous mode/content/capture revision and emits no capture-start pulse. Running-take append exhaustion remains a separate input; both classes can coexist at a boundary. Request-family refusal remains distinct and takes precedence regardless of observation order. Target-only refusal intentionally does not reject a parent composite or siblings. The checked observation bound is now two failure classes per loop plus retained request refusals; no new musical-work quota or external receipt is introduced.
+
+Four guarded tests verify:
+
+- Autonomous capture refusal preserves ongoing playback, suppresses the rejected start's descendant pulse, and does not appropriate a coincident unrelated request.
+- **128 one-sample intervals**, all four external request slots occupied/unread, three host partitions and journal capacities **0/1/1024**. Repeated previews preserve states/flags; an independent arithmetic refusal-frame oracle and full retained journals agree across partitions.
+- Restart refusal alone continues the old recording; simultaneous running-take exhaustion preserves monitored playback and the old prefix. Failed starts do not consume logical capture revisions. Stop remains usable. Both per-loop failure classes fit even with only one external request slot; request-family error precedence is independent of observation order.
+- Whole composite request-family refusal versus targeted child capture refusal, plus stale/composite/duplicate observation rejection.
+
+Fresh scoped gates: **77 loop tests per native profile and per Node/Chromium runtime**, **2051 workspace passes/four existing skips**, and **24 selected loop Miri executions** (audio6, media-decisions4, capture-decisions4, restoration4, indexed-MIDI6). All fifteen scoped gates, including warning-denied workspace build/docs, formatting and policy/boundary checks, passed. Complete new workloads run unchanged under native/Wasm/Miri.
+
+The initial test fixture used integer `Entry.duration` values rather than `Option<u64>`, producing **E0308**; changing them to `Some(2)` corrected the fixture without reducing workload/assertions. Its failed compile log is retained. No generic runtime implementation changed here; standalone runtime release/Wasm, generic Miri, lifetime/authority prototypes and native/actual-worklet fixtures were not freshly rerun. The preceding `prepared-interval-stage5` full run remains their historical baseline. Twenty-four fresh loop Miri executions are not a fresh 138-case combined run. Complete resource-to-resolver wiring, coordinated mixed-media ownership/export, separate-node graph/example and independent loop hosts remain required; Stage 5 stays open.

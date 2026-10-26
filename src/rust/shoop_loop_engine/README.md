@@ -50,6 +50,13 @@ program starts at its selected iteration and stalls until explicitly repositione
 A stopped source can still relay clocks from its own source. Composite position
 is not a synthetic uniformly advancing media playhead.
 
+Capture preflight can supply `CaptureUnavailable { target, reason }` to refuse a
+primitive start/restart without inventing an external request or start pulse.
+An existing take's exhaustion is independent (`CaptureExhausted`); both may be
+latched at one boundary. For atomic request-origin families use `Refused`, which
+has precedence regardless of observation order. Target-only refusal does not
+reject a parent composite or its other children.
+
 The resolver API models logical capture positions and boundary failures; it does not
 yet own captured samples, deliver runtime receipts, or provide independent
 recovery-lane admission. Those integrations remain required plan milestones.

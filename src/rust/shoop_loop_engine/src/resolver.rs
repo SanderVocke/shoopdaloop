@@ -323,9 +323,13 @@ impl Resolver {
         if ceiling <= self.frame {
             return Err(Error::InvalidFrame);
         }
-        if observations.len()
-            > self.topology.limits().loop_slots + self.topology.limits().pending_requests
-        {
+        let limits = self.topology.limits();
+        let observation_capacity = limits
+            .loop_slots
+            .checked_mul(2)
+            .and_then(|count| count.checked_add(limits.pending_requests))
+            .ok_or(Error::Capacity)?;
+        if observations.len() > observation_capacity {
             return Err(Error::Capacity);
         }
         for (index, observation) in observations.iter().enumerate() {
@@ -335,6 +339,10 @@ impl Resolver {
                     (
                         Observation::CaptureExhausted { target: a },
                         Observation::CaptureExhausted { target: b },
+                    ) => a == b,
+                    (
+                        Observation::CaptureUnavailable { target: a, .. },
+                        Observation::CaptureUnavailable { target: b, .. },
                     ) => a == b,
                     (
                         Observation::Refused { request: a, .. },
@@ -348,6 +356,11 @@ impl Resolver {
             match *observation {
                 Observation::CaptureExhausted { target } => {
                     if self.state(target)?.mode != Mode::Recording {
+                        return Err(Error::InvalidState);
+                    }
+                }
+                Observation::CaptureUnavailable { target, .. } => {
+                    if self.state(target)?.composite.is_some() {
                         return Err(Error::InvalidState);
                     }
                 }
@@ -606,6 +619,21 @@ impl Boundary<'_> {
                 }
                 _ => None,
             })
+            .or_else(|| {
+                self.observations
+                    .iter()
+                    .find_map(|observation| match *observation {
+                        Observation::CaptureUnavailable {
+                            target: unavailable,
+                            reason,
+                        } if unavailable.slot() as usize == target
+                            && matches!(intent.transition, Transition::Record { .. }) =>
+                        {
+                            Some(reason)
+                        }
+                        _ => None,
+                    })
+            })
         {
             self.terminal(
                 intent.request,
@@ -614,6 +642,10 @@ impl Boundary<'_> {
                     reason,
                 },
             );
+            if intent.request.is_none() {
+                let id = self.scratch.states[target].expect("prepared state").id;
+                self.event(id, EventKind::Refused(reason));
+            }
             return;
         }
         let mut state = self.scratch.states[target].expect("prepared state");
