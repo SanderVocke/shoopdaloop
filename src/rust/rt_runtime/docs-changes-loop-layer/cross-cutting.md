@@ -68,9 +68,11 @@ Destinations include `PROPOSAL_LOOP_LAYER.md`,
   coordinated loop transactions. They do not themselves implement logical/physical
   role-generation switching, retained old-generation media exports, capture claims,
   or old-role MIDI cleanup. Keep that integration explicitly pending until tested.
-- Keep the restricted fixed-graph loop facade's implemented surface distinct from
-  generic GraphRuntime capabilities. Do not imply that merely adding GraphAccess to
-  planner contexts exposes a live graph editor through the loop Controller.
+- Keep the restricted loop facade's implemented surface distinct from generic
+  GraphRuntime capabilities. The later [live-graph slice](loop-facade-live-graphs.md)
+  adds explicit control compilation, staging/release and checked graph or paired
+  graph/timing activation for fixed roles. This supersedes the initial fixed-graph
+  limitation, not the pending general generation/media-claim transaction.
 - The loop topology receiver and generic graph bank have different StageId types,
   storage lifecycles and validation meanings. LTP1 readiness proves timing IR, not
   graph/media/role compatibility. Do not claim that generic graph staging is a

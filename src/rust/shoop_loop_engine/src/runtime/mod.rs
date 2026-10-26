@@ -6,7 +6,7 @@ use crate::{
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{self, Command, GraphRuntime, PreparedNode},
-    graph::GraphDescription,
+    graph::{Catalog, GraphDescription, PreparedPlan},
     midi_state::MidiState,
     planner::*,
     processor::Processor,
@@ -20,6 +20,7 @@ mod processor;
 mod topology;
 use crate::topology::staging::{Progress, StageId, Status};
 pub use processor::Node;
+pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
 pub use topology::TopologySettings;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -88,6 +89,20 @@ pub enum Selection {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    GraphStatus {
+        id: GraphStageId,
+    },
+    GraphActivate {
+        id: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
+    TopologyGraphActivate {
+        id: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     TopologyBegin {
         slot: usize,
     },
@@ -172,6 +187,21 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    GraphStatus {
+        id: GraphStageId,
+        status: GraphStageStatus,
+    },
+    GraphActivated {
+        id: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
+    TopologyGraphActivated {
+        id: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     TopologyStatus {
         id: StageId,
         status: Status,
@@ -322,6 +352,8 @@ pub struct Controller<P: Processor<LoopPlanner>> {
     control: executor::Control<Node<P>, LoopPlanner>,
     planner: PlannerId,
     media: Box<[PreparedMedia]>,
+    graph_catalog: Catalog,
+    graph_bindings: Box<[DecisionBinding]>,
 }
 pub struct Stopped {
     planner: LoopPlanner,
@@ -330,6 +362,28 @@ pub struct Stopped {
 impl<P: Processor<LoopPlanner>> Controller<P> {
     pub fn media(&self) -> &[PreparedMedia] {
         &self.media
+    }
+    /// Allocating control-side compilation for the prepared physical roles.
+    pub fn compile_graph(&self, graph: &GraphDescription) -> Result<PreparedPlan, Error> {
+        rt_runtime::graph::compile_planned(&self.graph_catalog, graph, &self.graph_bindings)
+    }
+    pub fn stage_graph(
+        &mut self,
+        slot: usize,
+        expected_epoch: Epoch,
+        plan: PreparedPlan,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
+        self.control.submit_prepared(
+            Lane::Normal,
+            Command::stage_graph(slot, expected_epoch, plan),
+        )
+    }
+    pub fn release_graph(
+        &mut self,
+        id: GraphStageId,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
+        self.control
+            .submit_prepared(Lane::Normal, Command::ReleaseGraph { id })
     }
     pub fn submit(
         &mut self,
@@ -403,7 +457,7 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
 }
 impl<P: Processor<LoopPlanner>> Engine<P> {
     /// Allocating preparation. Every primitive requires both role consumers;
-    /// effects must declare no planning access. Live graph mutation is not exposed.
+    /// effects must declare no planning access. Graph staging is separately opt-in.
     pub fn prepare(
         config: PreparedConfig,
         topology: PreparedTopology,
@@ -451,7 +505,8 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
         )
     }
     /// Prepare reusable timing candidates for the fixed graph and existing role identities.
-    /// Changed running programs remain refused; no graph or logical-role replacement is exposed.
+    /// Immediate changes require stopped programs; owning program changes use musical cuts.
+    /// Logical-role replacement is not exposed by this preparation path.
     pub fn prepare_with_staging(
         config: PreparedConfig,
         topology: PreparedTopology,
@@ -719,14 +774,41 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             &decision_bindings,
         )?;
         control.prepare_submissions()?;
+        let graph_nodes = graph
+            .nodes
+            .iter()
+            .map(|id| runtime.catalog().node(*id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let graph_consumers = graph
+            .nodes
+            .iter()
+            .map(|id| {
+                Ok(ConsumerSpec {
+                    node: *id,
+                    access: runtime.catalog().consumer(*id)?,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let graph_catalog = Catalog::with_planner(
+            config,
+            &graph_nodes,
+            runtime.catalog().planner().expect("loop planner"),
+            &graph_consumers,
+        )?;
         Ok((
             Controller {
                 control,
                 planner: settings.planner,
                 media: catalog.into_boxed_slice(),
+                graph_catalog,
+                graph_bindings: decision_bindings.into_boxed_slice(),
             },
             Self { runtime },
         ))
+    }
+    /// Allocating preparation before the first nonempty callback; physical roles stay fixed.
+    pub fn prepare_graph_staging(&mut self, candidates: usize) -> Result<(), Error> {
+        self.runtime.prepare_graph_staging(candidates)
     }
     pub fn process(&mut self, audio: AudioBlock<'_, '_>, midi: MidiBlock<'_>) -> Result<(), Error> {
         self.runtime.process(audio, midi)

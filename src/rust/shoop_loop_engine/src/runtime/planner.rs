@@ -1,6 +1,47 @@
 use super::*;
 
 impl LoopPlanner {
+    fn validate_graph(&self, graph: &PreparedPlan) -> Result<(), Error> {
+        let bindings = &graph.planning().bindings;
+        if bindings.len() != self.rows.iter().flatten().count() * 2 {
+            return Err(Error::InvalidShape);
+        }
+        for row in self.rows.iter().flatten() {
+            for consumer in [row.binding.playback, row.binding.capture] {
+                if !graph.contains(consumer) {
+                    return Err(Error::InvalidId);
+                }
+                if !bindings.iter().any(|binding| {
+                    binding.consumer == consumer
+                        && binding.planner == self.settings.planner
+                        && binding.decision_slot == row.binding.target.slot() as usize
+                }) {
+                    return Err(Error::InvalidShape);
+                }
+            }
+        }
+        Ok(())
+    }
+    fn activate_graph(
+        &mut self,
+        graph: GraphStageId,
+        topology: Option<StageId>,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+        graphs: &mut rt_runtime::graph::activation::GraphAccess<'_>,
+    ) -> Result<(Epoch, Epoch), Failure> {
+        if topology_epoch != self.resolver.epoch() {
+            return Err(crate::Error::InvalidState.into());
+        }
+        let permit = graphs.prepare_activation(graph, graph_epoch)?;
+        self.validate_graph(permit.candidate())?;
+        if let Some(id) = topology {
+            self.topologies
+                .activate(id, topology_epoch, &mut self.resolver)?;
+        }
+        self.graph_epoch = permit.commit();
+        Ok((self.graph_epoch, self.resolver.epoch()))
+    }
     fn row(&self, target: LoopId) -> Result<Row, Error> {
         self.rows
             .get(target.slot() as usize)
@@ -606,6 +647,50 @@ impl Planner for LoopPlanner {
                 return Err(Error::InvalidShape.into());
             }
             let topology_status = match operation {
+                Operation::GraphStatus { id } => {
+                    return Ok(Disposition::Complete(Reply::GraphStatus {
+                        id,
+                        status: context.graphs.status(id)?,
+                    }));
+                }
+                Operation::GraphActivate {
+                    id,
+                    graph_epoch,
+                    topology_epoch,
+                } => {
+                    let (graph_epoch, topology_epoch) = self.activate_graph(
+                        id,
+                        None,
+                        graph_epoch,
+                        topology_epoch,
+                        &mut context.graphs,
+                    )?;
+                    return Ok(Disposition::Complete(Reply::GraphActivated {
+                        id,
+                        graph_epoch,
+                        topology_epoch,
+                    }));
+                }
+                Operation::TopologyGraphActivate {
+                    id,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                } => {
+                    let (graph_epoch, topology_epoch) = self.activate_graph(
+                        graph,
+                        Some(id),
+                        graph_epoch,
+                        topology_epoch,
+                        &mut context.graphs,
+                    )?;
+                    return Ok(Disposition::Complete(Reply::TopologyGraphActivated {
+                        id,
+                        graph,
+                        graph_epoch,
+                        topology_epoch,
+                    }));
+                }
                 Operation::TopologyBegin { slot } => {
                     Some(self.topologies.begin(slot, context.payload)?)
                 }
@@ -827,7 +912,10 @@ impl Planner for LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::TopologyBegin { .. }
+                Operation::GraphStatus { .. }
+                | Operation::GraphActivate { .. }
+                | Operation::TopologyGraphActivate { .. }
+                | Operation::TopologyBegin { .. }
                 | Operation::TopologyAppend { .. }
                 | Operation::TopologyValidate { .. }
                 | Operation::TopologyStatus { .. }

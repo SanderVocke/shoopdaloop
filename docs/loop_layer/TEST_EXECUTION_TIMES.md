@@ -255,6 +255,22 @@ thresholds. Nine new Miri executions bring the registered selection to206; they
 have no interpreter timing yet. Existing generic-host execution is not evidence
 for the still-required independent loop AudioWorklet.
 
+## Fixed-role loop facade live-graph observation
+
+The19 scoped gates in `live-graph-stage6.json` total **248.84 seconds** on the same
+warm Linux/Nix host: loop native debug4.63s/release7.06s, Node94.19s,
+Chromium95.29s and workspace nextest39.51s. The14 Miri-helper tests took0.98s.
+All137 loop tests pass in each native/Wasm profile and2125 workspace tests pass
+with four existing skips. Seven positive/eighteen negative borrowing proofs and
+the native exact-filter mirror are separate from the19-gate sum. Initial fixture
+compilation failures remain archived, not included as successful timings.
+
+No standalone generic-runtime package/host rerun or Miri interpreter run is
+included in this scoped slice. Its107 unchanged prior Rust inputs preserve the
+separation from historical generic evidence. Six new cases raise the registered
+Miri inventory to212, not the interpreted count. These are warm measurements,
+not deadline guarantees, cold-cache timing or CI margin.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

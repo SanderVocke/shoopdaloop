@@ -18,8 +18,15 @@ not modified by this work. Before this slice's commit, concurrent edits to chapt
 semantic rewrite needed); chapters1–4 remain in the pending backfill review.
 `rechecks.json` records this separately without replacing the original baseline.
 
+The later [loop-facade live-graph slice](loop-facade-live-graphs.md), based on
+`b071ffc4`, adds fixed-role live routing and paired graph/timing publication.
+Its reviewed destination/source hashes are in `live-graph-baseline.json`;
+verification is in `docs/loop_layer/evidence/live-graph-stage6{,-provenance}.json`.
+It supersedes the earlier claim that the loop Controller cannot change routes,
+not the still-pending general role-generation/media transaction requirement.
+
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
-recovery prerequisite and its cross-cutting effects. Full review/backfill of prior
+recovery prerequisite, fixed-role facade integration and their cross-cutting effects. Full review/backfill of prior
 loop-layer stages remains explicit below. Do not infer that empty chapters need no
 changes, that existing archived prose is authoritative, or that notes have already
 been applied. No fresh Miri, completed Stage 6, loop AudioWorklet, final CI or review

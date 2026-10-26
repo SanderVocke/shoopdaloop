@@ -1569,3 +1569,82 @@ awaiting consolidated Stage6 Miri. Historical171/178 remains partial and cannot
 certify changed executor/planner inputs. General loop graph/role-generation/media
 transactions, broader mixed stress, independent loop hosts and final delivery
 remain open. No stage completion or deadline guarantee follows from this slice.
+
+## Stage 6 — Fixed-role loop facade live graph and paired configuration cuts
+
+Based on `b071ffc4`, this slice connects the generic graph permit to the actual
+loop facade. Evidence: [`live-graph-stage6.json`](evidence/live-graph-stage6.json),
+[`live-graph-stage6-provenance.json`](evidence/live-graph-stage6-provenance.json),
+with raw logs under `target/loop-layer-live-graph-stage6/`. This remains a scoped
+Stage6 prerequisite, not complete general role-generation/media integration.
+
+`Engine::prepare_graph_staging` opts into prepared owner banks before rendering.
+The Controller retains a separate control-side Catalog and fixed decision bindings
+for allocating graph compilation; stage/release use prepared normal-lane commands.
+`GraphStatus`, `GraphActivate` and `TopologyGraphActivate` require empty payloads
+and cannot use recovery admission. The paired operation first preflights the generic
+permit and exact loop playback/capture bindings. Timing replacement is the final
+fallible step; graph/epoch/retirement publication then cannot ordinarily fail.
+Changed timing programs must already be stopped at delivery, before musical preview.
+Same-frame Play uses the resulting configuration; deferred State/Export sees its cut.
+Graph and timing retirement remain independently owned and explicitly released.
+
+Six additional heap/destructor-guarded cases in `runtime_topology.rs` verify:
+
+- Complete independent stereo samples, absolute MIDI, all public State fields and
+  journals for paired publication/refusal/restart across whole/single/irregular
+  partitions, declaration reversal and journal capacities0/1/1024. Running change
+  refuses at5, Stop settles6, configuration/restart publishes7; export retains the
+  original media and separate retirement returns the displaced FX graph/topology.
+- Recording starts2, route changes4, playback starts8, Stop10: exact full capture
+  `[2,4,12,16,4,8]` with right channel times10, coherent prefix `[2,4]`, complete
+  serialized MIDI and unchanged take revision. Routing neither restarts the take
+  nor relabels immutable exports.
+- A program request delivered4 is refused at an actual graph change5, before the
+  old program's zero7. Full original-program audio/MIDI proves no candidate action
+  escaped. The request reports delivered4/actual5 and new graph/old topology epochs;
+  its candidate returns Ready after finish.
+- Disabled/late preparation; generic-valid but wrong/missing role bindings; wrong
+  epochs/scopes/generations; ticket, recovery and unexpected-payload refusal;
+  owning returned-descriptor equality and successful subsequent paired reuse.
+- Sixteen occupied normal domain slots and unread results through130 one-sample
+  intervals, independent recovery cancellation, stale graph release/restage and
+  another activation while requests and both retired graph owners remain retained.
+- Controller loss before/after delivery and processor failure after publication but
+  before finish, preserving published epochs and recovering all resource/reference
+  capacity without fake finish or rollback.
+
+| Gate | Result |
+| --- | --- |
+| Loop native debug/release |137 passed each |
+| Loop Node/Chromium package execution |137 passed each, no ignored tests |
+| Workspace nextest0.9.116 |2125 passed, four unchanged skips |
+| Scoped format/build/rustdoc/examples/policies/Wasm/dependency gates |19 passed |
+| Production lifetime/authority prototypes |7 positive executions,18 expected compiler refusals |
+| Miri supervisor/selection helper tests |14 passed; infrastructure, not interpreter evidence |
+| Source provenance |110 recorded Rust inputs;107 unchanged from preceding graph prerequisite |
+
+The19 gates total248.84s of warm local command wall time; separate proofs and the
+native exact-filter mirror are not included. Standalone generic-runtime package
+and generic-host reruns were not part of this scoped batch. Their preceding evidence
+remains historical; workspace regressions are fresh. Concurrent documentation-worker
+examples are separately identified, preserved and excluded from this implementation
+commit/source-freshness scope.
+
+`focused-first.log` retains E0614 from treating copied resource-reply fields as
+references and E0533 from omitting `Record.monitor_previous`; the corrected fixture
+uses the intended monitored recording. `focused-expanded.log` retains E0609/E0559
+from incorrect test field names (`requested_frame/effective_frame`, `ticks` instead
+of `requested/effective`, `skip`). Corrected public API spellings pass with the
+same scenario workloads/assertions. Intermediate failed fixture trees were not
+archived; these logs do not claim exact-tree reproduction. Initial13-case and later
+17-case focused successes predate the final disabled-staging extension; only the
+complete19-gate report certifies the final110-source snapshot.
+
+Six selected executions raise the registered inventory to212=128runtime+84loop.
+No interpreter ran for this smaller slice; historical171/178 remains partial.
+General role-generation/media-claim transactions, broader mixed stress and complete
+Stage6 Miri remain open, as do independent loop hosts and final delivery.
+Documentation corrections are actionable notes in
+`src/rust/rt_runtime/docs-changes-loop-layer/loop-facade-live-graphs.md`, not in-place
+rewrites. Full prior-stage backfill and the separate worker's final pass remain due.

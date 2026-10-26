@@ -200,6 +200,12 @@ struct Harness {
     packets: Vec<(u64, Vec<u8>)>,
     replies: Vec<Execution<Operation, Reply>>,
     returned: Vec<(Sequence, Box<[u8]>)>,
+    graphs: Vec<
+        rt_runtime::transport::Completion<
+            Command<Node<Fx>, LoopPlanner>,
+            rt_runtime::executor::Retired<Node<Fx>>,
+        >,
+    >,
     imports: Vec<rt_runtime::ResourceId>,
 }
 impl Harness {
@@ -354,6 +360,7 @@ impl Harness {
             packets: Vec::new(),
             replies: Vec::new(),
             returned: Vec::new(),
+            graphs: Vec::new(),
             imports,
         }
     }
@@ -415,6 +422,13 @@ impl Harness {
     }
     fn drain(&mut self) {
         while let Some(completion) = assert_no_heap(|| self.control.try_completion()) {
+            if matches!(
+                completion.request,
+                Command::StageGraph { .. } | Command::ReleaseGraph { .. }
+            ) {
+                self.graphs.push(completion);
+                continue;
+            }
             assert!(
                 matches!(
                     completion.outcome,
@@ -491,6 +505,79 @@ impl Harness {
             matches!(self.reply(validate),Reply::TopologyProgress {progress,..} if progress.ready)
         );
         id
+    }
+    fn graph_plan(
+        &mut self,
+        slot: usize,
+        epoch: u64,
+        plan: rt_runtime::graph::PreparedPlan,
+    ) -> GraphStageId {
+        let sequence = assert_no_heap(|| self.control.stage_graph(slot, Epoch(epoch), plan))
+            .unwrap_or_else(|e| panic!("{:?}", e.error))
+            .sequence();
+        self.step(1);
+        self.drain();
+        let result = self.graphs.iter().find(|r| r.sequence == sequence).unwrap();
+        assert_eq!(result.outcome, TransportOutcome::Applied);
+        match &result.request {
+            Command::StageGraph {
+                id: Some(id),
+                plan: None,
+                ..
+            } => *id,
+            _ => panic!("ready graph owner"),
+        }
+    }
+    fn graph(&mut self, slot: usize, epoch: u64, bypass: bool, reverse: bool) -> GraphStageId {
+        let plan = self
+            .control
+            .compile_graph(&routes(self.media, bypass, reverse))
+            .unwrap();
+        self.graph_plan(slot, epoch, plan)
+    }
+    fn read_export(
+        &mut self,
+        export: media::ExportId,
+        midi: bool,
+        expected_bytes: usize,
+    ) -> Vec<u8> {
+        let sequence = self.op(
+            self.engine.next_frame().0,
+            Operation::Cursor { export, midi },
+        );
+        self.step(1);
+        self.drain();
+        let Reply::Cursor(mut cursor) = self.reply(sequence) else {
+            panic!("cursor")
+        };
+        let mut output = Vec::new();
+        for chunk in 0..expected_bytes.div_ceil(64).max(1) {
+            let bytes = Box::new([0; 64]);
+            let ticket = assert_no_heap(|| self.control.read(cursor, bytes))
+                .unwrap_or_else(|e| panic!("{:?}", e.error));
+            self.step(1);
+            let completed = assert_no_heap(|| self.control.try_completion()).unwrap();
+            assert_eq!(completed.sequence, ticket.sequence());
+            assert_eq!(completed.outcome, TransportOutcome::Applied);
+            let Command::Resource(command) = completed.request else {
+                panic!("read")
+            };
+            let Some(resource::Reply::Read { written, eof }) = command.reply() else {
+                panic!("read result")
+            };
+            let resource::Request::Read {
+                cursor: next,
+                bytes,
+            } = command.into_request()
+            else {
+                panic!("read owner")
+            };
+            output.extend_from_slice(&bytes[..written]);
+            cursor = next;
+            assert_eq!(eof, chunk + 1 == expected_bytes.div_ceil(64).max(1));
+        }
+        assert_eq!(output.len(), expected_bytes);
+        output
     }
     fn finish(mut self) -> Option<Log> {
         self.drain();
@@ -2391,4 +2478,1000 @@ fn full_normal_domain_slots_and_unread_program_results_allow_clock_progress_and_
     ));
     // Both displaced banks and fifteen never-delivered musical requests remain retained.
     h.finish();
+}
+
+fn routes(media: bool, bypass: bool, reverse: bool) -> GraphDescription {
+    let mut graph = GraphDescription {
+        nodes: (0..if media && !bypass { 5 } else { 4 })
+            .map(node)
+            .collect(),
+        connections: Vec::new(),
+    };
+    if media {
+        for (kind, ports) in [(PortType::Audio, 2), (PortType::Midi, 1)] {
+            for port in 0..ports {
+                let source = if bypass {
+                    node(2)
+                } else {
+                    graph.connections.push(Connection {
+                        source: Endpoint::node(node(2), kind, port),
+                        destination: Endpoint::node(node(4), kind, port),
+                    });
+                    node(4)
+                };
+                for destination in [
+                    Endpoint::node(node(3), kind, port),
+                    Endpoint::host(kind, port),
+                ] {
+                    graph.connections.push(Connection {
+                        source: Endpoint::node(source, kind, port),
+                        destination,
+                    });
+                }
+            }
+        }
+    }
+    if reverse {
+        graph.nodes.reverse();
+        graph.connections.reverse();
+    }
+    graph
+}
+fn live(media: bool, journal: usize, reverse: bool) -> Harness {
+    let mut h = Harness::new(media, journal, reverse, staging());
+    h.engine.prepare_graph_staging(2).unwrap();
+    h
+}
+fn switch(graph: GraphStageId, epoch: u64, topology: u64) -> Operation {
+    Operation::GraphActivate {
+        id: graph,
+        graph_epoch: Epoch(epoch),
+        topology_epoch: Epoch(topology),
+    }
+}
+fn pair(id: StageId, graph: GraphStageId, graph_epoch: u64, topology_epoch: u64) -> Operation {
+    Operation::TopologyGraphActivate {
+        id,
+        graph,
+        graph_epoch: Epoch(graph_epoch),
+        topology_epoch: Epoch(topology_epoch),
+    }
+}
+fn encoded_packets(packets: &[(u64, Vec<u8>)]) -> Vec<u8> {
+    packets
+        .iter()
+        .flat_map(|(frame, bytes)| {
+            frame
+                .to_le_bytes()
+                .into_iter()
+                .chain((bytes.len() as u32).to_le_bytes())
+                .chain(bytes.iter().copied())
+        })
+        .collect()
+}
+fn assert_pair_states(log: &Log) {
+    for (frame, states) in log.states.iter().enumerate() {
+        let f = (frame as u64).saturating_sub(1);
+        for (slot, actual) in states.iter().enumerate() {
+            let Some(s) = actual else { continue };
+            assert_eq!(s.id, id(slot as u32));
+            assert_eq!(
+                s.content_length,
+                if slot == 0 {
+                    1
+                } else if slot == 1 || f < 6 {
+                    4
+                } else {
+                    3
+                }
+            );
+            assert_eq!(
+                (s.content_revision, s.capture_revision, s.capture_frames),
+                (Revision(0), Revision(0), 0)
+            );
+            assert!(!s.capture_incomplete && !s.monitor_previous);
+            let (mut mode, mut position, mut cycles, mut pulse, mut composite) =
+                (Mode::Stopped, 0, 0, None, None);
+            match slot {
+                0 => {
+                    if (2..12).contains(&f) {
+                        mode = Mode::Playing;
+                    }
+                    cycles = f.saturating_sub(2).min(9);
+                    pulse = (f >= 2).then_some(Frame(f.min(11) + 1));
+                }
+                1 => {
+                    let start = if (2..5).contains(&f) {
+                        Some(2)
+                    } else if (7..9).contains(&f) {
+                        Some(7)
+                    } else if (10..12).contains(&f) {
+                        Some(10)
+                    } else {
+                        None
+                    };
+                    if let Some(start) = start {
+                        mode = Mode::Playing;
+                        position = f - start;
+                    }
+                    pulse = match f {
+                        0..=1 => None,
+                        2..=4 | 7..=8 => Some(Frame(f + 1)),
+                        5..=6 => Some(Frame(5)),
+                        9 => Some(Frame(9)),
+                        _ => Some(Frame(f.min(11) + 1)),
+                    };
+                }
+                2 => {
+                    if (2..5).contains(&f) || (6..12).contains(&f) {
+                        mode = Mode::Playing;
+                    }
+                    if f >= 2 {
+                        pulse = Some(Frame(if f == 5 { 5 } else { f.min(11) + 1 }));
+                    }
+                    composite = Some(state::CompositeState {
+                        iteration: if f < 2 || f == 5 || f >= 12 {
+                            0
+                        } else if f < 5 {
+                            f - 2
+                        } else {
+                            (f - 6) % 3
+                        },
+                        passes: u64::from(f >= 9),
+                        entered_at: (f >= 2).then_some(Frame(f.min(12) + 1)),
+                    });
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                (s.mode, s.position, s.cycles, s.last_pulse, s.composite),
+                (mode, position, cycles, pulse, composite),
+                "frame {frame} slot {slot}"
+            );
+        }
+    }
+}
+#[shoop_test]
+fn graph_and_stopped_topology_publish_together_with_independent_media_and_journals() {
+    for (parts, journal, reverse) in [
+        (vec![11], 1024, false),
+        (vec![1; 11], 0, true),
+        (vec![2, 4, 1, 4], 1, false),
+        (vec![4, 7], 1024, true),
+    ] {
+        let mut h = live(true, journal, reverse);
+        let candidate = compile(limits(journal), &description(true, reverse)).unwrap();
+        let topology = h.ready(0, &candidate);
+        let graph = h.graph(0, 1, true, reverse);
+        assert_eq!(h.engine.next_frame(), Frame(3));
+        h.op(3, play(0));
+        h.op(3, play(2));
+        let refused = h.op(5, pair(topology, graph, 1, 0));
+        let still_ready = h.op(5, Operation::GraphStatus { id: graph });
+        h.op(6, stop(2));
+        let query = if reverse {
+            Some(h.op(7, Operation::State { target: id(2) }))
+        } else {
+            None
+        };
+        let applied = h.op(7, pair(topology, graph, 1, 0));
+        h.op(7, play(2));
+        let query = query.unwrap_or_else(|| h.op(7, Operation::State { target: id(2) }));
+        let exported = h.op(
+            7,
+            Operation::Export {
+                target: id(1),
+                selection: Selection::Playback,
+            },
+        );
+        h.op(13, stop(0));
+        h.op(13, stop(2));
+        for frames in parts {
+            h.step(frames);
+            if h.engine.next_frame() == Frame(7) {
+                assert_eq!(h.engine.diagnostics().epoch, Epoch(1));
+                h.step(0);
+                assert_eq!(h.engine.diagnostics().epoch, Epoch(1));
+            }
+        }
+        h.drain();
+        assert_eq!(
+            h.reply(refused),
+            Reply::Failed(Failure::Timeline(shoop_loop_engine::Error::InvalidState))
+        );
+        assert_eq!(
+            h.reply(still_ready),
+            Reply::GraphStatus {
+                id: graph,
+                status: GraphStageStatus::Ready {
+                    validated_epoch: Epoch(1)
+                }
+            }
+        );
+        assert_eq!(
+            h.reply(applied),
+            Reply::TopologyGraphActivated {
+                id: topology,
+                graph,
+                graph_epoch: Epoch(2),
+                topology_epoch: Epoch(1)
+            }
+        );
+        let execution = h.replies.iter().find(|r| r.sequence == applied).unwrap();
+        assert_eq!(
+            (
+                execution.requested_frame,
+                execution.delivered_frame,
+                execution.actual_frame
+            ),
+            (Frame(7), Some(Frame(7)), Frame(7))
+        );
+        let Reply::State(cut) = h.reply(query) else {
+            panic!("state")
+        };
+        assert_eq!(
+            (
+                cut.frame,
+                cut.graph_epoch,
+                cut.topology_epoch,
+                cut.state.mode,
+                cut.state.content_length
+            ),
+            (Frame(7), Epoch(2), Epoch(1), Mode::Playing, 3)
+        );
+        let expected: Vec<_> = [0., 0., 0., 2., 4., 6., 0., 0., 4., 8., 0., 4., 8., 0.]
+            .into_iter()
+            .map(|v| [v, v * 10.])
+            .collect();
+        assert_eq!(h.samples, expected);
+        let mut packets = Vec::new();
+        restore(3, &mut packets);
+        packets.push((5, vec![0x80, 60, 45]));
+        restore(8, &mut packets);
+        packets.push((10, vec![0x80, 60, 0]));
+        restore(11, &mut packets);
+        packets.push((13, vec![0x80, 60, 0]));
+        assert_eq!(h.packets, packets);
+        let Reply::Export {
+            id: export,
+            cut,
+            media,
+        } = h.reply(exported)
+        else {
+            panic!("export")
+        };
+        assert_eq!(
+            (
+                cut.graph_epoch,
+                cut.topology_epoch,
+                media.view.description.frames
+            ),
+            (Epoch(2), Epoch(1), 4)
+        );
+        let release = assert_no_heap(|| h.control.release_graph(graph))
+            .unwrap_or_else(|e| panic!("{:?}", e.error))
+            .sequence();
+        let recycled = h.op(14, Operation::TopologyRecycle { id: topology });
+        let bytes = h.read_export(export, false, 32);
+        let original: Vec<_> = [4f32, 8., 12., 16.]
+            .into_iter()
+            .flat_map(|v| [v, v * 10.])
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        assert_eq!(bytes, original);
+        assert_eq!(
+            h.reply(recycled),
+            Reply::TopologyStatus {
+                id: topology,
+                status: Status::Idle
+            }
+        );
+        let returned = h.graphs.iter().find(|r| r.sequence == release).unwrap();
+        assert_eq!(returned.outcome, TransportOutcome::Applied);
+        let Some(rt_runtime::executor::Retired::Plan(old)) = &returned.retired else {
+            panic!("old graph")
+        };
+        assert!(old.descriptor().steps.iter().any(|s| s.node == node(4)));
+        h.op(h.engine.next_frame().0, Operation::Release { export });
+        h.step(1);
+        h.drain();
+        let log = h.finish().unwrap();
+        let complete: Vec<_> = expected_events()
+            .into_iter()
+            .map(|mut e| {
+                e.frame.0 += 1;
+                e
+            })
+            .collect();
+        let expected: Vec<_> = (3..=13)
+            .flat_map(|frame| {
+                complete
+                    .iter()
+                    .filter(move |e| e.frame == Frame(frame))
+                    .take(journal)
+                    .copied()
+            })
+            .collect();
+        assert_eq!(log.events, expected);
+        assert_eq!(log.dropped, (complete.len() - expected.len()) as u64);
+        assert_pair_states(&log);
+    }
+}
+#[shoop_test]
+fn intervening_live_graph_change_refuses_pending_program_without_publishing_its_zero_actions() {
+    for parts in [vec![8], vec![1; 8], vec![2, 3, 3]] {
+        let mut h = live(true, 1024, false);
+        let candidate = compile(limits(1024), &description(true, false)).unwrap();
+        let topology = h.ready(0, &candidate);
+        let graph = h.graph(0, 1, true, false);
+        h.op(3, play(0));
+        h.op(3, play(2));
+        let pending = h.op(4, program_activate(topology));
+        let changed = h.op(5, switch(graph, 1, 0));
+        let ready = h.op(6, Operation::TopologyStatus { id: topology });
+        let state = h.op(7, Operation::State { target: id(2) });
+        h.op(10, stop(0));
+        h.op(10, stop(2));
+        for n in parts {
+            h.step(n);
+        }
+        h.drain();
+        assert_eq!(
+            h.reply(changed),
+            Reply::GraphActivated {
+                id: graph,
+                graph_epoch: Epoch(2),
+                topology_epoch: Epoch(0)
+            }
+        );
+        let Reply::ProgramChanged {
+            graph_epoch,
+            topology_epoch,
+            completion,
+            ..
+        } = h.reply(pending)
+        else {
+            panic!("program refusal")
+        };
+        assert_eq!((graph_epoch, topology_epoch), (Epoch(2), Epoch(0)));
+        assert_eq!(
+            (completion.requested, completion.effective),
+            (Frame(4), Frame(4))
+        );
+        assert_eq!(
+            completion.outcome,
+            Outcome::Failed {
+                frame: Frame(5),
+                reason: shoop_loop_engine::Error::InvalidState
+            }
+        );
+        let execution = h.replies.iter().find(|e| e.sequence == pending).unwrap();
+        assert_eq!(
+            (execution.delivered_frame, execution.actual_frame),
+            (Some(Frame(4)), Frame(5))
+        );
+        assert_eq!(
+            h.reply(ready),
+            Reply::TopologyStatus {
+                id: topology,
+                status: Status::Ready
+            }
+        );
+        let Reply::State(cut) = h.reply(state) else {
+            panic!("state")
+        };
+        assert_eq!(
+            (
+                cut.graph_epoch,
+                cut.topology_epoch,
+                cut.state.content_length,
+                cut.state.composite.unwrap().passes
+            ),
+            (Epoch(2), Epoch(0), 4, 1)
+        );
+        let expected: Vec<_> = [0f32, 0., 0., 2., 4., 12., 16., 4., 8., 12., 0.]
+            .into_iter()
+            .map(|v| [v, v * 10.])
+            .collect();
+        assert_eq!(h.samples, expected);
+        let mut midi = Vec::new();
+        restore(3, &mut midi);
+        midi.push((5, vec![0x80, 60, 45]));
+        restore(7, &mut midi);
+        midi.push((9, vec![0x80, 60, 45]));
+        assert_eq!(h.packets, midi);
+        let log = h.finish().unwrap();
+        assert!(log
+            .events
+            .iter()
+            .all(|e| e.kind != decision::EventKind::Transition(Transition::Program)));
+    }
+}
+#[shoop_test]
+fn graph_pair_preflight_rejects_role_scope_epoch_and_cancelled_owners_without_partial_publication()
+{
+    let mut disabled = Harness::new(false, 0, false, staging());
+    assert_eq!(
+        disabled.engine.prepare_graph_staging(0),
+        Err(Error::InvalidConfig)
+    );
+    let plan = disabled
+        .control
+        .compile_graph(&routes(false, true, false))
+        .unwrap();
+    let ticket = assert_no_heap(|| disabled.control.stage_graph(0, Epoch(1), plan))
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    disabled.step(1);
+    disabled.drain();
+    let result = disabled
+        .graphs
+        .iter()
+        .find(|r| r.sequence == ticket.sequence())
+        .unwrap();
+    assert_eq!(result.outcome, TransportOutcome::Rejected(Error::InvalidId));
+    assert!(matches!(
+        result.request,
+        Command::StageGraph {
+            plan: Some(_),
+            id: None,
+            ..
+        }
+    ));
+    assert_eq!(
+        disabled.engine.prepare_graph_staging(2),
+        Err(Error::InvalidState)
+    );
+    disabled.finish();
+    let mut h = live(false, 0, false);
+    let candidate = compile(limits(0), &description(true, false)).unwrap();
+    let topology = h.ready(0, &candidate);
+    let graph = h.graph(0, 1, true, false);
+    let parts = graph.parts();
+    let foreign = GraphStageId::from_parts(parts[0] + 1, parts[1], parts[2]).unwrap();
+    let parts = topology.parts();
+    let stale_topology = StageId::from_parts(parts[0], parts[1] + 1).unwrap();
+    for (operation, error) in [
+        (
+            pair(topology, graph, 99, 0),
+            Failure::Runtime(Error::StaleEpoch),
+        ),
+        (
+            pair(topology, graph, 1, 99),
+            Failure::Timeline(shoop_loop_engine::Error::InvalidState),
+        ),
+        (
+            pair(topology, foreign, 1, 0),
+            Failure::Runtime(Error::InvalidId),
+        ),
+        (
+            pair(stale_topology, graph, 1, 0),
+            Failure::Timeline(shoop_loop_engine::Error::InvalidId),
+        ),
+    ] {
+        let at = h.engine.next_frame().0;
+        let rejected = h.op(at, operation);
+        let gs = h.op(at, Operation::GraphStatus { id: graph });
+        let ts = h.op(at, Operation::TopologyStatus { id: topology });
+        let state = h.op(at, Operation::State { target: id(2) });
+        h.step(1);
+        h.drain();
+        assert_eq!(h.reply(rejected), Reply::Failed(error));
+        assert_eq!(
+            h.reply(gs),
+            Reply::GraphStatus {
+                id: graph,
+                status: GraphStageStatus::Ready {
+                    validated_epoch: Epoch(1)
+                }
+            }
+        );
+        assert_eq!(
+            h.reply(ts),
+            Reply::TopologyStatus {
+                id: topology,
+                status: Status::Ready
+            }
+        );
+        let Reply::State(cut) = h.reply(state) else {
+            panic!("cut")
+        };
+        assert_eq!(
+            (
+                cut.graph_epoch,
+                cut.topology_epoch,
+                cut.state.content_length
+            ),
+            (Epoch(1), Epoch(0), 4)
+        );
+    }
+    for missing in [false, true] {
+        let plan = h
+            .control
+            .compile_graph(&routes(false, true, false))
+            .unwrap();
+        let mut descriptor = plan.descriptor().clone();
+        let mut planning = plan.planning().clone();
+        if missing {
+            descriptor.steps.retain(|s| s.node != node(1));
+            planning.bindings.retain(|b| b.consumer != node(1));
+        } else {
+            planning.bindings[0].decision_slot = 2;
+        }
+        let bad = rt_runtime::graph::PreparedPlan::from_planned_descriptor(
+            plan.config(),
+            descriptor.clone(),
+            planning.clone(),
+        )
+        .unwrap();
+        let staged = h.graph_plan(1, 1, bad);
+        let at = h.engine.next_frame().0;
+        let rejected = h.op(at, pair(topology, staged, 1, 0));
+        let ts = h.op(at, Operation::TopologyStatus { id: topology });
+        h.step(1);
+        h.drain();
+        assert_eq!(
+            h.reply(rejected),
+            Reply::Failed(Failure::Runtime(Error::InvalidShape))
+        );
+        assert_eq!(
+            h.reply(ts),
+            Reply::TopologyStatus {
+                id: topology,
+                status: Status::Ready
+            }
+        );
+        assert_eq!(h.engine.diagnostics().epoch, Epoch(1));
+        let released = assert_no_heap(|| h.control.release_graph(staged))
+            .unwrap_or_else(|e| panic!("{:?}", e.error))
+            .sequence();
+        h.step(1);
+        h.drain();
+        let returned = h.graphs.iter().find(|r| r.sequence == released).unwrap();
+        assert_eq!(returned.outcome, TransportOutcome::Applied);
+        let Some(rt_runtime::executor::Retired::Plan(owner)) = &returned.retired else {
+            panic!("candidate owner")
+        };
+        assert_eq!(owner.descriptor(), &descriptor);
+        assert_eq!(owner.planning(), &planning);
+    }
+    let at = h.engine.next_frame();
+    let ticket = assert_no_heap(|| {
+        h.control
+            .submit(Lane::Normal, at, pair(topology, graph, 1, 0))
+    })
+    .unwrap_or_else(|e| panic!("{:?}", e.error));
+    ticket.cancel();
+    h.step(1);
+    let completed = assert_no_heap(|| h.control.try_completion()).unwrap();
+    assert_eq!(completed.sequence, ticket.sequence());
+    assert_eq!(completed.outcome, TransportOutcome::Cancelled);
+    assert!(assert_no_heap(|| h.control.try_execution()).is_none());
+    let at = h.engine.next_frame();
+    let recovery = assert_no_heap(|| h.control.submit(Lane::Recovery, at, switch(graph, 1, 0)))
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    h.step(1);
+    let completed = assert_no_heap(|| h.control.try_completion()).unwrap();
+    assert_eq!(completed.sequence, recovery.sequence());
+    assert_eq!(
+        completed.outcome,
+        TransportOutcome::Rejected(Error::InvalidState)
+    );
+    assert!(assert_no_heap(|| h.control.try_execution()).is_none());
+    let rejected = h.send(
+        Lane::Normal,
+        h.engine.next_frame().0,
+        pair(topology, graph, 1, 0),
+        Box::new([1]),
+    );
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(rejected),
+        Reply::Failed(Failure::Runtime(Error::InvalidShape))
+    );
+    let release = assert_no_heap(|| h.control.release_graph(graph))
+        .unwrap_or_else(|e| panic!("{:?}", e.error))
+        .sequence();
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.graphs
+            .iter()
+            .find(|r| r.sequence == release)
+            .unwrap()
+            .outcome,
+        TransportOutcome::Applied
+    );
+    let plan = h
+        .control
+        .compile_graph(&routes(false, true, false))
+        .unwrap();
+    let ticket = assert_no_heap(|| h.control.stage_graph(0, Epoch(1), plan))
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    ticket.cancel();
+    h.step(1);
+    h.drain();
+    let cancelled = h
+        .graphs
+        .iter()
+        .find(|r| r.sequence == ticket.sequence())
+        .unwrap();
+    assert_eq!(cancelled.outcome, TransportOutcome::Cancelled);
+    assert!(matches!(
+        cancelled.request,
+        Command::StageGraph {
+            plan: Some(_),
+            id: None,
+            ..
+        }
+    ));
+    let next = h.graph(0, 1, true, false);
+    assert_eq!(next.parts()[2], graph.parts()[2] + 1);
+    let stale = h.op(h.engine.next_frame().0, switch(graph, 1, 0));
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(stale),
+        Reply::Failed(Failure::Runtime(Error::InvalidId))
+    );
+    let applied = h.op(h.engine.next_frame().0, pair(topology, next, 1, 0));
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(applied),
+        Reply::TopologyGraphActivated {
+            id: topology,
+            graph: next,
+            graph_epoch: Epoch(2),
+            topology_epoch: Epoch(1)
+        }
+    );
+    h.finish();
+}
+#[shoop_test]
+fn full_domain_slots_unread_graph_results_and_retirement_do_not_gate_clock_or_recovery() {
+    let mut h = live(false, 0, false);
+    let graph = h.graph(0, 1, true, false);
+    let stale = h.graph(1, 1, true, true);
+    h.op(2, play(0));
+    let mut requests = Vec::new();
+    for _ in 0..16 {
+        requests.push(h.op(
+            2,
+            Operation::Transition {
+                target: id(1),
+                timing: Timing::AfterTicks {
+                    source: id(0),
+                    skip: 1000,
+                },
+                transition: Transition::Stop,
+            },
+        ));
+    }
+    let activated = h.op(3, switch(graph, 1, 0));
+    for frames in [32, 32, 32, 32, 2] {
+        h.step(frames);
+    }
+    assert_eq!(h.engine.next_frame(), Frame(132));
+    let cancelled = h.send(
+        Lane::Recovery,
+        132,
+        Operation::Cancel {
+            sequence: requests[0],
+        },
+        Box::new([]),
+    );
+    h.step(1);
+    let state = h.op(133, Operation::State { target: id(0) });
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(activated),
+        Reply::GraphActivated {
+            id: graph,
+            graph_epoch: Epoch(2),
+            topology_epoch: Epoch(0)
+        }
+    );
+    assert_eq!(
+        h.reply(cancelled),
+        Reply::Cancelled {
+            sequence: requests[0],
+            delivered: true
+        }
+    );
+    let Reply::State(cut) = h.reply(state) else {
+        panic!("state")
+    };
+    assert_eq!(
+        (
+            cut.state.mode,
+            cut.state.cycles,
+            cut.state.last_pulse,
+            cut.graph_epoch
+        ),
+        (Mode::Playing, 131, Some(Frame(133)), Epoch(2))
+    );
+    let refused = h.op(134, switch(stale, 2, 0));
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(refused),
+        Reply::Failed(Failure::Runtime(Error::StaleEpoch))
+    );
+    let release = assert_no_heap(|| h.control.release_graph(stale))
+        .unwrap_or_else(|e| panic!("{:?}", e.error))
+        .sequence();
+    h.step(1);
+    h.drain();
+    let index = h.graphs.iter().position(|r| r.sequence == release).unwrap();
+    let returned = h.graphs.remove(index);
+    let Some(rt_runtime::executor::Retired::Plan(owner)) = returned.retired else {
+        panic!("stale owner")
+    };
+    let restaged = h.graph_plan(1, 2, owner);
+    assert_eq!(restaged.parts()[2], stale.parts()[2] + 1);
+    let at = h.engine.next_frame().0;
+    h.op(
+        at,
+        Operation::Transition {
+            target: id(1),
+            timing: Timing::AfterTicks {
+                source: id(0),
+                skip: 1000,
+            },
+            transition: Transition::Stop,
+        },
+    );
+    let applied = h.op(at, switch(restaged, 2, 0));
+    h.step(1);
+    h.drain();
+    assert_eq!(
+        h.reply(applied),
+        Reply::GraphActivated {
+            id: restaged,
+            graph_epoch: Epoch(3),
+            topology_epoch: Epoch(0)
+        }
+    );
+    // Both retired graph owners and sixteen unresolved musical requests are retained.
+    h.finish();
+}
+#[shoop_test]
+fn paired_graph_topology_owners_survive_disconnect_and_post_publication_render_fault() {
+    for before_delivery in [false, true] {
+        let mut h = live(false, 0, false);
+        let candidate = compile(limits(0), &description(true, false)).unwrap();
+        let topology = h.ready(0, &candidate);
+        let graph = h.graph(0, 1, true, false);
+        let applied = h.op(4, pair(topology, graph, 1, 0));
+        if !before_delivery {
+            h.step(2);
+            h.drain();
+            assert_eq!(
+                h.reply(applied),
+                Reply::TopologyGraphActivated {
+                    id: topology,
+                    graph,
+                    graph_epoch: Epoch(2),
+                    topology_epoch: Epoch(1)
+                }
+            );
+        }
+        let Harness {
+            control,
+            mut engine,
+            ..
+        } = h;
+        drop(control);
+        if before_delivery {
+            assert_no_heap(|| {
+                engine.process(
+                    AudioBlock {
+                        frame: Frame(3),
+                        frames: 2,
+                        inputs: &[],
+                        outputs: &mut [],
+                    },
+                    MidiBlock {
+                        inputs: &[],
+                        outputs: &mut [],
+                    },
+                )
+            })
+            .unwrap();
+        }
+        assert_eq!(engine.diagnostics().epoch, Epoch(2));
+        let mut stopped = engine.into_stopped();
+        assert_no_heap(|| {
+            stopped.cleanup().unwrap();
+            stopped.cleanup().unwrap();
+            assert_eq!(stopped.media_usage().references, 0);
+            assert_eq!(stopped.resource_usage().free_pages, 128);
+            assert_eq!(stopped.resource_usage().free_versions, 16);
+            assert_eq!(stopped.resource_usage().free_snapshots, 16);
+        });
+    }
+    let mut h = Harness::options(true, 1024, false, staging(), 8, Some(Frame(4)));
+    h.engine.prepare_graph_staging(2).unwrap();
+    let candidate = compile(limits(1024), &description(true, false)).unwrap();
+    let topology = h.ready(0, &candidate);
+    let mut graph = routes(true, false, false);
+    graph.connections.push(Connection {
+        source: Endpoint::node(node(2), PortType::Audio, 0),
+        destination: Endpoint::host(PortType::Audio, 0),
+    });
+    let plan = h.control.compile_graph(&graph).unwrap();
+    let graph = h.graph_plan(0, 1, plan);
+    let applied = h.op(4, pair(topology, graph, 1, 0));
+    h.op(4, play(0));
+    h.op(4, play(2));
+    let query = h.op(4, Operation::State { target: id(2) });
+    h.step(1);
+    let [left, right] = &mut h.output;
+    h.midi[0].clear();
+    let error = assert_no_heap(|| {
+        h.engine.process(
+            AudioBlock {
+                frame: Frame(4),
+                frames: 1,
+                inputs: &[],
+                outputs: &mut [&mut left[..1], &mut right[..1]],
+            },
+            MidiBlock {
+                inputs: &[],
+                outputs: &mut h.midi,
+            },
+        )
+    })
+    .unwrap_err();
+    assert_eq!(error, Error::InvalidState);
+    assert_eq!(h.engine.next_frame(), Frame(5));
+    assert_eq!(h.engine.diagnostics().epoch, Epoch(2));
+    h.drain();
+    assert_eq!(
+        h.reply(applied),
+        Reply::TopologyGraphActivated {
+            id: topology,
+            graph,
+            graph_epoch: Epoch(2),
+            topology_epoch: Epoch(1)
+        }
+    );
+    let Reply::State(cut) = h.reply(query) else {
+        panic!("cut")
+    };
+    assert_eq!(
+        (
+            cut.frame,
+            cut.graph_epoch,
+            cut.topology_epoch,
+            cut.state.mode
+        ),
+        (Frame(4), Epoch(2), Epoch(1), Mode::Playing)
+    );
+    let log = h.finish().unwrap();
+    assert_eq!(log.states[4][2].unwrap().content_length, 3);
+}
+
+#[shoop_test]
+fn live_route_cut_keeps_recording_prefix_and_midi_continuity_without_restarting_the_take() {
+    for (parts, reverse) in [
+        (vec![10], false),
+        (vec![1; 10], true),
+        (vec![3, 2, 5], false),
+    ] {
+        let mut h = live(true, 1024, reverse);
+        let graph = h.graph(0, 1, true, reverse);
+        h.op(2, play(0));
+        h.op(
+            2,
+            Operation::Transition {
+                target: id(1),
+                timing: Timing::At,
+                transition: Transition::Record {
+                    monitor_previous: true,
+                },
+            },
+        );
+        let switched = h.op(4, switch(graph, 1, 0));
+        let prefix = h.op(
+            4,
+            Operation::Export {
+                target: id(1),
+                selection: Selection::Recording,
+            },
+        );
+        h.op(8, play(1));
+        let full = h.op(
+            8,
+            Operation::Export {
+                target: id(1),
+                selection: Selection::Playback,
+            },
+        );
+        h.op(10, stop(0));
+        h.op(10, stop(1));
+        for n in parts {
+            h.step(n);
+        }
+        h.drain();
+        assert_eq!(
+            h.reply(switched),
+            Reply::GraphActivated {
+                id: graph,
+                graph_epoch: Epoch(2),
+                topology_epoch: Epoch(0)
+            }
+        );
+        let expected: Vec<_> = [0., 0., 2., 4., 12., 16., 4., 8., 2., 4., 0.]
+            .into_iter()
+            .map(|v| [v, v * 10.])
+            .collect();
+        assert_eq!(h.samples, expected);
+        let mut originals = Vec::new();
+        restore(0, &mut originals);
+        originals.push((2, vec![0x80, 60, 45]));
+        restore(4, &mut originals);
+        let mut packets: Vec<_> = originals.iter().map(|(f, b)| (*f + 2, b.clone())).collect();
+        packets.push((8, vec![0x80, 60, 0]));
+        let mut initial = Vec::new();
+        restore(8, &mut initial);
+        initial.pop();
+        packets.extend(initial);
+        packets.extend(
+            originals
+                .iter()
+                .filter(|(f, _)| *f < 2)
+                .map(|(f, b)| (*f + 8, b.clone())),
+        );
+        packets.push((10, vec![0x80, 60, 0]));
+        assert_eq!(h.packets, packets);
+        let mut exports = Vec::new();
+        for (seq, frames, samples) in [
+            (prefix, 2, vec![2f32, 4.]),
+            (full, 6, vec![2f32, 4., 12., 16., 4., 8.]),
+        ] {
+            let Reply::Export {
+                id: export,
+                cut,
+                media,
+            } = h.reply(seq)
+            else {
+                panic!("export")
+            };
+            assert_eq!(
+                (
+                    cut.graph_epoch,
+                    cut.topology_epoch,
+                    media.view.description.frames,
+                    media.view.description.revision
+                ),
+                (Epoch(2), Epoch(0), frames, Revision(1))
+            );
+            assert_eq!(cut.state.capture_revision, Revision(1));
+            assert!(!cut.state.capture_incomplete);
+            let expected: Vec<_> = samples
+                .into_iter()
+                .flat_map(|v| [v, v * 10.])
+                .flat_map(f32::to_le_bytes)
+                .collect();
+            assert_eq!(h.read_export(export, false, expected.len()), expected);
+            let expected = encoded_packets(
+                &originals
+                    .iter()
+                    .filter(|(f, _)| *f < frames)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            );
+            assert_eq!(h.read_export(export, true, expected.len()), expected);
+            exports.push(export);
+        }
+        for export in exports {
+            h.op(h.engine.next_frame().0, Operation::Release { export });
+        }
+        h.step(1);
+        h.drain();
+        h.finish();
+    }
 }
