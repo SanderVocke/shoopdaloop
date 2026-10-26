@@ -86,6 +86,27 @@ These observations do not establish a stable optimization speedup, a safe CI
 watchdog margin, or a callback deadline guarantee. Native callback timings and
 Miri interpreter costs are different measurements.
 
+## Later Stage 6 scoped observations
+
+The test-only inter-loop scenario milestone measured these **whole-command wall
+times** with `time.monotonic()` (same local machine/environment, warm caches;
+scoped gates and Miri ran concurrently). See `interloop-stage6.json` and
+`target/loop-layer-interloop-stage6/miri-selected.json`.
+
+| Scope | Wall time | Qualification |
+| --- | ---: | --- |
+| Loop package native debug, 95 tests | 1.86 s | Includes Cargo/harness startup; excludes standalone runtime package tests |
+| Loop package native release, 95 tests | 1.49 s | Warm incremental build |
+| Loop package Node, 95 tests | 70.94 s | Not the two-package command in the earlier table |
+| Loop package Chromium, 95 tests | 67.99 s | Package browser tests, not an AudioWorklet |
+| Workspace nextest, 2,073 passes / four existing skips | 37.52 s | Same prescribed profile/features |
+| New inter-loop target under Miri, one complete test | **468.43 s (7m48s)** | Three complete partition/order/journal profiles; includes compilation/interpreter startup; 900-second wall watchdog unchanged |
+
+The new Miri case is **one fresh execution**, not a fresh full 160-case selected
+run. The runner now registers that total, but the earlier full 159-case evidence
+is historical. Package selection can materially reduce iteration time; these
+numbers do not authorize omitting the full final acceptance gates.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

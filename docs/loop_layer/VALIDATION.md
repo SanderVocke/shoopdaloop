@@ -16,13 +16,13 @@ These are required test/evidence groups, not claims of implementation. Add concr
 | --- | --- | --- |
 | LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
 | LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Resolver, generic planner lifecycle and coordinated primitive facade/role validation verified; live topology/program integration pending |
-| LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution and actual facade 128 one-sample media boundaries verified; integrated cascades/composites and independent hosts pending |
+| LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution, actual facade 128 one-sample media boundaries and integrated A→B→C/delayed nested activation verified; broader lifecycle and independent hosts pending |
 | LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
 | LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals and coordinated primitive sample/packet/content/journal oracles match across partitions/orders; integrated composites and independent hosts pending |
 | LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resources and full primitive facade guarded in native debug/release/Wasm and selected Miri; later whole-layer audit and independent-host canaries pending |
 | LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic ownership models plus integrated media pins/exports/cancellation/recovery/faulted teardown verified; live replacement and later stress remain pending |
 | LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Stage 5 complete: indexed audio/MIDI, exact record→play/seek/replacement/cleanup, coherent export, actual separate FX capture graph, common-prefix exhaustion and public lifecycle example |
-| LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Pending |
+| LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Countdown, A→B→C, delayed regular/explicit nesting and exact capture outcomes verified; live replacement and broader lifecycle remain pending |
 | LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting/indexing/groups and coordinated preflight/settlement verified, including optional export Budget refusal without musical interruption; later mixed integration/audit pending |
 | LL-A11 | New independent native/worklet fixture journals, actual Web Audio output, fixed-memory and failure gates; raw release measurements | Pending new fixture |
 | LL-A12 | Updated runtime/loop guides and executable examples, acceptance audit, milestone commits, final-head CI and review record | Pending |
@@ -936,3 +936,87 @@ lifecycle or live graph/program replacement (Stage 6), independent loop native/
 AudioWorklet hosts (Stage 7), later adversarial/performance/CI work, or final
 unmerged-PR/final-head-CI/review delivery. Existing generic hosts remain regressions,
 not substitute loop-host acceptance.
+
+## Stage 6 — Integrated cascade, nested clock and capture-outcome scenario
+
+Milestone: `test(loop-engine): verify integrated cascades nested clocks and capture outcomes`
+(the commit introducing this section), source base `6035ef4e`. Evidence:
+[`interloop-stage6.json`](evidence/interloop-stage6.json) and
+[`interloop-stage6-provenance.json`](evidence/interloop-stage6-provenance.json);
+logs under `target/loop-layer-interloop-stage6/`. This milestone adds a guarded
+integration/reference test and registers it with Miri; **production Rust is
+unchanged**. Stage 6 remains open.
+
+The actual facade runs four audio/MIDI primitives, each with separate playback,
+mixing/gain and capture consumers, plus a regular outer and explicit inner
+composite. A records `[0,4)` and starts playback at four; its pulse starts B, whose
+pulse starts C at that same frame. B then wraps every sample. A countdown delivered
+at zero waits for B's third pulse and starts the outer composite at six. The
+outer's one-tick gap precedes each five-tick inner program; D starts at seven and
+thirteen. No nominal-unit timer or extra host callback drives those activations.
+
+D records at nine and exhausts at ten, retaining a one-frame audio/MIDI common
+prefix and its initial held-note projection. A second autonomous capture at fifteen
+is refused; D's existing playback continues, its capture revision is not consumed,
+and no false recording-start pulse is published. The inner/outer timelines keep
+progressing. All loops/composites stop at eighteen, while independent live input
+passthrough remains audible.
+
+Independent checks cover:
+
+- Every output sample and complete absolute-frame MIDI restoration/original/
+  cleanup packet, including release velocities.
+- A complete frame/event table, including simultaneous cascades, countdown,
+  delayed nesting, regular pass, failure events, source-stop masking and ordered
+  stops; journals 0/1/1024 are checked against truncation of that same table.
+- Every public field of every observer-provided primitive/composite state:
+  positions/cycles, content/capture revisions/lengths, incomplete/monitoring,
+  last pulse, iteration/pass and entry frame. Explicit state requests confirm
+  the post-settlement cut; countdown requested/delivered/terminal frames are
+  independently asserted as 0/0/6 with no transport lateness.
+- Exact A/D export bytes and durations. D's requested export cuts at ten and
+  fifteen both retain the original capture cut ten, not a relabelled recording.
+- An independent page calculation: six imported pages plus two A pages leave
+  eight used; the first D reservation needs `8 + 1 + 128 = 137`, exactly the
+  store capacity. After D commits two actual pages, continuation would require
+  138 and a new take 139. These predicted refusals agree with execution and the
+  final ten used pages before teardown.
+- Explicit export release, idempotent cleanup and removal of imported handles
+  recover all **137 pages, 64 versions, 64 snapshots**, and zero media references.
+  Callback/admission/polling/cleanup paths remain heap guarded; effects are
+  destroyed off-render.
+
+The complete scenario runs `[19]`, nineteen one-frame callbacks, and
+`[3,2,7,1,6]`, with reversed loop/trigger/program declarations, signal graph,
+bindings/effects and imports. The deliberate constrained-storage case gives the
+same specified failures across these profiles; it is not a claim that every
+insufficient-resource workload is universally partition invariant.
+
+Fresh scoped results: **95 loop tests per native debug/release profile and per
+Node/Chromium runtime**, **2073 workspace passes/four existing skips**, and all
+**18 scoped gates**. The one new complete Miri target passes with all profiles,
+assertions and guards unchanged, taking **468.43 seconds measured wall time**
+under the existing 900-second watchdog. The full runner now registers 160 selected
+executions, but **this is one fresh execution, not a fresh combined160 run**.
+The previous full159 result remains historical. Standalone generic-runtime
+release/Wasm/Miri, lifetime/authority proofs and native/actual-worklet host fixtures
+were not freshly rerun for this test-only change. Provenance verifies 97 current
+Rust source hashes, including all 96 preceding Stage 5 sources unchanged, eighteen
+gate logs and the fresh Miri artifact.
+
+Retained initial failures: incorrect fixture imports/endpoint integer types, then
+a journal oracle that counted idempotent primitive Play/Stop as state-change
+entries. The existing contract only journals actual state changes; successful
+no-op commands still receive Applied outcomes. The corrected independent table
+keeps complete comparisons, and all external transition completions are explicitly
+checked. Failed logs remain; those early intermediate fixture trees were not
+separately archived. An ignored Nix SQLite-busy warning did not fail any gate.
+
+The full coordinated-scenario checklist item is now verified. Live generation-
+checked topology/program activation, running-program replacement, broader nested
+seek/stop/pending lifecycle and mixed control/replacement/disconnect stress still
+remain before Stage 6 can complete. No independent loop host or final CI/review
+acceptance is claimed. Additional scoped timing observations are in
+[TEST_EXECUTION_TIMES.md](TEST_EXECUTION_TIMES.md). The remaining flat-metadata,
+receiver staging, atomic activation and running-program constraints are recorded
+as design-only in [TOPOLOGY_ACTIVATION_DESIGN.md](TOPOLOGY_ACTIVATION_DESIGN.md).
