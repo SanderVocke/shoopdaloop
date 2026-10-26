@@ -116,3 +116,7 @@ The final fourteen-test pass is in `checks.log`. No additional routine Miri run 
 started for this tooling step. Its first real interpreter use belongs to the next
 applicable consolidated stage run. Source/log hashes and the unchanged178-case
 inventory are recorded in [evidence/miri-background.json](evidence/miri-background.json).
+A subsequent real-repository smoke exported commit `aa41a9b3` (604 files), queried
+its178-execution inventory and ran locked Cargo metadata in the snapshot's actual
+Nix environment. It exited zero with all source hashes unchanged; this verifies
+snapshot/environment setup, not Miri execution.

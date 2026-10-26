@@ -423,6 +423,19 @@
     "Single active job admission and external report/progress paths tested."
   ],
   "retained_failure": "python-first.log: synthetic fixture signal handler attempted reentrant child.wait and timed out; fixture now raises before reaping. No test watchdog was raised. Detached Popen handles are retained/reaped rather than discarded with ResourceWarnings.",
+  "real_snapshot_smoke": {
+    "scope": "Real repository immutable export and Nix/Cargo metadata only; no Miri interpreter launched.",
+    "commit": "aa41a9b3633c3756be1997269fee23b80f4e30c0",
+    "source_files": 604,
+    "inventory_executions": 178,
+    "seconds": 1.7076787529804278,
+    "command": "nix develop --no-update-lock-file path:<immutable-source> --command cargo metadata --locked --no-deps --format-version 1",
+    "artifact": "target/loop-layer-miri-background/snapshot-smoke.json",
+    "metadata_log": "target/loop-layer-miri-background/snapshot-metadata.log",
+    "metadata_log_sha256": "ee801bc9c76876274d18fea655c613047781e663afbad6c840daeba1c77615a6",
+    "source_unchanged": true,
+    "exit_code": 0
+  },
   "limitations": [
     "Linux-only local background wrapper; foreground runner remains portable.",
     "Synthetic Python fixtures and Nix shim are not actual Miri evidence.",
