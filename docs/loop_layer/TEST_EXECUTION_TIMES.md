@@ -199,6 +199,26 @@ No standalone runtime package/Wasm or generic host rerun is hidden in these
 numbers. No Miri duration exists for this step: new/affected coverage is queued
 for the consolidated stage milestone rather than a routine smaller-step rerun.
 
+## Standalone owning-program scoped observations
+
+The subsequent standalone transaction ran19 scoped gates sequentially, again
+without an interpreter invocation. Warm local conditions apply; the sum excludes
+separate borrowing proofs and documentation/provenance work. From
+`evidence/program-change-stage6.json`:
+
+| Scope | Whole-command wall time |
+| --- | ---: |
+| Loop125 native debug / release | 4.48 / 7.34 s |
+| Loop125 Node / Chromium | 101.36 / 97.77 s |
+| Workspace nextest,2104 passes/four existing skips | 41.77 s |
+| Fourteen Miri-helper Python tests (not interpretation) | 1.14 s |
+| All19 scoped commands | **261.74 s (4m22s)** |
+
+Nine new selected Miri cases and affected resolver regressions await the consolidated
+stage run. These timings do not predict their interpreter cost or establish a
+callback deadline. Standalone runtime/package-Wasm and generic-host reruns are not
+included in this scoped observation.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

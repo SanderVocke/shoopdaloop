@@ -1307,3 +1307,56 @@ intentional. Four new Miri executions are registered (one library and three
 They and affected resolver regressions are deferred to the consolidated applicable
 stage run. The historical interrupted171/178 remains partial, not a fresh182 pass.
 Stage6 and the later acceptance stages remain incomplete.
+
+## Stage 6 — Standalone owning single-program transaction (facade integration open)
+
+`Resolver::stage_program` now retains a prepared single-program candidate and a
+normal request-family slot. Selection uses the old unpublished stopped/zero cut;
+the real preview uses the new action DAG without old-zero child actions. Commit
+swaps metadata owners and publishes epoch, state, receipts and events together.
+One displaced/rejected owner remains retained until `take_program_change` returns
+it with the terminal completion. Raw Program tags and completion-only collection
+are refused. Logical generations, sync/triggers and other programs remain fixed.
+
+Evidence: [`program-change-stage6.json`](evidence/program-change-stage6.json) and
+[`program-change-stage6-provenance.json`](evidence/program-change-stage6-provenance.json),
+logs `target/loop-layer-program-change-stage6/`, and the
+[owning API guide](../../src/rust/shoop_loop_engine/docs/program-changes.md).
+
+Nine guarded cases verify:
+
+- independent full positions/cycles/cursors and ordered journals across whole,
+  single/irregular partitions, reversed declarations and journals0/1/1024;
+- exact activation, preserved contiguous playback, compiled nominal length changes,
+  and removal when the new DAG orders the removed target before its former parent;
+- capture-family refusal/retry without revision gaps, and no old-zero phantom pulse
+  or capture restart in the candidate preview; old actions execute once if refusal
+  legitimately preserves the old working program;
+- idle-clock waiting, cancellation, stale epochs, owning rejection, one retained
+  owner slot, reliable results and invalid raw tags/shapes;
+- same-frame Stop/seek/restart/refusal and cancellation after a speculative preview;
+  empty/stopped changes and explicit-end installation without implicit playback;
+- nested removal and direct-child override; all128 one-sample intervals with every
+  request slot occupied and the successful owner/result left unread.
+
+Fresh results: **125 loop tests per native debug/release and Node/Chromium**, **2104
+workspace passes/four existing skips**, **19 scoped gates**,108 Rust source hashes,
+and closed tracing inventory202 (58 excluded/33 direct/111 indirect). Warning-denied
+build/rustdoc, formatting, examples, dependency/test/tracing policies and14 helper
+Python tests pass. A production positive proof and E0505/E0502/E0505 refusals protect
+candidate moves, decision borrows across collection and retired-owner destruction.
+Unchanged standalone runtime/package-Wasm and generic-host results remain historical.
+
+The first expanded focused run had one incorrect empty-program fixture expectation:
+a supplied node length42 is replaced by compilation's derived empty nominal length0.
+`focused-expanded.log` is retained; the intermediate source tree was not archived.
+The expectation was corrected to the compiler contract, and nonempty nominal length
+publication is separately checked. No workload, guard or musical assertion was
+removed. The later focused run and all19 scoped gates pass.
+
+Nine new Miri executions are registered, bringing the current inventory to191
+(119runtime+72loop); no interpreter was run for this smaller step. The historical
+interrupted171/178 remains partial. The standalone transaction is not yet wired to
+facade receiver-bank ownership, runtime execution tokens, graph-epoch rechecks or
+actual capture-bank preflight. General graph/role transactions, remaining mixed
+stress, consolidated Stage6 Miri and later host/delivery acceptance remain open.

@@ -79,6 +79,7 @@ def selected_cases(package=None):
     cases.append(("shoop_loop_engine", "audio_ports", [], 2, 0))
     cases.append(("shoop_loop_engine", "lib", [], 3, 0))
     cases.append(("shoop_loop_engine", "program_boundaries", [], 3, 0))
+    cases.append(("shoop_loop_engine", "program_changes", [], 9, 0))
     cases.append(("shoop_loop_engine", "topology_staging", [], 7, 0))
     cases.append(("shoop_loop_engine", "runtime_topology", [], 6, 0))
     cases.append(("shoop_loop_engine", "media", [], 4, 0))

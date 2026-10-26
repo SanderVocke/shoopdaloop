@@ -23,7 +23,7 @@ pub use config::Limits;
 pub use decision::{Decision, Event, EventKind, Interval, Observation};
 pub use ids::{LoopId, RequestId};
 pub use program::{Entry, Mode, ProgramDescription, ProgramKind, Section};
-pub use resolver::{ProgramBoundary, Resolver};
+pub use resolver::{ProgramBoundary, ProgramChangeResult, Resolver};
 pub use rt_runtime::{Epoch, Frame, Revision, Sequence};
 pub use state::{CompositeState, State};
 pub use topology::{compile, LoopKind, LoopSpec, PreparedTopology, TopologyDescription, Trigger};

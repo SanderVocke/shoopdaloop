@@ -118,5 +118,8 @@ that is partial evidence, **not** a complete stage-level Miri pass. See
 
 General graph/role-generation activation, coordinated same-boundary lifecycle
 changes beyond these preconditions, changed-running next-iteration-zero
-activation and broader mixed lifecycle stress remain Stage 6 work. Independent
-actual loop AudioWorklet acceptance remains Stage 7 work.
+activation through this facade and broader mixed lifecycle stress remain Stage 6
+work. The standalone resolver's [owning program transaction](program-changes.md)
+now implements single-program zero/stopped-cut activation, but staged-bank,
+execution-token and capture integration into this facade is not yet wired.
+Independent actual loop AudioWorklet acceptance remains Stage 7 work.

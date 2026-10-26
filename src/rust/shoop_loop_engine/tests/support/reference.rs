@@ -66,9 +66,9 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
             let mut candidate = machine;
             let mut failure = None;
             match operation {
-                Transition::PlayIteration { .. } | Transition::SeekIteration { .. } => {
-                    failure = Some(Error::InvalidState)
-                }
+                Transition::Program
+                | Transition::PlayIteration { .. }
+                | Transition::SeekIteration { .. } => failure = Some(Error::InvalidState),
                 Transition::Stop => {
                     if candidate.mode == Mode::Recording {
                         candidate.length = candidate.captured;

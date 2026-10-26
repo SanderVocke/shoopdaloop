@@ -65,5 +65,6 @@ See [program-probe-stage6.json](../../../../docs/loop_layer/evidence/program-pro
 for native/release, Node/Chromium and workspace evidence. Miri is deferred to the
 consolidated applicable stage run; four executions were added to its inventory.
 The [fixed-graph facade](topology-activation.md) still refuses changed running
-programs. Pending owning configuration transactions, actual iteration-zero
-activation, graph/role changes and the remaining lifecycle tests are still open.
+programs. The standalone [owning program transaction](program-changes.md) now uses
+this cut for actual zero/stopped-boundary activation; facade integration,
+graph/role changes and the remaining lifecycle tests are still open.

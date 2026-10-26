@@ -17,8 +17,9 @@ contract and later host requirements remain unchanged.
   establish graph/resource/role-binding activation compatibility.
 - `Resolver::replace_topology` returns displaced/rejected owners, validates the
   expected epoch and generation watermarks, and requires removed loops stopped.
-  It safely refuses changed running programs; it does not implement their required
-  iteration-zero activation.
+  It safely refuses changed running programs. The separate standalone
+  `stage_program` transaction now implements a single-program zero/stopped cut;
+  its facade integration and general graph/role transaction remain open.
 - The facade installs one validated initial graph and hides generic live graph
   mutation. `prepare_with_staging` enables fixed-graph timing changes and stopped
   program replacement. It checks authoritative graph/topology epochs and exact
@@ -41,7 +42,8 @@ Rust layouts. The fixed-graph integration associates ready identities with relia
 operation outcomes and authoritative graph/topology epochs. It prepares a
 maximum-capacity initial owner and reserves a retirement slot before activation;
 rejected candidates stay Ready and displaced owners await explicit recycling.
-General graph/role-generation compatibility and iteration-zero activation remain.
+General graph/role-generation compatibility and facade integration of the
+standalone iteration-zero transaction remain.
 
 Storage must be derived from total declared limits, not an accidental
 programs × targets × maximum-segments expansion. Allocation/pre-touch belongs to
@@ -122,9 +124,9 @@ preview and cannot itself be committed. A committed interval remains protected.
 
 This split avoids evaluating the old zero-iteration actions merely to discover an
 activation cut. It does not authorize activation from a cached probe or establish
-candidate/graph/resource compatibility. The future owning transaction still must
+candidate/graph/resource compatibility. An owning transaction must still
 recheck inputs and coordinate candidate selection, capture preflight, cancellation,
-retirement and one final publication. No replacement policy or acceptance scope
+retirement and one final publication; the standalone slice below now does so. No replacement policy or acceptance scope
 has been reduced by adding this prerequisite.
 
 Four guarded tests cover private non-emission assertions,128-frame independent
@@ -136,6 +138,54 @@ proof rejects retaining a decision borrow across probing. See the
 `program-probe-stage6{,-provenance}.json` and the Miri ledger. The19 scoped gates
 pass (loop116 per native profile and Node/Chromium,workspace2095/four skips);
 new/affected Miri coverage remains deferred to the consolidated Stage6 run.
+
+## Implemented standalone owning program transaction
+
+`Resolver::stage_program` retains one candidate with a normal request-family slot
+and a reserved displaced-owner location. It accepts exactly one program change
+with fixed logical IDs, kinds, sync/trigger metadata and other programs. The
+compiled nominal length of that composite may change. Its source/identity checks
+and aggregate resident metadata sizing are finite and allocation-free; incoming
+owners are already compiled/validated. Busy/rejected admission returns the owner.
+
+At the requested ready boundary, the old unpublished probe decides whether the
+program is stopped or entering zero. Selection then uses the new candidate DAG
+for the real preview, without the old program's zero actions. Removed active
+children are offered Stop before traversal, including when their component moves
+before the former parent; ordinary precedence and nested settlement apply.
+Natural same-mode continuations are preserved. Authoritative seek/restart/stop
+cuts also stop removed declared targets. Empty new programs do not invent playback;
+an old explicit program ending remains stopped unless an explicit restart wins.
+These clarify cut behavior rather than changing the Stage1 precedence contract.
+
+Configuration effects carry the retained request as their direct/nested origin,
+so `Observation::Refused` can reject the whole capture/resource family before
+publication. Ordinary autonomous OnPulse attribution is unchanged. The old
+working configuration then settles normally, including its legitimate zero
+actions. Commit swaps owners, publishes state/receipts/events and increments the
+epoch together, with no ordinary post-publication failure. The old owner remains
+retained until `take_program_change`; taking only its completion is refused.
+Cancellation, input changes and intervening topology replacement cannot publish a
+speculative candidate. A separate `Transition::Program` tag identifies the owning
+receipt/event; raw direct submission of that tag is invalid.
+
+Nine guarded tests cover scalar positions/cycles/cursors and complete ordered
+journals under partition/order/journal variations; capture refusal/retry with no
+revision gap or old-action phantom pulse; stalled clocks; Stop/seek/restart and
+speculative cancellation; empty/stopped/explicit endings; removed nested children
+and direct override; malformed/stale/busy owner returns; and128 one-sample
+intervals with all request slots occupied. Native/release and Node/Chromium each
+pass125 loop tests; workspace2104/four skips and19 scoped gates pass. Production
+E0505/E0502/E0505 proofs protect candidate moves, decision borrows and retired-owner
+borrows. Nine Miri cases are queued for the consolidated stage run, not run here.
+See `program-change-stage6{,-provenance}.json` and the
+[owning API guide](../../src/rust/shoop_loop_engine/docs/program-changes.md).
+
+This is standalone resolver support, not completed facade/host activation.
+Receiver-bank handoff/recycling, reliable runtime execution-token association,
+authoritative graph-epoch rechecks, actual capture-bank preflight and stopped
+cleanup still need adapter integration. General simultaneous graph/role-generation
+transactions, broader mixed stress and full Stage6 verification remain open.
 
 ## Running programs and settlement
 

@@ -4,6 +4,10 @@ use crate::command::Record;
 use crate::config::checked_storage;
 use crate::*;
 
+mod program_change;
+pub use program_change::ProgramChangeResult;
+use program_change::{ProgramChange, Replacement};
+
 #[cfg(test)]
 #[path = "resolver_tests.rs"]
 mod tests;
@@ -109,6 +113,8 @@ pub struct Resolver {
     request_generations: Vec<u32>,
     scratch: Scratch,
     preview: Option<Interval>,
+    preview_program_epoch: Option<Epoch>,
+    program_change: Option<ProgramChange>,
     committed: bool,
     events: Vec<Event>,
     dropped_events: u64,
@@ -198,6 +204,8 @@ impl Resolver {
             loop_generations,
             request_generations: prepared(limits.pending_requests, 1),
             preview: None,
+            preview_program_epoch: None,
+            program_change: None,
             committed: false,
             events,
             dropped_events: 0,
@@ -261,6 +269,13 @@ impl Resolver {
     }
 
     pub fn submit(&mut self, request: Request) -> Result<RequestId, Error> {
+        if request.transition == Transition::Program {
+            return Err(Error::InvalidProgram);
+        }
+        self.submit_record(request)
+    }
+
+    fn submit_record(&mut self, request: Request) -> Result<RequestId, Error> {
         if self.committed {
             return Err(Error::InvalidState);
         }
@@ -321,7 +336,12 @@ impl Resolver {
     }
 
     pub fn take_completion(&mut self, id: RequestId) -> Result<Option<Completion>, Error> {
-        if self.committed {
+        if self.committed
+            || self
+                .program_change
+                .as_ref()
+                .is_some_and(|change| change.id == id)
+        {
             return Err(Error::InvalidState);
         }
         let completion = self.completion(id)?;
@@ -366,6 +386,8 @@ impl Resolver {
         }
         Boundary {
             topology: &self.topology,
+            replacement: None,
+            replaced: None,
             scratch: &mut self.scratch,
             frame: self.frame,
             observations,
@@ -383,6 +405,7 @@ impl Resolver {
             return Err(Error::InvalidState);
         }
         self.preview = None;
+        self.preview_program_epoch = None;
         if self.frame.0 == u64::MAX {
             return Err(Error::Exhausted);
         }
@@ -462,8 +485,25 @@ impl Resolver {
         observations: &[Observation],
     ) -> Result<Interval, Error> {
         self.begin_preview(ceiling, observations)?;
+        let replacement = self.select_program(ceiling, observations)?;
+        let replaced = replacement.map(|change| {
+            self.topology
+                .program(change.target)
+                .expect("validated old program")
+        });
+        let topology = if replacement.is_some() {
+            &self
+                .program_change
+                .as_ref()
+                .expect("selected owner")
+                .candidate
+        } else {
+            &self.topology
+        };
         let mut boundary = Boundary {
-            topology: &self.topology,
+            topology,
+            replacement,
+            replaced,
             scratch: &mut self.scratch,
             frame: self.frame,
             observations,
@@ -515,6 +555,15 @@ impl Resolver {
             return Err(Error::InvalidState);
         }
         let interval = self.preview.ok_or(Error::InvalidState)?;
+        if let Some(epoch) = self.preview_program_epoch {
+            let change = self
+                .program_change
+                .as_mut()
+                .expect("selected owner retained");
+            std::mem::swap(&mut self.topology, &mut change.candidate);
+            change.activated_epoch = Some(epoch);
+            self.epoch = epoch;
+        }
         std::mem::swap(&mut self.states, &mut self.scratch.states);
         std::mem::swap(&mut self.records, &mut self.scratch.records);
         std::mem::swap(&mut self.events, &mut self.scratch.events);
@@ -628,6 +677,19 @@ impl Resolver {
                 });
             }
         }
+        if let Some(change) = &self.program_change {
+            if change.activated_epoch.is_none() {
+                let record = self.records[change.id.slot() as usize]
+                    .as_mut()
+                    .expect("retained program request");
+                if record.terminal.is_none() {
+                    record.terminal = Some(Outcome::Failed {
+                        frame: self.frame,
+                        reason: Error::InvalidState,
+                    });
+                }
+            }
+        }
         self.preview = None;
         self.epoch = next;
         Ok(std::mem::replace(&mut self.topology, candidate))
@@ -636,6 +698,8 @@ impl Resolver {
 
 struct Boundary<'a> {
     topology: &'a PreparedTopology,
+    replacement: Option<Replacement>,
+    replaced: Option<crate::program::CompiledProgram<'a>>,
     scratch: &'a mut Scratch,
     frame: Frame,
     observations: &'a [Observation],
@@ -808,9 +872,13 @@ impl Boundary<'_> {
             if record.terminal.is_none()
                 && record.effective <= self.frame
                 && record.request.timing == Timing::At
+                && record.request.transition != Transition::Program
             {
                 self.offer(record.request.target.slot() as usize, self.direct(slot));
             }
+        }
+        if let Some(change) = self.replacement {
+            self.prepare_replacement(change)?;
         }
         for component in self.topology.components() {
             for id in component.iter().copied() {
@@ -918,15 +986,27 @@ impl Boundary<'_> {
             }
             cursor.iteration = cursor.iteration.checked_add(1).ok_or(Error::Exhausted)?;
             cursor.entered_at = Some(self.frame);
-            if cursor.iteration == program.iterations {
+            let timing = self
+                .replaced
+                .filter(|old| old.source == id)
+                .unwrap_or(program);
+            if cursor.iteration == timing.iterations {
                 cursor.passes = cursor.passes.checked_add(1).ok_or(Error::Exhausted)?;
                 cursor.iteration = 0;
-                if program.kind == ProgramKind::Explicit {
+                if timing.kind == ProgramKind::Explicit {
                     state.mode = Mode::Stopped;
                     action = ProgramAction::Stop;
                     self.event(id, EventKind::ProgramEnd);
                 }
             }
+        }
+        if self.replacement.is_some_and(|change| change.target == id)
+            && program.iterations == 0
+            && state.mode == Mode::Playing
+        {
+            state.mode = Mode::Stopped;
+            cursor.iteration = 0;
+            action = ProgramAction::Stop;
         }
         if action != ProgramAction::Stop {
             self.event(
@@ -964,7 +1044,13 @@ impl Boundary<'_> {
                 let timeline = program.targets().get(index).expect("compiled target");
                 (
                     timeline.target,
-                    timeline.at(previous),
+                    self.replaced.filter(|old| old.source == id).map_or_else(
+                        || timeline.at(previous),
+                        |old| {
+                            old.target(timeline.target)
+                                .and_then(|target| target.at(previous))
+                        },
+                    ),
                     timeline.at(cursor.iteration),
                     program.nominal_unit_frames,
                     program.kind == ProgramKind::Regular,
@@ -1053,7 +1139,11 @@ impl Boundary<'_> {
                         inherited,
                     },
                     request: None,
-                    origin,
+                    origin: self
+                        .replacement
+                        .filter(|change| change.target == id)
+                        .map(|change| change.id)
+                        .or(origin),
                 },
             );
         }
@@ -1195,9 +1285,9 @@ fn playback_discontinuity(before: State, after: State, operation: Transition) ->
 
 fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
     match operation {
-        Transition::PlayIteration { .. } | Transition::SeekIteration { .. } => {
-            Err(Error::InvalidState)
-        }
+        Transition::Program
+        | Transition::PlayIteration { .. }
+        | Transition::SeekIteration { .. } => Err(Error::InvalidState),
         Transition::Stop => {
             if state.mode == Mode::Recording {
                 state.content_length = state.capture_frames;

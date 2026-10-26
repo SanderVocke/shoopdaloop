@@ -10,6 +10,9 @@ pub enum Timing {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Transition {
+    /// Receipt/journal tag for an owning `Resolver::stage_program` transaction.
+    /// Direct submission without its prepared owner is invalid.
+    Program,
     PlayIteration {
         iteration: u64,
         retrigger: bool,

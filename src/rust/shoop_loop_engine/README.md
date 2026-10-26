@@ -19,7 +19,8 @@ outcomes, coherent state/export and explicit cleanup. Run the public
 `coordinated_loop` example for stereo/MIDI record→play, wraps, seek, replacement,
 export and teardown. Its new integration validation is tracked separately from
 completed foundation evidence. General live topology/graph/role replacement,
-changed-running programs, independent loop hosts and later acceptance remain pending.
+facade integration of changed-running programs, independent loop hosts and later
+acceptance remain pending.
 
 Compiled topology now uses [flat metadata and borrowed views](docs/topology.md),
 with checked linear byte accounting and canonical sparse lookup. Program/target
@@ -50,16 +51,19 @@ component terminates by visiting each seeded member once, not by a wave quota.
 
 `replace_topology` checks the expected epoch and generation high-water marks,
 revalidates pending requests, and returns the displaced owner. Removed loops
-must already be stopped. Changed running programs are safely refused here;
-staging their replacement until iteration zero remains an integration milestone.
-Dispose returned/rejected topologies off-render.
+must already be stopped. Changed running programs are safely refused by that
+immediate replacement API. The standalone [`stage_program`](docs/program-changes.md)
+path retains one prepared program candidate, selects a zero/stopped cut, preflights
+without publication, and swaps owners only on commit. It preserves logical
+identities, sync/trigger metadata and other programs. Facade integration and general
+graph/role transactions remain pending. Dispose returned/rejected owners off-render.
 
 [`probe_program_boundary`](docs/program-boundaries.md) inspects a composite's
 unpublished control/clock cut before its old child actions are emitted. It reuses
 normal arbitration and cursor advancement without publishing state/receipts or
 creating a committable interval. Its zero-entry predicate distinguishes an actual
 entry from a cursor stalled at zero. This is not candidate activation authority;
-transactional running-program replacement remains pending.
+the separate owning transaction must recheck and publish its own candidate.
 
 Composites execute sequential/parallel/delayed/repeated prepared entries and
 finite nesting. Regular programs repeat; explicit-mode programs execute one

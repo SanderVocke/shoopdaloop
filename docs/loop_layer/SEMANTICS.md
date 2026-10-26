@@ -114,6 +114,22 @@ A prepared program has stable target identities, a positive nominal sync-unit fr
 - Start/seek establishes an authoritative desired-state snapshot for the program's declared targets: stop no-longer-desired descendants, then apply selected target states through ordinary arbitration. Seeking to iteration k uses prepared lookup information, not replay from iteration zero. `PlayIteration` starts/retriggers at a selected iteration; `SeekIteration` requires Playing and retains the pass count unless retriggering. A non-retriggering seek repositions already-playing descendants without manufacturing clock edges; descendants newly entering playback/recording retain their normal start edge. Playback offsets are derived from the selected occurrence's elapsed nominal units modulo nonzero child length. Seeking into a recording occurrence starts a new explicitly prepared capture at the seek frame; it does not fabricate historical samples. If no reservation is ready, reject the seek atomically.
 - Stopped/pending program replacement may activate at the requested boundary. A running program stages a replacement for its next iteration-zero boundary; explicitly stop/seek/restart if another cut is desired. Recheck target generations before activation. Preserve defined contiguous child continuations; never address a replacement object through an old slot generation.
 
+The standalone owning `stage_program` path now implements this cut for one changed
+program with fixed identities/sync/triggers/other programs. Configuration selection
+precedes the real musical preview, using the old unpublished cut without emitting
+its zero actions. A higher-sequence Stop cancels an older pending configuration
+request; a newer configuration may install at the stopped cut. A same-frame
+seek/restart to zero can select the candidate, while ordinary musical arbitration
+still determines the final state. An explicit one-pass program reaching its end
+remains stopped after installation unless a winning explicit restart says otherwise;
+installation itself is not another Play. Removed active targets stop through normal
+arbitration, and authoritative seek/restart/stop cuts also stop removed declared
+targets. Candidate direct/nested actions carry the configuration request origin for
+atomic family preflight refusal; autonomous OnPulse actions retain their usual
+attribution. The `Transition::Program` receipt/journal tag is not directly submittable
+without its owner. See the [owning program guide](../../src/rust/shoop_loop_engine/docs/program-changes.md).
+Actual facade capture/graph/receiver integration remains separate Stage6 work.
+
 ## Media behavior
 
 ### Audio
