@@ -1648,3 +1648,77 @@ Stage6 Miri remain open, as do independent loop hosts and final delivery.
 Documentation corrections are actionable notes in
 `src/rust/rt_runtime/docs-changes-loop-layer/loop-facade-live-graphs.md`, not in-place
 rewrites. Full prior-stage backfill and the separate worker's final pass remain due.
+
+## Stage 6 — Media-owner generation publication prerequisite
+
+Based on `229e1a13`. Evidence:
+[`owner-activation-stage6.json`](evidence/owner-activation-stage6.json),
+[`owner-activation-stage6-provenance.json`](evidence/owner-activation-stage6-provenance.json),
+logs `target/loop-layer-owner-activation-stage6/`. The new
+`media/activation.rs` implements bounded `OwnerChange` batches and an exclusive
+`OwnerActivation` borrowing ledger, resource access and owning input descriptors.
+
+Preflight checks every expected owner, unique slot, strictly newer generation,
+old-role source, initial mixed-media shape/index/lease and duplicate input lease.
+Free metadata must already cover all new initial media; possible old retirement
+credits are deliberately not counted. Failed/unused permits preserve all owners,
+inputs and committed generation watermarks. Consuming commit releases old internal
+roles, binds new owners and transfers initial leases to ready media with resident
+and playback references. It cannot ordinarily fail after other domain publication.
+The permit does not stop loops, clean MIDI, change resolver state or claim groups.
+Those integration obligations remain explicitly pending.
+
+Old residency, pending pins, exports and unpublished reservations remain owned.
+Their descriptions, cuts and bytes are not relabelled to the new generation.
+Last references release each source once through existing bounded reclamation;
+quiescent cleanup still recovers lost resident/reservation handles.
+
+Three new guarded tests verify:
+
+- Atomic mixed-media replacement of two owners with all external export/pin credits
+  occupied, old playback/latest removal, retained old audio/MIDI/cuts, unpublished
+  reservation retention, exact new initial selection, unused-permit retry and full
+  resource/reference recovery.
+- Later-input failure, old/new generation/slot mismatch, duplicate edits and duplicate
+  cross-input leases; rejected inputs remain intact. Conservative free-metadata refusal
+  is tested even when retiring the old role could subsequently free space.
+- Independent512-edit reference model, seed0x38d1_e45f_0bc2_9a67: eight action classes
+  exactly64 times, more than64 successful owner publications, expected references and
+  free media/export/pin credits after every action, complete retained audio/MIDI checks,
+  genuine u32::MAX logical-generation exhaustion, empty-batch and explicit cleanup.
+
+The new production prototype executes positively and fails compilation as expected
+for held-ledger access (E0502), resource mutation (E0499), input inspection (E0502),
+owning input extraction (E0505) and forged private fields (E0451). Together with
+refreshed prior prototypes this is8 positive executions and23 expected refusals.
+The first proof runner omitted the prototype's second explicit crate dependency;
+E0432/E0433 logs and the failed runner remain under `proof-first/`. Supplying both
+actual crate dependencies fixes the runner, without changing the prototype or
+relaxing its assertions. The exact native private-test mirror remains a native
+selection check, not interpreter evidence.
+
+| Gate | Result |
+| --- | --- |
+| Loop native debug/release |140 passed each |
+| Loop Node/Chromium package execution |140 passed each; no ignored tests |
+| Workspace nextest0.9.116 |2128 passed; four unchanged skips |
+| Scoped format/build/rustdoc/examples/policies/dependency/portability gates |19 passed |
+| Lifetime/authority prototypes |8 executed positives;23 expected refusals |
+| Miri supervisor/selection helpers |14 passed; no interpreter invocation |
+| Source provenance |111 recorded Rust inputs;108 unchanged preceding inputs |
+
+The19 gates total248.43s of warm command wall time, excluding prototypes/exact native
+mirror and failed proof invocation. Standalone generic-runtime/host execution was
+not refreshed by this scoped batch; workspace regressions are fresh. Concurrent
+untracked documentation examples remain separately identified and outside this
+implementation commit/source-freshness scope. Production remains safe Rust and
+heap/destructor guards remain enabled. Tracing inventory adds one portable ownership
+module without importing application tracing.
+
+Three new selected executions bring the inventory to215=128runtime+87loop, registered
+for consolidated Stage6 Miri, not interpreted. Historical171/178 remains partial.
+General facade generation/role/input/MIDI/capture integration, broader mixed stress,
+complete Stage6 verification and later host/delivery requirements remain open.
+The reviewed media-guide corrections and exact ownership/capacity/lifetime facts are
+in `docs-changes-loop-layer/loop-media-owner-activation.md`; authored guides remain
+unchanged for the separate documentation worker.

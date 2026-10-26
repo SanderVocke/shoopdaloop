@@ -84,7 +84,7 @@ def selected_cases(package=None):
     cases.append(("shoop_loop_engine", "program_changes", [], 10, 0))
     cases.append(("shoop_loop_engine", "topology_staging", [], 7, 0))
     cases.append(("shoop_loop_engine", "runtime_topology", [], 17, 0))
-    cases.append(("shoop_loop_engine", "media", [], 4, 0))
+    cases.append(("shoop_loop_engine", "media", [], 7, 0))
     cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "midi_restore", [], 4, 0))

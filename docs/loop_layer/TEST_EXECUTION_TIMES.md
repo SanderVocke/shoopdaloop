@@ -271,6 +271,20 @@ separation from historical generic evidence. Six new cases raise the registered
 Miri inventory to212, not the interpreted count. These are warm measurements,
 not deadline guarantees, cold-cache timing or CI margin.
 
+## Media-owner activation prerequisite observation
+
+The19 scoped gates in `owner-activation-stage6.json` total **248.43 seconds** on
+the warm local Linux/Nix host: loop native debug4.70s/release7.29s, Node94.48s,
+Chromium94.56s and workspace nextest39.22s. The14 helper tests took1.07s.
+All140 loop tests pass per native/Wasm profile and2128 workspace tests pass with
+four existing skips. Eight positive/23 negative proofs and the exact native mirror
+are separate from the gate sum. The first proof runner omitted the second explicit
+crate dependency; its failed log/runner remain archived, not counted as passing.
+
+Three new Miri cases are registered (inventory215), not interpreted. Standalone
+runtime/host reruns are not included. These measurements do not imply deadlines,
+cold-cache timing, CI headroom or actual loop-worklet acceptance.
+
 ## Implications to consider when designing the strategy
 
 1. Focused native tests and cheap policies provide fast iteration feedback.

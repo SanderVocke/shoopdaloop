@@ -11,6 +11,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[path = "media_tests.rs"]
 mod tests;
 
+mod activation;
+pub use activation::{OwnerActivation, OwnerChange};
+
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 macro_rules! key {
     ($name:ident) => {

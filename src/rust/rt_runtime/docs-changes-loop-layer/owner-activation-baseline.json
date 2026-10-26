@@ -1,0 +1,18 @@
+{
+  "implementation_parent": "229e1a13169409dc2b786a66b2f84deb50f1322e",
+  "scope": "Media-ledger owner-generation publication prerequisite. No authored destination edits or claim of completed facade generation integration.",
+  "reviewed_destinations": {
+    "src/rust/shoop_loop_engine/docs/media.md": {
+      "sha256": "ad3ae5a1d3a91825798fadf229dc1b92aea4f378c02171ef39d1da0b0351156d",
+      "status": "Read completely; corrections/additions in loop-media-owner-activation.md."
+    }
+  },
+  "implementation_inputs": {
+    "src/rust/shoop_loop_engine/src/media.rs": "dad40db286f55edbee3d5ea62d6612271748974899fb34b0244f8388982388c9",
+    "src/rust/shoop_loop_engine/src/media/activation.rs": "7d86bf9e6df87a1a55ace87f43849bbfd2930f514b6da2a4f9f861ef17a436f8",
+    "src/rust/shoop_loop_engine/tests/media.rs": "7e04e97ce0141eb90baf3ea6045861e0a9d7404593e80ec7b746dbee0799a34e",
+    "docs/loop_layer/prototypes/media_owner_activation_lifetime.rs": "e2f5e8cf91e2b8962e93dafa34a1be61f66c7cffa2a6fe3aa65f2ccaee7664c5"
+  },
+  "other_destinations": "README/runtime and architecture cross-references remain part of the full earlier-stage handoff review.",
+  "acceptance": "Full handoff backfill, separate documentation-worker publication and final verification remain pending."
+}

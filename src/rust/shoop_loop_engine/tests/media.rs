@@ -163,6 +163,540 @@ fn cleanup(store: &mut ResourceStore, ids: &[ResourceId]) {
 }
 
 #[shoop_test]
+fn owner_batch_activation_preserves_old_exports_pins_and_unpublished_reservations() {
+    let mut store = store();
+    let a = pair(&mut store, 1.);
+    let b = pair(&mut store, 20.);
+    let c = pair(&mut store, 100.);
+    let other = LoopId::from_parts(1, 4).unwrap();
+    let next = LoopId::from_parts(1, 5).unwrap();
+    let mut ledger = Ledger::prepare(2, 5, 2, 2).unwrap();
+    ledger.bind(owner(1)).unwrap();
+    ledger.bind(other).unwrap();
+    assert_no_heap(|| {
+        let ia = input(&mut store, a, owner(1), 0, Frame(0));
+        let ma = ledger.adopt(&mut store.io(), ia).unwrap();
+        let ib = input(&mut store, b, other, 0, Frame(0));
+        let mb = ledger.adopt(&mut store.io(), ib).unwrap();
+        ledger
+            .set_playback(&mut store.io(), owner(1), Some(ma))
+            .unwrap();
+        ledger
+            .set_latest(&mut store.io(), owner(1), Some(ma))
+            .unwrap();
+        ledger
+            .set_playback(&mut store.io(), other, Some(mb))
+            .unwrap();
+        let exports = [
+            ledger.export(ma, Frame(9)).unwrap(),
+            ledger.export(mb, Frame(10)).unwrap(),
+        ];
+        let pins = [ledger.pin(ma).unwrap(), ledger.pin(mb).unwrap()];
+        ledger.retire(&mut store.io(), ma).unwrap();
+        ledger.retire(&mut store.io(), mb).unwrap();
+        let reservation = ledger
+            .reserve(Description {
+                frames: 0,
+                revision: Revision(7),
+                ..ledger.view(ma).unwrap().description
+            })
+            .unwrap();
+        let mut changes = [
+            OwnerChange::replace(Some(owner(1)), input(&mut store, c, owner(2), 0, Frame(20))),
+            OwnerChange::replace(Some(other), input(&mut store, c, next, 0, Frame(20))),
+        ];
+        let before = ledger.usage();
+        let resources = store.usage();
+        {
+            let mut io = store.io();
+            let _permit = ledger
+                .prepare_owner_activation(&mut io, &mut changes)
+                .unwrap();
+        }
+        assert_eq!(ledger.usage(), before);
+        assert_eq!(store.usage(), resources);
+        assert_eq!(ledger.playback(owner(1)), Ok(Some(ma)));
+        assert_eq!(ledger.playback(other), Ok(Some(mb)));
+        assert!(changes
+            .iter()
+            .all(|c| !c.is_applied() && c.input().is_some() && c.published().is_none()));
+        ledger
+            .prepare_owner_activation(&mut store.io(), &mut changes)
+            .unwrap()
+            .commit();
+        assert!(changes
+            .iter()
+            .all(|c| c.is_applied() && c.input().is_none()));
+        assert_eq!(ledger.usage().references, before.references + 1);
+        assert_eq!(ledger.usage().free_media, 0);
+        assert_eq!(store.usage(), resources);
+        for (i, new) in [owner(2), next].into_iter().enumerate() {
+            let media = changes[i].published().unwrap();
+            assert_eq!(ledger.playback(new), Ok(Some(media)));
+            assert_eq!(ledger.latest(new), Ok(None));
+            let view = ledger.view(media).unwrap();
+            assert_eq!(view.description.owner, new);
+            verify(&mut store, view, 100.);
+            assert_eq!(
+                ledger.set_playback(&mut store.io(), new, Some(ma)),
+                Err(Error::InvalidId)
+            );
+        }
+        for (i, (media, old, base)) in [(ma, owner(1), 1.), (mb, other, 20.)]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(ledger.playback(old), Err(Error::InvalidId));
+            let export = ledger.exported(exports[i]).unwrap();
+            assert_eq!(
+                (
+                    export.media,
+                    export.view.description.owner,
+                    export.requested_cut
+                ),
+                (media, old, Frame(9 + i as u64))
+            );
+            verify(&mut store, export.view, base);
+            assert_eq!(ledger.pinned(pins[i]), Ok(media));
+            ledger.release_export(&mut store.io(), exports[i]).unwrap();
+            verify(&mut store, ledger.view(media).unwrap(), base);
+            ledger.release_pin(&mut store.io(), pins[i]).unwrap();
+            assert_eq!(ledger.view(media), Err(Error::InvalidId));
+        }
+        assert_eq!(ledger.view(reservation), Err(Error::InvalidState));
+        ledger.retire(&mut store.io(), reservation).unwrap();
+        for change in &changes {
+            ledger
+                .retire(&mut store.io(), change.published().unwrap())
+                .unwrap();
+        }
+        let mut remove = [OwnerChange::remove(owner(2)), OwnerChange::remove(next)];
+        ledger
+            .prepare_owner_activation(&mut store.io(), &mut remove)
+            .unwrap()
+            .commit();
+        assert!(remove.iter().all(OwnerChange::is_applied));
+        assert_eq!(
+            ledger.usage(),
+            Usage {
+                free_media: 5,
+                free_exports: 2,
+                free_pins: 2,
+                references: 0
+            }
+        );
+        assert_eq!(store.usage().free_snapshots, 16);
+        assert_eq!(
+            ledger
+                .prepare_owner_activation(&mut store.io(), &mut remove)
+                .err(),
+            Some(Error::InvalidState)
+        );
+        ledger.release_all(&mut store.io()).unwrap();
+    });
+    cleanup(&mut store, &[a[0], a[1], b[0], b[1], c[0], c[1]]);
+}
+#[shoop_test]
+fn owner_batch_refusals_preserve_every_input_and_do_not_reserve_generation_or_capacity() {
+    let mut store = store();
+    let a = pair(&mut store, 1.);
+    let b = pair(&mut store, 20.);
+    let mut ledger = Ledger::prepare(2, 3, 0, 0).unwrap();
+    ledger.bind(owner(1)).unwrap();
+    let other = LoopId::from_parts(1, 1).unwrap();
+    ledger.bind(other).unwrap();
+    assert_no_heap(|| {
+        let initial = input(&mut store, a, owner(1), 0, Frame(0));
+        let media = ledger.adopt(&mut store.io(), initial).unwrap();
+        ledger
+            .set_playback(&mut store.io(), owner(1), Some(media))
+            .unwrap();
+        let before = ledger.usage();
+        for case in 0..7 {
+            let mut first = input(&mut store, b, owner(2), 0, Frame(4));
+            let mut second = input(
+                &mut store,
+                b,
+                LoopId::from_parts(1, 2).unwrap(),
+                0,
+                Frame(4),
+            );
+            let mut previous = Some(owner(1));
+            let mut second_previous = Some(other);
+            match case {
+                0 => second.description.frames = 3,
+                1 => first.description.owner = owner(1),
+                2 => previous = Some(owner(99)),
+                3 => {
+                    second.description.owner = owner(3);
+                    second_previous = Some(owner(1));
+                }
+                4 => first.description.owner = LoopId::from_parts(2, 2).unwrap(),
+                5 => previous = None,
+                6 => {
+                    release_input(&mut store, second);
+                    second = copy(View {
+                        description: Description {
+                            owner: LoopId::from_parts(1, 2).unwrap(),
+                            ..first.description
+                        },
+                        audio: first.audio,
+                        midi: first.midi,
+                    });
+                }
+                _ => unreachable!(),
+            }
+            let mut changes = [
+                OwnerChange::replace(previous, first),
+                OwnerChange::replace(second_previous, second),
+            ];
+            let resource_before = store.usage();
+            let expected = match case {
+                0 | 4 => Error::InvalidShape,
+                6 => Error::InvalidState,
+                _ => Error::InvalidId,
+            };
+            assert_eq!(
+                ledger
+                    .prepare_owner_activation(&mut store.io(), &mut changes)
+                    .err(),
+                Some(expected)
+            );
+            assert_eq!(ledger.usage(), before);
+            assert_eq!(store.usage(), resource_before);
+            assert_eq!(ledger.playback(owner(1)), Ok(Some(media)));
+            assert!(changes
+                .iter()
+                .all(|c| !c.is_applied() && c.input().is_some()));
+            for (i, change) in changes.into_iter().enumerate() {
+                let input = change.into_input().unwrap();
+                if case != 6 || i == 0 {
+                    release_input(&mut store, input);
+                }
+            }
+        }
+        let mut valid = [OwnerChange::replace(
+            Some(owner(1)),
+            input(&mut store, b, owner(2), 0, Frame(8)),
+        )];
+        {
+            let mut io = store.io();
+            let _permit = ledger
+                .prepare_owner_activation(&mut io, &mut valid)
+                .unwrap();
+        }
+        ledger
+            .prepare_owner_activation(&mut store.io(), &mut valid)
+            .unwrap()
+            .commit();
+        assert_eq!(
+            ledger
+                .view(valid[0].published().unwrap())
+                .unwrap()
+                .description
+                .owner,
+            owner(2)
+        );
+        ledger.release_all(&mut store.io()).unwrap();
+    });
+    let mut tight = Ledger::prepare(1, 1, 0, 0).unwrap();
+    tight.bind(owner(1)).unwrap();
+    assert_no_heap(|| {
+        let old = input(&mut store, a, owner(1), 0, Frame(0));
+        let media = tight.adopt(&mut store.io(), old).unwrap();
+        tight
+            .set_playback(&mut store.io(), owner(1), Some(media))
+            .unwrap();
+        tight.retire(&mut store.io(), media).unwrap();
+        let mut changes = [OwnerChange::replace(
+            Some(owner(1)),
+            input(&mut store, b, owner(2), 0, Frame(4)),
+        )];
+        let before = tight.usage();
+        assert_eq!(
+            tight
+                .prepare_owner_activation(&mut store.io(), &mut changes)
+                .err(),
+            Some(Error::Capacity)
+        );
+        assert_eq!(tight.usage(), before);
+        verify(&mut store, tight.view(media).unwrap(), 1.);
+        release_input(
+            &mut store,
+            changes.into_iter().next().unwrap().into_input().unwrap(),
+        );
+        tight.release_all(&mut store.io()).unwrap();
+    });
+    cleanup(&mut store, &[a[0], a[1], b[0], b[1]]);
+}
+
+#[shoop_test]
+fn seeded_owner_activation_model_checks_references_generations_and_retained_media_after_every_edit()
+{
+    #[derive(Clone, Copy)]
+    struct Held {
+        media: MediaId,
+        owner: LoopId,
+        base: f32,
+    }
+    let mut store = store();
+    let a = pair(&mut store, 1.);
+    let b = pair(&mut store, 20.);
+    let mut ledger = Ledger::prepare(2, 6, 2, 2).unwrap();
+    let mut current: [Option<Held>; 2] = [None; 2];
+    let mut exports: [Option<(ExportId, Held, Frame)>; 2] = [None; 2];
+    let mut pins: [Option<(PinId, Held)>; 2] = [None; 2];
+    let mut generations = [0u32; 2];
+    let mut counts = [0usize; 8];
+    let mut applied = 0;
+    let mut random = 0x38d1_e45f_0bc2_9a67u64;
+    assert_no_heap(|| {
+        for step in 0..512 {
+            random ^= random << 13;
+            random ^= random >> 7;
+            random ^= random << 17;
+            let slot = (random & 1) as usize;
+            let holding = ((random >> 8) & 1) as usize;
+            let action = step % 8;
+            counts[action] += 1;
+            match action {
+                0..=4 => {
+                    let invalid = action == 4;
+                    let generation = if invalid {
+                        generations[slot].max(1)
+                    } else {
+                        generations[slot] + 1
+                    };
+                    let who = LoopId::from_parts(slot as u32, generation).unwrap();
+                    let previous = if invalid && generations[slot] == 0 {
+                        Some(who)
+                    } else {
+                        current[slot].map(|m| m.owner)
+                    };
+                    let (ids, base) = if random & 4 == 0 { (a, 1.) } else { (b, 20.) };
+                    let data = input(&mut store, ids, who, 0, Frame(step as u64));
+                    let mut changes = [OwnerChange::replace(previous, data)];
+                    let capacity = ledger.usage().free_media > 0;
+                    let result = ledger
+                        .prepare_owner_activation(&mut store.io(), &mut changes)
+                        .map(|permit| {
+                            if action != 3 {
+                                permit.commit();
+                            }
+                        });
+                    if !capacity {
+                        assert_eq!(result, Err(Error::Capacity));
+                    } else if invalid {
+                        assert_eq!(result, Err(Error::InvalidId));
+                    } else {
+                        assert_eq!(result, Ok(()));
+                    }
+                    let change = changes.into_iter().next().unwrap();
+                    if capacity && !invalid && action != 3 {
+                        applied += 1;
+                        assert!(change.is_applied());
+                        let media = change.published().unwrap();
+                        assert!(change.input().is_none());
+                        current[slot] = Some(Held {
+                            media,
+                            owner: who,
+                            base,
+                        });
+                        generations[slot] = generation;
+                        ledger.retire(&mut store.io(), media).unwrap();
+                    } else {
+                        assert!(!change.is_applied());
+                        assert_eq!(change.published(), None);
+                        release_input(&mut store, change.into_input().unwrap());
+                    }
+                }
+                5 => {
+                    let who = current[slot].map(|m| m.owner).unwrap_or_else(|| {
+                        LoopId::from_parts(slot as u32, generations[slot].max(1)).unwrap()
+                    });
+                    let mut changes = [OwnerChange::remove(who)];
+                    let result = ledger
+                        .prepare_owner_activation(&mut store.io(), &mut changes)
+                        .map(|p| p.commit());
+                    if current[slot].is_some() {
+                        assert_eq!(result, Ok(()));
+                        assert!(changes[0].is_applied());
+                        current[slot] = None;
+                    } else {
+                        assert_eq!(result, Err(Error::InvalidId));
+                    }
+                }
+                6 => {
+                    if let Some((id, _, _)) = exports[holding].take() {
+                        ledger.release_export(&mut store.io(), id).unwrap();
+                        assert_eq!(
+                            ledger.release_export(&mut store.io(), id),
+                            Err(Error::InvalidId)
+                        );
+                    }
+                    if let Some(media) = current[slot].or(current[1 - slot]) {
+                        let cut = Frame(step as u64);
+                        exports[holding] =
+                            Some((ledger.export(media.media, cut).unwrap(), media, cut));
+                    }
+                }
+                7 => {
+                    if let Some((id, _)) = pins[holding].take() {
+                        ledger.release_pin(&mut store.io(), id).unwrap();
+                        assert_eq!(
+                            ledger.release_pin(&mut store.io(), id),
+                            Err(Error::InvalidId)
+                        );
+                    }
+                    if let Some(media) = current[slot].or(current[1 - slot]) {
+                        pins[holding] = Some((ledger.pin(media.media).unwrap(), media));
+                    }
+                }
+                _ => unreachable!(),
+            }
+            let mut unique = [None; 6];
+            let mut used = 0;
+            let mut references = 0;
+            for held in current
+                .into_iter()
+                .flatten()
+                .chain(exports.into_iter().flatten().map(|(_, m, _)| m))
+                .chain(pins.into_iter().flatten().map(|(_, m)| m))
+            {
+                references += 1;
+                if !unique[..used].contains(&Some(held.media)) {
+                    unique[used] = Some(held.media);
+                    used += 1;
+                }
+                let view = ledger.view(held.media).unwrap();
+                assert_eq!(
+                    view.description,
+                    Description {
+                        owner: held.owner,
+                        revision: Revision(0),
+                        frames: 4,
+                        channels: 2,
+                        midi: true
+                    }
+                );
+                if step % 16 == 0 {
+                    verify(&mut store, view, held.base);
+                }
+            }
+            for (slot, media) in current.iter().enumerate() {
+                if let Some(media) = media {
+                    assert_eq!(ledger.playback(media.owner), Ok(Some(media.media)));
+                    assert_eq!(ledger.latest(media.owner), Ok(None));
+                } else if generations[slot] > 0 {
+                    assert_eq!(
+                        ledger
+                            .playback(LoopId::from_parts(slot as u32, generations[slot]).unwrap()),
+                        Err(Error::InvalidId)
+                    );
+                }
+            }
+            for (id, media, cut) in exports.into_iter().flatten() {
+                let export = ledger.exported(id).unwrap();
+                assert_eq!(
+                    (
+                        export.media,
+                        export.view.description.owner,
+                        export.requested_cut
+                    ),
+                    (media.media, media.owner, cut)
+                );
+            }
+            for (id, media) in pins.into_iter().flatten() {
+                assert_eq!(ledger.pinned(id), Ok(media.media));
+            }
+            assert_eq!(
+                ledger.usage(),
+                Usage {
+                    free_media: 6 - used,
+                    free_exports: 2 - exports.iter().flatten().count(),
+                    free_pins: 2 - pins.iter().flatten().count(),
+                    references
+                }
+            );
+        }
+        assert_eq!(counts, [64; 8]);
+        assert!(applied > 64);
+        ledger.release_all(&mut store.io()).unwrap();
+        assert_eq!(ledger.usage().references, 0);
+        let maximal = LoopId::from_parts(0, u32::MAX).unwrap();
+        let make = || {
+            OwnerChange::replace(
+                None,
+                Input {
+                    description: Description {
+                        owner: maximal,
+                        revision: Revision(0),
+                        frames: 0,
+                        channels: 0,
+                        midi: false,
+                    },
+                    audio: None,
+                    midi: None,
+                },
+            )
+        };
+        let mut changes = [make()];
+        {
+            let mut io = store.io();
+            let _permit = ledger
+                .prepare_owner_activation(&mut io, &mut changes)
+                .unwrap();
+        }
+        ledger
+            .prepare_owner_activation(&mut store.io(), &mut changes)
+            .unwrap()
+            .commit();
+        assert_eq!(
+            ledger
+                .prepare_owner_activation(&mut store.io(), &mut changes)
+                .err(),
+            Some(Error::InvalidState)
+        );
+        ledger
+            .retire(&mut store.io(), changes[0].published().unwrap())
+            .unwrap();
+        let mut remove = [OwnerChange::remove(maximal)];
+        ledger
+            .prepare_owner_activation(&mut store.io(), &mut remove)
+            .unwrap()
+            .commit();
+        let mut stale = [make()];
+        assert_eq!(
+            ledger
+                .prepare_owner_activation(&mut store.io(), &mut stale)
+                .err(),
+            Some(Error::InvalidId)
+        );
+        assert_eq!(ledger.bind(maximal), Err(Error::InvalidId));
+        ledger
+            .bind(LoopId::from_parts(1, generations[1] + 1).unwrap())
+            .unwrap();
+        let before = ledger.usage();
+        ledger
+            .prepare_owner_activation(&mut store.io(), &mut [])
+            .unwrap()
+            .commit();
+        assert_eq!(ledger.usage(), before);
+        ledger.release_all(&mut store.io()).unwrap();
+        assert_eq!(
+            ledger.usage(),
+            Usage {
+                free_media: 6,
+                free_exports: 2,
+                free_pins: 2,
+                references: 0
+            }
+        );
+    });
+    cleanup(&mut store, &[a[0], a[1], b[0], b[1]]);
+}
+
+#[shoop_test]
 fn mixed_media_roles_and_saturated_exports_share_leases_and_recover_exactly_once() {
     let mut store = store();
     let a = pair(&mut store, 1.);

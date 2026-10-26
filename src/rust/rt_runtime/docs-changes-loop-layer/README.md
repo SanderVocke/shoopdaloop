@@ -25,8 +25,14 @@ verification is in `docs/loop_layer/evidence/live-graph-stage6{,-provenance}.jso
 It supersedes the earlier claim that the loop Controller cannot change routes,
 not the still-pending general role-generation/media transaction requirement.
 
+The [media-owner activation prerequisite](loop-media-owner-activation.md), based
+on `229e1a13`, adds borrowed whole-batch owner/initial-media publication while
+retaining old exports and pins. `owner-activation-baseline.json` records its reviewed
+media guide and source inputs. General facade generation integration is still pending.
+
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
-recovery prerequisite, fixed-role facade integration and their cross-cutting effects. Full review/backfill of prior
+recovery prerequisite, fixed-role facade integration, media-owner publication and
+their cross-cutting effects. Full review/backfill of prior
 loop-layer stages remains explicit below. Do not infer that empty chapters need no
 changes, that existing archived prose is authoritative, or that notes have already
 been applied. No fresh Miri, completed Stage 6, loop AudioWorklet, final CI or review
