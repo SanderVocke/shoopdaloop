@@ -74,6 +74,20 @@ impl CaptureBoundaryIo<'_> {
         self.store
             .freeze_capture_take(id, frame, incomplete, output)
     }
+    /// Reserve an unpublished take's first interval before activation.
+    pub fn reserve_prepared(
+        &mut self,
+        id: CaptureTakeId,
+        frame: Frame,
+        frames: usize,
+    ) -> Result<CaptureIntervalId, Error> {
+        self.check_frame(frame)?;
+        if frame.checked_add(frames)? > self.ceiling {
+            return Err(Error::InvalidFrame);
+        }
+        self.store
+            .reserve_prepared_capture_interval(id, frame, frames)
+    }
     pub fn reserve(
         &mut self,
         id: CaptureTakeId,

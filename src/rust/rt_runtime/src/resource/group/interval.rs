@@ -34,7 +34,10 @@ impl ResourceStore {
         if group.interval_sequence != interval.sequence {
             return Err(Error::InvalidId);
         }
-        if group.phase != CapturePhase::Reserved {
+        if !matches!(
+            group.phase,
+            CapturePhase::Reserved | CapturePhase::PreparedReserved
+        ) {
             return Err(Error::InvalidState);
         }
         Ok(group)
@@ -45,6 +48,9 @@ impl ResourceStore {
         ordinal: usize,
     ) -> Result<(CaptureGroupInfo, Member), Error> {
         let group = self.capture_interval_info(interval)?;
+        if group.phase != CapturePhase::Reserved {
+            return Err(Error::InvalidState);
+        }
         if ordinal >= group.members {
             return Err(Error::InvalidOffset);
         }
@@ -64,21 +70,46 @@ impl ResourceStore {
             Format::Midi => member.staging_bytes,
         }
     }
+    /// Reserve the first interval without replacing active resource versions.
+    /// Staging and commit remain unavailable until activation at `at`.
+    pub fn reserve_prepared_capture_interval(
+        &mut self,
+        take: CaptureTakeId,
+        at: Frame,
+        frames: usize,
+    ) -> Result<CaptureIntervalId, Error> {
+        self.reserve_capture_interval_with(take, at, frames, true)
+    }
     pub fn reserve_capture_interval(
         &mut self,
         take: CaptureTakeId,
         at: Frame,
         frames: usize,
     ) -> Result<CaptureIntervalId, Error> {
+        self.reserve_capture_interval_with(take, at, frames, false)
+    }
+    fn reserve_capture_interval_with(
+        &mut self,
+        take: CaptureTakeId,
+        at: Frame,
+        frames: usize,
+        prepared: bool,
+    ) -> Result<CaptureIntervalId, Error> {
         self.note_operation(WorkClass::Render);
         let mut group = self.capture_take_info(take)?;
-        if group.phase != CapturePhase::Recording {
+        if group.phase
+            != if prepared {
+                CapturePhase::Prepared
+            } else {
+                CapturePhase::Recording
+            }
+        {
             return Err(Error::InvalidState);
         }
         if frames == 0 || frames > self.config.limits().max_frames {
             return Err(Error::InvalidShape);
         }
-        if group.next_frame != Some(at) {
+        if !prepared && group.next_frame != Some(at) {
             return Err(Error::InvalidFrame);
         }
         at.checked_add(frames)?;
@@ -92,13 +123,23 @@ impl ResourceStore {
             let id = member.take.ok_or(Error::InvalidState)?;
             let version = get(&self.versions, id.slot, id.generation)?;
             let resource = self.check_writer(member.spec.resource, Some(take.group))?;
-            if resource.active != Some(id)
-                || version.state != State::Capturing
-                || version.capture.ok_or(Error::InvalidState)?.next_frame != at
-            {
-                return Err(Error::InvalidState);
+            if prepared {
+                if version.state != State::PreparedCapture {
+                    return Err(Error::InvalidState);
+                }
+                if resource.revision != version.expected_revision {
+                    return Err(Error::StaleRevision);
+                }
+                version.revision.checked_next()?.checked_next()?;
+            } else {
+                if resource.active != Some(id)
+                    || version.state != State::Capturing
+                    || version.capture.ok_or(Error::InvalidState)?.next_frame != at
+                {
+                    return Err(Error::InvalidState);
+                }
+                version.revision.checked_next()?;
             }
-            version.revision.checked_next()?;
             version
                 .description
                 .frames
@@ -126,14 +167,26 @@ impl ResourceStore {
                 pages: self
                     .append_pages(version.written, self.interval_bound(member, frames))
                     .expect("validated append size"),
-                revision: version.revision,
+                revision: if prepared {
+                    version
+                        .revision
+                        .checked_next()
+                        .expect("reserved activation revision")
+                } else {
+                    version.revision
+                },
                 ready: false,
                 bytes: 0,
                 events: 0,
             });
             self.capture_groups.set_member(take.group, index, member);
         }
-        group.phase = CapturePhase::Reserved;
+        group.phase = if prepared {
+            CapturePhase::PreparedReserved
+        } else {
+            CapturePhase::Reserved
+        };
+        group.next_frame = Some(at);
         group.interval_frames = frames;
         group.interval_sequence = sequence;
         self.capture_groups.groups[take.group.slot as usize].value = Some(group);
@@ -148,7 +201,12 @@ impl ResourceStore {
             self.capture_groups
                 .set_member(interval.take.group, index, member);
         }
-        group.phase = CapturePhase::Recording;
+        if group.phase == CapturePhase::PreparedReserved {
+            group.phase = CapturePhase::Prepared;
+            group.next_frame = None;
+        } else {
+            group.phase = CapturePhase::Recording;
+        }
         group.interval_frames = 0;
         self.capture_groups.groups[interval.take.group.slot as usize].value = Some(group);
         Ok(())
@@ -249,6 +307,9 @@ impl ResourceStore {
     pub fn commit_capture_interval(&mut self, interval: CaptureIntervalId) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
         let mut group = self.capture_interval_info(interval)?;
+        if group.phase != CapturePhase::Reserved {
+            return Err(Error::InvalidState);
+        }
         for index in 0..group.members {
             let member = self.capture_groups.member(interval.take.group, index);
             let reservation = member.append.ok_or(Error::InvalidState)?;

@@ -24,7 +24,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 fn pid() -> PlannerId {
     PlannerId::from_parts(0, 1).unwrap()
 }
-const CUTS: [&str; 14] = [
+const CUTS: [&str; 17] = [
     "unbound",
     "bound",
     "prepared",
@@ -39,6 +39,9 @@ const CUTS: [&str; 14] = [
     "group-released",
     "prepared-cancelled",
     "interval-cancelled",
+    "prepared-interval-reserved",
+    "prepared-interval-cancelled",
+    "prepared-interval-activated",
 ];
 struct Owner {
     cut: usize,
@@ -96,7 +99,9 @@ impl Planner for Owner {
                         &mut self.snapshots,
                     )?,
                     CapturePhase::Idle => {}
-                    CapturePhase::Reserved => return Err(Error::InvalidState),
+                    CapturePhase::Reserved | CapturePhase::PreparedReserved => {
+                        return Err(Error::InvalidState)
+                    }
                 }
             }
             for snapshot in &mut self.snapshots {
@@ -265,6 +270,17 @@ fn disconnected_control_preserves_capture_owners_at_every_lifecycle_cut() {
                     if cut == 12 {
                         store.cancel_capture_take(take).unwrap();
                         owner.take = None;
+                    } else if cut >= 14 {
+                        let interval = store
+                            .reserve_prepared_capture_interval(take, Frame(0), 1)
+                            .unwrap();
+                        owner.interval = Some(interval);
+                        if cut == 15 {
+                            store.cancel_capture_interval(interval).unwrap();
+                            owner.interval = None;
+                        } else if cut == 16 {
+                            store.activate_capture_take(take, Frame(0)).unwrap();
+                        }
                     } else {
                         if cut >= 3 {
                             store.activate_capture_take(take, Frame(0)).unwrap();

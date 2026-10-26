@@ -33,6 +33,8 @@ pub struct CaptureMember {
 pub enum CapturePhase {
     Idle,
     Prepared,
+    /// First interval reserved without publishing new active media.
+    PreparedReserved,
     Recording,
     Reserved,
 }
@@ -383,6 +385,9 @@ impl ResourceStore {
             self.capture_groups.set_member(id, index, member);
         }
         group.phase = CapturePhase::Prepared;
+        group.start_frame = None;
+        group.next_frame = None;
+        group.interval_frames = 0;
         group.take_sequence = sequence;
         self.capture_groups.groups[id.slot as usize].value = Some(group);
         Ok(CaptureTakeId {
@@ -423,8 +428,15 @@ impl ResourceStore {
         self.note_operation(WorkClass::Render);
         let mut group = self.capture_take_info(take)?;
         let id = take.group;
-        if group.phase != CapturePhase::Prepared {
+        if !matches!(
+            group.phase,
+            CapturePhase::Prepared | CapturePhase::PreparedReserved
+        ) {
             return Err(Error::InvalidState);
+        }
+        let reserved = group.phase == CapturePhase::PreparedReserved;
+        if reserved && group.next_frame != Some(at) {
+            return Err(Error::InvalidFrame);
         }
         for index in 0..group.members {
             let member = self.capture_groups.member(id, index);
@@ -466,7 +478,11 @@ impl ResourceStore {
                 self.detach(previous).expect("previous active reference");
             }
         }
-        group.phase = CapturePhase::Recording;
+        group.phase = if reserved {
+            CapturePhase::Reserved
+        } else {
+            CapturePhase::Recording
+        };
         group.start_frame = Some(at);
         group.next_frame = Some(at);
         self.capture_groups.groups[id.slot as usize].value = Some(group);

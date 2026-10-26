@@ -29,6 +29,7 @@ CASES = [
     ("capture", [], 7),
     ("capture_groups", [], 5),
     ("capture_group_intervals", [], 5),
+    ("capture_prepared_interval", [], 3),
     ("capture_group_planner", [], 1),
     ("capture_boundary", [], 1),
     ("capture_group_model", [], 1),

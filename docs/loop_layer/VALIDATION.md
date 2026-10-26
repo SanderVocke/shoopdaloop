@@ -711,3 +711,31 @@ Six guarded tests verify:
 The first focused native run aborted with a stack overflow while processors contained large inline MIDI projections. The revised representation puts those projections in fixed prepared boxes, reducing their footprint in generic processor/command types without raising stack limits, reducing workloads or weakening heap guards. The exact overflowing stack frame was not captured, and the pre-fix source tree was not separately archived; the failure log and change rationale are retained rather than presenting it as a passing run. The subsequent focused run passed; the final complete-packet workload passed in all scoped configurations above.
 
 No generic runtime implementation changed. Standalone runtime release/Wasm, generic Miri, native/actual-worklet fixtures and lifetime/authority prototypes were **not freshly rerun** here; the preceding full `midi-restore-stage5` milestone remains their historical baseline. Twenty fresh loop Miri executions are not a fresh 131-case combined run. The full loop planner/processor adapter, coherent mixed-media binding/capture/export and public outcomes, separate-node playback→FX→recording graph/example, and independent loop AudioWorklet remain required. Stage 5 and final delivery remain open.
+
+## Stage 5 — Reserve a new take's first interval before activation
+
+Milestone: `feat(rt-runtime): reserve capture intervals before activation` (the commit introducing this section), source base `23a1f799`. Evidence: [`evidence/prepared-interval-stage5.json`](evidence/prepared-interval-stage5.json) and [`evidence/prepared-interval-stage5-provenance.json`](evidence/prepared-interval-stage5-provenance.json). Logs and archived Miri cases are under `target/loop-layer-prepared-interval-stage5/`.
+
+Facade integration exposed an ordering gap: the original interval reservation API required an active take, so discovering an initial append refusal could follow publication of new active revisions. `reserve_prepared_capture_interval` and planner `reserve_prepared` now use the existing fixed pools to reserve all first-interval page/checkpoint capacity without publication. `PreparedReserved` rejects staging/commit, preserves current content and revisions, and preflights both activation and append revision increments. Exact-frame activation retains the same interval token/credits and transitions to `Reserved`; cancellation returns to `Prepared` without losing lifecycle reservations. The legacy activate-then-reserve path remains available. Preparing a new take clears obsolete previous-take frame metadata.
+
+Three new guarded tests verify:
+
+- Old indexed audio/MIDI revisions remain current through reservation and rejected staging/commit/wrong-frame activation. Exact activation then staging/commit/freeze produces independent expected bytes, initial MIDI state, packet state, duration and revisions; old leases remain unchanged. Unused conservative reservation credit and every pool recover.
+- **32 alternating two-group rounds** with a five-page store and an independent three-page-per-interval byte ledger. Competition refuses atomically; cancellation makes capacity available to the other group; stale tokens cannot cancel replacements; every active resource revision stays unchanged.
+- Foreign scope, frame overflow, zero/oversized intervals, planner window and wrong activation frame, plus insufficient MIDI-checkpoint capacity, all refuse without publishing active media or losing credits.
+
+Real transport disconnect coverage grows from fourteen to **seventeen cuts**, retaining the original workload and adding prepared-first-interval reserved/cancelled/activated states. Recovery is queued before disconnect, then delivered to cancel/settle owners; this still does not claim automatic musical stop on disconnect.
+
+| Fresh gate | Observed result |
+| --- | --- |
+| Runtime native debug/release | **174 passed per profile** |
+| Loop native debug/release | **73 passed per profile** |
+| Runtime Node/Chromium | **170 passed per runtime** |
+| Loop Node/Chromium | **73 passed per runtime** |
+| Prescribed workspace nextest | **2047 passed**, four unchanged opt-in canaries skipped |
+| Combined selected Miri | **134 fresh executions**: 114 runtime plus twenty loop cases |
+| Lifetime/authority prototypes | Positive builds/runs and deliberate **E0502/E0599** refusals |
+| Format, warning-denied build/docs, examples and policy/boundary gates | Passed |
+| Existing native debug/release and actual offline/live worklet, both failure canaries | Passed; historical golden journal unchanged |
+
+The focused run and all 21 broad gates passed without a new failed run. The three new cases and expanded disconnect workload are unchanged under native/Wasm/Miri. This fresh full run supersedes the preceding scoped milestone's lack of fresh runtime/host gates without rewriting that historical scope. The full loop facade, coherent mixed-media publication/export, separate-node graph/example, independent loop hosts, final CI and review remain pending. Stage 5 remains current.
