@@ -9,7 +9,8 @@ browser-feature = "wasm-test-browser"
 no-default-features = true
 
 [features]
-default = ["native-fx"]
+default = ["native-fx", "cpal"]
+cpal = ["shoop_backend/cpal", "dep:rodio"]
 native-fx = ["shoop_backend/native-fx"]
 carla-system-tests = ["native-fx", "shoop_engine/carla-system-tests"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
@@ -33,7 +34,7 @@ shoop_common = { path = "../shoop_common" }
 shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
-rodio = { workspace = true }
+rodio = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_settings = { path = "../shoop_settings" }

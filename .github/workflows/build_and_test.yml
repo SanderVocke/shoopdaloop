@@ -96,6 +96,57 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  without_cpal:
+    name: Without CPAL (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTFLAGS: "-D warnings"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: without-cpal-${{ matrix.target }}
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev libgl1-mesa-dev \
+            libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcursor-dev libxi-dev libxkbcommon-dev libxrandr-dev libwayland-dev
+      - name: Assert production and test graphs exclude CPAL and Rodio
+        shell: bash
+        run: |
+          cargo tree --locked --workspace --no-default-features --features shoopdaloop/native-fx \
+            --target ${{ matrix.target }} --edges normal,build,dev --prefix none --format '{p}' > dependency-tree.txt
+          if grep -E '^(cpal|rodio) v' dependency-tree.txt; then
+            echo 'CPAL-free builds must not enable CPAL or Rodio, including through test dependencies.'
+            exit 1
+          fi
+      - name: Build without CPAL or Rodio
+        run: cargo build --locked -p shoopdaloop --no-default-features --features native-fx --target ${{ matrix.target }}
+      - uses: taiki-e/install-action@v2
+        if: runner.os == 'Linux'
+        with:
+          tool: nextest@0.9.116
+      - name: Test CPAL-free workspace
+        if: runner.os == 'Linux'
+        env:
+          SHOOP_ALLOW_MISSING_BACKENDS: "1"
+        run: cargo nextest run --locked --workspace --no-default-features --features shoopdaloop/native-fx,shoop_engine/app_backend --profile ci
+
   build_and_test:
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
     runs-on: ${{ matrix.os }}

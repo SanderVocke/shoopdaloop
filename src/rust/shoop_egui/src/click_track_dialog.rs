@@ -17,6 +17,10 @@ pub struct ClickTrackDialog {
     preview_rect: Option<egui::Rect>,
     #[cfg(test)]
     preview_enabled: bool,
+    #[cfg(test)]
+    master_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    stop_rect: Option<egui::Rect>,
 }
 
 impl Default for ClickTrackDialog {
@@ -32,6 +36,10 @@ impl Default for ClickTrackDialog {
             preview_rect: None,
             #[cfg(test)]
             preview_enabled: false,
+            #[cfg(test)]
+            master_rect: None,
+            #[cfg(test)]
+            stop_rect: None,
         }
     }
 }
@@ -55,13 +63,14 @@ impl ClickTrackDialog {
         let Some(target) = find_loop(state, target_id) else {
             self.target = None;
             self.validation_message = Some("The target loop is no longer available".to_owned());
-            return Vec::new();
+            return vec![AppIntent::StopClickTrackPreview];
         };
         let draft = self.drafts.entry(target_id).or_default();
         reconcile_draft(draft, target, &state.click_track);
         let mut open = true;
         let mut cancel = false;
-        let mut preview = false;
+        let mut preview = None;
+        let mut stop = false;
         let mut generate = false;
         let validation =
             validate_draft(draft, target, &state.click_track, state.status.sample_rate);
@@ -192,13 +201,13 @@ impl ClickTrackDialog {
                     ui.colored_label(color, &state.click_track.preview_message);
                 }
                 ui.separator();
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let preview_button = ui
                         .add_enabled(
                             validation.is_ok()
                                 && draft.kind == ClickTrackKind::Audio
                                 && self.preview_available,
-                            egui::Button::new("Preview"),
+                            egui::Button::new("Preview (System)"),
                         )
                         .on_disabled_hover_text(if self.preview_available {
                             "Preview requires valid audio click settings"
@@ -211,8 +220,41 @@ impl ClickTrackDialog {
                         self.preview_enabled = preview_button.enabled();
                     }
                     if preview_button.clicked() {
-                        preview = true;
+                        preview = Some(crate::ClickTrackPreviewOutput::System);
                     }
+                    let master = ui
+                        .add_enabled(
+                            validation.is_ok()
+                                && draft.kind == ClickTrackKind::Audio
+                                && state.click_track.master_preview_available,
+                            egui::Button::new("Preview (Master bus)"),
+                        )
+                        .on_disabled_hover_text(if state.click_track.master_preview_available {
+                            "Preview requires valid audio click settings"
+                        } else {
+                            "Master bus preview is unavailable in this runtime"
+                        });
+                    #[cfg(test)]
+                    {
+                        self.master_rect = Some(master.rect);
+                    }
+                    if master.clicked() {
+                        preview = Some(crate::ClickTrackPreviewOutput::MasterBus);
+                    }
+                    let active = matches!(
+                        state.click_track.preview_status,
+                        ClickTrackPreviewStatus::Queued | ClickTrackPreviewStatus::Playing
+                    );
+                    let stop_button = ui.add_enabled(active, egui::Button::new("Stop"));
+                    #[cfg(test)]
+                    {
+                        self.stop_rect = Some(stop_button.rect);
+                    }
+                    if stop_button.clicked() {
+                        stop = true;
+                    }
+                });
+                ui.horizontal(|ui| {
                     let generate_button =
                         ui.add_enabled(validation.is_ok(), egui::Button::new("Generate"));
                     #[cfg(test)]
@@ -231,8 +273,11 @@ impl ClickTrackDialog {
 
         self.validation_message = validation.err();
         let mut intents = Vec::new();
-        if preview {
-            intents.push(preview_intent(target_id, draft));
+        if let Some(output) = preview {
+            intents.push(preview_intent(target_id, draft, output));
+        }
+        if stop {
+            intents.push(AppIntent::StopClickTrackPreview);
         }
         if generate {
             intents.push(generate_intent(target_id, draft));
@@ -242,6 +287,7 @@ impl ClickTrackDialog {
             open = false;
         }
         if !open {
+            intents.push(AppIntent::StopClickTrackPreview);
             self.close();
         }
         intents
@@ -257,8 +303,13 @@ impl ClickTrackDialog {
     }
 }
 
-fn preview_intent(loop_id: LoopId, request: &ClickTrackRequest) -> AppIntent {
+fn preview_intent(
+    loop_id: LoopId,
+    request: &ClickTrackRequest,
+    output: crate::ClickTrackPreviewOutput,
+) -> AppIntent {
     AppIntent::PreviewClickTrack {
+        output,
         loop_id,
         request: request.clone(),
     }
@@ -525,8 +576,9 @@ mod tests {
         let target = &state.tracks[0].loops[0];
         let request = ClickTrackRequest::default();
         assert_eq!(
-            preview_intent(target.id, &request),
+            preview_intent(target.id, &request, crate::ClickTrackPreviewOutput::System),
             AppIntent::PreviewClickTrack {
+                output: shoop_app_api::ClickTrackPreviewOutput::System,
                 loop_id: target.id,
                 request: request.clone(),
             }
@@ -566,7 +618,10 @@ mod tests {
                 click_track: state.click_track.clone(),
                 ..Default::default()
             };
-            assert!(dialog.show(&context, &stale).is_empty());
+            assert_eq!(
+                dialog.show(&context, &stale),
+                vec![AppIntent::StopClickTrackPreview]
+            );
             assert_eq!(dialog.target(), None);
         }
     }
@@ -584,5 +639,94 @@ mod tests {
         });
         ignored_output_1.textures_delta.clear();
         assert!(!dialog.preview_enabled);
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn preview_buttons_dispatch_independent_targets_and_stop_without_a_preference() {
+        for system_available in [false, true] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            let mut state = state();
+            state.click_track.master_preview_available = true;
+            let mut dialog = ClickTrackDialog::default();
+            dialog.set_preview_available(system_available);
+            dialog.open(&state.tracks[0].loops[0], &state.click_track);
+            let frame = |dialog: &mut ClickTrackDialog, state: &AppState, events| {
+                let mut intents = Vec::new();
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(900.0, 600.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |_ui| {
+                        intents = dialog.show(&context, state);
+                    },
+                );
+                output.textures_delta.clear();
+                intents
+            };
+            frame(&mut dialog, &state, Vec::new());
+            frame(&mut dialog, &state, Vec::new());
+            assert_eq!(dialog.preview_enabled, system_available);
+            let click = |dialog: &mut ClickTrackDialog, state: &AppState, pos| {
+                frame(
+                    dialog,
+                    state,
+                    vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed: true,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+                frame(
+                    dialog,
+                    state,
+                    vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed: false,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                )
+            };
+            let master = dialog.master_rect.unwrap().center();
+            assert!(matches!(
+                click(&mut dialog, &state, master).as_slice(),
+                [AppIntent::PreviewClickTrack {
+                    output: crate::ClickTrackPreviewOutput::MasterBus,
+                    ..
+                }]
+            ));
+            let system = dialog.preview_rect.unwrap().center();
+            let intents = click(&mut dialog, &state, system);
+            if system_available {
+                assert!(matches!(
+                    intents.as_slice(),
+                    [AppIntent::PreviewClickTrack {
+                        output: crate::ClickTrackPreviewOutput::System,
+                        ..
+                    }]
+                ));
+            } else {
+                assert!(intents.is_empty());
+            }
+            state.click_track.preview_status = ClickTrackPreviewStatus::Playing;
+            frame(&mut dialog, &state, Vec::new());
+            let stop = dialog.stop_rect.unwrap().center();
+            assert_eq!(
+                click(&mut dialog, &state, stop),
+                vec![AppIntent::StopClickTrackPreview]
+            );
+        }
     }
 }

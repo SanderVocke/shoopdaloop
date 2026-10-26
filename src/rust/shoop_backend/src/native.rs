@@ -147,6 +147,7 @@ struct NativeRuntime {
     resolved: ResolvedAudioDriverConfig,
     driver: AudioDriver,
     session: BackendSession,
+    preview_finished: Arc<std::sync::atomic::AtomicU64>,
 }
 
 struct NativeTrack {
@@ -436,6 +437,7 @@ impl NativeRuntime {
             resolved,
             driver,
             session,
+            preview_finished: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         };
         runtime.initialize_default_master_bus()?;
         Ok(runtime)
@@ -672,6 +674,19 @@ impl NativeRuntime {
         );
         self.connection_revision = self.connection_revision.wrapping_add(1);
         descriptor
+    }
+
+    fn configure_master_preview(&self) -> Result<()> {
+        let outputs = self
+            .buses
+            .get(&MASTER_BUS_ID)
+            .into_iter()
+            .flat_map(|bus| &bus.channels)
+            .map(|channel| channel.input.clone())
+            .collect::<Vec<_>>();
+        self.session
+            .configure_audio_preview(&outputs, Arc::clone(&self.preview_finished))?;
+        Ok(())
     }
 
     fn initialize_default_master_bus(&mut self) -> Result<()> {
@@ -1035,6 +1050,9 @@ impl NativeRuntime {
                 .fx = Some(fx);
         }
         self.mixer_revision = self.mixer_revision.wrapping_add(1);
+        if bus_id == MASTER_BUS_ID {
+            self.configure_master_preview()?;
+        }
         Ok(creation)
     }
 
@@ -1139,6 +1157,9 @@ impl NativeRuntime {
     }
 
     fn remove_bus_internal(&mut self, bus_id: BackendBusId) -> Result<()> {
+        if bus_id == MASTER_BUS_ID {
+            self.session.replace_audio_preview(0, Arc::from([]))?;
+        }
         if !self.buses.contains_key(&bus_id) {
             return Err(anyhow!("unknown native bus {bus_id:?}"));
         }
@@ -3763,6 +3784,42 @@ fn consistent_connected_recording_offset(
 }
 
 impl Backend for NativeBackend {
+    fn supports_audio_preview(&self) -> bool {
+        self.runtime
+            .as_ref()
+            .is_some_and(|runtime| runtime.buses.contains_key(&MASTER_BUS_ID))
+    }
+    fn start_audio_preview(
+        &mut self,
+        request_id: u64,
+        sample_rate: u32,
+        samples: Arc<[f32]>,
+    ) -> Result<()> {
+        let runtime = self.runtime()?;
+        if !runtime.buses.contains_key(&MASTER_BUS_ID) {
+            return Err(anyhow!("Master bus is unavailable"));
+        }
+        if sample_rate != runtime.resolved.sample_rate || samples.is_empty() || request_id == 0 {
+            return Err(anyhow!("invalid preview audio or sample rate"));
+        }
+        runtime.session.replace_audio_preview(request_id, samples)
+    }
+
+    fn stop_audio_preview(&mut self) -> Result<()> {
+        self.runtime()?
+            .session
+            .replace_audio_preview(0, Arc::from([]))
+    }
+
+    fn finished_audio_preview(&self) -> Option<u64> {
+        let id = self
+            .runtime
+            .as_ref()?
+            .preview_finished
+            .load(std::sync::atomic::Ordering::Acquire);
+        (id != 0).then_some(id)
+    }
+
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
         self.loop_smoothing_ms = milliseconds;
         self.runtime()?
@@ -5109,6 +5166,9 @@ fn engine_driver_settings(
             ))
         }
         AudioDriverConfig::Cpal(config) => {
+            if !cfg!(feature = "cpal") {
+                return Err(anyhow!("CPAL support was disabled at build time"));
+            }
             validate_cpal(config)?;
             Ok((
                 AudioDriverType::Cpal,
@@ -5190,8 +5250,14 @@ fn discover_audio_drivers(active: &AudioDriverConfig) -> Arc<[AudioDriverDescrip
     let cpal = AudioDriverDescriptor {
         kind: AudioDriverKind::Cpal,
         available: cpal_available,
-        unavailable_reason: (!cpal_available)
-            .then(|| "No CPAL output device is currently available".to_owned()),
+        unavailable_reason: (!cpal_available).then(|| {
+            if cfg!(feature = "cpal") {
+                "No CPAL output device is currently available"
+            } else {
+                "CPAL support was disabled at build time"
+            }
+            .to_owned()
+        }),
         hosts,
         input_devices,
         output_devices,
@@ -8154,6 +8220,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    #[cfg(feature = "cpal")]
     fn native_cpal_test_adapter_satisfies_topology_and_status_contract() {
         let configured = AudioDriverConfig::Cpal(CpalAudioDriverConfig {
             sample_rate: 48_000,
@@ -8236,6 +8303,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    #[cfg(feature = "cpal")]
     fn optional_real_cpal_smoke_reports_environment_skip() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipped real CPAL smoke: set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -8398,5 +8466,179 @@ mod tests {
         assert_eq!(backend.catalog[0].kind, AudioDriverKind::Dummy);
         assert_eq!(backend.catalog[1].kind, AudioDriverKind::Jack);
         assert_eq!(backend.catalog[2].kind, AudioDriverKind::Cpal);
+    }
+    fn render_master_preview(backend: &mut NativeBackend, frames: u32) -> Vec<Vec<f32>> {
+        let runtime = backend.runtime_mut().unwrap();
+        let outputs = runtime.buses[&MASTER_BUS_ID]
+            .channels
+            .iter()
+            .map(|channel| {
+                let NativePortHandle::Audio(output) =
+                    &runtime.ports[&channel.output_port_id].handle
+                else {
+                    panic!("audio output")
+                };
+                output.clone()
+            })
+            .collect::<Vec<_>>();
+        for output in &outputs {
+            output.dummy_request_data(frames).unwrap();
+        }
+        runtime.driver.dummy_request_controlled_frames(frames);
+        runtime.driver.dummy_run_requested_frames();
+        outputs
+            .iter()
+            .map(|output| output.dummy_dequeue_data(frames))
+            .collect()
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_master_preview_is_transient_respects_master_controls_and_reconnects_after_load() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 4,
+        }))
+        .unwrap();
+        backend
+            .runtime()
+            .unwrap()
+            .driver
+            .dummy_enter_controlled_mode();
+        let before = backend.capture_session().unwrap();
+        backend
+            .start_audio_preview(1, 48_000, Arc::from([0.25; 6]))
+            .unwrap();
+        assert_eq!(
+            render_master_preview(&mut backend, 4),
+            vec![vec![0.25; 4]; 2]
+        );
+        assert_eq!(backend.finished_audio_preview(), None);
+        assert_eq!(
+            render_master_preview(&mut backend, 4),
+            vec![vec![0.25, 0.25, 0.0, 0.0]; 2]
+        );
+        assert_eq!(backend.finished_audio_preview(), Some(1));
+        assert_eq!(backend.capture_session().unwrap(), before);
+        backend.replace_session(&before).unwrap();
+        backend
+            .runtime()
+            .unwrap()
+            .driver
+            .dummy_enter_controlled_mode();
+        assert!(backend.supports_audio_preview());
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::GainDb(-6.0206))
+            .unwrap();
+        backend
+            .start_audio_preview(2, 48_000, Arc::from([0.5; 12]))
+            .unwrap();
+        for channel in render_master_preview(&mut backend, 4) {
+            assert!(channel
+                .iter()
+                .all(|sample| (*sample - 0.25).abs() < 0.00001));
+        }
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Mute(true))
+            .unwrap();
+        assert_eq!(
+            render_master_preview(&mut backend, 4),
+            vec![vec![0.0; 4]; 2]
+        );
+        backend.stop_audio_preview().unwrap();
+        backend
+            .set_bus_control(MASTER_BUS_ID, BackendBusControl::Mute(false))
+            .unwrap();
+        assert_eq!(
+            render_master_preview(&mut backend, 4),
+            vec![vec![0.0; 4]; 2]
+        );
+        assert_eq!(backend.finished_audio_preview(), None);
+        assert!(backend
+            .start_audio_preview(3, 44_100, Arc::from([0.1; 4]))
+            .is_err());
+        backend.remove_bus(MASTER_BUS_ID).unwrap();
+        assert!(!backend.supports_audio_preview());
+        assert!(backend
+            .start_audio_preview(4, 48_000, Arc::from([0.1; 4]))
+            .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_master_preview_passes_through_master_fx() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
+        backend
+            .runtime()
+            .unwrap()
+            .driver
+            .dummy_enter_controlled_mode();
+        backend
+            .set_bus_fx_control(
+                MASTER_BUS_ID,
+                BackendBusFxControl::SetProcessor(Some(BackendBusFxRequest {
+                    processor_type: TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+                    audio_channels: 2,
+                })),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                MASTER_BUS_ID,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                MASTER_BUS_ID,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetStageEnabled(
+                    shoop_app_api::BuiltInFxStage::Drive,
+                    true,
+                )),
+            )
+            .unwrap();
+        backend
+            .set_bus_fx_control(
+                MASTER_BUS_ID,
+                BackendBusFxControl::BuiltInFx(BuiltInFxControl::SetParameter(
+                    shoop_app_api::BuiltInFxParameter::Drive,
+                    24.0,
+                )),
+            )
+            .unwrap();
+        backend
+            .start_audio_preview(1, 48_000, Arc::from([0.1; 256]))
+            .unwrap();
+        let wet = render_master_preview(&mut backend, 256);
+        assert!(wet[0].iter().any(|sample| (*sample - 0.1).abs() > 0.01));
+        backend
+            .set_bus_fx_control(MASTER_BUS_ID, BackendBusFxControl::SetProcessor(None))
+            .unwrap();
+        backend
+            .start_audio_preview(2, 48_000, Arc::from([0.1; 256]))
+            .unwrap();
+        assert_eq!(
+            render_master_preview(&mut backend, 256),
+            vec![vec![0.1; 256]; 2]
+        );
+    }
+
+    #[cfg(not(feature = "cpal"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn cpal_free_build_rejects_cpal_and_preserves_configuration_on_fallback() {
+        let configured = AudioDriverConfig::Cpal(CpalAudioDriverConfig::default());
+        assert!(NativeBackend::new(configured.clone()).is_err());
+        let (backend, warning) = NativeBackend::new_with_fallback(configured.clone()).unwrap();
+        assert!(warning.unwrap().contains("disabled at build time"));
+        assert_eq!(configured.kind(), AudioDriverKind::Cpal);
+        let descriptor = backend
+            .catalog
+            .iter()
+            .find(|driver| driver.kind == AudioDriverKind::Cpal)
+            .unwrap();
+        assert!(!descriptor.available);
+        assert_eq!(
+            descriptor.unavailable_reason.as_deref(),
+            Some("CPAL support was disabled at build time")
+        );
+        assert!(backend.supports_audio_preview());
     }
 }
