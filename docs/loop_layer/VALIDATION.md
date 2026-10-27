@@ -1,5 +1,54 @@
 # Loop-layer implementation and validation evidence
 
+## Stage6 verified complete — mandatory user checkpoint
+
+Consolidated job `20261027T025325-e065d48941` completed and the supported collector
+accepted its terminal pass: **81 commands/228 executions,128 runtime+100 loop**, from
+immutable `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea`. Pinned nightly-2026-05-04 /
+miri0.1.0(ad3a598ca4), isolation/seed settings, workloads, heap/destructor guards and
+the900-second command watchdog are unchanged. Ended2026-10-27T04:55:23.943226Z;
+supervisor elapsed7318.292420581012s. No second routine interpreter run was started.
+
+Evidence: `evidence/miri-stage6.json` (ordered per-command results),
+`miri-stage6-collected.json` (immutable manifest/terminal collection),
+`miri-stage6-provenance.json` (independent integrity/freshness checks), and
+`miri-stage6-logs.tar.gz` (all81 raw case logs plus result report). The result hash is
+`d4c8fa7b5e0caf610783a56d178ae4343288b413f63e2841184847ae15df3ae0`.
+Verified all671 snapshot entries including executable/symlink metadata, reproduced
+the git archive hash, checked the supervisor, exact package/target/filter/count/seed
+inventory, pinned toolchain/version and all82 result/log hashes. Reopened the raw
+archive and verified every member independently. Current123 scoped Rust and10
+configuration/runner inputs plus supervisor/helper hashes still match the snapshot.
+Post-snapshot commits only changed documentation/evidence; this is not a whole-tree
+clean/fresh claim over concurrent authored drafts and untracked examples.
+
+The independent provenance script's first attempt compared a digest with the whole
+manifest entry object rather than its sha256 field; the failed log is retained at
+`target/loop-layer-stage6-completion/first-verification.log` and hashed in provenance.
+After correcting the driver to verify hash/executable/symlink fields, all checks
+passed. The supported collector had already passed; this was not a changed source,
+interpreter failure, rerun or weakened test. Collection/verification logs are in
+`target/loop-layer-stage6-completion/`.
+
+The dense128-boundary case passed in877.7475190730183s, loop MIDI in675.5860766569967s,
+and the final nested lifecycle in590.2424795530096s. These are shared-host interpreter
+observations, not native callback deadlines, speedup or guaranteed CI margin. The
+historical interrupted171/178 job and all while-running checkpoint counts remain
+partial historical evidence; this new complete run does not rewrite them.
+
+Together with source-matched153-loop native debug/release/Node/Chromium profiles,
+2141 workspace passes/four existing skips,19 scoped gates and8 positive/23 negative
+borrowing proofs, the collected gate closes every Stage6 row mapped in
+STAGE6_READINESS.md. `evidence/stage6-completion.json` records the combined evidence
+hashes and rechecked19 prior command logs, proof/filter report hashes and prototype
+sources. Its first inline count check expected a scalar instead of the actual
+package-keyed native-count object; the corrected check passed without rerunning or
+changing tests. Both evidence-driver schema mistakes are distinguished from real
+interpreter or implementation failures. No new native/Wasm/host/benchmark/CI execution is claimed by
+collection. **Pause the goal after committing this completion, as the user requested;
+Stage7 has not started.** Stages7–10, later models/audits/performance, independent
+actual loop hosts, separate-worker publication and final PR/CI/review remain required.
+
 ## Repository runtime and architecture handoff review
 
 Read all seven Stage9 repository runtime documents, three root proposal/design

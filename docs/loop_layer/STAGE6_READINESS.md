@@ -1,16 +1,17 @@
-# Stage 6 implementation coverage and consolidated-verification readiness
+# Stage 6 implementation coverage and verified completion
 
 This is an operational acceptance audit, not an authored guide or a reduction of
-`PLAN_LOOP_LAYER.md`. **Stage 6 is not yet verified complete.** Its native/Wasm
-implementation coverage is present; the consolidated source-matched Miri run remains
-the outstanding stage-level verification gate. Stages7–10 and LL-A final acceptance
-remain open. Broader randomized/performance/concurrency/failure-canary work required
+`PLAN_LOOP_LAYER.md`. **Stage6 is verified complete.** Consolidated source-matched
+Miri was collected successfully:81 commands/228 executions,128 runtime+100 loop,
+from immutable `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea`. The user requires the goal
+to pause here; Stage7 has not started. Stages7–10 and LL-A final acceptance remain open. Broader randomized/performance/concurrency/failure-canary work required
 by Stage8 is not waived by this audit.
 
 ## Checklist-to-evidence mapping
 
 | Stage 6 requirement | Implemented path and observed evidence |
 | --- | --- |
+| Reliable typed sync/countdown/trigger/composite control, cancellation and terminal outcomes separate from automatic progression | `runtime::{Operation,Reply}`, planner pending receipts and resolver requests; runtime, runtime_topology, interloop and typed_execution tests compare admission/delivery/terminal frames, request-family outcomes, cancellation, direct priority and independent recovery. Full normal slots/unread terminal records do not stop automatic wraps/cascades. Native/Wasm evidence below and all selected affected Miri cases pass. |
 | Prepared activation/replacement, graph/loop generations, consistent bindings/resources/program cut, unchanged rejected candidates and owning retirement | `runtime/{topology,configuration,roles,planner}.rs`, generic graph activation permit and media owner permit. `runtime_topology` tests cover fixed-role graph/timing cuts, new logical generations over prepared physical templates, removal/reuse, retained old exports, input-state policy and idle capture claims. The four `program_graph_scenarios` cases add a running-program/graph cut with real capture-family preflight and separate retirement. `configuration-stage6` and `program-graph-stage6` evidence cover exact epochs, rejected/Ready/Taken owners, stale scopes/generations, cancellation and faults. |
 | Primitive/composite stop, seek, nested activation/replacement; active/pending/stopped states and same-frame precedence | Standalone resolver/program tests cover sparse nested regular/explicit programs, empty/ended/changed programs, zero/stopped cuts, removed children, direct overrides and speculative cancellation. Facade interloop coverage now also seeks an outer program into/back out of inner capture/play segments, combines child Stop with inherited Record, cancels a countdown with a winning Stop, preserves direct child playback under stopped parents, restarts and checks a second capture revision. Full samples/MIDI/public state/journals/exports are independently predicted, not compared only against another partition of the implementation. |
 | Coherent state/capture metadata tagged by frame/configuration; bounded queries with no music dependence on consumer credits | `Cut` and `Export` identify frame, graph/topology epochs, logical owner/revision and actual source/capture metadata. Facade tests inspect post-settlement/pre-render cuts, strictly pre-F MIDI state, original F packets, old snapshot immutability, optional export refusal and capacity exhaustion. Every new nested boundary asserts all six states are present. Full domain slots, unread results and retained exports/graph/topology owners do not prevent admitted progression. |
@@ -43,10 +44,17 @@ is claimed unless explicitly archived.
 
 ## Consolidated Miri gate
 
-The intended readiness snapshot was committed as `faec78df` and job
-`20261027T025325-e065d48941` launched from it. See `MIRI_JOBS.md` for the immutable
-manifest and partial-progress record. The job is not yet collected; the requirements
-below remain in force and no checklist/task completion is inferred from launch.
+The readiness snapshot was committed as `faec78df` and job
+`20261027T025325-e065d48941` ran from02:53:25Z to04:55:23Z on2026-10-27.
+Terminal collection passed with exit0 and228 executions. See
+`evidence/miri-stage6.json`, `miri-stage6-collected.json`, `miri-stage6-provenance.json`
+and the reproducible `miri-stage6-logs.tar.gz` raw-log bundle. Verification checked
+the671-file snapshot (hashes/executable bits/symlinks), reproduced git archive hash,
+copied supervisor, exact ordered filters/counts/seeds, pinned toolchain/version and
+all82 report/log artifact hashes. Current123 scoped Rust inputs,10 configuration/
+runner inputs and supervisor/helper hashes match the interpreted snapshot. Later
+commits only changed documentation/evidence; concurrent dirty authored drafts and
+untracked examples are not included in a whole-tree freshness claim.
 
 
 The committed selection is **228 executions:128 runtime+100 loop**. The28 topology
@@ -57,16 +65,20 @@ interloop wall time468.43s and grouped suite growth motivate per-case supervisio
 not a claim of an observed new timeout. This is a new explicit inventory; grouped
 historical interpreter runs cannot establish its completion.
 
-Launch one durable background job from the immutable committed readiness snapshot,
-using `scripts/run_rt_runtime_miri_jobs.py start --stage stage-6 --commit <commit>`.
-Continue documentation review while it runs. Check at natural work checkpoints,
-verify terminal collection plus source/configuration/toolchain/inventory hashes, and
-retain any failed/partial reports. The interrupted171/178 run remains partial.
-Helpers, snapshot smoke, native mirrors and registered selections are not interpreter
-passes. If a case fails or times out, record the concrete failure and use only the
-additional focused interpreter work justified by that failure/freshness concern.
+One consolidated supervised invocation completed; no second routine run was needed.
+The dense128-boundary case took877.7475190730183s under the unchanged900s watchdog;
+the nested lifecycle case took590.2424795530096s. Total supervisor time was
+7318.292420581012s. These interpreter timings do not establish native callback
+deadlines, CI margin or speedup. All workloads/guards remain intact. The interrupted
+171/178 run and earlier partial checkpoints remain historical partial evidence.
+Helpers, snapshot smoke and native mirrors are still not interpreter passes.
 
-Do not complete the Stage6 goal task or check off final stage verification until this
-gate passes. Afterward record the collected report/commit, reconcile every checklist
-row and advance to the independent-host stage. This audit does not authorize skipping
-any later plan gate or merging a PR.
+The independent provenance-check driver initially compared a digest to a manifest
+entry object rather than its sha256 field; its failed attempt is retained separately.
+The corrected hash/executable/symlink verification passed. This was not an interpreter
+failure or changed snapshot, and no test was rerun or weakened to correct it.
+
+Every Stage6 row above now has implementation/native/Wasm evidence and the required
+collected interpreter gate. Record task completion and the milestone commit, then
+**pause the goal as explicitly requested by the user**. Do not start Stage7 until a
+further resume. This audit does not waive later gates or authorize merging a PR.

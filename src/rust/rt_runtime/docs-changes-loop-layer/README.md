@@ -5,7 +5,18 @@ worker does not edit `docs/`, `docs-previous/` or the documentation worker's dra
 The separate documentation worker applies the reviewed changes in its final pass.
 See `PLAN_LOOP_LAYER.md` for the complete acceptance contract.
 
-## Baseline and status
+## Current verification checkpoint
+
+Stage6's consolidated Miri run is now collected and verified:81commands/228executions
+(128runtime+100loop), immutable implementation faec78df. See repository
+`docs/loop_layer/evidence/miri-stage6{,-collected,-provenance}.json` and the raw-log
+bundle. Current scoped implementation/configuration hashes match. Stage6 is complete;
+the user requires a goal pause before Stage7. Earlier pending statements below record
+historical review checkpoints, not current interpreter status. Documentation notes
+remain unapplied handoff instructions; publication and final acceptance are not
+completed by this verification milestone.
+
+## Historical baseline and review status
 
 Initial handoff slice: Stage 6 generic staged-graph activation and held-request
 recovery, based on implementation parent `95a42c09`. `baseline.json` records hashes

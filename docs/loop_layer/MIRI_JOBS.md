@@ -1,6 +1,25 @@
 # Miri jobs and outstanding verification
 
-## Active consolidated Stage6 job
+## Collected Stage6 pass — no active job
+
+Job `20261027T025325-e065d48941` completed successfully and was collected with the
+supported `collect` command. **81 commands/228 executions passed:128 runtime+100
+loop**, pinned nightly-2026-05-04 / miri0.1.0(ad3a598ca4), unchanged900s watchdog.
+Implementation snapshot: `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea`. Ended
+2026-10-27T04:55:23.943226Z, total7318.292420581012s. Full snapshot/archive/supervisor,
+ordered inventory/seeds/toolchain and82 artifact hashes were verified. Current
+123 scoped Rust/10 configuration-runner inputs and supervisor/helper hashes match.
+
+Committed evidence: `evidence/miri-stage6.json`, `miri-stage6-collected.json`,
+`miri-stage6-provenance.json`, and `miri-stage6-logs.tar.gz` containing the raw
+81 logs and result report. Report SHA256:
+`d4c8fa7b5e0caf610783a56d178ae4343288b413f63e2841184847ae15df3ae0`.
+The dense128-boundary case passed in877.7475190730183s; no watchdog/workload/guard
+change or second routine invocation was needed. Stage6 is now complete. Per the
+explicit user instruction, pause before Stage7; later final Miri requirements remain.
+The earlier interrupted171/178 invocation is still partial and is not relabelled.
+
+## Historical Stage6 launch and while-running checkpoints
 
 Launched `20261027T025325-e065d48941` at2026-10-27T02:53:25Z from immutable commit
 `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea` with the full selection:
@@ -59,9 +78,10 @@ cases now use individual exact filters. Native discovery matches every name and
 all30 filters execute exactly one native test each. Workloads, seed0, guards and
 the900-second per-command watchdog are unchanged. Historical interloop duration
 468.43s and grouped suite growth motivate finer supervision; no new timeout or
-interpreter pass is claimed. See [STAGE6_READINESS.md](STAGE6_READINESS.md): commit
-the intended inputs, then launch one consolidated immutable-snapshot background job.
-Stage6 remains open until terminal collection and source/inventory verification.
+interpreter pass was claimed at readiness. The subsequently collected job above now
+verifies the full inventory. [Stage6 completion audit](STAGE6_READINESS.md) maps
+requirements and records terminal collection/source checks. Later acceptance remains
+open and the user-requested Stage6 pause takes precedence over advancing.
 
 Previous paired program/graph milestone: **227 selected =128 runtime+99 loop**.
 Four new guarded facade cases are registered, not interpreted. The existing private

@@ -3,6 +3,21 @@
 Notes for designing a later test strategy, not new acceptance thresholds or
 permission to omit required gates. Recorded 2026-10-26 during Stage 5 facade work.
 
+## Collected Stage6 interpreter observation
+
+Consolidated job20261027T025325-e065d48941 at immutable faec78df completed81commands/
+228executions in7318.292420581012s supervisor elapsed. The dense128-boundary case took
+877.7475190730183s, loop MIDI675.5860766569967s, and final nested lifecycle
+590.2424795530096s, all under the unchanged900s per-command watchdog. Full ordered
+case timings and source/inventory/log provenance are in evidence/miri-stage6.json
+and its collected/provenance companions. This is selected interpreter evidence,
+not native timing, cold-cache evidence, an optimization comparison, or guaranteed
+CI timeout margin. Workloads/guards were not reduced and no second routine run was
+needed. Historical interrupted jobs remain partial. The total exceeds the historical
+initial-runtime40-minute CI job window; later Stage8 CI scheduling must account for
+the complete inventory without reducing workloads or relaxing the900s command
+watchdog. This local background pass does not establish CI scheduling readiness.
+
 ## Latest nested-lifecycle/readiness slice
 
 `evidence/nested-lifecycle-stage6.json` records246.5950759499974s for19 sequential,

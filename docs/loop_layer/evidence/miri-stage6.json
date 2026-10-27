@@ -1,0 +1,919 @@
+{
+  "passed": true,
+  "package_filter": null,
+  "toolchain": "nightly-2026-05-04",
+  "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+  "cases": [
+    {
+      "package": "rt_runtime",
+      "target": "contracts",
+      "arguments": [],
+      "seed": 0,
+      "passed": 12,
+      "log": "00-contracts-seed0.log",
+      "seconds": 114.98059656599071
+    },
+    {
+      "package": "rt_runtime",
+      "target": "planning_graph",
+      "arguments": [],
+      "seed": 0,
+      "passed": 8,
+      "log": "01-planning_graph-seed0.log",
+      "seconds": 3.5248277870123275
+    },
+    {
+      "package": "rt_runtime",
+      "target": "planner_execution",
+      "arguments": [],
+      "seed": 0,
+      "passed": 9,
+      "log": "02-planner_execution-seed0.log",
+      "seconds": 52.7814595719974
+    },
+    {
+      "package": "rt_runtime",
+      "target": "initial_graph",
+      "arguments": [],
+      "seed": 0,
+      "passed": 3,
+      "log": "03-initial_graph-seed0.log",
+      "seconds": 1.7687329839973245
+    },
+    {
+      "package": "rt_runtime",
+      "target": "graph_activation",
+      "arguments": [],
+      "seed": 0,
+      "passed": 7,
+      "log": "04-graph_activation-seed0.log",
+      "seconds": 24.371309744979953
+    },
+    {
+      "package": "rt_runtime",
+      "target": "lib",
+      "arguments": [
+        "graph::activation::tests::stage_scope_generation_and_epoch_exhaustion_preserve_unpublished_owners",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "05-lib-seed0.log",
+      "seconds": 1.2177656140120234
+    },
+    {
+      "package": "rt_runtime",
+      "target": "resource_render",
+      "arguments": [],
+      "seed": 0,
+      "passed": 4,
+      "log": "06-resource_render-seed0.log",
+      "seconds": 2.2198652499937452
+    },
+    {
+      "package": "rt_runtime",
+      "target": "resource_index",
+      "arguments": [],
+      "seed": 0,
+      "passed": 5,
+      "log": "07-resource_index-seed0.log",
+      "seconds": 44.309847096010344
+    },
+    {
+      "package": "rt_runtime",
+      "target": "midi_state",
+      "arguments": [],
+      "seed": 0,
+      "passed": 6,
+      "log": "08-midi_state-seed0.log",
+      "seconds": 536.6506131399947
+    },
+    {
+      "package": "rt_runtime",
+      "target": "midi_restore_state",
+      "arguments": [],
+      "seed": 0,
+      "passed": 2,
+      "log": "09-midi_restore_state-seed0.log",
+      "seconds": 1.1711645090254024
+    },
+    {
+      "package": "rt_runtime",
+      "target": "midi_index",
+      "arguments": [],
+      "seed": 0,
+      "passed": 8,
+      "log": "10-midi_index-seed0.log",
+      "seconds": 101.38152199302567
+    },
+    {
+      "package": "rt_runtime",
+      "target": "typed_schedule",
+      "arguments": [],
+      "seed": 0,
+      "passed": 7,
+      "log": "11-typed_schedule-seed0.log",
+      "seconds": 1.6683762739994563
+    },
+    {
+      "package": "rt_runtime",
+      "target": "typed_execution",
+      "arguments": [],
+      "seed": 0,
+      "passed": 12,
+      "log": "12-typed_execution-seed0.log",
+      "seconds": 10.888082951976685
+    },
+    {
+      "package": "rt_runtime",
+      "target": "wire_properties",
+      "arguments": [],
+      "seed": 0,
+      "passed": 3,
+      "log": "13-wire_properties-seed0.log",
+      "seconds": 10.286972027999582
+    },
+    {
+      "package": "rt_runtime",
+      "target": "resource_properties",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "14-resource_properties-seed0.log",
+      "seconds": 1.7700522700033616
+    },
+    {
+      "package": "rt_runtime",
+      "target": "mixed_stress",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "15-mixed_stress-seed0.log",
+      "seconds": 2.921247148013208
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture",
+      "arguments": [],
+      "seed": 0,
+      "passed": 7,
+      "log": "16-capture-seed0.log",
+      "seconds": 4.27893369900994
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture_groups",
+      "arguments": [],
+      "seed": 0,
+      "passed": 5,
+      "log": "17-capture_groups-seed0.log",
+      "seconds": 9.135317986016162
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture_group_intervals",
+      "arguments": [],
+      "seed": 0,
+      "passed": 5,
+      "log": "18-capture_group_intervals-seed0.log",
+      "seconds": 19.80764467199333
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture_prepared_interval",
+      "arguments": [],
+      "seed": 0,
+      "passed": 3,
+      "log": "19-capture_prepared_interval-seed0.log",
+      "seconds": 15.150289726996562
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture_group_planner",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "20-capture_group_planner-seed0.log",
+      "seconds": 8.436151500995038
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture_boundary",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "21-capture_boundary-seed0.log",
+      "seconds": 0.8669920440006536
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture_group_model",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "22-capture_group_model-seed0.log",
+      "seconds": 268.66169768202235
+    },
+    {
+      "package": "rt_runtime",
+      "target": "capture_group_disconnect",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "23-capture_group_disconnect-seed0.log",
+      "seconds": 19.50633739901241
+    },
+    {
+      "package": "rt_runtime",
+      "target": "host_processor",
+      "arguments": [],
+      "seed": 0,
+      "passed": 2,
+      "log": "24-host_processor-seed0.log",
+      "seconds": 2.2200421229936182
+    },
+    {
+      "package": "rt_runtime",
+      "target": "lifecycle",
+      "arguments": [
+        "--",
+        "--skip",
+        "deterministic_admission_model",
+        "--skip",
+        "cancellation_flag_model"
+      ],
+      "seed": 0,
+      "passed": 10,
+      "log": "25-lifecycle-seed0.log",
+      "seconds": 2.0194315099797677
+    },
+    {
+      "package": "rt_runtime",
+      "target": "resource_execution",
+      "arguments": [
+        "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "26-resource_execution-seed0.log",
+      "seconds": 3.672417477995623
+    },
+    {
+      "package": "rt_runtime",
+      "target": "lifecycle",
+      "arguments": [
+        "two_thread_stress_keeps_completion_and_state_publication_coherent"
+      ],
+      "seed": 1,
+      "passed": 1,
+      "log": "27-lifecycle-seed1.log",
+      "seconds": 1.1181298559822608
+    },
+    {
+      "package": "rt_runtime",
+      "target": "lifecycle",
+      "arguments": [
+        "two_thread_stress_keeps_completion_and_state_publication_coherent"
+      ],
+      "seed": 2,
+      "passed": 1,
+      "log": "28-lifecycle-seed2.log",
+      "seconds": 1.1180003229819704
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "audio",
+      "arguments": [],
+      "seed": 0,
+      "passed": 6,
+      "log": "29-audio-seed0.log",
+      "seconds": 126.49172595201526
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "audio_ports",
+      "arguments": [],
+      "seed": 0,
+      "passed": 2,
+      "log": "30-audio_ports-seed0.log",
+      "seconds": 1.368167590990197
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "lib",
+      "arguments": [],
+      "seed": 0,
+      "passed": 4,
+      "log": "31-lib-seed0.log",
+      "seconds": 4.776674227992771
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "program_boundaries",
+      "arguments": [],
+      "seed": 0,
+      "passed": 3,
+      "log": "32-program_boundaries-seed0.log",
+      "seconds": 113.6626380099915
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "program_changes",
+      "arguments": [],
+      "seed": 0,
+      "passed": 10,
+      "log": "33-program_changes-seed0.log",
+      "seconds": 60.81871090599452
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "topology_staging",
+      "arguments": [],
+      "seed": 0,
+      "passed": 7,
+      "log": "34-topology_staging-seed0.log",
+      "seconds": 201.3257156200125
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "configuration_scenarios::generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_reference",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "35-runtime_topology-seed0.log",
+      "seconds": 100.24695268998039
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "configuration_scenarios::inactive_prepared_consumers_support_kind_change_removal_and_readd_without_retargeting_old_requests",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "36-runtime_topology-seed0.log",
+      "seconds": 32.140083122008946
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "configuration_scenarios::input::input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_capture",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "37-runtime_topology-seed0.log",
+      "seconds": 157.21856204798678
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "configuration_scenarios::rejections::batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishing_a_prefix",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "38-runtime_topology-seed0.log",
+      "seconds": 27.278496279002866
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "configuration_scenarios::rejections::configuration_refusals_and_final_resolver_failure_leave_all_three_owners_ready",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "39-runtime_topology-seed0.log",
+      "seconds": 24.87373212899547
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "configuration_scenarios::sources::source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under_saturation",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "40-runtime_topology-seed0.log",
+      "seconds": 26.225106975995004
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "configuration_scenarios::teardown::disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_published_capture_claims",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "41-runtime_topology-seed0.log",
+      "seconds": 133.508916212013
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "full_domain_slots_unread_graph_results_and_retirement_do_not_gate_clock_or_recovery",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "42-runtime_topology-seed0.log",
+      "seconds": 24.517843248991994
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "full_normal_domain_slots_and_unread_program_results_allow_clock_progress_and_recovery",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "43-runtime_topology-seed0.log",
+      "seconds": 25.22005874599563
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "graph_and_stopped_topology_publish_together_with_independent_media_and_journals",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "44-runtime_topology-seed0.log",
+      "seconds": 95.48175747299683
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "graph_pair_preflight_rejects_role_scope_epoch_and_cancelled_owners_without_partial_publication",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "45-runtime_topology-seed0.log",
+      "seconds": 27.330835776985623
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "intervening_live_graph_change_refuses_pending_program_without_publishing_its_zero_actions",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "46-runtime_topology-seed0.log",
+      "seconds": 63.10758355699363
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "live_route_cut_keeps_recording_prefix_and_midi_continuity_without_restarting_the_take",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "47-runtime_topology-seed0.log",
+      "seconds": 110.93834278298891
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "paired_graph_topology_owners_survive_disconnect_and_post_publication_render_fault",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "48-runtime_topology-seed0.log",
+      "seconds": 42.415438388998155
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "pending_program_cancellation_disconnect_and_fault_extraction_return_every_bank_owner",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "49-runtime_topology-seed0.log",
+      "seconds": 69.72954306998872
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "program_capture_preflight_uses_real_banks_and_preserves_old_media_on_family_refusal",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "50-runtime_topology-seed0.log",
+      "seconds": 140.3889648260083
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "program_delivery_validation_and_queued_cancellation_preserve_ready_bank_generations",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "51-runtime_topology-seed0.log",
+      "seconds": 14.698391145007918
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "program_graph_scenarios::capture::paired_program_capture_preflight_publishes_both_or_neither_and_records_real_fx_media",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "52-runtime_topology-seed0.log",
+      "seconds": 244.91147509700386
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "program_graph_scenarios::lifecycle::paired_cancellation_released_generations_and_intervening_graphs_never_publish_the_program",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "53-runtime_topology-seed0.log",
+      "seconds": 78.5940416950034
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "program_graph_scenarios::lifecycle::paired_retirement_unread_results_recovery_disconnect_and_render_fault_preserve_ownership",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "54-runtime_topology-seed0.log",
+      "seconds": 68.82381669300958
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "program_graph_scenarios::running_program_and_routes_publish_at_one_zero_cut_with_full_independent_reference",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "55-runtime_topology-seed0.log",
+      "seconds": 98.03959038999164
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "running_program_bank_activation_matches_independent_media_states_and_ordered_journals",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "56-runtime_topology-seed0.log",
+      "seconds": 96.93410012399545
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "staged_fixed_graph_activation_preserves_media_and_matches_independent_timeline",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "57-runtime_topology-seed0.log",
+      "seconds": 74.68659792799735
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "staging_work_shares_the_callback_budget_and_recovery_ignores_normal_receipt_stalls",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "58-runtime_topology-seed0.log",
+      "seconds": 17.858167597005377
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "stale_scope_generation_role_and_malformed_candidates_preserve_the_working_timeline",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "59-runtime_topology-seed0.log",
+      "seconds": 14.898690029978752
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "stopped_extraction_recovers_receiving_validating_ready_failed_and_retired_banks",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "60-runtime_topology-seed0.log",
+      "seconds": 62.05078953699558
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "timing_activation_during_capture_keeps_the_take_prefix_and_recorded_fx_media_coherent",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "61-runtime_topology-seed0.log",
+      "seconds": 111.15888247601106
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime_topology",
+      "arguments": [
+        "topology_revalidation_completes_countdown_receipts_and_cancelled_delivery_keeps_the_candidate",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "62-runtime_topology-seed0.log",
+      "seconds": 14.049702091986546
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "media",
+      "arguments": [],
+      "seed": 0,
+      "passed": 7,
+      "log": "63-media-seed0.log",
+      "seconds": 138.21604814199964
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "media_decisions",
+      "arguments": [],
+      "seed": 0,
+      "passed": 4,
+      "log": "64-media_decisions-seed0.log",
+      "seconds": 11.491188937012339
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "capture_decisions",
+      "arguments": [],
+      "seed": 0,
+      "passed": 4,
+      "log": "65-capture_decisions-seed0.log",
+      "seconds": 107.31113402699702
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "midi_restore",
+      "arguments": [],
+      "seed": 0,
+      "passed": 4,
+      "log": "66-midi_restore-seed0.log",
+      "seconds": 35.84524302999489
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "midi",
+      "arguments": [],
+      "seed": 0,
+      "passed": 6,
+      "log": "67-midi-seed0.log",
+      "seconds": 675.5860766569967
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "coordinated_stereo_midi_record_play_seek_export_and_repeated_capture_match_independent_oracles",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "68-runtime-seed0.log",
+      "seconds": 198.2188312979997
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_coherent",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "69-runtime-seed0.log",
+      "seconds": 122.69598966999911
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::stopped_input_initial_state_and_half_open_prefix_export_survive_immediate_play",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "70-runtime-seed0.log",
+      "seconds": 87.006816248002
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "71-runtime-seed0.log",
+      "seconds": 55.139081536995945
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::running_capture_exhaustion_preserves_independently_predicted_common_prefix_and_live_audio",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "72-runtime-seed0.log",
+      "seconds": 65.86464054798125
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "73-runtime-seed0.log",
+      "seconds": 19.05848977898131
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "74-runtime-seed0.log",
+      "seconds": 34.39248780999333
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::dense_one_sample_media_keeps_all_128_boundaries_with_unread_external_results",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "75-runtime-seed0.log",
+      "seconds": 877.7475190730183
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::facade_role_validation_invalid_operations_and_imported_revision_exhaustion_are_checked",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "76-runtime-seed0.log",
+      "seconds": 4.9768004279758316
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "runtime",
+      "arguments": [
+        "scenarios::integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "77-runtime-seed0.log",
+      "seconds": 70.25989933797973
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "topology_views",
+      "arguments": [],
+      "seed": 0,
+      "passed": 3,
+      "log": "78-topology_views-seed0.log",
+      "seconds": 15.151411725004436
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "interloop",
+      "arguments": [
+        "cascades_nested_clocked_program_and_capture_outcomes_match_independent_media_and_journals",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "79-interloop-seed0.log",
+      "seconds": 433.7153709149861
+    },
+    {
+      "package": "shoop_loop_engine",
+      "target": "interloop",
+      "arguments": [
+        "nested_lifecycle::nested_seek_stop_restart_and_direct_priority_preserve_media_cuts_and_pending_outcomes",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "80-interloop-seed0.log",
+      "seconds": 590.2424795530096
+    }
+  ],
+  "limitations": [
+    "Not a whole-workspace or whole-suite Miri claim.",
+    "Loom's generator/FFI model runs natively, not under Miri.",
+    "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+    "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+  ]
+}
