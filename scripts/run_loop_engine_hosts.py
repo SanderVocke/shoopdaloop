@@ -269,6 +269,71 @@ def compare_graph_worklets(result, native):
             raise RuntimeError("live graph report falsely claims OfflineAudioContext output")
 
 
+def compare_export_worklets(result, native):
+    """Full immutable content/receipt comparison with acknowledged step clocks."""
+    def normalized(data, session):
+        value = json.loads(json.dumps(data))
+        for field, size, offset in (("exportRequests", 96, 8), ("exportResponses", 1024, 16), ("responses", 96, 8)):
+            for record in value[field]:
+                if len(record) != size or struct.unpack_from("<Q", bytes(record), offset)[0] != session:
+                    raise RuntimeError("immutable export envelope/session")
+                record[offset:offset+8] = list(struct.pack("<Q", (1 << 64) - 1))
+        return value
+    if (len(native["exportRequests"]) != 44 or len(native["exportResponses"]) != 84
+            or len(native["responses"]) != 12 or len(native["samples"]) != 256
+            or native["counts"] != [0]*4 or native["recovered"] != [256,16,16,0]
+            or native["frames"] != 5632 or native["callbacks"] != 44 or native["storage"] != [16384,64,96,1024,2,1]):
+        raise RuntimeError("incomplete native immutable export evidence")
+    semantic = validate_semantic(native["semanticBytes"])
+    if semantic["boundaries"] != list(map(str, [0,4,8,12,128,132,136,140])) or semantic["decisions"] != 8 or semantic["events"] != 14:
+        raise RuntimeError("immutable export musical boundaries")
+    reports = result.get("exportReports", [])
+    if [r["mode"] for r in reports] != ["offline", "live"]:
+        raise RuntimeError("both actual immutable export contexts required")
+    for report in reports:
+        session = int(report["session"])
+        if normalized(report["data"], session) != native:
+            raise RuntimeError("complete actual immutable export samples/content/receipts differ from native")
+        checkpoints = report["checkpoints"]
+        if len(checkpoints) != 44 or [int(c["frame"]) for c in checkpoints] != [128*i for i in range(1,45)]:
+            raise RuntimeError("immutable export acknowledged engine steps")
+        starts = list(map(int, report["starts"]))
+        clocks = [int(c["browser"]) for c in checkpoints]
+        if starts != clocks[:2] or any(b <= a or b % 128 for a,b in zip(clocks,clocks[1:])):
+            raise RuntimeError("immutable export downstream browser clocks")
+        ingress = report["ingress"]
+        if len(ingress) != 46 or [v["result"] for v in ingress] != [4,9]+[0]*44:
+            raise RuntimeError("immutable export transactional refusals")
+        expected_frames = [0,0,0,128]+list(range(256,5632,128))
+        if list(map(lambda v: int(v["frame"]), ingress)) != expected_frames:
+            raise RuntimeError("immutable export request acknowledgement clock")
+        accepted = [v["bytes"] for v in ingress[2:]]
+        if accepted != report["data"]["exportRequests"]:
+            raise RuntimeError("immutable export accepted request trace")
+        bad = accepted[0].copy(); bad[95] = 1
+        foreign = accepted[0].copy(); foreign[8] ^= 128
+        if ingress[0]["bytes"] != bad or ingress[1]["bytes"] != foreign:
+            raise RuntimeError("immutable export refusal probes missing")
+        summary = report["summary"]
+        if (summary["bytes"] != summary["finalBytes"] or summary["bytes"] != report["ready"]["bytes"]
+                or report["controlBytes"] != report["controlFinalBytes"] or summary["heap"] != [0,0,0]
+                or summary["returnedBuffers"] != 10 or summary["returnedExportBuffers"] != 2
+                or summary["retainedExports"] != 0 or summary["journalOverflow"] != 0
+                or summary["recovered"] != native["recovered"] or summary["frames"] != "5632" or summary["callbacks"] != "44"
+                or [summary["firstFrame"],summary["resumeFrame"]] != list(map(str,starts))
+                or report["controlMarker"] != 0x51a17 or summary["marker"] != 0 or report["ready"]["shared"] is not False):
+            raise RuntimeError("immutable export memory/ownership/isolation evidence")
+        if report["mode"] == "offline":
+            expected = [[0]*11520 for _ in range(2)]
+            for channel in range(2):
+                for segment,start in enumerate(starts):
+                    expected[channel][start:start+128] = [sample[channel] for sample in native["samples"][segment*128:(segment+1)*128]]
+            if report["offlineAudio"] != expected:
+                raise RuntimeError("complete OfflineAudioContext immutable export output differs")
+        elif report["offlineAudio"] is not None:
+            raise RuntimeError("live export report claims offline audio")
+
+
 def compare_native_graphs(native, threaded):
     """Complete direct/threaded replay equality except instance-local graph scope."""
     def normalized(source):
@@ -336,7 +401,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 14:
+        if not node.get("passed") or len(node.get("checks", [])) != 15:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:
@@ -352,9 +417,14 @@ def main():
     compare_graph_worklets(result, graph_native)
     result["native_graph_two_thread"] = {"passed": True, "channel_capacity": 1,
                                           "frames": graph_threaded["frames"], "callbacks": graph_threaded["callbacks"]}
-    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph")}:
+    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)
+    exported = json.loads(harness.command([str(executable), "--export-json"], reports / "native-export.json"))
+    threaded_exports = json.loads(harness.command([str(executable), "--export-two-thread-json"], reports / "native-export-two-thread.json"))
+    if exported != threaded_exports or result["bindingChecks"]["exports"] != exported:
+        raise RuntimeError("complete native/threaded/Node/Chromium immutable export reports differ")
+    compare_export_worklets(result, exported)
     result["node"] = node
     for mode in ("--direct", "--wire", "--two-thread"):
         harness.command([str(executable), mode], reports / (mode[2:] + ".log"))

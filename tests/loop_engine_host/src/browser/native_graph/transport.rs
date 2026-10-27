@@ -6,6 +6,9 @@ enum Input {
     Primitive([u8; 64]),
     Payload([u8; 96]),
     Graph([u8; 96]),
+    Export([u8; 96]),
+    ExportResponse,
+    Storage,
     Render(u32),
     PrimitiveResponse,
     GraphResponse,
@@ -13,7 +16,7 @@ enum Input {
     Stop,
 }
 
-pub(super) struct Rendered {
+pub(in crate::browser) struct Rendered {
     pub result: u32,
     pub left: [f32; 128],
     pub right: [f32; 128],
@@ -22,7 +25,7 @@ pub(super) struct Rendered {
     pub callbacks: u64,
 }
 
-pub(super) struct Stopped {
+pub(in crate::browser) struct Stopped {
     pub journal: Vec<u8>,
     pub semantic: Vec<u8>,
     pub recovered: [u32; 4],
@@ -33,7 +36,9 @@ enum Output {
     Rendered(Rendered),
     PrimitiveResponse(Option<[u8; 96]>),
     GraphResponse(Option<[u8; 128]>),
-    Counts([u32; 2]),
+    Counts([u32; 3]),
+    ExportResponse(Option<[u8; crate::export_wire::RESPONSE_BYTES]>),
+    Storage([u32; 6]),
     Stopped(Stopped),
 }
 
@@ -52,6 +57,23 @@ fn dispatch(bridge: &mut BrowserBridge, input: Input) -> Output {
             bridge.graph.as_mut().unwrap().request = bytes;
             Output::Result(bridge.ingest_graph())
         }
+        Input::Export(bytes) => {
+            bridge.exports.as_mut().unwrap().request = bytes;
+            Output::Result(bridge.ingest_export())
+        }
+        Input::ExportResponse => Output::ExportResponse(match bridge.poll_export_response() {
+            0 => None,
+            1 => Some(bridge.exports.as_ref().unwrap().response),
+            code => panic!("export response fault {code}"),
+        }),
+        Input::Storage => Output::Storage([
+            bridge.export_resource_bytes(),
+            bridge.export_read_bytes(),
+            crate::export_wire::REQUEST_BYTES as u32,
+            crate::export_wire::RESPONSE_BYTES as u32,
+            crate::export_wire::BANKS as u32,
+            crate::export_wire::CREDITS as u32,
+        ]),
         Input::Render(frames) => {
             let result = bridge.render(frames);
             Output::Rendered(Rendered {
@@ -73,7 +95,11 @@ fn dispatch(bridge: &mut BrowserBridge, input: Input) -> Output {
             1 => Some(bridge.graph.as_ref().unwrap().response),
             code => panic!("graph response fault {code}"),
         }),
-        Input::Counts => Output::Counts([bridge.outstanding(), bridge.retained_graphs()]),
+        Input::Counts => Output::Counts([
+            bridge.outstanding(),
+            bridge.retained_graphs(),
+            bridge.retained_exports(),
+        ]),
         Input::Stop => match bridge.stop() {
             0 => Output::Stopped(Stopped {
                 journal: bridge.journal[..bridge.journal_len].to_vec(),
@@ -94,20 +120,32 @@ enum Backend {
     },
 }
 
-pub(super) struct Host(Backend);
+pub(in crate::browser) struct Host(Backend);
 
 impl Host {
     pub fn new(session: u64, threaded: bool) -> Self {
+        Self::prepare(session, threaded, false)
+    }
+    pub fn new_exports(session: u64, threaded: bool) -> Self {
+        Self::prepare(session, threaded, true)
+    }
+    fn prepare(session: u64, threaded: bool, exports: bool) -> Self {
         assert!(!allocation_guard::is_rendering());
         if !threaded {
-            return Self(Backend::Direct(Box::new(
-                BrowserBridge::new_graphs(session, 0).unwrap(),
-            )));
+            return Self(Backend::Direct(Box::new(if exports {
+                BrowserBridge::new_exports(session).unwrap()
+            } else {
+                BrowserBridge::new_graphs(session, 0).unwrap()
+            })));
         }
         let (input, inputs) = sync_channel(1);
         let (outputs, output) = sync_channel(1);
         let worker = std::thread::spawn(move || {
-            let mut bridge = BrowserBridge::new_graphs(session, 0).unwrap();
+            let mut bridge = if exports {
+                BrowserBridge::new_exports(session).unwrap()
+            } else {
+                BrowserBridge::new_graphs(session, 0).unwrap()
+            };
             while let Ok(input) = inputs.recv() {
                 let result = dispatch(&mut bridge, input);
                 assert!(!allocation_guard::is_rendering());
@@ -178,7 +216,25 @@ impl Host {
         }
     }
 
-    pub fn counts(&mut self) -> [u32; 2] {
+    pub fn export(&mut self, bytes: [u8; 96]) -> u32 {
+        match self.exchange(Input::Export(bytes)) {
+            Output::Result(code) => code,
+            _ => unreachable!(),
+        }
+    }
+    pub fn export_response(&mut self) -> Option<[u8; crate::export_wire::RESPONSE_BYTES]> {
+        match self.exchange(Input::ExportResponse) {
+            Output::ExportResponse(bytes) => bytes,
+            _ => unreachable!(),
+        }
+    }
+    pub fn storage(&mut self) -> [u32; 6] {
+        match self.exchange(Input::Storage) {
+            Output::Storage(storage) => storage,
+            _ => unreachable!(),
+        }
+    }
+    pub fn counts(&mut self) -> [u32; 3] {
         match self.exchange(Input::Counts) {
             Output::Counts(counts) => counts,
             _ => unreachable!(),

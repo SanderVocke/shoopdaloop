@@ -2,6 +2,14 @@
 fn main() {
     assert!(loop_engine_host_fixture::allocator_canaries());
     let mode = std::env::args().nth(1).unwrap_or_else(|| "--direct".into());
+    if mode == "--export-json" || mode == "--export-two-thread-json" {
+        println!(
+            "{}",
+            loop_engine_host_fixture::run_exports(mode == "--export-two-thread-json", &[128])
+                .json()
+        );
+        return;
+    }
     if mode == "--graph-json" || mode == "--graph-two-thread-json" {
         let run = if mode == "--graph-json" {
             loop_engine_host_fixture::run_graph

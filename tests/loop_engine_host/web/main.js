@@ -1,6 +1,8 @@
-import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient } from "./pkg/fixture.js";
+import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient, BrowserExportClient } from "./pkg/fixture.js";
 import { checkBindings } from "./bindings_checks.js";
 import { makeGraphHost } from "./graph_host.js";
+import { makeExportHost } from "./export_host.js";
+import { exportBindings } from "./export_script.js";
 const RATE = 48000, Q = 128;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -43,15 +45,15 @@ class Host {
         const result = this.wait(key); port.postMessage({ type, ...data }); return result;
     }
     async start() {
-        this.context = this.mode === "offline" ? new OfflineAudioContext(2, this.graph ? 768 : 512, RATE) : new AudioContext({ sampleRate: RATE });
+        this.context = this.mode === "offline" ? new OfflineAudioContext(2, this.exportMode ? 90 * Q : this.graph ? 768 : 512, RATE) : new AudioContext({ sampleRate: RATE });
         assert(this.context.sampleRate === RATE, "unexpected sample rate");
         await this.context.audioWorklet.addModule("./worklet.js");
         const ready = this.wait("ready");
         this.node = new AudioWorkletNode(this.context, "loop-fixture", { numberOfInputs: 0, numberOfOutputs: 1,
-            outputChannelCount: [2], processorOptions: { module: this.module, session: this.session, canary: this.canary, graph: this.graph } });
+            outputChannelCount: [2], processorOptions: { module: this.module, session: this.session, canary: this.canary, graph: this.graph, exports: this.exportMode === true } });
         this.node.port.onmessage = ({ data }) => this.message(data);
         this.node.onprocessorerror = () => this.reject(new Error("loop AudioWorklet processorerror"));
-        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { graph: this.graph } });
+        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { graph: this.graph || this.exportMode === true } });
         this.probe.port.onmessage = ({ data }) => this.message(data);
         this.probe.onprocessorerror = () => this.reject(new Error("audio probe processorerror"));
         this.node.connect(this.probe);
@@ -144,7 +146,11 @@ async function runInner() {
     const graphCanary = requestedCanary?.startsWith("graph-");
     const canary = graphCanary ? requestedCanary.slice(6) : requestedCanary;
     const bindingChecks = canary ? null : checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient);
-    const reports = [], graphReports = [];
+    if (!canary) {
+        bindingChecks.exports = await exportBindings(wasm, BrowserClient, BrowserBridge, BrowserExportClient);
+        bindingChecks.checks.push("immutable exports across both revisions and all 16 initial MIDI channels");
+    }
+    const reports = [], graphReports = [], exportReports = [];
     for (const mode of graphCanary ? [] : canary ? ["offline"] : ["offline", "live"]) {
         const session = mode === "offline" ? "18446744073709551615" : "18446744073709551614";
         const client = new BrowserClient(BigInt(session)); client.set_marker(0x51a17);
@@ -161,7 +167,16 @@ async function runInner() {
         try { graphReports.push(await host.run()); }
         finally { await host.cleanup(); graphClient.free(); client.free(); }
     }
-    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports };
+    const ExportHost = makeExportHost(Host);
+    for (const mode of canary ? [] : ["offline", "live"]) {
+        const session = mode === "offline" ? "18446744073709551611" : "18446744073709551610";
+        const client = new BrowserClient(BigInt(session)), exportClient = new BrowserExportClient(BigInt(session));
+        client.set_marker(0x51a17);
+        const host = new ExportHost(mode, module, wasm.memory, client, session, exportClient);
+        try { exportReports.push(await host.run()); }
+        finally { await host.cleanup(); exportClient.free(); client.free(); }
+    }
+    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports, exportReports };
 }
 export async function run() {
     try { return await runInner(); }

@@ -10,9 +10,12 @@ mod bridge;
 #[cfg(test)]
 mod bridge_tests;
 mod browser;
+mod browser_export_client;
 mod browser_graph;
 mod browser_graph_client;
 mod client;
+mod export_bridge;
+pub mod export_wire;
 mod graph_bridge;
 pub mod graph_transfer;
 pub mod graph_wire;
@@ -22,8 +25,11 @@ mod scenario;
 pub mod wire;
 pub use bridge::Bridge;
 #[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_export::{run_exports, ExportReport};
+#[cfg(not(target_arch = "wasm32"))]
 pub use browser::native_graph::{run_graph, run_graph_two_thread, GraphReport};
 pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
+pub use browser_export_client::BrowserExportClient;
 pub use browser_graph::BrowserGraphReceiver;
 pub use browser_graph_client::BrowserGraphClient;
 pub use client::Client;

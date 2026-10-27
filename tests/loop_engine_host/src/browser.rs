@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod native_export;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod native_graph;
 
 pub const HEAP_FAILURE: u32 = 0xffff_0001;
@@ -132,6 +134,11 @@ pub struct BrowserBridge {
     callbacks: u64,
     faulted: bool,
     recovered: [u32; 4],
+    exports: Option<Box<ExportBuffers>>,
+}
+struct ExportBuffers {
+    request: [u8; crate::export_wire::REQUEST_BYTES],
+    response: [u8; crate::export_wire::RESPONSE_BYTES],
 }
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl BrowserBridge {
@@ -142,6 +149,73 @@ impl BrowserBridge {
             Bridge::with_fault(session, fault).map_err(protocol_error)?,
             false,
         ))
+    }
+    pub fn new_exports(session: u64) -> Result<Self, u32> {
+        let mut host = Self::from_core(
+            Bridge::with_exports(session).map_err(protocol_error)?,
+            false,
+        );
+        host.exports = Some(Box::new(ExportBuffers {
+            request: [0; crate::export_wire::REQUEST_BYTES],
+            response: [0; crate::export_wire::RESPONSE_BYTES],
+        }));
+        Ok(host)
+    }
+    pub fn export_request_ptr(&mut self) -> *mut u8 {
+        self.exports
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |b| b.request.as_mut_ptr())
+    }
+    pub fn export_response_ptr(&mut self) -> *mut u8 {
+        self.exports
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |b| b.response.as_mut_ptr())
+    }
+    pub fn export_resource_bytes(&self) -> u32 {
+        self.core.as_ref().map_or(0, Bridge::export_resource_bytes)
+    }
+    pub fn export_read_bytes(&self) -> u32 {
+        if self.exports.is_some() {
+            64
+        } else {
+            0
+        }
+    }
+    pub fn retained_exports(&self) -> u32 {
+        self.core
+            .as_ref()
+            .map_or(0, |core| core.retained_exports() as u32)
+    }
+    pub fn ingest_export(&mut self) -> u32 {
+        if self.faulted {
+            return 11;
+        }
+        let Some(buffers) = self.exports.as_ref() else {
+            return 11;
+        };
+        self.core
+            .as_mut()
+            .ok_or(wire::Error::State)
+            .and_then(|core| core.export_ingest(&buffers.request))
+            .map_or_else(protocol_error, |_| 0)
+    }
+    pub fn poll_export_response(&mut self) -> u32 {
+        let Some(buffers) = self.exports.as_mut() else {
+            return 0x8000_000b;
+        };
+        match self
+            .core
+            .as_mut()
+            .ok_or(wire::Error::State)
+            .and_then(Bridge::next_export_response)
+        {
+            Ok(Some(packet)) => {
+                buffers.response = packet;
+                1
+            }
+            Ok(None) => 0,
+            Err(error) => 0x8000_0000 | protocol_error(error),
+        }
     }
     /// Opt-in fixed graph descriptor and command/result banks, prepared off-render.
     pub fn new_graphs(session: u64, fault: u8) -> Result<Self, u32> {
@@ -180,6 +254,7 @@ impl BrowserBridge {
             callbacks: 0,
             faulted: false,
             recovered: [0; 4],
+            exports: None,
         }
     }
 }
@@ -358,7 +433,9 @@ impl BrowserBridge {
         let Some(core) = self.core.as_ref() else {
             return 10;
         };
-        if (core.outstanding() != 0 || core.retained_graphs() != 0) && !self.faulted {
+        if (core.outstanding() != 0 || core.retained_graphs() != 0 || core.retained_exports() != 0)
+            && !self.faulted
+        {
             return 15;
         }
         let mut stopped = self.core.take().unwrap().into_stopped();
@@ -404,8 +481,10 @@ impl BrowserBridge {
             };
             if at < 4 {
                 self.input_left[offset] = 2. * (at + 1) as f32;
-                self.input_right[offset] = self.input_left[offset] * 10.;
+            } else if self.exports.is_some() && (128..132).contains(&at) {
+                self.input_left[offset] = 20. * (at - 127) as f32;
             }
+            self.input_right[offset] = self.input_left[offset] * 10.;
         }
         for (at, packet) in [(0, [0x90, 60, 100]), (2, [0x80, 60, 45])] {
             if at >= start && (at - start) < frames as u64 {

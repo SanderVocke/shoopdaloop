@@ -1,5 +1,6 @@
 """The browser failure gate requires Rust witnesses, not just matching error text."""
 import copy
+import gzip
 import json
 import sys
 import struct
@@ -7,7 +8,48 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, validate_semantic, verify_failure
+from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, validate_semantic, verify_failure
+
+
+class ImmutableExportTests(unittest.TestCase):
+    def fixture(self):
+        native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_export_native.json.gz").read_bytes()))
+        reports = []
+        for mode in ("offline", "live"):
+            starts = [128,384]
+            checkpoints = [{"frame": str(128*i), "browser": str(128+(i-1)*256)} for i in range(1,45)]
+            accepted = [{"bytes": request, "result": 0, "frame": str(0 if i == 0 else 128 if i == 1 else 256+(i-2)*128)} for i,request in enumerate(native["exportRequests"])]
+            bad = native["exportRequests"][0].copy(); bad[95] = 1
+            foreign = native["exportRequests"][0].copy(); foreign[8] ^= 128
+            audio = [[0]*11520 for _ in range(2)]
+            for channel in range(2):
+                for segment,start in enumerate(starts): audio[channel][start:start+128] = [sample[channel] for sample in native["samples"][segment*128:(segment+1)*128]]
+            reports.append({"mode": mode, "session": str((1<<64)-1), "data": copy.deepcopy(native), "checkpoints": checkpoints, "starts": list(map(str,starts)), "ingress": [{"bytes":bad,"result":4,"frame":"0"},{"bytes":foreign,"result":9,"frame":"0"}]+accepted,
+                "ready": {"bytes":1835008,"shared":False}, "controlBytes":1835008,"controlFinalBytes":1835008,"controlMarker":0x51a17,
+                "summary": {"bytes":1835008,"finalBytes":1835008,"heap":[0,0,0],"returnedBuffers":10,"returnedExportBuffers":2,"retainedExports":0,"journalOverflow":0,"recovered":[256,16,16,0],"frames":"5632","callbacks":"44","firstFrame":"128","resumeFrame":"384","marker":0}, "offlineAudio":audio if mode == "offline" else None})
+        return native, {"exportReports": reports}
+
+    def test_complete_immutable_export_contexts_are_required(self):
+        native, result = self.fixture(); compare_export_worklets(result, native)
+        for field in ("exportRequests","exportResponses","responses","samples","midiBytes","semanticBytes","recovered","counts","storage"):
+            altered = copy.deepcopy(result); altered["exportReports"][0]["data"][field].pop()
+            with self.assertRaises((RuntimeError, ValueError)): compare_export_worklets(altered, native)
+        for field,value in (("exportReports",[]),("exportReports",result["exportReports"][:1])):
+            altered=copy.deepcopy(result); altered[field]=value
+            with self.assertRaises(RuntimeError): compare_export_worklets(altered,native)
+        altered=copy.deepcopy(result); altered["exportReports"][0]["data"]["exportResponses"][1][256] = 1
+        with self.assertRaises(RuntimeError): compare_export_worklets(altered,native)
+
+    def test_clock_transactional_rejections_memory_and_actual_output_cannot_be_omitted(self):
+        native,result=self.fixture()
+        for field,value in (("returnedExportBuffers",1),("retainedExports",1),("heap",[1,0,0]),("finalBytes",1900544),("recovered",[255,16,16,0]),("callbacks","43")):
+            altered=copy.deepcopy(result); altered["exportReports"][0]["summary"][field]=value
+            with self.assertRaises(RuntimeError): compare_export_worklets(altered,native)
+        for field,value in (("checkpoints",[]),("starts",["128","512"]),("controlFinalBytes",1900544),("ingress",[]),("offlineAudio",None)):
+            altered=copy.deepcopy(result); altered["exportReports"][0][field]=value
+            with self.assertRaises(RuntimeError): compare_export_worklets(altered,native)
+        altered=copy.deepcopy(result); altered["exportReports"][0]["offlineAudio"][1][384] += 1
+        with self.assertRaises(RuntimeError): compare_export_worklets(altered,native)
 
 
 class NativeGraphTransportTests(unittest.TestCase):

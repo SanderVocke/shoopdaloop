@@ -1,6 +1,6 @@
 //! Native reference for the graph worklet's acknowledged one-sample checkpoint.
 use super::{allocation_guard, BrowserClient};
-mod transport;
+pub(super) mod transport;
 use crate::{graph_wire, wire, BrowserGraphClient, Report};
 use transport::Host;
 
@@ -177,7 +177,8 @@ fn run(partitions: &[usize], threaded: bool) -> GraphReport {
         ),
         (0, 2, 3, 12, 2)
     );
-    let [outstanding, retained] = bridge.counts();
+    let [outstanding, retained, exports] = bridge.counts();
+    assert_eq!(exports, 0);
     let counts = [
         primitive.outstanding(),
         client.outstanding(),

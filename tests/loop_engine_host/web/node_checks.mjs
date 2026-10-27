@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
-import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient } from "./pkg/fixture.js";
+import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient, BrowserExportClient } from "./pkg/fixture.js";
 import { checkBindings } from "./bindings_checks.js";
+import { exportBindings } from "./export_script.js";
 const module = new WebAssembly.Module(readFileSync(new URL("./pkg/fixture_bg.wasm", import.meta.url)));
 const wasm = initSync({ module });
-console.log(JSON.stringify({ ...checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient), node: process.version }));
+const result = checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient);
+result.exports = await exportBindings(wasm, BrowserClient, BrowserBridge, BrowserExportClient);
+result.checks.push("immutable exports across both revisions and all 16 initial MIDI channels");
+console.log(JSON.stringify({ ...result, node: process.version }));

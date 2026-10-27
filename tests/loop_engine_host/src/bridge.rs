@@ -51,6 +51,7 @@ pub struct Bridge {
     quarantine: Option<Returned>,
     faulted: bool,
     graphs: Option<Box<crate::graph_bridge::Graphs>>,
+    exports: Option<Box<crate::export_bridge::Exports>>,
     fault_witness: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 impl Bridge {
@@ -77,6 +78,7 @@ impl Bridge {
             quarantine: None,
             faulted: false,
             graphs: None,
+            exports: None,
             fault_witness,
         })
     }
@@ -99,6 +101,53 @@ impl Bridge {
             crate::graph_bridge::Graphs::new(session, config).map_err(|_| WireError::State)?,
         ));
         Ok(bridge)
+    }
+    pub fn with_exports(session: u64) -> Result<Self, WireError> {
+        let mut bridge = Self::new(session)?;
+        let config = bridge
+            .control
+            .compile_graph(&scenario::routes(false))
+            .map_err(|_| WireError::State)?
+            .config();
+        let resource_bytes =
+            u32::try_from(config.resource_bytes()).map_err(|_| WireError::State)?;
+        bridge.exports = Some(Box::new(crate::export_bridge::Exports::new(
+            session,
+            resource_bytes,
+        )));
+        Ok(bridge)
+    }
+    pub fn export_ingest(&mut self, bytes: &[u8]) -> Result<(), WireError> {
+        crate::guarded(|| {
+            if self.faulted {
+                return Err(WireError::State);
+            }
+            let now = self.next_frame();
+            self.exports
+                .as_mut()
+                .ok_or(WireError::State)?
+                .ingest(&mut self.control, bytes, now)
+        })
+    }
+    pub fn next_export_response(
+        &mut self,
+    ) -> Result<Option<[u8; crate::export_wire::RESPONSE_BYTES]>, WireError> {
+        crate::guarded(|| {
+            self.exports
+                .as_mut()
+                .ok_or(WireError::State)?
+                .next_response()
+        })
+    }
+    pub fn export_resource_bytes(&self) -> u32 {
+        self.exports
+            .as_ref()
+            .map_or(0, |exports| exports.resource_bytes)
+    }
+    pub fn retained_exports(&self) -> usize {
+        self.exports
+            .as_ref()
+            .map_or(0, |exports| exports.retained())
     }
     pub fn graph_payload(&mut self, bytes: &[u8]) -> Result<crate::graph_transfer::Phase, Error> {
         crate::guarded(|| {
@@ -160,6 +209,10 @@ impl Bridge {
                 .graphs
                 .as_ref()
                 .map_or(0, |graphs| graphs.outstanding())
+            + self
+                .exports
+                .as_ref()
+                .map_or(0, |exports| exports.outstanding())
     }
 
     /// Consume one well-formed request into its reserved slot. Refusal leaves the
@@ -261,11 +314,26 @@ impl Bridge {
             + self
                 .graphs
                 .as_ref()
-                .map_or(0, |_| crate::graph_wire::CREDITS);
+                .map_or(0, |_| crate::graph_wire::CREDITS)
+            + self
+                .exports
+                .as_ref()
+                .map_or(0, |_| crate::export_wire::CREDITS);
         for _ in 0..credits {
             let Some(completion) = self.control.try_completion() else {
                 break;
             };
+            if let Some(exports) = self
+                .exports
+                .as_mut()
+                .filter(|exports| exports.matches(completion.sequence))
+            {
+                if let Err(completion) = exports.completion(completion) {
+                    self.quarantine = Some(completion);
+                    return Err(Error::InvalidState);
+                }
+                continue;
+            }
             if let Some(graphs) = self
                 .graphs
                 .as_mut()
@@ -318,6 +386,14 @@ impl Bridge {
             let Some(execution) = self.control.try_execution() else {
                 break;
             };
+            if let Some(exports) = self
+                .exports
+                .as_mut()
+                .filter(|exports| exports.matches(execution.sequence))
+            {
+                exports.execution(execution)?;
+                continue;
+            }
             if let Some(graphs) = self
                 .graphs
                 .as_mut()

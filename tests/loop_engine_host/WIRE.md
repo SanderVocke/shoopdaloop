@@ -459,6 +459,76 @@ Normal stop refuses15 while any graph remains Ready/Taken, even with no command
 credit outstanding. Intentional fault/abandonment is not a fabricated owning return.
 Fault modes0/1/2 match the primitive constructor's normal/processor/heap modes.
 
+## Immutable export transport
+
+`BrowserExportClient` and `BrowserBridge.new_exports(session)` opt into one command
+credit, two receiver-local retained banks and a pre-touched reusable64-byte owning
+read buffer. Pointers address only the exporting instance. Local `(bank,generation)`
+records route to actual ledger-owned exports/cursors; no Rust owner, cursor layout,
+snapshot lease or pointer crosses memories. Session nonces are routing, not authentication.
+
+| `LLE1` request field | Offset/size |
+| --- | --- |
+| Magic/version/kind/cancelled | 0/4,4/2,6/1,7/1 |
+| Session/sequence/requested frame | 8/8,16/8,24/8 |
+| Reserved command slot0 | 32/4 |
+| Local bank/generation | 36/4,40/4 |
+| Export target slot/generation | 44/4,48/4; other kinds zero |
+| Initial channel/export selection | 52/1,53/1; unused zero |
+| Reserved/read position/reserved | 54/2,56/8,64/32 |
+
+Kinds1–7 are Export, AudioCursor, MidiCursor, AudioRead, MidiRead, MidiInitial,
+Release. Selection0/1/2 means Latest/Playback/Recording. Read requests have frame0,
+explicit expected cursor position and a fixed64-byte maximum chunk; other kinds
+have position0. Full-width sequence is strictly increasing/nonwrapping. Refusals
+preserve the receiver watermark/owners; command Busy is independent of bank retention.
+
+`LLF1` is1024 bytes: magic/version/kind/phase at0/4/6/7; flags/status at8/12;
+session/sequence/runtime sequence at16/24/32; requested/effective/delivered/observed
+frames at40/48/56/64; error at72; original bank/generation/next generation at76/80/84;
+read start/written/data length at88/96/100; descriptor104–255; data256–1023.
+Flags are delivery1/descriptor2/EOF4. Phase1 is admission,2 terminal domain execution,
+3 reliable owning read completion. Status1–5 means Admitted/Applied/Cancelled/
+Rejected/Failed; runtime/domain failure families retain their existing distinctions.
+Scalar admission precedes terminal; read has one owning result and returns its
+actual buffer before releasing credit. Cancellation/rejection cannot destroy that
+buffer on the callback. Unexpected owning completions remain intact for quarantine.
+
+Export descriptor offsets: settled cut104, graph/topology epochs112/120, owner
+slot/generation128/132, content revision136, frames144, channels152, source flags156,
+active/incomplete flags157, mode158/reserved159, audio/MIDI bytes160/168, original
+snapshot cuts176/184, audio start/end192/200, MIDI start/end208/216, raw resource
+revisions224/232, public position/cycles240/248. Every integer is little-endian;
+unused/padding bytes are zero. Source cuts/stamps are not relabeled as request cuts.
+Resource append revisions can vary by partition; content revisions and semantic
+results cannot. Same-partition native/Wasm comparisons retain every byte exactly.
+
+Initial-channel data is656 bytes: channel/reset/program/bankMSB/bankLSB/pressure/
+controller-reset/family/history at0–8; reserved9, pitch u16 at10, reserved12–15;
+128 four-byte notes at16 (velocity,held/sostenuto bits,optional pressure,reserved),
+then128 optional controllers at528. Optional values use255 for unknown, otherwise
+0–127. Family0/1/2 is none/RPN/NRPN. This is the existing fixed MIDI projection,
+not vendor/synthesizer state or tracked parameter-value history. All16 channels and
+the system-reset flag are checked for both actual immutable snapshots.
+
+Actual MessagePort uses one96-byte input/two1024-byte response transfer buffers,
+separate from the five primitive inputs/ten primitive responses. Every transfer
+must detach and return. `export-step` includes the acknowledged current engine
+clock and allows exactly one128-frame call before `checkpoint` pauses the engine.
+The first two calls are audible capture/play phases; remaining calls service bounded
+reads/initial-state/release while stopped. Offline suspension brackets each step;
+live browser gaps are explicit, not silently mapped to engine time. Successful
+stop requires no commands, retained exports or missing buffer credits. Failed
+sessions/abandoned exports are never presented as successful owning returns.
+
+`native-export.json`, `native-export-two-thread.json`, shared binding `exports`
+and both `exportReports` retain all44 requests/84 export replies/twelve primitive
+replies, media/semantic bytes,256 observed samples,5632 frames/44 callbacks,
+actual counts/recovery and fixed backing/I/O storage components. Only known session
+nonces normalize for actual worklet comparisons; no resource-revision normalization
+is applied to the fixed128-frame native/Wasm script. Every complete11520-frame
+OfflineAudioContext channel is additionally checked against the downstream probe.
+
 ## Native graph actor transport
 
 Native `--graph-json` and `--graph-two-thread-json` run the same complete graph

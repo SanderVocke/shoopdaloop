@@ -18,9 +18,11 @@ commands/owning returns through MessagePort with an audible Ready checkpoint and
 explicit engine pause/resume, full native/reference downstream checks and successful
 recovery. Native capacity-one graph actor transport now also matches complete direct
 replay, with renderer-local owners and callback-external coordination. Stage7 has
-three of eight rows verified, including the fixture documentation maintained with
-these implemented milestones. Program/resource wire operations, exports and broader
-host scenarios remain pending.
+four of eight rows verified, including native offline/two-thread/export evidence
+and the fixture documentation maintained with these implemented milestones. Immutable
+exports now retain/read/release both capture revisions through native/bindings/actual
+worklets. Program/resource uploads and program staging plus broader host scenarios
+remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -31,7 +33,46 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 native graph actor transport
+## Stage 7 immutable exports and native host-row completion
+
+The full immutable export scenario passes native direct/capacity-one actors, shared
+Node/Chromium bindings and actual non-isolated offline/live worklets in both profiles.
+It retains revision1 across recording revision2, checks exact stereo/MIDI data and
+complete initial state for all16 MIDI channels per snapshot, then releases both with
+next generation2, zero credits/owners and256/16/16/0 recovery. Source cuts4/132 and
+capture stamps0–4/128–132 remain distinct from settled request cuts8/136.
+
+Canonical96-byte `LLE1`/1024-byte `LLF1`, one command credit, two retained local banks
+and a reusable64-byte owning read buffer contain no transferred Rust owner/pointer.
+All44 requests/84 export replies/twelve primitive replies,256 audible samples,
+3930 MIDI bytes and4840 semantic bytes match complete native/reference results.
+Native storage components16384/64/96/1024 bytes plus two banks/one credit are fixed
+and recorded alongside zero callback heap activity; they are not total native RSS.
+Actual worklets use44 acknowledged128-frame calls/5632 engine frames, with deliberate
+test-driver pauses; offline checks all11520 output frames/channel. No continuous
+live-edit/MessagePort deadline claim is made.
+
+Four new native cases cover coherent immutable contents/partitions, cancellation/
+EOF/stalls/128 actual export reuses, full-width codecs/all truncations/projection
+padding and transactional generation/sequence exhaustion. Two new Python cases reject
+missing/corrupt context, contents, clocks, acknowledgements, memory/owners and actual
+output. Their gzip native fixture is parser data, not a fresh execution. Raw resource
+append revisions remain truthful diagnostics; only the partition-variant native test
+normalizes them, never content revisions or same-partition native/Wasm comparisons.
+
+Fresh gates:47 fixture tests per native profile; fifteen groups per Node/Chromium/
+profile; six successful actual contexts plus four exact Rust-origin failure gates
+per profile; thirteen Python tests;2141 workspace passes/four existing skips;
+warning-denied builds/docs/formatting/policies. Fixed worklet memories remain
+1,835,008 debug/1,769,472 release bytes. [Complete export evidence](evidence/exports-stage7.md)
+records commands, source, raw reports, failed attempts and normalization limits.
+
+The native offline/two-thread/export row is now verified: Stage7 is4/8. Program/
+resource upload/program staging, broader musical/failure/stall scenarios, planner
+failure canaries, consolidated Miri, CI artifacts and Stages8–10 remain incomplete.
+No new interpreter, benchmark, remote CI/review or production smoke pass is claimed.
+
+## Historical Stage 7 native graph actor transport
 
 `replay --graph-two-thread-json` constructs the engine/descriptor banks on the
 render thread and transfers copied wire envelopes through two capacity-one queues.

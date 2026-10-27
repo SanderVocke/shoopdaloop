@@ -244,8 +244,8 @@ no separate `wasm-bindgen` executable is required. Missing tools are failures,
 not skipped browser evidence. `--no-build` deliberately reuses that profile's
 existing artifacts; omit it for fresh verification.
 
-Each normal runner invocation requires four successful sessions: primitive and
-graph-change scenarios in both offline and live contexts. `--verify-failures`
+Each normal runner invocation requires six successful sessions: primitive,
+graph-change and immutable-export scenarios in both offline and live contexts. `--verify-failures`
 additionally checks four intentionally failing sessions.
 
 ### 1. Prepare two ordinary Wasm instances
@@ -343,13 +343,13 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Fourteen shared public-binding groups execute in Node and Chromium: constructor
+Fifteen shared public-binding groups execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
 records, an eventless same-position seek, two payload checks and three graph command
 checks: full-width/credits, exact activation/retirement and128 real owner returns.
-These are binding-level Wasm checks, not a claim that the43 native Rust tests
+These are binding-level Wasm checks, not a claim that the47 native Rust tests
 were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
@@ -380,6 +380,47 @@ The runner rejects malformed or incomplete semantic data, then compares every by
 with the native independent table. This journal is extracted after callbacks stop;
 it is not live telemetry or an immutable media export.
 
+## Retain and read immutable capture exports
+
+The default runner additionally executes this full scenario through native direct/
+capacity-one actor replay, Node/Chromium bindings and actual offline/live worklets:
+
+1. Record0/Play4/Stop12; Export Latest at8. Its settled request cut is8, but both
+   original source snapshot cuts remain4, with coherent capture stamps0–4.
+2. Keep that export alive while Record128/Play132/Stop140 creates revision2.
+   Input128–131 yields stereo10,20,30,40 (right×10), distinct from revision1's
+   1,2,3,4. Export Latest at136 retains source cuts132 and stamps128–132.
+3. Read both retained exports through local cursors and a reusable64-byte owning
+   resource buffer. Require exact32-byte stereo data per snapshot; MIDI is the
+   original note-on0/note-off2 for revision1 and empty for revision2. Query all16
+   initial channel projections per snapshot, including every key/controller and
+   program/bank/pressure/pitch/reset/parameter-history field—not just channel0.
+4. A successful stop must refuse15 while either export remains retained. Release
+   both explicitly, require next local generations2, all command/owner counts0,
+   every transfer buffer returned and256/16/16/0 resource recovery.
+
+Actual worklets use44 explicitly acknowledged128-frame steps. Between steps the
+engine pauses and Web Audio emits silence; no hidden engine time advances. A probe
+observes the two audible quanta and requires source-clock agreement. Offline also
+checks both complete11520-frame channels, including every idle/query/stopped sample.
+This is not continuous wall-clock live editing or a MessagePort deadline claim.
+
+```sh
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --export-json
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --export-two-thread-json
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
+  browser::native_export::tests::immutable_exports_hold_both_revisions_across_native_direct_and_bounded_threads -- --exact
+```
+
+Repeat with `--release` before `--bin`/the filter. The native reports retain44
+requests/84 export results/twelve primitive results,256 samples,3930 MIDI bytes,
+4840 semantic bytes,5632 frames/44 callbacks and actual ownership/recovery counts.
+The storage tuple `[16384,64,96,1024,2,1]` reports prepared resource backing, read/
+request/response bytes, retained banks and command credits. It is not total native
+RSS; native callback heap counts are guarded zero. Resource append revisions can
+vary with callback partitions; public content revisions/audio/MIDI/timeline do not.
+See [wire/lifecycle details](WIRE.md#immutable-export-transport).
+
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
@@ -391,7 +432,9 @@ Node/Chromium with complete native-oracle comparisons. Actual offline/live graph
 changes now transfer descriptors/commands/owning results through MessagePort and
 check downstream samples, acknowledged clocks and successful recovery. Native
 bounded two-thread graph payload/command/return transport also matches direct
-replay. Program/resource payload staging, immutable exports,
+replay. Immutable snapshot/read/release now additionally verifies both retained
+capture revisions through native and actual worklet hosts. Program/resource upload
+and program staging,
 broader loop/composite/seek/replacement/exhaustion scenarios and live in-flight
 transfer stalls also remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

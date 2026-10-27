@@ -32,8 +32,12 @@ The native actor extension adds
 `browser::native_graph::tests::bounded_two_thread_graph_transport_matches_complete_native_reference`:
 capacity-one copied-byte transport, renderer-local owners, malformed retries,
 whole/single/irregular/zero partitions and complete direct-report equality.
-All19 graph-focused native cases are **not yet registered in the pinned interpreter
-runner or interpreted**. Node/Chromium now execute shared
+Immutable export integration adds four more native cases: two `browser::native_export::tests`
+(complete direct/threaded two-revision snapshots/partitions and cancellation/EOF/stalls/
+128 export reuses) and two `export_wire::tests` (canonical/full-width codecs,
+truncations/projection validation and transactional credits/nonwrapping generations).
+All19 graph-focused plus four export-focused cases are **not yet registered in the
+pinned interpreter runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the
 existing900s per-command watchdog, guards and workloads when adding the standalone
