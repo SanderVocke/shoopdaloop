@@ -1,6 +1,8 @@
 //! Native reference for the graph worklet's acknowledged one-sample checkpoint.
-use super::{allocation_guard, BrowserBridge, BrowserClient};
+use super::{allocation_guard, BrowserClient};
+mod transport;
 use crate::{graph_wire, wire, BrowserGraphClient, Report};
+use transport::Host;
 
 #[derive(Debug)]
 pub struct GraphReport {
@@ -9,6 +11,7 @@ pub struct GraphReport {
     pub requests: Vec<[u8; 96]>,
     pub responses: Vec<[u8; 128]>,
     pub primitive_responses: Vec<[u8; 96]>,
+    pub counts: [u32; 5],
     pub frames: u64,
     pub callbacks: u64,
 }
@@ -28,42 +31,40 @@ impl GraphReport {
             .map(|(a, b, c)| format!("[{a},{b},{c}]"))
             .collect::<Vec<_>>()
             .join(",");
-        format!("{{\"samples\":{:?},\"midi\":[{}],\"transitions\":[{}],\"semanticBytes\":{:?},\"recovered\":[{},{},{},{}],\"payloads\":{:?},\"graphRequests\":{:?},\"graphResponses\":{:?},\"responses\":{:?},\"frames\":{},\"callbacks\":{}}}", self.media.samples, midi, transitions, self.media.semantic, self.media.free_pages, self.media.free_versions, self.media.free_snapshots, self.media.media_references, self.payloads, self.requests, self.responses, self.primitive_responses, self.frames, self.callbacks)
+        format!("{{\"samples\":{:?},\"midi\":[{}],\"transitions\":[{}],\"semanticBytes\":{:?},\"recovered\":[{},{},{},{}],\"payloads\":{:?},\"graphRequests\":{:?},\"graphResponses\":{:?},\"responses\":{:?},\"counts\":{:?},\"frames\":{},\"callbacks\":{}}}", self.media.samples, midi, transitions, self.media.semantic, self.media.free_pages, self.media.free_versions, self.media.free_snapshots, self.media.media_references, self.payloads, self.requests, self.responses, self.primitive_responses, self.counts, self.frames, self.callbacks)
     }
 }
-fn send(client: &BrowserGraphClient, bridge: &mut BrowserBridge, requests: &mut Vec<[u8; 96]>) {
-    bridge.graph.as_mut().unwrap().request = client.request;
-    assert_eq!(bridge.ingest_graph(), 0);
+fn send(client: &BrowserGraphClient, bridge: &mut Host, requests: &mut Vec<[u8; 96]>) {
+    assert_eq!(bridge.graph(client.request), 0);
     requests.push(client.request);
 }
-fn collect(
-    client: &mut BrowserGraphClient,
-    bridge: &mut BrowserBridge,
-    responses: &mut Vec<[u8; 128]>,
-) {
+fn collect(client: &mut BrowserGraphClient, bridge: &mut Host, responses: &mut Vec<[u8; 128]>) {
     for _ in 0..4 {
-        let result = bridge.poll_graph_response();
-        if result == 0 {
+        let Some(response) = bridge.graph_response() else {
             return;
-        }
-        assert_eq!(result, 1);
-        client.response = bridge.graph.as_ref().unwrap().response;
+        };
+        client.response = response;
         assert_eq!(client.receive(), 0);
         responses.push(client.response);
     }
-    assert_eq!(bridge.poll_graph_response(), 0);
+    assert!(bridge.graph_response().is_none());
 }
 pub fn run_graph(partitions: &[usize]) -> GraphReport {
+    run(partitions, false)
+}
+pub fn run_graph_two_thread(partitions: &[usize]) -> GraphReport {
+    run(partitions, true)
+}
+fn run(partitions: &[usize], threaded: bool) -> GraphReport {
     assert!(partitions.iter().all(|&frames| frames <= 128));
     assert_eq!(partitions.iter().sum::<usize>(), 128);
     let expected = crate::run(&[13]);
     let mut primitive = BrowserClient::new(u64::MAX).unwrap();
     let mut client = BrowserGraphClient::new(u64::MAX).unwrap();
-    let mut bridge = BrowserBridge::new_graphs(u64::MAX, 0).unwrap();
+    let mut bridge = Host::new(u64::MAX, threaded);
     for (kind, at) in [(1, 0), (2, 4), (3, 12)] {
         assert_eq!(primitive.prepare(kind, at, 0, 0), 0);
-        bridge.request = primitive.request;
-        assert_eq!(bridge.ingest(), 0);
+        assert_eq!(bridge.primitive(primitive.request), 0);
     }
     let mut payloads = Vec::new();
     for index in 0..client.payload_count() {
@@ -71,18 +72,28 @@ pub fn run_graph(partitions: &[usize]) -> GraphReport {
             client.prepare_payload(index, 0, 1, 1, u64::from(index) + 1),
             0
         );
-        bridge.graph.as_mut().unwrap().payload = client.payload;
-        assert_eq!(bridge.ingest_graph_payload(), 0);
+        if index == 0 {
+            let mut malformed = client.payload;
+            malformed[7] = 1;
+            assert_eq!(bridge.payload(malformed), 4);
+        }
+        assert_eq!(bridge.payload(client.payload), 0);
         payloads.push(client.payload);
     }
     let mut requests = Vec::new();
     let mut responses = Vec::new();
     assert_eq!(client.stage(0, 1, 0, 1, false), 0);
+    let mut foreign = client.request;
+    foreign[8] ^= 1;
+    assert_eq!(bridge.graph(foreign), 9);
+    assert_eq!(client.outstanding(), 1);
     send(&client, &mut bridge, &mut requests);
-    assert_eq!(bridge.render(0), 0);
-    assert_eq!((bridge.frame(), bridge.callbacks()), (0, 0));
-    assert_eq!(bridge.render(1), 0);
-    let mut samples = vec![[bridge.left[0], bridge.right[0]]];
+    let zero = bridge.render(0);
+    assert_eq!((zero.result, zero.frames, zero.callbacks), (0, 0, 0));
+    let prime = bridge.render(1);
+    assert_eq!(prime.result, 0);
+    assert_eq!(prime.heap, allocation_guard::Counts::default());
+    let mut samples = vec![[prime.left[0], prime.right[0]]];
     collect(&mut client, &mut bridge, &mut responses);
     assert_eq!(responses.len(), 1);
     let staged = graph_wire::Response::decode(&responses[0]).unwrap();
@@ -91,9 +102,10 @@ pub fn run_graph(partitions: &[usize]) -> GraphReport {
     assert_eq!(client.activate(scope, slot, generation, 4, 1, 0, false), 0);
     send(&client, &mut bridge, &mut requests);
     for &frames in partitions {
-        assert_eq!(bridge.render(frames as u32), 0);
-        assert_eq!(bridge.heap, allocation_guard::Counts::default());
-        samples.extend((0..frames).map(|at| [bridge.left[at], bridge.right[at]]));
+        let rendered = bridge.render(frames as u32);
+        assert_eq!(rendered.result, 0);
+        assert_eq!(rendered.heap, allocation_guard::Counts::default());
+        samples.extend((0..frames).map(|at| [rendered.left[at], rendered.right[at]]));
     }
     assert_eq!(samples.len(), 129);
     for (at, &sample) in samples.iter().enumerate() {
@@ -120,12 +132,10 @@ pub fn run_graph(partitions: &[usize]) -> GraphReport {
     let mut primitive_responses = Vec::new();
     let mut transitions = Vec::new();
     for _ in 0..10 {
-        let result = bridge.poll_response();
-        if result == 0 {
+        let Some(response) = bridge.primitive_response() else {
             break;
-        }
-        assert_eq!(result, 1);
-        primitive.response = bridge.response;
+        };
+        primitive.response = response;
         assert_eq!(primitive.receive(), 0);
         primitive_responses.push(primitive.response);
         let receipt = wire::Response::decode(&primitive.response).unwrap();
@@ -142,11 +152,13 @@ pub fn run_graph(partitions: &[usize]) -> GraphReport {
     }
     assert_eq!(primitive_responses.len(), 6);
     assert_eq!(transitions, expected.transitions);
-    assert_eq!(bridge.stop(), 15);
+    assert!(matches!(bridge.stop(), Err(15)));
     assert_eq!(client.release(scope, slot, generation, false), 0);
     send(&client, &mut bridge, &mut requests);
-    assert_eq!(bridge.render(1), 0);
-    assert_eq!([bridge.left[0], bridge.right[0]], [0.; 2]);
+    let released = bridge.render(1);
+    assert_eq!(released.result, 0);
+    assert_eq!(released.heap, allocation_guard::Counts::default());
+    assert_eq!([released.left[0], released.right[0]], [0.; 2]);
     collect(&mut client, &mut bridge, &mut responses);
     assert_eq!(responses.len(), 4);
     let returned = graph_wire::Response::decode(&responses[3]).unwrap();
@@ -165,34 +177,36 @@ pub fn run_graph(partitions: &[usize]) -> GraphReport {
         ),
         (0, 2, 3, 12, 2)
     );
-    assert_eq!(
-        (
-            primitive.outstanding(),
-            client.outstanding(),
-            client.retained_graphs(),
-            bridge.outstanding(),
-            bridge.retained_graphs()
-        ),
-        (0, 0, 0, 0, 0)
-    );
+    let [outstanding, retained] = bridge.counts();
+    let counts = [
+        primitive.outstanding(),
+        client.outstanding(),
+        client.retained_graphs(),
+        outstanding,
+        retained,
+    ];
+    assert_eq!(counts, [0; 5]);
+    let stopped = bridge
+        .stop()
+        .unwrap_or_else(|code| panic!("stop refused {code}"));
     let mut midi = Vec::new();
     let mut cursor = 0;
-    while cursor < bridge.journal_len {
-        let frame = u64::from_le_bytes(bridge.journal[cursor..cursor + 8].try_into().unwrap());
-        let length = u32::from_le_bytes(bridge.journal[cursor + 8..cursor + 12].try_into().unwrap())
-            as usize;
+    while cursor < stopped.journal.len() {
+        let frame = u64::from_le_bytes(stopped.journal[cursor..cursor + 8].try_into().unwrap());
+        let length =
+            u32::from_le_bytes(stopped.journal[cursor + 8..cursor + 12].try_into().unwrap())
+                as usize;
         midi.push((
             frame,
-            bridge.journal[cursor + 12..cursor + 12 + length].to_vec(),
+            stopped.journal[cursor + 12..cursor + 12 + length].to_vec(),
         ));
         cursor += 12 + length;
     }
     assert_eq!(midi, expected.midi);
-    let frames = bridge.frame();
-    let callbacks = bridge.callbacks();
-    assert_eq!(bridge.stop(), 0);
-    assert_eq!(bridge.recovered, [256, 16, 16, 0]);
-    let semantic = bridge.semantic[..bridge.semantic_len].to_vec();
+    let frames = released.frames;
+    let callbacks = released.callbacks;
+    assert_eq!(stopped.recovered, [256, 16, 16, 0]);
+    let semantic = stopped.semantic;
     assert_eq!(semantic, expected.semantic);
     GraphReport {
         media: Report {
@@ -200,21 +214,54 @@ pub fn run_graph(partitions: &[usize]) -> GraphReport {
             midi,
             transitions,
             semantic,
-            free_pages: bridge.recovered[0] as usize,
-            free_versions: bridge.recovered[1] as usize,
-            free_snapshots: bridge.recovered[2] as usize,
-            media_references: bridge.recovered[3] as usize,
+            free_pages: stopped.recovered[0] as usize,
+            free_versions: stopped.recovered[1] as usize,
+            free_snapshots: stopped.recovered[2] as usize,
+            media_references: stopped.recovered[3] as usize,
         },
         payloads,
         requests,
         responses,
         primitive_responses,
+        counts,
         frames,
         callbacks,
     }
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bounded_two_thread_graph_transport_matches_complete_native_reference() {
+        let reference = super::run_graph(&[128]);
+        for partitions in [vec![128], vec![1; 128], vec![0, 3, 0, 5, 120, 0]] {
+            compare(&reference, &super::run_graph_two_thread(&partitions));
+        }
+    }
+
+    fn compare(reference: &super::GraphReport, other: &super::GraphReport) {
+        assert_eq!(reference.media, other.media);
+        assert_eq!(reference.payloads, other.payloads);
+        assert_eq!(reference.primitive_responses, other.primitive_responses);
+        assert_eq!(reference.requests.len(), other.requests.len());
+        assert_eq!(reference.responses.len(), other.responses.len());
+        assert_eq!(reference.frames, other.frames);
+        assert_eq!(reference.counts, other.counts);
+        for (a, b) in reference.requests.iter().zip(&other.requests) {
+            let mut a = *a;
+            let mut b = *b;
+            a[64..68].fill(0);
+            b[64..68].fill(0);
+            assert_eq!(a, b);
+        }
+        for (a, b) in reference.responses.iter().zip(&other.responses) {
+            let mut a = *a;
+            let mut b = *b;
+            a[76..80].fill(0);
+            b[76..80].fill(0);
+            assert_eq!(a, b);
+        }
+    }
+
     #[test]
     fn acknowledged_graph_worklet_script_has_complete_partition_invariant_native_reference() {
         let reference = super::run_graph(&[128]);

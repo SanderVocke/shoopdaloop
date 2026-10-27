@@ -16,8 +16,11 @@ and public Node/Chromium bindings now stage/activate/release and recycle owners
 through bounded results. Actual offline/live graph sessions now transfer descriptors/
 commands/owning returns through MessagePort with an audible Ready checkpoint and
 explicit engine pause/resume, full native/reference downstream checks and successful
-recovery. Native bounded two-thread graph payload transport, program/resource wire
-operations, exports and broader host scenarios remain pending.
+recovery. Native capacity-one graph actor transport now also matches complete direct
+replay, with renderer-local owners and callback-external coordination. Stage7 has
+three of eight rows verified, including the fixture documentation maintained with
+these implemented milestones. Program/resource wire operations, exports and broader
+host scenarios remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -28,7 +31,37 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 actual graph worklets and native reference
+## Stage 7 native graph actor transport
+
+`replay --graph-two-thread-json` constructs the engine/descriptor banks on the
+render thread and transfers copied wire envelopes through two capacity-one queues.
+Channel coordination is outside guarded callbacks; final variable diagnostic copies
+happen only after successful permanent stop. The same native script runs directly
+and through the actor, including malformed payload/foreign command retries, real
+one-sample Ready, exact Activate4, reliable retired-owner return, five actual zero
+ownership counts and256/16/16/0 resource recovery. Whole/single/irregular/zero
+partitions preserve full media, semantic bytes and descriptor/command/result data.
+
+The runner now retains/compares both complete native JSON reports with only
+correlated opaque graph-scope normalization; fixed-script clocks, sessions, epochs,
+generations/capacities, bytes and all media remain exact. A Python mutation case
+rejects missing/corrupted content/receipts, inconsistent scope and altered clocks;
+its synthetic input is parser data, not a fresh execution. The new native test is
+included in the applicable consolidated Stage7 Miri debt, not interpreted yet.
+Fresh gates pass43 fixture tests per native profile, eleven Python tests, fourteen
+Node/Chromium binding groups per runtime/profile, all four normal actual contexts
+per profile and2141 workspace tests/four existing skips, with warning-denied build/
+docs/policies. Wasm bytes remain identical to the preceding actual graph-worklet
+milestone; no fresh failure-canary campaign is claimed. Full commands/results/source
+and raw reports: [native graph actor evidence](evidence/graph-thread-stage7.md).
+
+The fixture-documentation row is now correctly checked: current setup/runnable
+commands, wire/journal formats, failure/shutdown behavior and unsupported-production
+limits were implemented and verified with `b31d2995`, then maintained with this
+extension. This corrects the plan count to3/8 without changing acceptance criteria
+or declaring any remaining scenario/ownership/CI/Miri row complete.
+
+## Historical Stage 7 actual graph worklets and native reference
 
 Complete actual graph sessions now run offline/live in both profiles, separately
 from primitive sessions and binding checks. Fixed application-level buffers carry

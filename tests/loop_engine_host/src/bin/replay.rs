@@ -2,8 +2,13 @@
 fn main() {
     assert!(loop_engine_host_fixture::allocator_canaries());
     let mode = std::env::args().nth(1).unwrap_or_else(|| "--direct".into());
-    if mode == "--graph-json" {
-        println!("{}", loop_engine_host_fixture::run_graph(&[128]).json());
+    if mode == "--graph-json" || mode == "--graph-two-thread-json" {
+        let run = if mode == "--graph-json" {
+            loop_engine_host_fixture::run_graph
+        } else {
+            loop_engine_host_fixture::run_graph_two_thread
+        };
+        println!("{}", run(&[128]).json());
         return;
     }
     let driver = match mode.as_str() {
@@ -11,7 +16,7 @@ fn main() {
         "--wire" => loop_engine_host_fixture::run_wire,
         "--two-thread" => loop_engine_host_fixture::run_two_thread,
         "--json" => loop_engine_host_fixture::run_wire,
-        _ => panic!("expected --direct, --wire, --two-thread, --json or --graph-json"),
+        _ => panic!("expected --direct, --wire, --two-thread, --json, --graph-json or --graph-two-thread-json"),
     };
     let report = loop_engine_host_fixture::run(&[13]);
     for partitions in [

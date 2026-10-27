@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the independent primitive loop host in native and real Web Audio contexts."""
+"""Run independent primitive/graph loop hosts in native and real Web Audio contexts."""
 from __future__ import annotations
 
 import argparse
@@ -269,6 +269,28 @@ def compare_graph_worklets(result, native):
             raise RuntimeError("live graph report falsely claims OfflineAudioContext output")
 
 
+def compare_native_graphs(native, threaded):
+    """Complete direct/threaded replay equality except instance-local graph scope."""
+    def normalized(source):
+        value = json.loads(json.dumps(source))
+        if len(value["graphRequests"]) != 3 or len(value["graphResponses"]) != 4:
+            raise RuntimeError("incomplete native graph transport report")
+        scope = bytes(value["graphResponses"][0])[76:80]
+        if len(scope) != 4 or scope == bytes(4):
+            raise RuntimeError("native graph Ready scope missing")
+        for request in value["graphRequests"][1:]:
+            if len(request) != 96 or bytes(request[64:68]) != scope:
+                raise RuntimeError("native graph request does not use Ready identity")
+            request[64:68] = [0] * 4
+        for response in value["graphResponses"]:
+            if len(response) != 128 or bytes(response[76:80]) != scope:
+                raise RuntimeError("native graph result identity mismatch")
+            response[76:80] = [0] * 4
+        return value
+    if normalized(native) != normalized(threaded):
+        raise RuntimeError("complete two-thread graph replay differs from direct native")
+
+
 def verify_failure(result, exit_code, kind):
     base_kind = kind.removeprefix("graph-")
     diagnostic = "intentional loop " + ("processor" if base_kind == "processor" else "Rust heap") + " failure canary detected"
@@ -325,7 +347,11 @@ def main():
     native = json.loads(harness.command([str(executable), "--json"], reports / "native.json"))
     compare(result, native)
     graph_native = json.loads(harness.command([str(executable), "--graph-json"], reports / "native-graph.json"))
+    graph_threaded = json.loads(harness.command([str(executable), "--graph-two-thread-json"], reports / "native-graph-two-thread.json"))
+    compare_native_graphs(graph_native, graph_threaded)
     compare_graph_worklets(result, graph_native)
+    result["native_graph_two_thread"] = {"passed": True, "channel_capacity": 1,
+                                          "frames": graph_threaded["frames"], "callbacks": graph_threaded["callbacks"]}
     if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)

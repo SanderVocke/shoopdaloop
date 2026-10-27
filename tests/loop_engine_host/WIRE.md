@@ -459,6 +459,31 @@ Normal stop refuses15 while any graph remains Ready/Taken, even with no command
 credit outstanding. Intentional fault/abandonment is not a fabricated owning return.
 Fault modes0/1/2 match the primitive constructor's normal/processor/heap modes.
 
+## Native graph actor transport
+
+Native `--graph-json` and `--graph-two-thread-json` run the same complete graph
+script, including refused reserved-byte payload/foreign command retries. In the
+two-thread mode, two prepared `sync_channel(1)` queues carry copied64/96-byte
+requests,96/128-byte replies and fixed128-sample/channel observation arrays.
+Render-step/poll/stop tags are native test-driver coordination, not a new portable
+wire layout. The renderer constructs the engine/descriptor banks locally; no graph
+owner or borrowed pointer crosses the control/render boundary.
+
+The actor performs channel waits/sends/joins outside guarded ingress, render and
+completion methods. Queue storage and render reply envelopes are fixed before the
+first callback. Final variable-sized diagnostic copies occur only after successful
+permanent stop, outside callback/heap claims. Close/join does not invent a completion
+or advance musical time. This deterministic script is native replay/concurrency
+evidence, not a fresh worklet or a production audio-device/deadline test.
+
+The runner retains both native JSON reports and requires full equality, including
+five observed zero command/retained counts, exact activation/retirement and resource
+recovery. Only consistently correlated opaque graph scope normalizes. Sessions,
+sequences, samples, MIDI/semantic bytes, padding, epochs, capacities, generations,
+Release time and fixed-script frames/callbacks remain exact. The report's
+`native_graph_two_thread` summary records that comparison and channel capacity;
+raw `native-graph-two-thread.json` is the complete source evidence.
+
 ## Graph MessagePort transport and clock
 
 The graph host prepares one96-byte payload transfer buffer, two96-byte command

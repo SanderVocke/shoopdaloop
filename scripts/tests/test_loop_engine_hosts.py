@@ -7,7 +7,37 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, validate_semantic, verify_failure
+from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, validate_semantic, verify_failure
+
+
+class NativeGraphTransportTests(unittest.TestCase):
+    def test_complete_threaded_report_only_normalizes_correlated_opaque_scope(self):
+        native = json.loads((Path(__file__).parent / "data/loop_graph_native.json").read_text())
+        native["counts"] = [0] * 5
+        threaded = copy.deepcopy(native)
+        for request in threaded["graphRequests"][1:]:
+            request[64:68] = list(struct.pack("<I", 0xffffffff))
+        for response in threaded["graphResponses"]:
+            response[76:80] = list(struct.pack("<I", 0xffffffff))
+        compare_native_graphs(native, threaded)
+        original = copy.deepcopy(threaded)
+        for field in ("samples", "midi", "transitions", "semanticBytes", "recovered", "counts",
+                      "payloads", "graphRequests", "graphResponses", "responses"):
+            altered = copy.deepcopy(threaded)
+            altered[field].pop()
+            with self.assertRaises(RuntimeError, msg=field):
+                compare_native_graphs(native, altered)
+        for field in ("frames", "callbacks"):
+            altered = copy.deepcopy(threaded); altered[field] += 1
+            with self.assertRaises(RuntimeError):
+                compare_native_graphs(native, altered)
+        for field, index, offset in (("graphRequests", 1, 64), ("graphResponses", 2, 76),
+                                     ("graphResponses", 2, 56), ("payloads", 0, 95),
+                                     ("responses", 0, 95)):
+            altered = copy.deepcopy(threaded); altered[field][index][offset] ^= 1
+            with self.assertRaises(RuntimeError):
+                compare_native_graphs(native, altered)
+        self.assertEqual(threaded, original)
 
 
 class FailureGateTests(unittest.TestCase):

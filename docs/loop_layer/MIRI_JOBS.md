@@ -28,7 +28,11 @@ actual FX fault modes). Actual graph-worklet integration adds
 `browser::native_graph::tests::acknowledged_graph_worklet_script_has_complete_partition_invariant_native_reference`,
 covering whole/single/irregular/zero partitions and complete native payload/command/
 result/media/semantic/resource evidence for the audible checkpoint script.
-All18 graph-focused native cases are **not yet registered in the pinned interpreter
+The native actor extension adds
+`browser::native_graph::tests::bounded_two_thread_graph_transport_matches_complete_native_reference`:
+capacity-one copied-byte transport, renderer-local owners, malformed retries,
+whole/single/irregular/zero partitions and complete direct-report equality.
+All19 graph-focused native cases are **not yet registered in the pinned interpreter
 runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the

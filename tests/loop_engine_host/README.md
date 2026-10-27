@@ -179,8 +179,9 @@ The route-cut script has the same13 samples/134 MIDI packets described above and
 retains exact graph/primitive receipts, semantic bytes and complete pool recovery.
 
 The graph protocol now executes natively and through public Node/Chromium bindings.
-Native bounded two-thread graph payload transport remains open. The original replay
-modes remain primitive; `--graph-json` and additional actual worklet contexts now
+Native bounded two-thread graph transport now executes the same complete graph
+script through capacity-one channels. The original replay modes remain primitive;
+`--graph-json`, `--graph-two-thread-json` and additional actual worklet contexts
 execute the acknowledged graph-change scenario below.
 
 ## Submit graph commands through public Wasm bindings
@@ -319,14 +320,21 @@ Run the native reference (replay, not a worklet) and partition test in either pr
 
 ```sh
 cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --graph-json
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --graph-two-thread-json
 cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
   browser::native_graph::tests::acknowledged_graph_worklet_script_has_complete_partition_invariant_native_reference -- --exact
 ```
 
 Add `--release` before `--bin` or before the test filter. The reference records129
 samples,20 payloads, three graph commands, four graph results, six primitive results,
-full MIDI/semantic bytes and actual resource recovery. Whole/single/irregular/zero
-partitions agree. See [transport and clock rules](WIRE.md#graph-messageport-transport-and-clock).
+full MIDI/semantic bytes, five actual zero ownership counts and resource recovery.
+Whole/single/irregular/zero partitions agree in both direct and capacity-one native
+actor transports. Graph descriptors/commands/results cross the native control/render
+boundary as copied protocol bytes; the render thread constructs and retains every
+graph owner. Native step/sample messages coordinate the test driver. Channel
+waits/joins and variable-sized post-stop diagnostic copying happen outside guarded
+callbacks. The runner requires complete direct/threaded report equality (only
+opaque local graph scope normalizes) and retains both raw reports. See [transport and clock rules](WIRE.md#graph-messageport-transport-and-clock).
 
 ### 4. Check memory, failures and shutdown
 
@@ -341,7 +349,7 @@ receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
 records, an eventless same-position seek, two payload checks and three graph command
 checks: full-width/credits, exact activation/retirement and128 real owner returns.
-These are binding-level Wasm checks, not a claim that the42 native Rust tests
+These are binding-level Wasm checks, not a claim that the43 native Rust tests
 were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
@@ -382,8 +390,8 @@ owners through bounded wire results. Public graph command bindings execute in
 Node/Chromium with complete native-oracle comparisons. Actual offline/live graph
 changes now transfer descriptors/commands/owning results through MessagePort and
 check downstream samples, acknowledged clocks and successful recovery. Native
-bounded two-thread graph payload transport remains pending, as do program/resource
-payload staging, immutable exports,
+bounded two-thread graph payload/command/return transport also matches direct
+replay. Program/resource payload staging, immutable exports,
 broader loop/composite/seek/replacement/exhaustion scenarios and live in-flight
 transfer stalls also remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.
