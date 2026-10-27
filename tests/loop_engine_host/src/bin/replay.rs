@@ -6,7 +6,8 @@ fn main() {
         "--direct" => loop_engine_host_fixture::run,
         "--wire" => loop_engine_host_fixture::run_wire,
         "--two-thread" => loop_engine_host_fixture::run_two_thread,
-        _ => panic!("expected --direct, --wire or --two-thread"),
+        "--json" => loop_engine_host_fixture::run_wire,
+        _ => panic!("expected --direct, --wire, --two-thread or --json"),
     };
     let report = loop_engine_host_fixture::run(&[13]);
     for partitions in [
@@ -16,6 +17,31 @@ fn main() {
         vec![0, 4, 0, 8, 0, 1, 0],
     ] {
         assert_eq!(driver(&partitions), report);
+    }
+    if mode == "--json" {
+        let midi = report
+            .midi
+            .iter()
+            .map(|(at, packet)| format!("[{at},{packet:?}]"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let transitions = report
+            .transitions
+            .iter()
+            .map(|(requested, delivered, terminal)| format!("[{requested},{delivered},{terminal}]"))
+            .collect::<Vec<_>>()
+            .join(",");
+        println!(
+            "{{\"samples\":{:?},\"midi\":[{}],\"transitions\":[{}],\"recovered\":[{},{},{},{}]}}",
+            report.samples,
+            midi,
+            transitions,
+            report.free_pages,
+            report.free_versions,
+            report.free_snapshots,
+            report.media_references
+        );
+        return;
     }
     println!(
         "native loop {mode}: {} stereo frames, {} MIDI packets, {} transitions; {} pages/{} versions/{} snapshots free, {} media references; four partitions agree",

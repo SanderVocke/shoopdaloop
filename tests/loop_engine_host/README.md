@@ -1,8 +1,10 @@
 # Independent loop-host fixture
 
 This test-only workspace depends on `rt_runtime` and the actual `shoop_loop_engine`,
-not the old backend, application, devices or the generic runtime host fixture.
-Its own lockfile currently pins the same `rtrb` version as the repository.
+not the old backend, application or devices. Its own lockfile pins the same `rtrb`
+version as the repository and host-only `wasm-bindgen` 0.2.127. The Python browser
+runner reuses the generic host's HTTP/WebDriver utilities and decoder fallback;
+the generic runtime fixture does not depend on loop semantics.
 
 ## Run native replay
 
@@ -83,15 +85,91 @@ With all four normal responses unread, music continues and the independent Stop
 credit still works. A callback error permanently faults this bridge: extract and
 clean up off-render rather than replaying frames or inventing terminal results.
 
+## Run actual Web Audio
+
+Inside `nix develop`, with Node, wasm-pack, pinned Chromium/ChromeDriver on `PATH`
+and the `wasm32-unknown-unknown` target installed:
+
+```sh
+RUSTFLAGS="-D warnings" python3 scripts/run_loop_engine_hosts.py --profile debug --verify-failures
+RUSTFLAGS="-D warnings" python3 scripts/run_loop_engine_hosts.py --profile release --verify-failures
+python3 -m unittest discover -s scripts/tests -p test_loop_engine_hosts.py
+```
+
+The shared browser launcher currently accepts Chromium/ChromeDriver
+147.0.7727.117 or 147.0.7727.137. `CHROME_BIN` can select the browser; the matching
+`chromedriver` must be on `PATH`. wasm-pack provisions the matching binding CLI;
+no separate `wasm-bindgen` executable is required. Missing tools are failures,
+not skipped browser evidence. `--no-build` deliberately reuses that profile's
+existing artifacts; omit it for fresh verification.
+
+### 1. Prepare two ordinary Wasm instances
+
+The main instance owns `BrowserClient`; the AudioWorklet instance owns
+`BrowserBridge` and the actual loop facade. Both instantiate the same compiled
+module, with separate ordinary memories. A main-instance marker is absent in the
+worklet; both memories must be non-shared. The server sets no COOP/COEP headers
+and the page must not be cross-origin isolated.
+
+Pointers returned by the binding exports address **only their own instance**.
+JavaScript copies the fixed wire records through five prepared 64-byte request
+buffers and ten 96-byte response buffers. Transfers detach the sender's buffer;
+returned buffers are checked before reuse. Request-buffer return is merely a copy
+acknowledgement, not admission or execution success. The Rust client's wire credit
+remains occupied until its reliable terminal response.
+
+### 2. Arm an acknowledged engine clock
+
+Stage all three commands before arming the engine. Startup Web Audio callbacks
+are silent and do not call the engine. After the arm acknowledgement, the first
+actual render callback establishes the mapping from engine frame zero to the
+browser's `currentFrame`. Offline startup uses one silent quantum. Live startup
+makes no assumption about MessagePort delivery time or browser frame zero.
+
+Both contexts render stereo through a separate downstream AudioWorklet probe.
+It records the first non-silent quantum and the following one into fixed arrays;
+its start must match the source's acknowledged clock mapping. Compare every
+sample with the scalar oracle, including the silent remainder. The offline case
+also checks all 512 samples per channel from `OfflineAudioContext` itself, not
+only the probe or a Rust self-hash. Live output is muted **after** the probe.
+The runner independently compares complete MIDI packets and execution frames
+with native replay. This short live test stages commands before clock start;
+it is not yet a campaign of dynamically arriving live commands.
+
+### 3. Check memory, failures and shutdown
+
+Rust guards cover preparation-free ingress, source filling, planner/render work,
+MIDI observation and return recycling. Memory length must stay fixed after
+preparation. JavaScript allocation/GC, structured cloning and browser scheduling
+are outside these Rust heap guarantees; there is no deadline certification.
+
+Seven shared public-binding checks execute in Node and Chromium: constructor
+refusal, full-width identities/frames and independent credits, rendering and
+receipt validation, fixed-memory diagnostic exhaustion without changing audio,
+successful recovery, and actual processor/heap failure witnesses. These are
+binding-level Wasm checks, not a claim that the 19 native Rust tests were executed
+as Wasm test functions.
+
+`--verify-failures` launches two intentionally failing **real worklet** sessions.
+The FX processor either returns an error or allocates/reallocates/deallocates.
+Each child must exit nonzero with the specific diagnostic, matching Rust processor
+witness and heap counts. An unrelated exception or matching text without witnesses
+cannot pass. These failed sessions do not stand in for successful disposal.
+
+For successful sessions, collect all six admission/execution records, return all
+request/response buffers, and stop invoking the engine before explicit cleanup
+and destruction. Both contexts check complete pool recovery. The live context is
+then closed; the offline context renders its remaining silent tail.
+
+Reports are under `target/loop-engine-host/reports/{debug,release}/`. `result.json`
+contains complete sample arrays, wire/MIDI records, tools, memory, ownership and
+failure-gate results. See [the report formats](WIRE.md#browser-report-llh1).
+
 ## Current scope
 
-This is native direct/wire/two-thread offline replay, **not Stage 7 completion**.
-The library builds for `wasm32-unknown-unknown`, but there are no browser bindings
-or actual Wasm/Web Audio executions yet. The fixed codec is transport-neutral;
-native threads exchanging copied bytes do not prove independent Wasm memories.
-
-Still to implement: graph/program/resource payload staging and owning return
-formats, actual non-isolated offline/live AudioWorklet, fixed-memory/cross-instance
-checks, semantic journals and immutable exports, broader loop/composite and
-adversarial scenarios, browser failure canaries, and the unified host runner.
+Native direct/wire/two-thread replay and real non-isolated offline/live worklets
+now exercise this primitive scenario. This is **not Stage 7 completion**.
+Graph/program/resource payload staging and owning returns, semantic boundary
+journals, immutable exports, broader loop/composite/seek/replacement/exhaustion
+scenarios and live in-flight transfer stalls remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

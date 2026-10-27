@@ -7,10 +7,11 @@ The runtime [book/reference](../../src/rust/rt_runtime/docs/README.md) and loop
 including prepared configuration and paired running-program/graph publication.
 [STAGE6_READINESS.md](STAGE6_READINESS.md) maps implementation acceptance at its
 recorded source; it is not a new callback audit or final branch/platform certification.
-An independent native loop fixture now supplies direct, primitive-wire and bounded
-two-thread offline replay. Actual AudioWorklet hosting and broader graph/program/
-resource wire operations remain pending. No loop benchmark or newer performance/
-deadline campaign is supplied.
+The independent loop fixture now supplies direct, primitive-wire and bounded
+two-thread replay plus actual non-isolated offline/live AudioWorklets for its small
+primitive scenario. Broader graph/program/resource wire operations, exports,
+semantic boundary journals and musical/adversarial host scenarios remain pending.
+No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -20,7 +21,35 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 primitive wire bridge and two-thread replay
+## Stage 7 primitive loop AudioWorklets
+
+The browser milestone adds host-only Wasm bindings, a unified runner and actual
+OfflineAudioContext/live AudioContext execution using the real loop facade. Both
+native/Wasm debug and release profiles pass:19 native fixture tests, seven shared
+public-binding checks in each of Node/Chromium, full actual downstream stereo
+samples/MIDI/terminal receipt comparisons, fixed independent ordinary memories,
+returned transfer buffers and complete256page/16version/16snapshot recovery.
+OfflineAudioContext's full512-frame output is independently checked against the
+probe. Native direct/wire/two-thread replay still agrees across four partitions.
+
+Actual worklet processor and Rust heap failures are separately witnessed and each
+make the child runner exit1. Specific diagnostics alone are insufficient: the gate
+requires the real processor fault witness and matching allocation/reallocation/
+deallocation counts. Two Python tests reject missing/misleading evidence. Worklet
+memory stays1,835,008 bytes in debug and1,769,472 in release. These sizes and the
+short live callback counts are observations, not deadline or efficiency claims.
+
+Fresh workspace regression is2141 passes/four existing skipped failure canaries;
+warning-denied build/rustdoc, formatting and applicable policies pass. See
+[browser-host evidence](evidence/browser-host-stage7.md) for complete reports,
+commands, tool versions and the retained setup/acknowledgement failures.
+
+Stage7 remains partial. Live commands are staged before acknowledged clock start;
+dynamic live ingress and broader musical/ownership scenarios remain open, as do
+payload staging, exports and semantic boundary journals. No Miri invocation,
+benchmark, hosted application smoke or final-head CI pass is claimed here.
+
+## Historical Stage 7 primitive wire bridge and two-thread replay
 
 The next fixture slice adds fixed64-byte requests/96-byte responses, four normal
 wire credits plus independent recovery, prepared cancellation flags and guarded

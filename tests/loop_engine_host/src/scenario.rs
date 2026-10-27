@@ -13,10 +13,18 @@ use shoop_loop_engine::{
     Limits, LoopId, LoopKind, LoopSpec, Outcome, Timing, TopologyDescription, Transition,
 };
 
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc,
+};
+
 const FRAMES: usize = 13;
 const PAGES: usize = 256;
 
-pub(crate) struct Mix;
+pub(crate) struct Mix {
+    fault: u8,
+    witness: Arc<AtomicU32>,
+}
 impl Processor<LoopPlanner> for Mix {
     fn ports(&self) -> PortCounts {
         PortCounts {
@@ -28,6 +36,18 @@ impl Processor<LoopPlanner> for Mix {
     }
 
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        if self.fault == 1 {
+            self.witness.store(1, Ordering::Relaxed);
+            return Err(Error::InvalidState);
+        }
+        if self.fault == 2 {
+            self.witness.store(2, Ordering::Relaxed);
+            let mut bytes = Vec::with_capacity(1);
+            for index in 0..128 {
+                bytes.push(std::hint::black_box(index as u8));
+            }
+            drop(std::hint::black_box(bytes));
+        }
         for channel in 0..2 {
             for frame in 0..block.frames {
                 let live = block.audio.input(channel).ok_or(Error::InvalidShape)?[frame];
@@ -56,6 +76,13 @@ impl Processor<LoopPlanner> for Mix {
 }
 
 pub(crate) fn prepare() -> (Controller<Mix>, Engine<Mix>, LoopId) {
+    prepare_with_fault(0, Arc::new(AtomicU32::new(0)))
+}
+
+pub(crate) fn prepare_with_fault(
+    fault: u8,
+    witness: Arc<AtomicU32>,
+) -> (Controller<Mix>, Engine<Mix>, LoopId) {
     let config = Config {
         max_frames: 128,
         max_nodes: 4,
@@ -168,7 +195,7 @@ pub(crate) fn prepare() -> (Controller<Mix>, Engine<Mix>, LoopId) {
             packet_bytes: 512,
         }],
         vec![],
-        vec![(effect, Mix)],
+        vec![(effect, Mix { fault, witness })],
         graph,
     )
     .expect("prepared facade");

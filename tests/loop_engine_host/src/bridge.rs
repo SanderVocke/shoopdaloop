@@ -50,14 +50,22 @@ pub struct Bridge {
     slots: [Option<Slot>; SLOTS],
     quarantine: Option<Returned>,
     faulted: bool,
+    fault_witness: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 impl Bridge {
     /// Allocating startup. Session routing is a host convention, not authentication.
     pub fn new(session: u64) -> Result<Self, WireError> {
+        Self::with_fault(session, 0)
+    }
+    pub(crate) fn with_fault(session: u64, fault: u8) -> Result<Self, WireError> {
         if session == 0 {
             return Err(WireError::Session);
         }
-        let (control, engine, target) = scenario::prepare();
+        if fault > 2 {
+            return Err(WireError::Operation);
+        }
+        let fault_witness = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let (control, engine, target) = scenario::prepare_with_fault(fault, fault_witness.clone());
         Ok(Self {
             control,
             engine,
@@ -67,7 +75,12 @@ impl Bridge {
             slots: std::array::from_fn(|_| None),
             quarantine: None,
             faulted: false,
+            fault_witness,
         })
+    }
+    pub(crate) fn fault_witness(&self) -> u32 {
+        self.fault_witness
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
     pub fn target(&self) -> LoopId {
         self.target

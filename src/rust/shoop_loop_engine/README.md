@@ -49,11 +49,14 @@ every callback and compare relevant callback partitions/zero boundaries:
 Preparation and owning-return destruction stay off-render. Regression models and
 historical native/Wasm/interpreter evidence have separate source/platform scopes;
 these examples are not new host, benchmark or full acceptance evidence. The
-[independent native fixture](../../../tests/loop_engine_host/README.md) adds a small
-heap-guarded offline record/play/FX scenario with complete sample/MIDI comparisons
-through direct, bounded wire and two-thread drivers. Its primitive-command bridge
-retains separate admission/domain outcomes; browser hosting and broader payload
-staging remain pending. No actual loop AudioWorklet or loop benchmark is supplied.
+[independent loop fixture](../../../tests/loop_engine_host/README.md) adds a small
+heap-guarded record/play/FX scenario with complete sample/MIDI comparisons through
+direct, bounded wire and two-thread drivers, plus real non-isolated offline/live
+AudioWorklets. Its primitive-command bridge retains separate admission/domain
+outcomes across independent ordinary Wasm memories. Downstream Web Audio samples,
+fixed memory, failure canaries and complete stopped recovery are checked in both
+profiles. Broader graph/program/resource payload staging and host scenarios remain
+pending; no loop benchmark or production browser adapter is supplied.
 
 ## Timing and ownership contracts
 

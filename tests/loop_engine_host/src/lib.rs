@@ -9,11 +9,13 @@ static ALLOCATOR: allocation_guard::TrackingAllocator = allocation_guard::Tracki
 mod bridge;
 #[cfg(test)]
 mod bridge_tests;
+mod browser;
 mod client;
 mod native;
 mod scenario;
 pub mod wire;
 pub use bridge::Bridge;
+pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
 pub use client::Client;
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::run_two_thread;

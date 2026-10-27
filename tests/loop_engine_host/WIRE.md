@@ -153,6 +153,51 @@ Timeline errors 257–268, in order: InvalidConfig, Capacity, InvalidId, Duplica
 InvalidState, InvalidFrame, InvalidProgram, MissingSync,
 InstantaneousDependencyCycle, RecursiveProgram, Exhausted, EmptyContent.
 
-This protocol slice has no graph/program staging, capture export, semantic journal
-or browser transport yet. Their formats and ownership paths must be implemented
-and tested before claiming the complete Stage 7 bridge.
+The browser transport copies these records between independent Wasm instances;
+only local binding code uses memory offsets. It returns request buffers after the
+copy, while the Rust wire credit stays retained until the terminal response.
+The response-buffer acknowledgement is separate from both phases above.
+
+This protocol slice still has no graph/program staging, capture export or semantic
+boundary journal. Those formats and ownership paths must be implemented and tested
+before claiming the complete Stage 7 bridge.
+
+## Browser report (`LLH1`)
+
+The runner's JSON report has `format: "LLH1"`. Each entry in `reports` identifies
+`offline` or `live` and retains:
+
+- `requests`: all three complete 64-byte wire records, as arrays of byte values.
+- `responses`: all six complete 96-byte admission/execution records. Opaque wire
+  identities remain encoded as bytes; do not convert their `u64` fields to JS
+  numbers. The browser Rust client validates each record before releasing credit.
+- `audio`: two arrays of 256 downstream Web Audio samples. `offlineAudio` additionally
+  contains both complete 512-frame OfflineAudioContext output channels; it is null
+  for live mode. The live probe is upstream of the final mute gain.
+- `midiBytes`: the exact used prefix of a fixed 16,384-byte observation buffer.
+  Each record is an 8-byte little-endian engine frame, 4-byte little-endian packet
+  length and that many complete MIDI bytes. No padding, pointers or synthesizer
+  state is implied. Validate every length and consume the complete blob. This is
+  an observation format, not a media snapshot/export codec.
+- `summary`: decimal-string engine frames/callback count and browser `firstFrame`,
+  initial/final memory bytes, overflow/heap witnesses, response-buffer count,
+  instance marker and recovered `[pages, versions, snapshots, media references]`.
+  `ready` records worklet startup memory, non-shared state and decoder fallback;
+  `controlBytes` records the prepared main instance's memory size.
+
+The normal scenario requires zero journal overflow. If diagnostic storage fills,
+rendering still proceeds and the overflow counter saturates rather than changing
+music. Binding checks deliberately exhaust this buffer while checking every audio
+sample and collecting all command receipts; a truncated journal is never reported
+as complete output evidence.
+
+The report also retains Node/Chromium check names, tool versions, native/Wasm
+profile, Wasm SHA-256, checkout head/dirty scope and failure-gate results. A dirty
+head identifies the base, not an assertion that the changes were already committed;
+the milestone evidence identifies their containing source commit.
+
+Failure reports are separate unsuccessful sessions. `workletFailure` retains the
+actual render result, processor fault witness and allocation/reallocation/
+deallocation counts. The supervisor requires the matching diagnostic **and**
+these fields plus a nonzero exit. Matching text, an unrelated exception, a missing
+binding or a timeout alone is not a passing canary.
