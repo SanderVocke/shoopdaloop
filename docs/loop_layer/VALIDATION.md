@@ -1,5 +1,34 @@
 # Loop-layer implementation and validation evidence
 
+## Consolidated Stage6 job and concurrent Part I handoff review
+
+Readiness inputs were committed as `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea`.
+Job `20261027T025325-e065d48941` launched with81 commands/228 selected executions
+from its immutable export; the first documentation-review checkpoint verified the
+supervisor running. Subsequent progress recorded8 completed commands/49 executions,
+with `midi_state` in progress; the handoff commit checkpoint subsequently recorded
+22 commands/111 executions and `capture_group_model` in progress. This is partial
+progress, not terminal collection,
+full Miri acceptance or Stage6 completion. See `MIRI_JOBS.md` for manifest identity
+and required collection. No second routine job is launched.
+
+Concurrent useful work fully reviewed the four populated Part I book chapters,
+`first_graph`/`prepared_processor`/`callback_adapter`, the documentation worker's plan,
+and archived getting-started/integration/planning/approved parameter style. Four new
+change notes under `docs-changes-loop-layer/part-1-process-audio/` preserve the working
+examples and identify focused authority, required-I/O, interval and fault-policy
+clarifications. In particular, generic `FailOnce`/`NoPlanner` continuation is not a
+promise that arbitrary domain planners can resume after partial publication.
+
+`docs-changes-loop-layer/part-one-baseline.json` records unchanged prior drift hashes
+for all four drafts, all11 archive files unchanged from the initial handoff baseline,
+reviewed source hashes,23 checker-test passes, the drafting-only `--allow-pending`
+book check, and all three examples executed in debug/release with warnings denied
+and isolated Cargo output. Raw logs: `target/loop-layer-docs-part-one/`. No authored
+chapter/example/archive/separate-worker plan was edited or staged. Fourteen pending
+book chapters remain allowed by that draft check; it is not full-book acceptance or
+separate-worker publication. The ongoing Miri snapshot is unaffected.
+
 ## Latest Stage 6 nested lifecycle verification and readiness audit
 
 `evidence/nested-lifecycle-stage6{,-provenance}.json` records153 loop cases per

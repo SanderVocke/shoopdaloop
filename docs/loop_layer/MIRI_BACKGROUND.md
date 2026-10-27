@@ -120,3 +120,10 @@ A subsequent real-repository smoke exported commit `aa41a9b3` (604 files), queri
 its178-execution inventory and ran locked Cargo metadata in the snapshot's actual
 Nix environment. It exited zero with all source hashes unchanged; this verifies
 snapshot/environment setup, not Miri execution.
+
+The first actual consolidated interpreter job was subsequently launched for Stage6
+from committed readiness snapshot `faec78df`, after the nested lifecycle gates and
+coverage audit. It uses81 commands/228 executions and the unchanged900-second
+per-command watchdog. Job identity/progress are recorded in
+[MIRI_JOBS.md](MIRI_JOBS.md). Launch and partial progress are not a passing result;
+terminal collection and input/inventory/hash verification remain required.

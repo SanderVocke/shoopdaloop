@@ -15,8 +15,9 @@ chapters are empty. The archive includes the staged-graph guide written before
 this handoff policy. The live `DOCS_REWRITE_PLAN.md` is a separate worker's plan,
 not modified by this work. Before this slice's commit, concurrent edits to chapters
 1–4 and7 were detected. Chapter7 was re-read (source-excerpt metadata added; no
-semantic rewrite needed); chapters1–4 remain in the pending backfill review.
-`rechecks.json` records this separately without replacing the original baseline.
+semantic rewrite needed); chapters1–4 were then left pending. `rechecks.json`
+records that historical recheck without replacing the original baseline. The later
+Part I review below now covers those four populated chapters.
 
 The later [loop-facade live-graph slice](loop-facade-live-graphs.md), based on
 `b071ffc4`, adds fixed-role live routing and paired graph/timing publication.
@@ -51,12 +52,25 @@ baseline rechecks unchanged runtime/program guides. The operational
 consolidated Stage6 Miri remains pending, not replaced by the native exact-filter
 mirrors or the expanded228-execution registration.
 
+The subsequent **Part I backfill review** fully read chapters1–4, their three new
+examples, the separate-worker plan, and archived getting-started/integration/planning
+plus the approved parameter-chapter style reference. All four populated chapters
+still match their prior drift hashes. [Part I notes](part-1-process-audio/01-the-runtime-and-the-host.md)
+preserve the working examples and identify small authority/interval/resource/fault
+clarifications. `part-one-baseline.json` records source/destination hashes, unchanged
+11-file archive integrity,23 checker-test passes, a drafting-only book check, and
+all three examples executed in debug/release using isolated output. No authored
+chapter, example, archive or separate-worker plan was changed or staged by this
+worker. This is actionable review, not separate-worker publication or full-book
+acceptance. The consolidated Stage6 Miri job runs independently from `faec78df`;
+see the operational `MIRI_JOBS.md`, not these notes, for its status.
+
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and
 their cross-cutting effects. Full review/backfill of prior
 loop-layer stages remains explicit below. Do not infer that empty chapters need no
 changes, that existing archived prose is authoritative, or that notes have already
-been applied. No fresh Miri, completed Stage 6, loop AudioWorklet, final CI or review
+been applied. No collected fresh Miri pass, completed Stage 6, loop AudioWorklet, final CI or review
 approval is implied. Use implementation evidence for verification status, not the
 archived guide's milestone counts.
 
@@ -72,10 +86,10 @@ only this milestone's changes have been reviewed; it does not close full coverag
 
 | Chapter | Initial change note / remaining review |
 | --- | --- |
-| 1 — Runtime and host | Pending full Stage 3–6 backfill: timing authority, generic/loop/host boundaries, no deadline guarantee. |
-| 2 — First graph | Pending: startup graph preparation, no warm-up render, NoPlanner compatibility. |
-| 3 — Processors | Pending: decision/observation capabilities, required render access, guard and error obligations. |
-| 4 — Callback | Pending: callback versus interval lifecycle, zero blocks, exact ceilings and non-rollback faults. |
+| 1 — Runtime and host | [Stage3–6 backfill reviewed](part-1-process-audio/01-the-runtime-and-the-host.md): qualify signal DAG, authority/host boundaries and optional planning; retain current overview. Publication pending. |
+| 2 — First graph | [Reviewed; retain startup example](part-1-process-audio/02-your-first-audio-graph.md): no warm-up, NoPlanner, source-checked debug/release assertions and preparation ownership. Publication pending. |
+| 3 — Processors | [Stage3–6 backfill reviewed](part-1-process-audio/03-writing-processors.md): borrowed decision/observation access, required rendering, interval MIDI and failure/lifetime obligations. Publication pending. |
+| 4 — Callback | [Stage3–6 backfill reviewed](part-1-process-audio/04-connecting-an-audio-callback.md): one callback envelope, half-open boundaries and domain-specific post-fault cleanup; retain guarded adapter. Publication pending. |
 | 5 — Ownership | [Slice reviewed](part-2-control-a-running-graph/05-commands-completions-and-ownership.md); backfill typed scheduling/resource ownership. |
 | 6 — Live edits | [Slice reviewed](part-2-control-a-running-graph/06-routing-and-live-graph-edits.md); review all legacy editing/archive topics. |
 | 7 — Exact parameters | [Reviewed, no semantic rewrite for this slice](part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md); recheck final API/example and navigation. |
@@ -94,12 +108,16 @@ only this milestone's changes have been reviewed; it does not close full coverag
 
 ## Archive coverage still to reconcile
 
-- `getting-started.md`, `integration.md`: chapters 1–6, 13–15, 18–19.
+- `getting-started.md`, `integration.md`: chapters1–4 reviewed in the Part I notes;
+  startup/processor/host capabilities are accounted for. Commands/live edits,
+  coordination/prepared ingress and complete teardown remain chapters5–6,13–15,18–19.
+  Do not copy obsolete held-validation/recovery ordering from the archive.
 - `scheduling-midi.md`, `changing-parameters.md`: chapters 5, 7–8, 14, 17–19.
 - `resources.md`: chapters 9–11, 16–19.
 - `midi-indexing.md`, `midi-state.md`: chapters 11–12, 16–17.
 - `capture-groups.md`: chapters 10, 13, 16–19.
-- `planning.md`: chapters 3–4, 13–17.
+- `planning.md`: introductory processor/callback effects reviewed for chapters3–4;
+  complete planner/receipt/activation/capture/accounting backfill remains chapters13–17.
 - `graph-activation.md`: chapters 5–6, 8, 13–15, 17–19; this slice reviewed below,
   but evidence claims and future integration limitations must be refreshed separately.
 - `performance.md`: chapters 17–19 and supporting reference/measurement pages.

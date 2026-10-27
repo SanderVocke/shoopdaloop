@@ -43,6 +43,12 @@ is claimed unless explicitly archived.
 
 ## Consolidated Miri gate
 
+The intended readiness snapshot was committed as `faec78df` and job
+`20261027T025325-e065d48941` launched from it. See `MIRI_JOBS.md` for the immutable
+manifest and partial-progress record. The job is not yet collected; the requirements
+below remain in force and no checklist/task completion is inferred from launch.
+
+
 The committed selection is **228 executions:128 runtime+100 loop**. The28 topology
 and two interloop cases are individually exact-filtered with seed0; all30 names match
 native discovery and every filter executes exactly one test. No scenario, guard,

@@ -1,5 +1,32 @@
 # Miri jobs and outstanding verification
 
+## Active consolidated Stage6 job
+
+Launched `20261027T025325-e065d48941` at2026-10-27T02:53:25Z from immutable commit
+`faec78df0a990d28b4fefb2f75e43ea0ace7f1ea` with the full selection:
+**81 commands /228 executions (128 runtime+100 loop)**, pinned
+`nightly-2026-05-04`, unchanged900-second per-command watchdog. Launch command:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-6 --commit faec78df
+```
+
+Job directory: `target/loop-layer-miri-jobs/20261027T025325-e065d48941/`.
+Its immutable `job.json` SHA256 is
+`baf376abb633bc363f7e94712cbef3af9108d3675ad1026b8061db28dd06d807`.
+The manifest includes source/archive/supervisor hashes, exact filters/seeds/counts,
+command/environment and isolated paths; live process identity is separately recorded.
+The first natural documentation-review checkpoint verified the supervisor running;
+progress subsequently reported8 completed commands/49 executions and `midi_state`
+in progress. At the Part I handoff commit checkpoint it had22 completed commands/
+111 executions, with `capture_group_model` in progress and the supervisor still
+running. **This is partial progress, not a collected pass or Stage6 completion.**
+Do not start another routine job. Continue documentation work, inspect at natural
+checkpoints, and collect/verify the terminal result before updating acceptance.
+The working-tree documentation/example review does not mutate this snapshot.
+
+
 Latest nested-lifecycle/readiness milestone: **228 selected =128 runtime+100 loop**.
 The added guarded interloop case passes native/release/Node/Chromium; all153 loop
 cases and2141 workspace cases/four skips pass. All28 topology and both interloop
