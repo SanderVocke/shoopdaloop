@@ -48,8 +48,10 @@ every callback and compare relevant callback partitions/zero boundaries:
 
 Preparation and owning-return destruction stay off-render. Regression models and
 historical native/Wasm/interpreter evidence have separate source/platform scopes;
-these examples are not new host, benchmark or full acceptance evidence. No
-independent loop host or loop benchmark is supplied in this snapshot.
+these examples are not new host, benchmark or full acceptance evidence. The
+[independent native fixture](../../../tests/loop_engine_host/README.md) adds a small
+heap-guarded offline record/play/FX scenario with complete sample/MIDI comparisons.
+It is not yet a two-thread or AudioWorklet host; no loop benchmark is supplied.
 
 ## Timing and ownership contracts
 

@@ -36,7 +36,7 @@ Transfer/queue credits bound a cooperating producer's protocol, not the browser'
 
 [`tests/rt_runtime_host`](../../../../../tests/rt_runtime_host/README.md) is a separate test-only workspace with native/offline/two-thread and real worklet scenarios. Its `RTR1`/`RTJ1` formats, checked-in journal and recorded browser measurements belong to its existing **NoPlanner** scenario. A journal replay is not a new browser run.
 
-It is not a loop host, generic planner/typed-operation wire recipe, production device adapter or proof of unrestricted live construction. Package-Wasm tests and offline loop examples are also not independent loop AudioWorklet evidence. This snapshot has no separate loop-host fixture or loop benchmark; no future implementation/evidence input is needed to describe that limitation honestly.
+It is not a loop host, generic planner/typed-operation wire recipe, production device adapter or proof of unrestricted live construction. Package-Wasm tests and offline loop examples are also not independent loop AudioWorklet evidence. The separate [loop fixture](../../../../../tests/loop_engine_host/README.md) currently supplies only a small native offline scenario; its Wasm build is compilation, not browser execution. The loop cross-instance bridge, two-thread/AudioWorklet hosts and loop benchmark remain unimplemented.
 
 Use the fixture's actual commands/provenance in its README and [repository host reference](../../../../../docs/rt_runtime/HOST_FIXTURE.md). Do not retrofit new domain semantics into an old journal or report unperformed platform/benchmark campaigns as passes.
 

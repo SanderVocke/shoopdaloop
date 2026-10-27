@@ -1,0 +1,17 @@
+[package]
+name = "loop_engine_host_fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rt_runtime = { path = "../../src/rust/rt_runtime" }
+shoop_loop_engine = { path = "../../src/rust/shoop_loop_engine" }
+
+[profile.release]
+debug = 1

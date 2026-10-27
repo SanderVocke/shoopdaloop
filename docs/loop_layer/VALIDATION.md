@@ -7,7 +7,9 @@ The runtime [book/reference](../../src/rust/rt_runtime/docs/README.md) and loop
 including prepared configuration and paired running-program/graph publication.
 [STAGE6_READINESS.md](STAGE6_READINESS.md) maps implementation acceptance at its
 recorded source; it is not a new callback audit or final branch/platform certification.
-No independent loop host/benchmark or newer performance/deadline campaign is supplied.
+An initial independent native offline loop fixture is now supplied; its wire bridge,
+two-thread host and actual AudioWorklet remain pending. No loop benchmark or newer
+performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -16,6 +18,24 @@ checkout or to documentation authoring. Former docs-changes-loop-layer reference
 now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Stage 7 native offline foundation
+
+`tests/loop_engine_host` now has its own workspace/lockfile and uses the actual loop
+facade for guarded stereo/MIDI record → immediate play → FX → stop. Four callback
+partitions agree with independent complete sample/packet expectations and exact
+transition receipt frames. Both native profiles pass five tests, including three
+negative heap canaries, and replay verifies13 stereo frames/134 MIDI packets/three
+transitions with complete256page/16version/16snapshot recovery and zero media refs.
+The fixture builds for Wasm but has not executed there or in an AudioWorklet.
+
+Fresh regression gates pass:2141 workspace tests/four existing ignored failure
+canaries, warning-denied workspace build and both-crate/fixture rustdoc, formatting,
+test policy, production boundaries and tracing coverage. No new Miri, browser,
+benchmark or CI pass is claimed. The codec/prepared bridge, two-thread host, actual
+worklet, broader scenarios/exports/journals and unified runner remain Stage7 work.
+[Native foundation evidence](evidence/native-host-foundation-stage7.md) records
+commands, scope, the two corrected fixture failures and retained raw logs.
 
 ## Historical Stage 6 completion and user checkpoint
 
