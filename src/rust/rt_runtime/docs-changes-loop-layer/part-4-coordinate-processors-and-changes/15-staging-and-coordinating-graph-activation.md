@@ -123,5 +123,45 @@ and `same_frame_injected_midi_prevents_removal_until_delivery_and_never_replays_
 Use `docs/loop_layer/evidence/graph-activation-stage6{,-provenance}.json` for actual
 verification status. Generic host regressions are not a loop AudioWorklet, and
 registered Miri cases are not interpreter passes. Do not transfer milestone totals
-into the chapter. Revisit this note after general loop graph/media/role transactions
-are implemented; that application integration is not supplied by the permit alone.
+into the chapter. Loop graph/media/role transactions are now implemented in the
+prepared-template facade, as described in the milestone notes below; that application
+integration is not supplied by the generic permit alone.
+
+## Full archive backfill and application reconciliation
+
+The archived graph-activation guide was re-read completely for this review. Preserve
+its generic contracts above, but do not copy its obsolete final paragraph saying
+loop-specific transactions are pending. Current implementation notes are
+../loop-facade-live-graphs.md, ../loop-media-owner-activation.md,
+../loop-configuration-activation.md and ../loop-program-graph-activation.md.
+The standalone generic book example must remain free of Shoop loop dependencies;
+use those notes only to explain the boundary between runtime capability and an
+application's additional transaction/cleanup rules. Independent loop hosts and
+consolidated/final verification are still separate outstanding obligations.
+
+Complete the storage discussion with chapter17: storage_bytes counts each retained
+vector's capacity, not populated length, plus the descriptor (excluding allocator
+overhead). Preparation checks fixed bank slots and a compatible active-owner allowance
+with checked arithmetic; this is conservative accounting, not measured heap bytes.
+An oversized candidate or displaced legacy plan may be refused despite valid row
+counts. Neither staging nor activation enlarges returned descriptors. Producer
+compilation scratch, validator scratch, queued owners and resource transactions cost
+additional memory; no zero-copy or universal-deadline claim follows from owner moves.
+
+While a normal stage command validates incrementally, old output continues, recovery
+may preempt the held owner at the next callback snapshot, and the validator resumes
+with its original sequence/progress. Link chapter5 instead of duplicating queue
+machinery. Application pending tokens and Ready graph owners have separate lifetimes:
+a pending application reference does not reserve/lock a Ready candidate against
+release, reuse or independent activation. Revalidate at the actual cut, preserve
+both states on refusal, and return each retired owner through its own channel.
+
+The final example must cover a deliberately unused permit and prove that dropping
+it publishes nothing, not merely rely on a successful swap. For an expected stale
+failure, assert unchanged output/domain/epochs and preserved owners before a new
+attempt. After a successful swap, check the retired plan returned by ReleaseGraph,
+and reject a second release of that identity. Include an initially empty active graph
+where a Taken slot can correctly return no plan. Source/input hashes and current
+review checks are in ../control-baseline.json. The documented prototype and guarded
+integration tests remain evidence, not a claim that the required public tutorial
+example has already been authored or published.

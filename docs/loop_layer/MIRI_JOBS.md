@@ -35,6 +35,11 @@ executions completed, with the paired cancellation/released-generation case runn
 Do not confuse this new-job partial count with the historical interrupted178-selection.
 Full native runtime tests and bounded documentation smokes/canaries ran in separate
 output while the immutable interpreter job continued; no second job was started.
+The control/planning review checkpoint verified67 completed commands/207 of228
+executions, with the loop MIDI target (`67-midi-seed0.log`) in progress. Four native
+example executions and the drafting checker ran separately. All123 scoped Rust and
+10 configuration/runner input hashes remain unchanged; this review adds no new
+interpreter invocation or terminal-pass claim. Stage6 remains incomplete.
 
 
 Latest nested-lifecycle/readiness milestone: **228 selected =128 runtime+100 loop**.

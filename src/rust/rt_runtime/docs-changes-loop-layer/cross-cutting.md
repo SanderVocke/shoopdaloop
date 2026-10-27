@@ -36,6 +36,11 @@ remaining earlier-stage review and publication are tracked in the index.
   executable code, distinguish example driving helpers from APIs, and run the
   documentation worker's actual example/check inventory rather than assuming
   `cargo test --examples` executes every example's `main`.
+  The control/planning review reran gain_graph and planned_gain in debug/release.
+  gain_graph guards callbacks and checks owning teardown; current planned_gain
+  checks32samples/five intervals/one typed result but has only one consumer and no
+  heap guard. Do not describe it as the required guarded multi-consumer or pending-
+  receipt tutorial. Chapter13/14 notes specify those missing example obligations.
 
 ## Repository runtime contracts and architecture
 
@@ -61,7 +66,9 @@ and `DESIGN_RT_ENGINE.md` / `PROPOSAL_RT_ENGINE.md`.
   observations are not deadlines. Normal-lane fairness is not guaranteed when
   recovery consumes every allowed operation/publication indefinitely.
 - Host evidence remains generic native/actual-worklet regression evidence. It does
-  not prove the future independent loop host or general loop role/media transaction.
+  not prove the future independent loop host. Loop role/media transactions now have
+  their own prepared-template implementation evidence; do not attribute that evidence
+  to the generic host.
   Preserve old golden journals and explicitly label verification scope/freshness.
 
 ## Loop-specific documentation

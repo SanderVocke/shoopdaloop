@@ -2,7 +2,8 @@
 
 Destination: the corresponding chapter under `docs/`. Baseline: empty; consult
 `docs-previous/integration.md` and `graph-activation.md`. This note covers the new
-graph/recovery slice; earlier resource and typed-result coverage remains pending.
+graph/recovery slice; the later section below completes resource/typed-result
+ownership backfill. The destination/example still require separate-worker publication.
 
 ## Add or qualify
 
@@ -49,3 +50,44 @@ Source: `transport::RenderEndpoint::{begin_cycle,next_operation,complete}` and
 missing recovery execution; the final verification report retains that failure.
 Do not substitute an unguarded toy queue for the public behavior when demonstrating
 callback-safety claims.
+
+## Complete ownership walkthrough backfill
+
+`../control-baseline.json` records the empty destination, reviewed archive/source
+inputs and current verification. Start with a small public owning-command example:
+prepare a graph/processor or resource buffer off-render, submit it, keep callbacks
+running, and match its completion by sequence. Assert that a refused submission
+returns the original value, and a rejected/cancelled admitted command returns its
+post-operation request plus any retirement owner. Do not drop a refused Box/plan/
+processor inside the guarded callback merely to report its error.
+
+Show one accepted scheduled parameter with two separate acknowledgements: transport
+completion reports Scheduled; later execution reports the processor's return value
+and frame. A typed planner request may remain pending still longer. Generic execution
+Ok is not domain success; chapter14 supplies the actual pending/outcome example.
+Reading an owning completion frees transport credit but not a pending/unread execution
+slot; scheduling credit recycles at a later callback boundary. Future timestamps
+retain their reservations. Telemetry is lossy Copy data, not an acknowledgement.
+
+For a resource Read, recover the advanced cursor and buffer from the returned
+ResourceCommand request, and use written/eof from its reply. Inspect outcome and
+reply separately. Budget is refusal, not automatic retry; retain/reconsider the
+returned owner outside render. Chapter9 supplies resource bytes/lease details.
+Explicitly account for uploaded/captured snapshots: copying a plain handle does not
+acquire a lease, and Drop cannot release a lease hidden in application state.
+
+Exercise a full normal lane with unread owning returns and one independent recovery
+request, then drain/recycle and prove ownership recovery. Include pre-dequeue ticket
+cancellation and later cancellation that cannot undo already-dequeued work. Snapshot
+queue availability once per callback; arrivals/recycled execution credits midcallback
+wait for the next callback, not the next planner interval. Preserve normal FIFO but
+never teach a global FIFO across normal/recovery lanes. Recovery may overtake a
+normal read with a release, causing a legitimate stale-handle failure.
+
+Ordinary submit may allocate a cancellation flag. Link chapter18 for prepared
+submission and its distinct Busy condition when tickets/results retain flag owners.
+Do not make this introductory example an allocation-free-ingress claim without the
+corresponding guard and prepared payload/retirement scheme. Final teardown must
+stop/join callbacks; abandoning future work does not fabricate terminal results.
+The full native188-case evidence in operation-baseline remains source/input-matched;
+this review adds no unimplemented example or new full-suite pass claim.

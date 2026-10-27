@@ -85,8 +85,24 @@ allocation/reallocation/deallocation canaries produced the expected guard failur
 These are documentation smoke checks, not the full performance campaign, new
 prepared-ingress/shutdown examples or actual loop-host evidence. Cross-cutting notes
 also identify the stale “split credits”/all-resource-quota crate rustdoc summary.
-All19 chapters now have notes, but some earlier slices still require full backfill,
-and **none of this asserts separate-worker publication or full-book acceptance**.
+All19 chapters now have notes; the subsequent control/planning review below
+completes their earlier-slice backfill. **None of this asserts separate-worker
+publication or full-book acceptance**.
+
+The **control/planning backfill** completes chapter5–8/13–15 review against the
+archives and current APIs. It covers owning returns, ordinary routing, preservation
+of the approved parameter chapter, packet/recovery MIDI, exact planner intervals,
+retained typed receipts and coordinated graph publication. `control-baseline.json`
+records six empty destinations and unchanged chapter7, four fresh warning-denied
+example executions (gain_graph/planned_gain × debug/release), and the drafting-only
+book check. All123 scoped Rust inputs,10 configuration/runner inputs and11 archives
+remain unchanged; the previous188-case native/profile evidence and raw log hashes
+were verified and reused, not rerun or relabeled as fresh. Existing planned_gain is
+one-consumer and unguarded: the notes explicitly require the proposed guarded
+multi-consumer/pending-operation tutorials, rather than claiming those exist.
+All19 chapter backfill reviews are now actionable. Full loop-guide/architecture
+backfill, reference tables, authored examples/publication and final acceptance
+remain open.
 
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and
@@ -113,17 +129,17 @@ only this milestone's changes have been reviewed; it does not close full coverag
 | 2 — First graph | [Reviewed; retain startup example](part-1-process-audio/02-your-first-audio-graph.md): no warm-up, NoPlanner, source-checked debug/release assertions and preparation ownership. Publication pending. |
 | 3 — Processors | [Stage3–6 backfill reviewed](part-1-process-audio/03-writing-processors.md): borrowed decision/observation access, required rendering, interval MIDI and failure/lifetime obligations. Publication pending. |
 | 4 — Callback | [Stage3–6 backfill reviewed](part-1-process-audio/04-connecting-an-audio-callback.md): one callback envelope, half-open boundaries and domain-specific post-fault cleanup; retain guarded adapter. Publication pending. |
-| 5 — Ownership | [Slice reviewed](part-2-control-a-running-graph/05-commands-completions-and-ownership.md); backfill typed scheduling/resource ownership. |
-| 6 — Live edits | [Slice reviewed](part-2-control-a-running-graph/06-routing-and-live-graph-edits.md); review all legacy editing/archive topics. |
-| 7 — Exact parameters | [Reviewed, no semantic rewrite for this slice](part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md); recheck final API/example and navigation. |
-| 8 — MIDI | [Slice reviewed](part-2-control-a-running-graph/08-processing-and-scheduling-midi.md); backfill reserved recovery and required rendering. |
+| 5 — Ownership | [Backfill reviewed](part-2-control-a-running-graph/05-commands-completions-and-ownership.md): owning returns, separate credits/receipts, resource buffers, cancellation and recovery preemption; publication/example pending. |
+| 6 — Live edits | [Backfill reviewed](part-2-control-a-running-graph/06-routing-and-live-graph-edits.md): ordinary fan-in/out, incremental publication, generations and owner recycling; new two-node example/publication pending. |
+| 7 — Exact parameters | [Reviewed, preserve approved prose](part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md): fresh guarded gain_graph debug/release, source excerpts/navigation verified; final publication gate remains. |
+| 8 — MIDI | [Backfill reviewed](part-2-control-a-running-graph/08-processing-and-scheduling-midi.md): complete packets, stable ties, bounded ingress and reserved host recovery/backpressure; new examples/publication pending. |
 | 9 — Resources | [Backfill reviewed](part-3-work-with-stored-media/09-loading-and-reading-resources.md): upload/ownership, required versus background access, raw-ID preconditions and bounded cleanup; chapter/example publication pending. |
 | 10 — Record/export | [Backfill reviewed](part-3-work-with-stored-media/10-recording-and-exporting.md): immutable truthful prefixes, capture revisions, exhaustion and single-resource versus group atomicity; chapter/example publication pending. |
 | 11 — MIDI events | [Backfill reviewed](part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md): page versus event positions, complete packet retry, ties/EOF and view lifetimes; chapter/example publication pending. |
 | 12 — MIDI state | [Backfill reviewed](part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md): concrete checkpoint reference, C×K−1 capacity, pre-target state, unsupported histories and renderer attribution; chapter/example publication pending. |
-| 13 — Planning | [Slice reviewed](part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md); backfill full planner/observation lifecycle. |
-| 14 — Typed operations | [Slice reviewed](part-4-coordinate-processors-and-changes/14-application-specific-operations.md); backfill pending result/cancellation semantics. |
-| 15 — Graph activation | [Detailed prerequisite notes](part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md); revisit after general loop integration. |
+| 13 — Planning | [Backfill reviewed](part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md): complete plan/process/finish lifecycle, authority, positive intervals and one callback envelope; guarded two-consumer example/publication pending. |
+| 14 — Typed operations | [Backfill reviewed](part-4-coordinate-processors-and-changes/14-application-specific-operations.md): four frame identities, retained receipts, queued/pending cancellation, domain outcomes and recovery limits; public pending example/publication pending. |
+| 15 — Graph activation | [Backfill and loop integration reconciled](part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md): scoped permits, actual storage, MIDI conflicts and independent retirement; generic tutorial/publication pending. |
 | 16 — Capture groups | [Backfill reviewed](part-4-coordinate-processors-and-changes/16-recording-resources-together.md): first-interval preflight, reservations/claims, staged common-prefix publication, stamped authority and explicit cleanup; chapter/example publication pending. |
 | 17 — Capacity | [Stage3–6 backfill reviewed](part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md): typed/pool/graph/group/index formulas, callback allowances versus required work, diagnostics and bounded smoke limitations; publication/reference verification pending. |
 | 18 — Prepared ingress | [Backfill reviewed](part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md): distinct flag/admission credits, owning-buffer reuse, inactive plan materialization versus validation, finite recovery and destructor limits; new example/publication pending. |
@@ -133,10 +149,12 @@ only this milestone's changes have been reviewed; it does not close full coverag
 
 - `getting-started.md`, `integration.md`: chapters1–4 reviewed in the Part I notes;
   startup/processor/host capabilities are accounted for; prepared ingress/extraction/
-  teardown is reviewed in18–19. Commands/live edits and
-  complete planner/coordination backfill remain chapters5–6/13–15.
-  Do not copy obsolete held-validation/recovery ordering from the archive.
-- `scheduling-midi.md`, `changing-parameters.md`: chapters 5, 7–8, 14, 17–19.
+  teardown is reviewed in18–19. Commands/live edits and planner/coordination
+  backfill is now reviewed in5–6/13–15. Do not copy obsolete held-validation/
+  recovery ordering from the archive.
+- `scheduling-midi.md`, `changing-parameters.md`: backfill reviewed in5/7–8/14/17–19;
+  approved parameter prose preserved, packet/reset and pending-receipt examples
+  specified but not newly implemented.
 - `resources.md`: upload/access/index/capture/export ownership reviewed for9–11/16;
   consolidated formulas, prepared ingress and shutdown backfill now reviewed in17–19.
 - `midi-indexing.md`, `midi-state.md`: event/state/initial/checkpoint/ownership policies
@@ -144,13 +162,14 @@ only this milestone's changes have been reviewed; it does not close full coverag
   separate worker must verify the final reference tables and examples.
 - `capture-groups.md`: take/interval/first-reservation/common-prefix/lifetime/cleanup
   review covers10/16. Consolidated sizing/ingress/shutdown is reviewed in17–19;
-  full chapter13 planner integration backfill remains. Do not
-  copy obsolete blanket claims of missing loop integration.
+  chapter13 now covers planner integration. Do not copy obsolete blanket claims
+  of missing loop integration.
 - `planning.md`: introductory processor/callback effects reviewed for chapters3–4,
   capture/accounting/cleanup in16–19; complete planner/receipt/activation backfill
-  remains chapters13–15.
-- `graph-activation.md`: chapters 5–6, 8, 13–15, 17–19; this slice reviewed below,
-  but evidence claims and future integration limitations must be refreshed separately.
+  now reviewed in13–15, with explicit current example limitations.
+- `graph-activation.md`: backfill reviewed in5–6/8/13–15/17–19, including current
+  prepared-template loop integration attribution. Historical milestone evidence is
+  not current final acceptance; preserve its provenance and use operational ledgers.
 - `performance.md`: chapters17–19 backfill now reviewed, with current formulas,
   held-normal recovery correction, required/background work and measurement limits.
   Separate-worker supporting reference pages and final benchmark evidence remain.

@@ -1,5 +1,37 @@
 # Loop-layer implementation and validation evidence
 
+## Control/planning handoff backfill
+
+Chapter5–8/13–15 notes now complete the runtime book's earlier-slice backfill:
+owning command/resource returns, ordinary routing, approved exact-parameter prose,
+packet/reset MIDI, positive planner intervals, retained typed outcomes and scoped
+graph publication. All19 chapters have actionable review notes. Full loop-guide/
+architecture backfill, reference tables, authored examples/publication and final
+LL-A12 acceptance remain outstanding. Six reviewed destinations remain empty;
+chapter7's approved prose/source marker remains unchanged.
+
+`src/rust/rt_runtime/docs-changes-loop-layer/control-baseline.json` records **four
+fresh warning-denied example executions** (gain_graph/planned_gain in debug/release)
+and the drafting-only book check. The prior operation-baseline's188 native cases per
+profile are explicitly reused, not rerun: all123 scoped Rust inputs,10 configuration/
+runner inputs,11 archive hashes and prior command-log hashes still match. Raw fresh
+logs: `target/loop-layer-docs-control/`. The five warm commands took0.5183642870106269s
+in the existing isolated documentation build directory; this is neither a cold build
+nor performance/deadline evidence.
+
+The review identifies an important example limitation: gain_graph guards callbacks
+and checks exact samples/owning teardown, but planned_gain is one-consumer and has
+no heap guard. Its32sample/five-interval/typed-result assertions pass; they do not
+supply the proposed guarded two-consumer or pending-receipt book examples. Notes
+require the documentation worker to implement those without rewriting approved
+parameter prose or claiming missing publication. No authored chapters/examples,
+archives, worker plan or production Rust were changed.
+
+At this checkpoint the existing consolidated job remains **running,67 commands/
+207 of228 executions completed**, executing the loop MIDI target. This remains
+partial interpreter progress, not a collected pass. No second Miri job was launched;
+Stage6/task completion is still withheld pending terminal provenance verification.
+
 ## Capacity/prepared-ingress/shutdown handoff backfill
 
 The chapter17/19 notes now include Stage3–6 storage/work/ownership/extraction

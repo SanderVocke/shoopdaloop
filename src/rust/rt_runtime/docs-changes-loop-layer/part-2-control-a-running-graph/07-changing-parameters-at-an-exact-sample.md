@@ -25,3 +25,21 @@ Final checks: execute `gain_graph` in debug/release, check snippets against its
 source and verify nested chapter links. This note is a justified no-semantic-change
 finding for this slice, not an assertion that the full book or later API revisions
 have passed final documentation verification. Keep the user's approved prose intact.
+
+## Full backfill review result
+
+The current chapter was read completely again alongside gain_graph.rs, the approved
+archive, scheduler frame/credit fields, and the typed/planner context. No semantic
+rewrite is needed. The ordinary parameter example correctly uses actual_frame for
+its immediate outcome; do not reuse that simplification for deferred typed results.
+Execution::late_by() measures delivery minus requested time, not musical waiting
+until terminal completion. The callback ingress admission description is correct;
+internal planning intervals do not create additional admission opportunities.
+
+Fresh warning-denied debug/release runs pass, including the example's scoped heap
+guards, exact64/64 sample assertions and owning plan/processor teardown. The approved
+chapter's rust-source marker and nested links pass the drafting checker. Hashes are
+in ../control-baseline.json. The checker still allows14 empty chapters, so this is
+local preservation/verification, not book publication acceptance. The helper's finite
+64-callback validation bound belongs to this fixed offline demonstration; it is not
+a runtime subdivision cap or a general deadline/fairness guarantee.
