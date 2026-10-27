@@ -1,5 +1,12 @@
 # Miri jobs and outstanding verification
 
+Latest configuration milestone: **223 selected =128 runtime+95 loop**, including
+seven new facade configuration cases and one private role/source exhaustion case.
+This is registration only, not interpreter evidence. Native debug/release and
+Node/Chromium passed148 loop cases; fourteen runner-helper tests passed. Preserve
+the historical interrupted171/178 result as partial. Consolidated Stage6 execution
+still awaits a final immutable committed snapshot and supervised background run.
+
 Miri runs asynchronously under the [plan's execution contract](../../PLAN_LOOP_LAYER.md#background-miri-execution-user-approved-scheduling-change).
 Pending verification does not prevent implementation commits or further development;
 it does prevent claiming an applicable stage fully verified or making final

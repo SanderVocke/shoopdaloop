@@ -15,11 +15,16 @@ use rt_runtime::{
     transport::{self, Lane},
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
+mod configuration;
 mod planner;
 mod processor;
+mod roles;
 mod topology;
 use crate::topology::staging::{Progress, StageId, Status};
 pub use processor::Node;
+pub use roles::{
+    RoleInitial, RoleSettings, RoleSourceId, RoleSourceStatus, RoleStageId, RoleStatus,
+};
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
 pub use topology::TopologySettings;
 
@@ -89,6 +94,43 @@ pub enum Selection {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    RoleSnapshot {
+        resource: rt_runtime::ResourceId,
+    },
+    RoleSourceValidate {
+        id: RoleSourceId,
+    },
+    RoleSourceStatus {
+        id: RoleSourceId,
+    },
+    RoleSourceRelease {
+        id: RoleSourceId,
+    },
+    RoleBegin {
+        slot: usize,
+        changes: usize,
+    },
+    RoleAppend {
+        id: RoleStageId,
+        previous: Option<LoopId>,
+        initial: Option<RoleInitial>,
+    },
+    RoleStatus {
+        id: RoleStageId,
+    },
+    RoleCancel {
+        id: RoleStageId,
+    },
+    RoleRecycle {
+        id: RoleStageId,
+    },
+    ConfigurationActivate {
+        roles: RoleStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     GraphStatus {
         id: GraphStageId,
     },
@@ -187,6 +229,29 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    RoleSource {
+        id: RoleSourceId,
+        snapshot: Snapshot,
+        status: RoleSourceStatus,
+    },
+    RoleSourceStatus {
+        id: RoleSourceId,
+        status: RoleSourceStatus,
+    },
+    RoleSourceReleased {
+        id: RoleSourceId,
+    },
+    RoleStatus {
+        id: RoleStageId,
+        status: RoleStatus,
+    },
+    ConfigurationActivated {
+        roles: RoleStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     GraphStatus {
         id: GraphStageId,
         status: GraphStageStatus,
@@ -248,6 +313,9 @@ pub struct View {
     pub midi: Option<ReadIndex>,
     pub capture: Option<CaptureIntervalId>,
     pub gain: f32,
+    pub playback_node: NodeId,
+    pub capture_node: NodeId,
+    pub reset_input: bool,
 }
 #[derive(Clone, Copy)]
 pub enum Observed {
@@ -273,6 +341,8 @@ struct Take {
 #[derive(Clone, Copy)]
 struct Row {
     binding: Binding,
+    assigned: bool,
+    reset_input: bool,
     groups: [Option<CaptureGroupId>; 2],
     resources: [[Option<rt_runtime::ResourceId>; 2]; 2],
     active: Option<Take>,
@@ -337,6 +407,7 @@ pub struct LoopPlanner {
     settings: Settings,
     resolver: Resolver,
     topologies: topology::Topologies,
+    roles: roles::Roles,
     graph_epoch: Epoch,
     ledger: media::Ledger,
     rows: Box<[Option<Row>]>,
@@ -365,7 +436,13 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
     }
     /// Allocating control-side compilation for the prepared physical roles.
     pub fn compile_graph(&self, graph: &GraphDescription) -> Result<PreparedPlan, Error> {
-        rt_runtime::graph::compile_planned(&self.graph_catalog, graph, &self.graph_bindings)
+        let bindings: Vec<_> = self
+            .graph_bindings
+            .iter()
+            .filter(|binding| graph.nodes.contains(&binding.consumer))
+            .copied()
+            .collect();
+        rt_runtime::graph::compile_planned(&self.graph_catalog, graph, &bindings)
     }
     pub fn stage_graph(
         &mut self,
@@ -504,10 +581,36 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             Some(observer),
         )
     }
-    /// Prepare reusable timing candidates for the fixed graph and existing role identities.
-    /// Immediate changes require stopped programs; owning program changes use musical cuts.
-    /// Logical-role replacement is not exposed by this preparation path.
+    /// Prepare timing candidates; role-generation staging remains disabled.
     pub fn prepare_with_staging(
+        config: PreparedConfig,
+        topology: PreparedTopology,
+        resources: ResourceStore,
+        settings: Settings,
+        bindings: Vec<Binding>,
+        imports: Vec<media::Input>,
+        effects: Vec<(NodeId, P)>,
+        graph: GraphDescription,
+        staging: TopologySettings,
+        observer: Option<Box<dyn BoundaryObserver>>,
+    ) -> Result<(Controller<P>, Self), Failure> {
+        Self::prepare_with_configuration_staging(
+            config,
+            topology,
+            resources,
+            settings,
+            bindings,
+            imports,
+            effects,
+            graph,
+            staging,
+            RoleSettings::default(),
+            observer,
+        )
+    }
+    /// Prepare bounded configuration candidates and physical role templates.
+    /// Unassigned templates remain outside the initial signal graph.
+    pub fn prepare_with_configuration_staging(
         config: PreparedConfig,
         topology: PreparedTopology,
         mut resources: ResourceStore,
@@ -517,6 +620,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
         effects: Vec<(NodeId, P)>,
         graph: GraphDescription,
         staging: TopologySettings,
+        role_settings: RoleSettings,
         observer: Option<Box<dyn BoundaryObserver>>,
     ) -> Result<(Controller<P>, Self), Failure> {
         let (topologies, topology) = topology::Topologies::prepare(topology, staging)?;
@@ -527,6 +631,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             return Err(Error::InvalidConfig.into());
         }
         let slots = limits.loop_slots;
+        let roles = roles::Roles::prepare(slots, role_settings)?;
         let bytes = slots
             .checked_mul(
                 size_of::<Row>()
@@ -556,17 +661,21 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
         let mut nodes = Vec::new();
         let mut decision_bindings = Vec::new();
         for binding in bindings {
-            let spec = resolver.topology().node(binding.target)?;
+            let spec = resolver.topology().node(binding.target).ok();
+            let assigned = spec.is_some();
             let slot = binding.target.slot() as usize;
-            if spec.kind != LoopKind::Primitive
+            if slot >= slots || (!assigned && role_settings.candidates == 0) {
+                return Err(Error::InvalidId.into());
+            }
+            if spec.is_some_and(|spec| spec.kind != LoopKind::Primitive)
                 || rows[slot].is_some()
                 || !binding.gain.is_finite()
                 || binding.channels > u32::MAX as usize
             {
                 return Err(Error::InvalidShape.into());
             }
-            if !graph.nodes.contains(&binding.playback)
-                || !graph.nodes.contains(&binding.capture)
+            if graph.nodes.contains(&binding.playback) != assigned
+                || graph.nodes.contains(&binding.capture) != assigned
                 || binding.playback == binding.capture
             {
                 return Err(Error::InvalidId.into());
@@ -577,9 +686,13 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             if binding.midi && binding.packet_bytes < binding.midi_bytes.max(3) {
                 return Err(Error::Capacity.into());
             }
-            ledger.bind(binding.target)?;
+            if assigned {
+                ledger.bind(binding.target)?;
+            }
             let mut row = Row {
                 binding,
+                assigned,
+                reset_input: false,
                 groups: [None; 2],
                 resources: [[None; 2]; 2],
                 active: None,
@@ -640,7 +753,10 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             rows[slot] = Some(row);
         }
         for spec in resolver.topology().nodes() {
-            if spec.kind == LoopKind::Primitive && rows[spec.id.slot() as usize].is_none() {
+            if spec.kind == LoopKind::Primitive
+                && rows[spec.id.slot() as usize]
+                    .is_none_or(|row| !row.assigned || row.binding.target != spec.id)
+            {
                 return Err(Error::InvalidId.into());
             }
         }
@@ -650,7 +766,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             let row = rows
                 .get(description.owner.slot() as usize)
                 .and_then(|r| *r)
-                .filter(|r| r.binding.target == description.owner)
+                .filter(|r| r.assigned && r.binding.target == description.owner)
                 .ok_or(Error::InvalidId)?;
             if description.channels as usize != row.binding.channels
                 || description.midi != row.binding.midi
@@ -684,7 +800,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
                 media: id,
             });
         }
-        for row in rows.iter().flatten() {
+        for row in rows.iter().flatten().filter(|r| r.assigned) {
             let target = row.binding.target;
             if ledger.playback(target)?.is_none() {
                 let length = resolver.state(target)?.content_length;
@@ -721,7 +837,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             }
             nodes.push(PreparedNode::new(id, Node::Effect(effect)));
         }
-        if graph.nodes.len() != nodes.len() {
+        if role_settings.candidates == 0 && graph.nodes.len() != nodes.len() {
             return Err(Error::InvalidShape.into());
         }
         catalog.sort_by_key(|m| (m.target, m.revision));
@@ -736,6 +852,9 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             midi: None,
             capture: None,
             gain: 1.,
+            playback_node: NodeId::from_parts(0, 1)?,
+            capture_node: NodeId::from_parts(0, 1)?,
+            reset_input: false,
         };
         let mut views = vec![initial; slots].into_boxed_slice();
         let mut inputs = vec![MidiState::default(); slots].into_boxed_slice();
@@ -757,6 +876,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             settings,
             resolver,
             topologies,
+            roles,
             graph_epoch: Epoch(1),
             ledger,
             rows,
@@ -765,27 +885,27 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             pending: vec![None; settings.normal_requests + 1].into_boxed_slice(),
             failures,
         };
+        let graph_nodes: Vec<_> = nodes.iter().map(|node| node.spec()).collect();
+        let initial_bindings: Vec<_> = decision_bindings
+            .iter()
+            .filter(|binding| graph.nodes.contains(&binding.consumer))
+            .copied()
+            .collect();
         let (mut control, runtime) = GraphRuntime::prepare_with_initial_graph(
             config,
             nodes,
             planner,
             resources,
             &graph,
-            &decision_bindings,
+            &initial_bindings,
         )?;
         control.prepare_submissions()?;
-        let graph_nodes = graph
-            .nodes
+        let graph_consumers = graph_nodes
             .iter()
-            .map(|id| runtime.catalog().node(*id))
-            .collect::<Result<Vec<_>, _>>()?;
-        let graph_consumers = graph
-            .nodes
-            .iter()
-            .map(|id| {
+            .map(|spec| {
                 Ok(ConsumerSpec {
-                    node: *id,
-                    access: runtime.catalog().consumer(*id)?,
+                    node: spec.id,
+                    access: runtime.catalog().consumer(spec.id)?,
                 })
             })
             .collect::<Result<Vec<_>, Error>>()?;

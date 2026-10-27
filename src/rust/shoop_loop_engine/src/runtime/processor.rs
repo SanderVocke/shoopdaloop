@@ -93,7 +93,10 @@ impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for Node<P> {
             Self::Effect(node) => node.process(block),
             Self::Playback(node) => {
                 let view = block.decision.ok_or(Error::InvalidState)?.value;
-                if view.decision.state.id != node.binding.target {
+                if view.decision.state.id.slot() != node.binding.target.slot()
+                    || view.playback_node != node.binding.playback
+                    || view.capture_node != node.binding.capture
+                {
                     return Err(Error::InvalidId);
                 }
                 if let Some(audio) = &mut node.audio {
@@ -124,20 +127,26 @@ impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for Node<P> {
                     None
                 };
                 block.observations.push(Observed::Playback {
-                    target: node.binding.target,
+                    target: view.decision.state.id,
                     overflow: error.is_some(),
                 })?;
                 error.map_or(Ok(()), Err)
             }
             Self::Capture(node) => {
                 let view = block.decision.ok_or(Error::InvalidState)?.value;
-                if view.decision.state.id != node.binding.target {
+                if view.decision.state.id.slot() != node.binding.target.slot()
+                    || view.playback_node != node.binding.playback
+                    || view.capture_node != node.binding.capture
+                {
                     return Err(Error::InvalidId);
                 }
                 if let (Some(audio), Some(interval)) = (&mut node.audio, view.capture) {
                     audio.stage_ports(&mut block.resources.render(), interval, 0, &block.audio)?;
                 }
                 if let Some(midi) = &mut node.midi {
+                    if view.reset_input {
+                        midi.reset();
+                    }
                     midi.process(
                         &mut block.resources.render(),
                         block.midi_inputs.first().ok_or(Error::InvalidShape)?,
@@ -146,12 +155,12 @@ impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for Node<P> {
                             .map(|interval| (interval, usize::from(node.binding.channels > 0))),
                     )?;
                     block.observations.push(Observed::Input {
-                        target: node.binding.target,
+                        target: view.decision.state.id,
                         state: *midi.state(),
                     })?;
                 } else {
                     block.observations.push(Observed::NoMidiInput {
-                        target: node.binding.target,
+                        target: view.decision.state.id,
                     })?;
                 }
                 Ok(())

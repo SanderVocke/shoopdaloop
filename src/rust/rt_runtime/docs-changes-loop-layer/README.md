@@ -28,7 +28,14 @@ not the still-pending general role-generation/media transaction requirement.
 The [media-owner activation prerequisite](loop-media-owner-activation.md), based
 on `229e1a13`, adds borrowed whole-batch owner/initial-media publication while
 retaining old exports and pins. `owner-activation-baseline.json` records its reviewed
-media guide and source inputs. General facade generation integration is still pending.
+media guide and source inputs. That slice alone did not integrate facade generations.
+
+The [coordinated configuration slice](loop-configuration-activation.md), based on
+`f510466d`, now combines graph/timing/media publication over prepared physical
+roles with logical generation edits, source lease staging, input policy and capture
+claim checks. `configuration-baseline.json` records reviewed runtime/topology guides.
+Physical shapes/node IDs remain fixed; combined running-program/graph publication
+and full Stage6 verification remain pending.
 
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and

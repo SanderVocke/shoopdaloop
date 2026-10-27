@@ -20,6 +20,8 @@ use shoop_loop_engine::{
 };
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
+#[path = "support/configuration_scenarios.rs"]
+mod configuration_scenarios;
 #[global_allocator]
 static ALLOCATOR: support::TrackingAllocator = support::TrackingAllocator;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -84,6 +86,7 @@ fn description(changed: bool, reverse: bool) -> TopologyDescription {
 }
 struct Fx {
     fault: Option<Frame>,
+    stimulus: u32,
 }
 impl Drop for Fx {
     fn drop(&mut self) {
@@ -99,6 +102,13 @@ impl Processor<LoopPlanner> for Fx {
             midi_outputs: 1,
         }
     }
+    fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+        if parameter != u32::MAX || ![1., 2.].contains(&value) {
+            return Err(Error::InvalidParameter);
+        }
+        self.stimulus = value as u32;
+        Ok(())
+    }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         if self.fault == Some(block.frame) {
             return Err(Error::InvalidState);
@@ -113,6 +123,20 @@ impl Processor<LoopPlanner> for Fx {
             let (offset, bytes) = block.midi_inputs[0].get(index).unwrap();
             block.midi_outputs[0].push(offset, block.frames, bytes)?;
         }
+        if self.stimulus == 1 {
+            for packet in [
+                [0xb2, 1, 37],
+                [0x92, 61, 91],
+                [0xb2, 64, 127],
+                [0x82, 61, 0],
+                [0x92, 62, 72],
+            ] {
+                block.midi_outputs[0].push(0, block.frames, &packet)?;
+            }
+        } else if self.stimulus == 2 {
+            block.midi_outputs[0].push(0, block.frames, &[0x92, 63, 55])?;
+        }
+        self.stimulus = 0;
         Ok(())
     }
 }
@@ -220,9 +244,30 @@ impl Harness {
         media_slots: usize,
         fault: Option<Frame>,
     ) -> Self {
+        Self::with_roles(
+            media,
+            journal,
+            reverse,
+            staging,
+            media_slots,
+            fault,
+            RoleSettings::default(),
+            false,
+        )
+    }
+    fn with_roles(
+        media: bool,
+        journal: usize,
+        reverse: bool,
+        staging: TopologySettings,
+        media_slots: usize,
+        fault: Option<Frame>,
+        roles: RoleSettings,
+        spare: bool,
+    ) -> Self {
         let config = Config {
             max_frames: 32,
-            max_nodes: 5,
+            max_nodes: if spare { 7 } else { 5 },
             max_ports: 24,
             max_edges: 16,
             audio_inputs: 0,
@@ -300,6 +345,20 @@ impl Harness {
                 packet_bytes: 512,
             })
             .collect();
+        if spare {
+            bindings.push(Binding {
+                target: LoopId::from_parts(2, 2).unwrap(),
+                playback: node(5),
+                capture: node(6),
+                channels: 0,
+                midi: false,
+                gain: 1.,
+                smoothing: Smoothing::None,
+                midi_events: 0,
+                midi_bytes: 0,
+                packet_bytes: 0,
+            });
+        }
         let mut graph = GraphDescription {
             nodes: (0..if media { 5 } else { 4 }).map(node).collect(),
             connections: vec![],
@@ -328,7 +387,7 @@ impl Harness {
             graph.nodes.reverse();
             graph.connections.reverse();
         }
-        let (control, engine) = Engine::prepare_with_staging(
+        let (control, engine) = Engine::prepare_with_configuration_staging(
             config,
             compile(limits(journal), &description(false, reverse)).unwrap(),
             resources,
@@ -341,12 +400,13 @@ impl Harness {
             bindings,
             owned,
             if media {
-                vec![(node(4), Fx { fault })]
+                vec![(node(4), Fx { fault, stimulus: 0 })]
             } else {
                 vec![]
             },
             graph,
             staging,
+            roles,
             media.then(|| Box::new(Log::new()) as Box<dyn BoundaryObserver>),
         )
         .unwrap();

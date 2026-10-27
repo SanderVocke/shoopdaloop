@@ -3,6 +3,15 @@
 Notes for designing a later test strategy, not new acceptance thresholds or
 permission to omit required gates. Recorded 2026-10-26 during Stage 5 facade work.
 
+## Latest configuration slice
+
+`evidence/configuration-stage6.json` records252.76966427397565s total for19 scoped
+warm commands (148 loop cases/profile;2136 workspace cases/four skips). The eight
+positive/23 negative prototype checks and native exact-filter mirror are additional,
+not included in that total. No interpreter workload ran. Raw per-command elapsed
+values/hashes are in the report; failures remain in the target log directory.
+These observations do not establish callback deadlines, cold-cache time or CI margin.
+
 ## Conditions and provenance
 
 - Local Linux/Nix development environment on an AMD Ryzen AI 7 350

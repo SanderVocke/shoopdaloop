@@ -1,5 +1,36 @@
 # Loop-layer implementation and validation evidence
 
+## Latest Stage 6 configuration milestone
+
+`evidence/configuration-stage6{,-provenance}.json` records coordinated stopped-owner
+configuration over prepared physical roles: local owning snapshot/source staging,
+callback-shared MIDI header validation, generation-checked edit banks, graph/timing/
+media publication, explicit input projection policy and capture-claim checks.
+Seven integration cases and a private exhaustion/failure case cover exact independent
+stereo/MIDI/public-state/journals and retained old/new exports; kind change and spare
+consumer removal/reuse; saturated requests/recovery; all-bank refusal including the
+final resolver step; batch capacity without retirement-credit reuse; and eight
+unread/disconnect/publication/fault teardown phases. All callbacks/lifecycle work are
+under heap guards. Prepared physical identities/shapes remain fixed.
+
+Nineteen scoped gates pass:148 loop tests each in native debug/release/Node/Chromium,
+2136 workspace tests/four existing skips, warning-denied build/rustdoc/examples,
+boundaries/policies and fourteen Miri-helper tests. Eight positive prototypes and
+23 expected compiler refusals were refreshed.119 source hashes include105 unchanged
+preceding inputs; concurrent documentation examples are separately hashed. Warm
+suite time252.77s is not a deadline claim. Miri223=128runtime+95loop is registered,
+not interpreted. Full Stage6 and independent loop hosts remain incomplete.
+
+Logs are in `target/loop-layer-configuration-stage6/`. Retained fixture failures:
+range-token syntax, source-packet versus restored-note channel ordering, cumulative
+journal-drop count, reusing an unread recovery receipt, Timeline versus Runtime
+classification of a foreign topology ID, initial diagnostic epoch before any callback,
+and two resource slots providing two snapshot credits. Assertions/workloads were not
+weakened. `initial-reference.rs` preserves the initial MIDI-reference fixture;
+other failed intermediate trees are not claimed reproducible from logs alone.
+See the separate-worker `loop-configuration-activation.md` handoff and reviewed-guide
+hash baseline. No authored guide was rewritten for this slice.
+
 ## Scope and provenance
 
 `PLAN_LOOP_LAYER.md` governs this implementation. Its LL-A1–LL-A12 criteria are immutable without user approval. The initial runtime record in `DONE_INITIAL_CRATE.md` and `docs/rt_runtime/evidence/` is preserved; passing baseline tests is not evidence that new loop-layer behavior exists.

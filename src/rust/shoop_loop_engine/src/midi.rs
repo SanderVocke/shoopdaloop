@@ -235,6 +235,9 @@ impl MidiCapture {
     pub fn state(&self) -> &MidiState {
         &self.state
     }
+    pub(crate) fn reset(&mut self) {
+        *self.state = MidiState::default();
+    }
     /// Track connected input even while not recording. Invalid input leaves the
     /// tracker unchanged; a later staging refusal does not undo observed input.
     pub fn process(

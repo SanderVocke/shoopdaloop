@@ -3,10 +3,18 @@ use super::*;
 impl LoopPlanner {
     fn validate_graph(&self, graph: &PreparedPlan) -> Result<(), Error> {
         let bindings = &graph.planning().bindings;
-        if bindings.len() != self.rows.iter().flatten().count() * 2 {
+        if bindings.len()
+            != self
+                .rows
+                .iter()
+                .flatten()
+                .filter(|row| row.assigned)
+                .count()
+                * 2
+        {
             return Err(Error::InvalidShape);
         }
-        for row in self.rows.iter().flatten() {
+        for row in self.rows.iter().flatten().filter(|row| row.assigned) {
             for consumer in [row.binding.playback, row.binding.capture] {
                 if !graph.contains(consumer) {
                     return Err(Error::InvalidId);
@@ -46,7 +54,7 @@ impl LoopPlanner {
         self.rows
             .get(target.slot() as usize)
             .and_then(|r| *r)
-            .filter(|r| r.binding.target == target)
+            .filter(|r| r.assigned && r.binding.target == target)
             .ok_or(Error::InvalidId)
     }
     fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut, Failure> {
@@ -213,7 +221,7 @@ impl LoopPlanner {
     ) -> Result<bool, Error> {
         let frames = usize::try_from(end.0 - frame.0).map_err(|_| Error::InvalidFrame)?;
         for slot in 0..self.rows.len() {
-            let Some(mut row) = self.rows[slot] else {
+            let Some(mut row) = self.rows[slot].filter(|row| row.assigned) else {
                 continue;
             };
             let decision = self.views[slot].decision;
@@ -333,7 +341,9 @@ impl LoopPlanner {
     }
     fn settle(&mut self, frame: Frame, io: &mut PlannerResourceIo<'_>) -> Result<(), Error> {
         for slot in 0..self.rows.len() {
-            let Some(row) = self.rows[slot] else { continue };
+            let Some(row) = self.rows[slot].filter(|row| row.assigned) else {
+                continue;
+            };
             let decision = self.views[slot].decision;
             if let Some(take) = row.active {
                 if decision.state.mode != Mode::Recording
@@ -398,6 +408,9 @@ impl LoopPlanner {
                     .map(|s| s.index),
                 capture: row.interval,
                 gain: row.binding.gain,
+                playback_node: row.binding.playback,
+                capture_node: row.binding.capture,
+                reset_input: row.reset_input,
             };
         }
         Ok(())
@@ -541,6 +554,7 @@ impl LoopPlanner {
     }
     pub(super) fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
         self.resolver.quiesce();
+        self.roles.cleanup(&mut resources.io())?;
         self.topologies
             .cleanup(&mut self.resolver)
             .map_err(|error| match error {
@@ -623,6 +637,8 @@ impl Planner for LoopPlanner {
             operation,
             Operation::Cancel { .. }
                 | Operation::TopologyCancel { .. }
+                | Operation::RoleCancel { .. }
+                | Operation::RoleSourceRelease { .. }
                 | Operation::Transition {
                     timing: Timing::At,
                     transition: Transition::Stop,
@@ -637,6 +653,7 @@ impl Planner for LoopPlanner {
     ) -> Result<Disposition<Reply>, Error> {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
+        self.roles.callback(context.callback_start);
         let result = (|| -> Result<Disposition<Reply>, Failure> {
             if !context.payload.is_empty()
                 && !matches!(
@@ -647,6 +664,94 @@ impl Planner for LoopPlanner {
                 return Err(Error::InvalidShape.into());
             }
             let topology_status = match operation {
+                Operation::RoleSnapshot { resource } => {
+                    let (id, snapshot) =
+                        self.roles
+                            .snapshot(resource, context.frame, &mut context.resources)?;
+                    return Ok(Disposition::Complete(Reply::RoleSource {
+                        id,
+                        snapshot,
+                        status: self.roles.source_status(id)?,
+                    }));
+                }
+                Operation::RoleSourceStatus { id } => {
+                    return Ok(Disposition::Complete(Reply::RoleSourceStatus {
+                        id,
+                        status: self.roles.source_status(id)?,
+                    }))
+                }
+                Operation::RoleSourceValidate { id } => {
+                    return Ok(Disposition::Complete(Reply::RoleSourceStatus {
+                        id,
+                        status: self.roles.validate_source(id, &mut context.resources)?,
+                    }))
+                }
+                Operation::RoleSourceRelease { id } => {
+                    self.roles.release_source(id, &mut context.resources)?;
+                    return Ok(Disposition::Complete(Reply::RoleSourceReleased { id }));
+                }
+                Operation::RoleBegin { slot, changes } => {
+                    let id = self.roles.begin(slot, changes)?;
+                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                        id,
+                        status: self.roles.status(id)?,
+                    }));
+                }
+                Operation::RoleAppend {
+                    id,
+                    previous,
+                    initial,
+                } => {
+                    self.append_role(id, previous, initial, &mut context.resources)?;
+                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                        id,
+                        status: self.roles.status(id)?,
+                    }));
+                }
+                Operation::RoleStatus { id } => {
+                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                        id,
+                        status: self.roles.status(id)?,
+                    }))
+                }
+                Operation::RoleCancel { id } => {
+                    self.roles.cancel(id, &mut context.resources)?;
+                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                        id,
+                        status: self.roles.status(id)?,
+                    }));
+                }
+                Operation::RoleRecycle { id } => {
+                    self.roles.recycle(id)?;
+                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                        id,
+                        status: self.roles.status(id)?,
+                    }));
+                }
+                Operation::ConfigurationActivate {
+                    roles,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                } => {
+                    let (graph_epoch, topology_epoch) = self.activate_configuration(
+                        roles,
+                        topology,
+                        graph,
+                        graph_epoch,
+                        topology_epoch,
+                        &mut context.graphs,
+                        &mut context.resources,
+                    )?;
+                    return Ok(Disposition::Complete(Reply::ConfigurationActivated {
+                        roles,
+                        topology,
+                        graph,
+                        graph_epoch,
+                        topology_epoch,
+                    }));
+                }
                 Operation::GraphStatus { id } => {
                     return Ok(Disposition::Complete(Reply::GraphStatus {
                         id,
@@ -912,7 +1017,17 @@ impl Planner for LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::GraphStatus { .. }
+                Operation::RoleSnapshot { .. }
+                | Operation::RoleSourceStatus { .. }
+                | Operation::RoleSourceValidate { .. }
+                | Operation::RoleSourceRelease { .. }
+                | Operation::RoleBegin { .. }
+                | Operation::RoleAppend { .. }
+                | Operation::RoleStatus { .. }
+                | Operation::RoleCancel { .. }
+                | Operation::RoleRecycle { .. }
+                | Operation::ConfigurationActivate { .. }
+                | Operation::GraphStatus { .. }
                 | Operation::GraphActivate { .. }
                 | Operation::TopologyGraphActivate { .. }
                 | Operation::TopologyBegin { .. }
@@ -1035,7 +1150,7 @@ impl Planner for LoopPlanner {
                 row.seen_playback = true;
             }
         }
-        for row in self.rows.iter_mut().flatten() {
+        for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
             if !row.seen_playback || !row.seen_capture {
                 return Err(Error::InvalidState);
             }
@@ -1043,6 +1158,7 @@ impl Planner for LoopPlanner {
                 context.resources.capture().commit(interval)?;
                 row.interval = None;
             }
+            row.reset_input = false;
         }
         self.resolver
             .finish(context.interval.end)

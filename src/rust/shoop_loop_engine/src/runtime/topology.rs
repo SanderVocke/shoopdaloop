@@ -229,6 +229,24 @@ impl Topologies {
                 return Err(Error::InvalidShape.into());
             }
         }
+        self.activate_configuration(id, expected, resolver)
+    }
+    pub(super) fn candidate(&self, id: StageId) -> Result<&PreparedTopology, Failure> {
+        let slot = &self.slots[self.slot(id)?];
+        if slot.retired.is_some() {
+            return Err(Error::InvalidState.into());
+        }
+        slot.ready.as_ref().ok_or(Error::InvalidState.into())
+    }
+    pub(super) fn activate_configuration(
+        &mut self,
+        id: StageId,
+        expected: Epoch,
+        resolver: &mut Resolver,
+    ) -> Result<Epoch, Failure> {
+        self.candidate(id)?;
+        let index = self.slot(id)?;
+        let slot = &mut self.slots[index];
         let candidate = slot.ready.take().expect("validated candidate");
         match resolver.replace_topology(expected, candidate) {
             Ok(retired) => slot.retired = Some(retired),
