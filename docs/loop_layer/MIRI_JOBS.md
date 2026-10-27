@@ -20,9 +20,14 @@ workloads, actual route activation, stalled owning returns and disconnect cleanu
 The native graph command/return milestone adds another eight cases: six under
 `graph_wire::tests` and two under `graph_bridge::tests`, including128 wire candidate
 rounds, mixed four-normal/two-graph-credit saturation, a local owning Full refusal
-and intact unexpected-completion quarantine. All15 graph-focused native cases are
-**not yet registered in the pinned interpreter runner or interpreted**.
-Node/Chromium run shared payload bindings, not the native graph command cases. Keep the
+and intact unexpected-completion quarantine. Public graph command bindings add two
+native `browser::tests` cases: `graph_binding_buffers_cover_route_cut_and_reliable_owning_release`
+(three partitions/full media/receipts/semantic/recovery) and
+`graph_binding_fault_disposal_abandons_credits_without_fabricating_returns` (both
+actual FX fault modes). All17 graph-focused native cases are **not yet registered
+in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
+public payload and command bindings, including128 real candidate return cycles;
+they do not execute these native test functions or extend Miri coverage. Keep the
 existing900s per-command watchdog, guards and workloads when adding the standalone
 manifest/lockfile and exact filters to the supported selection. Final delivery
 still requires the complete applicable source-matched selection; no routine

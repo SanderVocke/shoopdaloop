@@ -57,9 +57,9 @@ outcomes across independent ordinary Wasm memories. Downstream Web Audio samples
 canonical semantic boundary/decision/event journals, fixed memory, failure canaries
 and complete stopped recovery are checked in both profiles. A separate prepared
 graph payload receiver has native facade and Node/Chromium binding coverage.
-An opt-in native graph command bridge now stages/activates/releases and recycles
-owners through bounded results. Graph command Wasm bindings and worklet transport
-remain open.
+An opt-in native graph command bridge and public Node/Chromium bindings now
+stage/activate/release and recycle owners through bounded results. Actual worklet
+graph transport remains open.
 Program/resource payloads, exports and broader host scenarios remain pending;
 no loop benchmark or production browser adapter is supplied.
 

@@ -12,9 +12,9 @@ two-thread replay plus actual non-isolated offline/live AudioWorklets for its sm
 primitive scenario, including canonical semantic timeline journals matched against
 an independent native table. A prepared graph payload receiver now additionally
 has native facade and public-Wasm binding coverage. Opt-in native graph commands
-now stage/activate/release and recycle owners through bounded results; graph command
-Wasm bindings/MessagePort transport, program/resource wire operations, exports and
-broader host scenarios remain pending.
+and public Node/Chromium bindings now stage/activate/release and recycle owners
+through bounded results. MessagePort graph transport, program/resource wire operations,
+exports and broader host scenarios remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -25,7 +25,35 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 native graph command/return integration
+## Stage 7 public graph command bindings
+
+`BrowserGraphClient` compiles the fixture bypass payload off-render and prepares
+fixed records/two command credits. `BrowserBridge.new_graphs` opts into actual
+runtime staging plus96/96/128-byte local payload/request/result banks. Successful
+stop refuses15 while a graph remains Ready/Taken, even with no outstanding command.
+
+Node and Chromium now run actual Stage/Activate/Release, full13-sample native-oracle
+route cuts,134 MIDI packets, semantic bytes, all four graph results and128 real
+candidate-return cycles. The runner uses independent complete byte tables, not a
+Rust-produced self-hash. Two new native cases compare three partitions and actual
+FX fault/heap abandonment without fabricated client returns. Two new Python cases
+reject512 receipt truncations/512 single-byte corruptions and missing media,
+semantic,128-round, memory or ownership evidence.
+
+Fresh gates:41 fixture tests per native profile; fourteen binding groups per
+Node/Chromium/profile; actual primitive worklets/canaries in both profiles; seven
+Python tests;2141 workspace passes/four existing skips; warning-denied build/docs,
+formatting and applicable policies. Main/worklet fixed memory remains1,835,008 debug
+and1,769,472 release bytes. [Graph-binding evidence](evidence/graph-bindings-stage7.md)
+retains source, commands, raw results, failure correction and hashes. A runnable
+public binding recipe and shutdown steps are in the fixture wire guide.
+
+This is actual Wasm graph execution, **not a MessagePort/downstream Web Audio graph
+change**. The actual worklet scenarios are still primitive. Stage7 remains2/8;
+two-thread graph transport, programs/resources/exports, broader hosts, consolidated
+Miri and Stages8–10 remain open.
+
+## Historical Stage 7 native graph command/return integration
 
 Opt-in `Bridge::with_graphs` connects `LGP1` descriptors to96-byte `LLG1` requests
 and128-byte `LLS1` results. Two graph credits are separate from the primitive

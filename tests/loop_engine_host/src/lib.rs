@@ -11,6 +11,7 @@ mod bridge;
 mod bridge_tests;
 mod browser;
 mod browser_graph;
+mod browser_graph_client;
 mod client;
 mod graph_bridge;
 pub mod graph_transfer;
@@ -22,6 +23,7 @@ pub mod wire;
 pub use bridge::Bridge;
 pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
 pub use browser_graph::BrowserGraphReceiver;
+pub use browser_graph_client::BrowserGraphClient;
 pub use client::Client;
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::run_two_thread;

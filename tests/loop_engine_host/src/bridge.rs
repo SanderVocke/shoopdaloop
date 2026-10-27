@@ -82,7 +82,10 @@ impl Bridge {
     }
     /// Opt-in prepared graph owners and return credits; allocating startup only.
     pub fn with_graphs(session: u64) -> Result<Self, WireError> {
-        let mut bridge = Self::new(session)?;
+        Self::with_graphs_fault(session, 0)
+    }
+    pub(crate) fn with_graphs_fault(session: u64, fault: u8) -> Result<Self, WireError> {
+        let mut bridge = Self::with_fault(session, fault)?;
         let config = bridge
             .control
             .compile_graph(&scenario::routes(false))

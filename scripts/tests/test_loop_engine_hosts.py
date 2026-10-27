@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_loop_engine_hosts import validate_semantic, verify_failure
+from run_loop_engine_hosts import compare_graph_bindings, validate_semantic, verify_failure
 
 
 class FailureGateTests(unittest.TestCase):
@@ -107,6 +107,58 @@ class SemanticJournalTests(unittest.TestCase):
         struct.pack_into("<QQ", data, 16, 1, 0)
         with self.assertRaises(RuntimeError):
             validate_semantic(data, complete=False)
+
+
+class GraphBindingTests(unittest.TestCase):
+    def sample(self):
+        native = {"samples": [[1.0, 10.0]] * 13, "midi": [[(1 << 64) - 1, [0x90, 60, 100]]],
+                  "semanticBytes": list(SemanticJournalTests().sample()), "recovered": [256, 16, 16, 0]}
+        packets = []
+        for phase, flags, sequence, status, runtime, at, delivered, observed, epoch, kind in (
+                (1, 6, 1, 1, 4, 0, 0, 0, 1, 1), (1, 2, 2, 3, 5, 4, 0, 1, 0, 2),
+                (2, 3, 2, 4, 5, 4, 4, 4, 2, 2), (1, 6, 3, 2, 6, 0, 0, 13, 0, 3)):
+            data = bytearray(128)
+            data[:8] = b"LLS1\x01\x00" + bytes((phase, flags))
+            struct.pack_into("<QQIIQQQQQI", data, 8, (1 << 64) - 1, sequence, 0, status,
+                             runtime, at, at, delivered, observed, 0)
+            struct.pack_into("<IIIQQ", data, 76, 7, 0, 1, epoch, 0)
+            if status in (1, 2):
+                struct.pack_into("<IIIII", data, 104, 0, 1 if status == 1 else 2,
+                                 *([4, 16, 4] if status == 1 else [3, 12, 2]))
+            data[124] = kind
+            packets.append(list(data))
+        report = {"audio": [[sample[channel] * (2 if 4 <= at < 12 else 1)
+                             for at, sample in enumerate(native["samples"])] for channel in range(2)],
+                  "midiBytes": list(struct.pack("<QI", (1 << 64) - 1, 3) + bytes([0x90, 60, 100])),
+                  "semanticBytes": native["semanticBytes"], "recovered": native["recovered"],
+                  "rounds": 128, "generation": 130, "initialBytes": 1835008, "finalBytes": 1835008,
+                  "graphResponses": packets}
+        return report, native
+
+    def test_complete_graph_tables_reject_all_receipt_truncations_and_byte_corruptions(self):
+        report, native = self.sample()
+        compare_graph_bindings(report, native)
+        for index in range(4):
+            for length in range(128):
+                altered = copy.deepcopy(report)
+                altered["graphResponses"][index] = altered["graphResponses"][index][:length]
+                with self.assertRaises(RuntimeError):
+                    compare_graph_bindings(altered, native)
+            for position in range(128):
+                altered = copy.deepcopy(report)
+                altered["graphResponses"][index][position] ^= 1
+                with self.assertRaises(RuntimeError):
+                    compare_graph_bindings(altered, native)
+
+    def test_graph_music_semantics_recovery_and_128_rounds_are_independently_required(self):
+        report, native = self.sample()
+        for field, value in (("audio", []), ("midiBytes", []), ("semanticBytes", []),
+                             ("recovered", [255,16,16,0]), ("rounds", 127), ("generation", 129),
+                             ("finalBytes", 1900544), ("graphResponses", report["graphResponses"][:3])):
+            altered = copy.deepcopy(report)
+            altered[field] = value
+            with self.assertRaises(RuntimeError):
+                compare_graph_bindings(altered, native)
 
 
 if __name__ == "__main__":

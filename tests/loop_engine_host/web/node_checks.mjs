@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver } from "./pkg/fixture.js";
+import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient } from "./pkg/fixture.js";
 import { checkBindings } from "./bindings_checks.js";
 const module = new WebAssembly.Module(readFileSync(new URL("./pkg/fixture_bg.wasm", import.meta.url)));
 const wasm = initSync({ module });
-console.log(JSON.stringify({ ...checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver), node: process.version }));
+console.log(JSON.stringify({ ...checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient), node: process.version }));

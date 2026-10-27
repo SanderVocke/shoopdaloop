@@ -135,8 +135,8 @@ bindings. Its extra checks reject oversized u64 indices rather than truncating
 on Wasm32 and perform128 local owner exchanges without memory growth. These are
 **not** graph commands or runtime graph activation through the worklet. `LLC1`/`LLR1`
 still carry only primitive transitions. The separate native envelopes below now
-connect graph ownership to bounded results; Wasm command bindings and MessagePort
-integration remain to be implemented.
+connect graph ownership to bounded results. Public graph command bindings below
+now execute that same runtime path in Node/Chromium; MessagePort dispatch remains open.
 
 ## Use the native graph command bridge
 
@@ -178,10 +178,51 @@ rounds, queued/Ready disposal, local Full refusal and intact owning quarantine.
 The route-cut script has the same13 samples/134 MIDI packets described above and
 retains exact graph/primitive receipts, semantic bytes and complete pool recovery.
 
-This graph protocol is currently **native verified and Wasm compiled**, not yet
-public-Wasm command bindings, a two-thread graph scenario or actual worklet graph
-transport. The existing replay CLI and browser runner still execute the primitive
-scenario; use the exact-filter native tests above for graph-command evidence.
+The graph protocol now executes natively and through public Node/Chromium bindings.
+It is not yet a two-thread graph scenario or actual worklet graph transport. The
+replay CLI and actual worklet contexts still execute the primitive scenario.
+
+## Submit graph commands through public Wasm bindings
+
+Build and run the browser command below first, then run the same public-binding
+checks directly in Node:
+
+```sh
+node target/loop-engine-host/debug/node_checks.mjs
+node target/loop-engine-host/release/node_checks.mjs
+```
+
+1. Create `BrowserGraphClient(session)` in the control instance and
+   `BrowserBridge.new_graphs(session, 0)` in the rendering instance before measuring
+   fixed memory. The client compiles this fixture's host-output-bypass descriptor
+   through the public controller API off-render; it is not a general graph editor.
+2. Iterate `payload_count()`. Call `prepare_payload(index, bankSlot, generation,
+   epoch, sequence)` and copy exactly96 bytes from local `payload_ptr()` to the
+   render instance's local `graph_payload_ptr()`. Use BigInt for all64-bit arguments;
+   payload sequences are separate from the client's automatic command sequences.
+   `ingest_graph_payload()` must return0. This alone neither admits nor activates.
+3. Call `stage(bankSlot, generation, runtimeSlot, epoch, cancelled)`. Copy96 bytes
+   from local `request_ptr()` to local `graph_request_ptr()` and require
+   `ingest_graph() === 0`. Process a real callback, poll `poll_graph_response()`
+   (0 none/1 ready/high-bit protocol error), copy128 bytes from local
+   `graph_response_ptr()` to client `response_ptr()`, then require `receive() === 0`.
+4. A Staged response supplies the Ready scoped ID. `activate(scope, slot, generation,
+   at, graphEpoch, topologyEpoch, cancelled)` retains credit until both admission
+   and execution are consumed. The shared binding case first renders one sample
+   for Ready, then activates at4 and checks every route-cut sample/packet/journal byte.
+5. `release(scope, slot, generation, cancelled)` returns the candidate/retired graph.
+   Validate its next bank generation and actual capacities before the next Begin.
+   The shared check repeats128 real stage/release cycles on the smaller returned
+   owner, with fixed memory and guarded preparation-free Rust paths throughout.
+6. Require both sides' command/retained counts zero before successful `stop()`.
+   Stop returns15 without consuming the engine if a graph remains Ready/Taken,
+   even when command credits are empty. Fault abandonment stops callbacks and frees
+   real owners off-render; it does not manufacture client returns.
+
+[The binding recipe](WIRE.md#public-graph-command-bindings) is runnable after the
+runner builds assets. These checks use actual Wasm runtime graphs, but not a
+MessagePort or downstream Web Audio graph-change scenario. Native binding-buffer
+coverage also compares three partitions and actual processor/heap fault disposal.
 
 ## Run actual Web Audio
 
@@ -241,12 +282,13 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Eleven shared public-binding checks execute in Node and Chromium: constructor
+Fourteen shared public-binding groups execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
-records, an eventless same-position seek and the two graph-payload checks above.
-These are binding-level Wasm checks, not a claim that the39 native Rust tests
+records, an eventless same-position seek, two payload checks and three graph command
+checks: full-width/credits, exact activation/retirement and128 real owner returns.
+These are binding-level Wasm checks, not a claim that the41 native Rust tests
 were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
@@ -281,8 +323,9 @@ Native direct/wire/two-thread replay and real non-isolated offline/live worklets
 now exercise this primitive scenario. This is **not Stage 7 completion**.
 Prepared graph payload materialization has native facade and public-Wasm binding
 coverage. Opt-in native graph commands now stage/activate/release and recycle
-owners through bounded wire results. Graph command Wasm bindings, two-thread
-payload transport and actual worklet graph changes remain pending. Program/resource payload staging, immutable exports,
+owners through bounded wire results. Public graph command bindings execute in
+Node/Chromium with complete native-oracle comparisons. Two-thread payload transport
+and actual worklet graph changes remain pending. Program/resource payload staging, immutable exports,
 broader loop/composite/seek/replacement/exhaustion scenarios and live in-flight
 transfer stalls also remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

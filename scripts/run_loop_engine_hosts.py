@@ -122,6 +122,47 @@ def compare(result, native):
             raise RuntimeError("transition timing or ownership recovery differs")
 
 
+def compare_graph_bindings(report, native):
+    """Independent complete tables for the controlled public-binding graph script."""
+    expected_audio = [[sample[channel] * (2 if 4 <= at < 12 else 1)
+                       for at, sample in enumerate(native["samples"])] for channel in range(2)]
+    expected_midi = b"".join(struct.pack("<QI", at, len(packet)) + bytes(packet)
+                             for at, packet in native["midi"])
+    validate_semantic(report["semanticBytes"])
+    if (report["audio"] != expected_audio or bytes(report["midiBytes"]) != expected_midi
+            or report["semanticBytes"] != native["semanticBytes"]
+            or report["recovered"] != native["recovered"] or report["rounds"] != 128
+            or report["generation"] != 130 or report["initialBytes"] != report["finalBytes"]):
+        raise RuntimeError("graph bindings differ from independent native media/semantic/ownership oracle")
+    packets = [bytes(packet) for packet in report["graphResponses"]]
+    if len(packets) != 4 or any(len(packet) != 128 for packet in packets):
+        raise RuntimeError("incomplete graph binding receipts")
+    scope, slot, generation = struct.unpack_from("<III", packets[0], 76)
+    if not scope or slot != 0 or generation != 1:
+        raise RuntimeError("invalid local graph identity")
+    for index, packet in enumerate(packets):
+        expected = bytearray(128)
+        phase, flags, sequence, status, runtime, requested, effective, delivered, observed, epoch, kind = (
+            (1, 6, 1, 1, 4, 0, 0, 0, 0, 1, 1),
+            (1, 2, 2, 3, 5, 4, 4, 0, 1, 0, 2),
+            (2, 3, 2, 4, 5, 4, 4, 4, 4, 2, 2),
+            (1, 6, 3, 2, 6, 0, 0, 0, 13, 0, 3),
+        )[index]
+        expected[:8] = b"LLS1\x01\x00" + bytes((phase, flags))
+        for offset, value in ((8, (1 << 64) - 1), (16, sequence), (32, runtime),
+                              (40, requested), (48, effective), (56, delivered),
+                              (64, observed), (88, epoch)):
+            struct.pack_into("<Q", expected, offset, value)
+        struct.pack_into("<I", expected, 28, status)
+        struct.pack_into("<III", expected, 76, scope, slot, generation)
+        if index in (0, 3):
+            struct.pack_into("<IIIII", expected, 104, 0, 1 if index == 0 else 2,
+                             *([4, 16, 4] if index == 0 else [3, 12, 2]))
+        expected[124] = kind
+        if packet != expected:
+            raise RuntimeError("graph binding receipt differs from independent complete byte table")
+
+
 def verify_failure(result, exit_code, kind):
     diagnostic = "intentional loop " + ("processor" if kind == "processor" else "Rust heap") + " failure canary detected"
     witness = result.get("workletFailure") or {}
@@ -166,7 +207,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 11:
+        if not node.get("passed") or len(node.get("checks", [])) != 14:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:
@@ -176,8 +217,9 @@ def main():
     executable = FIXTURE / "target" / args.profile / ("replay.exe" if os.name == "nt" else "replay")
     native = json.loads(harness.command([str(executable), "--json"], reports / "native.json"))
     compare(result, native)
-    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks")}:
+    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph")}:
         raise RuntimeError("Chromium binding checks differ from Node")
+    compare_graph_bindings(result["bindingChecks"]["graph"], native)
     result["node"] = node
     for mode in ("--direct", "--wire", "--two-thread"):
         harness.command([str(executable), mode], reports / (mode[2:] + ".log"))

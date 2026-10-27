@@ -1,4 +1,4 @@
-import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver } from "./pkg/fixture.js";
+import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient } from "./pkg/fixture.js";
 import { checkBindings } from "./bindings_checks.js";
 const RATE = 48000, Q = 128;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -140,7 +140,7 @@ async function runInner() {
     const wasm = initSync({ module });
     assert(wasm.memory.buffer instanceof ArrayBuffer, "ordinary non-shared control memory required");
     const canary = new URLSearchParams(location.search).get("failure");
-    const bindingChecks = canary ? null : checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver);
+    const bindingChecks = canary ? null : checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient);
     const reports = [];
     for (const mode of canary ? ["offline"] : ["offline", "live"]) {
         const session = mode === "offline" ? "18446744073709551615" : "18446744073709551614";

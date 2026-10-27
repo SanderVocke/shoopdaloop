@@ -12,7 +12,7 @@ use wasm_bindgen::prelude::*;
 pub const HEAP_FAILURE: u32 = 0xffff_0001;
 const JOURNAL_BYTES: usize = 16_384;
 static MARKER: AtomicU32 = AtomicU32::new(0);
-fn protocol_error(error: wire::Error) -> u32 {
+pub(crate) fn protocol_error(error: wire::Error) -> u32 {
     use wire::Error::*;
     match error {
         Size => 1,
@@ -102,9 +102,15 @@ impl BrowserClient {
     }
 }
 
+struct GraphBuffers {
+    payload: [u8; crate::graph_transfer::RECORD_BYTES],
+    request: [u8; crate::graph_wire::REQUEST_BYTES],
+    response: [u8; crate::graph_wire::RESPONSE_BYTES],
+}
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct BrowserBridge {
     core: Option<Bridge>,
+    graph: Option<Box<GraphBuffers>>,
     request: [u8; wire::REQUEST_BYTES],
     response: [u8; wire::RESPONSE_BYTES],
     input_left: [f32; 128],
@@ -129,8 +135,30 @@ impl BrowserBridge {
     /// Fault modes: 0 normal, 1 actual FX processor error, 2 actual FX heap violation.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new(session: u64, fault: u8) -> Result<Self, u32> {
-        Ok(Self {
-            core: Some(Bridge::with_fault(session, fault).map_err(protocol_error)?),
+        Ok(Self::from_core(
+            Bridge::with_fault(session, fault).map_err(protocol_error)?,
+            false,
+        ))
+    }
+    /// Opt-in fixed graph descriptor and command/result banks, prepared off-render.
+    pub fn new_graphs(session: u64, fault: u8) -> Result<Self, u32> {
+        Ok(Self::from_core(
+            Bridge::with_graphs_fault(session, fault).map_err(protocol_error)?,
+            true,
+        ))
+    }
+}
+impl BrowserBridge {
+    fn from_core(core: Bridge, graphs: bool) -> Self {
+        Self {
+            core: Some(core),
+            graph: graphs.then(|| {
+                Box::new(GraphBuffers {
+                    payload: [0; crate::graph_transfer::RECORD_BYTES],
+                    request: [0; crate::graph_wire::REQUEST_BYTES],
+                    response: [0; crate::graph_wire::RESPONSE_BYTES],
+                })
+            }),
             request: [0; wire::REQUEST_BYTES],
             response: [0; wire::RESPONSE_BYTES],
             input_left: [0.; 128],
@@ -149,7 +177,64 @@ impl BrowserBridge {
             callbacks: 0,
             faulted: false,
             recovered: [0; 4],
-        })
+        }
+    }
+}
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl BrowserBridge {
+    pub fn graph_payload_ptr(&mut self) -> usize {
+        self.graph
+            .as_mut()
+            .map_or(0, |graph| graph.payload.as_mut_ptr() as usize)
+    }
+    pub fn graph_request_ptr(&mut self) -> usize {
+        self.graph
+            .as_mut()
+            .map_or(0, |graph| graph.request.as_mut_ptr() as usize)
+    }
+    pub fn graph_response_ptr(&self) -> usize {
+        self.graph
+            .as_ref()
+            .map_or(0, |graph| graph.response.as_ptr() as usize)
+    }
+    pub fn retained_graphs(&self) -> u32 {
+        self.core
+            .as_ref()
+            .map_or(0, |core| core.retained_graphs() as u32)
+    }
+    pub fn ingest_graph_payload(&mut self) -> u32 {
+        if self.faulted {
+            return 10;
+        }
+        let (Some(core), Some(graph)) = (&mut self.core, &self.graph) else {
+            return 10;
+        };
+        core.graph_payload(&graph.payload)
+            .map_or_else(wire::runtime_error, |_| 0)
+    }
+    pub fn ingest_graph(&mut self) -> u32 {
+        if self.faulted {
+            return 11;
+        }
+        let (Some(core), Some(graph)) = (&mut self.core, &self.graph) else {
+            return 11;
+        };
+        core.graph_ingest(&graph.request)
+            .map_or_else(protocol_error, |_| 0)
+    }
+    /// Same polling convention as primitive responses; this bank is128 bytes.
+    pub fn poll_graph_response(&mut self) -> u32 {
+        let (Some(core), Some(graph)) = (&mut self.core, &mut self.graph) else {
+            return 0x8000_000b;
+        };
+        match core.next_graph_response() {
+            Ok(Some(packet)) => {
+                graph.response = packet;
+                1
+            }
+            Ok(None) => 0,
+            Err(error) => 0x8000_0000 | protocol_error(error),
+        }
     }
     pub fn request_ptr(&mut self) -> usize {
         self.request.as_mut_ptr() as usize
@@ -270,7 +355,7 @@ impl BrowserBridge {
         let Some(core) = self.core.as_ref() else {
             return 10;
         };
-        if core.outstanding() != 0 && !self.faulted {
+        if (core.outstanding() != 0 || core.retained_graphs() != 0) && !self.faulted {
             return 15;
         }
         let mut stopped = self.core.take().unwrap().into_stopped();
@@ -477,6 +562,155 @@ mod tests {
         assert_eq!(u64::from_le_bytes(decision[40..48].try_into().unwrap()), 1);
     }
 
+    fn graph_submit(client: &crate::BrowserGraphClient, bridge: &mut BrowserBridge) {
+        bridge.graph.as_mut().unwrap().request = client.request;
+        assert_eq!(bridge.ingest_graph(), 0);
+    }
+    fn graph_collect(
+        client: &mut crate::BrowserGraphClient,
+        bridge: &mut BrowserBridge,
+    ) -> Vec<crate::graph_wire::Response> {
+        let mut responses = Vec::new();
+        loop {
+            let result = bridge.poll_graph_response();
+            if result == 0 {
+                break;
+            }
+            assert_eq!(result, 1);
+            client.response = bridge.graph.as_ref().unwrap().response;
+            assert_eq!(client.receive(), 0);
+            responses.push(crate::graph_wire::Response::decode(&client.response).unwrap());
+        }
+        responses
+    }
+    fn graph_upload(client: &mut crate::BrowserGraphClient, bridge: &mut BrowserBridge) {
+        for index in 0..client.payload_count() {
+            assert_eq!(
+                client.prepare_payload(index, 0, 1, 1, u64::from(index) + 1),
+                0
+            );
+            bridge.graph.as_mut().unwrap().payload = client.payload;
+            assert_eq!(bridge.ingest_graph_payload(), 0);
+        }
+        assert_eq!(client.stage(0, 1, 0, 1, false), 0);
+        graph_submit(client, bridge);
+    }
+    #[test]
+    fn graph_binding_buffers_cover_route_cut_and_reliable_owning_release() {
+        use crate::graph_wire::Status;
+        let expected = crate::run(&[13]);
+        for remainder in [
+            vec![12],
+            vec![3, 8, 1],
+            vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+        ] {
+            let mut client = BrowserClient::new(u64::MAX).unwrap();
+            let mut graph = crate::BrowserGraphClient::new(u64::MAX).unwrap();
+            let mut bridge = BrowserBridge::new_graphs(u64::MAX, 0).unwrap();
+            submit(&mut client, &mut bridge);
+            graph_upload(&mut graph, &mut bridge);
+            assert_eq!(bridge.render(0), 0);
+            assert_eq!(bridge.frame(), 0);
+            assert_eq!(bridge.render(1), 0);
+            let mut samples = vec![[bridge.left[0], bridge.right[0]]];
+            let staged = graph_collect(&mut graph, &mut bridge);
+            assert_eq!(staged.len(), 1);
+            assert_eq!(staged[0].status, Status::Staged);
+            assert_eq!(graph.retained_graphs(), 1);
+            let [scope, slot, generation] = staged[0].graph.unwrap().parts();
+            assert_eq!(graph.activate(scope, slot, generation, 4, 1, 0, false), 0);
+            graph_submit(&graph, &mut bridge);
+            for frames in remainder {
+                assert_eq!(bridge.render(frames), 0);
+                samples.extend((0..frames as usize).map(|at| [bridge.left[at], bridge.right[at]]));
+            }
+            for (at, &sample) in samples.iter().enumerate() {
+                let factor = if (4..12).contains(&at) { 2. } else { 1. };
+                assert_eq!(sample, expected.samples[at].map(|value| value * factor));
+            }
+            assert_eq!(samples.len(), 13);
+            let activated = graph_collect(&mut graph, &mut bridge);
+            assert_eq!(activated.len(), 2);
+            assert_eq!(activated[0].status, Status::Admitted);
+            assert_eq!(activated[1].status, Status::Activated);
+            assert_eq!(
+                (
+                    activated[1].requested,
+                    activated[1].effective,
+                    activated[1].delivered,
+                    activated[1].observed
+                ),
+                (4, 4, Some(4), 4)
+            );
+            assert_eq!(activated[1].graph_epoch, rt_runtime::Epoch(2));
+            collect(&mut client, &mut bridge);
+            assert_eq!(bridge.outstanding(), 0);
+            assert_eq!(bridge.stop(), 15);
+            assert_eq!(graph.release(scope, slot, generation, false), 0);
+            graph_submit(&graph, &mut bridge);
+            assert_eq!(bridge.stop(), 15);
+            assert_eq!(bridge.render(1), 0);
+            let released = graph_collect(&mut graph, &mut bridge);
+            assert_eq!(released[0].status, Status::Released);
+            assert_eq!(
+                released[0].bank.unwrap(),
+                crate::graph_wire::Bank {
+                    id: crate::graph_transfer::Id {
+                        slot: 0,
+                        generation: 2
+                    },
+                    capacity: crate::graph_transfer::Counts {
+                        steps: 3,
+                        edges: 12,
+                        bindings: 2
+                    }
+                }
+            );
+            assert_eq!(
+                (
+                    graph.outstanding(),
+                    graph.retained_graphs(),
+                    bridge.outstanding(),
+                    bridge.retained_graphs()
+                ),
+                (0, 0, 0, 0)
+            );
+            let midi: Vec<_> = expected
+                .midi
+                .iter()
+                .flat_map(|(at, packet)| {
+                    at.to_le_bytes()
+                        .into_iter()
+                        .chain((packet.len() as u32).to_le_bytes())
+                        .chain(packet.iter().copied())
+                })
+                .collect();
+            assert_eq!(&bridge.journal[..bridge.journal_len], midi);
+            assert_eq!(bridge.stop(), 0);
+            assert_eq!(bridge.recovered, [256, 16, 16, 0]);
+            assert_eq!(&bridge.semantic[..bridge.semantic_len], expected.semantic);
+        }
+    }
+    #[test]
+    fn graph_binding_fault_disposal_abandons_credits_without_fabricating_returns() {
+        for mode in [1, 2] {
+            let mut client = crate::BrowserGraphClient::new(71).unwrap();
+            let mut bridge = BrowserBridge::new_graphs(71, mode).unwrap();
+            graph_upload(&mut client, &mut bridge);
+            assert_eq!(
+                bridge.render(128),
+                if mode == 1 { 10 } else { HEAP_FAILURE }
+            );
+            assert_eq!(bridge.fault_witness(), u32::from(mode));
+            assert_eq!(bridge.render(1), 10);
+            assert_eq!(client.outstanding(), 1);
+            assert_eq!(bridge.ingest_graph_payload(), 10);
+            assert_eq!(bridge.ingest_graph(), 11);
+            assert_eq!(bridge.stop(), 0);
+            assert_eq!(bridge.recovered, [256, 16, 16, 0]);
+            assert_eq!(client.outstanding(), 1);
+        }
+    }
     #[test]
     fn diagnostic_journal_exhaustion_does_not_change_music() {
         let mut client = BrowserClient::new(43).unwrap();

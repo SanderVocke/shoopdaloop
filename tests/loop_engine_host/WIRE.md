@@ -159,8 +159,9 @@ copy, while the Rust wire credit stays retained until the terminal response.
 The response-buffer acknowledgement is separate from both phases above.
 
 The primitive protocol remains unchanged. Opt-in native graph commands use the
-separate envelopes below and the prepared descriptor payload. Graph Wasm binding/
-MessagePort transport, program staging and capture export still remain open;
+separate envelopes below and the prepared descriptor payload, now also executed
+through public Wasm bindings. MessagePort graph transport, program staging and
+capture export still remain open;
 this is not the complete Stage7 bridge.
 
 ## Prepared graph descriptor payload (`LGP1`)
@@ -328,9 +329,10 @@ in a separate prepared slot. Neither path destroys an owner on the callback.
 Intentional disconnect/abandonment stops callbacks before consuming the engine;
 it disposes queued/Ready owners off-render without fabricating returns or results.
 
-These native methods compile for Wasm, but no public graph command bindings or
-MessagePort dispatch exist yet. The current worklet exercises only primitives;
-`BrowserGraphReceiver` still demonstrates only payload/local-owner behavior.
+The public graph command bindings below execute these same native methods in
+Node/Chromium. MessagePort dispatch remains open and the current actual worklet
+still exercises only primitives. `BrowserGraphReceiver` remains a separate
+payload/local-owner check, not the command bridge.
 
 ### Request: 96 bytes
 
@@ -392,7 +394,70 @@ permanently exhausted and requires all three capacities zero.
 Staged/Released/Admitted/Activated carry a scoped graph ID. Failed, Rejected and
 Cancelled do not. Only Staged/Activated carry epoch metadata; zero elsewhere means
 absent metadata, not a statement that the live graph epoch is zero. Preserve all64
-bits of sessions, sequences, frames and epochs when adding future JS adapters.
+bits of sessions, sequences, frames and epochs in JS adapters.
+
+## Public graph command bindings
+
+`BrowserGraphClient(session)` prepares the fixture's compiled host-output-bypass
+payload off-render. `payload_count`/`prepare_payload` expose its ordered records;
+this is deliberately not an arbitrary editor/compiler interface. Use a separate
+strictly increasing BigInt payload sequence. `stage`, `activate` and `release`
+prepare96-byte requests with automatic graph command sequences and two credits.
+They return0 on preparation success, otherwise the same protocol codes as the
+primitive client. `receive` validates the128-byte response and preserves pending
+credits/mappings on failure. `outstanding`/`retained_graphs` report separate counts.
+
+`BrowserBridge.new_graphs(session, fault)` opts into prepared runtime owners and
+three extra local banks:96-byte payload,96-byte request,128-byte response. Default
+bridges have no such buffers and their graph pointers are0. `ingest_graph_payload`
+uses runtime error codes; `ingest_graph` uses protocol codes. Poll returns0 none,
+1 ready or the high bit plus protocol error. Only copy bytes between local views;
+never pass one instance's pointer to another instance.
+
+After building debug assets with the runner, this Node recipe stages/releases one
+real candidate with two explicit one-frame callbacks, without claiming activation/output evidence:
+
+```sh
+cd target/loop-engine-host/debug
+node --input-type=module <<'JS'
+import { readFileSync } from 'node:fs';
+import { initSync, BrowserGraphClient, BrowserBridge } from './pkg/fixture.js';
+const module = new WebAssembly.Module(readFileSync('./pkg/fixture_bg.wasm'));
+const wasm = initSync({ module });
+const client = new BrowserGraphClient(7n), bridge = BrowserBridge.new_graphs(7n, 0);
+const copy = (from, to, count) => new Uint8Array(wasm.memory.buffer, to, count)
+    .set(new Uint8Array(wasm.memory.buffer, from, count));
+const ok = result => { if (result !== 0) throw new Error(`result ${result}`); };
+const send = () => { copy(client.request_ptr(), bridge.graph_request_ptr(), 96); ok(bridge.ingest_graph()); };
+const receive = () => {
+    if (bridge.poll_graph_response() !== 1) throw new Error('missing result');
+    copy(bridge.graph_response_ptr(), client.response_ptr(), 128); ok(client.receive());
+    return new DataView(wasm.memory.buffer, bridge.graph_response_ptr(), 128);
+};
+for (let index = 0; index < client.payload_count(); index++) {
+    ok(client.prepare_payload(index, 0, 1, 1n, BigInt(index + 1)));
+    copy(client.payload_ptr(), bridge.graph_payload_ptr(), 96); ok(bridge.ingest_graph_payload());
+}
+ok(client.stage(0, 1, 0, 1n, false)); send(); ok(bridge.render(1));
+const ready = receive(), id = [76, 80, 84].map(at => ready.getUint32(at, true));
+if (ready.getUint32(28, true) !== 1 || bridge.stop() !== 15) throw new Error('Ready/stop contract');
+ok(client.release(...id, false)); send(); ok(bridge.render(1));
+const returned = receive();
+if (returned.getUint32(28, true) !== 2 || returned.getUint32(108, true) !== 2) throw new Error('return');
+if ([client.outstanding(), client.retained_graphs(), bridge.outstanding(), bridge.retained_graphs()].some(Boolean)) throw new Error('owners');
+ok(bridge.stop());
+console.log('Stage/Release complete; next bank generation', returned.getUint32(108, true));
+client.free(); bridge.free();
+JS
+```
+
+Expected output ends `next bank generation 2`. This one-instance binding recipe
+uses local copies; independent memories/MessagePort graph transport remain a
+separate host task. Run `node target/loop-engine-host/{debug,release}/node_checks.mjs`
+from the repository root for the complete route-cut and128-cycle binding cases.
+Normal stop refuses15 while any graph remains Ready/Taken, even with no command
+credit outstanding. Intentional fault/abandonment is not a fabricated owning return.
+Fault modes0/1/2 match the primitive constructor's normal/processor/heap modes.
 
 ## Browser report (`LLH2`)
 
@@ -426,6 +491,13 @@ rendering still proceeds and the overflow counter saturates rather than changing
 music. Binding checks deliberately exhaust this buffer while checking every audio
 sample and collecting all command receipts; a truncated journal is never reported
 as complete output evidence.
+
+`bindingChecks.graph` additionally retains all13 binding-level route-cut samples,
+MIDI/semantic bytes, four complete graph results,128-cycle/generation130 totals,
+prepared/final memory and stopped recovery. These are Wasm binding observations,
+not downstream Web Audio. The runner compares them with native scalar/media/
+semantic expectations and independent complete response tables. Node and Chromium
+must produce the same full binding report, not merely the same check names.
 
 The report also retains Node/Chromium check names, tool versions, native/Wasm
 profile, Wasm SHA-256, checkout head/dirty scope and failure-gate results. A dirty
