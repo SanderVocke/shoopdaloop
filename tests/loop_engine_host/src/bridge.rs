@@ -50,6 +50,7 @@ pub struct Bridge {
     slots: [Option<Slot>; SLOTS],
     quarantine: Option<Returned>,
     faulted: bool,
+    graphs: Option<Box<crate::graph_bridge::Graphs>>,
     fault_witness: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 impl Bridge {
@@ -75,8 +76,70 @@ impl Bridge {
             slots: std::array::from_fn(|_| None),
             quarantine: None,
             faulted: false,
+            graphs: None,
             fault_witness,
         })
+    }
+    /// Opt-in prepared graph owners and return credits; allocating startup only.
+    pub fn with_graphs(session: u64) -> Result<Self, WireError> {
+        let mut bridge = Self::new(session)?;
+        let config = bridge
+            .control
+            .compile_graph(&scenario::routes(false))
+            .map_err(|_| WireError::State)?
+            .config();
+        bridge
+            .engine
+            .prepare_graph_staging(crate::graph_transfer::BANKS)
+            .map_err(|_| WireError::State)?;
+        bridge.graphs = Some(Box::new(
+            crate::graph_bridge::Graphs::new(session, config).map_err(|_| WireError::State)?,
+        ));
+        Ok(bridge)
+    }
+    pub fn graph_payload(&mut self, bytes: &[u8]) -> Result<crate::graph_transfer::Phase, Error> {
+        crate::guarded(|| {
+            if self.faulted {
+                return Err(Error::InvalidState);
+            }
+            self.graphs
+                .as_mut()
+                .ok_or(Error::InvalidState)?
+                .payload(bytes)
+        })
+    }
+    pub fn graph_ingest(&mut self, bytes: &[u8]) -> Result<(), WireError> {
+        crate::guarded(|| {
+            if self.faulted {
+                return Err(WireError::State);
+            }
+            let now = self.next_frame();
+            let graphs = self.graphs.as_mut().ok_or(WireError::State)?;
+            let result = graphs.ingest(&mut self.control, bytes, now);
+            self.faulted |= graphs.fatal;
+            result
+        })
+    }
+    pub fn next_graph_response(
+        &mut self,
+    ) -> Result<Option<[u8; crate::graph_wire::RESPONSE_BYTES]>, WireError> {
+        crate::guarded(|| {
+            self.graphs
+                .as_mut()
+                .ok_or(WireError::State)?
+                .next_response()
+        })
+    }
+    pub fn graph_cancel(&self, slot: usize, sequence: u64) -> Result<(), WireError> {
+        crate::guarded(|| {
+            self.graphs
+                .as_ref()
+                .ok_or(WireError::State)?
+                .cancel(slot, sequence)
+        })
+    }
+    pub fn retained_graphs(&self) -> usize {
+        self.graphs.as_ref().map_or(0, |graphs| graphs.retained())
     }
     pub(crate) fn fault_witness(&self) -> u32 {
         self.fault_witness
@@ -90,6 +153,10 @@ impl Bridge {
     }
     pub fn outstanding(&self) -> usize {
         self.slots.iter().filter(|slot| slot.is_some()).count()
+            + self
+                .graphs
+                .as_ref()
+                .map_or(0, |graphs| graphs.outstanding())
     }
 
     /// Consume one well-formed request into its reserved slot. Refusal leaves the
@@ -187,10 +254,26 @@ impl Bridge {
     }
     fn collect(&mut self) -> Result<(), Error> {
         // Fixed external credit bounds, never a quota on internal musical work.
-        for _ in 0..SLOTS {
+        let credits = SLOTS
+            + self
+                .graphs
+                .as_ref()
+                .map_or(0, |_| crate::graph_wire::CREDITS);
+        for _ in 0..credits {
             let Some(completion) = self.control.try_completion() else {
                 break;
             };
+            if let Some(graphs) = self
+                .graphs
+                .as_mut()
+                .filter(|graphs| graphs.matches(completion.sequence))
+            {
+                if let Err(completion) = graphs.completion(completion) {
+                    self.quarantine = Some(completion);
+                    return Err(Error::InvalidState);
+                }
+                continue;
+            }
             let index = self.slots.iter().position(|slot| {
                 slot.as_ref().is_some_and(|slot| {
                     slot.ticket
@@ -228,10 +311,18 @@ impl Bridge {
             // prepared base owner and slot ticket. Unexpected owners are quarantined.
             drop(completion);
         }
-        for _ in 0..SLOTS {
+        for _ in 0..credits {
             let Some(execution) = self.control.try_execution() else {
                 break;
             };
+            if let Some(graphs) = self
+                .graphs
+                .as_mut()
+                .filter(|graphs| graphs.matches(execution.sequence))
+            {
+                graphs.execution(execution)?;
+                continue;
+            }
             let slot = self
                 .slots
                 .iter_mut()

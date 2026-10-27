@@ -6,7 +6,7 @@ use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use rt_runtime::Frame;
 use shoop_loop_engine::{LoopId, Transition};
 
-fn process(bridge: &mut Bridge, frames: usize) -> (Vec<[f32; 2]>, Vec<(u64, Vec<u8>)>) {
+pub(crate) fn process(bridge: &mut Bridge, frames: usize) -> (Vec<[f32; 2]>, Vec<(u64, Vec<u8>)>) {
     let start = bridge.next_frame();
     let mut left = [0.; 128];
     let mut right = [0.; 128];
@@ -51,7 +51,7 @@ fn process(bridge: &mut Bridge, frames: usize) -> (Vec<[f32; 2]>, Vec<(u64, Vec<
         .collect();
     (audio, midi)
 }
-fn drain(bridge: &mut Bridge, client: &mut Client) -> Vec<Response> {
+pub(crate) fn drain(bridge: &mut Bridge, client: &mut Client) -> Vec<Response> {
     let mut responses = Vec::new();
     while let Some(packet) = bridge.next_response().unwrap() {
         responses.push(crate::guarded(|| client.receive(&packet)).unwrap());
@@ -59,7 +59,7 @@ fn drain(bridge: &mut Bridge, client: &mut Client) -> Vec<Response> {
     }
     responses
 }
-fn finish(bridge: Bridge) {
+pub(crate) fn finish(bridge: Bridge) {
     let mut stopped = bridge.into_stopped();
     stopped.cleanup().unwrap();
     stopped.cleanup().unwrap();
@@ -74,7 +74,7 @@ fn finish(bridge: Bridge) {
     );
     assert_eq!(stopped.media_usage().references, 0);
 }
-fn send(
+pub(crate) fn send(
     client: &mut Client,
     bridge: &mut Bridge,
     at: u64,

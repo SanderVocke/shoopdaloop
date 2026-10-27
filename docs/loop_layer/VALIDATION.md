@@ -11,8 +11,10 @@ The independent loop fixture now supplies direct, primitive-wire and bounded
 two-thread replay plus actual non-isolated offline/live AudioWorklets for its small
 primitive scenario, including canonical semantic timeline journals matched against
 an independent native table. A prepared graph payload receiver now additionally
-has native facade and public-Wasm binding coverage. Graph command/result transport,
-program/resource wire operations, exports and broader host scenarios remain pending.
+has native facade and public-Wasm binding coverage. Opt-in native graph commands
+now stage/activate/release and recycle owners through bounded results; graph command
+Wasm bindings/MessagePort transport, program/resource wire operations, exports and
+broader host scenarios remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -23,7 +25,40 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 prepared graph payload foundation
+## Stage 7 native graph command/return integration
+
+Opt-in `Bridge::with_graphs` connects `LGP1` descriptors to96-byte `LLG1` requests
+and128-byte `LLS1` results. Two graph credits are separate from the primitive
+four-normal/one-recovery credits. Stage/Release return owning completions; Activate
+retains separate admission/execution outcomes. A bounded client graph/bank mirror
+checks scoped IDs, epochs and next bank generations before changing credits.
+
+Owning candidates and retired graphs recycle into their original prepared banks.
+Unexpected owning completions return intact to quarantine and fault the outer
+bridge. Collection uses the fixed seven-credit bound per result stream once per
+nonempty callback, not renewed internal musical allowances.
+
+Eight additional native tests cover independent complete codec tables, phase/
+identity/epoch/generation rejection, actual serialized route cuts and retirement
+across three partitions, all four normal/two graph credits stalled with independent
+Stop recovery,128 candidate rounds, malformed/queued/Ready disconnect, local Full
+owning return and unexpected-owner quarantine. Complete stereo/MIDI/semantic bytes,
+exact receipts and256/16/16/0 recovery remain checked separately.
+
+Fresh results:39 fixture tests per native profile; eleven existing binding groups
+per Node/Chromium profile; actual primitive offline/live worklets and failure gates
+in both profiles; five Python tests;2141 workspace passes/four existing skips;
+warning-denied builds/rustdoc, formatting and applicable policies. Worklet memory
+remains1,835,008 debug/1,769,472 release bytes. [Graph-wire evidence](evidence/graph-wire-stage7.md)
+retains source, commands, raw results, hashes and exact scope.
+
+The graph command path is native verified and Wasm compiled, **not executed through
+new graph Wasm bindings or a worklet**. Two-thread graph payload transport and
+structured graph-host reports remain open. No further Stage7 row is complete:
+2/8 remain verified; program/resource payloads, exports, broader hosts, consolidated
+Miri and Stages8–10 still remain.
+
+## Historical Stage 7 prepared graph payload foundation
 
 `LGP1` is a canonical96-byte payload record format with two prepared local plan
 owners, checked generations, full-width sessions/sequences/epochs and explicit

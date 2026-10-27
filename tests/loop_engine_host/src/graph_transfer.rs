@@ -310,6 +310,9 @@ impl Receiver {
     pub fn phase(&self, id: Id) -> Result<Phase, Error> {
         Ok(self.bank(id)?.phase)
     }
+    pub fn expected_epoch(&self, id: Id) -> Result<Epoch, Error> {
+        Ok(self.bank(id)?.epoch)
+    }
     /// Borrowed receiver-local state. It cannot outlive a mutation or own a runtime graph.
     pub fn plan(&self, id: Id) -> Result<&PreparedPlan, Error> {
         self.bank(id)?.owner.as_ref().ok_or(Error::Busy)
@@ -469,4 +472,4 @@ impl Receiver {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

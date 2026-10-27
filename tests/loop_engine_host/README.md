@@ -134,8 +134,54 @@ continues, full ingress refusal and queued/Ready disconnect disposal.
 bindings. Its extra checks reject oversized u64 indices rather than truncating
 on Wasm32 and perform128 local owner exchanges without memory growth. These are
 **not** graph commands or runtime graph activation through the worklet. `LLC1`/`LLR1`
-still carry only primitive transitions; graph command envelopes, reliable result
-credits and MessagePort integration remain to be implemented.
+still carry only primitive transitions. The separate native envelopes below now
+connect graph ownership to bounded results; Wasm command bindings and MessagePort
+integration remain to be implemented.
+
+## Use the native graph command bridge
+
+Run its complete wire/route-cut case in either profile:
+
+```sh
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
+  graph_wire::tests::actual_bridge_graph_staging_activation_and_retirement_match_all_media_and_receipts -- --exact
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml --release \
+  graph_wire::tests::actual_bridge_graph_staging_activation_and_retirement_match_all_media_and_receipts -- --exact
+```
+
+1. Prepare `Bridge::with_graphs(session)` and `graph_wire::Client::new(session)`
+   off-render. This opts into two runtime graph candidates, two descriptor owners
+   and two graph result credits; the default primitive bridge stays unchanged.
+2. Send the ordered `LGP1` records to `Bridge::graph_payload`, then prepare a
+   `graph_wire::Operation::Stage` and pass its96-byte envelope to `graph_ingest`.
+   The payload Begin epoch must match the envelope. The runtime separately checks
+   its actual current epoch and complete signal/planner catalog.
+3. Poll `next_graph_response` and validate each128-byte record with the graph
+   client's `receive`. Staged supplies a scoped Ready ID, not permission to assume
+   routing is active. Activate uses that ID and a future absolute frame, with
+   separate admission and execution results.
+4. Release each staged/taken graph and consume its owning result. It carries the
+   original bank's next checked generation and actual capacities. Before normal
+   stopped cleanup, verify both clients' command counts and both sides' retained
+   graph counts are zero. Abandonment/disconnect is a separate off-render path.
+
+[LLG1/LLS1](WIRE.md#native-graph-commandsresults-llg1--lls1) specify every field,
+outcome and owner handoff. All graph commands use the normal lane; primitive Stop
+recovery remains independently credited. One callback collects at most the fixed
+seven external credits per stream, never a renewed quota per loop interval.
+
+Eight additional native tests check independent complete codec tables, malformed
+response/identity/phase/epoch preservation, nonwrapping sequences, real serialized
+activation and retirement across three partitions, all four normal primitive and
+two graph credits stalled while music/recovery continues,128 candidate lifecycle
+rounds, queued/Ready disposal, local Full refusal and intact owning quarantine.
+The route-cut script has the same13 samples/134 MIDI packets described above and
+retains exact graph/primitive receipts, semantic bytes and complete pool recovery.
+
+This graph protocol is currently **native verified and Wasm compiled**, not yet
+public-Wasm command bindings, a two-thread graph scenario or actual worklet graph
+transport. The existing replay CLI and browser runner still execute the primitive
+scenario; use the exact-filter native tests above for graph-command evidence.
 
 ## Run actual Web Audio
 
@@ -200,7 +246,7 @@ refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
 records, an eventless same-position seek and the two graph-payload checks above.
-These are binding-level Wasm checks, not a claim that the31 native Rust tests
+These are binding-level Wasm checks, not a claim that the39 native Rust tests
 were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
@@ -233,9 +279,10 @@ it is not live telemetry or an immutable media export.
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
 now exercise this primitive scenario. This is **not Stage 7 completion**.
-Prepared graph payload materialization now has native facade and public-Wasm
-binding coverage, but graph command/response transport and actual worklet graph
-changes remain pending. Program/resource payload staging, immutable exports,
+Prepared graph payload materialization has native facade and public-Wasm binding
+coverage. Opt-in native graph commands now stage/activate/release and recycle
+owners through bounded wire results. Graph command Wasm bindings, two-thread
+payload transport and actual worklet graph changes remain pending. Program/resource payload staging, immutable exports,
 broader loop/composite/seek/replacement/exhaustion scenarios and live in-flight
 transfer stalls also remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

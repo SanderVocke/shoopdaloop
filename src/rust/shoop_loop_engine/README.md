@@ -56,8 +56,10 @@ AudioWorklets. Its primitive-command bridge retains separate admission/domain
 outcomes across independent ordinary Wasm memories. Downstream Web Audio samples,
 canonical semantic boundary/decision/event journals, fixed memory, failure canaries
 and complete stopped recovery are checked in both profiles. A separate prepared
-graph payload receiver now has native facade and Node/Chromium binding coverage;
-it is not yet graph command/result transport or a worklet graph-change scenario.
+graph payload receiver has native facade and Node/Chromium binding coverage.
+An opt-in native graph command bridge now stages/activates/releases and recycles
+owners through bounded results. Graph command Wasm bindings and worklet transport
+remain open.
 Program/resource payloads, exports and broader host scenarios remain pending;
 no loop benchmark or production browser adapter is supplied.
 

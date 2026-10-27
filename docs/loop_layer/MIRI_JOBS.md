@@ -17,8 +17,12 @@ graph-payload ownership cases for one applicable consolidated Stage7 snapshot/ru
 The new standalone `loop_engine_host_fixture` graph receiver contributes seven
 native cases under `graph_transfer::tests`, including unchanged128-round lifecycle
 workloads, actual route activation, stalled owning returns and disconnect cleanup.
-They are **not yet registered in the pinned interpreter runner or interpreted**.
-Node/Chromium run shared public bindings, not these native test functions. Keep the
+The native graph command/return milestone adds another eight cases: six under
+`graph_wire::tests` and two under `graph_bridge::tests`, including128 wire candidate
+rounds, mixed four-normal/two-graph-credit saturation, a local owning Full refusal
+and intact unexpected-completion quarantine. All15 graph-focused native cases are
+**not yet registered in the pinned interpreter runner or interpreted**.
+Node/Chromium run shared payload bindings, not the native graph command cases. Keep the
 existing900s per-command watchdog, guards and workloads when adding the standalone
 manifest/lockfile and exact filters to the supported selection. Final delivery
 still requires the complete applicable source-matched selection; no routine

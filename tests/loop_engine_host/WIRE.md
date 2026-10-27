@@ -158,19 +158,19 @@ only local binding code uses memory offsets. It returns request buffers after th
 copy, while the Rust wire credit stays retained until the terminal response.
 The response-buffer acknowledgement is separate from both phases above.
 
-The primitive command protocol still has no graph/program staging or capture
-export. The separate descriptor payload below is a prepared materializer, not a
-new command/result envelope. Those paths must be connected and tested before
-claiming the complete Stage 7 bridge.
+The primitive protocol remains unchanged. Opt-in native graph commands use the
+separate envelopes below and the prepared descriptor payload. Graph Wasm binding/
+MessagePort transport, program staging and capture export still remain open;
+this is not the complete Stage7 bridge.
 
 ## Prepared graph descriptor payload (`LGP1`)
 
 `graph_transfer::{Record, Receiver}` adds a separate fixed96-byte payload format.
-It does **not** extend `LLC1`/`LLR1`, submit commands, reserve reliable response
-credits or admit/activate a runtime graph. Native tests connect its local owning
-handoff to the real controller. `BrowserGraphReceiver` separately checks the same
-materializer through public Node/Chromium bindings; the worklet transport does not
-yet carry these payloads.
+It does **not** extend `LLC1`/`LLR1` or by itself submit/admit/activate a runtime
+graph. The opt-in native graph bridge connects its owning handoff to the command/
+result protocol below. `BrowserGraphReceiver` separately checks the materializer
+through public Node/Chromium bindings; the worklet transport does not yet carry
+graph payloads or commands.
 
 ### 1. Prepare receiver-local ownership
 
@@ -257,6 +257,142 @@ local96-byte input address; `take`/`recycle` are local owner-exchange checks, no
 runtime admission. Phase codes are0 Idle,1 Receiving,2 Sealed,3 Loaned; invalid
 queries return the high bit plus a runtime error. Ingest/take/recycle use the
 runtime error codes1–20 above. Only stop/free the object outside callbacks.
+
+## Native graph commands/results (`LLG1` / `LLS1`)
+
+### 1. Prepare the opt-in bridge and client
+
+Use `Bridge::with_graphs(session)` instead of `Bridge::new(session)` off-render.
+It enables two runtime graph candidates and two prepared descriptor owners, plus
+exactly two graph command/result slots. `graph_wire::Client::new(session)` tracks
+those two credits separately from the primitive client's four normal/one recovery
+credits. Graph work uses the normal lane; it cannot bypass recovery or consume its
+independent wire slot. Default primitive bridges remain unchanged.
+
+Send descriptor records through `Bridge::graph_payload`. Then call
+`graph_wire::Client::prepare(Operation::Stage { bank, slot, epoch }, cancelled)`
+and pass the96-byte envelope to `Bridge::graph_ingest`. Payload, graph-command and
+primitive-command sequences are separate monotonic namespaces. Do not interleave
+or retry a rejected sequence behind a later accepted one within its namespace.
+
+The bank must be Sealed and its Begin epoch must match the Stage envelope before
+any owner is taken. A malformed/foreign/duplicate/Busy/invalid-bank envelope leaves
+the watermark and all owners unchanged. The runtime still validates against its
+actual current epoch/catalog. A local submission refusal, runtime rejection or
+cancellation returns the candidate to its prepared bank and reports its **next**
+generation/capacities. These are outcomes, not malformed-envelope refusals.
+
+### 2. Consume Ready, activate, release
+
+`Bridge::next_graph_response` yields a fixed128-byte record. Validate it with
+`graph_wire::Client::receive` before releasing credit. Stage yields one completion:
+Staged means Ready, **not active**. It returns the runtime's scoped graph ID and
+the still-loaned bank identity. The graph client keeps a bounded ID→bank mirror;
+that metadata is not an owning plan or transferable Rust capability.
+
+Activate supplies the Ready graph ID, absolute frame and expected graph/topology
+epochs. Its admission success retains command credit until the distinct execution
+record. A successful execution includes actual delivery/terminal frames and the
+new graph epoch. Runtime delivery failure remains Rejected; successful delivery
+with a domain refusal is Failed. Do not infer graph publication merely from admission.
+
+Release yields one owning completion. On success the runtime's returned candidate
+or retired old graph moves into its original prepared bank. The result carries
+the next generation and actual usable capacities. The client validates the scoped
+ID, original bank, next nonwrapping generation and phase before changing its mirror.
+A returned initial graph can be smaller than the full-capacity candidate it replaced.
+
+Unread Stage/Release results retain their graph command slot; unread activation
+admission/execution retains it through the last record. Already admitted music and
+primitive recovery still progress. Completion/execution collection uses one fixed
+seven-credit bound per stream per nonempty callback (five primitive plus two graph),
+not a renewed allowance per musical interval. Zero callbacks do not admit/collect.
+
+`graph_cancel(slot, sequence)` and the request cancellation flag are best effort
+before runtime dequeue. They do not cancel an already applied graph or roll back
+published state. A cancelled Release keeps the runtime owner retained; retry with
+a new request rather than pretending the bank is returned.
+
+### 3. Stop only after ownership is accounted for
+
+`Bridge::outstanding()` includes both protocols' command slots;
+`Bridge::retained_graphs()` counts staged/taken graph owners still awaiting release.
+The graph client separately exposes both counts. Successful native tests require
+all command counts and retained graph counts zero before stopped cleanup. Invalid,
+foreign, stale, duplicate and out-of-order responses preserve client credits and
+known graph/bank mappings.
+
+Unexpected owning completions are returned intact to a prepared quarantine and
+permanently fault the outer bridge. Unexpected local owning refusals are retained
+in a separate prepared slot. Neither path destroys an owner on the callback.
+Intentional disconnect/abandonment stops callbacks before consuming the engine;
+it disposes queued/Ready owners off-render without fabricating returns or results.
+
+These native methods compile for Wasm, but no public graph command bindings or
+MessagePort dispatch exist yet. The current worklet exercises only primitives;
+`BrowserGraphReceiver` still demonstrates only payload/local-owner behavior.
+
+### Request: 96 bytes
+
+All integers are unsigned little-endian; absent/unlisted fields are zero.
+
+| Offset | Bytes | Meaning |
+| --- | --- | --- |
+| 0 | 4 | ASCII `LLG1` |
+| 4 | 2 | Version1 |
+| 6 | 1 | 1 Stage,2 Activate,3 Release |
+| 7 | 1 | 0 normal,1 request cancellation before dequeue |
+| 8 | 8 | Nonzero session |
+| 16 | 8 | Nonzero graph-command sequence |
+| 24 | 4 | Graph credit slot0/1 |
+| 28 | 4 | Stage: descriptor bank slot |
+| 32 | 4 | Stage: nonzero bank generation |
+| 36 | 4 | Stage: runtime candidate slot |
+| 40 | 8 | Stage/Activate: expected graph epoch |
+| 48 | 8 | Activate: expected topology epoch |
+| 56 | 8 | Activate: requested absolute frame |
+| 64/68/72 | 4 each | Activate/Release: scoped runtime graph ID (scope/slot/generation) |
+| 76 | 20 | Reserved zero |
+
+Stage requires all Activate/Release-only fields zero. Activate requires Stage-only
+bank/candidate fields zero. Release permits only the scoped ID and common header.
+A syntactically valid ID does not prove that it belongs to this runtime or is Ready.
+
+### Response: 128 bytes
+
+| Offset | Bytes | Meaning |
+| --- | --- | --- |
+| 0 | 4 | ASCII `LLS1` |
+| 4 | 2 | Version1 |
+| 6 | 1 | 1 owning admission/completion,2 execution |
+| 7 | 1 | Presence bits:0 delivered frame,1 scoped graph ID,2 bank/capacities; other bits zero |
+| 8/16 | 8 each | Session/original graph-command sequence |
+| 24 | 4 | Original graph credit slot |
+| 28 | 4 | Status below |
+| 32 | 8 | Runtime sequence; zero only for a local pre-admission rejection |
+| 40/48 | 8 each | Requested/effective frames; both zero for Stage/Release |
+| 56 | 8 | Delivered frame or zero when absent |
+| 64 | 8 | Owning completion or terminal execution frame |
+| 72 | 4 | Runtime/domain error code, same ranges as `LLR1` |
+| 76/80/84 | 4 each | Scoped graph ID, or all zero when absent |
+| 88/96 | 8 each | Staged validated graph epoch / Activated published graph+topology epochs; otherwise zero |
+| 104/108 | 4 each | Descriptor bank slot/generation, or zero when absent |
+| 112/116/120 | 4 each | Actual usable step/edge/binding capacities, or zero when absent |
+| 124 | 1 | Original command kind1–3 |
+| 125 | 3 | Reserved zero |
+
+Status1 Staged and2 Released complete Stage/Release respectively. Staged carries
+the still-loaned bank ID; Released carries its next generation. Status3 Admitted
+is Activate admission success;4 Activated is its delivered terminal success.
+Status5 Cancelled and6 Rejected are terminal, with bank return metadata iff the
+command is Stage. Status7 Failed is a delivered Activate domain refusal. Execution
+records are only for Activate and follow admission success. Bank generation0 means
+permanently exhausted and requires all three capacities zero.
+
+Staged/Released/Admitted/Activated carry a scoped graph ID. Failed, Rejected and
+Cancelled do not. Only Staged/Activated carry epoch metadata; zero elsewhere means
+absent metadata, not a statement that the live graph epoch is zero. Preserve all64
+bits of sessions, sequences, frames and epochs when adding future JS adapters.
 
 ## Browser report (`LLH2`)
 

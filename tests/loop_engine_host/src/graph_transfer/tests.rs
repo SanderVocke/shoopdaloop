@@ -43,7 +43,7 @@ fn empty(receiver: &mut Receiver, id: Id) {
     .unwrap();
     send(receiver, id, Payload::Seal).unwrap();
 }
-fn transfer(receiver: &mut Receiver, id: Id, epoch: Epoch, plan: &PreparedPlan) {
+pub(crate) fn transfer(receiver: &mut Receiver, id: Id, epoch: Epoch, plan: &PreparedPlan) {
     send(
         receiver,
         id,
