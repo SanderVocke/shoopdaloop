@@ -1,5 +1,11 @@
 # Miri jobs and outstanding verification
 
+Latest paired program/graph milestone: **227 selected =128 runtime+99 loop**.
+Four new guarded facade cases are registered, not interpreted. The existing private
+probe case also checks selection-query phases. Native/release/Node/Chromium pass152
+loop tests; fourteen supervisor/runner helper tests pass. Full Stage6 still needs
+its consolidated supervised immutable-snapshot interpreter run.
+
 Latest configuration milestone: **223 selected =128 runtime+95 loop**, including
 seven new facade configuration cases and one private role/source exhaustion case.
 This is registration only, not interpreter evidence. Native debug/release and

@@ -140,6 +140,18 @@ impl Resolver {
         }
     }
 
+    pub(crate) fn preview_program_change(&self) -> Result<Option<RequestId>, Error> {
+        if self.preview.is_none() || self.committed {
+            return Err(Error::InvalidState);
+        }
+        Ok(self.preview_program_epoch.map(|_| {
+            self.program_change
+                .as_ref()
+                .expect("selected owner retained")
+                .id
+        }))
+    }
+
     /// Collect a terminal receipt with its owner; destruction remains the caller's job.
     pub fn take_program_change(
         &mut self,

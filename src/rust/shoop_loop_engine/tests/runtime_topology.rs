@@ -22,6 +22,8 @@ use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
 #[path = "support/configuration_scenarios.rs"]
 mod configuration_scenarios;
+#[path = "support/program_graph_scenarios.rs"]
+mod program_graph_scenarios;
 #[global_allocator]
 static ALLOCATOR: support::TrackingAllocator = support::TrackingAllocator;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -87,6 +89,7 @@ fn description(changed: bool, reverse: bool) -> TopologyDescription {
 struct Fx {
     fault: Option<Frame>,
     stimulus: u32,
+    source: f32,
 }
 impl Drop for Fx {
     fn drop(&mut self) {
@@ -103,6 +106,10 @@ impl Processor<LoopPlanner> for Fx {
         }
     }
     fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+        if parameter == u32::MAX - 1 && value.is_finite() {
+            self.source = value;
+            return Ok(());
+        }
         if parameter != u32::MAX || ![1., 2.].contains(&value) {
             return Err(Error::InvalidParameter);
         }
@@ -115,7 +122,8 @@ impl Processor<LoopPlanner> for Fx {
         }
         for channel in 0..2 {
             for frame in 0..block.frames {
-                let value = block.audio.input(channel).unwrap()[frame] * 0.5;
+                let value = block.audio.input(channel).unwrap()[frame] * 0.5
+                    + self.source * if channel == 0 { 1. } else { 10. };
                 block.audio.output(channel).unwrap()[frame] = value;
             }
         }
@@ -400,7 +408,14 @@ impl Harness {
             bindings,
             owned,
             if media {
-                vec![(node(4), Fx { fault, stimulus: 0 })]
+                vec![(
+                    node(4),
+                    Fx {
+                        fault,
+                        stimulus: 0,
+                        source: 0.,
+                    },
+                )]
             } else {
                 vec![]
             },

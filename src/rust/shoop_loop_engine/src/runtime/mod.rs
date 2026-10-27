@@ -175,6 +175,13 @@ pub enum Operation {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    ProgramGraphActivate {
+        id: StageId,
+        target: LoopId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     Transition {
         target: LoopId,
         timing: Timing,
@@ -286,6 +293,13 @@ pub enum Reply {
         topology_epoch: Epoch,
         completion: crate::Completion,
     },
+    ProgramGraphChanged {
+        id: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+        completion: crate::Completion,
+    },
     Done,
     Failed(Failure),
     Transition(crate::Completion),
@@ -361,6 +375,7 @@ enum PendingKind {
         id: StageId,
         request: RequestId,
         graph_epoch: Epoch,
+        graph: Option<GraphStageId>,
     },
     Transition {
         request: RequestId,

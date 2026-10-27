@@ -1,6 +1,37 @@
 # Loop-layer implementation and validation evidence
 
-## Latest Stage 6 configuration milestone
+## Latest Stage 6 paired running-program/graph milestone
+
+`evidence/program-graph-stage6{,-provenance}.json` records paired zero/stopped-cut
+publication through `ProgramGraphActivate`/`ProgramGraphChanged`. A crate-private
+selection query requires a valid uncommitted resolver preview; the facade holds the
+generic graph permit through real capture preflight and resolver publication before
+committing graph ownership/epoch. Family refusal leaves both candidates unpublished.
+Released/reused graph generations and independent graph activation fail the pending
+pair, rather than retargeting it or undoing separate operations.
+
+Four guarded cases verify independent full stereo/MIDI/state/journals across callback
+partitions, declaration order and journals0/1/1024; real FX audio6/60 and MIDI capture,
+prefix/full exports and initial held-note state versus resource-family refusal;
+cancellation and six owner lifecycle branches; sixteen domain slots/unread outcomes
+and displaced owners through128 cycles; recovery, disconnect and render fault after
+publication. Existing probe tests add invalid/valid selection-query phase checks.
+
+All19 scoped gates pass:152 loop tests each in native debug/release/Node/Chromium,
+2140 workspace tests/four existing skips, warning-denied build/rustdoc/examples,
+boundaries/policies and14 helper tests. Eight positive lifetime programs and23
+expected compile failures were refreshed.122 source hashes include114 unchanged
+preceding inputs; concurrent documentation examples are separate. Warm gate time
+252.59s does not imply a deadline. Miri227=128runtime+99loop is registered only.
+
+Raw logs: `target/loop-layer-program-graph-stage6/`. The initial capture fixture's
+E0609 used `Endpoint.port_type` rather than `kind`; the compiler log is retained,
+not an archived failed source tree. No assertion/workload/guard was weakened.
+Separate-worker changes and reviewed-guide hashes are in
+`loop-program-graph-activation.md`/`program-graph-baseline.json`. Stage6, broader
+nested/mixed lifecycle verification, actual loop hosts and final delivery remain open.
+
+## Stage 6 configuration milestone
 
 `evidence/configuration-stage6{,-provenance}.json` records coordinated stopped-owner
 configuration over prepared physical roles: local owning snapshot/source staging,

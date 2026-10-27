@@ -82,13 +82,16 @@ fn program_probe_stops_before_old_child_actions_and_never_publishes_shadow_work(
             .flatten()
             .all(|r| r.terminal.is_none()));
         assert!(resolver.events().is_empty());
+        assert_eq!(resolver.preview_program_change(), Err(Error::InvalidState));
         assert_eq!(
             assert_no_heap(|| resolver.commit()),
             Err(Error::InvalidState)
         );
     }
     let interval = assert_no_heap(|| resolver.preview(Frame(1), &[])).unwrap();
+    assert_eq!(resolver.preview_program_change(), Ok(None));
     assert_no_heap(|| resolver.commit()).unwrap();
+    assert_eq!(resolver.preview_program_change(), Err(Error::InvalidState));
     assert_eq!(resolver.state(id(2)).unwrap().mode, Mode::Recording);
     assert_no_heap(|| resolver.finish(interval.end)).unwrap();
     let before = resolver.state(id(2)).unwrap();

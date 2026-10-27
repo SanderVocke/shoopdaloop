@@ -525,15 +525,26 @@ impl LoopPlanner {
                 continue;
             }
             let reply = match pending.kind {
-                PendingKind::Program { id, request, .. } => self
+                PendingKind::Program {
+                    id, request, graph, ..
+                } => self
                     .resolver
                     .completion(request)
                     .map_err(runtime_error)?
-                    .map(|completion| Reply::ProgramChanged {
-                        id,
-                        graph_epoch: self.graph_epoch,
-                        topology_epoch: self.resolver.epoch(),
-                        completion,
+                    .map(|completion| match graph {
+                        Some(graph) => Reply::ProgramGraphChanged {
+                            id,
+                            graph,
+                            graph_epoch: self.graph_epoch,
+                            topology_epoch: self.resolver.epoch(),
+                            completion,
+                        },
+                        None => Reply::ProgramChanged {
+                            id,
+                            graph_epoch: self.graph_epoch,
+                            topology_epoch: self.resolver.epoch(),
+                            completion,
+                        },
                     }),
                 PendingKind::Transition { request, .. } => self
                     .resolver
@@ -850,10 +861,24 @@ impl Planner for LoopPlanner {
                     target,
                     graph_epoch,
                     topology_epoch,
+                }
+                | Operation::ProgramGraphActivate {
+                    id,
+                    target,
+                    graph_epoch,
+                    topology_epoch,
+                    ..
                 } => {
                     if graph_epoch != context.graph_epoch {
                         return Err(Error::InvalidState.into());
                     }
+                    let graph = if let Operation::ProgramGraphActivate { graph, .. } = operation {
+                        let permit = context.graphs.prepare_activation(graph, graph_epoch)?;
+                        self.validate_graph(permit.candidate())?;
+                        Some(graph)
+                    } else {
+                        None
+                    };
                     let slot = self.pending_slot(context.recovery)?;
                     let request = self.topologies.stage_program(
                         id,
@@ -869,6 +894,7 @@ impl Planner for LoopPlanner {
                             id,
                             request,
                             graph_epoch,
+                            graph,
                         },
                         forwarded: false,
                     });
@@ -1052,15 +1078,22 @@ impl Planner for LoopPlanner {
             if let PendingKind::Program {
                 request,
                 graph_epoch,
+                graph,
                 ..
             } = pending.kind
             {
-                if graph_epoch != context.graph_epoch
-                    && self
-                        .resolver
-                        .completion(request)
-                        .map_err(runtime_error)?
-                        .is_none()
+                if self
+                    .resolver
+                    .completion(request)
+                    .map_err(runtime_error)?
+                    .is_none()
+                    && (graph_epoch != context.graph_epoch
+                        || graph.is_some_and(|id| {
+                            context.graphs.status(id)
+                                != Ok(GraphStageStatus::Ready {
+                                    validated_epoch: graph_epoch,
+                                })
+                        }))
                 {
                     self.failures.push(crate::Observation::Refused {
                         request,
@@ -1069,7 +1102,7 @@ impl Planner for LoopPlanner {
                 }
             }
         }
-        let end = loop {
+        loop {
             self.cancel_intervals(&mut context.resources)?;
             let interval = self
                 .resolver
@@ -1078,24 +1111,61 @@ impl Planner for LoopPlanner {
             for decision in self.resolver.decisions().map_err(runtime_error)? {
                 self.views[decision.state.id.slot() as usize].decision = *decision;
             }
-            if self.preflight(context.frame, interval.end, &mut context.resources)? {
-                break interval.end;
+            let selected = self
+                .resolver
+                .preview_program_change()
+                .map_err(runtime_error)?;
+            let graph = self
+                .pending
+                .iter()
+                .flatten()
+                .find_map(|pending| match pending.kind {
+                    PendingKind::Program {
+                        request,
+                        graph: Some(graph),
+                        graph_epoch,
+                        ..
+                    } if selected == Some(request) => Some((request, graph, graph_epoch)),
+                    _ => None,
+                });
+            let permit = if let Some((request, graph, epoch)) = graph {
+                match context.graphs.prepare_activation(graph, epoch) {
+                    Ok(permit) => Some(permit),
+                    Err(error) => {
+                        if self.failures.len() == self.failures.capacity() {
+                            return Err(Error::InvalidState);
+                        }
+                        self.failures.push(crate::Observation::Refused {
+                            request,
+                            reason: timeline_error(error),
+                        });
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+            if !self.preflight(context.frame, interval.end, &mut context.resources)? {
+                continue;
             }
-        };
-        self.settle(context.frame, &mut context.resources)?;
-        self.resolver.commit().map_err(runtime_error)?;
-        self.complete(context.frame, &mut context.resources, &mut context.receipts)?;
-        self.observer.boundary(
-            context.frame,
-            self.resolver.decisions().map_err(runtime_error)?,
-            self.resolver.events(),
-            self.resolver.dropped_events(),
-        );
-        for row in self.rows.iter_mut().flatten() {
-            row.seen_playback = false;
-            row.seen_capture = false;
+            self.settle(context.frame, &mut context.resources)?;
+            self.resolver.commit().map_err(runtime_error)?;
+            if let Some(permit) = permit {
+                self.graph_epoch = permit.commit();
+            }
+            self.complete(context.frame, &mut context.resources, &mut context.receipts)?;
+            self.observer.boundary(
+                context.frame,
+                self.resolver.decisions().map_err(runtime_error)?,
+                self.resolver.events(),
+                self.resolver.dropped_events(),
+            );
+            for row in self.rows.iter_mut().flatten() {
+                row.seen_playback = false;
+                row.seen_capture = false;
+            }
+            return Ok(interval.end);
         }
-        Ok(end)
     }
     fn finish(
         &mut self,

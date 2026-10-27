@@ -3,7 +3,15 @@
 Notes for designing a later test strategy, not new acceptance thresholds or
 permission to omit required gates. Recorded 2026-10-26 during Stage 5 facade work.
 
-## Latest configuration slice
+## Latest paired program/graph slice
+
+`evidence/program-graph-stage6.json` records252.5938516309834s for19 warm scoped
+commands,152 loop cases/profile and2140 workspace cases/four skips. Refreshed eight
+positive/23 negative prototypes and the native exact-filter mirror are additional.
+Per-command times and log hashes are in the report. No interpreter workload ran;
+these observations are not deadlines, cold-cache measurements or CI margin.
+
+## Configuration slice
 
 `evidence/configuration-stage6.json` records252.76966427397565s total for19 scoped
 warm commands (148 loop cases/profile;2136 workspace cases/four skips). The eight

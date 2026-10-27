@@ -34,8 +34,14 @@ The [coordinated configuration slice](loop-configuration-activation.md), based o
 `f510466d`, now combines graph/timing/media publication over prepared physical
 roles with logical generation edits, source lease staging, input policy and capture
 claim checks. `configuration-baseline.json` records reviewed runtime/topology guides.
-Physical shapes/node IDs remain fixed; combined running-program/graph publication
-and full Stage6 verification remain pending.
+Physical shapes/node IDs remain fixed. At that milestone, combined running-program/
+graph publication and full Stage6 verification remained pending.
+
+The [paired running-program/graph slice](loop-program-graph-activation.md), based on
+`b5b240d0`, now holds graph publication authority across selected program/capture
+preflight and publishes both configurations at one zero/stopped cut. Its baseline
+reviews runtime/topology/program guides; independent graph retirement and cancellation
+remain explicit. Broader lifecycle coverage and full Stage6 verification remain open.
 
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and
