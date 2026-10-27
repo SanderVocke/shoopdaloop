@@ -15,7 +15,8 @@ const MIN_METER_LANE_WIDTH: f32 = 3.0;
 const BALANCE_SIZE: f32 = 26.0;
 const MIN_FADER_HEIGHT: f32 = 88.0;
 const MAX_FADER_HEIGHT: f32 = 260.0;
-const FADER_FOOTER_HEIGHT: f32 = 76.0;
+const MUTE_HEIGHT: f32 = 24.0;
+const FX_BUTTON_HEIGHT: f32 = 22.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct BusDragPayload {
@@ -220,8 +221,21 @@ impl BusControls {
         let stereo = state.stereo();
         let slider_thickness = ui.spacing().interact_size.x;
         let group_width = meter_width + ui.spacing().item_spacing.x + slider_thickness;
+        let text_height = ui.text_style_height(&egui::TextStyle::Body);
+        let button_height =
+            (text_height + 2.0 * ui.spacing().button_padding.y).max(ui.spacing().interact_size.y);
+        let fx_height = if state.fx.is_some() {
+            button_height.max(FX_BUTTON_HEIGHT)
+        } else {
+            button_height
+        };
+        let footer_height = text_height
+            + BALANCE_SIZE
+            + button_height.max(MUTE_HEIGHT)
+            + fx_height
+            + 4.0 * ui.spacing().item_spacing.y;
         let fader_height =
-            (ui.available_height() - FADER_FOOTER_HEIGHT).clamp(MIN_FADER_HEIGHT, MAX_FADER_HEIGHT);
+            (ui.available_height() - footer_height).clamp(MIN_FADER_HEIGHT, MAX_FADER_HEIGHT);
         let mut gain = self.gain.resolve(state.gain_db, self.gain_dragging);
         let fill = if state.muted {
             colors::MUTED_SLIDER_FILL
@@ -348,7 +362,7 @@ impl BusControls {
             };
             let mute = ui
                 .add_sized(
-                    [group_width, 24.0],
+                    [group_width, MUTE_HEIGHT],
                     egui::Button::new(icon.rich_text().size(16.0).color(color)),
                 )
                 .on_hover_text("Mute/unmute bus");
@@ -396,7 +410,7 @@ impl BusControls {
         let color = bus_fx_color(fx);
         let fx_button = ui
             .add_sized(
-                [group_width, 22.0],
+                [group_width, FX_BUTTON_HEIGHT],
                 egui::Button::new(egui::RichText::new("FX").color(color)),
             )
             .on_hover_text(bus_fx_hover_text(fx));
