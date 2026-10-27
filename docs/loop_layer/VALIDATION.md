@@ -1,5 +1,34 @@
 # Loop-layer implementation and validation evidence
 
+## Repository runtime and architecture handoff review
+
+Read all seven Stage9 repository runtime documents, three root proposal/design
+files, the governing INTER_LOOP_PROCESSING decision, current runtime README and
+generic-host README. `repository-runtime-followups.md` and `architecture-followups.md`
+now give actionable destination corrections: current versus historical split/counter
+bounds, required versus legacy resource work, prepared capture/graph/loop integration,
+held-normal recovery, actual API names, host scope and publication/navigation.
+INTER_LOOP_PROCESSING needs no semantic change; its historical open questions are
+answered by the implementation/SEMANTICS without weakening its decision. Actual new
+callback audit, performance/host evidence and later Stage7–8 documentation remain due.
+
+`repository-baseline.json` records **warning-denied rustdoc for both crates and the
+draft-book checker**, passing in0.5376039350230712s of warm commands. It verifies123
+scoped Rust inputs,10 configuration/runner inputs,11 archives,15 protected baseline
+inputs, nine historical runtime reports, the existing golden journal's exact raw
+SHA256 and unchanged protected working-tree diff. DONE_INITIAL_CRATE is untouched.
+Raw artifacts: `target/loop-layer-docs-repository/`. No native/Wasm suite, browser,
+benchmark, CI or interpreter was rerun for this document review. The old absent
+src/rust/rt_runtime/CONTRACTS.md is not recreated. These checks do not certify prose
+publication or turn historical measurements into current results.
+
+All named Stage0–6 book/loop/repository documentation impacts now have reviewed
+handoff instructions. Stage9 itself remains open for later implementation impacts,
+actual audits/evidence, new examples, separate-worker publication and final checks.
+At this checkpoint the existing consolidated Miri job remains **running,75 completed
+commands/220 of228 executions**, processing the unchanged dense128-boundary case
+under its900-second watchdog. No terminal collection or Stage6 completion is claimed.
+
 ## Loop-guide and facade-contract handoff backfill
 
 Read all11 loop README/guide destinations and the complete SEMANTICS,

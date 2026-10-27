@@ -45,6 +45,11 @@ The loop-guide/facade-contract review checkpoint verified70 completed commands/
 prefix export case. Fresh native example/rustdoc checks used separate output, and
 all scoped Rust/configuration/archive hashes remained unchanged. Still no terminal
 collection or new interpreter invocation; the existing job alone continues.
+The repository/architecture review checkpoint verified75 completed commands/220 of228
+executions, with the dense128-boundary runtime case in `75-runtime-seed0.log` running
+under the unchanged900-second watchdog. Both-crate rustdoc and a drafting book check
+ran separately; source/configuration hashes remain unchanged. This is still partial
+progress and does not authorize Stage6 completion or another routine Miri invocation.
 
 
 Latest nested-lifecycle/readiness milestone: **228 selected =128 runtime+100 loop**.

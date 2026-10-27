@@ -118,14 +118,25 @@ fields, caller-routed LoopId/RequestId, and explicit off-render import padding.
 Full repository runtime architecture/audit/performance/fixture review, later-stage
 host/benchmark changes and separate-worker publication remain outstanding.
 
-**This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
-recovery prerequisite, fixed-role facade integration, media-owner publication and
-their cross-cutting effects. Full review/backfill of prior
-loop-layer stages remains explicit below. Do not infer that empty chapters need no
-changes, that existing archived prose is authoritative, or that notes have already
-been applied. No collected fresh Miri pass, completed Stage 6, loop AudioWorklet, final CI or review
-approval is implied. Use implementation evidence for verification status, not the
-archived guide's milestone counts.
+The **repository/architecture review** now covers all seven specified runtime
+contract/guide/audit/host/performance/evidence documents, three root proposal/design
+documents, the governing inter-loop decision, current runtime README and generic
+fixture README. [Repository follow-ups](repository-runtime-followups.md) distinguish
+stale current bounds from historical evidence; [architecture follow-ups](architecture-followups.md)
+map proposed APIs to implemented scope without changing the decision or exclusions.
+`repository-baseline.json` records warning-denied rustdoc for both crates, the draft
+book check, unchanged protected dirty drafts, nine historical reports, the golden
+journal and DONE_INITIAL_CRATE. This is document review, not the required new full
+callback audit, benchmark campaign or final-head CI check.
+
+**This is not yet a complete Stage 9 handoff.** The current notes now cover reviewed
+Stage0–6 implementation impacts across the book, loop guides and named repository
+cross-documents. Stage7–8 host/benchmark/audit/CI changes and subsequent fixes must
+still be added, and the publication worker must implement/execute the pending
+examples and final book/reference checks. Do not infer that empty chapters need no
+changes, archives are current authoritative prose, or notes have been applied. No
+collected fresh Miri pass, completed Stage6, loop AudioWorklet, final CI or review
+approval is implied. Use current operational evidence, not archived milestone totals.
 
 Before applying a note, re-read the destination and compare its baseline: the user
 may have already incorporated some changes. Preserve those edits, resolve conflicts
@@ -159,7 +170,7 @@ only this milestone's changes have been reviewed; it does not close full coverag
 | 18 — Prepared ingress | [Backfill reviewed](part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md): distinct flag/admission credits, owning-buffer reuse, inactive plan materialization versus validation, finite recovery and destructor limits; new example/publication pending. |
 | 19 — Shutdown | [Backfill reviewed](part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md): graceful versus abandoned work, complete owner ledger, resource/planner extraction, and separately attributed loop quiescence; new example/publication pending. |
 
-## Archive coverage still to reconcile
+## Archive coverage review and remaining publication
 
 - `getting-started.md`, `integration.md`: chapters1–4 reviewed in the Part I notes;
   startup/processor/host capabilities are accounted for; prepared ingress/extraction/
@@ -190,7 +201,8 @@ only this milestone's changes have been reviewed; it does not close full coverag
 
 [Cross-cutting and other-document follow-ups](cross-cutting.md) cover README,
 rustdoc, references, architecture and loop-specific attribution. Loop-library
-user-guide backfill is now covered by the two indexed notes above; earlier-stage
-repository runtime architecture/audit/performance/fixture deltas still need complete
-review. This index must not be marked complete until each pending destination has
-actionable notes or a source-backed, explicitly justified no-change finding.
+user-guide and named repository document backfill are now covered by the four
+indexed notes above. Later Stage7–8 implementation impacts and subsequent fixes
+still need review; actual callback audit/performance/host evidence and publication
+remain separate. Do not mark the handoff or final documentation complete before
+those inputs, new examples and reference/publication checks exist.

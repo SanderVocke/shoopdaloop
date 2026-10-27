@@ -3,7 +3,11 @@
 These are instructions for the later documentation pass. Do not edit the named
 sources/destinations as part of preparing this handoff. The initial generic
 graph/recovery notes are retained below with later integration/backfill updates;
-remaining earlier-stage review and publication are tracked in the index.
+later-stage deltas and publication are tracked in the index. Complete Stage0–6
+repository/architecture review now has detailed destination instructions in
+[repository follow-ups](repository-runtime-followups.md) and
+[architecture follow-ups](architecture-followups.md); preserve current dirty drafts
+and dated evidence as recorded in repository-baseline.json.
 
 ## README, navigation, reference and rustdoc
 
@@ -110,8 +114,10 @@ reviewed completely. Baselines are in loop-guides-baseline.json. These notes cor
 stale facade/configuration limitations, the actual recovery-safe set, delivery-frame
 recovery termination, conceptual versus public Cut phases, import padding and raw
 LoopId/RequestId caller-routing requirements. They do not claim new host evidence or
-publication. Remaining repository runtime architecture/audit/performance/fixture
-review and later-stage documentation deltas are still required.
+publication. The new repository/architecture notes above complete review of those
+named documents for existing Stage0–6 changes. A new full callback source audit,
+measurements, independent loop hosts and their Stage7–8 documentation deltas remain
+required; document review is not evidence that those gates passed.
 
 ## Operational evidence and handoff boundary
 
