@@ -32,6 +32,14 @@
       "build": "verified upstream win64 release payload, normalized by scripts/carla_runtime.py",
       "loader_policy": "application-relative component paths; no PATH lookup"
     },
+    "macos-x86_64": {
+      "source": "checksummed upstream universal archive",
+      "architecture": "x86_64 slice required",
+      "build": "verified upstream universal release payload, normalized by scripts/carla_runtime.py",
+      "minimum_os": "10.15",
+      "validation": "every bundled Intel Mach-O is audited for minimum OS and non-system dependency closure; Catalina runtime testing is pending",
+      "signing": "unsigned application archive; no signing identity or installer is introduced"
+    },
     "macos-arm64": {
       "source": "checksummed upstream universal archive",
       "architecture": "arm64 slice required",

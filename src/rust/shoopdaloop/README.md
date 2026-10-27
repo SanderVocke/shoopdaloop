@@ -2,6 +2,16 @@
 
 This is the shared native and browser application composition root.
 
+The experimental Intel macOS 10.15 distribution is a CPAL/Rodio-free release
+archive containing `shoopdaloop/ShoopDaLoop.app`, built-ins, and the pinned Carla
+runtime. Extract the archive and launch the application from Finder, or run
+`shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoopdaloop` from a terminal for
+diagnostics. Use a Catalina-compatible JACK installation for audio. Click-track
+preview uses the Master bus; System preview is unavailable in this build.
+CI checks the Intel binaries' minimum OS versions and dependency paths, then
+probes the extracted bundle on a newer macOS runner. Actual Catalina testing
+is still required. The application archive is unsigned and not notarized.
+
 - Native builds use the existing threaded JACK, CPAL+midir, or dummy/offline engine backend selected from persistent settings and provide actor-owned Lua scripting, keyboard control, and script-created native MIDI control ports.
 - Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action and run the same omniLua-backed scripting manager cooperatively on the application owner.
 - A separate explicit Web MIDI action discovers physical browser endpoints. One bounded main-thread hub serves direct-track MIDI recording/playback and Lua-created control ports while the AudioWorklet retains track-route truth.
