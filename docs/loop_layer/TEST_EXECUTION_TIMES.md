@@ -3,7 +3,21 @@
 Notes for designing a later test strategy, not new acceptance thresholds or
 permission to omit required gates. Recorded 2026-10-26 during Stage 5 facade work.
 
-## Latest paired program/graph slice
+## Latest nested-lifecycle/readiness slice
+
+`evidence/nested-lifecycle-stage6.json` records246.5950759499974s for19 sequential,
+warm scoped gates:153 loop cases/profile and2141 workspace cases/four existing
+skips. Eight positive/23 negative borrowing prototypes and30 regrouped exact-filter
+native executions/discovery checks are additional. A passing pre-adjustment19-gate
+report is retained under `target/loop-layer-nested-lifecycle-stage6/first-broad/`;
+final gates/proofs/mirrors were rerun after removing a redundant pending-table lookup.
+This does not measure that adjustment's performance effect. No interpreter ran for
+this slice; registered cases/native mirrors are not Miri. Historical interloop
+468.43s and suite growth motivate individual case supervision under the unchanged
+900-second watchdog, not a claim of a new timeout. These observations are not
+cold-cache measurements, callback deadlines or CI margin.
+
+## Paired program/graph slice
 
 `evidence/program-graph-stage6.json` records252.5938516309834s for19 warm scoped
 commands,152 loop cases/profile and2140 workspace cases/four skips. Refreshed eight

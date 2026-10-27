@@ -83,7 +83,37 @@ def selected_cases(package=None):
     cases.append(("shoop_loop_engine", "program_boundaries", [], 3, 0))
     cases.append(("shoop_loop_engine", "program_changes", [], 10, 0))
     cases.append(("shoop_loop_engine", "topology_staging", [], 7, 0))
-    cases.append(("shoop_loop_engine", "runtime_topology", [], 28, 0))
+    for name in (
+        "configuration_scenarios::generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_reference",
+        "configuration_scenarios::inactive_prepared_consumers_support_kind_change_removal_and_readd_without_retargeting_old_requests",
+        "configuration_scenarios::input::input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_capture",
+        "configuration_scenarios::rejections::batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishing_a_prefix",
+        "configuration_scenarios::rejections::configuration_refusals_and_final_resolver_failure_leave_all_three_owners_ready",
+        "configuration_scenarios::sources::source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under_saturation",
+        "configuration_scenarios::teardown::disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_published_capture_claims",
+        "full_domain_slots_unread_graph_results_and_retirement_do_not_gate_clock_or_recovery",
+        "full_normal_domain_slots_and_unread_program_results_allow_clock_progress_and_recovery",
+        "graph_and_stopped_topology_publish_together_with_independent_media_and_journals",
+        "graph_pair_preflight_rejects_role_scope_epoch_and_cancelled_owners_without_partial_publication",
+        "intervening_live_graph_change_refuses_pending_program_without_publishing_its_zero_actions",
+        "live_route_cut_keeps_recording_prefix_and_midi_continuity_without_restarting_the_take",
+        "paired_graph_topology_owners_survive_disconnect_and_post_publication_render_fault",
+        "pending_program_cancellation_disconnect_and_fault_extraction_return_every_bank_owner",
+        "program_capture_preflight_uses_real_banks_and_preserves_old_media_on_family_refusal",
+        "program_delivery_validation_and_queued_cancellation_preserve_ready_bank_generations",
+        "program_graph_scenarios::capture::paired_program_capture_preflight_publishes_both_or_neither_and_records_real_fx_media",
+        "program_graph_scenarios::lifecycle::paired_cancellation_released_generations_and_intervening_graphs_never_publish_the_program",
+        "program_graph_scenarios::lifecycle::paired_retirement_unread_results_recovery_disconnect_and_render_fault_preserve_ownership",
+        "program_graph_scenarios::running_program_and_routes_publish_at_one_zero_cut_with_full_independent_reference",
+        "running_program_bank_activation_matches_independent_media_states_and_ordered_journals",
+        "staged_fixed_graph_activation_preserves_media_and_matches_independent_timeline",
+        "staging_work_shares_the_callback_budget_and_recovery_ignores_normal_receipt_stalls",
+        "stale_scope_generation_role_and_malformed_candidates_preserve_the_working_timeline",
+        "stopped_extraction_recovers_receiving_validating_ready_failed_and_retired_banks",
+        "timing_activation_during_capture_keeps_the_take_prefix_and_recorded_fx_media_coherent",
+        "topology_revalidation_completes_countdown_receipts_and_cancelled_delivery_keeps_the_candidate",
+    ):
+        cases.append(("shoop_loop_engine", "runtime_topology", [name, "--", "--exact"], 1, 0))
     cases.append(("shoop_loop_engine", "media", [], 7, 0))
     cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
     cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))
@@ -103,7 +133,11 @@ def selected_cases(package=None):
     ):
         cases.append(("shoop_loop_engine", "runtime", [name, "--", "--exact"], 1, 0))
     cases.append(("shoop_loop_engine", "topology_views", [], 3, 0))
-    cases.append(("shoop_loop_engine", "interloop", [], 1, 0))
+    for name in (
+        "cascades_nested_clocked_program_and_capture_outcomes_match_independent_media_and_journals",
+        "nested_lifecycle::nested_seek_stop_restart_and_direct_priority_preserve_media_cuts_and_pending_outcomes",
+    ):
+        cases.append(("shoop_loop_engine", "interloop", [name, "--", "--exact"], 1, 0))
     if package:
         cases = [case for case in cases if case[0] == package]
     return cases

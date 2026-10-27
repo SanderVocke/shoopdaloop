@@ -24,6 +24,8 @@ use shoop_loop_engine::{
 };
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
+#[path = "support/nested_lifecycle.rs"]
+mod nested_lifecycle;
 #[global_allocator]
 static ALLOCATOR: support::TrackingAllocator = support::TrackingAllocator;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -152,6 +154,13 @@ fn setup(
     journal: usize,
     reversed: bool,
 ) -> (Controller<Mix>, Engine<Mix>, Vec<rt_runtime::ResourceId>) {
+    setup_with_pages(journal, reversed, 137)
+}
+fn setup_with_pages(
+    journal: usize,
+    reversed: bool,
+    pages: usize,
+) -> (Controller<Mix>, Engine<Mix>, Vec<rt_runtime::ResourceId>) {
     let config = Config {
         max_frames: 32,
         max_nodes: 16,
@@ -164,7 +173,7 @@ fn setup(
         midi_events_per_port: 4096,
         midi_bytes_per_port: 16384,
         resource_slots: 64,
-        resource_pages: 137,
+        resource_pages: pages,
         page_bytes: 64,
         command_slots: 64,
         scheduled_events: 64,

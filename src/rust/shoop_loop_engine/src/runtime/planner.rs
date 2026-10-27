@@ -1115,19 +1115,20 @@ impl Planner for LoopPlanner {
                 .resolver
                 .preview_program_change()
                 .map_err(runtime_error)?;
-            let graph = self
-                .pending
-                .iter()
-                .flatten()
-                .find_map(|pending| match pending.kind {
-                    PendingKind::Program {
-                        request,
-                        graph: Some(graph),
-                        graph_epoch,
-                        ..
-                    } if selected == Some(request) => Some((request, graph, graph_epoch)),
-                    _ => None,
-                });
+            let graph = selected.and_then(|selected| {
+                self.pending
+                    .iter()
+                    .flatten()
+                    .find_map(|pending| match pending.kind {
+                        PendingKind::Program {
+                            request,
+                            graph: Some(graph),
+                            graph_epoch,
+                            ..
+                        } if selected == request => Some((request, graph, graph_epoch)),
+                        _ => None,
+                    })
+            });
             let permit = if let Some((request, graph, epoch)) = graph {
                 match context.graphs.prepare_activation(graph, epoch) {
                     Ok(permit) => Some(permit),

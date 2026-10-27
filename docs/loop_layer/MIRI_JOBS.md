@@ -1,6 +1,17 @@
 # Miri jobs and outstanding verification
 
-Latest paired program/graph milestone: **227 selected =128 runtime+99 loop**.
+Latest nested-lifecycle/readiness milestone: **228 selected =128 runtime+100 loop**.
+The added guarded interloop case passes native/release/Node/Chromium; all153 loop
+cases and2141 workspace cases/four skips pass. All28 topology and both interloop
+cases now use individual exact filters. Native discovery matches every name and
+all30 filters execute exactly one native test each. Workloads, seed0, guards and
+the900-second per-command watchdog are unchanged. Historical interloop duration
+468.43s and grouped suite growth motivate finer supervision; no new timeout or
+interpreter pass is claimed. See [STAGE6_READINESS.md](STAGE6_READINESS.md): commit
+the intended inputs, then launch one consolidated immutable-snapshot background job.
+Stage6 remains open until terminal collection and source/inventory verification.
+
+Previous paired program/graph milestone: **227 selected =128 runtime+99 loop**.
 Four new guarded facade cases are registered, not interpreted. The existing private
 probe case also checks selection-query phases. Native/release/Node/Chromium pass152
 loop tests; fourteen supervisor/runner helper tests pass. Full Stage6 still needs
@@ -32,7 +43,7 @@ for launch/status/collection; [MIRI_BACKGROUND.md](MIRI_BACKGROUND.md) documents
 commands, committed-snapshot requirement, Linux-only wrapper and failure handling.
 No real background interpreter job has been launched for the subsequent smaller
 program-probe, owning-transaction, facade-adapter or generic graph-permit steps.
-The current required inventory is215=128runtime+87loop. The three new media-owner activation cases are registered, not interpreted, alongside the accumulated earlier Stage6 cases. The interrupted partial evidence remains unchanged.
+At the media-owner prerequisite, the inventory was215=128runtime+87loop. Those three media-owner cases and the subsequently added configuration, paired-program/graph and nested-lifecycle cases remain registered, not interpreted. The interrupted partial evidence remains unchanged; the current full inventory is228 as stated above.
 
 ## Job record requirements
 

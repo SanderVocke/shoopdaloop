@@ -1,6 +1,46 @@
 # Loop-layer implementation and validation evidence
 
-## Latest Stage 6 paired running-program/graph milestone
+## Latest Stage 6 nested lifecycle verification and readiness audit
+
+`evidence/nested-lifecycle-stage6{,-provenance}.json` records153 loop cases per
+native debug/release/Node/Chromium profile,2141 workspace passes/four existing skips,
+19 scoped gates,123 Rust source hashes/120 unchanged prior inputs, and refreshed
+8 positive/23 expected negative borrowing proofs. The new guarded interloop case
+predicts all four-port audio/MIDI, every public state at all20 boundaries, full or
+truncated journals/drop counts, countdown cancellation and three immutable exports.
+Outer seeks cross an explicit inner program's play/record/stop spans; direct Stop
+wins over an inherited Record, direct child playback survives parent Stop, and
+restart creates revision2 without a phantom intervening take. All expected states
+must be present. Channel0 initial MIDI projection is checked; multi-channel protocol
+coverage remains in its separate tests. Whole/single/irregular partitions, declaration
+reversal and journals0/1/1024 agree. Cleanup twice recovers256 pages,64 versions,
+64 snapshots and zero ledger references. The original137-page exhaustion test remains
+unchanged in capacity/workload and passes separately.
+
+The planner skips the pending graph lookup when no program is selected. There is
+no measured speedup, changed musical rule or new public API claim. A first19-gate
+pass before that adjustment is archived with its planner source under
+`target/loop-layer-nested-lifecycle-stage6/first-broad/`; final gates/proofs/filter
+mirrors were rerun against final source hashes. The initial fixture's open-ended
+range needed whitespace before `=>`; failed output is retained as `initial.log`,
+not a complete failed-tree reproduction. Final19-gate warm duration246.60s is not
+a deadline, cold-cache result or CI margin.
+
+Miri **228=128runtime+100loop** remains registered, not interpreted. All28 topology
+and both interloop cases now use individual exact filters, with unchanged workloads,
+seed0, guards and900-second watchdog. Native discovery matches all30 names and each
+filter executes exactly one test. Historical interloop wall time468.43s and grouped
+suite growth motivate granularity, not a claim of a new timeout. Native mirrors and
+14 runner-helper passes are not interpreter evidence.
+
+[STAGE6_READINESS.md](STAGE6_READINESS.md) maps all remaining stage requirements to
+implemented paths and actual cases. Consolidated committed-snapshot Miri remains the
+stage-level gate; Stage6 is not complete. Broader Stage8 models/stress/performance,
+independent loop hosts, separately published documentation and final CI/review remain
+required. Handoff notes/baseline: `docs-changes-loop-layer/loop-nested-lifecycle.md`
+and `nested-lifecycle-baseline.json`; authored guides were not modified.
+
+## Stage 6 paired running-program/graph milestone
 
 `evidence/program-graph-stage6{,-provenance}.json` records paired zero/stopped-cut
 publication through `ProgramGraphActivate`/`ProgramGraphChanged`. A crate-private

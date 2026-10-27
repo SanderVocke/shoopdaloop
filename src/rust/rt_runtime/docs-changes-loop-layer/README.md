@@ -43,6 +43,14 @@ preflight and publishes both configurations at one zero/stopped cut. Its baselin
 reviews runtime/topology/program guides; independent graph retirement and cancellation
 remain explicit. Broader lifecycle coverage and full Stage6 verification remain open.
 
+The [nested lifecycle slice](loop-nested-lifecycle.md), based on `9203bc43`, adds
+an independently predicted integrated seek/stop/restart/capture example, explicit
+same-frame priority and countdown outcomes, and immutable old/new exports. Its
+baseline rechecks unchanged runtime/program guides. The operational
+`docs/loop_layer/STAGE6_READINESS.md` maps accumulated implementation coverage;
+consolidated Stage6 Miri remains pending, not replaced by the native exact-filter
+mirrors or the expanded228-execution registration.
+
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and
 their cross-cutting effects. Full review/backfill of prior

@@ -17,9 +17,14 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 227)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 228)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 128)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 99)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 100)
+        for target, count in [("runtime_topology", 28), ("interloop", 2)]:
+            cases = [c for c in runner.selected_cases("shoop_loop_engine") if c[1] == target]
+            self.assertEqual(len(cases), count)
+            self.assertEqual(len({c[2][0] for c in cases}), count)
+            self.assertTrue(all(c[2][1:] == ["--", "--exact"] and c[3:] == (1, 0) for c in cases))
         for _, _, arguments, _, _ in runner.selected_cases():
             if "--exact" in arguments:
                 self.assertIn("--", arguments)
