@@ -10,7 +10,8 @@ use shoop_loop_engine::{
     audio::Smoothing,
     compile,
     runtime::{Binding, Controller, Engine, LoopPlanner, Operation, Reply, Settings},
-    Limits, LoopId, LoopKind, LoopSpec, Outcome, Timing, TopologyDescription, Transition,
+    Entry, Limits, LoopId, LoopKind, LoopSpec, Outcome, ProgramDescription, Section, Timing,
+    TopologyDescription, Transition,
 };
 
 use std::sync::{
@@ -88,6 +89,20 @@ pub(crate) fn prepare_observed(
     journal_records: usize,
     resolver_events: usize,
 ) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+    prepare_mode(fault, witness, journal_records, resolver_events, false)
+}
+
+pub(crate) fn prepare_staged(witness: Arc<AtomicU32>) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+    prepare_mode(0, witness, crate::journal::RECORDS, 1024, true)
+}
+
+fn prepare_mode(
+    fault: u8,
+    witness: Arc<AtomicU32>,
+    journal_records: usize,
+    resolver_events: usize,
+    staged: bool,
+) -> (Controller<Mix>, Engine<Mix>, LoopId) {
     let config = Config {
         max_frames: 128,
         max_nodes: 4,
@@ -134,25 +149,29 @@ pub(crate) fn prepare_observed(
     let playback = NodeId::from_parts(0, 1).unwrap();
     let capture = NodeId::from_parts(1, 1).unwrap();
     let effect = NodeId::from_parts(2, 1).unwrap();
-    let topology = compile(
-        Limits {
-            loop_slots: 1,
-            pending_requests: 5,
-            journal_events: resolver_events,
-            ..Limits::default()
-        },
-        &TopologyDescription {
-            loops: vec![LoopSpec {
-                id: target,
-                kind: LoopKind::Primitive,
-                length: 0,
-                sync_source: None,
-            }],
-            ..TopologyDescription::default()
-        },
-    )
-    .expect("fixture topology");
-    let (control, engine) = Engine::prepare_with_observer(
+    let topology = if staged {
+        staging_topology(false)
+    } else {
+        compile(
+            Limits {
+                loop_slots: 1,
+                pending_requests: 5,
+                journal_events: resolver_events,
+                ..Limits::default()
+            },
+            &TopologyDescription {
+                loops: vec![LoopSpec {
+                    id: target,
+                    kind: LoopKind::Primitive,
+                    length: 0,
+                    sync_source: None,
+                }],
+                ..TopologyDescription::default()
+            },
+        )
+        .expect("fixture topology")
+    };
+    let (control, engine) = Engine::prepare_with_configuration_staging(
         config,
         topology,
         resources,
@@ -177,10 +196,79 @@ pub(crate) fn prepare_observed(
         vec![],
         vec![(effect, Mix { fault, witness })],
         routes(false),
-        Box::new(crate::journal::Journal::new(journal_records)),
+        if staged {
+            shoop_loop_engine::runtime::TopologySettings {
+                candidates: 2,
+                records_per_callback: 1,
+                validation_steps_per_callback: 128,
+            }
+        } else {
+            Default::default()
+        },
+        if staged {
+            shoop_loop_engine::runtime::RoleSettings {
+                candidates: 1,
+                sources: 2,
+                source_packets_per_callback: 8,
+            }
+        } else {
+            Default::default()
+        },
+        Some(Box::new(crate::journal::Journal::new(journal_records))),
     )
     .expect("prepared facade");
     (control, engine, target)
+}
+
+pub(crate) fn staging_topology(active: bool) -> shoop_loop_engine::PreparedTopology {
+    let id = |slot| LoopId::from_parts(slot, 1).unwrap();
+    compile(
+        Limits {
+            loop_slots: 3,
+            pending_requests: 5,
+            journal_events: 1024,
+            ..Limits::default()
+        },
+        &TopologyDescription {
+            loops: (0..3)
+                .map(|slot| LoopSpec {
+                    id: id(slot),
+                    kind: if slot == 0 {
+                        LoopKind::Primitive
+                    } else {
+                        LoopKind::Composite
+                    },
+                    length: if slot == 0 { 0 } else { 4 },
+                    sync_source: None,
+                })
+                .collect(),
+            programs: (1..3)
+                .map(|slot| ProgramDescription {
+                    source: id(slot),
+                    nominal_unit_frames: 4,
+                    sections: vec![Section {
+                        entries: if active {
+                            vec![Entry {
+                                target: id(if slot == 1 { 2 } else { 0 }),
+                                delay: 0,
+                                duration: Some(1),
+                                repetitions: if slot == 1 { 2 } else { 1 },
+                                mode: if slot == 1 {
+                                    Some(shoop_loop_engine::Mode::Playing)
+                                } else {
+                                    None
+                                },
+                            }]
+                        } else {
+                            vec![]
+                        },
+                    }],
+                })
+                .collect(),
+            ..TopologyDescription::default()
+        },
+    )
+    .expect("prepared nested program template")
 }
 
 pub(crate) fn routes(playback_to_host: bool) -> GraphDescription {

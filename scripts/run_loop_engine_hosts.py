@@ -269,6 +269,73 @@ def compare_graph_worklets(result, native):
             raise RuntimeError("live graph report falsely claims OfflineAudioContext output")
 
 
+def compare_staging_worklets(result, native):
+    if (len(native["stagingRequests"]) != 56 or len(native["stagingResponses"]) != 82
+            or len(native["responses"]) != 6 or len(native["samples"]) != 137
+            or native["recordCount"] != 15 or native["programFrame"] != 6784
+            or native["frames"] != 6793 or native["callbacks"] != 56
+            or native["counts"] != [0]*4 or native["recovered"] != [256,16,16,0]):
+        raise RuntimeError("incomplete native staging evidence")
+    validate_semantic(native["semanticBytes"])
+    reports=result.get("stagingReports", [])
+    if [r["mode"] for r in reports] != ["offline","live"]:
+        raise RuntimeError("both actual staging contexts required")
+    for report in reports:
+        value=json.loads(json.dumps(report["data"])); session=int(report["session"])
+        for field,size in (("stagingRequests",128),("stagingResponses",256),("responses",96)):
+            for packet in value[field]:
+                if len(packet)!=size or struct.unpack_from("<Q",bytes(packet),8)[0]!=session:
+                    raise RuntimeError("staging envelope/session")
+                packet[8:16]=list(struct.pack("<Q",(1<<64)-1))
+        if value!=native:
+            raise RuntimeError("complete actual staging bytes/media/semantic/ownership differ")
+        expected_clocks=list(range(128,6785,128))+[6785,6789,6793]
+        cuts=report["checkpoints"]
+        if ([int(c["frame"]) for c in cuts]!=expected_clocks
+                or [c["frames"] for c in cuts]!=[128]*53+[1,4,4]):
+            raise RuntimeError("staging acknowledged engine steps")
+        browser_clocks = [int(c["browser"]) for c in cuts]
+        if any(clock < 0 or clock % 128 for clock in browser_clocks) or any(a >= b for a, b in zip(browser_clocks, browser_clocks[1:])):
+            raise RuntimeError("staging browser clock order/alignment")
+        starts=list(map(int,report["starts"]))
+        expected_segments=[{"browser":cuts[i]["browser"],"frame":str(frame),"frames":frames} for i,frame,frames in ((0,0,128),(53,6784,1),(54,6785,4),(55,6789,4))]
+        if report["segments"]!=expected_segments or starts!=[int(s["browser"]) for s in expected_segments]:
+            raise RuntimeError("staging actual segment clocks")
+        ingress=report["ingress"]
+        if (len(ingress)!=58 or [i["result"] for i in ingress]!=[2,9]+[0]*56
+                or [int(i["frame"]) for i in ingress]!=[0,0]+list(range(0,6785,128))+[6785,6789]
+                or [i["bytes"] for i in ingress[2:]]!=report["data"]["stagingRequests"]):
+            raise RuntimeError("staging ingress/refusal/clock evidence")
+        bad=ingress[2]["bytes"].copy();bad[0]^=1
+        foreign=ingress[2]["bytes"].copy();foreign[8]^=128
+        if ingress[0]["bytes"]!=bad or ingress[1]["bytes"]!=foreign:
+            raise RuntimeError("staging malformed/foreign retries")
+        chunks=[[0]*512 for _ in range(2)]
+        offset=0
+        for segment,count in enumerate((128,1,4,4)):
+            for channel in range(2): chunks[channel][segment*128:segment*128+count]=[s[channel] for s in native["samples"][offset:offset+count]]
+            offset+=count
+        if report["chunks"]!=chunks:
+            raise RuntimeError("staging actual short-call audio/tails")
+        summary=report["summary"]
+        if (summary["bytes"]!=summary["finalBytes"] or summary["bytes"]!=report["ready"]["bytes"]
+                or report["controlBytes"]!=report["controlFinalBytes"] or summary["heap"]!=[0,0,0]
+                or summary["returnedBuffers"]!=10 or summary["returnedStagingBuffers"]!=2
+                or summary["retainedStaging"]!=0 or summary["journalOverflow"]!=0
+                or summary["recovered"]!=native["recovered"] or summary["frames"]!="6793" or summary["callbacks"]!="56"
+                or summary["firstFrame"]!=str(starts[0]) or summary["marker"]!=0 or report["controlMarker"]!=0x51a17
+                or report["ready"]["shared"] is not False or report["ready"]["marker"] != 0):
+            raise RuntimeError("staging memory/ownership/isolation evidence")
+        if report["mode"]=="offline":
+            expected=[[0]*14592 for _ in range(2)]
+            for channel in range(2):
+                for segment,start in enumerate(starts): expected[channel][start:start+128]=chunks[channel][segment*128:(segment+1)*128]
+            if report["offlineAudio"]!=expected:
+                raise RuntimeError("complete offline staging output differs")
+        elif report["offlineAudio"] is not None:
+            raise RuntimeError("live staging report claims offline output")
+
+
 def compare_export_worklets(result, native):
     """Full immutable content/receipt comparison with acknowledged step clocks."""
     def normalized(data, session):
@@ -401,7 +468,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 15:
+        if not node.get("passed") or len(node.get("checks", [])) != 16:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:
@@ -417,7 +484,7 @@ def main():
     compare_graph_worklets(result, graph_native)
     result["native_graph_two_thread"] = {"passed": True, "channel_capacity": 1,
                                           "frames": graph_threaded["frames"], "callbacks": graph_threaded["callbacks"]}
-    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports")}:
+    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)
     exported = json.loads(harness.command([str(executable), "--export-json"], reports / "native-export.json"))
@@ -425,6 +492,11 @@ def main():
     if exported != threaded_exports or result["bindingChecks"]["exports"] != exported:
         raise RuntimeError("complete native/threaded/Node/Chromium immutable export reports differ")
     compare_export_worklets(result, exported)
+    staged = json.loads(harness.command([str(executable), "--staging-json"], reports / "native-staging.json"))
+    staged_threaded = json.loads(harness.command([str(executable), "--staging-two-thread-json"], reports / "native-staging-two-thread.json"))
+    if staged != staged_threaded or result["bindingChecks"]["staging"] != staged:
+        raise RuntimeError("complete native/threaded/Node/Chromium staging reports differ")
+    compare_staging_worklets(result, staged)
     result["node"] = node
     for mode in ("--direct", "--wire", "--two-thread"):
         harness.command([str(executable), mode], reports / (mode[2:] + ".log"))

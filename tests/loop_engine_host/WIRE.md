@@ -595,6 +595,110 @@ next generation2 and actual retired capacities3/12/2. Source callbacks continue
 until successful stop verifies all commands/retained owners and transfer pools.
 No synthetic result or abandoned owner counts as a successful return.
 
+## Resource and program staging (`LPS1` / `LPR1`)
+
+Prepare `BrowserStagingClient(session)` and `BrowserBridge.new_staging(session)`
+off-render (native: `Bridge::with_staging`). The control client encodes the fixture's
+nested timing template into64-byte `LTP1` records before processing. The rendering
+instance retains two resource banks, two program banks and one reusable64-byte
+owning chunk buffer. One independent command credit serializes these operations;
+primitive normal/recovery credits remain separate. No pointer or scoped Rust handle
+crosses memories. Resource/program handles remain in their receiver-local banks.
+
+### Request: 128 bytes
+
+All fields are unsigned little-endian; unused fields/data bytes must be zero.
+
+| Offset | Bytes | Meaning |
+| --- | --- | --- |
+| 0/4 | 4/2 | `LPS1` / version1 |
+| 6/7 | 1 each | Kind / cancellation flag0 or1 |
+| 8/16/24 | 8 each | Nonzero session / sequence / requested frame |
+| 32/36 | 4 each | Local bank0/1 / nonzero generation |
+| 40/48/56 | 8 each | Arguments A/B/C |
+| 64 | 64 | Prepared chunk or canonical format descriptor |
+
+| Kind | Operation and arguments |
+| --- | --- |
+| 1 | Create resource |
+| 2 | Begin upload: A expected revision, B frames, C bytes; data byte0 format1 Audio/2 Midi, u32 channels at4 (zero for Midi), other bytes zero |
+| 3 | Write: A byte offset; all64 data bytes are the owning chunk |
+| 4/5 | Finish / Commit upload |
+| 6/7 | Acquire snapshot / create cursor |
+| 8 | Read: A exact expected cursor byte position; reusable64-byte buffer |
+| 9/10/11 | Release snapshot / Remove resource / Cancel upload |
+| 13/14/15 | Acquire role source / validate / release |
+| 17/18 | Begin timing program (data header) / Append (A first record, data one record) |
+| 19/20 | Validate / Activate (A graph epoch, B topology epoch) |
+| 21/22 | Recycle displaced program / Cancel candidate |
+| 23/24 | Play at position0 / Stop; A packs target slot low32/generation high32 |
+| 25/26 | Program status / SeekIteration (A packed target, B iteration, no retrigger) |
+
+Resource kinds1–11 require requested frame0: maintenance executes at callback
+admission, not a promised sample timestamp. Other commands carry absolute frames.
+Offsets/byte lengths/record indices must fit the receiving portable signed32-bit
+bound before taking the owning buffer; high bits are rejected, not truncated.
+Format/target/epoch/catalog validation remains separate runtime/domain work.
+
+### Response: 256 bytes
+
+| Offset | Bytes | Meaning |
+| --- | --- | --- |
+| 0/4 | 4/2 | `LPR1` / version1 |
+| 6/7 | 1 each | Original kind / phase1 admission,2 domain terminal,3 owning resource completion |
+| 8/16/24 | 8 each | Session / original sequence / runtime sequence (zero only local rejection) |
+| 32/40/48/56 | 8 each | Requested/effective/delivered/observed frames |
+| 64/68 | 4 each | Status1 Admitted,2 Applied,3 Cancelled,4 Rejected,5 Failed / error |
+| 72/76/80 | 4 each | Original bank/generation / next generation |
+| 84 | 4 | Flags: delivered1, Read EOF2; others zero |
+| 88/96/104/112/120 | 8 each | Operation metadata below |
+| 128/132 | 4 each | Data length0–64 / retained bank flags |
+| 136 | 8 | Reserved zero |
+| 144 | 112 | Data prefix, then canonical zero tail |
+
+Bank flags are resource1/upload2/snapshot4/source8, or program256. Commit metadata
+is revision; Snapshot is revision/bytes/frames/channels(0 Midi)/source cut. Cursor
+and Read report next byte position. Role validation reports Ready1 or progress0
+plus validated frames. Program validation/status reports Ready1 or progress0 plus
+validation steps. Activate reports graph/topology epochs. Transitions report the
+actual applied frame. Other metadata is zero.
+
+Program Begin/Append return their actual64-byte payload at admission, including
+cancellation/refusal; credit remains occupied after Admitted until its domain
+result. Resource Write returns its original chunk on every outcome. Read returns
+only the actual written prefix and EOF on success; cancellation preserves cursor
+position. Runtime errors use1–20; domain timeline errors257–268 and resource
+errors513–532 remain distinct. No successful result is inferred from transfer-buffer
+return or admission. Invalid identities/echoed payloads/phase/order/next generation
+preserve client state and credit. Sequences accept u64::MAX once; generation MAX
+retires at0 on Remove/Recycle/Cancel rather than wrapping.
+
+Raw uploaded MIDI can be snapshotted/read but lacks the checkpoint index required
+for a playable role source. The fixture requires exact domain failure522 and
+unchanged retained flags, then explicit release/remove; it does not advertise raw
+MIDI as playback-ready or replace existing playable media with it.
+
+### MessagePort, clocks and shutdown
+
+`staging-request`/`staging-ingested` copy128 bytes and return buffer/result/current
+engine frame. `staging-response`/`staging-credit` transfer256-byte results through
+two fixed buffers. Sender detachment and exact buffer sizes are checked separately
+from Rust command credit. The underlying MessagePort queue is not claimed bounded.
+`staging-step` supplies acknowledged engine frame plus1–128 frames; `staging-stepping`
+acknowledges arming, and `checkpoint` reports the actual new engine/browser clocks.
+Between steps no engine time advances. `staging-stop-probe` requires stop refusal15
+with an owner retained. Normal stop requires all command/owner counts0 and every
+primitive/staging transfer buffer returned; abandonment is distinct off-render work.
+
+`stagingReports` holds both actual contexts: complete native-shaped `data` (56
+requests/82 staging results/six primitive results/137 mapped samples/3990 MIDI/
+8200 semantic bytes/full ownership/recovery),58 ingress attempts,56 checkpoints,
+four mapped segments and both512-sample probe channels. Offline additionally
+retains both complete14592-frame channels. Only session nonces normalize against
+native fixed-partition replay. `bindingChecks.staging` is separate binding-level
+execution; native direct/threaded JSON reports and downstream Web Audio must all
+agree. The gzip fixture used by Python parser tests is data, not execution evidence.
+
 ## Browser report (`LLH2`)
 
 The runner's JSON report has `format: "LLH2"`. Historical `LLH1` reports lack the

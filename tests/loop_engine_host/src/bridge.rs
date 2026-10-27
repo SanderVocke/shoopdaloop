@@ -52,6 +52,7 @@ pub struct Bridge {
     faulted: bool,
     graphs: Option<Box<crate::graph_bridge::Graphs>>,
     exports: Option<Box<crate::export_bridge::Exports>>,
+    staging: Option<Box<crate::staging_bridge::Staging>>,
     fault_witness: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 impl Bridge {
@@ -60,6 +61,9 @@ impl Bridge {
         Self::with_fault(session, 0)
     }
     pub(crate) fn with_fault(session: u64, fault: u8) -> Result<Self, WireError> {
+        Self::prepare(session, fault, false)
+    }
+    fn prepare(session: u64, fault: u8, staging: bool) -> Result<Self, WireError> {
         if session == 0 {
             return Err(WireError::Session);
         }
@@ -67,7 +71,11 @@ impl Bridge {
             return Err(WireError::Operation);
         }
         let fault_witness = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let (control, engine, target) = scenario::prepare_with_fault(fault, fault_witness.clone());
+        let (control, engine, target) = if staging {
+            scenario::prepare_staged(fault_witness.clone())
+        } else {
+            scenario::prepare_with_fault(fault, fault_witness.clone())
+        };
         Ok(Self {
             control,
             engine,
@@ -79,6 +87,7 @@ impl Bridge {
             faulted: false,
             graphs: None,
             exports: None,
+            staging: staging.then(|| Box::new(crate::staging_bridge::Staging::new(session))),
             fault_witness,
         })
     }
@@ -101,6 +110,34 @@ impl Bridge {
             crate::graph_bridge::Graphs::new(session, config).map_err(|_| WireError::State)?,
         ));
         Ok(bridge)
+    }
+    pub fn with_staging(session: u64) -> Result<Self, WireError> {
+        Self::prepare(session, 0, true)
+    }
+    pub fn staging_ingest(&mut self, bytes: &[u8]) -> Result<(), WireError> {
+        crate::guarded(|| {
+            if self.faulted {
+                return Err(WireError::State);
+            }
+            let now = self.next_frame();
+            self.staging
+                .as_mut()
+                .ok_or(WireError::State)?
+                .ingest(&mut self.control, bytes, now)
+        })
+    }
+    pub fn next_staging_response(
+        &mut self,
+    ) -> Result<Option<[u8; crate::staging_wire::RESPONSE_BYTES]>, WireError> {
+        crate::guarded(|| {
+            self.staging
+                .as_mut()
+                .ok_or(WireError::State)?
+                .next_response()
+        })
+    }
+    pub fn retained_staging(&self) -> usize {
+        self.staging.as_ref().map_or(0, |s| s.retained())
     }
     pub fn with_exports(session: u64) -> Result<Self, WireError> {
         let mut bridge = Self::new(session)?;
@@ -213,6 +250,10 @@ impl Bridge {
                 .exports
                 .as_ref()
                 .map_or(0, |exports| exports.outstanding())
+            + self
+                .staging
+                .as_ref()
+                .map_or(0, |staging| staging.outstanding())
     }
 
     /// Consume one well-formed request into its reserved slot. Refusal leaves the
@@ -318,11 +359,26 @@ impl Bridge {
             + self
                 .exports
                 .as_ref()
-                .map_or(0, |_| crate::export_wire::CREDITS);
+                .map_or(0, |_| crate::export_wire::CREDITS)
+            + self
+                .staging
+                .as_ref()
+                .map_or(0, |_| crate::staging_wire::CREDITS);
         for _ in 0..credits {
             let Some(completion) = self.control.try_completion() else {
                 break;
             };
+            if let Some(staging) = self
+                .staging
+                .as_mut()
+                .filter(|s| s.matches(completion.sequence))
+            {
+                if let Err(completion) = staging.completion(completion) {
+                    self.quarantine = Some(completion);
+                    return Err(Error::InvalidState);
+                }
+                continue;
+            }
             if let Some(exports) = self
                 .exports
                 .as_mut()
@@ -386,6 +442,14 @@ impl Bridge {
             let Some(execution) = self.control.try_execution() else {
                 break;
             };
+            if let Some(staging) = self
+                .staging
+                .as_mut()
+                .filter(|s| s.matches(execution.sequence))
+            {
+                staging.execution(execution)?;
+                continue;
+            }
             if let Some(exports) = self
                 .exports
                 .as_mut()

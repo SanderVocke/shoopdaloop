@@ -524,6 +524,16 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
             },
         )
     }
+    /// Submit generic resource work using prepared transport capacity. Owning
+    /// chunk buffers return in the completion on application, refusal or cancellation.
+    pub fn resource(
+        &mut self,
+        lane: Lane,
+        request: rt_runtime::resource::Request,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
+        self.control
+            .submit_prepared(lane, Command::resource(request))
+    }
     /// Read through an existing lease into an owning return buffer. Retain its
     /// originating export/lease until all reads complete and inspect returned EOF/cursor.
     pub fn read(

@@ -18,11 +18,11 @@ commands/owning returns through MessagePort with an audible Ready checkpoint and
 explicit engine pause/resume, full native/reference downstream checks and successful
 recovery. Native capacity-one graph actor transport now also matches complete direct
 replay, with renderer-local owners and callback-external coordination. Stage7 has
-four of eight rows verified, including native offline/two-thread/export evidence
+five of eight rows verified, including prepared ingress/program staging and native offline/two-thread/export evidence
 and the fixture documentation maintained with these implemented milestones. Immutable
 exports now retain/read/release both capture revisions through native/bindings/actual
-worklets. Program/resource uploads and program staging plus broader host scenarios
-remain pending.
+worklets. Resource uploads/immutable reads and prepared nested-program staging now
+also pass native/bindings/actual hosts; broader host scenarios remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -32,6 +32,39 @@ checkout or to documentation authoring. Former docs-changes-loop-layer reference
 now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Stage 7 resource uploads and prepared program staging
+
+[Full staging evidence](evidence/staging-stage7.md) records native direct/capacity-one
+actors, shared Node/Chromium bindings and actual separate-memory offline/live worklets
+in both profiles. Canonical128-byte LPS1/256-byte LPR1, one command credit, two
+resource/two program banks and a reusable64-byte owning buffer retain all handles
+locally. `Controller::resource` adds prepared owning resource submission to the
+restricted facade. Immutable audio revision1 remains readable after revision2;
+raw MIDI bytes/timestamps/SysEx are exact, but source validation correctly refuses522
+without checkpoint indexes and preserves ownership for explicit cleanup.
+
+Fifteen precompiled timing records activate graph/topology epochs1/0→1/1 and return
+the displaced owner. Explicit outer→regular inner→primitive play/iteration-seek/stop
+uses admitted timestamps6784/6788/6792. These composites have no sync source and no
+fallback clock; no autonomous clocking claim is made. All56 requests/82 staging
+replies/six primitive replies,137 samples/3990 MIDI bytes/8200 semantic bytes match
+full independent native media/semantic tables and complete binding/actual reports.
+Actual worklets use53 acknowledged128-frame calls then1/4/4, with deliberate engine
+pauses; all512 probe samples/channel and14592 offline samples/channel are verified.
+Fixed staging memories2,031,616 debug/1,966,080 release bytes do not grow; heap counts
+are0 and final recovery is256/16/16/0, with every credit/bank/transfer buffer returned.
+
+Four new native cases cover complete replay, owning cancellation/128 program reuses
+in both actor modes, canonical/full-width records/all truncations/padding and
+transactional/nonwrapping identities. Two Python mutation cases use compressed
+native parser data, not execution substitutes. Fresh gates pass51 fixture tests per
+profile; sixteen binding groups/runtime/profile; eight successful actual contexts
+plus four exact intentional failure gates/profile; fifteen Python tests;2141 workspace
+passes/four skips; warning-denied builds/docs/format/policies and documented commands.
+This verifies the prepared ingress/payload/program/cancellation row: Stage7 is5/8.
+Broader clocked/cascade/one-sample/replacement/capture-failure/stall scenarios, planner
+canaries, consolidated Miri, CI artifacts and Stages8–10 remain incomplete.
 
 ## Stage 7 immutable exports and native host-row completion
 

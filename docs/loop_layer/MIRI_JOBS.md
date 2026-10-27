@@ -36,8 +36,16 @@ Immutable export integration adds four more native cases: two `browser::native_e
 (complete direct/threaded two-revision snapshots/partitions and cancellation/EOF/stalls/
 128 export reuses) and two `export_wire::tests` (canonical/full-width codecs,
 truncations/projection validation and transactional credits/nonwrapping generations).
-All19 graph-focused plus four export-focused cases are **not yet registered in the
-pinned interpreter runner or interpreted**. Node/Chromium now execute shared
+Resource/program staging adds four more native cases: two
+`browser::native_staging::tests` (complete direct/threaded resource revisions,
+raw-MIDI source refusal, nested play/iteration-seek/stop and full independent
+semantic/media tables; owning chunk cancellation and128 program reuses in both
+actor modes), plus two `staging_wire::tests` (full-width codecs/all truncations/
+padding and transactional/nonwrapping client identities). The new
+`Controller::resource` forwarding path and prepared topology/source settings are
+also relevant source inputs for the consolidated selection.
+All19 graph-focused, four export-focused and four staging-focused cases (**27**)
+are **not yet registered in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the
 existing900s per-command watchdog, guards and workloads when adding the standalone

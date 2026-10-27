@@ -2,6 +2,13 @@
 fn main() {
     assert!(loop_engine_host_fixture::allocator_canaries());
     let mode = std::env::args().nth(1).unwrap_or_else(|| "--direct".into());
+    if mode == "--staging-json" || mode == "--staging-two-thread-json" {
+        println!(
+            "{}",
+            loop_engine_host_fixture::run_staging(mode == "--staging-two-thread-json").json()
+        );
+        return;
+    }
     if mode == "--export-json" || mode == "--export-two-thread-json" {
         println!(
             "{}",
@@ -24,7 +31,7 @@ fn main() {
         "--wire" => loop_engine_host_fixture::run_wire,
         "--two-thread" => loop_engine_host_fixture::run_two_thread,
         "--json" => loop_engine_host_fixture::run_wire,
-        _ => panic!("expected --direct, --wire, --two-thread, --json, --graph-json or --graph-two-thread-json"),
+        _ => panic!("expected --direct, --wire, --two-thread, --json, --graph-json, --graph-two-thread-json, --export-json, --export-two-thread-json, --staging-json or --staging-two-thread-json"),
     };
     let report = loop_engine_host_fixture::run(&[13]);
     for partitions in [

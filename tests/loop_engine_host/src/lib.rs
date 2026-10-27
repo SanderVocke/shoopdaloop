@@ -13,8 +13,12 @@ mod browser;
 mod browser_export_client;
 mod browser_graph;
 mod browser_graph_client;
+mod browser_staging_client;
 mod client;
 mod export_bridge;
+mod staging_bridge;
+pub mod staging_wire;
+pub use browser_staging_client::BrowserStagingClient;
 pub mod export_wire;
 mod graph_bridge;
 pub mod graph_transfer;
@@ -28,6 +32,8 @@ pub use bridge::Bridge;
 pub use browser::native_export::{run_exports, ExportReport};
 #[cfg(not(target_arch = "wasm32"))]
 pub use browser::native_graph::{run_graph, run_graph_two_thread, GraphReport};
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_staging::{run as run_staging, StagingReport};
 pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
 pub use browser_export_client::BrowserExportClient;
 pub use browser_graph::BrowserGraphReceiver;

@@ -244,8 +244,8 @@ no separate `wasm-bindgen` executable is required. Missing tools are failures,
 not skipped browser evidence. `--no-build` deliberately reuses that profile's
 existing artifacts; omit it for fresh verification.
 
-Each normal runner invocation requires six successful sessions: primitive,
-graph-change and immutable-export scenarios in both offline and live contexts. `--verify-failures`
+Each normal runner invocation requires eight successful sessions: primitive,
+graph-change, immutable-export and resource/program-staging scenarios in both offline and live contexts. `--verify-failures`
 additionally checks four intentionally failing sessions.
 
 ### 1. Prepare two ordinary Wasm instances
@@ -343,13 +343,14 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Fifteen shared public-binding groups execute in Node and Chromium: constructor
+Sixteen shared public-binding groups execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
 records, an eventless same-position seek, two payload checks and three graph command
 checks: full-width/credits, exact activation/retirement and128 real owner returns.
-These are binding-level Wasm checks, not a claim that the47 native Rust tests
+The export and resource/program-staging groups also retain complete native-matched
+reports. These are binding-level Wasm checks, not a claim that the51 native Rust tests
 were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
@@ -421,6 +422,62 @@ RSS; native callback heap counts are guarded zero. Resource append revisions can
 vary with callback partitions; public content revisions/audio/MIDI/timeline do not.
 See [wire/lifecycle details](WIRE.md#immutable-export-transport).
 
+## Upload resources and stage a nested program
+
+The default runner executes the same complete script through native direct/capacity-one
+actors, Node/Chromium bindings and actual separate-memory offline/live worklets:
+
+1. Record0/Play4/Stop12 supplies the existing independent stereo/MIDI reference.
+   Create a separate resource, upload64 bytes of stereo10–17/right×10, finish,
+   commit revision1 and retain a snapshot/cursor. Upload100–107/right×10 as
+   revision2 while that snapshot remains alive. Read every old byte again, release
+   the old snapshot, then read every new byte. Validate/release an audio role source.
+2. Upload a separate64-byte MIDI resource with note-on and a37-byte SysEx, then
+   check every packet/timestamp/byte. Raw byte uploads have no playback checkpoint
+   index: `RoleSnapshot` must return domain failure522, not a renderer fault or a
+   playable source. Release/remove both resources; local generations become2.
+3. Upload a precompiled `LTP1` header and15 ordered64-byte records, validate with
+   observable progress, activate graph/topology epochs1/0→1/1, and recycle the
+   displaced timing owner. All topology storage exists before rendering.
+4. Play an explicit outer program containing a regular inner program and the
+   recorded primitive. These composites have **no sync source and no fallback
+   clock**. Admit Play at6784, SeekIteration1 at6788 and Stop at6792 before their
+   deadlines. Real engine calls of1/4/4 frames produce eight playback samples and
+   the silent Stop sample; they do not simulate autonomous composite clocking.
+5. Require56 commands/82 staging results/six primitive results,137 mapped samples,
+   3990 MIDI bytes and8200 semantic bytes (seven boundaries/21 decisions/23 events),
+   6793 engine frames/56 callbacks, zero command/retained counts and256/16/16/0 recovery.
+
+```sh
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --staging-json
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --staging-two-thread-json
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
+  browser::native_staging::tests::prepared_resource_uploads_immutable_reads_and_nested_programs_match_bounded_actors -- --exact
+```
+
+Repeat with `--release` before `--bin`/the filter. `BrowserStagingClient` compiles
+only this fixture's template off-render; it is not an editor. Prepare it alongside
+`BrowserBridge.new_staging(session)` before measuring memory. One128-byte input,
+two256-byte transfer results, two local resource banks, two program banks, one
+command credit and one64-byte owning chunk buffer are fixed. See [LPS1/LPR1](WIRE.md#resource-and-program-staging-lps1--lpr1).
+
+Each accepted request is followed by an explicitly acknowledged engine step.
+The first53 calls have128 frames; the final three have1/4/4. The engine pauses
+between calls while Web Audio emits silence. A separate probe checks all512
+samples/channel of the four audible quanta, including every short-call silent
+tail. Offline additionally checks all14592 frames/channel. These are deliberate
+host-driver partitions/pauses, not a runtime interaction quantum or continuous
+live-edit/MessagePort-deadline evidence. Every envelope, immutable read, musical
+sample, MIDI packet and semantic byte agrees with native reference execution;
+only actual session nonces normalize. Native tables independently check all
+samples/MIDI and every semantic record, including inherited seeks/stops.
+
+Four additional native cases cover this complete script, owning Write/Read/Begin/
+Append cancellation and128 real program reuses in both actor modes, all record
+truncations/padding/full-width values, and transactional client/nonwrapping identities.
+Successful stop refuses15 while a resource/program/source remains retained.
+Fault abandonment is off-render and does not fabricate returned credits.
+
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
@@ -433,8 +490,9 @@ changes now transfer descriptors/commands/owning results through MessagePort and
 check downstream samples, acknowledged clocks and successful recovery. Native
 bounded two-thread graph payload/command/return transport also matches direct
 replay. Immutable snapshot/read/release now additionally verifies both retained
-capture revisions through native and actual worklet hosts. Program/resource upload
-and program staging,
-broader loop/composite/seek/replacement/exhaustion scenarios and live in-flight
-transfer stalls also remain to be added to the host.
+capture revisions through native and actual worklet hosts. Resource upload/immutable
+reads and prepared nested-program activation/iteration-seek/stop now also run through
+all hosts. Broader clocked composites, cascades, one-sample loops, prepared playable
+media replacement, capture exhaustion and live in-flight transfer stalls remain
+host work; raw MIDI uploads are not checkpointed playable sources.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

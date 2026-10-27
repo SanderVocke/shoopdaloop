@@ -8,6 +8,9 @@ enum Input {
     Graph([u8; 96]),
     Export([u8; 96]),
     ExportResponse,
+    Staging([u8; crate::staging_wire::REQUEST_BYTES]),
+    StagingResponse,
+    StagingCounts,
     Storage,
     Render(u32),
     PrimitiveResponse,
@@ -39,6 +42,8 @@ enum Output {
     Counts([u32; 3]),
     ExportResponse(Option<[u8; crate::export_wire::RESPONSE_BYTES]>),
     Storage([u32; 6]),
+    StagingResponse(Option<[u8; crate::staging_wire::RESPONSE_BYTES]>),
+    StagingCounts([u32; 2]),
     Stopped(Stopped),
 }
 
@@ -60,6 +65,18 @@ fn dispatch(bridge: &mut BrowserBridge, input: Input) -> Output {
         Input::Export(bytes) => {
             bridge.exports.as_mut().unwrap().request = bytes;
             Output::Result(bridge.ingest_export())
+        }
+        Input::Staging(bytes) => {
+            bridge.staging.as_mut().unwrap().request = bytes;
+            Output::Result(bridge.ingest_staging())
+        }
+        Input::StagingResponse => Output::StagingResponse(match bridge.poll_staging_response() {
+            0 => None,
+            1 => Some(bridge.staging.as_ref().unwrap().response),
+            code => panic!("staging response fault {code}"),
+        }),
+        Input::StagingCounts => {
+            Output::StagingCounts([bridge.outstanding(), bridge.retained_staging()])
         }
         Input::ExportResponse => Output::ExportResponse(match bridge.poll_export_response() {
             0 => None,
@@ -124,28 +141,31 @@ pub(in crate::browser) struct Host(Backend);
 
 impl Host {
     pub fn new(session: u64, threaded: bool) -> Self {
-        Self::prepare(session, threaded, false)
+        Self::prepare(session, threaded, 0)
     }
     pub fn new_exports(session: u64, threaded: bool) -> Self {
-        Self::prepare(session, threaded, true)
+        Self::prepare(session, threaded, 1)
     }
-    fn prepare(session: u64, threaded: bool, exports: bool) -> Self {
+    pub fn new_staging(session: u64, threaded: bool) -> Self {
+        Self::prepare(session, threaded, 2)
+    }
+    fn bridge(session: u64, mode: u8) -> BrowserBridge {
+        match mode {
+            0 => BrowserBridge::new_graphs(session, 0).unwrap(),
+            1 => BrowserBridge::new_exports(session).unwrap(),
+            2 => BrowserBridge::new_staging(session).unwrap(),
+            _ => unreachable!(),
+        }
+    }
+    fn prepare(session: u64, threaded: bool, mode: u8) -> Self {
         assert!(!allocation_guard::is_rendering());
         if !threaded {
-            return Self(Backend::Direct(Box::new(if exports {
-                BrowserBridge::new_exports(session).unwrap()
-            } else {
-                BrowserBridge::new_graphs(session, 0).unwrap()
-            })));
+            return Self(Backend::Direct(Box::new(Self::bridge(session, mode))));
         }
         let (input, inputs) = sync_channel(1);
         let (outputs, output) = sync_channel(1);
         let worker = std::thread::spawn(move || {
-            let mut bridge = if exports {
-                BrowserBridge::new_exports(session).unwrap()
-            } else {
-                BrowserBridge::new_graphs(session, 0).unwrap()
-            };
+            let mut bridge = Self::bridge(session, mode);
             while let Ok(input) = inputs.recv() {
                 let result = dispatch(&mut bridge, input);
                 assert!(!allocation_guard::is_rendering());
@@ -225,6 +245,24 @@ impl Host {
     pub fn export_response(&mut self) -> Option<[u8; crate::export_wire::RESPONSE_BYTES]> {
         match self.exchange(Input::ExportResponse) {
             Output::ExportResponse(bytes) => bytes,
+            _ => unreachable!(),
+        }
+    }
+    pub fn staging(&mut self, bytes: [u8; crate::staging_wire::REQUEST_BYTES]) -> u32 {
+        match self.exchange(Input::Staging(bytes)) {
+            Output::Result(code) => code,
+            _ => unreachable!(),
+        }
+    }
+    pub fn staging_response(&mut self) -> Option<[u8; crate::staging_wire::RESPONSE_BYTES]> {
+        match self.exchange(Input::StagingResponse) {
+            Output::StagingResponse(bytes) => bytes,
+            _ => unreachable!(),
+        }
+    }
+    pub fn staging_counts(&mut self) -> [u32; 2] {
+        match self.exchange(Input::StagingCounts) {
+            Output::StagingCounts(counts) => counts,
             _ => unreachable!(),
         }
     }

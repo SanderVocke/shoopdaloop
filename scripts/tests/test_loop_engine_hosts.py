@@ -8,7 +8,57 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, validate_semantic, verify_failure
+from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, compare_staging_worklets, validate_semantic, verify_failure
+
+
+class StagingTests(unittest.TestCase):
+    def fixture(self):
+        native=json.loads(gzip.decompress((Path(__file__).parent / "data/loop_staging_native.json.gz").read_bytes()))
+        clocks=list(range(128,6785,128))+[6785,6789,6793]
+        checkpoints=[{"frame":str(frame),"browser":str(128+i*256),"frames":count} for i,(frame,count) in enumerate(zip(clocks,[128]*53+[1,4,4]))]
+        segments=[{"browser":checkpoints[i]["browser"],"frame":str(frame),"frames":count} for i,frame,count in ((0,0,128),(53,6784,1),(54,6785,4),(55,6789,4))]
+        starts=[segment["browser"] for segment in segments]
+        accepted=[{"bytes":request,"result":0,"frame":str(frame)} for request,frame in zip(native["stagingRequests"],list(range(0,6785,128))+[6785,6789])]
+        bad=accepted[0]["bytes"].copy();bad[0]^=1
+        foreign=accepted[0]["bytes"].copy();foreign[8]^=128
+        chunks=[[0]*512 for _ in range(2)];offset=0
+        for segment,count in enumerate((128,1,4,4)):
+            for channel in range(2):chunks[channel][segment*128:segment*128+count]=[sample[channel] for sample in native["samples"][offset:offset+count]]
+            offset+=count
+        audio=[[0]*14592 for _ in range(2)]
+        for channel in range(2):
+            for segment,start in enumerate(map(int,starts)):audio[channel][start:start+128]=chunks[channel][segment*128:(segment+1)*128]
+        reports=[]
+        for mode in ("offline","live"):
+            reports.append(copy.deepcopy({"mode":mode,"session":str((1<<64)-1),"data":native,"checkpoints":checkpoints,"segments":segments,"starts":starts,"chunks":chunks,"ingress":[{"bytes":bad,"result":2,"frame":"0"},{"bytes":foreign,"result":9,"frame":"0"}]+accepted,
+                "ready":{"bytes":1835008,"shared":False,"marker":0},"controlBytes":1835008,"controlFinalBytes":1835008,"controlMarker":0x51a17,
+                "summary":{"bytes":1835008,"finalBytes":1835008,"heap":[0,0,0],"returnedBuffers":10,"returnedStagingBuffers":2,"retainedStaging":0,"journalOverflow":0,"recovered":[256,16,16,0],"frames":"6793","callbacks":"56","firstFrame":"128","marker":0},"offlineAudio":audio if mode=="offline" else None}))
+        return native,{"stagingReports":reports}
+
+    def test_complete_staging_content_owning_returns_and_both_contexts_are_required(self):
+        native,result=self.fixture();compare_staging_worklets(result,native)
+        for field in ("samples","stagingRequests","stagingResponses","responses","midiBytes","semanticBytes","recovered","counts"):
+            altered=copy.deepcopy(result);altered["stagingReports"][0]["data"][field].pop()
+            with self.assertRaises(RuntimeError,msg=field):compare_staging_worklets(altered,native)
+        for field,offset in (("stagingRequests",64),("stagingResponses",144),("responses",72)):
+            altered=copy.deepcopy(result);altered["stagingReports"][0]["data"][field][0][offset]^=1
+            with self.assertRaises(RuntimeError):compare_staging_worklets(altered,native)
+        altered=copy.deepcopy(result);altered["stagingReports"].pop()
+        with self.assertRaises(RuntimeError):compare_staging_worklets(altered,native)
+
+    def test_short_callback_clocks_audio_tails_memory_and_credit_evidence_are_mandatory(self):
+        native,result=self.fixture()
+        for field,value in (("returnedStagingBuffers",1),("retainedStaging",1),("heap",[0,1,0]),("finalBytes",1900544),("callbacks","55")):
+            altered=copy.deepcopy(result);altered["stagingReports"][0]["summary"][field]=value
+            with self.assertRaises(RuntimeError):compare_staging_worklets(altered,native)
+        for field,value in (("checkpoints",[]),("segments",[]),("starts",["0"]*4),("controlFinalBytes",1900544),("ingress",[]),("offlineAudio",None)):
+            altered=copy.deepcopy(result);altered["stagingReports"][0][field]=value
+            with self.assertRaises(RuntimeError):compare_staging_worklets(altered,native)
+        for field,index in (("chunks",129),("offlineAudio",13697)):
+            altered=copy.deepcopy(result);altered["stagingReports"][0][field][0][index]=1
+            with self.assertRaises(RuntimeError):compare_staging_worklets(altered,native)
+        altered=copy.deepcopy(result);altered["stagingReports"][0]["checkpoints"][1]["browser"]="128"
+        with self.assertRaises(RuntimeError):compare_staging_worklets(altered,native)
 
 
 class ImmutableExportTests(unittest.TestCase):

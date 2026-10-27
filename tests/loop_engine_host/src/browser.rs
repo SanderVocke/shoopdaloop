@@ -13,6 +13,8 @@ use wasm_bindgen::prelude::*;
 pub(crate) mod native_export;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod native_graph;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod native_staging;
 
 pub const HEAP_FAILURE: u32 = 0xffff_0001;
 const JOURNAL_BYTES: usize = 16_384;
@@ -135,6 +137,11 @@ pub struct BrowserBridge {
     faulted: bool,
     recovered: [u32; 4],
     exports: Option<Box<ExportBuffers>>,
+    staging: Option<Box<StagingBuffers>>,
+}
+struct StagingBuffers {
+    request: [u8; crate::staging_wire::REQUEST_BYTES],
+    response: [u8; crate::staging_wire::RESPONSE_BYTES],
 }
 struct ExportBuffers {
     request: [u8; crate::export_wire::REQUEST_BYTES],
@@ -149,6 +156,63 @@ impl BrowserBridge {
             Bridge::with_fault(session, fault).map_err(protocol_error)?,
             false,
         ))
+    }
+    pub fn new_staging(session: u64) -> Result<Self, u32> {
+        let mut host = Self::from_core(
+            Bridge::with_staging(session).map_err(protocol_error)?,
+            false,
+        );
+        host.staging = Some(Box::new(StagingBuffers {
+            request: [0; crate::staging_wire::REQUEST_BYTES],
+            response: [0; crate::staging_wire::RESPONSE_BYTES],
+        }));
+        Ok(host)
+    }
+    pub fn staging_request_ptr(&mut self) -> *mut u8 {
+        self.staging
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |b| b.request.as_mut_ptr())
+    }
+    pub fn staging_response_ptr(&mut self) -> *mut u8 {
+        self.staging
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |b| b.response.as_mut_ptr())
+    }
+    pub fn retained_staging(&self) -> u32 {
+        self.core
+            .as_ref()
+            .map_or(0, |core| core.retained_staging() as u32)
+    }
+    pub fn ingest_staging(&mut self) -> u32 {
+        if self.faulted {
+            return 11;
+        }
+        let Some(buffers) = self.staging.as_ref() else {
+            return 11;
+        };
+        self.core
+            .as_mut()
+            .ok_or(wire::Error::State)
+            .and_then(|core| core.staging_ingest(&buffers.request))
+            .map_or_else(protocol_error, |_| 0)
+    }
+    pub fn poll_staging_response(&mut self) -> u32 {
+        let Some(buffers) = self.staging.as_mut() else {
+            return 0x8000_000b;
+        };
+        match self
+            .core
+            .as_mut()
+            .ok_or(wire::Error::State)
+            .and_then(Bridge::next_staging_response)
+        {
+            Ok(Some(bytes)) => {
+                buffers.response = bytes;
+                1
+            }
+            Ok(None) => 0,
+            Err(error) => 0x8000_0000 | protocol_error(error),
+        }
     }
     pub fn new_exports(session: u64) -> Result<Self, u32> {
         let mut host = Self::from_core(
@@ -255,6 +319,7 @@ impl BrowserBridge {
             faulted: false,
             recovered: [0; 4],
             exports: None,
+            staging: None,
         }
     }
 }
@@ -433,7 +498,10 @@ impl BrowserBridge {
         let Some(core) = self.core.as_ref() else {
             return 10;
         };
-        if (core.outstanding() != 0 || core.retained_graphs() != 0 || core.retained_exports() != 0)
+        if (core.outstanding() != 0
+            || core.retained_graphs() != 0
+            || core.retained_exports() != 0
+            || core.retained_staging() != 0)
             && !self.faulted
         {
             return 15;
