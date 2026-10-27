@@ -1,0 +1,17 @@
+{
+  "pending_chapters": [5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+  "examples": [
+    {"name": "gain_graph", "args": []},
+    {"name": "planned_gain", "args": []},
+    {"name": "bounded_runtime", "args": ["--iterations", "1024"]},
+    {"name": "first_graph", "args": []},
+    {"name": "prepared_processor", "args": []},
+    {"name": "callback_adapter", "args": []}
+  ],
+  "chapter_examples": {
+    "2": ["first_graph"],
+    "3": ["first_graph", "prepared_processor"],
+    "4": ["callback_adapter"],
+    "7": ["gain_graph"]
+  }
+}

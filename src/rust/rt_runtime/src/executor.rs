@@ -443,7 +443,8 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
         self.epoch
     }
     /// Consume a stopped runtime off-render and retain its resource store for
-    /// explicit owner/lease cleanup or reuse. Other runtime owners are destroyed.
+    /// explicit owner/lease cleanup or reuse. Other runtime owners, including the
+    /// planner, are destroyed; plain resource handles hidden there are not released.
     pub fn into_resources(self) -> resource::ResourceStore {
         self.resources
     }

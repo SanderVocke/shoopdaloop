@@ -6,9 +6,9 @@ on the callback. It is portable native/Wasm code with no browser dependency.
 
 **Ready means timing metadata is validated.** It does not certify runtime graph
 bindings, media/resource compatibility, current activation epochs or historical
-loop-generation watermarks. The facade adds a restricted
-[fixed-graph activation path](topology-activation.md) with its own identity and
-compatibility checks. Do not bypass those checks with unrestricted live mutation.
+loop-generation watermarks. The facade adds distinct
+[publication paths](topology-activation.md) with their own identity, physical-role,
+media and epoch checks. Do not bypass those checks with unrestricted live mutation.
 
 ## Preparation and lifecycle
 
@@ -156,9 +156,10 @@ typed records into prepared vectors. It is not a zero-copy path. Its budget coun
 records, not actual machine instructions or all transport copies. Preparation,
 encoding, ingress, validation, extraction and recycling have different ownership
 and accounting responsibilities. The facade shares allowances across an entire
-callback; the future actual-worklet adapter must preserve those distinctions.
+callback. Any external host must preserve those distinctions; this codec is not
+an implementation of an independent loop worklet.
 
-## Evidence and remaining integration
+## Evidence and integration boundary
 
 Guarded tests include an independent exact byte golden, chunk/budget/scope errors,
 malformed semantic records, full storage reuse, 512 sync/action graphs against
@@ -167,10 +168,12 @@ transitive reachability, 128 nested regular/explicit images against raw entries,
 progress while another candidate is incomplete/failed. Scope/generation exhaustion
 and production-type borrow/move refusals are also checked.
 
-The subsequent facade integration adds reliable candidate-operation receipts,
-scoped cancellation, retained rejection/retirement, callback-shared work and
-fixed-graph epoch-checked activation. It preserves the existing logical identities,
-media-role bindings and signal graph. General graph/domain/role-generation
-transactions and next-iteration-zero running program changes remain Stage 6 work;
-the standalone resolver still safely refuses changed running programs. Actual
-loop AudioWorklet acceptance remains Stage 7 work.
+The facade adds reliable receipts, scoped cancellation, retained owners and
+callback-shared work. Its timing-only, fixed-role graph, stopped-owner configuration
+and pending program/graph operations are implemented, with different compatibility
+and cut rules. Immediate standalone replace_topology still refuses changed running
+programs; stage_program is the separate owning zero/stopped-cut transaction.
+The [configuration example](../examples/configuration_cut.rs) shows timing ingestion
+alongside graph/source/role preparation and independent recycling. Existing test
+reports retain their historical scope; no independent loop AudioWorklet or newer
+loop benchmark evidence is supplied in this snapshot.

@@ -17,7 +17,7 @@ wraps, seeks, records a distinct revision, selects retained original content,
 stops, reads an immutable export including initial held-note state, releases it
 and recovers the resource pools. Playback → mixing/gain → capture are distinct
 signal nodes, even when playback and capture belong to the same logical loop.
-The example is not a device or AudioWorklet demonstration.
+Its callbacks have no allocator guard of their own; guarded integration tests provide separate allocation evidence. It is not a device or AudioWorklet demonstration. The [configuration example](../examples/configuration_cut.rs) separately exercises guarded stopped-owner/media/route publication and retained exports.
 
 ## Preparation and ownership
 
@@ -41,10 +41,7 @@ Zero-channel/no-MIDI primitives are valid timing-only loops. Composites do not
 have media bindings. Effects implement `Processor<LoopPlanner>` and must declare
 no planner access; they receive ordinary signal ports and may implement
 `set_parameter`. Node identity, port and signal-cycle validation still applies.
-No unrestricted live graph replacement is exposed. The opt-in
-[fixed-graph topology activation path](topology-activation.md) supports prepared
-timing changes with unchanged logical IDs/kinds and media-role bindings. General
-graph/role replacement and changed-running iteration-zero activation remain work.
+The opt-in [publication paths](topology-activation.md) separately support timing/program changes, fixed-role live routing, stopped-owner configuration and paired running-program/graph changes. They operate over prepared physical templates, not unrestricted processor construction or port resizing. Configuration staging also permits unassigned templates whose pairs are absent from the initial graph. Prepare timing/source/role banks off-render, and opt into generic graph staging separately before the first nonempty callback.
 
 Provision two capture groups per media-bearing primitive, with separate resource
 identities for their audio and MIDI members. The facade creates these resources
@@ -72,7 +69,7 @@ owner, unique logical revision per owner, channels, common duration, exact scope
 snapshot/index metadata and indexed MIDI. It scans imported MIDI packet headers
 off-render to check `packet_bytes`; no content-history scan occurs during a seek
 or freeze. `packet_bytes` must also cover the configured ordinary capture byte
-bound. Do not release transferred leases independently.
+bound. Do not release transferred leases independently. The underlying imported resource identities remain caller-owned; stopped cleanup releases leases but does not remove those resources.
 
 Revision zero supplies initial content and must match the topology's initial
 length. Missing initial content is synthesized only for an empty media loop or
@@ -89,7 +86,8 @@ keep anything alive. IDs are instance-scoped and generation checked.
 
 ## Commands, receipts and cancellation
 
-`Controller::submit(lane, at, operation)` uses the prepared generic transport.
+`Controller::submit(lane, at, operation)` uses preallocated generic submission flags, unlike allocating `rt_runtime::executor::Control::submit`. Preparing flags does not prepare payloads or make arbitrary owning destruction safe. Build payload Boxes off-render and dispose returned payloads/retired owners there. Full admission and Busy retained ticket/completion flags are separate finite limits; unread terminal results have another limit.
+
 Submission returns a ticket or returns the unchanged owning command on refusal.
 Drain both channels:
 
@@ -99,7 +97,18 @@ Drain both channels:
    generic execution result and `operation_result`: `Reply::Failed` or a failed
    `Reply::Transition` is not success merely because delivery succeeded.
 
-`Operation::Transition` accepts resolver operations except raw `Replace`.
+`Operation::Transition` accepts resolver operations except raw `Replace` and `Program` tags. `at` is supplied separately: Timing::At uses that effective boundary; AfterTicks { source, skip } waits for actual source pulses at/after it, skips that many and applies on the next. An idle valid source neither times out nor invents pulses.
+
+| Transition | Musical effect |
+|---|---|
+| Play { position, retrigger } | Start at a position; already-playing non-retriggering Play is idempotent. |
+| Seek { position, retrigger } | Reposition an already-playing primitive; retrigger also resets its cycle count/supplies a start edge. |
+| Record { monitor_previous } | Start a new take; optional monitoring reads retained previous content, not the mutable new prefix. Repeated Record preflights the replacement before ending the old take. |
+| Stop | Stop playback/freeze the completed capture prefix at the settled boundary; connected input tracking continues. |
+| PlayIteration / SeekIteration | Start/reposition a composite snapshot without replaying earlier iterations. |
+
+Play requires nonempty content and a position below its duration; Seek also requires Playing mode. Ordinary refusal is a domain outcome, not callback replay permission.
+
 `Operation::Select` pins checked media and derives replacement length/revision
 from its immutable metadata. A pending selection retains its pin even if its
 resident reference is retired. Winning decisions select that media; losing,
@@ -107,20 +116,15 @@ failed or cancelled requests do not change playback. Pins are released after the
 terminal interval finishes. Selecting while recording follows the resolver's
 replacement refusal; it does not freeze the current take implicitly.
 
-Requested, delivered and terminal frames remain distinct. Late delivery retains
-the original requested frame; a countdown may finish much later without being
-classified as transport lateness. Runtime sequence identities supply ordering.
+Four frame identities remain distinct: requested (caller intent), effective (scheduler-admitted frame), delivered (actual operation delivery, optional on failure/cancellation) and terminal (`Execution::actual_frame`). Late delivery retains the original requested frame; `late_by()` measures delivery lateness, not Pending wait. For example requested/effective/delivered/terminal can be 1/10/10/20: delivery is nine frames late, not nineteen. Runtime sequence identities supply ordering.
 Resolver completions are forwarded after boundary commit, then recycled only
 after finish, when immutable decisions are no longer in use.
 
 `Operation::Cancel { sequence }` distinguishes a queued runtime operation from a
 delivered pending resolver request. The cancelled operation receives its own
-terminal result; cancellation has a separate acknowledgement. Ticket cancellation
-is the generic transport's pre-delivery mechanism, not a substitute for cancelling
-a delivered musical request.
+terminal result; cancellation has a separate acknowledgement. Ticket cancellation is observed before the command's original dequeue, not at arbitrary times before scheduled delivery. Cancelling an already dequeued ticket cannot cancel its typed work; use Operation::Cancel for queued or delivered work. If recovery parks a normal ingress head, its original cancellation observation/progress is preserved rather than sampled again.
 
-Only cancellation and immediate `Transition::Stop` are recovery-safe. Submit them
-on `Lane::Recovery` at/before the current frame. The independent generic recovery
+The exact recovery-safe set is `Cancel`, `TopologyCancel`, `RoleCancel`, `RoleSourceRelease`, and `Transition { timing: Timing::At, transition: Transition::Stop, .. }`. Submit recovery at/before the current frame, never as a future request. State/export/release, source validation and every activation use normal admission. Recovery must terminate at its delivery frame before any positive interval, not just by callback end. The independent generic recovery
 slot and extra domain slot permit recovery with normal requests/results saturated.
 Recovery is not an unlimited queue: its own reserved result must be recycled before
 reuse. Stalled results prevent further admission, not admitted automatic wraps.
@@ -131,7 +135,21 @@ Controller disconnection alone does not invent a musical Stop.
 a new musical clock. Smoothing follows the resolver's discontinuity flag, not
 journal events, host cuts, or a gain change by itself.
 
+## Nested control and identity routing
+
+Run [nested_timing](../examples/nested_timing.rs) in debug/release for a small public-API clock/outer/inner/child example. It uses timing-only roles, not audio or MIDI capture: one-frame source pulses drive nesting; seek starts recording at 3, stop freezes a two-frame logical take at 5, seek replays at 6, and direct child Stop defeats inherited Record at 8 without a delayed start at 9. A delivered countdown is cancelled at 10. Whole/single/irregular calls, journal capacity zero, a zero cut and repeated cleanup are checked under heap guards. The larger mixed-media reference remains in `tests/interloop.rs` and its nested support scenario; sufficient-capacity and exhaustion evidence are distinct.
+
+For the separate sufficient-capacity mixed-media scenario, see [`nested_lifecycle.rs`](../tests/support/nested_lifecycle.rs): D plays at 2, records at 3, freezes at 5 and replays at 6 through the same mix. Recording output is 1; replay output is 1.5. Its retained revision-one prefix/final export still has the initial held key 63/velocity 70 and original note-off at offset zero after revision two exists. Read all initial-state channels/reset marker and bytes from that export, not live input state. The 256-page sufficient-capacity scenario does not replace the older 137-page exhaustion evidence.
+
+Composite entries may run nested composites. Regular programs repeat; explicit-mode programs make one pass. Nominal duration describes compilation/seek positions, not a clock generator: pure-sync pulses advance iteration, and a stopped source can still relay an upstream pulse. Unsynchronized programs can remain pending indefinitely without blocking unrelated music.
+
+PlayIteration/SeekIteration choose an authoritative iteration without replaying preceding events. Non-retriggering seek repositions continuing playback; newly started playback/recording has its normal start edge. Direct child controls retain precedence over inherited program actions. A direct Stop defeating a nested Record does not queue that losing Record for the next frame. Use immutable resolver decisions for smoothing, restoration and capture; journal loss cannot change these rules.
+
+LoopId identifies a logical slot/generation, not a host endpoint. Standalone RequestId is validated by its owning resolver's slot/generation state, not a global routing registry. Route each to the correct resolver/engine; reconstructing parts adds no authority. Facade cancellation instead uses the originating runtime Sequence. Do not mix standalone resolver mutation with a running facade or treat a physical NodeId as a musical LoopId. Independent Wasm instances require serialized plain data and local endpoint routing: a Rust pointer, Vec, Box or trait-object address is not a transport protocol.
+
 ## Boundary transaction and render contract
+
+Configuration source banks validate indexed MIDI packet headers incrementally; audio sources are immediately Ready. Successful RoleAppend consumes its source IDs, while rejection transfers none. With `preserve_input`, an assigned physical capture row retains its MIDI projection. Otherwise the new projection resets before first reservation/consumer execution and the reset flag clears after finish, not every subinterval. Initial state remains strictly before F. See [source/role preparation](topology-activation.md#3-prepare-a-logical-owner-batch-when-needed) for ownership and currently free metadata requirements.
 
 At a nonempty boundary F:
 
@@ -179,8 +197,7 @@ No lossless delivery under insufficient event/byte storage is promised.
 
 `Operation::State` and `Operation::Export` are deferred to **post-settlement,
 pre-render F**, even if their admission preceded a transition due at F. `Cut`
-combines frame, resolver state, playback/latest identities, gain, capture failure
-and playback MIDI-overflow diagnostics. Borrowed media IDs in a state reply do
+combines frame, graph/topology epochs, resolver state, playback/latest identities, gain, capture failure and playback MIDI-overflow diagnostics. It is a pre-render cut; the public Cut has no AfterInterval field. Successful same-frame paired publication reports the new epochs, not stale context-entry identities. Borrowed media IDs in a state reply do
 not acquire ownership. `capture_failure` retains the last preflight refusal until
 a successful new activation; incomplete state belongs to the actual captured take.
 
@@ -237,7 +254,4 @@ The guarded integration tests compare independent complete samples, MIDI packets
 semantic journals, initial states and exported content across whole/single/irregular
 partitions and declaration orders, including journal saturation, stalled results,
 refusal/recovery and explicit full pool recovery. Their package-Wasm execution is
-not an actual loop AudioWorklet. [Fixed-graph topology/program activation](topology-activation.md)
-now has guarded integrated coverage, including running zero-cut changes. General
-graph/role-generation transactions, independent loop hosts, performance and final
-CI/review acceptance remain separate plan milestones.
+not an actual loop AudioWorklet. Distinct [publication paths](topology-activation.md) have guarded regression coverage including prepared source/role banks, running zero cuts, stale/reused graph ownership and non-rollback cleanup. Historical reports retain their original source/platform scope. No independent loop host or loop benchmark is supplied in this snapshot; offline examples, package-Wasm tests and the generic NoPlanner fixture are not substitutes for independent loop-host/newer performance evidence or hard-deadline certification.

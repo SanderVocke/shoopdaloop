@@ -1,4 +1,8 @@
 //! Prepared loop planner/consumers and a restricted runtime/control facade.
+//!
+//! One resolver settles musical state; separate physical roles execute borrowed
+//! decisions. Prepared timing/source/role banks and graph slots have distinct
+//! ownership, cut and recycle contracts. Publication is not general rollback.
 use crate::{
     audio, media, midi, Decision, LoopId, LoopKind, Mode, PreparedTopology, RequestId, Resolver,
     State, Timing, Transition,
@@ -92,6 +96,9 @@ pub enum Selection {
     Latest,
     Recording,
 }
+/// Typed musical/control work. Admission, runtime delivery and domain outcome are
+/// distinct. Recovery permits Cancel, TopologyCancel, RoleCancel, RoleSourceRelease
+/// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
     RoleSnapshot {
@@ -124,6 +131,8 @@ pub enum Operation {
     RoleRecycle {
         id: RoleStageId,
     },
+    /// Publish stopped logical-owner edits, initial media, timing and routes.
+    /// Queuing Stop for the same frame does not satisfy the already-stopped check.
     ConfigurationActivate {
         roles: RoleStageId,
         topology: StageId,
@@ -134,11 +143,13 @@ pub enum Operation {
     GraphStatus {
         id: GraphStageId,
     },
+    /// Immediate prepared routing change with fixed logical/physical roles.
     GraphActivate {
         id: GraphStageId,
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    /// Immediate timing/routing pair with fixed owners; changed programs are stopped.
     TopologyGraphActivate {
         id: StageId,
         graph: GraphStageId,
@@ -175,6 +186,8 @@ pub enum Operation {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    /// Own one program transaction until stopped/real zero, then publish its routes.
+    /// The referenced Ready graph is not locked and must be revalidated at the cut.
     ProgramGraphActivate {
         id: StageId,
         target: LoopId,
@@ -222,6 +235,8 @@ pub enum Operation {
         sequence: Sequence,
     },
 }
+/// Settled pre-render state at one frame, including actual publication epochs.
+/// Media identities here are borrowed; use a successful export for independent ownership.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cut {
     pub frame: Frame,
@@ -446,6 +461,7 @@ pub struct Stopped {
     resources: ResourceStore,
 }
 impl<P: Processor<LoopPlanner>> Controller<P> {
+    /// Startup checked identities, not a live settled-state query or owning leases.
     pub fn media(&self) -> &[PreparedMedia] {
         &self.media
     }
@@ -477,6 +493,8 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
         self.control
             .submit_prepared(Lane::Normal, Command::ReleaseGraph { id })
     }
+    /// Submit with prepared cancellation flags. Refusal returns the owning command;
+    /// admission completion is not the separate terminal domain execution result.
     pub fn submit(
         &mut self,
         lane: Lane,
@@ -485,6 +503,8 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
     ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
         self.submit_payload(lane, at, operation, Box::new([]))
     }
+    /// Payload construction and returned-owner destruction remain off-render.
+    /// Only topology header/chunk operations accept nonempty payloads.
     pub fn submit_payload(
         &mut self,
         lane: Lane,
@@ -504,6 +524,8 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
             },
         )
     }
+    /// Read through an existing lease into an owning return buffer. Retain its
+    /// originating export/lease until all reads complete and inspect returned EOF/cursor.
     pub fn read(
         &mut self,
         cursor: Cursor,
@@ -945,6 +967,8 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
     pub fn prepare_graph_staging(&mut self, candidates: usize) -> Result<(), Error> {
         self.runtime.prepare_graph_staging(candidates)
     }
+    /// Process one contiguous host block. Zero frames are inert. Errors may follow
+    /// irreversible domain/graph publication or time advancement; never replay a callback.
     pub fn process(&mut self, audio: AudioBlock<'_, '_>, midi: MidiBlock<'_>) -> Result<(), Error> {
         self.runtime.process(audio, midi)
     }
@@ -965,6 +989,8 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
     ) -> Result<usize, Error> {
         self.runtime.drain_midi_recovery(port, sink, frames)
     }
+    /// Consume off-render after callbacks stop, preserving the cleanup ledger/store.
+    /// Does not settle future work, send device cleanup or undo published state.
     pub fn into_stopped(self) -> Stopped {
         let (planner, resources) = self.runtime.into_planner_and_resources();
         Stopped { planner, resources }
@@ -983,6 +1009,9 @@ impl Stopped {
     pub fn resources(&mut self) -> &mut ResourceStore {
         &mut self.resources
     }
+    /// Permanently quiesce and explicitly release domain owners; repeatable after
+    /// success or partial cleanup. Does not advance/finish unrendered time or resume
+    /// execution. Imported resource identities remain the caller's responsibility.
     pub fn cleanup(&mut self) -> Result<(), Error> {
         self.planner.cleanup(&mut self.resources)
     }

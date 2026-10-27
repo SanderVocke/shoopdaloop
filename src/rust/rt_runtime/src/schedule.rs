@@ -90,13 +90,17 @@ pub struct Execution<O = (), R = ()> {
     pub lane: Lane,
     pub action: Action<O>,
     pub requested_frame: Frame,
+    /// Actual action delivery, absent when work terminates before delivery.
     pub delivered_frame: Option<Frame>,
+    /// Terminal receipt frame, which may be later than delivery for Pending work.
     pub actual_frame: Frame,
     /// Runtime delivery/receipt error. A domain outcome is carried separately.
     pub result: Result<(), Error>,
     pub operation_result: Option<R>,
 }
 impl<O, R> Execution<O, R> {
+    /// Delivery lateness relative to the request, not time spent Pending.
+    /// Returns zero when no delivery occurred.
     pub fn late_by(&self) -> u64 {
         self.delivered_frame
             .map_or(0, |frame| frame.0.saturating_sub(self.requested_frame.0))
@@ -187,6 +191,9 @@ impl<O: Copy, R: Copy> ReceiptWriter<'_, O, R> {
             pending_result: self.pending_result,
         }
     }
+    /// Resolve one retained token at this writer's frame. A still-retained terminal
+    /// token gives InvalidState; stale/reused identities give InvalidId. External
+    /// result consumption recycles its credit at a later callback boundary.
     pub fn complete(&mut self, token: ReceiptToken, result: Result<R, Error>) -> Result<(), Error> {
         self.resolve(token, result.map(Some), false)
     }

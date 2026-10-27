@@ -1,186 +1,146 @@
-# Fixed-graph topology activation through the facade
+# Publishing routing, programs, and logical owners
 
-`Engine::prepare_with_staging` adds prepared timing-topology candidates to the
-coordinated facade. Both immediate timing-topology replacement and owning
-single-program zero/stopped-cut activation are implemented **fixed-graph paths**.
-Neither replaces the signal graph, physical roles or logical generations.
+<!-- rust-source: ../examples/configuration_cut.rs -->
 
-## Preparation
+Choose the transaction that matches the change. Timing topology, signal routing, logical owner generations and physical processor templates are different things. The facade can coordinate prepared changes; it cannot construct arbitrary processors or resize their ports in a callback.
 
-The method takes the ordinary preparation arguments, followed by
-`TopologySettings { candidates, records_per_callback, validation_steps_per_callback }`
-and an optional prepared observer. All three settings are positive when enabled;
-all zero disables staging. Existing constructors keep it disabled.
+## Run a stopped-owner configuration cut
 
-Preparation allocates candidate receiver banks and validation scratch, and copies
-the initial topology into a maximum-capacity bank using the canonical codec.
-This initial conversion, including complete validation and compiler-owner disposal,
-is off-render. Each later activation exchanges whole prepared owners. Retained
-metadata/scratch sizing is checked before allocation; allocator overhead and
-transient preparation/compiler memory are separate. Explicit black-box writes
-pre-touch initialized receiver metadata and scratch, including vectors subsequently
-cleared for reuse. This is not a guarantee of pinned pages or callback deadlines.
+The [configuration example](../examples/configuration_cut.rs) records `[0.5,0.25]`, retains an old export, then prepares a newer logical generation with that content and a new capture route through a half-gain effect:
 
-Provision the generic runtime's transfer allowance as well: its scheduler payload
-stride is capped by `budgets.transfer_bytes`. A facade record allowance does not
-enlarge that runtime allowance. Headers are 64 bytes; chunks contain complete
-64-byte records. Source compilation and payload allocation belong off-render (or
-in an independently prepared host transport), not in an AudioWorklet message
-handler as an allocation workaround.
+```sh
+cargo run --locked -p shoop_loop_engine --example configuration_cut
+cargo run --locked -p shoop_loop_engine --release --example configuration_cut
+```
 
-## Operations and ownership
+Activation refuses while the old owner plays. It also refuses when Stop was merely submitted for the same frame. After Stop settles, one cut publishes owner/media/timing/routing together; a new recording contains `[1,2]` from inputs `[2,4]`, while old and new-initial exports still contain `[0.5,0.25]`.
 
-Use `Controller::submit_payload` for header/chunk bytes and ordinary `submit` for
-payload-free operations. Payload ownership follows the generic runtime's owning
-completion path; admission is distinct from the typed execution result.
+Whole, single-frame and split music callbacks agree. A zero call at publication changes nothing. Every callback is heap-guarded; preparation, payload construction, owning-result disposal and final destruction stay off-render. This is mono offline evidence, not a MIDI, nested-program or independent-host demonstration.
 
-| Operation | Meaning |
-| --- | --- |
-| `TopologyBegin { slot }` | Consume one LTP1 header; return scoped StageId and Receiving/Validating status. |
-| `TopologyAppend { id, first_record }` | Transactionally accept an ordered complete-record chunk. |
-| `TopologyValidate { id }` | Spend remaining callback validation steps; return Progress, without waiting for more work or data. |
-| `TopologyStatus { id }` | Return current candidate status. |
-| `TopologyCancel { id }` | Cancel unpublished data; return Idle, or Taken while a cancelled pending program owner awaits interval finish. Payload-free and recovery-safe. |
-| `TopologyActivate { id, graph_epoch, topology_epoch }` | Check and activate a Ready candidate at delivery; changed programs must already be stopped. |
-| `ProgramActivate { id, target, graph_epoch, topology_epoch }` | Retain a Ready owner and reliable request until the selected composite reaches an eligible zero/stopped cut. |
-| `TopologyRecycle { id }` | Recycle the displaced owner held after successful activation; return Idle. |
+## Select the publication path
 
-Unexpected payloads on other operations are refused. Stale/foreign stage IDs
-cannot address a later attempt. Syntax/chunk errors do not consume a partial
-chunk; semantic failures remain unreadable. Failed activation retains the exact
-Ready candidate for inspection, retry or cancellation.
+| Operation | Changes | Actual cut/preconditions |
+|---|---|---|
+| `TopologyActivate` | Timing topology only; exact logical IDs/kinds, current roles/media/graph retained | Immediate delivery; changed programs already stopped. |
+| `ProgramActivate` | One selected program and nominal length; fixed graph/roles/IDs | Pending owning transaction at stopped or actual zero entry. |
+| `GraphActivate` | Signal routes; fixed primitive roles/decision bindings | Immediate delivery; preserves domain/media state, including continuing recording. |
+| `TopologyGraphActivate` | Timing topology and routes; fixed logical IDs/roles | Immediate delivery; changed programs already stopped. |
+| `ConfigurationActivate` | Stopped logical owner edits, initial media, matching topology and routes | Edited old owners/changed programs already stopped at delivery; clean capture rows/Idle groups. |
+| `ProgramGraphActivate` | One selected program/nominal length and routes; fixed logical IDs/roles | Pending owning transaction at stopped or actual zero entry; graph rechecked at the cut. |
 
-After successful activation the candidate slot reports Taken and owns the
-**displaced** topology in prepared retirement storage. It cannot begin a new image
-until explicit recycling returns that storage to the receiver. Cancellation does
-not undo an active configuration and is refused in this state. Clearing/recycling
-Copy metadata does not destroy its allocations; final destruction is off-render.
-Stopped cleanup recovers all receiving, validating, ready, failed and retired
-candidate states, including after controller loss, and is idempotent.
+All require empty payloads and normal-lane admission. Topology header/chunk operations are the separate payload-bearing preparation path. Scheduled admission, runtime execution and typed domain success remain separate results.
 
-## Work and receipt separation
+## 1. Prepare independent banks and physical templates
 
-Record and validation allowances are shared across all candidate slots and every
-operation/internal interval in one host callback. The generic runtime supplies
-`OperationContext::callback_start` and `PlanContext::callback_start`; the facade
-resets these allowances only when that enclosing callback changes. A failed
-append/validation conservatively consumes the offered allowance. Begin/reset,
-identity lookup and ownership lifecycle work are separate finite prepared-size
-costs; the step counter is not a universal instruction budget.
+`Engine::prepare_with_staging` adds timing receiver banks through `TopologySettings { candidates, records_per_callback, validation_steps_per_callback }`, followed by an optional observer. All zero disables them; enabled settings are positive. Existing constructors leave them disabled.
 
-Validation is explicit external preparation. Call again in a later callback if
-more work remains; it never waits inside a call. Once music is admitted, neither
-validation progress, unread metadata results nor unrecycled retired banks gate
-its recurring events. Recovery cancellation has an independent runtime receipt
-slot and does not need a normal domain-request slot.
+For logical owner edits, use `prepare_with_configuration_staging`, passing the same ordinary arguments, TopologySettings, RoleSettings and optional observer. RoleSettings reserves candidate banks/source slots. All zero disables it; source count/packet allowance must both be zero or both positive, and sources require candidate banks. Timing-only edits can use zero sources.
 
-## Immediate topology activation
+Supply physical Binding templates off-render. Each active primitive needs its own playback/capture pair. Additional unassigned role templates may occupy unused logical slots but stay outside the initial graph. IDs, signatures, channel/MIDI shapes, smoothing and group storage remain prepared/fixed. Effects are also prepared and included in the initial graph, even if initially unrouted. Changing a logical LoopId generation does not replace physical NodeId generations.
 
-`TopologyActivate` happens during operation delivery, **before musical preview and
-sample/event execution at that frame**. It checks the runtime-provided graph
-epoch, expected resolver topology epoch, and exact ordered logical IDs and kinds.
-The active signal graph, physical consumers, resource claims, media selections
-and logical generations are not changed by this API. Existing primitive content
-and capture state remain authoritative; a node's creation-length metadata does
-not replace recorded/imported content.
+Enable graph-owner slots separately with `engine.prepare_graph_staging(count)`, once before the first nonempty callback. Timing staging does not implicitly enable them. Preparation checks retained metadata/scratch/storage products; allocator overhead, compiler temporaries, payloads and other owners are separate costs, not an exact RSS or deadline bound.
 
-The resolver checks program compatibility before publishing anything. A changed
-program must already be stopped; unchanged running programs and continuing
-primitive capture/playback may remain active. A Stop merely queued for that same
-frame has not yet settled and does not satisfy this precondition. Conversely,
-same-frame musical Play after a successful configuration operation uses the new
-program during settlement, even if its request was delivered earlier in that
-frame. Post-settlement State/Export queries expose the resulting configuration.
+## 2. Make timing and graph candidates Ready
 
-Pending countdowns are revalidated against the new sync references; invalidated
-requests receive their own reliable terminal failure. Rejections leave the active
-configuration unchanged. Successful activation retains the displaced owner before
-reporting success; recycling is a separate operation and cannot retroactively
-turn that activation into an ordinary refusal.
+Ingest a compiled timing candidate through `TopologyBegin`, ordered complete-record `TopologyAppend` and incremental `TopologyValidate`. The [staging guide](topology-staging.md) defines LTP1; it is timing metadata, not a complete controller/wire protocol. Each header/record is 64 bytes. Generic payload stride/transfer allowance must fit the chosen chunk too.
 
-`Cut` includes `graph_epoch` and `topology_epoch` alongside its frame and state.
-These identify the configuration of that coherent cut, not a newer label for a
-previously retained media snapshot. Imported/recorded media and exports retain
-their existing immutable revisions, content and capture cuts.
+Record and validation allowances are shared across all banks/operations/internal intervals of one callback. A failed call conservatively consumes the offered allowance. Continue preparation in later callbacks; do not wait/poll a producer or renew the budget per interval. Readiness does not block already admitted music.
 
-## Owning single-program activation
+Compile signal metadata off-render using the retained control-side catalog:
 
-`ProgramActivate` moves a validated full-capacity receiver owner into the resolver's
-[owning transaction](program-changes.md). Only the selected composite's program and
-compiled nominal length may change. IDs/kinds, sync/triggers, other programs and
-length metadata must match; existing media, graph, consumers and capture claims
-stay authoritative. Rejection before admission restores the exact Ready owner.
-The runtime graph epoch is checked at delivery and rechecked during planning; the
-resolver checks the expected topology epoch. The restricted controller does not
-currently expose a way to change the signal graph after preparation.
+```rust
+    let candidate = control.compile_graph(&graph(true)).unwrap();
+    let ticket = control
+        .stage_graph(0, Epoch(1), candidate)
+        .unwrap_or_else(|e| panic!("stage: {}", e.error));
+```
 
-Admission reserves one normal domain slot and the resolver's single configuration
-owner slot. The candidate reports Taken while pending. An idle clock can keep the
-change pending indefinitely, without inventing a boundary or blocking existing
-music. At an eligible cut, real capture preparation and first-interval reservation
-run against candidate decisions. A configuration-origin failure supplies a family
-refusal and re-previews the old topology before publication. No old zero-actions
-are executed merely to discover eligibility, and refused candidates create no
-capture revision gap or configuration event.
+Here `graph(true)` is the example's route-description helper, not a library builder. Compile filters immutable decision bindings to consumers present in that description. Applied StageGraph completion means **Ready**, not active; the changed owning request contains GraphStageId. Refusal/cancellation returns the candidate owner. Actual retained vector capacity is checked, not only populated rows.
 
-`Reply::ProgramChanged { id, graph_epoch, topology_epoch, completion }` is the
-terminal domain result, not admission acknowledgement. The completion contains
-requested/effective/outcome frames; the generic execution separately preserves
-requested, delivered and actual completion frames. The reply epochs identify the
-settlement cut, including on failure. The same cut's State/Export queries see the
-published topology and media. Raw `Transition::Program` is refused by the facade.
+GraphStageId/GraphStageStatus are distinct from timing StageId/Status and RoleStageId/RoleStatus. Copying them acquires no owner, lock or cross-instance authorization.
 
-After a successful interval finish, collection frees the internal domain slot and
-moves the displaced owner into that candidate's retirement storage. Its status
-stays Taken until `TopologyRecycle`. A failed/cancelled request instead restores
-Ready for retry or cancellation. External unread results do not delay this internal
-collection or autonomous progression. Other retired banks may remain unread while
-a later change uses a different Ready bank.
+## 3. Prepare a logical owner batch when needed
 
-`Cancel { sequence }` distinguishes pre-delivery cancellation from cancellation of
-the retained resolver request. Cancelling a delivered pending program this way
-restores Ready after finish. Recovery-safe `TopologyCancel` additionally requests
-recycling of the unpublished owner: its immediate status remains Taken and becomes
-Idle after terminal collection at finish. It cannot undo an applied change.
-Higher-sequence direct Stop and same-frame controls retain the resolver's documented
-precedence; a successful intervening immediate topology replacement fails an
-unactivated program request as stale while retaining its candidate.
+`RoleSnapshot { resource }` acquires a scoped local source lease. The raw ResourceId requires same-store caller routing; the returned RoleSourceId additionally carries bank scope/generation checks. Audio is immediately Ready. Indexed MIDI starts Validating; `RoleSourceValidate` scans packet headers with a callback-shared allowance, including EOF, until Ready reports maximum packet size. Status observes progress; failure stays latched until release. Snapshot/tail-copy acquisition still uses ordinary resource capacity/background allowances.
 
-Stopped extraction permanently quiesces the resolver before collecting any pending
-or already-applied owner, including a render fault after configuration publication
-but before interval finish. Quiescence does not finish an unrendered interval,
-advance time, roll back published state or invent a musical Stop. Outstanding
-nonterminal requests become Cancelled at the last logical frame; published results
-remain unchanged. Resource cleanup uses the actual committed capture prefix.
-Repeated cleanup is idempotent; allocations are destroyed only off-render.
+Begin a bank with `RoleBegin { slot, changes }`, then append unique-slot edits:
 
-## Evidence and remaining work
+- `previous: None`, `initial: Some(...)`: add an unassigned prepared row.
+- Both Some: replace the same slot with a strictly newer logical generation.
+- `initial: None`: remove the exact previous owner.
 
-Six guarded integration tests cover complete independent stereo samples, MIDI
-packets, journals and every observer-provided public State field, three callback
-partitions, declaration reversal, journal capacities 0/1/1024, stale/running
-refusals, owning payload returns, callback-shared budgets, 32 stalled normal
-receipts, recovery, countdown invalidation, cancellation and teardown. Activation
-during monitored recording preserves exact FX audio/MIDI, prefix/full exports,
-all initial MIDI channels and final resource recovery.
+RoleInitial supplies target, duration, optional audio/MIDI sources, finite gain and `preserve_input`; initial logical revision is zero. Shape/duration/index/packet/current-owner checks precede transfer. Successful RoleAppend consumes its source IDs into the candidate; rejected append transfers nothing. The example deliberately checks release through a consumed source ID returns InvalidId.
 
-Native debug/release, Node/Chromium and broad regression gates passed for this
-implementation step. The new cases also completed in the interrupted Miri run;
-that is partial evidence, **not** a complete stage-level Miri pass. See
-[the job ledger](../../../../docs/loop_layer/MIRI_JOBS.md).
+Prepare matching timing IDs/lengths and a graph containing exactly each resulting primitive's prepared pair/bindings. Generic DAG validity cannot prove that domain relationship. Reserve enough **currently free** media metadata for every new initial owner; do not count credits that old-role retirement might later free. Old residency, exports and pins remain separate owners.
 
-Five additional guarded facade cases now verify running program-bank activation
-with independent full audio/MIDI/state/journal comparisons; real capture and
-immutable exports versus resource-family refusal; pending cancellation, stale
-replacement, disconnect and post-publication render-fault extraction; delivery
-validation, pre-dequeue cancellation and stage generations; and 130 one-sample
-clock wraps with full normal domain slots, unread results, recovery and bank retry.
-A sixth standalone case verifies permanent quiescence in five lifecycle phases.
-See [facade-program-stage6.json](../../../../docs/loop_layer/evidence/facade-program-stage6.json)
-for131 loop tests per native/Wasm profile and2110 workspace passes/four existing
-skips. New cases are registered for consolidated Stage6 Miri, not yet interpreted.
+## 4. Preflight at the actual cut, then publish
 
-General graph/role-generation activation, coordinated changes beyond these
-fixed-identity preconditions, broader mixed lifecycle stress and consolidated
-Stage6 verification remain open. Independent actual loop AudioWorklet acceptance
-remains Stage7 work.
+The example's payload-free request is:
+
+```rust
+    let activate = Operation::ConfigurationActivate {
+        roles,
+        topology,
+        graph,
+        graph_epoch: Epoch(1),
+        topology_epoch: Epoch(0),
+    };
+```
+
+Old edited owners and changed programs must already be stopped at delivery. A same-frame Transition::Stop is only registered for later settlement and does not satisfy that check. Capture rows must have no active/prepared/interval/frozen owner, and their groups must be Idle.
+
+Configuration preflight holds a generic graph permit and a media-owner permit across the final fallible resolver/topology publication. After that succeeds, media/graph publication has no ordinary failure path. Failed preflight leaves all candidates Ready and active state unchanged. It is not speculative retirement-credit reuse or general rollback.
+
+Same-frame Play uses the newly published owner/configuration during settlement. State/Export queries observe the post-settlement cut even if delivered earlier at that frame. The example checks graph epoch 2/topology epoch 1, new generation revision zero and refusal of the old LoopId. Context entry epochs are not the returned publication epochs.
+
+`preserve_input: true` retains the existing physical capture projection and is invalid on a previously unassigned row. Otherwise reset precedes the first reservation/consumer call and clears after finish, not every interval. Initial MIDI state is strictly before F; packets at F remain captured originals. Neither setting reconciles arbitrary downstream synth/FX state or sends device cleanup.
+
+## Live fixed-role routes and immediate pairs
+
+GraphActivate validates every primitive's playback/capture consumers and exact planner/decision slots, with no missing/extra bindings. It preserves current content/take identities and physical consumer cursors/projections. Routing can change while recording: samples from F follow the new route without restarting the take. It supplies no automatic note/pedal cleanup.
+
+TopologyGraphActivate adds exact-ID/kind timing compatibility. Timing publication is the last fallible step; graph commit follows the preflighted permit. A stopped changed program can then start under the new configuration at that frame. Pure TopologyActivate follows the same timing precondition without changing routes.
+
+An intervening route change invalidates a fixed-graph pending ProgramActivate's expected graph epoch. The old program continues on the independently published new routes; the pending candidate fails rather than executing phantom new zero-actions. Release/restage stale graph candidates against current epochs.
+
+## Owning program requests, with or without a graph
+
+<!-- rust-source: ../examples/program_graph_cut.rs -->
+
+The [program_graph_cut example](../examples/program_graph_cut.rs) supplies the pending recipe: ingest Ready timing and stage Ready routes, start a four-iteration program, then submit this payload-free operation one frame later:
+
+```rust
+            Operation::ProgramGraphActivate {
+                id: topology,
+                target: id(2),
+                graph,
+                graph_epoch: Epoch(1),
+                topology_epoch: Epoch(0),
+            },
+```
+
+The old route emits 1 until actual zero four frames after start; sample F emits 2, the new program has two iterations, and both returned epochs change. The continuing child retains four cycles rather than restarting. This guarded whole/single/split example uses timing-only roles and a separate scalar effect route, not loop-media output. See [program changes](program-changes.md) for run commands and standalone ownership.
+
+ProgramActivate transfers a Ready timing bank into the resolver's single owning program transaction and reserves a normal domain request. Only the selected composite's program/nominal length may change; IDs/kinds, sync/triggers, other programs and roles remain fixed. Its timing slot is Taken while pending.
+
+ProgramGraphActivate additionally preflights a compatible Ready graph at admission. The graph remains **Ready and unlocked** while the program waits. A stopped cut or real zero entry qualifies; an idle cursor at zero does not repeatedly qualify, and an idle clock can leave the request pending indefinitely without blocking unrelated music.
+
+At the selected cut, recheck graph scope/generation/readiness/epoch and borrow its permit before real capture preflight. Capture/graph-family refusal drops unused authority and re-previews the old program; each retry adds a new latched structural failure, not an arbitrary subdivision quota. Do not execute old zero-actions merely to discover eligibility.
+
+After successful media/resolver settlement, consume the graph permit before replies/queries/rendering. Sample/event F uses both new configurations. Callback-end F waits for the next nonempty callback; zero calls publish nothing. A pending pair invalidated by independent graph release/reuse/activation fails with program InvalidState; it does not retarget a reused slot or undo that independent publication.
+
+Read ProgramChanged/ProgramGraphChanged as terminal domain results, including their completion and actual working epochs on refusal/cancellation. Requested/effective/delivered/terminal frames differ. The standalone [program transaction](program-changes.md) has no graph authority; raw Transition::Program is not the facade integration API.
+
+## Recycle each owner independently
+
+After successful program finish, internal collection frees its domain slot without waiting for external result consumption. Success retains displaced timing storage until TopologyRecycle, plus a separately Taken graph for a successful pair. Failure/cancellation restores timing Ready; the graph remains in whatever state independent operations left it.
+
+Normal sequence Cancel cancels pending work without silently releasing the graph. Recovery-safe TopologyCancel also requests recycling of the unpublished timing owner: Taken can persist until finish, then becomes Idle. It cannot undo applied publication. RoleCancel releases unpublished Receiving/Ready edit sources; RoleRecycle handles Taken role metadata. RoleSourceRelease is separately recovery-safe. None forces graph activation through recovery.
+
+`release_graph` returns unused/displaced graph ownership through a reliable normal completion. Dispose/reuse it off-render. The example separately recycles role metadata, topology storage and the retired initial graph while retained old exports remain readable; it later releases every export and checks cleanup twice recovers all declared pools.
+
+## Fault and evidence boundaries
+
+A fault after publication preserves actual epochs/state/time. Do not replay the callback or invent finish/Stop. Consume the engine after callbacks stop; permanent/idempotent Stopped cleanup recovers source/edit/timing/media/capture owners, while generic graph owners are destroyed off-render. Imported resource identities remain caller-owned.
+
+Regression scenarios in [`tests/runtime_topology.rs`](../tests/runtime_topology.rs) and its support modules cover MIDI, program/capture families, cancellation, stale/reused owners, saturated results and post-publication faults beyond this small example. Historical implementation reports and consolidated interpreter evidence live under repository `docs/loop_layer/`; they retain their original source/platform scope. Native example runs are not new Wasm/AudioWorklet, benchmark or deadline evidence. No independent loop host/benchmark is supplied in this snapshot.

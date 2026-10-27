@@ -1,4 +1,6 @@
 //! Prepared, endpoint-scoped ingestion and validation of immutable timing metadata.
+//! Ready certifies timing structure, not signal/media compatibility or activation
+//! epochs. The metadata codec is not a complete independent-instance host protocol.
 
 use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};

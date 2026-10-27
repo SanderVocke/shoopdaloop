@@ -1,4 +1,26 @@
-# Final callback and ownership audit
+# Historical callback audit and current contract notes
+
+The original final audit is retained below with its initial-runtime source/evidence scope. It is **not a renewed full callback-reachable audit of the loop implementation**. Its split-credit range bound and aggregate diagnostic-counter rejection are superseded. The current documentation source review checked the distinctions below against planner/executor/transport, graph activation, resource/index/group and loop lifecycle interfaces while writing the public guides; it did not rerun models, canaries, Miri, platforms, benchmarks or CI.
+
+## Current documentation corrections
+
+| Path/contract | Current argument and review boundary |
+|---|---|
+| Scheduled intervals | Normal capacity is min(scheduled_events, budgets.events), plus one independent declared-planner recovery receipt. Positive intervals number at most host frames, not external-events+1. Planner same-frame termination is an application obligation; safe Rust/fixed storage does not prove arbitrary planner termination or deadlines. |
+| Planning views/observations | Prepared immutable decisions, validated exact-generation bindings and per-producer observation reservations. No view survives mutation; consumers do not own another musical clock. Recovery must terminate at delivery-frame planning before positive samples. |
+| Held normal ingress | Callback-snapshotted recovery parks one inline owner, preserving validator progress, original cancellation observation and sequence. Resume before later normal traffic. No extra credit/dequeue, refreshed allowance or normal fairness guarantee. |
+| Staged graphs | Checked scopes/generations, actual retained vector capacities, expected/validated/current epochs and pending MIDI compatibility. Ready references do not lock owners. Unused permits publish nothing; final preflighted swap retains displaced ownership without callback destruction. |
+| Required data/index access | Independent saturating counters; physical/shape/time checks still refuse. Append-maintained page trees, lease-scoped access and fixed MIDI replay spans avoid whole-history seek/freeze scans. Legacy/optional work retains background quotas. |
+| Capture groups | Exclusive claims, prepared version/index/final leases, first interval before activation, fixed per-member staging and all-member common-prefix commit. Unexpected producer/staging faults are not ordinary exhaustion. Interval-before-take cancellation and explicit stopped recovery preserve actual ownership. |
+| Diagnostics/configuration | Allocation/storage arithmetic remains checked against representability ceilings. Traversal/work counters saturate with overflow diagnostics; preparation no longer rejects a configuration merely because worst-case accumulated diagnostic work could overflow. Semantic frame/ID/revision exhaustion remains checked. |
+| Loop policy | The separate resolver/facade owns finite SCC/action settlement, latched-failure retries, discontinuities, fixed requests/journals, coherent queries and prepared configuration/program publication. The selected documentation review does not certify a fresh complete loop callback audit. |
+| Fault/teardown | Time/state/publication can precede a propagated error. No replay, rollback or fake finish. Preserve the cleanup ledger through stopped extraction; permanent domain quiescence recovers owners without device cleanup or fabricated abandoned outcomes. |
+
+See the [execution reference](../../src/rust/rt_runtime/docs/reference/execution-rules.md), [coordinated capture](../../src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/16-recording-resources-together.md), [loop facade](../../src/rust/shoop_loop_engine/docs/runtime.md) and [historical validation](VALIDATION.md). Heap guards establish observed heap behavior, not absence of arbitrary application waits/I/O, platform deadlines or independent loop-host evidence. No loop host/benchmark is supplied in this snapshot.
+
+## Original initial-runtime final audit (historical)
+
+All findings, diff claims and bounds in the remaining sections refer to that original audit, not a fresh source-head certification.
 
 Scope: portable runtime, supplied reference/host processors, and the independent wire bridge. The core forbids unsafe code. The allocator shim is test-only and separately exercised under Miri. This audit complements heap instrumentation; heap guards do not detect locks, I/O, or waits.
 

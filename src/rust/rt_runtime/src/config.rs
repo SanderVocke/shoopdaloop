@@ -43,7 +43,8 @@ pub struct Config {
     pub resource_slots: usize,
     pub resource_pages: usize,
     pub page_bytes: usize,
-    /// Callback copy/validation headroom reserved for processor resource I/O.
+    /// Headroom inside callback budgets for legacy quota-based resource I/O and
+    /// optional snapshot copies, not a limit on required RenderIo data work.
     pub resource_io_bytes: usize,
     pub resource_io_steps: usize,
     pub command_slots: usize,

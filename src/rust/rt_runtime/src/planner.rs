@@ -45,6 +45,8 @@ pub struct PlanningStep {
     pub before_step: usize,
 }
 
+/// Validated planning dependency, separate from signal edges. A binding selects
+/// one immutable decision slot for the exact consumer generation.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct DecisionBinding {
     pub planner: PlannerId,
@@ -64,7 +66,10 @@ pub struct Interval {
     pub end: Frame,
 }
 
+/// Authority for one boundary. Internal intervals do not renew callback-wide
+/// ingress, result recycling, validation, background-copy or recovery allowances.
 pub struct PlanContext<'a, O = (), R = ()> {
+    /// Epoch on context entry; a successful permit may publish a newer one.
     pub graph_epoch: crate::Epoch,
     pub graphs: crate::graph::activation::GraphAccess<'a>,
     /// Start of the enclosing nonempty host callback, not the internal interval.
@@ -78,10 +83,13 @@ pub struct PlanContext<'a, O = (), R = ()> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Disposition<R> {
     Complete(R),
+    /// Retain the context's receipt token and resolve it exactly once later.
+    /// The token reserves a result, not graph/candidate ownership or a lock.
     Pending,
 }
 
 pub struct OperationContext<'a, O, R> {
+    /// Epoch on entry, not the outcome of any publication within this operation.
     pub graph_epoch: crate::Epoch,
     pub graphs: crate::graph::activation::GraphAccess<'a>,
     /// Stable across every operation and planning interval in this callback.
@@ -165,6 +173,8 @@ impl Planner for NoPlanner {
     }
 }
 
+/// Borrowed decision for this interval only. Copying the view does not extend its
+/// lifetime or permit retaining it across planner mutation/publication.
 #[derive(Clone, Copy)]
 pub struct DecisionView<'a, D> {
     pub planner: PlannerId,

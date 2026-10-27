@@ -1,0 +1,39 @@
+warning: Git tree '/home/sander/dev/shoopdaloop' is dirty
+.................+ cargo run --locked -p rt_runtime --example demo
+.+ cargo run --locked -p rt_runtime --example demo -- --iterations 1024
++ cargo run --locked -p rt_runtime --release --example demo -- --iterations 1024
+.....
+----------------------------------------------------------------------
+Ran 23 tests in 0.089s
+
+OK
+rt_runtime book: contents, links, navigation, inventory and excerpts OK
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.90s
+     Running tests/contracts.rs (/tmp/rt-runtime-docs-rewrite-target/debug/deps/contracts-0f5645fc414d7f75)
+
+running 12 tests
+test allocation_reallocation_and_deallocation_canaries_are_active ... ok
+test empty_graph_renders_variable_prefixes_without_heap_operations ... ok
+test every_positive_capacity_and_budget_is_validated ... ok
+test event_storage_is_bounded_ordered_and_refusal_is_atomic ... ok
+test counters_and_generations_exhaust_without_wrapping ... ok
+test configuration_rejects_zeros_overflows_and_indivisible_work ... ok
+test allocation_scope_is_reset_on_unwind ... ok
+test guard_detects_a_real_collection_lifetime_and_destructor_location ... ok
+test invalid_host_shapes_clear_only_a_bounded_writable_prefix ... ok
+test heap_assertion_rejects_an_allocating_callback ... ok
+test zero_blocks_do_not_touch_buffers_validate_shapes_or_advance_clock ... ok
+test prepared_processor_uses_borrowed_disjoint_views_without_heap_operations ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/initial_graph.rs (/tmp/rt-runtime-docs-rewrite-target/debug/deps/initial_graph-c0122346c7ecddf3)
+
+running 3 tests
+test prepared_graph_executes_at_frame_zero_and_extraction_retains_the_owner_ledger ... ok
+test signal_only_initial_graph_preserves_normal_later_commit_epochs_and_receipts ... ok
+test preparation_rejects_invalid_initial_signal_or_planning_graphs_and_drops_off_render ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

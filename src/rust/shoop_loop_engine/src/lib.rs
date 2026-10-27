@@ -1,7 +1,20 @@
 //! Portable, single-owner loop timing and media execution.
 //!
 //! Preparation may allocate. Render-side state and scratch are prepared before
-//! execution; host transport and devices are not part of this library.
+//! execution. [`Resolver`] is the musical authority; low-level renderers execute
+//! supplied positions/discontinuities without advancing another clock.
+//!
+//! [`runtime::Engine`] coordinates prepared signal consumers, capture preflight,
+//! typed requests and settled state/export. Timing-only, fixed-role routing,
+//! stopped-owner configuration and pending program/graph publication are distinct
+//! transactions over prepared physical templates, not arbitrary live construction.
+//! [`media::Ledger`] manages explicit leases/references but cannot certify a musical
+//! cut by itself. Copied handles do not acquire ownership; caller-routed LoopId and
+//! RequestId values are not globally scoped endpoint capabilities.
+//!
+//! Final teardown is off-render and explicit. Permanent quiescence recovers actual
+//! owners without rollback, callback replay or device cleanup. Devices, browser
+//! bindings, unrestricted port resizing and hard-deadline guarantees are excluded.
 #![forbid(unsafe_code)]
 
 pub mod audio;

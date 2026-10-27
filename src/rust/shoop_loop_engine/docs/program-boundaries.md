@@ -3,8 +3,8 @@
 `Resolver::probe_program_boundary(target, observations)` resolves a composite's
 prospective state at the current absolute frame, stopping **before that target's
 program or trigger actions are emitted**. It returns a copy-valued
-`ProgramBoundary { frame, topology_epoch, state }`. This is a prerequisite for
-running-program activation, not an implementation of that activation policy.
+`ProgramBoundary { frame, topology_epoch, state }`. This is an informational cut, not candidate ownership or activation authority.
+The owning transaction uses this mechanism internally before actual publication.
 
 The probe uses the resolver's ordinary retained requests, observations, component
 order, direct/reactive arbitration, pure-sync clock propagation and checked cursor
@@ -62,9 +62,14 @@ Three guarded integration cases plus one private scratch-state case verify:
   and no publication of provisional request outcomes.
 
 See [program-probe-stage6.json](../../../../docs/loop_layer/evidence/program-probe-stage6.json)
-for native/release, Node/Chromium and workspace evidence. Miri is deferred to the
-consolidated applicable stage run; four executions were added to its inventory.
-The [fixed-graph facade](topology-activation.md) still refuses changed running
-programs. The standalone [owning program transaction](program-changes.md) now uses
-this cut for actual zero/stopped-boundary activation; facade integration,
-graph/role changes and the remaining lifecycle tests are still open.
+for the original native/release, Node/Chromium and workspace evidence. That
+milestone deferred interpreter execution; consolidated Stage 6 evidence is recorded
+separately in repository [Miri jobs](../../../../docs/loop_layer/MIRI_JOBS.md), not
+rerun for these prose corrections.
+
+The standalone [owning program transaction](program-changes.md) and facade
+ProgramActivate/ProgramGraphActivate use actual zero/stopped cuts for running
+changes. Immediate replace_topology/TopologyActivate still require changed programs
+already stopped. See [publication paths](topology-activation.md) and the runnable
+[program/graph example](../examples/program_graph_cut.rs); independent loop hosts
+and deadline evidence are not supplied by these tests.

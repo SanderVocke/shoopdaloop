@@ -1,13 +1,36 @@
-# Live topology/program activation — remaining Stage 6 design work
+# Prepared topology, program and graph activation
 
-**General activation remains design work; a fixed-graph facade path is implemented.**
-The coordinated facade, inter-loop reference scenario, flat metadata and receiver
-are followed by typed staging and activation with unchanged logical IDs/kinds,
-media-role bindings and signal graph. Its broad gates pass; complete stage-level
-Miri remains pending under the background/stage-level cadence. The full Stage 6
-contract and later host requirements remain unchanged.
+The constrained facade paths below are implemented over prepared physical
+templates. They do not construct arbitrary processors or resize ports on-render.
+The [activation guide](../../src/rust/shoop_loop_engine/docs/topology-activation.md)
+is the public usage path; this design preserves the implementation rationale and
+chronological evidence. [Stage 6 readiness](STAGE6_READINESS.md) records its completed
+consolidated interpreter run at immutable faec78df, not certification of later
+dirty documentation/examples or a new full callback audit. No independent loop
+host/benchmark or new platform/performance campaign is supplied here. Implementation
+acceptance criteria and the governing inter-loop decision are unchanged.
 
-## Existing limitations
+## Implemented publication paths and limits
+
+| Operation | Publication cut and constrained scope |
+| --- | --- |
+| TopologyActivate | Delivery-time fixed-ID/kind timing; changed programs already stopped, roles/media/routes unchanged |
+| ProgramActivate | Owning selected-program/nominal-length transaction at stopped/actual zero; graph, roles and other timing fixed |
+| GraphActivate | Immediate fixed-role route/binding change; may preserve a continuing take |
+| TopologyGraphActivate | Immediate compatible timing/routes, fixed logical owners; changed programs already stopped |
+| ConfigurationActivate | Already-stopped logical generation/media edits with matching timing/routes over prepared physical templates |
+| ProgramGraphActivate | Pending selected-program/routes until actual zero/stopped entry; IDs/kinds/sync/triggers/other programs and roles fixed |
+
+Ready validates timing or graph metadata, not all domain invariants; a copied/pending
+graph ID acquires no owner or lock. At the actual cut recheck scope/generation,
+validated/current/expected epochs, capacities/bindings, pending injected MIDI and
+all media/capture preflight before infallible publication. A same-frame queued
+Stop has not settled and cannot satisfy an immediate already-stopped precondition.
+Role/source, timing, graph and external export owners recycle independently.
+Successful RoleAppend consumes source IDs; rejected batches transfer none. Media
+OwnerActivation uses currently free metadata, not future retirement credits.
+
+### Storage and boundary prerequisites
 
 - Flat metadata now has canonical LTP1 encoding and maximum-capacity Stager
   storage with scoped ordered chunks, incremental validation and owning reuse.
@@ -19,13 +42,17 @@ contract and later host requirements remain unchanged.
   expected epoch and generation watermarks, and requires removed loops stopped.
   It safely refuses changed running programs. The separate standalone
   `stage_program` transaction now implements a single-program zero/stopped cut;
-  the facade now integrates it through `ProgramActivate`. General graph/role
-  transactions remain open.
-- The facade installs one validated initial graph and hides generic live graph
-  mutation. `prepare_with_staging` enables fixed-graph timing changes and owning
-  single-program zero/stopped-cut replacement. It checks authoritative graph/topology epochs and exact
-  logical identities/kinds, preserving all media-role/resource bindings. General
-  graph validation alone cannot establish replacement role/resource invariants.
+  the facade integrates it through ProgramActivate. Separate configuration/paired
+  graph paths supply their own compatibility checks; this standalone API has no
+  graph authority.
+- The facade installs one validated initial graph and hides unrestricted generic
+  mutation. prepare_with_staging enables timing/program banks;
+  prepare_with_configuration_staging additionally provisions role/source banks.
+  prepare_graph_staging separately enables generic graph banks before rendering.
+  TopologyActivate preserves exact logical IDs/kinds and current role/resource
+  bindings; ConfigurationActivate permits stopped logical-owner edits over those
+  prepared templates. Each checks authoritative epochs and domain compatibility;
+  generic graph validation alone cannot establish replacement-role invariants.
 - Planner operations/results are Copy values. Putting an owning compiled topology
   inside an operation, or transferring native Rust pointers between Wasm instances,
   is not an acceptable delivery design.
@@ -39,12 +66,13 @@ retained resource/callback borrows. Program-relative segment ranges preserve
 program equality across unrelated global-table relocation. Reusable receiver
 storage and its checked lifecycle are implemented; LTP1 encodes explicit
 little-endian integer fields rather than transferring internal usize ranges or
-Rust layouts. The fixed-graph integration associates ready identities with reliable facade
+Rust layouts. The facade associates ready identities with reliable
 operation outcomes and authoritative graph/topology epochs. It prepares a
 maximum-capacity initial owner and reserves a retirement slot before activation;
 rejected candidates stay Ready and displaced owners await explicit recycling.
-General graph/role-generation compatibility and facade integration of the
-standalone iteration-zero transaction remain.
+The standalone iteration-zero transaction is now integrated with the fixed-graph
+facade. Configuration and paired program/graph compatibility are implemented
+separately over prepared role templates, not arbitrary processor construction.
 
 Storage must be derived from total declared limits, not an accidental
 programs × targets × maximum-segments expansion. Allocation/pre-touch belongs to
@@ -69,7 +97,7 @@ allocate replacement owners on the worklet thread outside the process guard as
 a workaround. The actual receiver/host integration must meet the same prepared
 ownership contract.
 
-## Implemented fixed-graph integration slice
+## Historical fixed-graph integration slice
 
 `runtime::TopologySettings` provisions candidate banks and whole-callback record/
 validation allowances; generic contexts now carry graph epoch and callback origin.
@@ -88,9 +116,10 @@ storage; stopped cleanup recovers every candidate phase without callback disposa
 See the [public guide](../../src/rust/shoop_loop_engine/docs/topology-activation.md)
 and `facade-topology-stage6{,-provenance}.json` for six integrated independent
 sample/MIDI/journal/state/capture/export and ownership tests. The broad 25-gate
-pass is separate from the interrupted Miri invocation (171 completed of178;
-seven uncompleted/unreported). This slice does not close Stage 6 or replace the
-requirements below.
+pass was separate from the interrupted Miri invocation (171 completed of178;
+seven uncompleted/unreported). That partial evidence stays partial; later
+consolidated Stage 6 completion is linked above. This slice alone did not close
+the stage or replace its requirements.
 
 ## Atomic boundary requirements
 
@@ -100,11 +129,12 @@ working configuration. There must be one unambiguous activation cut across graph
 resolver/program state and media selection; publishing one component before an
 ordinary failure in another is not transactional activation.
 
-Investigate an explicit generic prepared-graph activation capability or owning
-bundle hook, rather than exposing unchecked facade access to `Control::submit`.
-Any generic extension must remain independent of loop modes/program types and
-preserve the existing NoPlanner path. Retired graph/topology/node owners must be
-retained in prepared return/recycling storage and ultimately destroyed off-render.
+The generic prepared-graph capability below now supplies the graph half of this
+contract, rather than exposing unchecked facade access to `Control::submit`.
+It remains independent of loop modes/program types and preserves NoPlanner.
+The loop adapter must still preflight and coordinate its own topology/media/role
+changes. Retired graph/topology/node owners must remain in prepared return storage
+and ultimately be destroyed off-render.
 
 Changing a logical loop generation must not leave consumers addressing the old
 owner, inherit stale request targets, or invalidate external old-media exports.
@@ -112,6 +142,52 @@ If physical role slots persist, distinguish their runtime node identity from the
 logical loop generation they currently serve. Required MIDI cleanup, input-state
 continuity/reset, resource claims and initial media selection need explicit tests,
 not an assumption that changing a decision ID is sufficient.
+
+## Implemented generic graph-bank and permit prerequisite
+
+`GraphRuntime::prepare_graph_staging` opts into fixed receiver-owner slots before
+rendering. Normal-lane `StageGraph` validates a prepared descriptor incrementally
+at an expected epoch, then returns a scoped StageId in its owning completion.
+Ready is not active. `ReleaseGraph` returns rejected/unneeded or displaced owners
+through existing transport credits; slot generations never wrap.
+
+Planner operation/planning contexts lend `GraphAccess`. Its exclusive permit
+rechecks readiness/current and validated epochs, next-epoch availability and
+retirement capacity before any domain publication. The domain completes every
+fallible preflight first, publishes its prepared state, and consumes the permit
+for an infallible graph/epoch swap. Dropping it leaves graph owners unchanged,
+not a rollback of arbitrary domain mutation. Actual vector capacities are counted;
+checked aggregate stage storage includes one compatible active owner. Returned
+plans retain their capacities; this API is not a graph wire materializer.
+
+Review identified another boundary precondition: a planning-time swap must not
+remove a node with a delivered but unconsumed MIDI injection. Otherwise the old
+buffer could survive until a future graph and replay at the wrong frame. The
+permit now refuses Busy before domain mutation; the old graph consumes that
+frame. Operation-time activation runs before MIDI delivery under existing
+scheduler order, so a later missing target fails InvalidId. A dedicated guarded
+case verifies both lifecycle orders and no replay when the node returns.
+
+Seven guarded integration cases, one guarded transport case and one private
+exhaustion/sizing case pass. Recovery stress reproduced a held normal validation
+request hiding the next callback's recovery lane. One fixed parking slot now
+preserves that owner while servicing eligible recovery; resumption retains its
+original cancellation observation and FIFO order. Unrelated completions no longer
+reset validator progress. One-step staging and legacy validation both finish under
+continuous recovery, with publication limits and owning returns intact.
+
+`graph-activation-stage6{,-provenance}.json` records runtime188/loop131 native,
+runtime184/loop131 Node/Chromium,workspace2119/four existing skips,25 broad gates,
+five new capability compile refusals and refreshed existing lifetime proofs.
+Generic native/actual-worklet regressions and canaries pass with unchanged golden
+semantics and fixed1,703,936-byte memory. Nine selected Miri executions were added
+for consolidated verification, not run separately at this milestone; the later
+collected run has its own immutable source/inventory record.
+
+This supplies generic graph publication, not loop policy. The configuration and
+paired facade paths add logical/physical identities, old-role MIDI policy,
+resource claims, retained exports, media/capture preflight and publication;
+see the public guide and configuration/program-graph evidence in VALIDATION.md.
 
 ## Implemented unpublished program-cut prerequisite
 
@@ -138,7 +214,8 @@ proof rejects retaining a decision borrow across probing. See the
 [API guide](../../src/rust/shoop_loop_engine/docs/program-boundaries.md),
 `program-probe-stage6{,-provenance}.json` and the Miri ledger. The19 scoped gates
 pass (loop116 per native profile and Node/Chromium,workspace2095/four skips);
-new/affected Miri coverage remains deferred to the consolidated Stage6 run.
+new/affected Miri coverage was deferred here and later included in the
+consolidated Stage 6 record.
 
 ## Implemented standalone owning program transaction
 
@@ -178,13 +255,15 @@ and direct override; malformed/stale/busy owner returns; and128 one-sample
 intervals with all request slots occupied. Native/release and Node/Chromium each
 pass125 loop tests; workspace2104/four skips and19 scoped gates pass. Production
 E0505/E0502/E0505 proofs protect candidate moves, decision borrows and retired-owner
-borrows. Nine Miri cases are queued for the consolidated stage run, not run here.
+borrows. Nine Miri cases were queued, not run at this milestone; later consolidated
+completion retains its own source/inventory scope.
 See `program-change-stage6{,-provenance}.json` and the
 [owning API guide](../../src/rust/shoop_loop_engine/docs/program-changes.md).
 
 That milestone was standalone resolver support. The following adapter connects
-it to the facade; general simultaneous graph/role-generation transactions, broader
-mixed stress and full Stage6 verification remain open.
+it to the facade. Subsequent configuration, paired-program/graph and nested
+milestones supply the constrained additional paths and Stage 6 verification;
+no independent loop host or newer audit/performance evidence is implied.
 
 ## Implemented fixed-graph program-bank adapter
 
@@ -217,10 +296,11 @@ capture versus family refusal, request/owner pressure, cancellation/generations,
 stale replacement, disconnect and post-publication fault recovery. A standalone
 five-phase quiescence case and E0502 borrow refusal protect terminal extraction.
 `facade-program-stage6{,-provenance}.json` records131 loop tests per native/Wasm
-profile,2110 workspace passes/four existing skips and19 scoped gates. The current
-197-case Miri inventory is registered, not yet interpreted. This controller cannot
-exercise an intervening live signal-graph change; that recheck needs an integrated
-case when general graph transactions exist.
+profile,2110 workspace passes/four existing skips and19 scoped gates. At that milestone the
+197-case inventory was registered, not yet interpreted, and its controller could
+not exercise intervening live signal changes. Subsequent live/configuration/paired
+scenarios and consolidated Miri have separate records; do not relabel the earlier
+registration as a pass.
 
 ## Running programs and settlement
 
@@ -239,7 +319,7 @@ the active topology/program as well as frame and musical cursor. Configuration
 readiness is not a reason to add a fixed interaction quantum or arbitrary
 propagation quota.
 
-## Verification before acceptance
+## Preserved acceptance obligations
 
 First preserve compiler/resolver behavior through any representation refactor,
 including public lookup behavior, declaration-order canonicalization and owning
@@ -249,4 +329,6 @@ iteration-zero running changes, pending cancellation and stale generations,
 failed candidates, stop/restart/removal, retained exports, disconnect/recovery,
 and full off-render disposal. Native/release/Wasm, independent partition/order
 references and selected Miri remain required. No Stage 6 completion follows from
-this design note alone.
+this design note alone; its completed implementation/evidence mapping is in
+STAGE6_READINESS.md. Missing independent hosts/newer audits/performance remain
+explicit evidence limits, not dependencies of documentation authoring.

@@ -1,16 +1,18 @@
 # Proposal: A Generic Real-Time Graph Runtime Crate
 
-## Status and next-layer direction
+## Status and implemented next layer
 
 This document retains the original architectural rationale for the generic runtime. The initial crate is delivered; `DESIGN_RT_ENGINE.md` describes its implementation and `DONE_INITIAL_CRATE.md` preserves the completed acceptance record. The original roadmap below is historical, not a statement that application integration is already complete.
 
 The next-layer direction is defined by `INTER_LOOP_PROCESSING.md` and `PROPOSAL_LOOP_LAYER.md`: a Shoop-specific timeline resolver owns authoritative loop/composite timing, while separate audio/MIDI renderers execute coherent interval decisions. Composite editing remains application policy; executing prepared composite timing belongs with primitive loop timing in that resolver.
 
-The runtime needs generic planning phases, explicit decision/ordering dependencies, prepared interval views and observations, and interval execution within a single host-callback lifecycle. These are proposed extensions, not capabilities obtained simply by placing an ordinary processor first in the current graph. Playback and recording can be separate signal operations; timing dependencies must not be encoded as dummy audio/MIDI edges.
+The runtime now supplies Planner/NoPlanner, explicit DecisionBindings and typed borrowed decisions/observations, interval execution within one callback, retained typed results/recovery, independently counted required media, page/MIDI indexes, prepared capture groups and staged graph permits. These are implemented extensions, not capabilities obtained simply by placing an ordinary processor first in the graph. The separate loop facade supplies musical policy, media ownership and prepared-template publication. Playback and recording can be separate signal operations; timing dependencies must not be encoded as dummy audio/MIDI edges.
 
 Preserve fixed storage, ownership credits, bounded external admission, and throttled background maintenance. Do not use those limits to impose arbitrary caps on required finite internal loop transitions or same-frame cascades. Their semantics must guarantee termination, and their execution must preserve sample timing without mandatory quantum/per-hop delay. For this coordination path the contract becomes allocation-free, deterministic processing with finite application-dependent work, not a guaranteed callback CPU bound. Expensive valid workloads may xrun rather than silently change musical behavior.
 
-This requires an explicit evolution of the initial scheduler and work-accounting contracts. It does not require moving musical semantics into the generic crate or duplicating its transport, media store, signal executor, or retirement system. The proposed integration and verification requirements are detailed in the final section of `DESIGN_RT_ENGINE.md`.
+This evolved the initial scheduler and work-accounting contracts: normal capacity is min(scheduled_events, budgets.events); internal intervals ignore subranges and renew no callback-wide allowance. Required RenderIo is independent of optional background quotas, and diagnostics saturate rather than truncate musical work. It does not require moving musical semantics into the generic crate or duplicating its transport, media store, signal executor, or retirement system. The [current implementation map](DESIGN_RT_ENGINE.md#current-implementation-map), [runtime book/reference](src/rust/rt_runtime/docs/README.md) and [loop guides](src/rust/shoop_loop_engine/README.md) describe the APIs. Historical generic-host/CI and [loop Stage 6 evidence](docs/loop_layer/STAGE6_READINESS.md) retain their source/run scope; they are not a new audit/platform campaign or an independent loop host/benchmark, which this snapshot does not supply.
+
+The broad architecture, alternatives and migration roadmap below preserve proposal history, not delivered adapters/service integration or acceptance gates for the documentation plan. Diagram/service names and CommitResourceRevision are conceptual, not exported constructors/variants. The crate was freshly implemented, not extracted wholesale from shoop_engine. JACK/CPAL, ShoopEngineService/Session/backend/UI/protocol migration, production worklet/plugin hosting and independent packaging are not shipped here. Constant-work owner swaps do not make preparation/preflight or callbacks constant-time, crossfade sample discontinuities or guarantee browser deadlines.
 
 ## Feasibility verdict
 
@@ -35,9 +37,9 @@ Several useful mechanisms already exist, but their interfaces are tied to Shoop:
 | `shoop_audio_protocol` | Entirely Shoop-specific despite being a transport protocol. |
 | Worklet and client crates | Contain reusable transport ideas, but currently compile Shoop commands and backend APIs directly into the integration. |
 
-The current native command queue also intentionally permits allocation while executing commands, and topology description allocates on the audio thread. That may be an accepted application trade-off, but it is not a suitable default guarantee for a reusable hard-real-time runtime crate.
+The current native command queue also intentionally permits allocation while executing commands, and topology description allocates on the audio thread. That may be an accepted application trade-off, but it is not a suitable default guarantee for the new runtime's callback contract.
 
-## Recommended architecture
+## Original recommended architecture
 
 ```text
 Shoop UI
@@ -91,7 +93,7 @@ Reusable non-real-time facilities should include:
 - Plan compilation.
 - Revisioned immutable resources.
 - Chunked upload and download.
-- Explicit overload policies: reject, coalesce, drop-oldest, or retry.
+- Explicit overload policies. Coalesce/drop-oldest are appropriate only where the contract allows loss (such as optional telemetry), never for accepted reliable results, owning returns or required musical transitions.
 - Reclamation queues.
 
 Payload types should be supplied by the embedding application. The generic crate should not define commands such as `CreateTrack` or `TransitionLoop`.
@@ -110,7 +112,7 @@ These adapters cannot be identical, but they can implement the same contracts. T
 
 ## Command model
 
-The native closure queue should remain available as an internal optimization, but should not become the public cross-platform command API.
+Keeping a native closure queue was an original migration alternative, not the delivered portable command API or an allocation exemption. Current core operations use typed prepared data with explicit owning returns; there are no arbitrary queued closures in rendering.
 
 A better model is:
 
@@ -158,7 +160,7 @@ The callback never copies or frees the full buffer.
 4. Report whether the result is current, stale, busy, or saturated.
 5. Release the pinned revision after transfer.
 
-Native hosts can share immutable `Arc` chunks with a publisher thread. Browser hosts generally need bounded copies into transferable buffers. Both can expose the same revision and currentness semantics.
+Sharing immutable Arc chunks with a native publisher was an alternative, not the implemented store. Current native and non-shared-memory fixtures use the same single-owner store and bounded-copy/explicit-lease semantics; final destruction is off-render. Browser transferable framing belongs to the test host/adapter, not production runtime dependencies. Both can expose the same revision/currentness contract.
 
 ### Browser limitation
 
@@ -171,7 +173,7 @@ Without WebAssembly shared memory and cross-origin isolation, a worker cannot co
 
 This is the main architectural constraint, not a missing abstraction.
 
-## What should move to the generic crate
+## Original extraction boundary
 
 After decoupling, the generic runtime crate should contain:
 
@@ -219,7 +221,7 @@ Both native and browser clients should use that service:
 
 This would replace the current situation where native `app_backend.rs` and browser `EngineBackend` independently implement significant portions of Shoop orchestration.
 
-## Low-risk migration plan
+## Original optional migration roadmap
 
 ### 1. Characterize current behavior
 
@@ -261,9 +263,11 @@ This would replace the current situation where native `app_backend.rs` and brows
 - Enforce that the crate has no dependencies on Shoop-specific crates.
 - Treat moving it to a separate repository as an optional future packaging decision, not an architectural requirement.
 
-## Suggested completion criteria
+## Original suggested service-migration criteria
 
-The extraction is ready when:
+These broad proposal criteria are retained for service migration, not used to
+redefine the delivered initial crate or present loop/documentation acceptance.
+The originally proposed extraction would be ready when:
 
 - The generic crate has no `shoop_*` dependencies or domain terminology.
 - Native and browser use the same Shoop service semantics.

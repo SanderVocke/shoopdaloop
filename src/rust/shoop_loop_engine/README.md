@@ -1,35 +1,57 @@
 # shoop_loop_engine
 
-Portable loop timing and audio/MIDI execution on `rt_runtime`.
+Portable loop timing and audio/MIDI execution on `rt_runtime`. A single render-owned
+resolver supplies musical decisions; prepared playback/capture consumers execute
+those decisions in the signal graph. The runtime facade coordinates media ownership,
+capture preflight, typed outcomes, settled state/export and explicit stopped cleanup.
 
-**Implementation in progress.** The current implementation provides checked
-identities/capacities, topology validation, sparse composite-plan compilation,
-and a fixed-storage primitive/composite timeline resolver. Prepared audio
-playback/capture operations now consume supplied interval positions, with indexed
-conversion, gain and discontinuity smoothing; see [audio operations](docs/audio.md).
-Bounded [MIDI cleanup/restoration](docs/midi-restore.md) helpers establish known
-channel/key state with explicit output failures and ordering metadata.
-[Indexed MIDI operations](docs/midi.md) add packet playback, input tracking/capture
-and a focused runtime recovery proof. A [fixed media ledger](docs/media.md) now
-shares snapshot ownership across resident content, playback, latest takes,
-pending pins and checked exports, with explicit quiescent cleanup.
-The [coordinated runtime facade](docs/runtime.md) now joins these components with
-separate playback/input consumers, transactional capture preflight, reliable typed
-outcomes, coherent state/export and explicit cleanup. Run the public
-`coordinated_loop` example for stereo/MIDI record→play, wraps, seek, replacement,
-export and teardown. Its new integration validation is tracked separately from
-completed foundation evidence. General live graph/role-generation replacement,
-independent loop hosts and later acceptance remain pending.
+Start with the [runtime guide](docs/runtime.md). For generic graph/processors,
+transport and resources, use the [runtime book](../rt_runtime/docs/README.md).
+These libraries do not supply devices, UI, a production adapter, unrestricted live
+processor construction or hard-deadline certification.
 
-Compiled topology now uses [flat metadata and borrowed views](docs/topology.md),
-with checked linear byte accounting and canonical sparse lookup. Program/target
-view copies do not acquire owners; target lists use `get`/iteration.
-[Prepared topology staging](docs/topology-staging.md) adds canonical native/Wasm
-encoding, transactional ordered chunks, incremental validation and owning bank
-recycling. It validates timing metadata, not graph/media compatibility.
-[Fixed-graph facade activation](docs/topology-activation.md) adds reliable typed
-operations, callback-shared allowances, retained owners and coherent epoch cuts
-while preserving existing logical identities, role bindings and the signal graph.
+## Task guides
+
+| Task | Guide |
+|---|---|
+| Prepare/run a facade, submit/cancel work, export and stop | [Runtime](docs/runtime.md) |
+| Execute audio conversion, gain and discontinuity smoothing | [Audio](docs/audio.md) |
+| Render/index/track/capture original packets | [MIDI](docs/midi.md) |
+| Emit cleanup → projected restoration → original events | [MIDI restoration](docs/midi-restore.md) |
+| Retain media and publish logical-owner batches | [Media ownership](docs/media.md) |
+| Borrow flat/sparse compiled timing metadata | [Topology](docs/topology.md) |
+| Ingest LTP1 with finite callback-shared work/recycle | [Topology staging](docs/topology-staging.md) |
+| Inspect an unpublished control/clock cut | [Program boundary probes](docs/program-boundaries.md) |
+| Own a program candidate until stopped/real zero | [Program changes](docs/program-changes.md) |
+| Publish timing, routes, stopped generations or a running program/graph pair | [Activation paths](docs/topology-activation.md) |
+
+## Offline examples
+
+```sh
+cargo run --locked -p shoop_loop_engine --example coordinated_loop
+cargo run --locked -p shoop_loop_engine --example nested_timing
+cargo run --locked -p shoop_loop_engine --example configuration_cut
+cargo run --locked -p shoop_loop_engine --example program_graph_cut
+```
+
+Add `--release` for the optimized profile. `coordinated_loop` asserts stereo/MIDI
+record → playback → FX → capture, wraps, seek, replacement, immutable export and
+cleanup; it has no allocator guard of its own. The three focused examples guard
+every callback and compare relevant callback partitions/zero boundaries:
+
+- `nested_timing`: timing-only outer/inner/child control, direct Stop precedence and
+  delivered countdown cancellation. Logical recording is not captured audio/MIDI.
+- `configuration_cut`: already-stopped generation/media/timing/route publication,
+  running/same-frame-Stop refusal and retained old versus newly scaled audio.
+- `program_graph_cut`: pending until actual zero, then paired epochs and exact
+  scalar route output with a continuing child. Its roles are timing-only.
+
+Preparation and owning-return destruction stay off-render. Regression models and
+historical native/Wasm/interpreter evidence have separate source/platform scopes;
+these examples are not new host, benchmark or full acceptance evidence. No
+independent loop host or loop benchmark is supplied in this snapshot.
+
+## Timing and ownership contracts
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
 `cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate
@@ -55,8 +77,11 @@ immediate replacement API. The standalone [`stage_program`](docs/program-changes
 path retains one prepared program candidate, selects a zero/stopped cut, preflights
 without publication, and swaps owners only on commit. It preserves logical
 identities, sync/trigger metadata and other programs. The facade's `ProgramActivate`
-connects that transaction to receiver banks, reliable runtime receipts and capture
-preflight. General graph/role transactions remain pending. `quiesce()` permanently
+connects it to receiver banks, reliable runtime receipts and capture preflight;
+ProgramGraphActivate pairs it with prepared routing. Fixed-role GraphActivate,
+immediate TopologyGraphActivate and already-stopped ConfigurationActivate are
+separate interfaces. All retain prepared physical shapes; logical generation edits
+are not running physical-role replacement. `quiesce()` permanently
 ends resolver execution so faulted/stopped teardown can collect owners without
 finishing an unrendered interval. Dispose returned/rejected owners off-render.
 

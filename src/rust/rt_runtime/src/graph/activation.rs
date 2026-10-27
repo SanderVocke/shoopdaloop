@@ -231,8 +231,11 @@ impl<'a> GraphAccess<'a> {
         }
         slot.owner.as_ref().ok_or(Error::InvalidState)
     }
-    /// Recheck stage/catalog identity and reserve an infallible ownership swap.
+    /// Recheck scoped stage/catalog identity, validated/current epochs, retained
+    /// capacities and pending MIDI compatibility, then reserve an infallible swap.
     /// The caller must finish all fallible domain work before committing the permit.
+    /// Unused authority leaves graph owners unchanged, but cannot undo arbitrary
+    /// application mutations performed before dropping it.
     pub fn prepare_activation(
         &mut self,
         id: StageId,

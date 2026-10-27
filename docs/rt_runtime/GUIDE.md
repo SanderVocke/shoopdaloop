@@ -2,9 +2,13 @@
 
 `rt_runtime` owns bounded graph execution and resource/command state. It does not own an audio device, application state, a browser messaging protocol, or an OS thread. The host decides when to call it and when stopped objects may be destroyed.
 
-## Executable API examples
+## Reading path and executable examples
+
+Use the completed [nineteen-chapter book](../../src/rust/rt_runtime/docs/README.md) for focused tasks and its [reference](../../src/rust/rt_runtime/docs/reference/README.md) for exhaustive configuration/execution/media/host rules. Examples are independent, not one growing application.
 
 ```sh
+cargo run --locked -p rt_runtime --example first_graph
+cargo run --locked -p rt_runtime --example planned_pair
 cargo run --locked -p rt_runtime --example gain_graph
 cargo run --locked -p rt_runtime --release --example gain_graph
 python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug
@@ -12,7 +16,17 @@ python3 scripts/run_rt_runtime_hosts.py --verify-failures
 python3 scripts/benchmark_rt_runtime.py
 ```
 
-`examples/gain_graph.rs` is a small complete public-API example: prepare a processor/slot, compile and submit a graph, poll its reliable completion, render guarded blocks, change gain exactly halfway through a block, consume the separate execution result, commit an empty graph, remove the processor, and destroy returned owners outside rendering. Its assertions run in both profiles. The independent host fixture adds chunked wire materialization, uploads, capture/snapshots, backpressure, actual browser execution, and complete pool accounting. The benchmark example provides stereo/MIDI/resource workloads, not a production device adapter.
+`examples/gain_graph.rs` is a small complete public-API example: prepare a processor/slot, compile and submit a graph, poll its reliable completion, render guarded blocks, change gain exactly halfway through a block, consume the separate execution result, commit an empty graph, remove the processor, and destroy returned owners outside rendering. Its assertions run in both profiles. The independent host fixture adds chunked wire materialization, uploads, capture/snapshots, backpressure, actual browser execution, and complete pool accounting. The benchmark provides synthetic stereo/MIDI/legacy-quota resource workloads, not required/group/loop throughput or a production adapter. Existing commands/evidence do not imply a new host/benchmark campaign is needed for documentation.
+
+`first_graph` installs startup metadata at epoch 1/frame 0 without a warm-up callback. `planned_gain` is the existing 32-sample/five-interval, one-consumer example with no allocator guard of its own; `planned_pair` adds guarded two-consumer decisions/observations. `pending_operations` teaches retained receipts and requested/effective/delivered/terminal frames; `staged_routes` and `coordinated_capture` teach graph/capture authority, refusal and independent cleanup. Their chapters state exact test scope.
+
+| Graph path | Publication and ownership |
+|---|---|
+| Off-render initial graph | Fully validated during preparation; no ingress credit, receipt or hidden processor/planner call. |
+| Ordinary Commit | Incremental live validation, then callback-ingress publication at the expected epoch; old graph continues while pending and refusal returns the candidate. |
+| StageGraph → planner permit | Owning completion means Ready, not active/locked. Actual operation/planning-cut preflight rechecks scope/generation/current and validated epochs, retained capacities and pending MIDI. Commit follows all fallible domain work; displaced ownership returns separately. |
+
+See [staged activation](../../src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md). Recovery cannot activate graphs. Unused permits change no graph owner, but cannot undo arbitrary application mutations.
 
 A typical application prepares all storage and processors before starting callbacks. Graph compilation can allocate on the control side. The receiver incrementally validates every submitted plan against live generations/signatures/epoch; compile success is not permission to bypass validation. Keep a control-side catalog/identity mirror for concurrent compilation rather than borrowing the live runtime across threads. Rejected/refused commands retain their owning payloads.
 
@@ -43,7 +57,7 @@ Normal scheduled credits are `min(scheduled_events, budgets.events)`; a configur
 
 The host fixture separately bounds five 512-byte wire credits, plan materialization records, and export cursor slots. These are host protocol costs, not hidden extra core copy credits. A real host must likewise bound decoding, JS message queues, buffer ownership, and completion recycling around the core.
 
-Required `ResourceIo::render()` access instead uses independently counted reads and active audio/MIDI capture. It neither consumes nor refreshes background allowances; diagnostics saturate rather than refusing rendering. The capability cannot create leases, change lifecycle, or reclaim. Store-scoped `ReadIndex` supports logarithmic byte positioning; opt-in fixed MIDI checkpoint rows provide bounded event/state positioning. Opt-in capture groups add reserved lifecycle and staged coordinated commits through planner-only frame-bound authority; see the crate's capture-groups guide. Full loop integration remains pending. Size physical storage and workload cost separately; optional snapshots still need background headroom.
+Required `ResourceIo::render()` access instead uses independently counted reads and active audio/MIDI capture. It neither consumes nor refreshes background allowances; diagnostics saturate rather than refusing rendering. The capability cannot create leases, change lifecycle, or reclaim. Store-scoped `ReadIndex` supports logarithmic byte positioning; opt-in fixed MIDI checkpoint rows provide bounded event/state positioning. Opt-in capture groups add reserved lifecycle and staged coordinated commits through planner-only frame-bound authority; see [coordinated capture](../../src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/16-recording-resources-together.md). The separate [loop facade](../../src/rust/shoop_loop_engine/docs/runtime.md) supplies musical roles/restoration, source/role banks and prepared-template publication; no independent loop host/benchmark is supplied in this snapshot. Size physical storage and workload cost separately; optional snapshots still need background headroom.
 
 ## Processor obligations
 
@@ -58,15 +72,19 @@ Allocator guards are active in release and Wasm and deliberately tested to fail.
 
 ## Ownership and stopping
 
+Choose graceful settlement of known work while callbacks run, or explicit stopped abandonment. Do not render-until-idle indefinitely, render merely to reach abandoned future timestamps, replay a faulted callback, or invent outcomes for dropped work. An error may follow advanced time or published domain/graph state; clearing outputs is not rollback.
+
 1. Stop admitting new application work. Account for every accepted command, staged host transfer, future event, export cursor, and lease.
-2. Continue callbacks while draining command and execution results. Cancellation is observed at dequeue and cannot undo already applied work. Recovery requests can overtake normal requests, so dependent reads may explicitly become stale.
-3. Stop captures, cancel unfinished uploads, close host cursors, and release snapshots. Commit a graph that no longer references processors before removing them. Receive their owners and release processor-owned leases explicitly. Retired page chains recycle incrementally under the maintenance budget; continue callbacks until the required pool recovery is observed.
+2. Drain command and execution results for known work. Ticket cancellation is observed at original dequeue; queued typed cancellation and delivered-domain cancellation use different mechanisms. Eligible callback-start recovery parks a held normal owner/progress/original cancellation observation, then resumes it before later normal work under the same finite service/publication allowances. Endless recovery need not be fair; dependent reads may become stale.
+3. Stop captures, cancel unfinished uploads, close host cursors, and release snapshots. Commit a graph that no longer references processors before removing them. Receive their owners and release processor-owned leases explicitly. Retired page chains recycle incrementally under the maintenance budget; drive bounded maintenance for known retirements and verify the required pool recovery; do not use arbitrary future requests as a drain condition.
 4. Decide and report the host-level fate of intentionally abandoned future work; the runtime does not manufacture callbacks to reach a future frame. A disconnected control endpoint leaves render-owned data parked, not destroyed in the callback.
-5. Stop/join callbacks before dropping the runtime, endpoint owners, unconsumed completions, or processor state. There is no hidden blocking drain. In the worklet fixture, stop acknowledgement precedes Rust disposal outside `process`; closing a live context follows disposal. Retaining a live Wasm instance alone is not shutdown evidence.
+5. Stop/join callbacks before dropping the runtime, endpoint owners, unconsumed completions, or processor state. If a planner owns a cleanup ledger, use into_planner_and_resources; into_resources drops that ledger without releasing its hidden plain handles. Neither extraction settles requests, rolls back publication or sends device cleanup. There is no hidden blocking drain. In the worklet fixture, stop acknowledgement precedes Rust disposal outside `process`; closing a live context follows disposal. Retaining a live Wasm instance alone is not shutdown evidence.
 
 Ordinary control-side `submit` may allocate. Hosts enqueuing on a render/worklet thread must use `prepare_submissions` / `submit_prepared`, bounded inactive plan storage, and preallocated payload buffers. A retained ticket/completion can prevent flag reuse and cause `Busy`; drop it only where final destruction is permitted. Never discard an owning refusal or retirement error in a callback.
 
-## Supported matrix and deliberate exclusions
+## Historical support matrix and deliberate exclusions
+
+This table records initial-runtime evidence, including source head `fefe626b1ff866daaa16d55de9091668defc32e3` / workflow `40145050855`, not current-loop-branch Windows/macOS CI or freshly available local tools. [VALIDATION.md](VALIDATION.md) retains exact run provenance; [loop validation](../loop_layer/VALIDATION.md) and [Miri jobs](../loop_layer/MIRI_JOBS.md) have separate scopes. Package Wasm is not a worklet, and the generic NoPlanner worklet is not an independent loop host.
 
 | Host | Scheduled verification | Recorded evidence |
 | --- | --- | --- |

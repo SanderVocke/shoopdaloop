@@ -61,7 +61,7 @@ impl Limits {
     }
 
     /// Checked maximum owned compiled-metadata bytes at these limits. Excludes
-    /// allocating compiler scratch, resolver state and future receiver staging.
+    /// allocating compiler scratch, resolver state and separately prepared receiver staging.
     /// This checks representability, not logical configuration validity.
     pub fn topology_storage_bytes(self) -> Result<usize, Error> {
         crate::topology::storage_bytes(

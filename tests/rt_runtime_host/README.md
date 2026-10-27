@@ -1,10 +1,10 @@
 # Independent rt_runtime host fixture
 
-To verify failure propagation as well as the successful scenario, run `python3 scripts/run_rt_runtime_hosts.py --verify-failures`. Two additional real-worklet sessions deliberately fail with a processor exception and a guarded Rust heap violation. The child runner must exit nonzero with the expected diagnostic. Logs remain in separate `reports/failure-*` directories; the successful journal/report are preserved.s
+To verify failure propagation as well as the successful scenario, run `python3 scripts/run_rt_runtime_hosts.py --verify-failures`. Two additional real-worklet sessions deliberately fail with a processor exception and a guarded Rust heap violation. The child runner must exit nonzero with the expected diagnostic. Logs remain in separate `reports/failure-*` directories; the successful journal/report are preserved.
 
 Test-only hosts using the public `rt_runtime` API. This separate, non-publishable workspace is not a Shoop backend, device adapter, or production browser package. Native and worklet builds share the processor, wire decoder, prepared ownership pools, and guarded render bridge. The main-thread controller compiles relocatable graph descriptions; it never sends Rust pointers to another instance.
 
-This fixture intentionally retains the signal-only `NoPlanner` path and its existing `RTR1` wire format. Generic planner bindings and typed domain operations are tested in the library suites, not encoded as parameter floats or retrofitted into this historical journal. A separate loop fixture will supply its own domain codec. Fresh runs therefore prove existing-host compatibility, not loop AudioWorklet execution.
+This fixture intentionally retains the signal-only `NoPlanner` path and its existing `RTR1` wire format. Generic planner bindings and typed domain operations are tested in the library suites, not encoded as parameter floats or retrofitted into this historical journal. No independent loop-host fixture/domain codec is supplied in this snapshot. Runs prove existing-host compatibility, not loop AudioWorklet execution; package-Wasm tests and offline loop examples have different scope.
 
 ## Run
 
@@ -47,7 +47,7 @@ The two-thread native example uses a bounded public SPSC transport. Atomic offli
 
 ## Bounds, ownership, and shutdown
 
-Configuration and protocol details are in `docs/rt_runtime/HOST_FIXTURE.md`. Each render-side ingress, callback, and completion-recycling scope is guarded against allocation, reallocation, and deallocation. Positive canaries run when each bridge is prepared, including optimized Wasm. All plan/payload/response owners are prepared in advance and recycled. A terminal consistency fault parks its owning completion until non-callback destruction rather than dropping it on the render path.
+Configuration and protocol details are in [HOST_FIXTURE.md](../../docs/rt_runtime/HOST_FIXTURE.md). Historical startup memory was 1,507,328 bytes initially and 1,703,936 after index/handle additions, fixed during each recorded rendering run; [validation history](../../docs/loop_layer/VALIDATION.md) records the separate sources/runs. Neither value is a loop-host sizing guarantee. Each render-side ingress, callback, and completion-recycling scope is guarded against allocation, reallocation, and deallocation. Positive canaries run when each bridge is prepared, including optimized Wasm. All plan/payload/response owners are prepared in advance and recycled. A terminal consistency fault parks its owning completion until non-callback destruction rather than dropping it on the render path.
 
 The worklet uses ordinary independent Wasm memory, five fixed 512-byte transferable buffers, and a fixed five-entry ingress queue. An instance-global marker proves that changing main-thread instance state does not change worklet instance state. The wrapper checks memory size after every callback. A dedicated localhost server sends neither COOP nor COEP; the page asserts `crossOriginIsolated === false`.
 

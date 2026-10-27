@@ -10,17 +10,26 @@ Its purpose is:
 
 `INTER_LOOP_PROCESSING.md` governs inter-loop behavior: preserve sample-accurate interaction within a host block, settle finite same-frame cascades without per-hop delay, and do not truncate legitimate musical work at an arbitrary transition or subdivision quota. The engine owns correctness and termination; the application owns the CPU cost of the musical workload it requests.
 
-This proposal is not an implementation plan or a claim that the required runtime APIs already exist. `PROPOSAL_RT_ENGINE.md` and `DESIGN_RT_ENGINE.md` describe the generic foundation; the latter also identifies the proposed coordination extensions. `DONE_INITIAL_CRATE.md` remains the historical record of the delivered initial crate.
+This proposal preserves the recommendation, ownership split and implementation order; it is not the active implementation/documentation plan. The generic extensions and constrained loop facade below are now implemented. [DESIGN_RT_ENGINE.md](DESIGN_RT_ENGINE.md#current-implementation-map) maps current APIs; [DONE_INITIAL_CRATE.md](DONE_INITIAL_CRATE.md) preserves the initial runtime record. The governing inter-loop decision and PLAN_LOOP_LAYER.md acceptance criteria are unchanged.
+
+## Implemented scope and evidence limits
+
+- Standalone Resolver/compiler and sparse composite views implement primitive/composite settlement with one musical authority. Generic Planner/NoPlanner, PlannerSpec/ConsumerAccess and DecisionBinding provide the borrowed interval/observation lifecycle in GraphRuntime<P,L>; LoopTimelineResolver in diagrams is conceptual, not an exported type. The facade's LoopPlanner is its internal adapter.
+- Append-maintained page indexes and opt-in MIDI checkpoints provide scoped positioning and strict-pre-target state, leaving original equal-time packets for playback. Reserved capture versions/indexes/first intervals/final leases and all-member commit support coherent audio/MIDI record→play and playback→FX→capture. The separate facade/ledger owns logical content, not a second generic store.
+- LTP1/Stager supplies bounded reusable timing ingestion/validation/recycle, not a complete worklet wire protocol. The facade supports fixed-ID timing, one owning selected program, fixed-role live routes, stopped logical-owner generation/media configuration and paired selected-program/routes at actual zero/stopped entry. All use prepared physical templates, actual capture-family preflight, checked epochs/generations and independent retirement. No arbitrary processor construction or port resizing is added. See [activation paths](src/rust/shoop_loop_engine/docs/topology-activation.md).
+- State/Export return settled pre-render cuts, not an arbitrary whole-domain mirror or public AfterInterval enum. Musical take revision, generic resource revision, graph/topology epochs and stage generations remain distinct. Explicit leases retain old exports through replacement; copying IDs acquires nothing. The facade does not implement all old backend modes.
+
+Read the [runtime book/reference](src/rust/rt_runtime/docs/README.md) and [loop task guides](src/rust/shoop_loop_engine/README.md) for actual APIs/examples. [Stage 6 readiness](docs/loop_layer/STAGE6_READINESS.md) maps its historical native/Wasm/consolidated-Miri scope. Generic NoPlanner host regression, package-Wasm tests and offline examples are not independent loop AudioWorklet evidence. No independent loop host/benchmark, new full callback audit, newer performance/platform/deadline campaign, production backend/UI/device/plugin migration or longer-plan optimization is supplied here. These are limitations, not incoming dependencies of documentation authoring.
 
 ## Overall layering
 
 | Layer | Responsibility |
 | --- | --- |
 | Application/session policy | Tracks, scenes, editing and preparing composite programs, user actions, undo, persistence, scripting |
-| Loop execution — build next | Authoritative loop/composite timing, trigger resolution, coordinated transitions, and audio/MIDI execution of interval decisions |
+| Separate shoop_loop_engine | Authoritative loop/composite timing, trigger resolution, coordinated transitions, and audio/MIDI execution of interval decisions |
 | `rt_runtime` | Generic planning lifecycle and dependencies, signal DAG execution, prepared decision access, resources, ownership transport, admission, and retirement |
 
-The planning facilities in the last row are proposed additions, not capabilities of today's `Processor::process` interface.
+The planning facilities in the last row are implemented separately from Processor::process; an ordinary processor still cannot choose the whole graph's next interval.
 
 Host adapters connect these layers to native audio/MIDI facilities or an AudioWorklet. They must not contain another implementation of musical semantics.
 
@@ -138,13 +147,16 @@ Each rendered interval must make progress toward the finite host-block end. A on
 
 ### Same-frame work
 
-Define a constrained trigger model before implementation. Open semantic questions include:
+SEMANTICS.md now resolves the original questions below; they remain useful checks
+on the rationale, not current unspecified behavior:
 
 - Trigger-occurrence identity and delivery rules.
 - Whether a delivery can create a fresh occurrence at the same frame.
 - Whether starting an already-playing loop creates another trigger.
 - Ordering and conflict resolution for simultaneous start, stop, replace, wrap, and recording-completion actions.
 - Validation and reporting of nonterminating instantaneous behavior.
+
+The implemented clock identity is loop+absolute frame with one coalesced edge per loop/frame. Direct requests arbitrate by sequence, followed by explicit/inherited/natural precedence; pre-clock Stop suppresses an edge while reactive Stop preserves one already emitted. Only pure-sync SCC cycles are accepted; action feedback and recursive containment are rejected. See [coincident settlement](docs/loop_layer/SEMANTICS.md#coincident-decisions-pulses-and-termination).
 
 Once-per-occurrence delivery can prevent circulation of one occurrence, but does not by itself prevent infinite creation of fresh occurrences. Termination must follow from the supported semantics and validation, not an arbitrary propagation-round counter. Do not reject all cyclic synchronization relationships as a shortcut.
 
@@ -170,11 +182,11 @@ For composites, distinguish **editing and preparing the program** from **executi
 
 A request such as “launch these loops together at the next boundary of this synchronization source” is chosen by application policy and resolved precisely by the loop layer. Timing dependent on live playback or recording state must not round-trip through the UI or external control queue.
 
-## Required generic runtime evolution
+## Implemented generic runtime evolution
 
 ### Planning lifecycle, dependencies, and views
 
-Add a generic planning/dependency facility or equivalent explicit execution phase. It must support interval selection, prepared decision publication, dependent signal execution, and observation collection. The exact Rust API remains open; loop modes, trigger rules, and composite semantics must not enter the generic crate.
+Planner::plan selects the next positive interval within the external ceiling; views, checked producer observations and Planner::finish enforce the phase split. Catalog planning metadata/bindings remain separate from signal ports. Loop modes, trigger rules and composite semantics stay outside the generic crate; see the [planning chapter](src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md).
 
 Keep host-callback admission, accounting, and publication lifecycle distinct from internal musical intervals. Reconcile scheduled external actions and resolver-selected boundaries without delaying admitted actions or duplicating their execution.
 
@@ -182,25 +194,25 @@ Keep host-callback admission, accounting, and publication lifecycle distinct fro
 
 Do not encode recording or loop transitions as magic parameter numbers and `f32` values. Provide typed operations with explicit ownership, admission, and execution outcomes where needed.
 
-Current resource capture start/stop commands operate at block boundaries. Exact-frame capture, coherent multichannel activation, and record-to-play transitions require prepared capacity and explicit activation/failure semantics. A compact rendering observation returns to the resolver phase, not through an asynchronous external command round trip.
+Legacy resource commands retain ingress-boundary behavior. PlannerResourceIo/CaptureBoundaryIo now supplies stamped exact-frame prepared group activation/freeze, first-interval reservation and all-member commit; the facade's monotonic failure-latching preflight resolves dependencies before affected samples. A compact rendering observation returns to the resolver phase, not through an asynchronous external command round trip.
 
 ### Positioning and media access
 
-Current resource cursors are sequential. Audio seeking and MIDI event/state lookup need prepared indexing or bounded positioning primitives; they must not scan entire resources in a callback. Reuse runtime storage and leases rather than introducing a competing media store.
+Sequential cursors remain supported alongside scoped indexed reads/MIDI event-state positioning. Page indexes are append-maintained; C checkpoints/span K admit C×K−1 packets/version with bounded local replay, not a whole-content seek scan. Reuse runtime storage and leases rather than introducing a competing media store.
 
 ### Separate quota classes
 
 Audit existing subdivision, copy, validation, and diagnostic-count limits. Preserve external admission, background transfer throttling, and ownership guarantees. Do not let those quotas silently cap required internal loop work or make musical behavior depend on host block partitioning.
 
-In particular, distinguish work needed to execute admitted rendering from opportunistic uploads, exports, validation, and reclamation. Define preparation guarantees and explicit resource-failure behavior rather than treating a CPU quota as a musical transition rule. Diagnostic overflow needs a reporting policy, not altered musical execution.
+In particular, distinguish work needed to execute admitted rendering from opportunistic uploads, exports, validation, and reclamation. Define preparation guarantees and explicit resource-failure behavior rather than treating a CPU quota as a musical transition rule. Implemented diagnostics saturate/latch overflow without changing musical execution; semantic frame/revision/generation exhaustion is checked. Normal external scheduler capacity is min(scheduled_events, budgets.events), with an independent declared recovery receipt and no internal subrange allowance. Eligible recovery parks/resumes a held normal owner without resetting progress or cancellation observation; finite publication/command allowances and possible starvation remain. Recovery must terminate by delivery-frame planning before positive samples.
 
 ### Coherent state publication
 
-Publish mode, position, pending transitions, revision, and capture status through bounded mechanisms. Timing fields come from the resolver; renderer observations supply media execution status. Do not expose independently sampled mutable states as a coherent loop snapshot.
+Publish mode, position, pending transitions, revision, and capture status through bounded mechanisms. Timing fields come from the resolver; renderer observations supply media execution status. Do not expose independently sampled mutable states as a coherent loop snapshot. The facade implements settled State/Export with actual epochs/media. A post-publication render fault is not rollback: retain actual state/time/prefixes and the ledger, never replay or fake finish. Permanent stopped cleanup quiesces/reclaims real owners, not device state or a resumable pause.
 
 The musical resolver is necessary domain scheduling. It must not duplicate the runtime's generic signal executor, ownership transport, resource lifecycle, or retirement infrastructure.
 
-## Implementation sequence and first milestones
+## Original implementation sequence and first milestones
 
 1. **Specify and test resolver semantics without audio.** Extract the intended existing primitive/composite timing behavior; cover same-frame cascades, simultaneous actions, valid mutual synchronization, and invalid nonterminating behavior.
 2. **Define decisions and observations.** Establish authoritative state ownership, interval-view lifetimes, exact observation boundaries, and coherent failure outcomes.
@@ -216,6 +228,6 @@ Single-loop tests remain useful building blocks, but inter-loop coordination is 
 
 Use one runtime graph, span-oriented media processing, prepared storage, and retained processor state. Start with one loop-layer crate containing clearly separated semantics, resolver, decision/observation, audio, MIDI, and runtime-integration modules. Create further crates only when an independently useful boundary emerges.
 
-Longer preplanned span batches are optional. They are valid only when intermediate rendering outcomes cannot invalidate the plan and sufficient prepared storage exists. Exhausting that optional storage must fall back to semantically equivalent incremental execution, not delay or drop transitions.
+Longer preplanned span batches remain optional, unimplemented optimizations; the no-selection lookup shortcut is not measured speedup evidence. They are valid only when intermediate rendering outcomes cannot invalidate the plan and sufficient prepared storage exists. Exhausting that optional storage must fall back to semantically equivalent incremental execution, not delay or drop transitions.
 
 The resolver is the architectural center, not a centralized DSP processor. It establishes coherent timing; individual renderers and the signal DAG execute media work. This makes synchronization fundamental without turning the next layer into another monolithic backend.

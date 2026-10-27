@@ -1,8 +1,10 @@
 # Independent host fixture
 
-Status: implemented and verified on Linux with native debug/release, real OfflineAudioContext, and live AudioContext. See `VALIDATION.md`, `evidence/hosts-stage6.json`, and `tests/rt_runtime_host/README.md` for commands and evidence. Cross-platform CI and broader adversarial/performance gates remain in stages 7–8. This fixture is test-only, not a production host adapter or a new production abstraction crate.
+This is the implemented test-only generic host, not a production adapter or a new abstraction crate. Initial native debug/release, actual OfflineAudioContext/live AudioContext and later initial-runtime cross-platform CI/adversarial/failure results are recorded in [VALIDATION.md](VALIDATION.md), [stage-6 host evidence](evidence/hosts-stage6.json) and the [fixture README](../../tests/rt_runtime_host/README.md). Those historical passes retain their source-head/run scope; they do not certify the current loop branch or a new documentation-time campaign.
 
-The loop-layer Stage 3 regression keeps this fixture on `NoPlanner` and the existing `RTR1` wire format. New generic planner descriptors and typed operations are not carried by that codec. Native and actual worklet reruns retain the original byte-identical journal; loop-domain wire validation and host execution belong to the separate planned loop fixture.
+The loop-layer Stage 3 regression keeps this fixture on `NoPlanner` and the existing `RTR1` wire format. New generic planner descriptors and typed operations are not carried by that codec. Recorded native/actual-worklet regressions retain the original byte-identical journal. There is no independent loop-host fixture/codec in this snapshot; package-Wasm tests and offline loop examples do not substitute for loop AudioWorklet execution.
+
+Memory provenance is separate from the journal: initial generic-host runs recorded **1,507,328 bytes**; later index/handle preparation recorded **1,703,936 bytes**, initial=final through rendering. See [loop-layer historical regression evidence](../loop_layer/VALIDATION.md). These are measurements for those sources/configurations, not a loop-host memory requirement or fresh measurement.
 
 ## Packaging and shared logic
 

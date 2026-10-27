@@ -1,7 +1,13 @@
 # Observed test-suite execution times
 
-Notes for designing a later test strategy, not new acceptance thresholds or
-permission to omit required gates. Recorded 2026-10-26 during Stage 5 facade work.
+Historical scheduling observations, begun 2026-10-26 during Stage 5 facade work
+and extended through Stage 6 collection. All “latest”, queued and not-interpreted
+statements below are scoped to the named milestone, not current jobs or current
+checkout measurements. They are neither acceptance thresholds nor permission to
+omit implementation gates. The documentation pass runs no new campaign; no
+independent loop host/benchmark, cold-cache/platform study or callback deadline
+evidence is supplied by these timings. See [collected jobs](MIRI_JOBS.md) and the
+[current loop guides](../../src/rust/shoop_loop_engine/README.md).
 
 ## Collected Stage6 interpreter observation
 
@@ -18,7 +24,7 @@ initial-runtime40-minute CI job window; later Stage8 CI scheduling must account 
 the complete inventory without reducing workloads or relaxing the900s command
 watchdog. This local background pass does not establish CI scheduling readiness.
 
-## Latest nested-lifecycle/readiness slice
+## Historical nested-lifecycle/readiness slice
 
 `evidence/nested-lifecycle-stage6.json` records246.5950759499974s for19 sequential,
 warm scoped gates:153 loop cases/profile and2141 workspace cases/four existing
@@ -331,7 +337,7 @@ Three new Miri cases are registered (inventory215), not interpreted. Standalone
 runtime/host reruns are not included. These measurements do not imply deadlines,
 cold-cache timing, CI headroom or actual loop-worklet acceptance.
 
-## Implications to consider when designing the strategy
+## Historical implementation scheduling implications
 
 1. Focused native tests and cheap policies provide fast iteration feedback.
    Keep full independent sample/event/content assertions rather than replacing

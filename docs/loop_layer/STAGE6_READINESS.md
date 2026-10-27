@@ -1,11 +1,20 @@
 # Stage 6 implementation coverage and verified completion
 
-This is an operational acceptance audit, not an authored guide or a reduction of
-`PLAN_LOOP_LAYER.md`. **Stage6 is verified complete.** Consolidated source-matched
+This is the historical operational acceptance audit for PLAN_LOOP_LAYER.md,
+not a new full callback audit, authored guide or reduction of that plan.
+**Stage 6 was verified complete at the recorded implementation snapshot.** Consolidated source-matched
 Miri was collected successfully:81 commands/228 executions,128 runtime+100 loop,
-from immutable `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea`. The user requires the goal
-to pause here; Stage7 has not started. Stages7–10 and LL-A final acceptance remain open. Broader randomized/performance/concurrency/failure-canary work required
+from immutable `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea`. At that implementation checkpoint the user required a pause before Stage7;
+this is not an instruction to pause/commit the current documentation goal.
+Stages7–10 and LL-A final implementation acceptance were not closed by this audit. Broader randomized/performance/concurrency/failure-canary work required
 by Stage8 is not waived by this audit.
+
+Current APIs are taught in the [runtime book](../../src/rust/rt_runtime/docs/README.md)
+and [loop guides](../../src/rust/shoop_loop_engine/README.md). Source-match/freshness
+statements below are those recorded at collection, not a recheck of today's dirty
+comments/examples. No independent loop host/benchmark or new audit/performance/
+platform campaign is supplied by the documentation pass. This preserves the
+implementation plan's obligations without making them documentation dependencies.
 
 ## Checklist-to-evidence mapping
 
@@ -79,6 +88,6 @@ The corrected hash/executable/symlink verification passed. This was not an inter
 failure or changed snapshot, and no test was rerun or weakened to correct it.
 
 Every Stage6 row above now has implementation/native/Wasm evidence and the required
-collected interpreter gate. Record task completion and the milestone commit, then
-**pause the goal as explicitly requested by the user**. Do not start Stage7 until a
-further resume. This audit does not waive later gates or authorize merging a PR.
+collected interpreter gate. The checkpoint required recording completion/commit and pausing before Stage7.
+That historical instruction is not the current documentation delivery workflow.
+This audit does not waive later implementation gates or authorize merging a PR.

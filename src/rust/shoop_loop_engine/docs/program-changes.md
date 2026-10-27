@@ -3,9 +3,26 @@
 `Resolver::stage_program(expected_epoch, target, sequence, at, candidate)` retains
 a prepared topology until a program change can be selected and committed. It
 returns a normal `RequestId`; admission is not activation. The coordinated facade
-exposes the same transaction through staged-bank `ProgramActivate`; see
-[topology activation](topology-activation.md). Its separate immediate
-`TopologyActivate` operation still requires changed programs already stopped.
+exposes it through staged-bank ProgramActivate (fixed graph), or ProgramGraphActivate
+(coordinated prepared routes); see [publication paths](topology-activation.md).
+Immediate TopologyActivate still requires changed programs already stopped.
+
+Run the independent [program_graph_cut](../examples/program_graph_cut.rs) example:
+
+```sh
+cargo run --locked -p shoop_loop_engine --example program_graph_cut
+cargo run --locked -p shoop_loop_engine --release --example program_graph_cut
+```
+
+A one-frame source clocks an old four-iteration program. The pair is delivered at
+start+1, waits until actual zero at start+4, then publishes a two-iteration program
+and bypass route together. Scalar effect output changes from 1 to 2 at that exact
+sample, both epochs advance, and the continuing child retains its four cycles.
+Whole/single/split calls and zero at the cut agree under heap guards. Roles are
+timing-only: those samples witness the independent effect route, not loop media.
+Timing storage and the displaced graph return independently; stopped cleanup
+recovers the remaining owners. Mixed-media refusal/cancellation remains covered
+by the larger regression scenarios, not claimed for this example.
 
 ## Scope, capacity and ownership
 
@@ -106,10 +123,13 @@ external-producer retry or arbitrary musical-work limit. These costs are not a
 constant-time operation or a callback deadline guarantee.
 
 This standalone API does not update a runtime signal graph, physical role bindings,
-resource claims or logical generations. The fixed-graph facade now connects staged
-receiver owners, reliable execution tokens, graph-epoch checks, capture-family
-preflight and stopped cleanup to it. General graph/role transactions, broader
-mixed lifecycle stress and independent loop hosts remain incomplete Stage6–7 work.
+resource claims or logical generations. The facade connects staged receiver owners, reliable execution tokens, current
+epoch checks, capture-family preflight and stopped cleanup to it. ProgramGraphActivate
+holds only a reference to an unlocked Ready graph while waiting, then rechecks it
+and borrows publication authority at the real cut. Logical IDs/kinds, sync/triggers,
+other programs and physical roles stay fixed. Stopped-owner ConfigurationActivate
+is a different transaction for generation edits. No path offers arbitrary processor
+construction, port resizing, independent-host or deadline certification.
 
 ## Evidence
 
@@ -131,8 +151,10 @@ The original nine guarded native/release/Node/Chromium cases cover:
 See [program-change-stage6.json](../../../../docs/loop_layer/evidence/program-change-stage6.json)
 and its provenance report for125 loop tests per native/Wasm profile,2104 workspace
 passes/four existing skips,19 scoped gates and production borrowing proofs.
-Miri remains deferred to the consolidated applicable stage run: nine cases are
-registered, not claimed interpreted. The initial empty-program fixture wrongly
+That original report deferred Miri and registered nine cases; the later
+consolidated [Stage 6 interpreter evidence](../../../../docs/loop_layer/MIRI_JOBS.md)
+has its own immutable implementation/source scope. No new interpreter run follows
+from documentation edits. The initial empty-program fixture wrongly
 expected a caller-supplied length of42; compilation derives the empty program's
 nominal length as0. That failed log is retained, and nonempty length publication
 is checked separately. No workload or guard was reduced.
@@ -143,4 +165,5 @@ interval, and after finish. It checks unchanged state/time, permanent execution
 refusal and correct candidate/displaced owner return. An additional E0502 proof
 rejects quiescence across a retained decision borrow. These and the five new facade
 cases are covered by [facade-program-stage6.json](../../../../docs/loop_layer/evidence/facade-program-stage6.json);
-no new Miri invocation is claimed.
+that milestone claimed no new Miri invocation. Consolidated evidence is recorded
+separately; the public example runs above are native debug/release evidence only.

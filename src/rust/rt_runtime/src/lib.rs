@@ -5,10 +5,23 @@
 //! Capacity and work-budget failures are explicit errors, not permission to grow.
 //!
 //! [`executor::GraphRuntime`] executes typed DAGs with stable processor slots and
-//! bounded plan validation/activation. The low-level [`RenderRuntime`] provides
-//! host-block validation and the empty-graph clock. Scheduling uses explicit event,
-//! split and execution-result credits. Resource exchange uses fixed pages, revisioned
-//! leases, and callback-wide copy/validation budgets with reserved processor headroom.
+//! bounded plan validation/activation. An optional [`planner::Planner`] settles
+//! internal intervals and supplies borrowed decisions; consumers report observations
+//! without owning a second clock. The low-level [`RenderRuntime`] validates host
+//! blocks and provides the empty-graph clock.
+//!
+//! Normal scheduled work and unread terminal results share
+//! `min(scheduled_events, budgets.events)` slots; a declared planner adds one
+//! independent recovery receipt. Internal intervals have no subdivision quota.
+//! Command ownership, cancellation flags and execution results have separate limits.
+//!
+//! Resource exchange uses fixed pages and explicit revision/prefix leases. Legacy
+//! resource access and optional transfers use callback-wide background allowances;
+//! required [`resource::RenderIo`] data access is independently counted and checks
+//! physical capacity, shape and time without consuming or renewing those allowances.
+//! Only planner-lent authority manages coordinated capture lifecycle or validated
+//! staged graph publication. Permits are not rollback, and copied IDs acquire no
+//! lease. These finite storage/work contracts do not certify callback deadlines.
 
 #![forbid(unsafe_code)]
 

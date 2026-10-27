@@ -1,6 +1,14 @@
 # Miri jobs and outstanding verification
 
-## Collected Stage6 pass — no active job
+This is an implementation job/evidence history, not a live-process monitor or a
+requirement to run Miri for prose acceptance. All source-match statements below
+refer to their recorded snapshots/checkpoints, not the current dirty checkout.
+The [documentation plan](../../DOCS_REWRITE_PLAN.md) requires no new interpreter
+campaign; [current public guides](../../src/rust/shoop_loop_engine/README.md)
+distinguish examples from this historical gate. Later implementation acceptance
+obligations remain unchanged.
+
+## Collected Stage 6 pass
 
 Job `20261027T025325-e065d48941` completed successfully and was collected with the
 supported `collect` command. **81 commands/228 executions passed:128 runtime+100
@@ -16,7 +24,8 @@ Committed evidence: `evidence/miri-stage6.json`, `miri-stage6-collected.json`,
 `d4c8fa7b5e0caf610783a56d178ae4343288b413f63e2841184847ae15df3ae0`.
 The dense128-boundary case passed in877.7475190730183s; no watchdog/workload/guard
 change or second routine invocation was needed. Stage6 is now complete. Per the
-explicit user instruction, pause before Stage7; later final Miri requirements remain.
+then-current user instruction, the implementation goal paused before Stage7;
+this does not pause the documentation goal or waive later implementation gates.
 The earlier interrupted171/178 invocation is still partial and is not relabelled.
 
 ## Historical Stage6 launch and while-running checkpoints
@@ -81,7 +90,8 @@ the900-second per-command watchdog are unchanged. Historical interloop duration
 interpreter pass was claimed at readiness. The subsequently collected job above now
 verifies the full inventory. [Stage6 completion audit](STAGE6_READINESS.md) maps
 requirements and records terminal collection/source checks. Later acceptance remains
-open and the user-requested Stage6 pause takes precedence over advancing.
+open in that implementation plan; its historical pause is not an instruction
+for the current documentation authoring workflow.
 
 Previous paired program/graph milestone: **227 selected =128 runtime+99 loop**.
 Four new guarded facade cases are registered, not interpreted. The existing private
@@ -113,9 +123,12 @@ verified match of the full required inventory and relevant inputs.
 Use [`scripts/run_rt_runtime_miri_jobs.py`](../../scripts/run_rt_runtime_miri_jobs.py)
 for launch/status/collection; [MIRI_BACKGROUND.md](MIRI_BACKGROUND.md) documents the
 commands, committed-snapshot requirement, Linux-only wrapper and failure handling.
-No real background interpreter job has been launched for the subsequent smaller
-program-probe, owning-transaction, facade-adapter or generic graph-permit steps.
-At the media-owner prerequisite, the inventory was215=128runtime+87loop. Those three media-owner cases and the subsequently added configuration, paired-program/graph and nested-lifecycle cases remain registered, not interpreted. The interrupted partial evidence remains unchanged; the current full inventory is228 as stated above.
+Before consolidation, the smaller program-probe, owning-transaction,
+facade-adapter and generic graph-permit steps had no separate background run.
+At the media-owner prerequisite the inventory was215=128runtime+87loop; the later
+configuration, paired-program/graph and nested cases brought it to228. These were
+registration-only checkpoints then, subsequently covered by the collected Stage 6
+run above, not retroactive passes of the individual earlier invocations.
 
 ## Job record requirements
 
@@ -138,7 +151,7 @@ Changes made while a job runs belong to a later snapshot. Accumulate any needed
 reruns for the next applicable stage/final verification barrier rather than
 launching a new job after every edit.
 
-## Outstanding work at the scheduling change
+## Historical outstanding work at the scheduling change
 
 | Job / evidence | State | Verified scope | Outstanding obligation |
 | --- | --- | --- | --- |

@@ -228,7 +228,7 @@ impl<T, R, S: Copy> ControlEndpoint<T, R, S> {
         self.next_sequence.checked_next()
     }
     /// Allocation-free submission after preparation. At most the lane's fixed
-    /// slot count is probed. Retained ticket handles can cause explicit Busy even
+    /// slot count is probed. Retained ticket/completion handles can cause Busy even
     /// after a terminal completion is received; old tickets cannot cancel reuse.
     pub fn submit_prepared(&mut self, lane: Lane, request: T) -> Result<Ticket, SubmitError<T>> {
         let next = match self.admission(lane) {
@@ -339,7 +339,10 @@ impl<T, R, S: Copy> ControlEndpoint<T, R, S> {
 impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
     /// Snapshots available work; concurrently arriving work waits until the next
     /// cycle. Call exactly once per host callback, including callbacks that only
-    /// stage input. A current long-lived operation keeps its owning return credit.
+    /// stage input. Eligible recovery parks a held normal owner inline, retaining
+    /// its progress, return credit and original cancellation observation. Parking
+    /// adds no admission credit or dequeue; all service shares this cycle's budgets.
+    /// Continued recovery does not guarantee normal-lane fairness.
     pub fn begin_cycle(&mut self, frame: Frame, epoch: Epoch) {
         self.frame = frame;
         self.epoch = epoch;
@@ -370,6 +373,8 @@ impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
 
     /// At most one operation can be borrowed at a time. Cancelled dequeues consume
     /// the same work/completion budget as normal operations and are returned here.
+    /// After snapshotted recovery, resume the parked head before later normal work;
+    /// resumption is not a second dequeue or cancellation observation.
     pub fn next_operation(&mut self) -> Option<Operation<'_, T>> {
         if self.pending_return.is_some() {
             return None;

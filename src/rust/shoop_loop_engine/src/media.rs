@@ -52,6 +52,8 @@ pub struct Description {
     pub channels: u32,
     pub midi: bool,
 }
+/// Metadata/access for an existing snapshot lease. Copying acquires nothing;
+/// successful adoption transfers the original lease exactly once.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Source {
     pub snapshot: Snapshot,
@@ -75,6 +77,9 @@ pub struct View {
     pub audio: Option<Source>,
     pub midi: Option<Source>,
 }
+/// Immutable metadata viewed through an existing export owner. Copying acquires
+/// nothing; retain its ExportId. The caller-supplied request cut neither certifies
+/// settlement nor relabels the sources' original capture cuts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Export {
     pub media: MediaId,

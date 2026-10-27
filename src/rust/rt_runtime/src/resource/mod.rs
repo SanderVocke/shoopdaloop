@@ -1,5 +1,7 @@
 //! Single-owner fixed-page resource storage. All allocation and final destruction
-//! happen at preparation/host teardown; rendering only changes fixed pool metadata.
+//! happen at preparation/host teardown; rendering uses fixed pools and bounded copies.
+//! Raw resource/snapshot IDs require same-store caller discipline. Scoped indexes
+//! additionally check instance and lease generation; copying either acquires no lease.
 
 mod boundary;
 pub use boundary::{CaptureBoundaryIo, PlannerResourceIo};

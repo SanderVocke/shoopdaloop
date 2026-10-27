@@ -1,5 +1,11 @@
 # Background stage-level Miri jobs
 
+This is the implementation runner's operational reference, not documentation
+acceptance or an instruction to commit the current checkout. The documentation
+pass uses existing evidence/manual review and starts no new jobs. [MIRI_JOBS.md](MIRI_JOBS.md)
+records the collected Stage 6 result; it does not certify later dirty prose/examples.
+The commands below remain available for a separately authorized implementation gate.
+
 Use one consolidated background run per applicable numbered-stage milestone, not
 one per smaller edit/commit. Continue development while it runs. The final required
 selection and source-matched result verification remain mandatory; see
@@ -130,4 +136,5 @@ terminal collection and input/inventory/hash verification were required. Those c
 have now passed for the complete81-command/228-execution run. See the job ledger and
 `evidence/miri-stage6{,-collected,-provenance}.json`; the raw report/log bundle is
 `evidence/miri-stage6-logs.tar.gz`. This closes Stage6's interpreter gate, not later
-host/final acceptance, and the user requires a goal pause before Stage7.
+host/final acceptance. The user-required pause before Stage7 applied to that
+implementation checkpoint, not to the current documentation completion workflow.

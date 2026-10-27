@@ -1,5 +1,9 @@
 # Runtime implementation evidence
 
+This is a chronological initial-runtime record. Counts, commands, failed attempts, tool/platform versions, stage names, CI/PR/review status and source heads below retain their original run scope, not current-branch certification or authoring instructions. The final initial-runtime source-head result is recorded at the end; earlier pending/interrupted results are not silently rewritten as later passes.
+
+Current user contracts are in the [runtime book/reference](../../src/rust/rt_runtime/docs/README.md); later generic/loop implementation evidence is in [loop validation](../loop_layer/VALIDATION.md) and the [consolidated Miri record](../loop_layer/MIRI_JOBS.md). Offline examples, package-Wasm tests and this NoPlanner host do not establish an independent loop AudioWorklet or newer loop performance evidence. The documentation pass launches no new CI/audit/benchmark/interpreter campaign and changes no other plan's acceptance criteria.
+
 ## Stage 0: planning baseline
 
 - Planning commit: `76d1f3d9` (parent proposal `704fbb72`). Implementation branch: `feat/generic-rt-runtime`.

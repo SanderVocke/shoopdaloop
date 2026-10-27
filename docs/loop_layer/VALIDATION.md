@@ -1,6 +1,23 @@
 # Loop-layer implementation and validation evidence
 
-## Stage6 verified complete — mandatory user checkpoint
+## Current reading path and evidence boundary
+
+The runtime [book/reference](../../src/rust/rt_runtime/docs/README.md) and loop
+[task guides](../../src/rust/shoop_loop_engine/README.md) describe the current APIs,
+including prepared configuration and paired running-program/graph publication.
+[STAGE6_READINESS.md](STAGE6_READINESS.md) maps implementation acceptance at its
+recorded source; it is not a new callback audit or final branch/platform certification.
+No independent loop host/benchmark or newer performance/deadline campaign is supplied.
+
+The following sections are chronological records, including old open-stage counts,
+while-running jobs, source/hash checks and the then-required goal pause/commit/worker
+workflow. Those statements apply at their checkpoints, not to the current dirty
+checkout or to documentation authoring. Former docs-changes-loop-layer references
+now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
+the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
+handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Historical Stage 6 completion and user checkpoint
 
 Consolidated job `20261027T025325-e065d48941` completed and the supported collector
 accepted its terminal pass: **81 commands/228 executions,128 runtime+100 loop**, from
@@ -45,11 +62,13 @@ sources. Its first inline count check expected a scalar instead of the actual
 package-keyed native-count object; the corrected check passed without rerunning or
 changing tests. Both evidence-driver schema mistakes are distinguished from real
 interpreter or implementation failures. No new native/Wasm/host/benchmark/CI execution is claimed by
-collection. **Pause the goal after committing this completion, as the user requested;
-Stage7 has not started.** Stages7–10, later models/audits/performance, independent
-actual loop hosts, separate-worker publication and final PR/CI/review remain required.
+collection. At this implementation checkpoint the user required a pause after its
+completion commit, before Stage7. Later implementation models/audits/performance,
+independent hosts and final delivery were not certified by this collection.
+That historical workflow is not a pause/commit/PR or separate-worker requirement
+for the current documentation plan.
 
-## Repository runtime and architecture handoff review
+## Historical repository runtime and architecture handoff review
 
 Read all seven Stage9 repository runtime documents, three root proposal/design
 files, the governing INTER_LOOP_PROCESSING decision, current runtime README and
@@ -78,7 +97,7 @@ At this checkpoint the existing consolidated Miri job remains **running,75 compl
 commands/220 of228 executions**, processing the unchanged dense128-boundary case
 under its900-second watchdog. No terminal collection or Stage6 completion is claimed.
 
-## Loop-guide and facade-contract handoff backfill
+## Historical loop-guide and facade-contract handoff backfill
 
 Read all11 loop README/guide destinations and the complete SEMANTICS,
 RUNTIME_INTEGRATION and FACADE_DESIGN documents. New `loop-foundations-backfill.md`
