@@ -1,5 +1,42 @@
 # Loop-layer implementation and validation evidence
 
+## Capacity/prepared-ingress/shutdown handoff backfill
+
+The chapter17/19 notes now include Stage3–6 storage/work/ownership/extraction
+requirements, and chapter18 has a complete actionable prepared-ingress example
+specification. All19 chapters have notes, but earlier chapter5–8/13–15 slices still
+need their complete backfill and separate-worker publication/example verification
+remains pending. The three Part V destination chapters are still empty.
+
+`src/rust/rt_runtime/docs-changes-loop-layer/operation-baseline.json` records current
+source/archive/destination hashes and twelve checked commands: **188 rt_runtime tests
+per native debug/release profile**, seven existing `bounded_runtime` workloads at
+**1024 measured callbacks each per profile**, six deliberate allocation/reallocation/
+deallocation canaries producing exit101 with the expected guard diagnostic,
+warning-denied rustdoc, and drafting-only book checks. The bounded example retains
+its sample/MIDI/content/ownership/shutdown assertions. All11 archive files,123 scoped
+Rust files and relevant configuration/runner inputs remain unchanged. Raw logs:
+`target/loop-layer-docs-operation/`.
+
+These are prescribed documentation smokes, not reduced replacements for the full
+benchmark campaign, independent loop benchmark or actual loop AudioWorklet. Native
+timings share the machine with the ongoing Miri job and carry no deadline/cold-cache/
+CI-margin claim. The bounded example's capture uses legacy quota-based I/O; it does
+not measure the new required/group/loop paths. No new prepared-ingress/shutdown book
+example or authored chapter was created here.
+
+The review also found the crate rustdoc introduction still refers to “split” credits
+and describes all resource exchange as quota-based. Cross-cutting handoff instructions
+now explicitly require correcting that stale prose; passing rustdoc compilation does
+not prove semantic prose accuracy. Current loop configuration/program-graph integration
+supersedes the original cross-cutting notes' blanket future-integration statements.
+No production Rust was changed during this review.
+
+At its natural checkpoint, consolidated job `20261027T025325-e065d48941` remains
+running with **53 commands/178 of228 executions completed**, executing the paired
+cancellation/released-generation case. This is new-job partial progress, not the
+historical178-selection's completion or a terminal collected pass. Stage6 stays open.
+
 ## Resource/MIDI/capture handoff backfill while consolidated Miri runs
 
 Five new actionable notes cover chapters9–12 and16 under

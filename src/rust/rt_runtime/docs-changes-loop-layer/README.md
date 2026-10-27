@@ -76,6 +76,18 @@ remain the documentation worker's work. The notes correct raw-ID versus scoped-v
 preconditions, physical resource versus musical revision clocks, strict pre-target
 state versus restoration, and the current prepared-first-interval capture path.
 
+The **operation/capacity/teardown backfill** expands chapters17/19 and adds chapter18
+prepared ingress: `operation-baseline.json` records the still-empty destinations,
+source/archived-guide review, unchanged archive/input hashes,188 rt_runtime cases
+per native debug/release profile, warning-denied rustdoc, and the existing seven-
+workload `bounded_runtime --iterations 1024` smoke in both profiles. All six deliberate
+allocation/reallocation/deallocation canaries produced the expected guard failure.
+These are documentation smoke checks, not the full performance campaign, new
+prepared-ingress/shutdown examples or actual loop-host evidence. Cross-cutting notes
+also identify the stale “split credits”/all-resource-quota crate rustdoc summary.
+All19 chapters now have notes, but some earlier slices still require full backfill,
+and **none of this asserts separate-worker publication or full-book acceptance**.
+
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and
 their cross-cutting effects. Full review/backfill of prior
@@ -113,29 +125,35 @@ only this milestone's changes have been reviewed; it does not close full coverag
 | 14 — Typed operations | [Slice reviewed](part-4-coordinate-processors-and-changes/14-application-specific-operations.md); backfill pending result/cancellation semantics. |
 | 15 — Graph activation | [Detailed prerequisite notes](part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md); revisit after general loop integration. |
 | 16 — Capture groups | [Backfill reviewed](part-4-coordinate-processors-and-changes/16-recording-resources-together.md): first-interval preflight, reservations/claims, staged common-prefix publication, stamped authority and explicit cleanup; chapter/example publication pending. |
-| 17 — Capacity | [Slice reviewed](part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md); backfill all changed formulas and render counters. |
-| 18 — Prepared ingress | Pending: reusable metadata, prepared flags/payloads, ownership-preserving refusal and callback restrictions. |
-| 19 — Shutdown | [Slice reviewed](part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md); backfill resource/domain extraction and permanent loop quiescence. |
+| 17 — Capacity | [Stage3–6 backfill reviewed](part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md): typed/pool/graph/group/index formulas, callback allowances versus required work, diagnostics and bounded smoke limitations; publication/reference verification pending. |
+| 18 — Prepared ingress | [Backfill reviewed](part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md): distinct flag/admission credits, owning-buffer reuse, inactive plan materialization versus validation, finite recovery and destructor limits; new example/publication pending. |
+| 19 — Shutdown | [Backfill reviewed](part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md): graceful versus abandoned work, complete owner ledger, resource/planner extraction, and separately attributed loop quiescence; new example/publication pending. |
 
 ## Archive coverage still to reconcile
 
 - `getting-started.md`, `integration.md`: chapters1–4 reviewed in the Part I notes;
-  startup/processor/host capabilities are accounted for. Commands/live edits,
-  coordination/prepared ingress and complete teardown remain chapters5–6,13–15,18–19.
+  startup/processor/host capabilities are accounted for; prepared ingress/extraction/
+  teardown is reviewed in18–19. Commands/live edits and
+  complete planner/coordination backfill remain chapters5–6/13–15.
   Do not copy obsolete held-validation/recovery ordering from the archive.
 - `scheduling-midi.md`, `changing-parameters.md`: chapters 5, 7–8, 14, 17–19.
 - `resources.md`: upload/access/index/capture/export ownership reviewed for9–11/16;
-  consolidated formulas, prepared ingress and shutdown backfill remain17–19.
+  consolidated formulas, prepared ingress and shutdown backfill now reviewed in17–19.
 - `midi-indexing.md`, `midi-state.md`: event/state/initial/checkpoint/ownership policies
-  reviewed for11–12/16; chapter17 must reconcile the complete sizing/counter reference.
+  reviewed for11–12/16; chapter17 now supplies the sizing/counter backfill. The
+  separate worker must verify the final reference tables and examples.
 - `capture-groups.md`: take/interval/first-reservation/common-prefix/lifetime/cleanup
-  review covers10/16. Planner integration and consolidated sizing/ingress/shutdown
-  remain13/17–19; do not copy obsolete blanket claims of missing loop integration.
-- `planning.md`: introductory processor/callback effects reviewed for chapters3–4;
-  complete planner/receipt/activation/capture/accounting backfill remains chapters13–17.
+  review covers10/16. Consolidated sizing/ingress/shutdown is reviewed in17–19;
+  full chapter13 planner integration backfill remains. Do not
+  copy obsolete blanket claims of missing loop integration.
+- `planning.md`: introductory processor/callback effects reviewed for chapters3–4,
+  capture/accounting/cleanup in16–19; complete planner/receipt/activation backfill
+  remains chapters13–15.
 - `graph-activation.md`: chapters 5–6, 8, 13–15, 17–19; this slice reviewed below,
   but evidence claims and future integration limitations must be refreshed separately.
-- `performance.md`: chapters 17–19 and supporting reference/measurement pages.
+- `performance.md`: chapters17–19 backfill now reviewed, with current formulas,
+  held-normal recovery correction, required/background work and measurement limits.
+  Separate-worker supporting reference pages and final benchmark evidence remain.
 
 [Cross-cutting and other-document follow-ups](cross-cutting.md) cover README,
 rustdoc, references, architecture and loop-specific attribution. Full loop-library

@@ -30,6 +30,11 @@ still running:37 commands/162 executions completed, with the configuration
 input-projection preserve/reset case in progress. Selected native documentation
 checks ran in a different Cargo output directory; no additional Miri was launched.
 This later progress is also partial and does not replace terminal collection.
+The capacity/ingress/shutdown review checkpoint verified53 commands/178 of228
+executions completed, with the paired cancellation/released-generation case running.
+Do not confuse this new-job partial count with the historical interrupted178-selection.
+Full native runtime tests and bounded documentation smokes/canaries ran in separate
+output while the immutable interpreter job continued; no second job was started.
 
 
 Latest nested-lifecycle/readiness milestone: **228 selected =128 runtime+100 loop**.

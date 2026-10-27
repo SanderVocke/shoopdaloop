@@ -1,9 +1,9 @@
 # Cross-cutting and other-document follow-ups
 
 These are instructions for the later documentation pass. Do not edit the named
-sources/destinations as part of preparing this handoff. This slice is limited to
-the new generic graph/recovery prerequisite; earlier-stage backfill remains tracked
-in the index.
+sources/destinations as part of preparing this handoff. The initial generic
+graph/recovery notes are retained below with later integration/backfill updates;
+remaining earlier-stage review and publication are tracked in the index.
 
 ## README, navigation, reference and rustdoc
 
@@ -26,6 +26,12 @@ in the index.
   preparation, the no-fallible-domain-work-after-publication rule, borrowed authority,
   normal-lane owner release, and fixed-slot parking without re-observing cancellation.
   Existing source comments are not a substitute for a complete public walkthrough.
+  A concrete current rustdoc correction is needed in `src/rust/rt_runtime/src/lib.rs`:
+  the crate introduction still says scheduling uses “split” credits and describes
+  all resource work as quota-based. Remove the obsolete split-credit claim
+  (`Budgets::subranges` is ignored), and distinguish required RenderIo accounting
+  from optional/background allowances. The operation review read the current
+  source and passed rustdoc, but a clean build does not make that prose accurate.
 - Recompute links from nested chapter directories. Keep snippets traceable to real
   executable code, distinguish example driving helpers from APIs, and run the
   documentation worker's actual example/check inventory rather than assuming
@@ -67,20 +73,27 @@ Destinations include `PROPOSAL_LOOP_LAYER.md`,
 - Explain that generic graph banks and permits now provide a prerequisite for
   coordinated loop transactions. They do not themselves implement logical/physical
   role-generation switching, retained old-generation media exports, capture claims,
-  or old-role MIDI cleanup. Keep that integration explicitly pending until tested.
+  or old-role MIDI cleanup. The later configuration/program-graph notes now cover
+  tested loop integration; do not preserve the initial blanket pending claim.
 - Keep the restricted loop facade's implemented surface distinct from generic
   GraphRuntime capabilities. The later [live-graph slice](loop-facade-live-graphs.md)
   adds explicit control compilation, staging/release and checked graph or paired
   graph/timing activation for fixed roles. This supersedes the initial fixed-graph
-  limitation, not the pending general generation/media-claim transaction.
+  limitation. The subsequent [configuration slice](loop-configuration-activation.md)
+  integrates logical generation/media/capture-claim changes over prepared physical
+  templates; shapes/node IDs remain fixed. Old-generation exports remain separate.
 - The loop topology receiver and generic graph bank have different StageId types,
   storage lifecycles and validation meanings. LTP1 readiness proves timing IR, not
   graph/media/role compatibility. Do not claim that generic graph staging is a
   wire materializer or that native pointers can cross Wasm instances.
 - Preserve fixed-graph immediate topology activation versus owning running-program
   activation distinctions, actual capture preflight, and permanent quiescence on
-  consumed-engine cleanup. General graph/domain/media atomicity is future work;
-  neither a permit nor quiescence supplies retroactive rollback.
+  consumed-engine cleanup. Configuration publication and the later
+  [paired running-program/graph path](loop-program-graph-activation.md) now hold
+  prepared permits through actual domain/capture preflight; arbitrary callback
+  processor construction is not added. Neither a permit nor quiescence supplies
+  retroactive rollback. Use current verification ledgers for the still-open full
+  Stage6 Miri/independent-host/final-delivery status, not historical slice counts.
 
 The full set of Stage 0–5 loop-guide changes still needs separate source-backed
 notes. Existing loop guides and implementation evidence are review inputs, not
