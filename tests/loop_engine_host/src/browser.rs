@@ -116,6 +116,8 @@ pub struct BrowserBridge {
     journal: [u8; JOURNAL_BYTES],
     journal_len: usize,
     journal_overflow: u32,
+    semantic: Box<[u8]>,
+    semantic_len: usize,
     heap: allocation_guard::Counts,
     frame: u64,
     callbacks: u64,
@@ -140,6 +142,8 @@ impl BrowserBridge {
             journal: [0; JOURNAL_BYTES],
             journal_len: 0,
             journal_overflow: 0,
+            semantic: vec![0; crate::journal::BYTES].into_boxed_slice(),
+            semantic_len: 0,
             heap: allocation_guard::Counts::default(),
             frame: 0,
             callbacks: 0,
@@ -168,6 +172,12 @@ impl BrowserBridge {
     }
     pub fn journal_overflow(&self) -> u32 {
         self.journal_overflow
+    }
+    pub fn semantic_ptr(&self) -> usize {
+        self.semantic.as_ptr() as usize
+    }
+    pub fn semantic_len(&self) -> u32 {
+        self.semantic_len as u32
     }
     pub fn marker(&self) -> u32 {
         MARKER.load(Ordering::Relaxed)
@@ -264,6 +274,14 @@ impl BrowserBridge {
             return 15;
         }
         let mut stopped = self.core.take().unwrap().into_stopped();
+        let semantic = stopped
+            .observer()
+            .as_any()
+            .downcast_ref::<crate::journal::Journal>()
+            .unwrap()
+            .bytes();
+        self.semantic[..semantic.len()].copy_from_slice(semantic);
+        self.semantic_len = semantic.len();
         if let Err(error) = stopped.cleanup() {
             return wire::runtime_error(error);
         }
@@ -403,6 +421,7 @@ mod tests {
         assert_eq!(bridge.journal_overflow(), 0);
         assert_eq!(bridge.stop(), 0);
         assert_eq!(bridge.recovered, [256, 16, 16, 0]);
+        assert_eq!(&bridge.semantic[..bridge.semantic_len], expected.semantic);
         assert_eq!(bridge.render(128), 10);
     }
     #[test]
@@ -430,6 +449,34 @@ mod tests {
             assert_eq!(bridge.recovered, [256, 16, 16, 0]);
         }
     }
+    #[test]
+    fn same_position_seek_is_observed_without_inventing_a_transition_or_pulse() {
+        let mut client = BrowserClient::new(45).unwrap();
+        let mut bridge = BrowserBridge::new(45, 0).unwrap();
+        submit(&mut client, &mut bridge);
+        assert_eq!(client.prepare(4, 5, 1, 0), 0);
+        bridge.request.copy_from_slice(&client.request);
+        assert_eq!(bridge.ingest(), 0);
+        assert_eq!(bridge.render(128), 0);
+        assert_eq!(
+            &bridge.left[..13],
+            &[1., 2., 3., 4., 0.5, 1., 1.5, 2., 0.5, 1., 1.5, 2., 0.]
+        );
+        collect(&mut client, &mut bridge);
+        assert_eq!(bridge.stop(), 0);
+        let bytes = &bridge.semantic[..bridge.semantic_len];
+        assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), 17);
+        let at = crate::journal::HEADER + 8 * crate::journal::STRIDE;
+        let boundary = &bytes[at..at + crate::journal::STRIDE];
+        assert_eq!(boundary[0], 1);
+        assert_eq!(u64::from_le_bytes(boundary[8..16].try_into().unwrap()), 5);
+        assert_eq!(u32::from_le_bytes(boundary[20..24].try_into().unwrap()), 0);
+        let decision = &bytes[at + crate::journal::STRIDE..at + 2 * crate::journal::STRIDE];
+        assert_eq!(decision[0], 2);
+        assert_eq!(decision[2], 73);
+        assert_eq!(u64::from_le_bytes(decision[40..48].try_into().unwrap()), 1);
+    }
+
     #[test]
     fn diagnostic_journal_exhaustion_does_not_change_music() {
         let mut client = BrowserClient::new(43).unwrap();

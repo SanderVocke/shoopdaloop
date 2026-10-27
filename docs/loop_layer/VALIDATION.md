@@ -9,8 +9,9 @@ including prepared configuration and paired running-program/graph publication.
 recorded source; it is not a new callback audit or final branch/platform certification.
 The independent loop fixture now supplies direct, primitive-wire and bounded
 two-thread replay plus actual non-isolated offline/live AudioWorklets for its small
-primitive scenario. Broader graph/program/resource wire operations, exports,
-semantic boundary journals and musical/adversarial host scenarios remain pending.
+primitive scenario, including canonical semantic timeline journals matched against
+an independent native table. Broader graph/program/resource wire operations,
+exports and musical/adversarial host scenarios remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -21,7 +22,38 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 primitive loop AudioWorklets
+## Stage 7 semantic host journals
+
+Prepared `LSJ1` observation records now preserve event/discontinuity boundaries,
+all public decision-state fields except opaque origin IDs/private watermark, and
+ordered semantic events. Ordinary callback cuts are omitted. The primitive script
+produces2440 bytes: four boundaries/four decisions/seven events at0,4,8,12. Native
+direct/wire/two-thread and actual non-isolated offline/live worklets match every
+byte of an independent table, in both profiles. Stop suppresses the due frame12
+wrap/pulse; a separate native/Node/Chromium binding case preserves the eventless
+same-position seek decision without inventing a transition or pulse.
+
+Observer storage refuses only whole diagnostic batches. A72-run native matrix of
+observer/resolver journal capacities and host partitions preserves complete media,
+receipts and resource recovery. Saturating counters distinguish observer loss from
+the resolver loss high-water mark; incomplete data cannot pass the report validator.
+Full-width scalar/event encoding, optional-field padding, all truncation lengths of
+a synthetic report, and malformed counts/flags/identities are checked separately.
+
+Fresh results:24 native fixture tests per profile; nine public-binding checks in
+each of Node/Chromium per profile; actual offline/live hosts and real failure gates
+in both profiles; five Python validator/gate tests;2141 workspace passes/four
+existing skips; warning-denied builds/rustdoc, formatting and applicable policies.
+Worklet memory remains fixed at1,835,008 debug/1,769,472 release bytes. The report
+is now `LLH2`; historical `LLH1` artifacts remain unchanged.
+
+[Semantic-host evidence](evidence/semantic-host-stage7.md) records source, commands,
+raw reports, hashes and the retained initial Rust lifetime error. The fixture and
+actual-context/reference-comparison checklist rows are verified; Stage7 remains
+open for payload staging, exports, broader musical/adversarial scenarios and CI
+artifacts. No new Miri, benchmark, final CI or review pass is claimed.
+
+## Historical Stage 7 primitive loop AudioWorklets
 
 The browser milestone adds host-only Wasm bindings, a unified runner and actual
 OfflineAudioContext/live AudioContext execution using the real loop facade. Both

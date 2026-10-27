@@ -67,9 +67,11 @@ class LoopFixture extends AudioWorkletProcessor {
                     marker: this.engine.marker(), heap: [this.engine.heap_allocations(), this.engine.heap_reallocations(), this.engine.heap_deallocations()] };
                 const result = this.engine.stop();
                 if (result !== 0) throw new Error(`stopped cleanup failed: ${result}`);
+                this.checkMemory();
+                const semantic = new Uint8Array(this.memory.buffer, this.engine.semantic_ptr(), this.engine.semantic_len()).slice();
                 summary.recovered = [this.engine.recovered_pages(), this.engine.recovered_versions(), this.engine.recovered_snapshots(), this.engine.media_references()];
                 this.engine.free(); this.engine = null;
-                this.port.postMessage({ type: "stopped", ...summary, journal: journal.buffer }, [journal.buffer]);
+                this.port.postMessage({ type: "stopped", ...summary, journal: journal.buffer, semantic: semantic.buffer }, [journal.buffer, semantic.buffer]);
             } else { throw new Error("unknown loop host message"); }
         } catch (error) { this.fail(error); }
     }

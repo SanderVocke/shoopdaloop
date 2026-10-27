@@ -33,7 +33,8 @@ and loop playback through a mix/half-gain processor to the host and capture role
 All runtime buffers, media metadata and two capture banks exist before rendering.
 The render configuration permits 128 frames per callback and sets the obsolete
 subrange budget to zero. The native driver allocates its result report outside
-callbacks; this report is not a wire format or callback journal.
+callbacks. Its semantic bytes come from a separate fixed-capacity boundary observer;
+the allocating report itself is not callback storage.
 
 ### 2. Record, play and stop at exact frames
 
@@ -53,6 +54,12 @@ The driver compares every stereo sample and all MIDI packets across `[13]`,
 thirteen one-frame calls, `[3,5,2,3]`, and `[0,4,0,8,0,1,0]`. Zero calls do not
 settle or advance a boundary. The three receipts must each have identical requested,
 delivered and terminal frames: 0, 4 and 12.
+
+The semantic journal records four musical boundaries at0,4,8,12, not ordinary
+callback cuts. It contains four decision snapshots and seven ordered events:
+Record/Pulse, Play/Pulse, Wrap/Pulse, then Stop. Stop at12 suppresses the otherwise
+due wrap/pulse. An independent byte table checks the complete journal across all
+partitions and drivers. See [LSJ1](WIRE.md#semantic-boundary-journal-lsj1).
 
 MIDI restoration at frames 4 and 8 precedes the original note-on. The captured
 initial state has neutral pitch and released CC64/69/66 on all 16 channels;
@@ -143,12 +150,20 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Seven shared public-binding checks execute in Node and Chromium: constructor
+Nine shared public-binding checks execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
-successful recovery, and actual processor/heap failure witnesses. These are
-binding-level Wasm checks, not a claim that the 19 native Rust tests were executed
-as Wasm test functions.
+successful recovery, actual processor/heap failure witnesses, semantic boundary
+records and an eventless same-position seek. These are binding-level Wasm checks,
+not a claim that the 24 native Rust tests were executed as Wasm test functions.
+
+The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
+playback discontinuities and changes in resolver journal loss. It omits ordinary
+callback cuts and never invents a transition or pulse for an eventless seek. If a
+whole boundary's decisions/events do not fit, it drops that entire diagnostic
+batch, increments saturating loss counters and leaves music and receipts alone.
+Native tests vary observer capacity and resolver journal capacity across72 runs;
+Wasm checks also exhaust the observer while verifying all audio and receipts.
 
 `--verify-failures` launches two intentionally failing **real worklet** sessions.
 The FX processor either returns an error or allocates/reallocates/deallocates.
@@ -162,14 +177,17 @@ and destruction. Both contexts check complete pool recovery. The live context is
 then closed; the offline context renders its remaining silent tail.
 
 Reports are under `target/loop-engine-host/reports/{debug,release}/`. `result.json`
-contains complete sample arrays, wire/MIDI records, tools, memory, ownership and
-failure-gate results. See [the report formats](WIRE.md#browser-report-llh1).
+uses `LLH2` and contains complete sample arrays, wire/MIDI/semantic records, tools,
+memory, ownership and failure-gate results. See [the report formats](WIRE.md#browser-report-llh2).
+The runner rejects malformed or incomplete semantic data, then compares every byte
+with the native independent table. This journal is extracted after callbacks stop;
+it is not live telemetry or an immutable media export.
 
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
 now exercise this primitive scenario. This is **not Stage 7 completion**.
-Graph/program/resource payload staging and owning returns, semantic boundary
-journals, immutable exports, broader loop/composite/seek/replacement/exhaustion
+Graph/program/resource payload staging and owning returns, immutable exports,
+broader loop/composite/seek/replacement/exhaustion
 scenarios and live in-flight transfer stalls remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

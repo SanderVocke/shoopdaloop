@@ -158,13 +158,14 @@ only local binding code uses memory offsets. It returns request buffers after th
 copy, while the Rust wire credit stays retained until the terminal response.
 The response-buffer acknowledgement is separate from both phases above.
 
-This protocol slice still has no graph/program staging, capture export or semantic
-boundary journal. Those formats and ownership paths must be implemented and tested
-before claiming the complete Stage 7 bridge.
+This protocol slice still has no graph/program staging or capture export. Those
+formats and ownership paths must be implemented and tested before claiming the
+complete Stage 7 bridge.
 
-## Browser report (`LLH1`)
+## Browser report (`LLH2`)
 
-The runner's JSON report has `format: "LLH1"`. Each entry in `reports` identifies
+The runner's JSON report has `format: "LLH2"`. Historical `LLH1` reports lack the
+semantic record stream and are not upgraded retrospectively. Each entry in `reports` identifies
 `offline` or `live` and retains:
 
 - `requests`: all three complete 64-byte wire records, as arrays of byte values.
@@ -179,6 +180,9 @@ The runner's JSON report has `format: "LLH1"`. Each entry in `reports` identifie
   length and that many complete MIDI bytes. No padding, pointers or synthesizer
   state is implied. Validate every length and consume the complete blob. This is
   an observation format, not a media snapshot/export codec.
+- `semanticBytes`: the complete used `LSJ1` prefix, extracted from the stopped
+  observer into prepared local storage. `semanticSummary` is the runner's validated
+  boundary/count/loss summary. All bytes must match native reference execution.
 - `summary`: decimal-string engine frames/callback count and browser `firstFrame`,
   initial/final memory bytes, overflow/heap witnesses, response-buffer count,
   instance marker and recovered `[pages, versions, snapshots, media references]`.
@@ -201,3 +205,81 @@ actual render result, processor fault witness and allocation/reallocation/
 deallocation counts. The supervisor requires the matching diagnostic **and**
 these fields plus a nonzero exit. Matching text, an unrelated exception, a missing
 binding or a timeout alone is not a passing canary.
+
+## Semantic boundary journal (`LSJ1`)
+
+This is a fixed, little-endian diagnostic stream, not a Rust layout, a lease,
+a media export or a live telemetry interface. The observer runs after settlement
+and before rendering. It records boundaries with events, playback discontinuities,
+or changes in resolver journal loss. Ordinary callback cuts are omitted. An
+eventless same-position seek still produces a decision record; no transition or
+pulse is invented to represent it.
+
+Each recorded boundary is atomic: one boundary record, all decision snapshots,
+then all events in observed order. If the whole batch does not fit, none of it is
+written and saturating loss counters increase. Observation loss cannot change
+music, receipts or cleanup. A complete report requires all three loss fields zero.
+Recorded committed decisions survive a later processor fault; journal completeness
+alone is **not** proof that the following audio interval rendered successfully.
+
+### Header: 40 bytes
+
+| Offset | Bytes | Meaning |
+| --- | --- | --- |
+| 0 | 4 | ASCII `LSJ1` |
+| 4 | 2 | Version1 |
+| 6 | 2 | Record stride160 |
+| 8 | 4 | Used record count, at most128 |
+| 12 | 4 | Reserved zero |
+| 16 | 8 | Observer-dropped whole boundaries |
+| 24 | 8 | Observer-dropped records |
+| 32 | 8 | High-water mark of resolver-reported cumulative lost events |
+
+The total length is exactly `40 + count * 160`. The resolver loss high-water mark
+stays nonzero even if a later counter resets; it is not an invented aggregate of
+loss across resets. The capacity is128 records, not a musical transition quota.
+The normal fixture uses15 records/2440 bytes: four boundaries, four decisions and
+seven events. Observer and stopped-export storage are both prepared before render.
+
+### Records: 160 bytes
+
+Common fields: byte0 type, byte1 code, byte2 flags, bytes3–7 zero, bytes8–15 absolute
+engine frame. Boundary frames strictly increase. All child records have that same
+frame. Every unused byte is zero.
+
+- **Type1 boundary:** code/flags zero; u32 decision count at16, u32 event count at20,
+  u64 resolver loss counter observed at this boundary at24; bytes32–159 zero.
+- **Type2 decision:** code0 Stopped,1 Playing,2 Recording. Logical loop slot/generation
+  are u32 at16/20. Consecutive u64 fields at24,32,40,48,56,64,72,80,88,96 are content
+  length, content revision, position, cycles, capture frames, capture revision,
+  last pulse, composite iteration, composite passes and composite entered-at.
+  Bytes104–159 are zero. Flags: bit0 playback discontinuity, bit1 capture incomplete,
+  bit2 monitor previous, bit3 last pulse present, bit4 composite present,
+  bit5 composite entered-at present, bit6 request origin present. Other bits zero.
+  Absent optional values are encoded as zero; present frame zero is distinct.
+  Opaque origin RequestId values and the private revision watermark are deliberately
+  excluded. Routing/graph epochs, gain and resource metadata are not this projection.
+- **Type3 event:** logical loop slot/generation at16/20; u64 arguments A/B at24/32;
+  bytes40–159 zero. Codes and allowed option flag bit0 are below. Other flags are zero.
+
+| Code | Event | A | B | Option bit0 |
+| --- | --- | --- | --- | --- |
+| 1 | Record | 0 | 0 | monitor previous |
+| 2 | Play | position | 0 | retrigger |
+| 3 | Stop | 0 | 0 | zero |
+| 4 | Seek | position | 0 | retrigger |
+| 5 | Replace | length | revision | preserve position |
+| 6 | PlayIteration | iteration | 0 | retrigger |
+| 7 | SeekIteration | iteration | 0 | retrigger |
+| 8 | Program | 0 | 0 | zero |
+| 9 | Wrap | 0 | 0 | zero |
+| 10 | Pulse | 0 | 0 | zero |
+| 11 | CaptureExhausted | 0 | 0 | zero |
+| 12 | Iteration | iteration | passes | zero |
+| 13 | ProgramEnd | 0 | 0 | zero |
+| 14 | Refused | timeline error257–268 | 0 | zero |
+
+The codec supports these public event/decision fields; that does not imply the
+primitive browser script has executed composites, replacement or capture failures.
+The native codec tests cover full-width values and optional-field encoding;
+broader actual host scenarios remain separate work.

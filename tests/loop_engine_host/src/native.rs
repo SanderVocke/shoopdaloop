@@ -132,6 +132,14 @@ impl Accumulator {
         assert_eq!(self.transitions, [(0, 0, 0), (4, 4, 4), (12, 12, 12)]);
         assert_eq!(bridge.outstanding(), 0);
         let mut stopped = bridge.into_stopped();
+        let semantic = stopped
+            .observer()
+            .as_any()
+            .downcast_ref::<crate::journal::Journal>()
+            .unwrap()
+            .bytes()
+            .to_vec();
+        assert_eq!(semantic, crate::journal::expected_primitive());
         stopped.cleanup().unwrap();
         for _ in 0..512 {
             stopped.resources().begin_callback();
@@ -152,6 +160,7 @@ impl Accumulator {
             samples: self.samples,
             midi: self.midi,
             transitions: self.transitions,
+            semantic,
             free_pages: resources.free_pages,
             free_versions: resources.free_versions,
             free_snapshots: resources.free_snapshots,

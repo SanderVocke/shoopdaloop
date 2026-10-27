@@ -20,14 +20,76 @@ FIXTURE = ROOT / "tests/loop_engine_host"
 ASSETS = ROOT / "target/loop-engine-host"
 
 
+def validate_semantic(data, *, complete=True):
+    """Validate LSJ1 framing/canonical fields without reconstructing musical policy."""
+    data = bytes(data)
+    if len(data) < 40 or data[:8] != b"LSJ1\x01\x00\xa0\x00" or any(data[12:16]):
+        raise RuntimeError("semantic journal header")
+    count = struct.unpack_from("<I", data, 8)[0]
+    loss = struct.unpack_from("<QQQ", data, 16)
+    if count > 128 or len(data) != 40 + count * 160:
+        raise RuntimeError("semantic journal length")
+    if (bool(loss[0]) != bool(loss[1])) or loss[1] < loss[0] or (complete and any(loss)):
+        raise RuntimeError("incomplete semantic journal")
+    records = [data[40 + i * 160:40 + (i + 1) * 160] for i in range(count)]
+    cursor, previous, decisions_total, events_total = 0, None, 0, 0
+    frames = []
+    while cursor < count:
+        boundary = records[cursor]
+        frame = struct.unpack_from("<Q", boundary, 8)[0]
+        decisions, events = struct.unpack_from("<II", boundary, 16)
+        source_loss = struct.unpack_from("<Q", boundary, 24)[0]
+        if (boundary[0] != 1 or any(boundary[1:8]) or any(boundary[32:])
+                or source_loss > loss[2] or (previous is not None and frame <= previous)
+                or cursor + 1 + decisions + events > count):
+            raise RuntimeError("semantic boundary framing")
+        previous = frame
+        frames.append(str(frame))
+        cursor += 1
+        seen = set()
+        for index in range(decisions + events):
+            record = records[cursor]
+            kind, code, flags = record[:3]
+            slot, generation = struct.unpack_from("<II", record, 16)
+            if (any(record[3:8]) or struct.unpack_from("<Q", record, 8)[0] != frame
+                    or not generation or slot == 0xffffffff):
+                raise RuntimeError("semantic identity/frame/padding")
+            if index < decisions:
+                if (kind != 2 or code > 2 or flags & ~127 or any(record[104:])
+                        or (slot, generation) in seen
+                        or (not flags & 8 and any(record[72:80]))
+                        or (not flags & 16 and (flags & 32 or any(record[80:104])))
+                        or (not flags & 32 and any(record[96:104]))):
+                    raise RuntimeError("semantic decision encoding")
+                seen.add((slot, generation))
+            else:
+                a, b = struct.unpack_from("<QQ", record, 24)
+                if (kind != 3 or code not in range(1, 15) or flags > 1 or any(record[40:])
+                        or (code not in (1, 2, 4, 5, 6, 7) and flags)
+                        or (code not in (2, 4, 5, 6, 7, 12, 14) and a)
+                        or (code not in (5, 12) and b)
+                        or (code == 14 and a not in range(257, 269))):
+                    raise RuntimeError("semantic event encoding")
+            cursor += 1
+        decisions_total += decisions
+        events_total += events
+    return {"boundaries": frames, "decisions": decisions_total, "events": events_total,
+            "records": count, "loss": [str(value) for value in loss]}
+
+
 def compare(result, native):
-    if result.get("format") != "LLH1":
+    if result.get("format") != "LLH2":
         raise RuntimeError("unknown loop host report format")
     if result.get("cross_origin_isolated") is not False:
         raise RuntimeError("missing non-isolated browser evidence")
     if [report["mode"] for report in result["reports"]] != ["offline", "live"]:
         raise RuntimeError("both actual contexts are required")
+    native_semantic = bytes(native["semanticBytes"])
+    validate_semantic(native_semantic)
     for report in result["reports"]:
+        report["semanticSummary"] = validate_semantic(report["semanticBytes"])
+        if bytes(report["semanticBytes"]) != native_semantic:
+            raise RuntimeError("complete semantic boundaries/decisions/events differ from native")
         expected_audio = [[sample[channel] for sample in native["samples"]] + [0] * (256 - len(native["samples"])) for channel in range(2)]
         if report["audio"] != expected_audio:
             raise RuntimeError(f"{report['mode']} Web Audio differs from native scalar oracle")
@@ -104,7 +166,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 7:
+        if not node.get("passed") or len(node.get("checks", [])) != 9:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:

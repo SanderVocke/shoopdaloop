@@ -54,8 +54,8 @@ heap-guarded record/play/FX scenario with complete sample/MIDI comparisons throu
 direct, bounded wire and two-thread drivers, plus real non-isolated offline/live
 AudioWorklets. Its primitive-command bridge retains separate admission/domain
 outcomes across independent ordinary Wasm memories. Downstream Web Audio samples,
-fixed memory, failure canaries and complete stopped recovery are checked in both
-profiles. Broader graph/program/resource payload staging and host scenarios remain
+canonical semantic boundary/decision/event journals, fixed memory, failure canaries
+and complete stopped recovery are checked in both profiles. Broader graph/program/resource payload staging and host scenarios remain
 pending; no loop benchmark or production browser adapter is supplied.
 
 ## Timing and ownership contracts

@@ -11,6 +11,7 @@ mod bridge;
 mod bridge_tests;
 mod browser;
 mod client;
+mod journal;
 mod native;
 mod scenario;
 pub mod wire;

@@ -32,10 +32,11 @@ fn main() {
             .collect::<Vec<_>>()
             .join(",");
         println!(
-            "{{\"samples\":{:?},\"midi\":[{}],\"transitions\":[{}],\"recovered\":[{},{},{},{}]}}",
+            "{{\"samples\":{:?},\"midi\":[{}],\"transitions\":[{}],\"semanticBytes\":{:?},\"recovered\":[{},{},{},{}]}}",
             report.samples,
             midi,
             transitions,
+            report.semantic,
             report.free_pages,
             report.free_versions,
             report.free_snapshots,

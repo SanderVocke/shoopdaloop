@@ -23,8 +23,8 @@ export function checkBindings(wasm, Client, Bridge) {
     assert(credit.receive() === 2 && credit.outstanding() === 5, "malformed response released credits");
     credit.free(); checks.push("full-width codec and bounded independent credits");
 
-    function submit(client, bridge, kind, at) {
-        assert(client.prepare(kind, at, 0n, 0) === 0, "prepare");
+    function submit(client, bridge, kind, at, position = 0n) {
+        assert(client.prepare(kind, at, position, 0) === 0, "prepare");
         new Uint8Array(wasm.memory.buffer, bridge.request_ptr(), 64).set(new Uint8Array(wasm.memory.buffer, client.request_ptr(), 64));
         assert(bridge.ingest() === 0, "ingest");
     }
@@ -75,7 +75,10 @@ export function checkBindings(wasm, Client, Bridge) {
     }
     assert(bridge.journal_overflow() > 0 && bridge.heap_allocations() === 0 && bridge.heap_reallocations() === 0 && bridge.heap_deallocations() === 0, "journal/heap witnesses");
     assert(wasm.memory.buffer.byteLength === memoryBytes, "prepared memory grew");
-    recovered(bridge); bridge.free(); client.free();
+    recovered(bridge);
+    const lostSemantic = new DataView(wasm.memory.buffer, bridge.semantic_ptr(), bridge.semantic_len());
+    assert(lostSemantic.getBigUint64(16, true) > 0n && lostSemantic.getBigUint64(24, true) > 0n && lostSemantic.getBigUint64(32, true) === 0n, "semantic diagnostic loss witnesses");
+    bridge.free(); client.free();
     checks.push("fixed memory and diagnostic exhaustion without changing music");
     checks.push("successful stop and complete resource recovery");
     for (const mode of [1, 2]) {
@@ -86,6 +89,30 @@ export function checkBindings(wasm, Client, Bridge) {
         assert(bridge.render(128) === 10, "faulted renderer resumed");
         recovered(bridge); bridge.free(); client.free();
         checks.push(mode === 1 ? "actual processor failure witness" : "actual allocation/reallocation/deallocation witnesses");
+    }
+    for (const seek of [false, true]) {
+        const client = new Client(97n), bridge = new Bridge(97n, 0);
+        for (const [kind, at] of [[1, 0n], [2, 4n], [3, 12n]]) submit(client, bridge, kind, at);
+        if (seek) submit(client, bridge, 4, 5n, 1n);
+        assert(bridge.render(128) === 0 && drain(client, bridge) === (seek ? 8 : 6), "semantic scenario execution");
+        recovered(bridge);
+        const data = new DataView(wasm.memory.buffer, bridge.semantic_ptr(), bridge.semantic_len());
+        const count = data.getUint32(8, true);
+        assert(data.getUint32(0, true) === 0x314a534c && data.getUint16(4, true) === 1 && data.getUint16(6, true) === 160, "semantic header");
+        assert(count === (seek ? 17 : 15) && data.byteLength === 40 + count * 160, "semantic record count");
+        assert([16, 24, 32].every(at => data.getBigUint64(at, true) === 0n), "incomplete semantic log");
+        const frames = [], events = [];
+        for (let i = 0; i < count; i++) {
+            const at = 40 + i * 160, type = data.getUint8(at), frame = data.getBigUint64(at + 8, true);
+            if (type === 1) frames.push(String(frame));
+            if (type === 3) events.push(`${frame}:${data.getUint8(at + 1)}`);
+            if (seek && type === 1 && frame === 5n) assert(data.getUint32(at + 20, true) === 0, "invented seek event");
+            if (seek && type === 2 && frame === 5n) assert(data.getUint8(at + 2) === 73 && data.getBigUint64(at + 40, true) === 1n, "eventless seek decision missing");
+        }
+        assert(frames.join() === (seek ? "0,4,5,8,12" : "0,4,8,12"), "callback cuts leaked into semantic log");
+        assert(events.join() === "0:1,0:10,4:2,4:10,8:9,8:10,12:3", "semantic transition/wrap/pulse journal");
+        bridge.free(); client.free();
+        checks.push(seek ? "eventless same-position seek decision" : "semantic transition/wrap/pulse boundaries");
     }
     return { passed: true, checks };
 }

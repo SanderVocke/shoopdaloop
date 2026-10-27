@@ -125,9 +125,9 @@ class Host {
             }
         } else { await this.context.close(); }
         this.node.disconnect(); this.probe.disconnect();
-        return { mode: this.mode, ready: this.ready, summary: { ...summary, journal: undefined },
+        return { mode: this.mode, ready: this.ready, summary: { ...summary, journal: undefined, semantic: undefined },
             controlBytes: this.controlBytes, requests: this.requests, responses: this.responses,
-            midiBytes: Array.from(new Uint8Array(summary.journal)), audio, offlineAudio };
+            midiBytes: Array.from(new Uint8Array(summary.journal)), semanticBytes: Array.from(new Uint8Array(summary.semantic)), audio, offlineAudio };
     }
     async cleanup() {
         this.node?.disconnect(); this.probe?.disconnect();
@@ -149,9 +149,9 @@ async function runInner() {
         try { reports.push(await host.run()); }
         finally { await host.cleanup(); client.free(); }
     }
-    return { format: "LLH1", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports };
+    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports };
 }
 export async function run() {
     try { return await runInner(); }
-    catch (error) { return { format: "LLH1", passed: false, failure: String(error.stack || error), workletFailure: error.workletFailure ?? null }; }
+    catch (error) { return { format: "LLH2", passed: false, failure: String(error.stack || error), workletFailure: error.workletFailure ?? null }; }
 }

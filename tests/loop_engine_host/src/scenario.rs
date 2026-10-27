@@ -75,13 +75,18 @@ impl Processor<LoopPlanner> for Mix {
     }
 }
 
-pub(crate) fn prepare() -> (Controller<Mix>, Engine<Mix>, LoopId) {
-    prepare_with_fault(0, Arc::new(AtomicU32::new(0)))
-}
-
 pub(crate) fn prepare_with_fault(
     fault: u8,
     witness: Arc<AtomicU32>,
+) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+    prepare_observed(fault, witness, crate::journal::RECORDS, 1024)
+}
+
+pub(crate) fn prepare_observed(
+    fault: u8,
+    witness: Arc<AtomicU32>,
+    journal_records: usize,
+    resolver_events: usize,
 ) -> (Controller<Mix>, Engine<Mix>, LoopId) {
     let config = Config {
         max_frames: 128,
@@ -133,6 +138,7 @@ pub(crate) fn prepare_with_fault(
         Limits {
             loop_slots: 1,
             pending_requests: 5,
+            journal_events: resolver_events,
             ..Limits::default()
         },
         &TopologyDescription {
@@ -172,7 +178,7 @@ pub(crate) fn prepare_with_fault(
             ]);
         }
     }
-    let (control, engine) = Engine::prepare(
+    let (control, engine) = Engine::prepare_with_observer(
         config,
         topology,
         resources,
@@ -197,6 +203,7 @@ pub(crate) fn prepare_with_fault(
         vec![],
         vec![(effect, Mix { fault, witness })],
         graph,
+        Box::new(crate::journal::Journal::new(journal_records)),
     )
     .expect("prepared facade");
     (control, engine, target)
@@ -208,6 +215,7 @@ pub struct Report {
     pub samples: Vec<[f32; 2]>,
     pub midi: Vec<(u64, Vec<u8>)>,
     pub transitions: Vec<(u64, u64, u64)>,
+    pub semantic: Vec<u8>,
     pub free_pages: usize,
     pub free_versions: usize,
     pub free_snapshots: usize,
@@ -217,9 +225,18 @@ pub struct Report {
 /// Record four stereo/MIDI frames, play twice through FX, then stop at frame 12.
 /// Zero calls may be interspersed. All commands are admitted before their deadlines.
 pub fn run(partitions: &[usize]) -> Report {
+    run_observed(partitions, crate::journal::RECORDS, 1024)
+}
+
+fn run_observed(partitions: &[usize], journal_records: usize, resolver_events: usize) -> Report {
     assert!(partitions.iter().all(|&frames| frames <= 128));
     assert_eq!(partitions.iter().sum::<usize>(), FRAMES);
-    let (mut control, mut engine, target) = prepare();
+    let (mut control, mut engine, target) = prepare_observed(
+        0,
+        Arc::new(AtomicU32::new(0)),
+        journal_records,
+        resolver_events,
+    );
     for (at, transition) in [
         (
             0,
@@ -340,6 +357,16 @@ pub fn run(partitions: &[usize]) -> Report {
     assert_eq!(midi, expected_midi);
     drop(control);
     let mut stopped = engine.into_stopped();
+    let semantic = stopped
+        .observer()
+        .as_any()
+        .downcast_ref::<crate::journal::Journal>()
+        .unwrap()
+        .bytes()
+        .to_vec();
+    if journal_records == crate::journal::RECORDS && resolver_events == 1024 {
+        assert_eq!(semantic, crate::journal::expected_primitive());
+    }
     stopped.cleanup().expect("stopped cleanup");
     for _ in 0..512 {
         stopped.resources().begin_callback();
@@ -355,6 +382,7 @@ pub fn run(partitions: &[usize]) -> Report {
         samples,
         midi,
         transitions,
+        semantic,
         free_pages: resources.free_pages,
         free_versions: resources.free_versions,
         free_snapshots: resources.free_snapshots,
@@ -370,6 +398,54 @@ mod tests {
         assert_eq!(super::run(&[1; 13]), whole);
         assert_eq!(super::run(&[3, 5, 2, 3]), whole);
         assert_eq!(super::run(&[0, 4, 0, 8, 0, 1, 0]), whole);
+    }
+
+    #[test]
+    fn semantic_storage_and_resolver_journal_loss_preserve_media_receipts_and_recovery() {
+        let expected = super::run(&[13]);
+        for records in [0, 1, 4, 8, 14, crate::journal::RECORDS] {
+            for events in [0, 1, 1024] {
+                let whole = super::run_observed(&[13], records, events);
+                for partitions in [vec![1; 13], vec![3, 5, 2, 3], vec![0, 4, 0, 8, 0, 1, 0]] {
+                    assert_eq!(super::run_observed(&partitions, records, events), whole);
+                }
+                let mut without_loss_report = whole;
+                let bytes = &without_loss_report.semantic;
+                let dropped = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
+                let resolver_loss = u64::from_le_bytes(bytes[32..40].try_into().unwrap());
+                assert_eq!(
+                    resolver_loss,
+                    match events {
+                        0 => 7,
+                        1 => 3,
+                        _ => 0,
+                    }
+                );
+                if records < 4 {
+                    assert_eq!(dropped, 4);
+                }
+                if records == crate::journal::RECORDS {
+                    assert_eq!(dropped, 0);
+                }
+                if events == 1024 {
+                    let (count, boundaries, omitted) = match records {
+                        0 | 1 => (0, 4, 15),
+                        4 => (4, 3, 11),
+                        8 => (8, 2, 7),
+                        14 => (12, 1, 3),
+                        _ => (15, 0, 0),
+                    };
+                    assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), count);
+                    assert_eq!(dropped, boundaries);
+                    assert_eq!(
+                        u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
+                        omitted
+                    );
+                }
+                without_loss_report.semantic = expected.semantic.clone();
+                assert_eq!(without_loss_report, expected);
+            }
+        }
     }
 
     #[test]
