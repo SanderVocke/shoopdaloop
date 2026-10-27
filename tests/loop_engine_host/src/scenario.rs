@@ -16,7 +16,7 @@ use shoop_loop_engine::{
 const FRAMES: usize = 13;
 const PAGES: usize = 256;
 
-struct Mix;
+pub(crate) struct Mix;
 impl Processor<LoopPlanner> for Mix {
     fn ports(&self) -> PortCounts {
         PortCounts {
@@ -55,7 +55,7 @@ impl Processor<LoopPlanner> for Mix {
     }
 }
 
-fn prepare() -> (Controller<Mix>, Engine<Mix>, LoopId) {
+pub(crate) fn prepare() -> (Controller<Mix>, Engine<Mix>, LoopId) {
     let config = Config {
         max_frames: 128,
         max_nodes: 4,

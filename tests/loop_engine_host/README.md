@@ -4,7 +4,7 @@ This test-only workspace depends on `rt_runtime` and the actual `shoop_loop_engi
 not the old backend, application, devices or the generic runtime host fixture.
 Its own lockfile currently pins the same `rtrb` version as the repository.
 
-## Run the native foundation
+## Run native replay
 
 From the repository root, inside the repository development environment:
 
@@ -13,9 +13,16 @@ cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml
 cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml --release
 cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay
 cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --release --bin replay
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --wire
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --two-thread
 ```
 
-The replay asserts the results before printing a summary. No device is needed.
+Add `--release` before `--bin` for optimized wire/two-thread replay. Each mode
+compares all four partitions with the independently checked direct result before
+printing a summary. No device is needed. The threaded driver uses one-packet
+channels between distinct control/render threads; blocking channel operations and
+join occur outside guarded callbacks. This is offline replay, not live scheduling
+or deadline evidence.
 
 ### 1. Prepare separate playback, FX and capture roles
 
@@ -50,24 +57,41 @@ initial state has neutral pitch and released CC64/69/66 on all 16 channels;
 the independent expected packet list includes those 128 restoration packets,
 not merely the six original/replayed note packets. The total is 134 packets.
 
-Every engine callback is heap-guarded. Positive allocator instrumentation and
-three expected-panic tests prove allocation, reallocation and deallocation are
-detected in both native profiles. They do not certify JavaScript allocation or
+Every engine callback is heap-guarded. In wire mode, guards also cover ingress,
+prepared submission, owning completion collection and response-slot recycling.
+Positive allocator instrumentation and three expected-panic tests prove allocation,
+reallocation and deallocation are detected in both native profiles. They do not certify JavaScript allocation or
 browser callback behavior.
 
 After Stop, drop control and extract the stopped engine off-render. Explicit
 cleanup and bounded reclamation must recover all 256 pages, 16 versions and
 16 snapshots, with zero media references.
 
+## Submit through the bounded bridge
+
+The [wire guide](WIRE.md) describes the fixed request/response records and shows
+the `Client` → `Bridge` → `Client` cycle. Four normal credits and one independent
+recovery credit retain admission and terminal results separately. Request sequence,
+session, slot and target generation checks prevent accidental reuse or retargeting.
+The implemented commands are absolute-frame Record, Play, Stop and Seek; recovery
+admits only a nonfuture Stop. Transport cancellation is best effort before dequeue.
+
+Tests cover complete packet layout/high frame bits, malformed/truncated records,
+foreign/duplicate/reordered receipts, stale targets, cancelled submissions, late
+execution, 512 requests across 128 slot-reuse rounds, and future-request teardown.
+With all four normal responses unread, music continues and the independent Stop
+credit still works. A callback error permanently faults this bridge: extract and
+clean up off-render rather than replaying frames or inventing terminal results.
+
 ## Current scope
 
-This first slice is native offline replay, **not Stage 7 completion**. The library
-also builds for `wasm32-unknown-unknown`, but that is compilation, not Wasm execution
-or actual Web Audio evidence. Preparation and ordinary submission are off-render;
-this is not yet the prepared cross-instance ingress/completion bridge.
+This is native direct/wire/two-thread offline replay, **not Stage 7 completion**.
+The library builds for `wasm32-unknown-unknown`, but there are no browser bindings
+or actual Wasm/Web Audio executions yet. The fixed codec is transport-neutral;
+native threads exchanging copied bytes do not prove independent Wasm memories.
 
-Still to implement: a versioned bounded wire codec and controller, native two-thread
-host, actual non-isolated offline/live AudioWorklet, fixed-memory/cross-instance
+Still to implement: graph/program/resource payload staging and owning return
+formats, actual non-isolated offline/live AudioWorklet, fixed-memory/cross-instance
 checks, semantic journals and immutable exports, broader loop/composite and
 adversarial scenarios, browser failure canaries, and the unified host runner.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

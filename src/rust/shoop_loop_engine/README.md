@@ -50,8 +50,10 @@ Preparation and owning-return destruction stay off-render. Regression models and
 historical native/Wasm/interpreter evidence have separate source/platform scopes;
 these examples are not new host, benchmark or full acceptance evidence. The
 [independent native fixture](../../../tests/loop_engine_host/README.md) adds a small
-heap-guarded offline record/play/FX scenario with complete sample/MIDI comparisons.
-It is not yet a two-thread or AudioWorklet host; no loop benchmark is supplied.
+heap-guarded offline record/play/FX scenario with complete sample/MIDI comparisons
+through direct, bounded wire and two-thread drivers. Its primitive-command bridge
+retains separate admission/domain outcomes; browser hosting and broader payload
+staging remain pending. No actual loop AudioWorklet or loop benchmark is supplied.
 
 ## Timing and ownership contracts
 

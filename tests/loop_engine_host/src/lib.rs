@@ -1,16 +1,31 @@
 //! Independent test-only loop host. Device/application adapters are not dependencies.
 //!
-//! The initial native scenario is not yet an AudioWorklet bridge.
+//! Native scenario and bounded command bridge; AudioWorklet integration is separate.
 #[path = "../../../src/rust/shoop_wasm_test_support/src/heap.rs"]
 mod allocation_guard;
 #[global_allocator]
 static ALLOCATOR: allocation_guard::TrackingAllocator = allocation_guard::TrackingAllocator;
 
+mod bridge;
+#[cfg(test)]
+mod bridge_tests;
+mod client;
+mod native;
 mod scenario;
+pub mod wire;
+pub use bridge::Bridge;
+pub use client::Client;
+#[cfg(not(target_arch = "wasm32"))]
+pub use native::run_two_thread;
+pub use native::run_wire;
 pub use scenario::{run, Report};
 
 pub(crate) fn guarded<R>(run: impl FnOnce() -> R) -> R {
-    allocation_guard::assert_no_heap(run)
+    if allocation_guard::is_rendering() {
+        run()
+    } else {
+        allocation_guard::assert_no_heap(run)
+    }
 }
 
 /// Positive control for the shared allocator instrumentation, outside rendering.

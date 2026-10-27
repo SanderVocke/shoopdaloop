@@ -7,9 +7,10 @@ The runtime [book/reference](../../src/rust/rt_runtime/docs/README.md) and loop
 including prepared configuration and paired running-program/graph publication.
 [STAGE6_READINESS.md](STAGE6_READINESS.md) maps implementation acceptance at its
 recorded source; it is not a new callback audit or final branch/platform certification.
-An initial independent native offline loop fixture is now supplied; its wire bridge,
-two-thread host and actual AudioWorklet remain pending. No loop benchmark or newer
-performance/deadline campaign is supplied.
+An independent native loop fixture now supplies direct, primitive-wire and bounded
+two-thread offline replay. Actual AudioWorklet hosting and broader graph/program/
+resource wire operations remain pending. No loop benchmark or newer performance/
+deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -19,7 +20,29 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 native offline foundation
+## Stage 7 primitive wire bridge and two-thread replay
+
+The next fixture slice adds fixed64-byte requests/96-byte responses, four normal
+wire credits plus independent recovery, prepared cancellation flags and guarded
+owning completion collection/recycling. Separate admission/runtime/domain outcomes
+survive serialization, including early domain failures before a resolver request is
+installed. Direct, wire and two-thread drivers agree across four partitions on all
+13 stereo frames/134 MIDI packets/three receipts and complete pool recovery.
+
+Sixteen tests pass per native debug/release profile, including512 requests over128
+slot-reuse rounds,1024 full-width codec round trips, malformed/stale/duplicate
+messages, result stalls, cancellation, recovery, late/future requests and permanent
+fault cleanup. All six driver/profile combinations pass. Debug/release Wasm builds
+are compilation only. Fresh workspace regression is2141 passes/four existing skips;
+warning-denied build/rustdoc, formatting and applicable policies pass.
+
+[Wire bridge evidence](evidence/wire-bridge-stage7.md) records the corrected early
+`Reply::Failed` handling, precise failure-origin expectations and raw logs. This is
+still partial Stage7: graph/program/resource payloads, exports/journals, broader
+musical scenarios, actual browser hosting and the unified runner remain outstanding.
+No new Miri, browser, benchmark or CI pass is claimed.
+
+## Historical Stage 7 native offline foundation
 
 `tests/loop_engine_host` now has its own workspace/lockfile and uses the actual loop
 facade for guarded stereo/MIDI record → immediate play → FX → stop. Four callback
