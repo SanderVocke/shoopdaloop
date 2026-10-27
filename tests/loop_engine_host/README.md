@@ -92,6 +92,51 @@ With all four normal responses unread, music continues and the independent Stop
 credit still works. A callback error permanently faults this bridge: extract and
 clean up off-render rather than replaying frames or inventing terminal results.
 
+## Transfer prepared graph descriptors (payload foundation)
+
+Run the native receiver→real-facade route-cut test in either profile:
+
+```sh
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
+  graph_transfer::tests::receiver_descriptors_stage_activate_and_recycle_real_facade_graph_owners -- --exact
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml --release \
+  graph_transfer::tests::receiver_descriptors_stage_activate_and_recycle_real_facade_graph_owners -- --exact
+```
+
+1. Prepare `graph_transfer::Receiver::new(session, config)` before rendering. Its
+   two local banks own full-capacity descriptors; `id(slot)` supplies the current
+   slot/generation and `capacities(id)` reports the actual available storage.
+2. Encode `Record` values with Begin, ordered node steps/edges, explicit planning
+   metadata/bindings and Seal. Pass exactly96 bytes per `Receiver::ingest` call.
+   [LGP1](WIRE.md#prepared-graph-descriptor-payload-lgp1) defines every offset,
+   canonical zero and target-width check. Seal means complete payload, not valid graph.
+3. `take(id)` hands a local prepared owner to `Controller::stage_graph`. Actual
+   runtime validation returns either the candidate or a Ready scoped ID. Only
+   then request `GraphActivate` at an admitted future frame.
+4. Match owning returns to their local handoffs and call `recycle(id, plan)`.
+   It advances the generation without destroying owners on the callback. A returned
+   old graph may have smaller capacities; the next Begin checks those actual bounds.
+   Rejected returns retain their input for off-render quarantine.
+
+The native test stages routes at frame0, observes Ready after one sample, then
+activates a host-output bypass at frame4. Capture still receives half-gain FX;
+host playback now goes directly from the playback role. All13 left samples must be
+`1,2,3,4,1,2,3,4,1,2,3,4,0`, with right ten times left, the same134 MIDI packets,
+exact receipts/epochs, unchanged semantic timeline and complete resource recovery.
+Three partitions after the common one-frame staging acknowledgement must agree.
+
+Seven guarded native tests additionally check canonical full-width records, every
+truncation/padding byte, bank ordering, capacity/identity/sequence/generation limits,
+128 candidate cancellation/refusal/release rounds, unread owning returns while music
+continues, full ingress refusal and queued/Ready disconnect disposal.
+
+`BrowserGraphReceiver` runs the same materializer through public Node/Chromium
+bindings. Its extra checks reject oversized u64 indices rather than truncating
+on Wasm32 and perform128 local owner exchanges without memory growth. These are
+**not** graph commands or runtime graph activation through the worklet. `LLC1`/`LLR1`
+still carry only primitive transitions; graph command envelopes, reliable result
+credits and MessagePort integration remain to be implemented.
+
 ## Run actual Web Audio
 
 Inside `nix develop`, with Node, wasm-pack, pinned Chromium/ChromeDriver on `PATH`
@@ -150,12 +195,13 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Nine shared public-binding checks execute in Node and Chromium: constructor
+Eleven shared public-binding checks execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
-records and an eventless same-position seek. These are binding-level Wasm checks,
-not a claim that the 24 native Rust tests were executed as Wasm test functions.
+records, an eventless same-position seek and the two graph-payload checks above.
+These are binding-level Wasm checks, not a claim that the31 native Rust tests
+were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
 playback discontinuities and changes in resolver journal loss. It omits ordinary
@@ -187,7 +233,9 @@ it is not live telemetry or an immutable media export.
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
 now exercise this primitive scenario. This is **not Stage 7 completion**.
-Graph/program/resource payload staging and owning returns, immutable exports,
-broader loop/composite/seek/replacement/exhaustion
-scenarios and live in-flight transfer stalls remain to be added to the host.
+Prepared graph payload materialization now has native facade and public-Wasm
+binding coverage, but graph command/response transport and actual worklet graph
+changes remain pending. Program/resource payload staging, immutable exports,
+broader loop/composite/seek/replacement/exhaustion scenarios and live in-flight
+transfer stalls also remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

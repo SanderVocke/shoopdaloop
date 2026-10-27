@@ -8,6 +8,22 @@ campaign; [current public guides](../../src/rust/shoop_loop_engine/README.md)
 distinguish examples from this historical gate. Later implementation acceptance
 obligations remain unchanged.
 
+## Current Stage 7 verification debt
+
+Stage7 implementation continues; there is no active interpreter job. Native,
+public-Wasm binding and actual worklet passes do not extend the collected Stage6
+inventory. Accumulate the fixture's prepared ingress/return, semantic-observer and
+graph-payload ownership cases for one applicable consolidated Stage7 snapshot/run.
+The new standalone `loop_engine_host_fixture` graph receiver contributes seven
+native cases under `graph_transfer::tests`, including unchanged128-round lifecycle
+workloads, actual route activation, stalled owning returns and disconnect cleanup.
+They are **not yet registered in the pinned interpreter runner or interpreted**.
+Node/Chromium run shared public bindings, not these native test functions. Keep the
+existing900s per-command watchdog, guards and workloads when adding the standalone
+manifest/lockfile and exact filters to the supported selection. Final delivery
+still requires the complete applicable source-matched selection; no routine
+per-commit Miri invocation was launched for this payload foundation.
+
 ## Collected Stage 6 pass
 
 Job `20261027T025325-e065d48941` completed successfully and was collected with the

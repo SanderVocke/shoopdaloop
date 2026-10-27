@@ -158,9 +158,105 @@ only local binding code uses memory offsets. It returns request buffers after th
 copy, while the Rust wire credit stays retained until the terminal response.
 The response-buffer acknowledgement is separate from both phases above.
 
-This protocol slice still has no graph/program staging or capture export. Those
-formats and ownership paths must be implemented and tested before claiming the
-complete Stage 7 bridge.
+The primitive command protocol still has no graph/program staging or capture
+export. The separate descriptor payload below is a prepared materializer, not a
+new command/result envelope. Those paths must be connected and tested before
+claiming the complete Stage 7 bridge.
+
+## Prepared graph descriptor payload (`LGP1`)
+
+`graph_transfer::{Record, Receiver}` adds a separate fixed96-byte payload format.
+It does **not** extend `LLC1`/`LLR1`, submit commands, reserve reliable response
+credits or admit/activate a runtime graph. Native tests connect its local owning
+handoff to the real controller. `BrowserGraphReceiver` separately checks the same
+materializer through public Node/Chromium bindings; the worklet transport does not
+yet carry these payloads.
+
+### 1. Prepare receiver-local ownership
+
+Create `Receiver::new(session, config)` off-render. It prepares two full-capacity,
+pre-touched `PreparedPlan` owners. The nonzero session routes records to this
+receiver; copied slot/generation IDs are not authentication or cross-instance
+ownership. Receiver-local bank slots0/1 start at generation1. These are **not**
+the runtime's scoped graph stage IDs.
+
+The receiver retains actual vector capacity and a maximum per-owner byte envelope.
+An externally retired plan may be smaller than the initial full-capacity owner.
+`capacities(id)` advertises the usable node/edge/binding counts of the current owner,
+capped by configuration. Begin refuses larger declarations before changing state;
+it never reallocates to restore earlier capacities. Oversized or foreign-config
+recycled owners are returned to the caller unchanged for off-render quarantine.
+
+### 2. Send ordered records
+
+Every record has this header. All unlisted bytes are zero; size must be exactly96.
+
+| Offset | Bytes | Meaning |
+| --- | --- | --- |
+| 0 | 4 | ASCII `LGP1` |
+| 4 | 2 | Version1 |
+| 6 | 1 | Operation1–7 below |
+| 7 | 1 | Reserved zero |
+| 8 | 8 | Nonzero session |
+| 16 | 8 | Nonzero, strictly increasing receiver-wide sequence |
+| 24 | 4 | Receiver bank slot |
+| 28 | 4 | Nonzero bank generation |
+| 32 | 64 | Operation fields; unused bytes zero |
+
+| Operation | Fields at absolute byte offsets |
+| --- | --- |
+| 1 Begin | u64 expected graph epoch32; u32 step count40, edge count44, binding count48; byte52 planned flag0/1 |
+| 2 Step | u32 offset32; node slot36/generation40; u64 input-end44 |
+| 3 Edge | u32 offset32; source endpoint36, destination endpoint52 |
+| 4 Planning | planner slot32/generation36; u64 decision slots40, observation capacity48, operation bytes56, before-step64 |
+| 5 Binding | u32 offset32; planner slot36/generation40; consumer slot44/generation48; u64 decision slot52 |
+| 6 Seal | No fields |
+| 7 Abort | No fields |
+
+An endpoint is16 bytes: u32 node slot at0/generation4, byte8 kind0 Audio/1 Midi,
+three reserved bytes9–11, u32 port12. Generation0 denotes the host and requires
+slot0. Node/planner generations otherwise must be nonzero. All integer values are
+unsigned little-endian. `usize`-shaped descriptor fields travel as u64: a value
+not representable by the receiving target is rejected, never truncated on Wasm32.
+Session, sequence and epoch retain all64 bits.
+
+Begin is legal only in Idle. Append all declared steps, then edges, then the
+single Planning record if planned, then bindings, then Seal. Step/edge/binding
+offsets must be exactly the next index. Unplanned descriptors require zero bindings.
+Zero counts are valid payload declarations, not proof of compatibility with the
+loop facade. Each call consumes at most one external record; there is no retry or
+musical-work loop. Any malformed/stale/foreign/out-of-order/Busy refusal leaves all
+banks and the sequence watermark unchanged. Retry rejected bytes before sending
+a later sequence. Sequence `u64::MAX` is usable once; no subsequent record can pass.
+
+### 3. Hand off, validate, return
+
+Seal proves only framing and declared-count completeness. It does not check live
+catalog generations, signal ordering/cycles, planner signatures or loop-role
+compatibility. `take(id)` changes Sealed→Loaned and returns local owning
+`Loan { id, epoch, plan }`. Submit the plan with `Controller::stage_graph`; process
+real callbacks and inspect its owning completion. Only receiver-side runtime
+validation can produce a Ready scoped graph ID. Ready is not active.
+
+Rejected/cancelled/locally refused submissions retain their owning candidate.
+Successful stage/release or activation/release returns an owned plan through the
+runtime's existing return path. After matching the completion to the original
+handoff, call `recycle(id, plan)`. Invalid return IDs, phases, configurations or
+storage envelopes return `(error, plan)` without destroying the input. Successful
+recycle returns Idle and advances the generation. Abort does the same for a
+Receiving/Sealed bank without handing its owner away. Generation exhaustion
+retires the bank at0, never wraps.
+
+Abort cannot reclaim a Loaned owner or cancel a runtime command. Do not synthesize
+owning returns on disconnect: stop callbacks and dispose the runtime/receiver
+owners off-render. The native tests separately prove queued/Ready abandonment;
+those banks remain logically Loaned, not falsely credited as returned.
+
+`BrowserGraphReceiver` stores loans only in its own instance. `record_ptr` is a
+local96-byte input address; `take`/`recycle` are local owner-exchange checks, not
+runtime admission. Phase codes are0 Idle,1 Receiving,2 Sealed,3 Loaned; invalid
+queries return the high bit plus a runtime error. Ingest/take/recycle use the
+runtime error codes1–20 above. Only stop/free the object outside callbacks.
 
 ## Browser report (`LLH2`)
 

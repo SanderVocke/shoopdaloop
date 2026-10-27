@@ -10,13 +10,16 @@ mod bridge;
 #[cfg(test)]
 mod bridge_tests;
 mod browser;
+mod browser_graph;
 mod client;
+pub mod graph_transfer;
 mod journal;
 mod native;
 mod scenario;
 pub mod wire;
 pub use bridge::Bridge;
 pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
+pub use browser_graph::BrowserGraphReceiver;
 pub use client::Client;
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::run_two_thread;

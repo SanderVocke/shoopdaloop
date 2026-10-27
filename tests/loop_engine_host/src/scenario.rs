@@ -152,32 +152,6 @@ pub(crate) fn prepare_observed(
         },
     )
     .expect("fixture topology");
-    let mut graph = GraphDescription {
-        nodes: vec![playback, effect, capture],
-        connections: Vec::new(),
-    };
-    for (kind, channels) in [(PortType::Audio, 2), (PortType::Midi, 1)] {
-        for port in 0..channels {
-            graph.connections.extend([
-                Connection {
-                    source: Endpoint::host(kind, port),
-                    destination: Endpoint::node(effect, kind, port),
-                },
-                Connection {
-                    source: Endpoint::node(playback, kind, port),
-                    destination: Endpoint::node(effect, kind, port + channels),
-                },
-                Connection {
-                    source: Endpoint::node(effect, kind, port),
-                    destination: Endpoint::node(capture, kind, port),
-                },
-                Connection {
-                    source: Endpoint::node(effect, kind, port),
-                    destination: Endpoint::host(kind, port),
-                },
-            ]);
-        }
-    }
     let (control, engine) = Engine::prepare_with_observer(
         config,
         topology,
@@ -202,11 +176,48 @@ pub(crate) fn prepare_observed(
         }],
         vec![],
         vec![(effect, Mix { fault, witness })],
-        graph,
+        routes(false),
         Box::new(crate::journal::Journal::new(journal_records)),
     )
     .expect("prepared facade");
     (control, engine, target)
+}
+
+pub(crate) fn routes(playback_to_host: bool) -> GraphDescription {
+    let playback = NodeId::from_parts(0, 1).unwrap();
+    let capture = NodeId::from_parts(1, 1).unwrap();
+    let effect = NodeId::from_parts(2, 1).unwrap();
+    let mut graph = GraphDescription {
+        nodes: vec![playback, effect, capture],
+        connections: Vec::new(),
+    };
+    for (kind, channels) in [(PortType::Audio, 2), (PortType::Midi, 1)] {
+        for port in 0..channels {
+            graph.connections.extend([
+                Connection {
+                    source: Endpoint::host(kind, port),
+                    destination: Endpoint::node(effect, kind, port),
+                },
+                Connection {
+                    source: Endpoint::node(playback, kind, port),
+                    destination: Endpoint::node(effect, kind, port + channels),
+                },
+                Connection {
+                    source: Endpoint::node(effect, kind, port),
+                    destination: Endpoint::node(capture, kind, port),
+                },
+                Connection {
+                    source: Endpoint::node(
+                        if playback_to_host { playback } else { effect },
+                        kind,
+                        port,
+                    ),
+                    destination: Endpoint::host(kind, port),
+                },
+            ]);
+        }
+    }
+    graph
 }
 
 /// Native harness data collected outside guarded callbacks, not a wire format.

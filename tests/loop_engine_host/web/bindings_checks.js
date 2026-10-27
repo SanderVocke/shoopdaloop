@@ -1,5 +1,6 @@
+import { checkGraphPayloads } from "./graph_checks.js";
 const assert = (condition, message) => { if (!condition) throw new Error(`binding check: ${message}`); };
-export function checkBindings(wasm, Client, Bridge) {
+export function checkBindings(wasm, Client, Bridge, GraphReceiver) {
     const checks = [];
     let rejected = false;
     try { new Client(0n); } catch (error) { rejected = error === 9; }
@@ -114,5 +115,6 @@ export function checkBindings(wasm, Client, Bridge) {
         bridge.free(); client.free();
         checks.push(seek ? "eventless same-position seek decision" : "semantic transition/wrap/pulse boundaries");
     }
+    checks.push(...checkGraphPayloads(wasm, GraphReceiver));
     return { passed: true, checks };
 }

@@ -10,8 +10,9 @@ recorded source; it is not a new callback audit or final branch/platform certifi
 The independent loop fixture now supplies direct, primitive-wire and bounded
 two-thread replay plus actual non-isolated offline/live AudioWorklets for its small
 primitive scenario, including canonical semantic timeline journals matched against
-an independent native table. Broader graph/program/resource wire operations,
-exports and musical/adversarial host scenarios remain pending.
+an independent native table. A prepared graph payload receiver now additionally
+has native facade and public-Wasm binding coverage. Graph command/result transport,
+program/resource wire operations, exports and broader host scenarios remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -22,7 +23,38 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 semantic host journals
+## Stage 7 prepared graph payload foundation
+
+`LGP1` is a canonical96-byte payload record format with two prepared local plan
+owners, checked generations, full-width sessions/sequences/epochs and explicit
+planning metadata. Ordered materialization and whole-record refusal never compile
+or allocate a graph on the callback. Seal is not runtime validation/admission.
+Owning handoff/recycle retains rejected inputs; retired plans truthfully expose
+their actual capacities for later declarations.
+
+Seven native tests cover full-width layout/all truncations/padding, transactional
+ordering/refusal, storage/identity/exhaustion,128 candidate lifecycle rounds, actual
+facade graph activation and retirement, full ingress, stalled returns and queued/
+Ready disconnect disposal. The route cut at4 bypasses FX only at the host output:
+three partitions agree on all13 stereo samples,134 MIDI packets, exact receipts/
+epochs and the unchanged semantic timeline, followed by full resource recovery.
+Two additional shared public-binding checks cover canonical payloads, Wasm32 index
+overflow refusal and128 local owner exchanges without memory growth.
+
+Fresh gates:31 fixture tests per native profile, eleven binding checks in each
+Node/Chromium profile, actual primitive offline/live worklets and failure canaries
+in both profiles, five Python tests,2141 workspace passes/four existing skips,
+warning-denied builds/rustdoc, formatting and applicable policies. Worklet memories
+remain1,835,008 debug/1,769,472 release bytes. See [payload evidence](evidence/graph-payload-stage7.md)
+for source, raw reports, commands, hashes, retained initial cleanup-API compilation
+failure and scope. Applicable Stage7 interpreter cases remain pending consolidation.
+
+This does not add graph command/result envelopes, response credits, two-thread
+payload transport or actual worklet graph changes. No further Stage7 checklist row
+is complete; the verified count stays2/8. Program/resource payloads, exports,
+broader musical/adversarial hosts, CI artifacts and Stages8–10 remain open.
+
+## Historical Stage 7 semantic host journals
 
 Prepared `LSJ1` observation records now preserve event/discontinuity boundaries,
 all public decision-state fields except opaque origin IDs/private watermark, and
