@@ -1,5 +1,39 @@
 # Loop-layer implementation and validation evidence
 
+## Loop-guide and facade-contract handoff backfill
+
+Read all11 loop README/guide destinations and the complete SEMANTICS,
+RUNTIME_INTEGRATION and FACADE_DESIGN documents. New `loop-foundations-backfill.md`
+and `loop-runtime-backfill.md` under the runtime handoff directory give per-destination
+corrections, preparation/commands/composites/media and state/export/shutdown recipes,
+and explicit attribution of current prepared-template configuration and paired
+program/graph implementation. Authored guides/architecture, example and archives
+remain untouched. Repository runtime architecture/audit/performance/fixture review,
+later-stage deltas and separate-worker publication remain open.
+
+`loop-guides-baseline.json` records **coordinated_loop debug/release and warning-denied
+loop rustdoc**, all passing; raw logs are `target/loop-layer-docs-loop/`. The three
+warm commands took5.4142942399776075s in isolated reused documentation output, not a
+cold build or performance measurement. The example checks stereo arrays, transitions,
+initial held note, exact exported audio/MIDI bytes and256pages/16versions/16snapshots/
+zero media references at teardown. It has no allocator guard itself: the existing
+guarded integration evidence is separate. All123 scoped Rust/10 configuration-runner
+inputs and11 runtime archive hashes remain unchanged. Prior153-loop native/Wasm and
+2141-workspace evidence is referenced, not freshly rerun.
+
+Source review also corrected chapter14's overly broad recovery wording: recovery
+must resolve at its delivery frame before positive interval advancement, not merely
+before callback end. The loop guide needs the full current recovery-safe set; plain
+LoopId/RequestId lack an instance-scope field; AfterInterval is conceptual rather
+than an actual facade Cut member; imported channel padding requires explicit host
+preparation rather than an unimplemented facade option. These are documentation
+clarifications, not production semantic changes or acceptance-scope reductions.
+
+At this natural checkpoint the consolidated job remains **running,70 completed
+commands/215 of228 executions**, processing the stopped-input/half-open-prefix runtime
+case (`70-runtime-seed0.log`). No second interpreter job was started. This is partial
+progress, not terminal collection or Stage6 completion.
+
 ## Control/planning handoff backfill
 
 Chapter5–8/13–15 notes now complete the runtime book's earlier-slice backfill:

@@ -104,6 +104,20 @@ All19 chapter backfill reviews are now actionable. Full loop-guide/architecture
 backfill, reference tables, authored examples/publication and final acceptance
 remain open.
 
+The **loop-guide backfill** now reviews all11 existing loop README/guide destinations
+and the complete repository SEMANTICS/RUNTIME_INTEGRATION/FACADE_DESIGN documents.
+[Loop foundations](loop-foundations-backfill.md) gives destination-specific stale-
+claim corrections and preparation/command/composite/media walkthrough requirements;
+[facade/state/export follow-ups](loop-runtime-backfill.md) covers current recovery,
+configuration, coherent cuts, ownership and shutdown. `loop-guides-baseline.json`
+records destination/source hashes and fresh coordinated_loop debug/release plus
+warning-denied loop rustdoc. The example has sample/content/ownership assertions but
+no allocator guard itself; guarded integration evidence is separately attributed.
+The review also clarifies delivery-frame recovery, conceptual versus actual Cut
+fields, caller-routed LoopId/RequestId, and explicit off-render import padding.
+Full repository runtime architecture/audit/performance/fixture review, later-stage
+host/benchmark changes and separate-worker publication remain outstanding.
+
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and
 their cross-cutting effects. Full review/backfill of prior
@@ -175,7 +189,8 @@ only this milestone's changes have been reviewed; it does not close full coverag
   Separate-worker supporting reference pages and final benchmark evidence remain.
 
 [Cross-cutting and other-document follow-ups](cross-cutting.md) cover README,
-rustdoc, references, architecture and loop-specific attribution. Full loop-library
-user-guide changes and earlier-stage audit deltas remain to be added; this index
-must not be marked complete until each pending row has actionable notes or a
-source-backed, explicitly justified no-change finding.
+rustdoc, references, architecture and loop-specific attribution. Loop-library
+user-guide backfill is now covered by the two indexed notes above; earlier-stage
+repository runtime architecture/audit/performance/fixture deltas still need complete
+review. This index must not be marked complete until each pending destination has
+actionable notes or a source-backed, explicitly justified no-change finding.

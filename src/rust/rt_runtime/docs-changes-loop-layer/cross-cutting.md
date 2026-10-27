@@ -102,9 +102,16 @@ Destinations include `PROPOSAL_LOOP_LAYER.md`,
   retroactive rollback. Use current verification ledgers for the still-open full
   Stage6 Miri/independent-host/final-delivery status, not historical slice counts.
 
-The full set of Stage 0–5 loop-guide changes still needs separate source-backed
-notes. Existing loop guides and implementation evidence are review inputs, not
-permission to silently reuse old claims as freshly verified results.
+The Stage0–6 implementation backfill is now covered by
+[loop foundations](loop-foundations-backfill.md) and
+[facade/state/export follow-ups](loop-runtime-backfill.md), with all11 existing loop
+README/guide destinations and repository SEMANTICS/RUNTIME_INTEGRATION/FACADE_DESIGN
+reviewed completely. Baselines are in loop-guides-baseline.json. These notes correct
+stale facade/configuration limitations, the actual recovery-safe set, delivery-frame
+recovery termination, conceptual versus public Cut phases, import padding and raw
+LoopId/RequestId caller-routing requirements. They do not claim new host evidence or
+publication. Remaining repository runtime architecture/audit/performance/fixture
+review and later-stage documentation deltas are still required.
 
 ## Operational evidence and handoff boundary
 

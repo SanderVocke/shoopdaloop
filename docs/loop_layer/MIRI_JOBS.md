@@ -40,6 +40,11 @@ executions, with the loop MIDI target (`67-midi-seed0.log`) in progress. Four na
 example executions and the drafting checker ran separately. All123 scoped Rust and
 10 configuration/runner input hashes remain unchanged; this review adds no new
 interpreter invocation or terminal-pass claim. Stage6 remains incomplete.
+The loop-guide/facade-contract review checkpoint verified70 completed commands/
+215 of228 executions; `70-runtime-seed0.log` was running the stopped-input/half-open-
+prefix export case. Fresh native example/rustdoc checks used separate output, and
+all scoped Rust/configuration/archive hashes remained unchanged. Still no terminal
+collection or new interpreter invocation; the existing job alone continues.
 
 
 Latest nested-lifecycle/readiness milestone: **228 selected =128 runtime+100 loop**.

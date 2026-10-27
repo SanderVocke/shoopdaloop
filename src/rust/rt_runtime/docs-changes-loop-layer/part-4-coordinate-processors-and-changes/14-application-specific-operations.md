@@ -68,8 +68,9 @@ intervals still advance, and a configured planner's additional recovery receipt 
 admit a payload-free, current-frame, recovery_safe operation. It can cancel queued
 or pending normal work without borrowing a normal pending slot. Its own unread result
 still consumes its sole reservation: consume/recycle it before requiring another.
-Recovery may settle during planning, but must terminate within its admission callback;
-future, payload-bearing, unclassified or nonterminating recovery is rejected/faulted
+Recovery may settle during planning, but must terminate at its delivery frame before
+any positive interval advances—not merely sometime in the same callback. Future,
+payload-bearing, unclassified or nonterminating recovery is rejected/faulted
 according to the public API. Classification is a trusted bounded semantic contract,
 not an escape from guards, graph authority or admission limits.
 
