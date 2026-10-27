@@ -65,6 +65,17 @@ worker. This is actionable review, not separate-worker publication or full-book
 acceptance. The consolidated Stage6 Miri job runs independently from `faec78df`;
 see the operational `MIRI_JOBS.md`, not these notes, for its status.
 
+The **stored-media/MIDI/capture backfill** now supplies actionable example and
+failure/ownership requirements for chapters9–12 and16. `media-baseline.json` records
+the five still-empty destination files, reviewed archives and implementation hashes,
+unchanged11-file archive integrity,63 existing resource/index/state/group tests per
+native debug/release profile across15 targets, and a drafting-only book check.
+These are reviewed contracts and tested implementation behavior, **not newly authored
+chapter examples**. Publication, example creation/execution and final acceptance
+remain the documentation worker's work. The notes correct raw-ID versus scoped-view
+preconditions, physical resource versus musical revision clocks, strict pre-target
+state versus restoration, and the current prepared-first-interval capture path.
+
 **This is not yet a complete Stage 9 handoff.** The current notes cover the graph/
 recovery prerequisite, fixed-role facade integration, media-owner publication and
 their cross-cutting effects. Full review/backfill of prior
@@ -94,14 +105,14 @@ only this milestone's changes have been reviewed; it does not close full coverag
 | 6 — Live edits | [Slice reviewed](part-2-control-a-running-graph/06-routing-and-live-graph-edits.md); review all legacy editing/archive topics. |
 | 7 — Exact parameters | [Reviewed, no semantic rewrite for this slice](part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md); recheck final API/example and navigation. |
 | 8 — MIDI | [Slice reviewed](part-2-control-a-running-graph/08-processing-and-scheduling-midi.md); backfill reserved recovery and required rendering. |
-| 9 — Resources | Pending: required/background access, indexes, versions and scoped snapshot ownership. |
-| 10 — Record/export | Pending: exact cuts, truthful prefixes, snapshots and teardown. |
-| 11 — MIDI events | Pending: page indexes, complete packets, half-open ranges, equal-time events and EOF. |
-| 12 — MIDI state | Pending: projection/checkpoints, strict pre-target state, unsupported state/restoration policy. |
+| 9 — Resources | [Backfill reviewed](part-3-work-with-stored-media/09-loading-and-reading-resources.md): upload/ownership, required versus background access, raw-ID preconditions and bounded cleanup; chapter/example publication pending. |
+| 10 — Record/export | [Backfill reviewed](part-3-work-with-stored-media/10-recording-and-exporting.md): immutable truthful prefixes, capture revisions, exhaustion and single-resource versus group atomicity; chapter/example publication pending. |
+| 11 — MIDI events | [Backfill reviewed](part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md): page versus event positions, complete packet retry, ties/EOF and view lifetimes; chapter/example publication pending. |
+| 12 — MIDI state | [Backfill reviewed](part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md): concrete checkpoint reference, C×K−1 capacity, pre-target state, unsupported histories and renderer attribution; chapter/example publication pending. |
 | 13 — Planning | [Slice reviewed](part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md); backfill full planner/observation lifecycle. |
 | 14 — Typed operations | [Slice reviewed](part-4-coordinate-processors-and-changes/14-application-specific-operations.md); backfill pending result/cancellation semantics. |
 | 15 — Graph activation | [Detailed prerequisite notes](part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md); revisit after general loop integration. |
-| 16 — Capture groups | Pending: first-interval reservations, common-prefix outcomes, scoped authority, cancellation and claims. |
+| 16 — Capture groups | [Backfill reviewed](part-4-coordinate-processors-and-changes/16-recording-resources-together.md): first-interval preflight, reservations/claims, staged common-prefix publication, stamped authority and explicit cleanup; chapter/example publication pending. |
 | 17 — Capacity | [Slice reviewed](part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md); backfill all changed formulas and render counters. |
 | 18 — Prepared ingress | Pending: reusable metadata, prepared flags/payloads, ownership-preserving refusal and callback restrictions. |
 | 19 — Shutdown | [Slice reviewed](part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md); backfill resource/domain extraction and permanent loop quiescence. |
@@ -113,9 +124,13 @@ only this milestone's changes have been reviewed; it does not close full coverag
   coordination/prepared ingress and complete teardown remain chapters5–6,13–15,18–19.
   Do not copy obsolete held-validation/recovery ordering from the archive.
 - `scheduling-midi.md`, `changing-parameters.md`: chapters 5, 7–8, 14, 17–19.
-- `resources.md`: chapters 9–11, 16–19.
-- `midi-indexing.md`, `midi-state.md`: chapters 11–12, 16–17.
-- `capture-groups.md`: chapters 10, 13, 16–19.
+- `resources.md`: upload/access/index/capture/export ownership reviewed for9–11/16;
+  consolidated formulas, prepared ingress and shutdown backfill remain17–19.
+- `midi-indexing.md`, `midi-state.md`: event/state/initial/checkpoint/ownership policies
+  reviewed for11–12/16; chapter17 must reconcile the complete sizing/counter reference.
+- `capture-groups.md`: take/interval/first-reservation/common-prefix/lifetime/cleanup
+  review covers10/16. Planner integration and consolidated sizing/ingress/shutdown
+  remain13/17–19; do not copy obsolete blanket claims of missing loop integration.
 - `planning.md`: introductory processor/callback effects reviewed for chapters3–4;
   complete planner/receipt/activation/capture/accounting backfill remains chapters13–17.
 - `graph-activation.md`: chapters 5–6, 8, 13–15, 17–19; this slice reviewed below,

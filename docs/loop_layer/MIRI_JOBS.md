@@ -25,6 +25,11 @@ running. **This is partial progress, not a collected pass or Stage6 completion.*
 Do not start another routine job. Continue documentation work, inspect at natural
 checkpoints, and collect/verify the terminal result before updating acceptance.
 The working-tree documentation/example review does not mutate this snapshot.
+The subsequent resource/MIDI/capture handoff checkpoint verified the supervisor
+still running:37 commands/162 executions completed, with the configuration
+input-projection preserve/reset case in progress. Selected native documentation
+checks ran in a different Cargo output directory; no additional Miri was launched.
+This later progress is also partial and does not replace terminal collection.
 
 
 Latest nested-lifecycle/readiness milestone: **228 selected =128 runtime+100 loop**.

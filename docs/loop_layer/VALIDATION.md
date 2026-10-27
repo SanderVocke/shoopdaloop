@@ -1,5 +1,36 @@
 # Loop-layer implementation and validation evidence
 
+## Resource/MIDI/capture handoff backfill while consolidated Miri runs
+
+Five new actionable notes cover chapters9–12 and16 under
+`src/rust/rt_runtime/docs-changes-loop-layer/`. Reviewed the still-empty destinations,
+full archived resource/MIDI-index/MIDI-state/capture-group guides, public format,
+render/index/state/capture APIs and stamped group lifecycle. The notes specify small
+public-API examples with independent bytes/state/cut/capacity/refusal/cleanup checks;
+no teaching chapter or new example has been authored by this worker.
+
+`media-baseline.json` in the handoff directory records reviewed hashes, all11 archive
+files unchanged from the initial handoff, all123 scoped Rust source hashes and relevant
+configuration/runner inputs unchanged, and fresh **63 existing tests per native
+debug/release profile across15 targets**. Native discovery verifies63 cases. The
+book checker still uses drafting-only `--allow-pending` with14 pending chapters.
+Raw logs: `target/loop-layer-docs-media/`. The separate worker must still implement,
+execute and publish the chapter examples and verify the final book. No fresh Wasm,
+whole-package, independent-host, or interpreter acceptance is inferred here.
+
+The review explicitly distinguishes raw-ID same-store preconditions from opaque
+scoped views; physical resource revisions from loop take revisions; page-byte,
+event and strict pre-target state positioning; state reconstruction from renderer
+restoration; optional snapshots from promised group final leases; and first-interval
+preflight from publication. It corrects obsolete archive claims of missing loop
+integration without claiming the independent loop AudioWorklet is already delivered.
+
+At this natural checkpoint, the existing immutable Stage6 job remains running:
+**37 completed commands/162 executions**, with the configuration input-policy case
+in progress. This is partial progress, not a collected pass. No second interpreter
+job or implementation change was made. Authored drafts/examples/archive/other-worker
+plan and unrelated working-tree changes remain untouched.
+
 ## Consolidated Stage6 job and concurrent Part I handoff review
 
 Readiness inputs were committed as `faec78df0a990d28b4fefb2f75e43ea0ace7f1ea`.
