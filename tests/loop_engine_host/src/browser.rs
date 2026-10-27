@@ -9,6 +9,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod native_graph;
+
 pub const HEAP_FAILURE: u32 = 0xffff_0001;
 const JOURNAL_BYTES: usize = 16_384;
 static MARKER: AtomicU32 = AtomicU32::new(0);

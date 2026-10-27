@@ -1,12 +1,13 @@
 import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient } from "./pkg/fixture.js";
 import { checkBindings } from "./bindings_checks.js";
+import { makeGraphHost } from "./graph_host.js";
 const RATE = 48000, Q = 128;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 class Host {
-    constructor(mode, module, memory, client, session, canary) {
-        Object.assign(this, { mode, module, memory, client, session, canary });
+    constructor(mode, module, memory, client, session, canary, graph = false) {
+        Object.assign(this, { mode, module, memory, client, session, canary, graph });
         this.waiters = new Map(); this.requests = []; this.responses = [];
         this.pool = Array.from({ length: 5 }, () => new ArrayBuffer(64));
         this.failure = new Promise((_, reject) => { this.reject = reject; });
@@ -42,15 +43,15 @@ class Host {
         const result = this.wait(key); port.postMessage({ type, ...data }); return result;
     }
     async start() {
-        this.context = this.mode === "offline" ? new OfflineAudioContext(2, 512, RATE) : new AudioContext({ sampleRate: RATE });
+        this.context = this.mode === "offline" ? new OfflineAudioContext(2, this.graph ? 768 : 512, RATE) : new AudioContext({ sampleRate: RATE });
         assert(this.context.sampleRate === RATE, "unexpected sample rate");
         await this.context.audioWorklet.addModule("./worklet.js");
         const ready = this.wait("ready");
         this.node = new AudioWorkletNode(this.context, "loop-fixture", { numberOfInputs: 0, numberOfOutputs: 1,
-            outputChannelCount: [2], processorOptions: { module: this.module, session: this.session, canary: this.canary } });
+            outputChannelCount: [2], processorOptions: { module: this.module, session: this.session, canary: this.canary, graph: this.graph } });
         this.node.port.onmessage = ({ data }) => this.message(data);
         this.node.onprocessorerror = () => this.reject(new Error("loop AudioWorklet processorerror"));
-        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { graph: this.graph } });
         this.probe.port.onmessage = ({ data }) => this.message(data);
         this.probe.onprocessorerror = () => this.reject(new Error("audio probe processorerror"));
         this.node.connect(this.probe);
@@ -139,17 +140,28 @@ async function runInner() {
     const module = await WebAssembly.compile(await (await fetch("./pkg/fixture_bg.wasm")).arrayBuffer());
     const wasm = initSync({ module });
     assert(wasm.memory.buffer instanceof ArrayBuffer, "ordinary non-shared control memory required");
-    const canary = new URLSearchParams(location.search).get("failure");
+    const requestedCanary = new URLSearchParams(location.search).get("failure");
+    const graphCanary = requestedCanary?.startsWith("graph-");
+    const canary = graphCanary ? requestedCanary.slice(6) : requestedCanary;
     const bindingChecks = canary ? null : checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient);
-    const reports = [];
-    for (const mode of canary ? ["offline"] : ["offline", "live"]) {
+    const reports = [], graphReports = [];
+    for (const mode of graphCanary ? [] : canary ? ["offline"] : ["offline", "live"]) {
         const session = mode === "offline" ? "18446744073709551615" : "18446744073709551614";
         const client = new BrowserClient(BigInt(session)); client.set_marker(0x51a17);
         const host = new Host(mode, module, wasm.memory, client, session, canary);
         try { reports.push(await host.run()); }
         finally { await host.cleanup(); client.free(); }
     }
-    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports };
+    const GraphHost = makeGraphHost(Host);
+    for (const mode of canary && !graphCanary ? [] : canary ? ["offline"] : ["offline", "live"]) {
+        const session = mode === "offline" ? "18446744073709551613" : "18446744073709551612";
+        const client = new BrowserClient(BigInt(session)), graphClient = new BrowserGraphClient(BigInt(session));
+        client.set_marker(0x51a17);
+        const host = new GraphHost(mode, module, wasm.memory, client, session, canary, graphClient);
+        try { graphReports.push(await host.run()); }
+        finally { await host.cleanup(); graphClient.free(); client.free(); }
+    }
+    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports };
 }
 export async function run() {
     try { return await runInner(); }

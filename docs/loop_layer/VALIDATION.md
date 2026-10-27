@@ -13,8 +13,11 @@ primitive scenario, including canonical semantic timeline journals matched again
 an independent native table. A prepared graph payload receiver now additionally
 has native facade and public-Wasm binding coverage. Opt-in native graph commands
 and public Node/Chromium bindings now stage/activate/release and recycle owners
-through bounded results. MessagePort graph transport, program/resource wire operations,
-exports and broader host scenarios remain pending.
+through bounded results. Actual offline/live graph sessions now transfer descriptors/
+commands/owning returns through MessagePort with an audible Ready checkpoint and
+explicit engine pause/resume, full native/reference downstream checks and successful
+recovery. Native bounded two-thread graph payload transport, program/resource wire
+operations, exports and broader host scenarios remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -25,7 +28,46 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 public graph command bindings
+## Stage 7 actual graph worklets and native reference
+
+Complete actual graph sessions now run offline/live in both profiles, separately
+from primitive sessions and binding checks. Fixed application-level buffers carry
+96-byte descriptors/commands and128-byte results across independent ordinary Wasm
+memories; no owner/pointer is transferred. A real audible sample0 obtains Ready,
+then an acknowledged engine pause allows Activate4 before resume at1. The next128
+engine frames execute activation internally at4. This intentional test-driver wall
+clock gap is not continuous live-edit/deadline evidence or a musical interaction cap.
+
+Downstream probes check256 actual Web Audio samples/channel and both browser clock
+origins, mapping129 real engine samples to native `replay --graph-json`. Offline
+additionally checks every sample of both768-frame output channels. Complete payload,
+command/result, MIDI and semantic data match native/reference results; only session/
+opaque scope and acknowledged nonmusical Release time normalize. All musical frames,
+publication epochs, generations/capacities and reserved bytes remain exact. Real
+malformed/foreign ingress retries and invalid/duplicate replies preserve ownership/
+credits. Release returns bank generation2/capacities3/12/2; all counts/buffers recover
+before successful cleanup, including256/16/16/0 resource recovery.
+
+The new native reference test covers whole/single/irregular/zero partitions. Three
+new Python cases require both actual contexts, complete samples/clock segments,
+transactional rejections, Ready-ID correlation, correct phases, fixed memory/heap,
+returned buffers and actual recovery. Their committed native report input is parser
+test data, not a fresh worklet pass. Existing failure-gate tests now cover four kinds.
+Both new actual graph processor/heap canaries require exact Rust-origin witnesses
+and exit1; failed sessions do not stand in for successful disposal.
+
+Fresh gates:42 fixture tests per native profile; fourteen groups per Node/Chromium/
+profile; four successful actual contexts plus four failure gates per profile; ten
+Python tests;2141 workspace passes/four existing skips; warning-denied build/docs,
+formatting and applicable policies. Normal fixed memories remain1,835,008 debug and
+1,769,472 release bytes, normal heap0. [Graph-worklet evidence](evidence/graph-worklet-stage7.md)
+retains exact source, commands, clocks, normalization scope, raw reports and hashes.
+
+This completes the actual graph-change scenario, not Stage7: its checklist remains
+2/8. Native two-thread graph payload transport, program/resource payloads, immutable
+exports, broader musical/adversarial hosts, consolidated Miri and Stages8–10 remain.
+
+## Historical Stage 7 public graph command bindings
 
 `BrowserGraphClient` compiles the fixture bypass payload off-render and prepares
 fixed records/two command credits. `BrowserBridge.new_graphs` opts into actual

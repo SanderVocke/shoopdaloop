@@ -134,7 +134,11 @@ def compare_graph_bindings(report, native):
             or report["recovered"] != native["recovered"] or report["rounds"] != 128
             or report["generation"] != 130 or report["initialBytes"] != report["finalBytes"]):
         raise RuntimeError("graph bindings differ from independent native media/semantic/ownership oracle")
-    packets = [bytes(packet) for packet in report["graphResponses"]]
+    validate_graph_receipts(report["graphResponses"], (1 << 64) - 1, 13)
+
+
+def validate_graph_receipts(records, session, release_frame):
+    packets = [bytes(packet) for packet in records]
     if len(packets) != 4 or any(len(packet) != 128 for packet in packets):
         raise RuntimeError("incomplete graph binding receipts")
     scope, slot, generation = struct.unpack_from("<III", packets[0], 76)
@@ -146,10 +150,10 @@ def compare_graph_bindings(report, native):
             (1, 6, 1, 1, 4, 0, 0, 0, 0, 1, 1),
             (1, 2, 2, 3, 5, 4, 4, 0, 1, 0, 2),
             (2, 3, 2, 4, 5, 4, 4, 4, 4, 2, 2),
-            (1, 6, 3, 2, 6, 0, 0, 0, 13, 0, 3),
+            (1, 6, 3, 2, 6, 0, 0, 0, release_frame, 0, 3),
         )[index]
         expected[:8] = b"LLS1\x01\x00" + bytes((phase, flags))
-        for offset, value in ((8, (1 << 64) - 1), (16, sequence), (32, runtime),
+        for offset, value in ((8, session), (16, sequence), (32, runtime),
                               (40, requested), (48, effective), (56, delivered),
                               (64, observed), (88, epoch)):
             struct.pack_into("<Q", expected, offset, value)
@@ -163,15 +167,118 @@ def compare_graph_bindings(report, native):
             raise RuntimeError("graph binding receipt differs from independent complete byte table")
 
 
+def compare_graph_worklets(result, native):
+    reports = result.get("graphReports", [])
+    if [report["mode"] for report in reports] != ["offline", "live"]:
+        raise RuntimeError("both actual graph contexts are required")
+    validate_semantic(native["semanticBytes"])
+    validate_graph_receipts(native["graphResponses"], (1 << 64) - 1, 129)
+    expected_midi = b"".join(struct.pack("<QI", at, len(packet)) + bytes(packet) for at, packet in native["midi"])
+    expected_audio = [[sample[channel] for sample in native["samples"]] for channel in range(2)]
+    if (len(native["samples"]) != 129 or len(native["payloads"]) != 20
+            or native["frames"] != 130 or native["callbacks"] != 3):
+        raise RuntimeError("incomplete native graph reference")
+
+    def normalized(packet, scope=None, release=False):
+        data = bytearray(packet)
+        data[8:16] = bytes(8)
+        if scope is not None:
+            data[scope:scope+4] = bytes(4)
+        if release:
+            data[64:72] = bytes(8)
+        return bytes(data)
+
+    def primitive(records):
+        phases = {}
+        for packet in records:
+            if len(packet) != 96 or bytes(packet[:6]) != b"LLR1\x01\x00":
+                raise RuntimeError("invalid graph-context primitive receipt")
+            sequence = struct.unpack_from("<Q", bytes(packet), 16)[0]
+            phases.setdefault(sequence, []).append(packet[6])
+        if len(phases) != 3 or any(value != [1, 2] for value in phases.values()):
+            raise RuntimeError("incomplete/out-of-order graph-context primitive outcomes")
+        return sorted(normalized(packet) for packet in records)
+
+    for index, report in enumerate(reports):
+        summary = report["summary"]
+        session = (1 << 64) - 3 - index
+        if int(report["session"]) != session or report["audio"] != expected_audio or bytes(report["midiBytes"]) != expected_midi:
+            raise RuntimeError("actual graph media differs from complete native reference")
+        report["semanticSummary"] = validate_semantic(report["semanticBytes"])
+        if report["semanticBytes"] != native["semanticBytes"]:
+            raise RuntimeError("actual graph semantic bytes differ from native")
+        if any(struct.unpack_from("<Q", bytes(packet), 8)[0] != session for packet in report["responses"]):
+            raise RuntimeError("foreign graph-context primitive response")
+        if primitive(report["responses"]) != primitive(native["responses"]):
+            raise RuntimeError("actual graph primitive receipts differ from native")
+        payloads, requests = report["payloads"], report["graphRequests"]
+        if (len(payloads) != 21 or payloads[0]["result"] != 4 or any(p["result"] != 0 for p in payloads[1:])
+                or any(p["frame"] != "0" for p in payloads)
+                or len(requests) != 4 or requests[0]["result"] != 9 or any(p["result"] != 0 for p in requests[1:])
+                or [p["frame"] for p in requests[:3]] != ["0", "0", "1"]):
+            raise RuntimeError("missing transactional malformed/foreign graph ingress evidence")
+        if any(struct.unpack_from("<Q", bytes(p["bytes"]), 8)[0] != session for p in payloads[1:] + requests[1:]):
+            raise RuntimeError("foreign graph payload/request")
+        for actual, expected in zip(payloads[1:], native["payloads"]):
+            if normalized(actual["bytes"]) != normalized(expected):
+                raise RuntimeError("actual graph descriptor differs from native bytes")
+        bad_payload = bytearray(payloads[1]["bytes"]); bad_payload[7] ^= 128
+        bad_request = bytearray(requests[1]["bytes"]); bad_request[8] ^= 128
+        if bytes(payloads[0]["bytes"]) != bad_payload or bytes(requests[0]["bytes"]) != bad_request:
+            raise RuntimeError("wrong actual graph rejection probes")
+        release_at = int(requests[3]["frame"])
+        if release_at < 129 or (release_at - 1) % 128:
+            raise RuntimeError("graph release not on acknowledged callback clock")
+        validate_graph_receipts(report["graphResponses"], session, release_at)
+        staged_id = bytes(report["graphResponses"][0][76:88])
+        if any(bytes(request["bytes"][64:76]) != staged_id for request in requests[2:]):
+            raise RuntimeError("graph commands do not use the acknowledged Ready identity")
+        for actual, expected in zip(requests[1:], native["graphRequests"]):
+            if normalized(actual["bytes"], 64) != normalized(expected, 64):
+                raise RuntimeError("actual graph command differs from native")
+        for offset, (actual, expected) in enumerate(zip(report["graphResponses"], native["graphResponses"])):
+            if normalized(actual, 76, offset == 3) != normalized(expected, 76, offset == 3):
+                raise RuntimeError("actual graph receipt differs from native")
+        starts = [int(frame) for frame in report["starts"]]
+        if (len(starts) != 2 or any(frame < 0 or frame % 128 for frame in starts) or starts[1] < starts[0] + 128
+                or report["checkpoint"] != {"type": "checkpoint", "frame": "1", "browser": str(starts[0])}
+                or [summary["firstFrame"], summary["resumeFrame"]] != list(map(str, starts))):
+            raise RuntimeError("actual graph output lacks matching segment clocks")
+        expected_chunks = [[channel[0]] + [0] * 127 + channel[1:] for channel in expected_audio]
+        if report["chunks"] != expected_chunks:
+            raise RuntimeError("actual downstream graph samples or paused padding differ")
+        frames, callbacks = int(summary["frames"]), int(summary["callbacks"])
+        if (frames != 1 + (callbacks - 1) * 128 or frames < release_at + 128
+                or summary["bytes"] != summary["finalBytes"] or summary["bytes"] != report["ready"]["bytes"]
+                or summary["heap"] != [0,0,0] or summary["journalOverflow"] != 0
+                or summary["returnedBuffers"] != 10 or summary["returnedGraphBuffers"] != 4
+                or summary["retainedGraphs"] != 0 or summary["recovered"] != native["recovered"]
+                or report["ready"]["shared"] is not False or report["ready"]["marker"] != 0 or summary["marker"] != 0
+                or report["invalidReplies"] != 4 or report["duplicateReplies"] != 4
+                or report["controlBytes"] != report["controlFinalBytes"] or report["controlMarker"] != 0x51a17
+                or report["counts"] != [0,0,0,0,0] or report["returnedInputBuffers"] != [5,1,2]):
+            raise RuntimeError("actual graph clock/heap/memory/ownership evidence incomplete")
+        if report["mode"] == "offline":
+            expected = [[0] * 768 for _ in range(2)]
+            for channel in range(2):
+                for segment, start in enumerate(starts):
+                    expected[channel][start:start+128] = expected_chunks[channel][segment*128:(segment+1)*128]
+            if report["offlineAudio"] != expected:
+                raise RuntimeError("complete OfflineAudioContext graph output differs")
+        elif report["offlineAudio"] is not None:
+            raise RuntimeError("live graph report falsely claims OfflineAudioContext output")
+
+
 def verify_failure(result, exit_code, kind):
-    diagnostic = "intentional loop " + ("processor" if kind == "processor" else "Rust heap") + " failure canary detected"
+    base_kind = kind.removeprefix("graph-")
+    diagnostic = "intentional loop " + ("processor" if base_kind == "processor" else "Rust heap") + " failure canary detected"
     witness = result.get("workletFailure") or {}
     heap = witness.get("heap", [])
-    expected_code, expected_origin = (10, 1) if kind == "processor" else (0xffff0001, 2)
+    expected_code, expected_origin = (10, 1) if base_kind == "processor" else (0xffff0001, 2)
     if (exit_code == 0 or result.get("passed") is not False or diagnostic not in result.get("failure", "")
             or witness.get("code") != expected_code or witness.get("processor") != expected_origin
             or len(heap) != 3 or any(type(count) is not int for count in heap)
-            or (heap != [0, 0, 0] if kind == "processor" else any(count <= 0 for count in heap))):
+            or (heap != [0, 0, 0] if base_kind == "processor" else any(count <= 0 for count in heap))):
         raise RuntimeError(f"{kind} did not fail with its specific Rust-origin witnesses")
     return {"kind": kind, "exit_code": exit_code, "diagnostic": diagnostic, "witness": witness}
 
@@ -180,7 +287,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-build", action="store_true", help="Reuse existing native/Wasm artifacts")
     parser.add_argument("--profile", choices=("debug", "release"), default="release")
-    parser.add_argument("--failure-canary", choices=("processor", "rust-heap"), help="Must fail through the corresponding real worklet path")
+    parser.add_argument("--failure-canary", choices=("processor", "rust-heap", "graph-processor", "graph-rust-heap"), help="Must fail through the corresponding real worklet path")
     parser.add_argument("--verify-failures", action="store_true")
     args = parser.parse_args()
     reports = ASSETS / "reports" / args.profile
@@ -217,6 +324,8 @@ def main():
     executable = FIXTURE / "target" / args.profile / ("replay.exe" if os.name == "nt" else "replay")
     native = json.loads(harness.command([str(executable), "--json"], reports / "native.json"))
     compare(result, native)
+    graph_native = json.loads(harness.command([str(executable), "--graph-json"], reports / "native-graph.json"))
+    compare_graph_worklets(result, graph_native)
     if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)
@@ -229,7 +338,7 @@ def main():
     result["source_dirty"] = bool(subprocess.check_output(["git", "status", "--porcelain", "--", str(FIXTURE), str(Path(__file__).resolve())], cwd=ROOT, text=True).strip())
     if args.verify_failures:
         result["failure_canaries"] = []
-        for kind in ("processor", "rust-heap"):
+        for kind in ("processor", "rust-heap", "graph-processor", "graph-rust-heap"):
             failed = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--no-build", "--profile", args.profile, "--failure-canary", kind],
                                     cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=360)
             (reports / f"{kind}-failure-gate.log").write_text(failed.stdout)

@@ -21,6 +21,8 @@ mod native;
 mod scenario;
 pub mod wire;
 pub use bridge::Bridge;
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_graph::{run_graph, GraphReport};
 pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
 pub use browser_graph::BrowserGraphReceiver;
 pub use browser_graph_client::BrowserGraphClient;

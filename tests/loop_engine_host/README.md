@@ -179,8 +179,9 @@ The route-cut script has the same13 samples/134 MIDI packets described above and
 retains exact graph/primitive receipts, semantic bytes and complete pool recovery.
 
 The graph protocol now executes natively and through public Node/Chromium bindings.
-It is not yet a two-thread graph scenario or actual worklet graph transport. The
-replay CLI and actual worklet contexts still execute the primitive scenario.
+Native bounded two-thread graph payload transport remains open. The original replay
+modes remain primitive; `--graph-json` and additional actual worklet contexts now
+execute the acknowledged graph-change scenario below.
 
 ## Submit graph commands through public Wasm bindings
 
@@ -220,8 +221,8 @@ node target/loop-engine-host/release/node_checks.mjs
    real owners off-render; it does not manufacture client returns.
 
 [The binding recipe](WIRE.md#public-graph-command-bindings) is runnable after the
-runner builds assets. These checks use actual Wasm runtime graphs, but not a
-MessagePort or downstream Web Audio graph-change scenario. Native binding-buffer
+runner builds assets. These binding checks are distinct from the additional
+MessagePort/downstream Web Audio graph scenario below. Native binding-buffer
 coverage also compares three partitions and actual processor/heap fault disposal.
 
 ## Run actual Web Audio
@@ -242,9 +243,13 @@ no separate `wasm-bindgen` executable is required. Missing tools are failures,
 not skipped browser evidence. `--no-build` deliberately reuses that profile's
 existing artifacts; omit it for fresh verification.
 
+Each normal runner invocation requires four successful sessions: primitive and
+graph-change scenarios in both offline and live contexts. `--verify-failures`
+additionally checks four intentionally failing sessions.
+
 ### 1. Prepare two ordinary Wasm instances
 
-The main instance owns `BrowserClient`; the AudioWorklet instance owns
+The main instance owns `BrowserClient` (and `BrowserGraphClient` for graph sessions); the AudioWorklet instance owns
 `BrowserBridge` and the actual loop facade. Both instantiate the same compiled
 module, with separate ordinary memories. A main-instance marker is absent in the
 worklet; both memories must be non-shared. The server sets no COOP/COEP headers
@@ -275,7 +280,55 @@ The runner independently compares complete MIDI packets and execution frames
 with native replay. This short live test stages commands before clock start;
 it is not yet a campaign of dynamically arriving live commands.
 
-### 3. Check memory, failures and shutdown
+### 3. Change routing through an audible Ready checkpoint
+
+The graph scenario uses the same Record0/Play4/Stop12 music, but transfers all20
+compiled descriptor records and Stage before the first engine callback. It first
+rejects a reserved-byte payload and a foreign-session command, then retries their
+original sequences; neither refusal may lose the prepared owner or credit.
+
+1. `prime` requests **one real engine sample**, not a warm-up. Its audio is heard
+   and captured by the downstream probe: left1/right10 at engine frame0. The
+   `checkpoint` acknowledges engine frame1 and that browser quantum. Engine
+   advancement then pauses; Web Audio callbacks during the wait output silence.
+2. Poll and consume the actual Staged/Ready result. Submit Activate for engine
+   frame4 while the acknowledged engine clock is still1. Arm/resume only after
+   its envelope acknowledgement. The next128-frame engine callback covers1–128;
+   activation is three samples inside that callback, not delayed to a quantum.
+3. The probe retains the two non-silent Web Audio quanta in fixed storage. Require
+   both browser starts to match source clock markers. The first contains only
+   engine sample0 followed by127 silent pause samples; the second contains real
+   engine samples1–128. Together their129 engine samples must match native replay:
+   left `1,2,3,4,1,2,3,4,1,2,3,4,0`, then zeros; right ten times left. Compare all134
+   MIDI packets, all semantic bytes, primitive receipts and graph publication epoch2.
+4. Release the taken graph. Its ingress acknowledgement names the current engine
+   frame; the owning completion must report that same frame. Verify next bank
+   generation2 and actual retired capacities3 steps/12 edges/2 bindings, zero
+   command/retained counts and every input/response buffer back before stop.
+5. Offline additionally compares every sample of both complete768-frame output
+   channels, including startup, pause and stopped silence. Live mute remains after
+   the probe. Both contexts keep ordinary memories fixed and recover256/16/16/0.
+
+This is an intentional **test-driver engine pause**, not continuous wall-clock
+live editing, device capture or a MessagePort deadline guarantee. It consumes no
+hidden musical frames, drops no admitted transition and does not impose a runtime
+interaction quantum. The separate primitive worklet still verifies contiguous
+128-frame processing after its initial arm.
+
+Run the native reference (replay, not a worklet) and partition test in either profile:
+
+```sh
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --graph-json
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
+  browser::native_graph::tests::acknowledged_graph_worklet_script_has_complete_partition_invariant_native_reference -- --exact
+```
+
+Add `--release` before `--bin` or before the test filter. The reference records129
+samples,20 payloads, three graph commands, four graph results, six primitive results,
+full MIDI/semantic bytes and actual resource recovery. Whole/single/irregular/zero
+partitions agree. See [transport and clock rules](WIRE.md#graph-messageport-transport-and-clock).
+
+### 4. Check memory, failures and shutdown
 
 Rust guards cover preparation-free ingress, source filling, planner/render work,
 MIDI observation and return recycling. Memory length must stay fixed after
@@ -288,7 +341,7 @@ receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
 records, an eventless same-position seek, two payload checks and three graph command
 checks: full-width/credits, exact activation/retirement and128 real owner returns.
-These are binding-level Wasm checks, not a claim that the41 native Rust tests
+These are binding-level Wasm checks, not a claim that the42 native Rust tests
 were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
@@ -299,8 +352,10 @@ batch, increments saturating loss counters and leaves music and receipts alone.
 Native tests vary observer capacity and resolver journal capacity across72 runs;
 Wasm checks also exhaust the observer while verifying all audio and receipts.
 
-`--verify-failures` launches two intentionally failing **real worklet** sessions.
-The FX processor either returns an error or allocates/reallocates/deallocates.
+`--verify-failures` launches four intentionally failing **real worklet** sessions:
+processor and heap faults in both primitive and graph hosts. The FX processor either
+returns an error or allocates/reallocates/deallocates. Individual gates can be run
+with `--failure-canary processor`, `rust-heap`, `graph-processor` or `graph-rust-heap`.
 Each child must exit nonzero with the specific diagnostic, matching Rust processor
 witness and heap counts. An unrelated exception or matching text without witnesses
 cannot pass. These failed sessions do not stand in for successful disposal.
@@ -324,8 +379,11 @@ now exercise this primitive scenario. This is **not Stage 7 completion**.
 Prepared graph payload materialization has native facade and public-Wasm binding
 coverage. Opt-in native graph commands now stage/activate/release and recycle
 owners through bounded wire results. Public graph command bindings execute in
-Node/Chromium with complete native-oracle comparisons. Two-thread payload transport
-and actual worklet graph changes remain pending. Program/resource payload staging, immutable exports,
+Node/Chromium with complete native-oracle comparisons. Actual offline/live graph
+changes now transfer descriptors/commands/owning results through MessagePort and
+check downstream samples, acknowledged clocks and successful recovery. Native
+bounded two-thread graph payload transport remains pending, as do program/resource
+payload staging, immutable exports,
 broader loop/composite/seek/replacement/exhaustion scenarios and live in-flight
 transfer stalls also remain to be added to the host.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

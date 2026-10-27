@@ -160,8 +160,8 @@ The response-buffer acknowledgement is separate from both phases above.
 
 The primitive protocol remains unchanged. Opt-in native graph commands use the
 separate envelopes below and the prepared descriptor payload, now also executed
-through public Wasm bindings. MessagePort graph transport, program staging and
-capture export still remain open;
+through public Wasm bindings and MessagePort in actual graph worklets. Program
+staging and capture export still remain open;
 this is not the complete Stage7 bridge.
 
 ## Prepared graph descriptor payload (`LGP1`)
@@ -170,8 +170,8 @@ this is not the complete Stage7 bridge.
 It does **not** extend `LLC1`/`LLR1` or by itself submit/admit/activate a runtime
 graph. The opt-in native graph bridge connects its owning handoff to the command/
 result protocol below. `BrowserGraphReceiver` separately checks the materializer
-through public Node/Chromium bindings; the worklet transport does not yet carry
-graph payloads or commands.
+through public Node/Chromium bindings. The graph worklet separately carries these
+payloads and commands through the opt-in `BrowserBridge`.
 
 ### 1. Prepare receiver-local ownership
 
@@ -330,9 +330,9 @@ Intentional disconnect/abandonment stops callbacks before consuming the engine;
 it disposes queued/Ready owners off-render without fabricating returns or results.
 
 The public graph command bindings below execute these same native methods in
-Node/Chromium. MessagePort dispatch remains open and the current actual worklet
-still exercises only primitives. `BrowserGraphReceiver` remains a separate
-payload/local-owner check, not the command bridge.
+Node/Chromium and actual graph-change worklets through MessagePort.
+`BrowserGraphReceiver` remains a separate payload/local-owner check, not the
+command bridge.
 
 ### Request: 96 bytes
 
@@ -452,12 +452,53 @@ JS
 ```
 
 Expected output ends `next bank generation 2`. This one-instance binding recipe
-uses local copies; independent memories/MessagePort graph transport remain a
-separate host task. Run `node target/loop-engine-host/{debug,release}/node_checks.mjs`
+uses local copies; the independent-memory MessagePort scenario below is separate
+evidence. Run `node target/loop-engine-host/{debug,release}/node_checks.mjs`
 from the repository root for the complete route-cut and128-cycle binding cases.
 Normal stop refuses15 while any graph remains Ready/Taken, even with no command
 credit outstanding. Intentional fault/abandonment is not a fabricated owning return.
 Fault modes0/1/2 match the primitive constructor's normal/processor/heap modes.
+
+## Graph MessagePort transport and clock
+
+The graph host prepares one96-byte payload transfer buffer, two96-byte command
+buffers and four128-byte response buffers, in addition to the primitive pools.
+These are finite application-level credits; the underlying MessagePort is not
+claimed to be a fixed-capacity transport. The producer waits for each payload
+buffer's return before sending its next record. Every transfer must detach the
+sender, and every buffer must return at its exact size before reuse/normal stop.
+No pointer/owner crosses instances.
+
+| Message | Meaning |
+| --- | --- |
+| `graph-payload` / `graph-payload-ack` | Copy one96-byte `LGP1` record; return its transfer buffer, runtime result and current engine frame. Result0 is materialization, not admission/publication. |
+| `graph-request` / `graph-ingested` | Copy one96-byte `LLG1` record; return buffer, protocol result and current engine frame. Result0 is envelope acceptance, not Ready/domain success. |
+| `graph-response` / `graph-credit` | Transfer one128-byte `LLS1` result and return its independent buffer credit0–3. Rust command credit is released only by validated terminal results. |
+| `prime` / `primed` | Request one real engine sample; the acknowledgement does not mean Ready. |
+| `checkpoint` | After that sample, acknowledge engine frame1 and its browser quantum. The source pauses engine advancement until `arm`. |
+| `arm` / `armed` | Resume only after Activate4 is ingested at acknowledged engine frame1. |
+| `poll` / `polled` | Bounded polling of ten primitive/four graph transfer buffers; report engine clock, command/retained counts and both source browser clock markers. |
+
+Stage validation needs a real callback. The one-sample prime is audible Record0
+and is included in every oracle; it is not a discarded warm-up. While paused,
+Web Audio callbacks output silence without advancing the engine. After Ready,
+Activate4 is staged before resume at1, so it executes inside the next128-frame
+callback. The downstream probe separately observes the two audible quanta and
+requires matching source browser starts. This intentionally inserted wall-clock
+gap is a test-driver choice, not a production continuous-live-edit/deadline claim
+or a runtime musical interaction delay.
+
+A malformed reserved-byte payload (runtime4) and foreign-session Stage envelope
+(protocol9) are rejected and retried at the same original sequences before prime.
+Every actual graph result is also checked against a foreign-session copy and a
+duplicate before returning its transfer buffer. Those invalid copies cannot
+release Rust credits or mutate graph/bank mappings.
+
+Release is sent after the music has stopped. Its acknowledgement names the engine
+frame at enqueue; the owning completion must report that same frame, return bank
+next generation2 and actual retired capacities3/12/2. Source callbacks continue
+until successful stop verifies all commands/retained owners and transfer pools.
+No synthetic result or abandoned owner counts as a successful return.
 
 ## Browser report (`LLH2`)
 
@@ -498,6 +539,31 @@ prepared/final memory and stopped recovery. These are Wasm binding observations,
 not downstream Web Audio. The runner compares them with native scalar/media/
 semantic expectations and independent complete response tables. Node and Chromium
 must produce the same full binding report, not merely the same check names.
+
+`graphReports` requires separate offline/live graph sessions. Each retains:
+
+- Complete raw payload attempts (one refused plus20 accepted), graph command
+  attempts (one refused plus three accepted), four graph results and six primitive
+  results; each ingress acknowledgement includes its engine frame/result.
+- `chunks`: both actual256-sample/channel downstream probe arrays, and `starts`:
+  browser quantum origins. `audio` maps their one real prime sample plus128 resume
+  samples into129 engine-frame samples. Padding during the deliberate pause is
+  checked silence, not fabricated engine advancement.
+- `offlineAudio`: both complete768-frame OfflineAudioContext output channels;
+  null for live. All startup/pause/stopped samples must also match.
+- Full MIDI/semantic bytes, checkpoint frame1/browser origin, `firstFrame` and
+  `resumeFrame`, prepared/final memory for both instances, main/worklet markers,
+  zero command/retained counts, returned input pools5/1/2 and response pools10/4,
+  invalid/duplicate reply counters and actual stopped resource recovery.
+
+`native-graph.json` comes from native `replay --graph-json`, not Wasm replay. Full
+payload/command/result bytes, MIDI/semantic content and samples must agree.
+Comparisons normalize only known per-session routing nonces, opaque local graph
+scope and the nonmusical Release completion frame (checked against its actual
+acknowledgement). Graph IDs must correlate with Ready; all musical frames,
+activation admission/delivery/terminal values, epochs, generations, capacities,
+flags and reserved bytes remain exact. Primitive result interleaving may differ
+with polling, but each request still requires admission before execution.
 
 The report also retains Node/Chromium check names, tool versions, native/Wasm
 profile, Wasm SHA-256, checkout head/dirty scope and failure-gate results. A dirty

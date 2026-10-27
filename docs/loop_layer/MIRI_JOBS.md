@@ -24,8 +24,12 @@ and intact unexpected-completion quarantine. Public graph command bindings add t
 native `browser::tests` cases: `graph_binding_buffers_cover_route_cut_and_reliable_owning_release`
 (three partitions/full media/receipts/semantic/recovery) and
 `graph_binding_fault_disposal_abandons_credits_without_fabricating_returns` (both
-actual FX fault modes). All17 graph-focused native cases are **not yet registered
-in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
+actual FX fault modes). Actual graph-worklet integration adds
+`browser::native_graph::tests::acknowledged_graph_worklet_script_has_complete_partition_invariant_native_reference`,
+covering whole/single/irregular/zero partitions and complete native payload/command/
+result/media/semantic/resource evidence for the audible checkpoint script.
+All18 graph-focused native cases are **not yet registered in the pinned interpreter
+runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the
 existing900s per-command watchdog, guards and workloads when adding the standalone

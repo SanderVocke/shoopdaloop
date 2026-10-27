@@ -58,8 +58,10 @@ canonical semantic boundary/decision/event journals, fixed memory, failure canar
 and complete stopped recovery are checked in both profiles. A separate prepared
 graph payload receiver has native facade and Node/Chromium binding coverage.
 An opt-in native graph command bridge and public Node/Chromium bindings now
-stage/activate/release and recycle owners through bounded results. Actual worklet
-graph transport remains open.
+stage/activate/release and recycle owners through bounded results. Actual offline/live
+graph worklets now transfer descriptors/commands/returns and check downstream output
+against native replay using an explicit audible Ready checkpoint. That test-driver
+pause is not continuous wall-clock live-edit/deadline evidence.
 Program/resource payloads, exports and broader host scenarios remain pending;
 no loop benchmark or production browser adapter is supplied.
 

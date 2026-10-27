@@ -6,15 +6,24 @@ class LoopFixture extends AudioWorkletProcessor {
         super();
         this.armed = false; this.stopped = false; this.failed = false; this.firstFrame = null;
         this.canary = options.processorOptions.canary;
+        this.graphMode = options.processorOptions.graph === true;
+        this.primeRequested = false; this.primed = false; this.resumeFrame = null;
         this.returns = Array.from({ length: 10 }, () => new ArrayBuffer(96));
+        this.graphReturns = this.graphMode ? Array.from({ length: 4 }, () => new ArrayBuffer(128)) : [];
         try {
             this.wasm = initSync({ module: options.processorOptions.module });
-            this.engine = new BrowserBridge(BigInt(options.processorOptions.session), this.canary === "processor" ? 1 : this.canary === "rust-heap" ? 2 : 0);
+            const session = BigInt(options.processorOptions.session), fault = this.canary === "processor" ? 1 : this.canary === "rust-heap" ? 2 : 0;
+            this.engine = this.graphMode ? BrowserBridge.new_graphs(session, fault) : new BrowserBridge(session, fault);
             this.memory = this.wasm.memory;
             if (!(this.memory.buffer instanceof ArrayBuffer)) throw new Error("ordinary non-shared Wasm memory required");
             this.bytes = this.memory.buffer.byteLength;
             this.request = new Uint8Array(this.memory.buffer, this.engine.request_ptr(), 64);
             this.response = new Uint8Array(this.memory.buffer, this.engine.response_ptr(), 96);
+            if (this.graphMode) {
+                this.graphPayload = new Uint8Array(this.memory.buffer, this.engine.graph_payload_ptr(), 96);
+                this.graphRequest = new Uint8Array(this.memory.buffer, this.engine.graph_request_ptr(), 96);
+                this.graphResponse = new Uint8Array(this.memory.buffer, this.engine.graph_response_ptr(), 128);
+            }
             this.audio = [0, 1].map(channel => new Float32Array(this.memory.buffer, this.engine.output_ptr(channel), 128));
             this.port.onmessage = event => this.message(event.data);
             this.port.postMessage({ type: "ready", bytes: this.bytes, marker: this.engine.marker(), shared: false, decoderFallback });
@@ -36,13 +45,28 @@ class LoopFixture extends AudioWorkletProcessor {
                 const result = this.engine.ingest();
                 this.checkMemory();
                 this.port.postMessage({ type: "ingested", slot: data.slot, result, buffer: data.buffer }, [data.buffer]);
+            } else if (data.type === "graph-payload" || data.type === "graph-request") {
+                if (!this.graphMode || !(data.buffer instanceof ArrayBuffer) || data.buffer.byteLength !== 96 || !Number.isInteger(data.slot) || data.slot < 0 || data.slot >= (data.type === "graph-payload" ? 1 : 2)) throw new Error("graph input envelope");
+                const payload = data.type === "graph-payload", frame = String(this.engine.frame());
+                (payload ? this.graphPayload : this.graphRequest).set(new Uint8Array(data.buffer));
+                const result = payload ? this.engine.ingest_graph_payload() : this.engine.ingest_graph();
+                this.checkMemory();
+                this.port.postMessage({ type: payload ? "graph-payload-ack" : "graph-ingested", slot: data.slot, result, frame, buffer: data.buffer }, [data.buffer]);
+                if (data.buffer.byteLength !== 0) throw new Error("graph input return did not detach");
+            } else if (data.type === "prime") {
+                if (!this.graphMode || this.primed || this.primeRequested || this.armed || this.engine.frame() !== 0n || this.engine.outstanding() !== 4) throw new Error("invalid graph prime state");
+                this.primeRequested = true;
+                this.port.postMessage({ type: "primed" });
             } else if (data.type === "arm") {
-                if (this.armed || this.engine.frame() !== 0n || this.engine.outstanding() !== 3) throw new Error("invalid arm state");
+                if (this.armed || this.primeRequested || this.engine.frame() !== (this.graphMode ? 1n : 0n) || (this.graphMode && !this.primed) || this.engine.outstanding() !== 3) throw new Error("invalid arm state");
                 this.armed = true;
                 this.port.postMessage({ type: "armed" });
             } else if (data.type === "credit") {
                 if (!Number.isInteger(data.id) || data.id < 0 || data.id >= 10 || this.returns[data.id] !== null || !(data.buffer instanceof ArrayBuffer) || data.buffer.byteLength !== 96) throw new Error("response credit");
                 this.returns[data.id] = data.buffer;
+            } else if (data.type === "graph-credit") {
+                if (!this.graphMode || !Number.isInteger(data.id) || data.id < 0 || data.id >= 4 || this.graphReturns[data.id] !== null || !(data.buffer instanceof ArrayBuffer) || data.buffer.byteLength !== 128) throw new Error("graph response credit");
+                this.graphReturns[data.id] = data.buffer;
             } else if (data.type === "poll") {
                 for (let id = 0; id < 10; id++) {
                     const buffer = this.returns[id];
@@ -54,16 +78,27 @@ class LoopFixture extends AudioWorkletProcessor {
                     this.returns[id] = null;
                     this.port.postMessage({ type: "response", id, buffer }, [buffer]);
                 }
+                for (let id = 0; id < this.graphReturns.length; id++) {
+                    const buffer = this.graphReturns[id];
+                    if (!buffer) continue;
+                    const result = this.engine.poll_graph_response();
+                    if (result === 0) break;
+                    if (result !== 1) throw new Error(`graph response polling failed: ${result}`);
+                    new Uint8Array(buffer).set(this.graphResponse);
+                    this.graphReturns[id] = null;
+                    this.port.postMessage({ type: "graph-response", id, buffer }, [buffer]);
+                    if (buffer.byteLength !== 0) throw new Error("graph response did not detach");
+                }
                 this.checkMemory();
-                this.port.postMessage({ type: "polled", outstanding: this.engine.outstanding(), firstFrame: this.firstFrame });
+                this.port.postMessage({ type: "polled", outstanding: this.engine.outstanding(), retainedGraphs: this.engine.retained_graphs(), frame: String(this.engine.frame()), firstFrame: this.firstFrame, resumeFrame: this.resumeFrame });
             } else if (data.type === "stop") {
-                if (this.returns.some(buffer => !buffer) || this.engine.outstanding() !== 0) throw new Error("stop with outstanding credits");
+                if (this.returns.some(buffer => !buffer) || this.graphReturns.some(buffer => !buffer) || this.engine.outstanding() !== 0 || this.engine.retained_graphs() !== 0) throw new Error("stop with outstanding credits/graphs");
                 this.stopped = true;
                 this.checkMemory();
                 const journal = new Uint8Array(this.memory.buffer, this.engine.journal_ptr(), this.engine.journal_len()).slice();
                 const summary = { bytes: this.bytes, finalBytes: this.memory.buffer.byteLength,
-                    frames: String(this.engine.frame()), callbacks: String(this.engine.callbacks()), firstFrame: this.firstFrame,
-                    journalOverflow: this.engine.journal_overflow(), returnedBuffers: this.returns.length,
+                    frames: String(this.engine.frame()), callbacks: String(this.engine.callbacks()), firstFrame: this.firstFrame, resumeFrame: this.resumeFrame,
+                    journalOverflow: this.engine.journal_overflow(), returnedBuffers: this.returns.length, returnedGraphBuffers: this.graphReturns.length, retainedGraphs: this.engine.retained_graphs(),
                     marker: this.engine.marker(), heap: [this.engine.heap_allocations(), this.engine.heap_reallocations(), this.engine.heap_deallocations()] };
                 const result = this.engine.stop();
                 if (result !== 0) throw new Error(`stopped cleanup failed: ${result}`);
@@ -77,11 +112,13 @@ class LoopFixture extends AudioWorkletProcessor {
     }
     process(_inputs, outputs) {
         if (this.stopped || this.failed) return false;
-        if (!this.armed) return true;
+        if (!this.armed && !this.primeRequested) return true;
         try {
             if (outputs.length !== 1 || outputs[0].length !== 2 || outputs[0].some(channel => channel.length !== 128)) throw new Error("loop quantum shape");
             if (this.firstFrame === null) this.firstFrame = String(currentFrame);
-            const result = this.engine.render(128);
+            const priming = this.primeRequested;
+            if (this.graphMode && !priming && this.resumeFrame === null) this.resumeFrame = String(currentFrame);
+            const result = this.engine.render(priming ? 1 : 128);
             this.lastResult = result;
             if (result === 0xffff0001 && this.canary === "rust-heap" && this.engine.fault_witness() === 2 && this.engine.heap_allocations() > 0 && this.engine.heap_reallocations() > 0 && this.engine.heap_deallocations() > 0) {
                 throw new Error(`intentional loop Rust heap failure canary detected: ${this.engine.heap_allocations()}/${this.engine.heap_reallocations()}/${this.engine.heap_deallocations()}`);
@@ -90,21 +127,25 @@ class LoopFixture extends AudioWorkletProcessor {
             if (result !== 0) throw new Error(`loop rendering failed: ${result}`);
             this.checkMemory();
             outputs[0][0].set(this.audio[0]); outputs[0][1].set(this.audio[1]);
+            if (priming) {
+                this.primeRequested = false; this.primed = true;
+                this.port.postMessage({ type: "checkpoint", frame: String(this.engine.frame()), browser: String(currentFrame) });
+            }
             return true;
         } catch (error) { this.fail(error); return false; }
     }
 }
 
-// A separate graph node observes actual Web Audio buffers, not Rust's output memory.
-// It retains the first non-silent quantum and the following one in fixed storage.
+// A separate node observes actual Web Audio buffers in fixed storage.
 class AudioProbe extends AudioWorkletProcessor {
-    constructor() {
+    constructor(options) {
         super();
+        this.graphMode = options.processorOptions?.graph === true;
         this.left = new Float32Array(256); this.right = new Float32Array(256);
-        this.start = null; this.count = 0;
+        this.start = null; this.starts = [null, null]; this.count = 0;
         this.port.onmessage = () => {
             const ready = this.count === 256;
-            this.port.postMessage({ type: "probe", ready, start: this.start,
+            this.port.postMessage({ type: "probe", ready, start: this.start, starts: this.starts,
                 left: ready ? Array.from(this.left) : null, right: ready ? Array.from(this.right) : null });
         };
     }
@@ -113,7 +154,8 @@ class AudioProbe extends AudioWorkletProcessor {
         if (!input || input.length !== 2) return true;
         for (let channel = 0; channel < 2; channel++) output[channel].set(input[channel]);
         if (this.start === null && input[0].some(value => value !== 0)) this.start = String(currentFrame);
-        if (this.start !== null && this.count < 256) {
+        if (this.start !== null && this.count < 256 && (!this.graphMode || input[0].some(value => value !== 0))) {
+            this.starts[this.count / 128] = String(currentFrame);
             this.left.set(input[0], this.count); this.right.set(input[1], this.count); this.count += 128;
         }
         return true;
