@@ -17,10 +17,10 @@ def version(value: str) -> tuple[int, int, int]:
     parts = tuple(int(part) for part in value.split("."))
     if not 2 <= len(parts) <= 3 or any(part < 0 or part > 255 for part in parts):
         raise ValueError(f"invalid macOS version: {value}")
-    return (*parts, *([0] * (3 - len(parts))))
+    return parts + (0,) * (3 - len(parts))
 
 
-def inspect_macho(data: bytes, arch: str) -> tuple[tuple[int, int, int], list[str]] | None:
+def select_slice(data: bytes, arch: str) -> bytes | None:
     if data[:4] not in MACHO_MAGICS:
         return None
     cpu = CPU_TYPES[arch]
@@ -40,6 +40,13 @@ def inspect_macho(data: bytes, arch: str) -> tuple[tuple[int, int, int], list[st
             raise ValueError(f"Mach-O has no {arch} slice")
     if data[:4] != b"\xcf\xfa\xed\xfe" or struct.unpack_from("<I", data, 4)[0] != cpu:
         raise ValueError(f"Mach-O has no {arch} slice")
+    return data
+
+
+def inspect_macho(data: bytes, arch: str) -> tuple[tuple[int, int, int], list[str]] | None:
+    data = select_slice(data, arch)
+    if data is None:
+        return None
     count, size = struct.unpack_from("<II", data, 16)
     end = 32 + size
     if end > len(data):
@@ -77,6 +84,14 @@ def verify_payloads(payloads: dict[str, bytes], arch: str, minimum_os: str) -> l
     maximum = version(minimum_os)
     report = []
     errors = []
+    executable_dirs = set()
+    for name, data in payloads.items():
+        try:
+            selected = select_slice(data, arch)
+            if selected is not None and struct.unpack_from("<I", selected, 12)[0] == 2:
+                executable_dirs.add(posixpath.dirname(name))
+        except (ValueError, struct.error):
+            pass
     for name, data in sorted(payloads.items()):
         try:
             info = inspect_macho(data, arch)
@@ -89,9 +104,13 @@ def verify_payloads(payloads: dict[str, bytes], arch: str, minimum_os: str) -> l
             for dependency in dependencies:
                 if dependency.startswith(("/System/Library/", "/usr/lib/")):
                     continue
-                if dependency.startswith(("@loader_path/", "@executable_path/")):
+                if dependency.startswith("@loader_path/"):
                     target = posixpath.normpath(posixpath.join(posixpath.dirname(name), dependency.split("/", 1)[1]))
                     if target in payloads:
+                        continue
+                elif dependency.startswith("@executable_path/"):
+                    suffix = dependency.removeprefix("@executable_path/")
+                    if any(posixpath.normpath(posixpath.join(directory, suffix)) in payloads for directory in executable_dirs):
                         continue
                 elif dependency.startswith("@rpath/"):
                     suffix = dependency.split("/", 1)[1]

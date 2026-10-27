@@ -37,6 +37,7 @@
       "architecture": "x86_64 slice required",
       "build": "verified upstream universal release payload, normalized by scripts/carla_runtime.py",
       "minimum_os": "10.15",
+      "dependency_rebuilds": "macos_catalina_dependencies; replace both libraries in the native and frozen Python runtime layouts; omit unused QtDesigner/QtHelp bindings whose frameworks are not bundled upstream",
       "validation": "every bundled Intel Mach-O is audited for minimum OS and non-system dependency closure; Catalina runtime testing is pending",
       "signing": "unsigned application archive; no signing identity or installer is introduced"
     },
@@ -46,6 +47,22 @@
       "build": "verified upstream universal release payload, normalized by scripts/carla_runtime.py",
       "minimum_os": "11.0",
       "signing": "unsigned application archive; no signing identity or installer is introduced"
+    }
+  },
+  "macos_catalina_dependencies": {
+    "openssl": {
+      "version": "3.5.9",
+      "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+      "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+      "build": "darwin64-x86_64-cc shared no-tests no-module; MACOSX_DEPLOYMENT_TARGET=10.15",
+      "license": "Apache-2.0; OpenSSL-LICENSE.txt included"
+    },
+    "xz": {
+      "version": "5.8.4",
+      "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.gz",
+      "sha256": "0014c7886930454fe8bd4228665b51af55eeae560ea135c9c4cd33f55b2591d9",
+      "build": "shared liblzma only; MACOSX_DEPLOYMENT_TARGET=10.15",
+      "license": "0BSD for liblzma; XZ-COPYING included"
     }
   },
   "required_exports": [

@@ -103,6 +103,9 @@ jobs:
     name: Portable macOS 10.15 (Intel, without CPAL)
     runs-on: macos-15-intel
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     env:
       MACOSX_DEPLOYMENT_TARGET: "10.15"
       RUSTFLAGS: "-D warnings"
@@ -128,13 +131,14 @@ jobs:
           fi
       - name: Prepare pinned macOS Carla runtime
         run: |
+          bash scripts/build_macos_catalina_dependencies.sh .catalina-deps
           curl -L --fail --retry 3 -o carla.dmg https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-macOS-universal.dmg
           echo "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1  carla.dmg" | shasum -a 256 --check
           mkdir .carla-volume
           hdiutil attach carla.dmg -nobrowse -readonly -mountpoint .carla-volume
           trap 'hdiutil detach .carla-volume' EXIT
           curl -L --fail --retry 3 -o carla-GPL.txt https://raw.githubusercontent.com/falkTX/Carla/v2.5.10/doc/GPL.txt
-          python3 scripts/carla_runtime.py normalize --platform macos --search-root .carla-volume --license carla-GPL.txt --output .carla-component
+          python3 scripts/carla_runtime.py normalize --platform macos --search-root .carla-volume --license carla-GPL.txt --output .carla-component --macos-dependency-dir .catalina-deps
           python3 scripts/check_macos_compatibility.py --root .carla-component --arch x86_64 --minimum-os 10.15 | tee carla-compatibility.txt
       - name: Build Intel release targeting Catalina
         run: cargo build --locked --release -p shoopdaloop --no-default-features --features native-fx --target x86_64-apple-darwin
