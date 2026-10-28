@@ -39,7 +39,8 @@ def main():
             if (work/directory).exists():tar.add(work/directory,arcname=directory)
         for name in ['denormal.csv','voyage-tail-fp.csv','manifest.json','dependency-manifest.json','frozen-core/manifest.json',
                      'voyage-crash.txt','output/implementation-control.json','output/fp-library-initializers.json',
-                     'output/legacy-no-fx.csv','output/legacy-no-fx-profile.json','output/legacy-no-fx.log']:
+                     'legacy-no-fx.csv','legacy-no-fx.profile.json','legacy-no-fx.log','output/build-protocol.json',
+                     'output/legacy-no-fx.csv','output/legacy-no-fx.profile.json','output/legacy-no-fx.log','output/legacy-no-fx-status.json']:
             if (work/name).exists():tar.add(work/name,arcname=name)
     digest=hashlib.sha256(archive.read_bytes()).hexdigest()
     (output/'raw-archive.json').write_text(json.dumps({'path':str(archive),'sha256':digest,'bytes':archive.stat().st_size,

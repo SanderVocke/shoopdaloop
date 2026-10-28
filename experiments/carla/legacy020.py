@@ -138,7 +138,7 @@ def main():
     capture = Path(os.environ['SHOOP_BENCH_CAPTURE']).read_bytes()
     count, capacity, rate, configured = struct.unpack_from('QQQQ', capture)
     assert rate == 48000 and configured == frames, ('invalid configured period', rate, configured)
-    assert count < capacity and count >= blocks+200, ('missing process calls', count)
+    assert count < capacity and count == blocks+200, ('missing process calls', count)
     samples = [struct.unpack_from('QQQQ', capture,32+i*32) for i in range(count)]
     samples = [v for v in samples if v[3] == frames]
     assert len(samples) == blocks+200, ('unexpected process sizes/count', len(samples))

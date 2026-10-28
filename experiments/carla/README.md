@@ -19,8 +19,10 @@ selects an existing Cargo cache. The default keeps build outputs in the scratch
 area. Historical adapter patches are included and applied only to isolated
 checkouts. Build/download failures stop preparation and retain logs.
 
-Use an isolated checkout at baseline `580f6191` and source the environment's Rust
-activation script. Choose an absolute scratch directory, referred to below as
+Run these commands from the investigation branch containing this directory, and
+source the environment's Rust activation script. The bootstrap creates separate
+pinned source checkouts; do not switch this checkout to the old baseline. Choose
+an absolute scratch directory, referred to below as
 `$CARLA_WORK`. No benchmark changes the normal application's processing path.
 
 1. Download `https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz`.
