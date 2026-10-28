@@ -13,6 +13,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import tempfile
 
 from check_macos_compatibility import inspect_macho, select_slice, verify_payloads
 
@@ -68,6 +69,9 @@ def main():
         for path in destination.rglob('*'):
             if not path.is_symlink():
                 path.chmod(path.stat().st_mode | stat.S_IWUSR)
+        signature = destination / 'Contents/_CodeSignature'
+        if signature.exists():
+            shutil.rmtree(signature)
         apps.append(destination)
     replacements = []
     removed = []
@@ -113,10 +117,15 @@ def main():
                                     '@executable_path/' + name, str(path)], check=True)
             macho_paths.append(path)
         executable = binary_dir / info['CFBundleExecutable']
-        for path in sorted(macho_paths, key=lambda path: path == executable):
-            subprocess.run(['codesign', '--force', '--sign', '-', str(path)], check=True)
-        subprocess.run(['codesign', '--force', '--deep', '--sign', '-', str(app)], check=True)
-        subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+        with tempfile.TemporaryDirectory() as directory:
+            for path in macho_paths:
+                temporary = Path(directory) / path.name
+                shutil.copy2(path, temporary)
+                identifier = info['CFBundleIdentifier'] if path == executable else path.name
+                subprocess.run(['codesign', '--force', '--sign', '-', '--identifier', identifier, str(temporary)], check=True)
+                subprocess.run(['codesign', '--verify', '--strict', str(temporary)], check=True)
+                shutil.copy2(temporary, path)
+                temporary.unlink()
     native = apps[0] / 'Contents/MacOS/libcarla_native-plugin.dylib'
     runtime_native = args.normalized_runtime / 'lib/libcarla_native-plugin.dylib'
     if sections(native) != sections(runtime_native):
@@ -136,7 +145,7 @@ def main():
                 'upstream': lock['upstream_binaries']['macos-universal'],
                 'source': lock['source'], 'dependencies': lock['macos_catalina_dependencies'],
                 'recipe': 'Same pinned upstream Carla and rebuilt Catalina dependencies as bundled runtime; complete apps retained',
-                'signing': 'Ad hoc only, not notarized', 'replaced': replacements, 'omitted_unused_qt_bindings': removed,
+                'signing': 'Individual Mach-O files ad hoc signed; legacy frozen app bundles unsigned and not notarized', 'replaced': replacements, 'omitted_unused_qt_bindings': removed,
                 'native_sections_match_bundled_runtime': True, 'native_sections': sections(native),
                 'build_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'files': {str(p.relative_to(output)): digest(p) for p in output.rglob('*') if p.is_file()}}

@@ -16,10 +16,12 @@ def main():
     generated=work/'output'
     for name in ['MEASUREMENTS.md','comparisons.json','floating-point.json','meter-audit.json',
                  'completion-times.svg','VERSIONS.md','versions-comparisons.json','versions-runs.csv','versions-protocol.json','versions-selection.json','macos-upstream-audit.json','build-protocol.json','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
-        if (generated/name).exists():shutil.copy2(generated/name,output/name)
+        if (generated/name).exists():
+            if name.endswith('.csv'):(output/name).write_text((generated/name).read_text())
+            else:shutil.copy2(generated/name,output/name)
     rows=json.loads((generated/'all-runs.json').read_text())
     with (output/'raw-runs.csv').open('w') as f:
-        writer=csv.DictWriter(f,fieldnames=sorted(set().union(*(r.keys() for r in rows))))
+        writer=csv.DictWriter(f,fieldnames=sorted(set().union(*(r.keys() for r in rows))),lineterminator='\n')
         writer.writeheader();writer.writerows(rows)
     for source,name in [(work/'manifest.json','extended-manifest.json'),(work/'frozen-core/manifest.json','core-manifest.json'),(work/'dependency-manifest.json','dependency-manifest.json')]:
         if source.exists():shutil.copy2(source,output/name)

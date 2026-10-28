@@ -6,8 +6,8 @@ discovery executables, frozen Python/Qt runtimes, and required dependencies.
 It targets **Intel x86_64, macOS 10.15 or newer**.
 
 Unzip into a separate directory and open `Carla.app`. Keep your system Carla
-installation for comparison. The applications are ad hoc signed and are not
-notarized; macOS may require opening the downloaded application through Finder's
+installation for comparison. Individual Mach-O files are ad hoc signed; the legacy app bundles are unsigned
+and not notarized; macOS may require opening the downloaded application through Finder's
 Open command. No system Carla files or libraries need to be replaced.
 
 For an A/B test, run the two installations separately. Use the same audio driver,
