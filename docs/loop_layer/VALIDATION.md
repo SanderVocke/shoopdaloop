@@ -31,8 +31,11 @@ The native loop benchmark now supplies fourteen guarded real workloads with
 raw release timing/work/storage/credit data and explicit dense deadline misses.
 It is not a browser/device deadline guarantee; see the current benchmark section
 below. Stage8 is6/8 after broader seeded model verification. The frozen Stage7
-146/299 interpreter recovery is collected; the later151/304 selection is running
-from `8633d0f0`, not passed. Checked source-matched remote CI remains open.
+146/299 interpreter recovery is collected; the later151/304 selection from
+`8633d0f0` **failed on the final sync-model900s watchdog** after150commands/303
+verified partial passes. The exact censored diagnostic is failed/zero pass, not
+recovery. Checked source-matched remote CI and current complete interpretation
+remain open; new terminal/source evidence is recorded below.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -41,6 +44,39 @@ checkout or to documentation authoring. Former docs-changes-loop-layer reference
 now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Current final local gates and failed interpreter boundary
+
+[Fresh host/benchmark/application evidence](evidence/final-hosts-benchmarks-application-stage10.md)
+verifies21 commands at `85e36348`, with all509 scoped execution inputs unchanged
+from frozen `8633d0f0`:38 native-only subcommands,36 actual offline/live successes,
+16 actual specific failure controls and80 binding groups across both profiles;
+420000 generic/172032 loop measured callbacks, twelve exact native heap controls,
+all63 raw CSVs, four application compiler gates and seven Trunk/packaged Chrome/
+Firefox commands. All201 loop deadline misses and49152 burst starts are retained.
+Normal caches, differing affinity and concurrent interpretation preclude paired
+speedup/cold-cache/device/deadline claims. The5886511byte/333file archive contains
+complete fresh raw execution and source/asset/tool proofs, not generated binaries.
+
+[Verified Stage8 timeout/diagnosis](evidence/miri-sync-model-failure-stage8.md):
+`20261028T190146-abeee2e59e` failed at22:47:06.723671Z after13519.300086269039s,
+with150commands/303 executions passed and the final unchanged full sync model
+exceeding900s. All890 source entries/archive/copied supervisor/inventory/flags and
+completed raw summaries match; processes are dead and supported collection refuses.
+No final passing report exists. The later one-command/seed0 diagnostic on the same
+source is deliberately SIGINT-finalized after exact process/source/flags/ancestry
+checks: failed/zero pass,407.5124054910266s,1555724199byte profile. Analysis of an
+equal-hash copy shows actual repeated topology node lookup dominating a censored
+portion; it is not a native timing, complete replay or passing recovery. All seeds,
+workloads/guards and900s remain unchanged. The661316byte/192file archive preserves
+failure/raw progress and diagnostic metadata/summaries. A checked direct-slot lookup
+fast path with full-ID/sparse fallback is only a proposed next cost fix here.
+
+Stage7 stays7/8, Stage8 stays6/8; Stage9 is verified and Stage10 remains open.
+These source-scoped local successes do not replace complete current interpretation,
+checked remote artifacts, final-head green CI/review or the independent auditor.
+No extra interpreter campaign is justified merely by this evidence/prose commit.
+The following earlier local checkpoints retain their then-current scope/status.
 
 ## Stage 10 native and complete repository-Wasm checkpoint
 

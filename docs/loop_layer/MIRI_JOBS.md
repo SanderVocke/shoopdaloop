@@ -22,15 +22,47 @@ skips pass. The broader model row is verified: Stage8 is6/8.
 
 **Complete applicable Stage8/final interpretation remains unverified.** The frozen
 Stage7 job passed and was collected at146/299; it cannot certify the five later
-cases. The one accumulated Stage8 selection is now running, as recorded below,
-with900s watchdog, complete workloads/guards/seeds and source isolation unchanged.
-No routine invocation was launched per helper. Stage7 stays7/8 and the separate
-Stage8 interpreter/remote-CI rows remain open. Stage9 examples/implementation audit
-are now verified; final-head CI/review and Stage10 remain required.
+cases. The accumulated Stage8 selection has **failed on its final sync-model900s
+watchdog**, with150commands/303 partial passes, not304 acceptance. Complete
+workloads/guards/seeds/source isolation remain unchanged; no routine invocation
+was launched per helper. Stage7 stays7/8, Stage8 stays6/8 and current interpreter/
+remote rows remain open. Stage9 is verified; final-head CI/review and Stage10 remain.
 
-### Consolidated Stage8 launch — not passing evidence
+### Verified terminal failure and exact censored diagnosis
 
-Job **`20261028T190146-abeee2e59e`** runs from committed candidate
+[Full failed-job/diagnostic proof](evidence/miri-sync-model-failure-stage8.md):
+`20261028T190146-abeee2e59e`, source `8633d0f0`, failed/exit1 at
+2026-10-28T22:47:06.723671Z after13519.300086269039s supervisor wall. All890 source
+entries/literal archive/copied supervisor/full151/304 inventory/strict flags and
+150 ordered raw passing summaries match. Both recorded processes are dead; no
+final report/collection exists and supported collection refuses. Last case is the
+full `seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals`,
+seed0, unchanged900s. No passing count is inferred for that timed-out command.
+
+Actual failure justifies one exact diagnostic: `20261028T225455-65cf2c5a28`, same
+frozen source/archive/890 entries, `--shard151/151 --measureme`, one full command/
+seed0 and only declared seed/measureme flags. Identity/source/cwd/flags/ancestry-
+checked SIGINT to interpreter228615 finalizes a censored profile after useful app
+compiler gates. Failed/exit1/zero pass,22:54:56.450028–23:01:43.962404Z,
+407.5124054910266s; recorded processes dead and collection refused. A first cwd
+preflight correctly refused before signalling; it was corrected to Cargo's exact
+frozen package directory, without relaxing the other checks. Original reports are
+unchanged; pinned summarize11.0.1 analyzes an equal-hash copy outside them.
+
+The1555724199byte finalized profile SHA256 is
+`ece35f348124a4c477a93ddbe12c0ce529be1202b2aa166910df74c97914dff1`.
+371.134845623s completed-function-event time contains overlapping `Boundary::settle`
+285.561397094s/1694calls and `PreparedTopology::node`193.840898050s/155061calls.
+This supports investigating full-identity-checked direct-slot lookup with unchanged
+sparse/stale fallback, **not** shortening the model, raising900s or claiming native
+speedup/recovered interpretation. Candidate implementation/recovery remains next.
+The661316byte/192file archive retains complete failed logs/progress and diagnostic
+metadata/summaries. Fresh [local hosts/benchmarks/application](evidence/final-hosts-benchmarks-application-stage10.md)
+pass at85e36348 with509 scoped inputs unchanged; they do not replace this failure.
+
+### Historical consolidated Stage8 launch — not passing evidence
+
+Job **`20261028T190146-abeee2e59e`** was launched from committed candidate
 **`8633d0f0754a2f4445c3d0febb1f1ae2d7e9572e`**, started2026-10-28T19:01:47.423617Z:
 
 ```sh
