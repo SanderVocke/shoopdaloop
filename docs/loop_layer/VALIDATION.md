@@ -45,11 +45,20 @@ event-membership scans with a BTreeSet index. The full ordered semantic-byte com
 is unchanged, including multiplicity. Native57 Python tests,59 fixture tests/profile,
 complete before/after native report equality in both profiles and2141 workspace
 passes/four skips validate the candidate, not an interpreter speedup or recovery.
-The supervisor now forwards/verifies a declared selection and source identity;
+The supervisor forwards/verifies a declared selection and source identity;
 host batch10/63 selects exactly the failed seed0 case with its full workload/guards
-and900s watchdog. The justified focused retry still requires committed immutable
-inputs, terminal success and collection. It cannot establish complete stage/final
-coverage. Actual launch/outcome belongs in [MIRI_JOBS.md](MIRI_JOBS.md).
+and900s watchdog. Its committed `dbe6d623` retry subsequently failed after
+901.8694647719967s with zero completed executions; hashes remain valid and collection
+refuses it. The checker index was not sufficient; no speedup/slowdown is established.
+
+[Diagnostic support](evidence/dense-miri-profile-stage7.md) now permits Miri's
+function profiler for exactly that one whole command without changing assertions,
+seeds/guards/workloads or the watchdog. Mode/flags/profile artifacts are verified;
+CI aggregation rejects diagnostic reports. Sixty Python tests/policies and unchanged
+144-command/291-execution inventory comparison pass. No Rust/dependency changes
+or new interpreter pass occur in this tooling milestone. Both failed jobs remain
+preserved; actual diagnostic launch/outcome belongs in [MIRI_JOBS.md](MIRI_JOBS.md).
+Stage7 stays7/8 and complete stage/final interpreter and CI/review obligations remain open.
 
 ## Stage 7 CI host evidence and failed interpreter checkpoint
 

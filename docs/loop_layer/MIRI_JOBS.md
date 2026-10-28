@@ -39,7 +39,8 @@ completed coverage. The supervisor/runner identities are no longer live, source/
 supervisor hashes still match, and `collect` explicitly refuses the failed job.
 Raw state, progress, completed/partial logs and collection refusal are preserved
 with [CI-host evidence](evidence/ci-hosts-stage7.md). No watchdog, workload or guard
-was weakened. Investigation/recovery remains open; no replacement job has launched.
+was weakened. The focused recovery launch below follows this failed checkpoint;
+complete Stage7 recovery remains open.
 
 - `job.json` SHA256: `bb53dd4414568c9ff7677ef5390843552853cff5e0c9c247280a7ffd324f4053`.
 - Source archive SHA256: `0cc88b39499bc8db876858a4817faa6308dbc1dda952c5a76a4f6409cc724eed`.
@@ -65,7 +66,59 @@ passes/four skips validate the candidate. See
 The supervisor now forwards/verifies a declared selection. Host batch10/63 names
 exactly the failed test, so one committed focused job is justified by the actual
 900s timeout. Its eventual pass would prove only that case; all remaining stage/
-final coverage is still required. No replacement has launched at this checkpoint.
+final coverage is still required.
+
+Focused job **`20261028T094652-f2718d3398`** launched from committed candidate
+**`dbe6d6236d7e7a8266d9dc75af5346490cfdf7fe`** at
+2026-10-28T09:46:52.535072Z, supervisorPID3709585:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-7-recovery-dense --commit dbe6d623 \
+  --package loop_engine_host_fixture --shard 10/63
+```
+
+Input verification matched all862 frozen source entries and the copied supervisor,
+excluded `.pi/`, confirmed the explicit source-commit environment and exactly one
+seed0 execution of the failed full test. The package-wide63-command inventory
+fingerprint is `6a20e86fab488dc30b6e0d6f4da0a07bf48a6ff12d97f7c7b80e2a8b24ed3b8d`.
+At the09:53Z natural checkpoint the supervisor was still running. It subsequently
+**failed** at2026-10-28T10:01:54.404514Z after901.8694647719967s: the same full test
+again exceeded the unchanged900s watchdog, with **zero completed executions**.
+The partial log has no passing summary. All862 source entries and the copied
+supervisor still match; known supervisor/runner identities are no longer live;
+collection refuses `Cannot collect passing evidence: failed`. The checker index
+was not sufficient to meet the watchdog; censored timeouts do not measure a speedup
+or slowdown. Both failed jobs and their different scopes remain preserved.
+Stage7's complete291-execution selection and final source/CI/review obligations
+remain open.
+
+- Root: `target/loop-layer-miri-jobs/20261028T094652-f2718d3398/`.
+- `job.json` SHA256: `e2fe8e309d4be009016606acab2b983b3d0b831e0598e4f76d676378f4371e50`.
+- Source archive SHA256: `cd36c73d87b7fd1640b3f2a9527b10c9da4e0ccc398469293e934e28bd8b3343`.
+- Copied supervisor SHA256: `c2cd7c0db36774db2a086e0721745ccca750b786b02870756abdbfb304fcd20d`.
+- Local launch/input report: `target/loop-layer-miri-recovery-stage7/launch-verification.json`.
+
+### Exact-test diagnostic profiling prepared
+
+The second concrete timeout justifies profiling the same one-command/full-test
+selection before further optimization. `--measureme` adds only Miri's function
+profiler, requires one selected command, records exact flags and profile mode, and
+keeps seed0/full workloads/guards/900s watchdog. Collection checks profile artifacts;
+CI complete-set verification refuses diagnostic-profile reports. Thirty-two Miri
+helper/synthetic tests (sixty with loop parser/orchestration tests) pass. Native
+Rust/Wasm/dependencies are unchanged from `dbe6d623`; no fresh interpreter pass or
+native performance result is inferred. See
+[evidence/dense-miri-profile-stage7.md](evidence/dense-miri-profile-stage7.md).
+
+The analysis tool is `summarize v11.0.1` from measureme commit
+`9aeaf4d0cfaafb13379f0d8f3c3b5e8c13071afc`, installed in a writable private cache.
+Initial attempts hit read-only Cargo storage and obsolete third-party `unsafe`
+blocks under current rustc's denied warnings. The analyzer alone was built with
+`RUSTFLAGS=-A unused-unsafe`; project/Miri warning-denied builds, safety checks and
+guards are not changed. Its unsupported `--version` probe is retained; Cargo's
+installed-package listing records the version/revision. No diagnostic interpreter
+job has launched at this preparation checkpoint.
 
 ### Registered selection
 

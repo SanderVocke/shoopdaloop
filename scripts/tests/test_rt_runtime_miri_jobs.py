@@ -15,7 +15,7 @@ from scripts import run_rt_runtime_miri_jobs as jobs
 FIXTURE = r'''
 import json,os,signal,subprocess,sys
 from pathlib import Path
-inventory={"toolchain":"fixture","cases":[["rt_runtime","fixture",[],1,0]],"manifests":{"rt_runtime":"Cargo.toml"},"full_inventory_sha256":"synthetic-inventory"}
+inventory={"toolchain":"fixture","cases":[["rt_runtime","fixture",[],1,0]],"manifests":{"rt_runtime":"Cargo.toml"},"full_inventory_sha256":"synthetic-inventory","measureme":"--measureme" in sys.argv}
 if "--shard" in sys.argv:
  index,total=map(int,sys.argv[sys.argv.index("--shard")+1].split("/"))
  inventory["shard"]={"index":index,"total":total}
@@ -36,8 +36,13 @@ if mode=="sleep":
    except ProcessLookupError:pass
    child.wait();sys.exit(143)
  sys.exit(0)
+flags="-Zmiri-seed=0"
+if inventory["measureme"]:
+ (reports/"measureme").mkdir()
+ (reports/"measureme/synthetic.mm_profdata").write_text("synthetic profile, not Miri")
+ flags+=f" -Zmiri-measureme={reports.resolve() / 'measureme'}"
 (reports/"fixture.log").write_text("test result: ok. 1 passed; 0 failed\n")
-(reports/"result.json").write_text(json.dumps({"passed":True,"package_filter":None,"toolchain":"fixture","miri":"synthetic fixture, not Miri","manifests":{"rt_runtime":"Cargo.toml"},"shard":inventory.get("shard"),"full_inventory_sha256":inventory["full_inventory_sha256"],"source_commit":os.environ.get("MIRI_SOURCE_COMMIT"),"cases":[{"package":"rt_runtime","target":"fixture","arguments":[],"seed":0,"passed":1,"log":"fixture.log"}]}))
+(reports/"result.json").write_text(json.dumps({"passed":True,"package_filter":None,"toolchain":"fixture","miri":"synthetic fixture, not Miri","manifests":{"rt_runtime":"Cargo.toml"},"shard":inventory.get("shard"),"full_inventory_sha256":inventory["full_inventory_sha256"],"source_commit":os.environ.get("MIRI_SOURCE_COMMIT"),"measureme":inventory["measureme"],"cases":[{"package":"rt_runtime","target":"fixture","arguments":[],"seed":0,"passed":1,"log":"fixture.log","miri_flags":flags}]}))
 '''
 
 
@@ -184,6 +189,39 @@ class MiriJobTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaisesRegex(RuntimeError, "scope mismatch|Source commit mismatch"):
                 jobs.collect(job)
         path.write_text(original)
+        self.assertEqual(jobs.collect(job)["executions"], 1)
+
+    def test_profile_scope_flags_and_artifacts_are_durable_and_cannot_be_substituted(self):
+        job = jobs.prepare_job(self.repo, self.root / "jobs", "fixture-profile", "HEAD", None, "1/1", True)
+        data = json.loads((job / "job.json").read_text())
+        self.assertTrue(data["measureme"])
+        self.assertTrue(data["inventory"]["measureme"])
+        self.assertEqual(data["command"][-1], "--measureme")
+        self.launch(job)
+        self.assertEqual(self.wait(job)["status"], "passed")
+        self.assertEqual(jobs.collect(job)["executions"], 1)
+        result = job / "reports/result.json"
+        original = result.read_text()
+        report = json.loads(original)
+        report["measureme"] = False
+        result.write_text(json.dumps(report))
+        with self.assertRaisesRegex(RuntimeError, "Selection scope mismatch"):
+            jobs.collect(job)
+        report = json.loads(original)
+        report["cases"][0]["miri_flags"] += " -Zmiri-disable-stacked-borrows"
+        result.write_text(json.dumps(report))
+        with self.assertRaisesRegex(RuntimeError, "Interpreter flag scope mismatch"):
+            jobs.collect(job)
+        result.write_text(original)
+        profile = job / "reports/measureme/synthetic.mm_profdata"
+        contents = profile.read_bytes()
+        profile.unlink()
+        with self.assertRaisesRegex(RuntimeError, "Missing diagnostic profile"):
+            jobs.collect(job)
+        profile.write_bytes(contents + b"changed")
+        with self.assertRaisesRegex(RuntimeError, "Artifacts changed"):
+            jobs.collect(job)
+        profile.write_bytes(contents)
         self.assertEqual(jobs.collect(job)["executions"], 1)
 
     def test_cli_refuses_a_second_active_job(self):

@@ -76,7 +76,8 @@ class MiriBatchCollectionTests(unittest.TestCase):
                 name = f"case-{offset}.log"
                 (directory / name).write_text(f"test result: ok. {minimum} passed; 0 failed\n")
                 records.append({"package": package, "target": target, "arguments": arguments,
-                                "passed": minimum, "seed": seed, "log": name, "seconds": 0.1})
+                                "passed": minimum, "seed": seed, "log": name, "seconds": 0.1,
+                                "miri_flags": runner.case_flags(seed, directory)})
             report = {**selected, "cases": records, "passed": True, "package_filter": None,
                       "source_commit": "fixture-source", "miri": "synthetic fixture, not Miri", "run_attempt": "1"}
             path = directory / "result.json"
@@ -129,7 +130,7 @@ class MiriBatchCollectionTests(unittest.TestCase):
         changes = [
             {"passed": False}, {"source_commit": "older-source"}, {"toolchain": "another-nightly"},
             {"package_filter": runner.HOST_PACKAGE}, {"full_inventory_sha256": "wrong"},
-            {"manifests": {}}, {"miri": ""}, {"shard": {"index": True, "total": 2}},
+            {"manifests": {}}, {"miri": ""}, {"shard": {"index": True, "total": 2}}, {"measureme": True},
         ]
         for change in changes:
             with self.subTest(change=change):
@@ -147,7 +148,8 @@ class MiriBatchCollectionTests(unittest.TestCase):
         path = self.paths[0]
         original = json.loads(path.read_text())
         for field, value in [("target", "wrong"), ("arguments", []), ("passed", True),
-                             ("passed", 3), ("seed", True), ("seed", 99), ("log", "../escape.log")]:
+                             ("passed", 3), ("seed", True), ("seed", 99), ("log", "../escape.log"),
+                             ("miri_flags", "-Zmiri-seed=0 -Zmiri-disable-stacked-borrows")]:
             report = copy.deepcopy(original)
             record = report["cases"][1] if field == "arguments" else report["cases"][0]
             record[field] = value

@@ -139,13 +139,15 @@ def sharded_cases(cases, shard):
     return [case for offset, case in enumerate(cases) if offset % total == index - 1]
 
 
-def inventory(package=None, shard=None):
+def inventory(package=None, shard=None, measureme=False):
     cases = selected_cases(package)
     full = {"toolchain": TOOLCHAIN, "cases": cases, "manifests": manifest_paths(cases)}
     fingerprint = hashlib.sha256(json.dumps(full, sort_keys=True).encode()).hexdigest()
     selected = sharded_cases(cases, shard)
+    if measureme and len(selected) != 1:
+        raise ValueError("measureme requires exactly one selected command for justified failure diagnosis")
     return {"toolchain": TOOLCHAIN, "cases": selected, "manifests": manifest_paths(selected),
-            "full_inventory_sha256": fingerprint,
+            "full_inventory_sha256": fingerprint, "measureme": measureme,
             "shard": {"index": shard[0], "total": shard[1]} if shard else None}
 
 
@@ -180,7 +182,8 @@ def verify_batches(root):
         if (report.get("passed") is not True or report.get("toolchain") != TOOLCHAIN
                 or report.get("package_filter") is not None or report.get("source_commit") != source
                 or report.get("full_inventory_sha256") != full["full_inventory_sha256"]
-                or report.get("manifests") != selected["manifests"]):
+                or report.get("manifests") != selected["manifests"]
+                or report.get("measureme") is not False):
             raise RuntimeError("Miri batch source, inventory or manifest scope mismatch")
         miri = report.get("miri")
         if not isinstance(miri, str) or not miri or (version is not None and version != miri):
@@ -195,7 +198,8 @@ def verify_batches(root):
             package, target, arguments, minimum, seed = expected
             if (type(case.get("passed")) is not int or type(case.get("seed")) is not int
                     or (case.get("package"), case.get("target"), case.get("arguments"),
-                        case.get("passed"), case.get("seed")) != (package, target, arguments, minimum, seed)):
+                        case.get("passed"), case.get("seed")) != (package, target, arguments, minimum, seed)
+                    or case.get("miri_flags") != case_flags(seed, path.parent)):
                 raise RuntimeError("Miri batch case/filter/count/seed mismatch")
             name = case.get("log")
             if not isinstance(name, str) or Path(name).name != name or name in seen:
@@ -218,6 +222,16 @@ def verify_batches(root):
             "artifact_sha256": artifacts,
             "limitations": ["Separate CI batches, not one uninterrupted interpreter invocation.",
                             "Proves this recorded source and selected inventory, not whole-workspace coverage."]}
+
+
+def case_flags(seed, reports, measureme=False):
+    flags = f"-Zmiri-seed={seed}"
+    if measureme:
+        path = reports.resolve() / "measureme"
+        if any(character.isspace() for character in str(path)):
+            raise ValueError("measureme report path must not contain whitespace")
+        flags += f" -Zmiri-measureme={path}"
+    return flags
 
 
 def case_command(package, target, arguments):
@@ -345,17 +359,18 @@ def main():
     parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
     parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
     parser.add_argument("--shard", type=shard_spec, help="Disjoint CI batch INDEX/TOTAL; keeps whole commands and workloads")
+    parser.add_argument("--measureme", action="store_true", help="Profile one justified failure command; unchanged workload/seed/900s watchdog")
     parser.add_argument("--verify-batches", type=Path, help="Verify a complete downloaded CI batch set without interpreting tests")
     args = parser.parse_args()
     if args.verify_batches is not None:
-        if args.package or args.shard or args.list or args.report_dir:
+        if args.package or args.shard or args.list or args.report_dir or args.measureme:
             parser.error("--verify-batches cannot be combined with execution/selection options")
         result = verify_batches(args.verify_batches)
         atomic_json(args.verify_batches / "verified.json", result)
         print(json.dumps(result, indent=2))
         return
     try:
-        selected = inventory(args.package, args.shard)
+        selected = inventory(args.package, args.shard, args.measureme)
     except ValueError as error:
         parser.error(str(error))
     cases = selected["cases"]
@@ -366,6 +381,12 @@ def main():
         signal.signal(signal.SIGTERM, interrupted)
     reports = args.report_dir or (REPORTS / args.package if args.package else REPORTS)
     reports.mkdir(parents=True, exist_ok=True)
+    if args.measureme:
+        try:
+            case_flags(0, reports, True)
+        except ValueError as error:
+            parser.error(str(error))
+        (reports / "measureme").mkdir(exist_ok=True)
     (reports / "result.json").unlink(missing_ok=True)
     progress = {"status": "running", "inventory": cases, "completed": [], "current": None}
     atomic_json(reports / "progress.json", progress)
@@ -375,10 +396,10 @@ def main():
     version = subprocess.check_output(["rustup", "run", TOOLCHAIN, "cargo", "miri", "--version"], cwd=ROOT, env=env, text=True).strip()
     results = []
     for index, (package, target, arguments, minimum, seed) in enumerate(cases):
-        case_env = {**env, "MIRIFLAGS": f"-Zmiri-seed={seed}"}
+        case_env = {**env, "MIRIFLAGS": case_flags(seed, reports, args.measureme)}
         command = case_command(package, target, arguments)
         log = reports / f"{index:02d}-{target}-seed{seed}.log"
-        progress["current"] = {"command": command, "log": log.name}
+        progress["current"] = {"command": command, "log": log.name, "miri_flags": case_env["MIRIFLAGS"]}
         atomic_json(reports / "progress.json", progress)
         case_started = time.monotonic()
         try:
@@ -395,14 +416,14 @@ def main():
             progress["status"] = "failed"
             atomic_json(reports / "progress.json", progress)
             raise RuntimeError(f"Miri case failed or tests missing: {target} seed {seed}\n{result.stdout[-12000:]}")
-        record = {"package": package, "target": target, "arguments": arguments, "seed": seed, "passed": passed, "log": log.name, "seconds": time.monotonic() - case_started}
+        record = {"package": package, "target": target, "arguments": arguments, "seed": seed, "passed": passed, "log": log.name, "seconds": time.monotonic() - case_started, "miri_flags": case_env["MIRIFLAGS"]}
         results.append(record)
         progress["completed"] = results
         progress["current"] = None
         atomic_json(reports / "progress.json", progress)
         print(json.dumps(record), flush=True)
     report = {"passed": True, "package_filter": args.package, "toolchain": TOOLCHAIN, "miri": version, "cases": results,
-              "manifests": selected["manifests"], "shard": selected["shard"],
+              "manifests": selected["manifests"], "shard": selected["shard"], "measureme": args.measureme,
               "full_inventory_sha256": selected["full_inventory_sha256"],
               "source_commit": source_commit(), "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
               "limitations": ["Not a whole-workspace or whole-suite Miri claim.",

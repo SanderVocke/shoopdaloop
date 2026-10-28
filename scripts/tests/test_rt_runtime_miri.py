@@ -74,6 +74,40 @@ class MiriRunnerTests(unittest.TestCase):
             self.assertEqual(report["cases"][0]["seed"], 2)
             self.assertEqual(report["cases"][0]["passed"], 1)
 
+    def test_measureme_is_one_declared_command_not_a_workload_or_flag_override(self):
+        with self.assertRaisesRegex(ValueError, "exactly one selected command"):
+            runner.inventory(measureme=True)
+        selected = runner.inventory(runner.HOST_PACKAGE, (10, 63), True)
+        self.assertTrue(selected["measureme"])
+        self.assertEqual(selected["cases"], runner.inventory(runner.HOST_PACKAGE, (10, 63))["cases"])
+        self.assertEqual(runner.case_flags(2, Path("reports")), "-Zmiri-seed=2")
+        with self.assertRaisesRegex(ValueError, "whitespace"):
+            runner.case_flags(0, Path("reports with spaces"), True)
+
+    def test_measureme_dispatch_retains_seed_guard_flags_and_durable_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory)
+            selected = [(runner.HOST_PACKAGE, "lib", [runner.HOST_CASES[9], "--", "--exact"], 1, 0)]
+            expected = f"-Zmiri-seed=0 -Zmiri-measureme={reports / 'measureme'}"
+            def case(command, env, log):
+                self.assertEqual(command, runner.case_command(*selected[0][:3]))
+                self.assertEqual(env["MIRIFLAGS"], expected)
+                self.assertEqual(json.loads((reports / "progress.json").read_text())["current"]["miri_flags"], expected)
+                output = "test result: ok. 1 passed; 0 failed\n"
+                log.write_text(output)
+                (reports / "measureme/synthetic.mm_profdata").write_text("synthetic profile, not Miri")
+                return subprocess.CompletedProcess(command, 0, output)
+            with patch.object(sys, "argv", ["runner", "--measureme", "--report-dir", str(reports)]), patch.object(
+                runner, "selected_cases", return_value=selected
+            ), patch.object(runner.subprocess, "check_output", return_value="synthetic fixture"), patch.object(
+                runner, "run_case", side_effect=case
+            ), patch.object(runner.signal, "signal"), patch.dict(os.environ, {"MIRIFLAGS": "-Zmiri-disable-stacked-borrows"}), contextlib.redirect_stdout(io.StringIO()):
+                runner.main()
+            report = json.loads((reports / "result.json").read_text())
+            self.assertTrue(report["measureme"])
+            self.assertEqual(report["cases"][0]["miri_flags"], expected)
+            self.assertEqual(report["cases"][0]["passed"], 1)
+
     def test_missing_exact_filter_is_not_a_passing_standalone_result(self):
         with tempfile.TemporaryDirectory() as directory:
             def case(command, env, log):

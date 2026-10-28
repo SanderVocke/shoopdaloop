@@ -95,6 +95,26 @@ python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7-recovery-dense
 Check `--list` before launch and record the exact test, failure rationale and
 pending remainder. A focused recovery pass is not a complete stage pass.
 
+For a concrete unresolved timeout, `--measureme` adds only the pinned interpreter's
+function-profiler flag. It requires exactly one selected whole command and keeps
+its seed, assertions, guards and900s watchdog. The option is forwarded by the
+supervisor and recorded with exact interpreter flags in current/completed records:
+
+```sh
+python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7-dense-diagnosis \
+  --commit HEAD --package loop_engine_host_fixture --shard 10/63 --measureme
+```
+
+Profiles go under the isolated job's `reports/measureme/`. Collection checks mode,
+flags and profile hashes; missing/modified profiles cannot become passing evidence.
+The CI complete-set verifier rejects diagnostic-profile reports. Profiling overhead
+can itself time out; preserve partial profiles/logs and never call that a pass or
+native callback performance evidence. Analyze a retained `.mm_profdata` file with
+measureme's `summarize summarize FILE.mm_profdata` (or `--json`). Collect successful
+jobs first and analyze a copy outside the reports directory: JSON analysis writes
+beside its input and must not change the verified artifact set. An incomplete
+profile describes completed trace events, not successful completion of the test.
+
 ## Immutable source and isolation
 
 The launcher resolves the requested commit once, exports its Git archive, records
@@ -168,7 +188,7 @@ nix develop --command python3 -m unittest \
   scripts.tests.test_rt_runtime_miri_batches
 ```
 
-Twenty-nine tests cover the selected inventory, exact standalone manifest dispatch,
+Thirty-two tests cover the selected inventory, exact standalone manifest dispatch,
 seed/report metadata, zero-test refusal, tracked-private-state exclusion without
 losing standalone source/lockfiles, manifest-scope tampering, complete disjoint CI partition/collection and CLI paths,
 durable file output, isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
