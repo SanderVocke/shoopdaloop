@@ -57,8 +57,11 @@ seeds/guards/workloads or the watchdog. Mode/flags/profile artifacts are verifie
 CI aggregation rejects diagnostic reports. Sixty Python tests/policies and unchanged
 144-command/291-execution inventory comparison pass. No Rust/dependency changes
 or new interpreter pass occur in this tooling milestone. Both failed jobs remain
-preserved; actual diagnostic launch/outcome belongs in [MIRI_JOBS.md](MIRI_JOBS.md).
-Stage7 stays7/8 and complete stage/final interpreter and CI/review obligations remain open.
+preserved. Diagnostic job `20261028T102117-ca19c81152` launched from committed
+`3574d8fc` with864 verified frozen entries/strict flags and exactly the failed
+seed0 test plus the profiler; its launch checkpoint was running, not passing.
+Actual outcome belongs in [MIRI_JOBS.md](MIRI_JOBS.md). Stage7 stays7/8 and complete
+stage/final interpreter and CI/review obligations remain open.
 
 ## Stage 7 CI host evidence and failed interpreter checkpoint
 

@@ -99,7 +99,7 @@ remain open.
 - Copied supervisor SHA256: `c2cd7c0db36774db2a086e0721745ccca750b786b02870756abdbfb304fcd20d`.
 - Local launch/input report: `target/loop-layer-miri-recovery-stage7/launch-verification.json`.
 
-### Exact-test diagnostic profiling prepared
+### Exact-test diagnostic profiling launched (pending)
 
 The second concrete timeout justifies profiling the same one-command/full-test
 selection before further optimization. `--measureme` adds only Miri's function
@@ -117,8 +117,33 @@ Initial attempts hit read-only Cargo storage and obsolete third-party `unsafe`
 blocks under current rustc's denied warnings. The analyzer alone was built with
 `RUSTFLAGS=-A unused-unsafe`; project/Miri warning-denied builds, safety checks and
 guards are not changed. Its unsupported `--version` probe is retained; Cargo's
-installed-package listing records the version/revision. No diagnostic interpreter
-job has launched at this preparation checkpoint.
+installed-package listing records the version/revision.
+
+Diagnostic job **`20261028T102117-ca19c81152`** launched from committed tooling
+snapshot **`3574d8fc3abe3abcc7ef933d3200f3876357eca3`** at
+2026-10-28T10:21:18.263541Z, supervisorPID3725186:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-7-dense-diagnosis --commit 3574d8fc \
+  --package loop_engine_host_fixture --shard 10/63 --measureme
+```
+
+Launch verification matched all864 frozen source entries and the copied supervisor,
+excluded `.pi/`, confirmed warning-denied Rust/rustdoc flags and the explicit source
+commit, and matched the exact one-test inventory/seed0 plus these sole interpreter
+flags: `-Zmiri-seed=0 -Zmiri-measureme=<job>/reports/measureme`.
+The launch-verification checkpoint was **running**, current `00-lib-seed0.log`.
+This is a justified diagnostic invocation, not a second routine full campaign or
+a passing interpreter result. Preserve any partial profiles on timeout; analyze
+a copy outside the reports directory. Continue useful work and check at natural
+checkpoints rather than waiting/polling. Complete Stage7/final coverage stays open.
+
+- Root: `target/loop-layer-miri-jobs/20261028T102117-ca19c81152/`.
+- `job.json` SHA256: `ba3619d4c0c6420d10e1d267e96bada5ad512a79296c7be40b1a6cdbd2edaecd`.
+- Source archive SHA256: `d26da23dd767ba4e3f5dc74424b5bdcd246c049c6552c7a9d413a8a43e8057c6`.
+- Copied supervisor SHA256: `75dfb8fdc9b45957a2bfd01e679216e0f5ce28be2dffafdf8aba5b938a36fa1d`.
+- Local launch/input report: `target/loop-layer-miri-profile-stage7/launch-verification.json`.
 
 ### Registered selection
 
