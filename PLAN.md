@@ -167,3 +167,13 @@ User requested a date-based historical-version proxy comparison and a clearer re
 
 - Pre-follow-up final head 9e8e858b3b7ffe526511f3237d7c5b67df6d65d7 also completed all PR CI checks successfully. The follow-up extends the experiment rather than replacing the completed evidence set.
 - Carla 2.5.9 full-feature source build succeeds without source patches. New explicit-FP ABI harness passes 32 positive workload/version/interface/policy checks and eight deliberately missing/bypassed-plugin rejections. The DSP-meter implementation file is byte-identical between tested 2.5.9 and 2.5.10 sources.
+
+
+## Follow-up — standalone Catalina Carla package
+
+User explicitly requested building and publishing a complete standalone package for direct A/B comparison with system Carla.
+
+- [ ] Reuse the pinned macOS Carla 2.5.10 payload and Catalina dependency recipe used by ShoopDaLoop; retain standalone GUI/engine/helpers and record exact provenance. macOS runtime currently normalizes upstream binaries rather than compiling Carla itself.
+- [ ] Package on an Intel macOS runner, audit every shipped Intel Mach-O minimum OS/dependency closure, verify complete standalone startup/processing independently of ShoopDaLoop, and include licenses/checksums/reproduction instructions.
+- [ ] Publish the verified package as a downloadable GitHub release asset, link it from the report/PR, and document that actual Catalina execution remains for the reporter to confirm.
+- [ ] Keep the existing experiment/report follow-up and PR validation complete alongside packaging; no production audio policy changes are authorized by this request.
