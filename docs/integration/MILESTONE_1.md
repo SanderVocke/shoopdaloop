@@ -6,8 +6,9 @@ Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. Stages 0–
 are verified against the initial pin: external composition, independent production
 DSP, native service, complete public stereo/MIDI/media scenario and the fixed-delay
 compatibility probe. Native debug/release, real Node tests and closed workspace
-gates pass. Shared metadata additions were approved. Further adversarial/measurement
-work, final integration and full feature parity remain pending.
+gates pass. Shared metadata additions were approved. Stage 6's adversarial/two-thread
+coverage is also verified; comparable measurements, final integration and full
+feature parity remain pending.
 Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
 
 - Worktree: `/tmp/shoopdaloop-milestone-1`.
@@ -709,6 +710,81 @@ Logs: `target/milestone-1/latency-probe-{debug,gates,workspace-gates}.log` and
 stdout transcripts). Final integrated-head reruns, adversarial/two-thread work and
 raw common-workload performance measurements remain separate requirements.
 
+## Stage 6 checkpoint: adversarial lifecycle and native two-thread execution
+
+The first four Stage 6 checklist items are verified. Measurements and the matched
+current-engine performance baseline remain pending; **Stage 6 is not complete**.
+New tests extend the existing guarded public-service suite:
+
+- `all_normal_credits_and_both_return_streams_can_stall_while_wraps_and_stop_progress`:
+  eight domain queries and eight owning-buffer reads fill all **16 normal credits**.
+  Neither owning nor semantic returns is consumed for four eight-frame callbacks;
+  every stereo sample and all canonical wrap packets agree with independent
+  expectations. Zero versus 64 meter reads changes neither stream. A separately
+  admitted recovery Stop executes at frame **37** with all normal credits held,
+  leaving live output intact. All **17 owning results** (including eight original
+  read buffers) can be retained; eight state receipts and the actual stop receipt
+  remain truthful. Checked pool credits recover off-render.
+- `cancel_recovery_executes_with_all_normal_credits_held_then_disconnect_reclaims_future_work`:
+  eight future queries plus eight reads saturate the normal classes. After their
+  forwarding, recovery cancels the queued frame-1000 query at actual frame **13**.
+  Both cancellation registration and the original request's cancellation result
+  report the real decision, not an invented execution at 1000. Seven other future
+  requests remain admitted; disconnect then delivers reserved stop/reset cleanup
+  without executing or replaying their future times.
+- `saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across_repeated_lifecycles`:
+  **eight** prepare/run/stop cycles use only one export slot. The second live prefix
+  truthfully refuses `Capacity`; a stale route epoch returns its prepared owner and
+  an invalid preset generation yields typed `InvalidPreset`. Every live output
+  sample remains unchanged; settled queries show uninterrupted Recording and no
+  capture failure. An owning read returns the exact old two-frame stereo prefix
+  after recording has continued. Release, recovery Stop and idempotent stopped
+  cleanup restore all checked media/resource pool credits each cycle.
+- `disconnect_during_recording_retains_full_returns_and_pending_preset_until_stopped_cleanup`:
+  actual active recording continues with an immutable prefix, **16 stalled normal
+  owning results**, future loop work and a future DSP request. Dropping the client
+  still produces quiescence, muted output and the exact 32 reset packets in the
+  next positive callback. Returned buffer/preset owners are not freed on render;
+  page/version/snapshot/MIDI-index/media/export/pin credits recover off-render.
+- `separate_control_thread_observes_exact_execution_while_render_never_waits` is
+  native-only. The control endpoint is moved to a separate thread and publishes a
+  typed preset for frame **137**, then independently polls results/meters. The
+  render owner runs **256 × 8-frame callbacks**, checking all **2,048 stereo frames**
+  and all **43,648 canonical restoration packets**. The applied DSP receipt is
+  exactly frame 137, revision 1→2. Four actual loop receipts are on time. Startup
+  readiness waits occur before callbacks; the controller's bounded deadline/yields
+  and final join are outside guarded rendering. No callback waits for the caller.
+
+The existing before/after-publication processor-fault test now also faults at
+frame **2**, while recording is active. The actual frame-1 Record receipt survives,
+future work is explicitly aborted, zero audio/reset output and non-replay are
+checked, and stopped cleanup recovers the checked pool credits. Existing foreign/
+retained tickets, late/cancelled commands, polling invariance and independent DSP
+refusal cases remain intact. Shared cleanup assertions were strengthened to check
+reserved/retired storage, MIDI-index and media/export/pin pools, not just pages.
+These are pool-credit/lifecycle assertions, not total process-memory measurements.
+
+The first active-recording disconnect fixture retained its three completed
+export/cursor/query tickets while trying to fill every normal flag slot. It
+correctly received `Busy` because those tickets still owned cancellation flags.
+The fixture now drops those **unused terminal tickets off-render** before admitting
+all sixteen requests; the capacity/retained-ticket contract and required full
+saturation were not changed. The initial failure is preserved in
+`target/milestone-1/adversarial-ticket-fixture-failure.log`; the final full gates
+are in `target/milestone-1/adversarial-final-gates.log`.
+
+Observed in the Nix development environment with warnings denied: **20 native
+debug, 20 native release**, plus **18 actually executed in pinned Node**, zero
+failures. The current-engine channel reference and two-thread case are the two
+native-only tests. The Wasm library build passed separately. Formatting,
+warning-denied workspace build, test policy, closed inventory (**217 modules**),
+both package Wasm dependency policies and both four-target dependency boundaries
+passed. Workspace nextest: **2,176 passed, four existing skips, 111 binaries**.
+Only owned tests/docs changed; no further dependencies, shared metadata or protected
+source/fixtures/evidence were edited. These results do not supply raw callback
+percentiles, command/meter costs, live-export throughput or a common-workload
+current-engine baseline: those are the remaining Stage 6 work.
+
 ## Existing references inspected
 
 - `src/rust/shoop_backend/src/lib.rs`: current application-facing `Backend` trait,
@@ -728,9 +804,9 @@ raw common-workload performance measurements remain separate requirements.
 
 ## Remaining work
 
-Stages 0–5 are verified against the initial pin, including approved additive
-metadata, 15 native/14 portable service tests, the complete public scenario,
-fixed-delay findings and closed workspace gates. Stages 6–7 must complete further
-adversarial lifecycle, two-thread execution and comparable raw measurements. Final
-integration still waits for the agreed completed loop revision and final-head CI/review.
+Stages 0–5 and Stage 6's first four lifecycle/thread items are verified against
+the initial pin, including approved additive metadata, 20 native/18 portable service
+tests, the complete public scenario, fixed-delay findings and closed workspace
+gates. Stage 6 still requires comparable raw release measurements. Final integration
+still waits for the agreed completed loop revision and final-head CI/review.
 No complete feature-parity, latency compensation or callback-deadline claim is made.

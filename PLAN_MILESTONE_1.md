@@ -2,7 +2,7 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stages 0–5 verified; Stage 6's adversarial cases and measurements are next.**
+**In progress: Stages 0–5 verified; Stage 6 lifecycle/two-thread proofs pass, measurements remain.**
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
@@ -72,6 +72,16 @@ Execution contract:
   four existing skips, 111 binaries; closed inventory 217 modules. Further
   adversarial/two-thread work, measurements and final integration remain Stages 6–7.
   See the named tests, committed raw transcript and findings in the integration notes.
+- Stage 6's first four items are verified: all 16 normal credits/owning and semantic
+  streams can stall while wraps and reserved stop/cancel progress; optional export
+  saturation, invalid presets and route rejection preserve active capture over eight
+  lifecycles; recording disconnect and a frame-2 active-capture fault restore the
+  checked media/resource pool credits; a native two-thread host checks every
+  sample/packet and the exact frame-137 DSP receipt. Service tests: 20 native debug/release, 18 actual Node;
+  Wasm build passes. Workspace: 2,176 passed, four existing skips, 111 binaries;
+  closed inventory 217 modules. Raw comparable release measurements remain before
+  Stage 6 can be checked complete. The retained-ticket fixture failure and its
+  off-render ticket-lifetime correction are recorded in the integration notes.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency
@@ -345,15 +355,15 @@ made, and no loop implementation is changed to force the experiment to pass.
 
 ### Stage 6 — Adversarial lifecycle and representative measurements
 
-- [ ] Saturate/stall normal results, meter readers and exports independently;
+- [x] Saturate/stall normal results, meter readers and exports independently;
       exercise invalid generations/presets, late/cancelled commands, active capture,
       route rejection and repeated prepare/run/stop cycles with complete cleanup.
-- [ ] Prove immediate stop/cancel recovery with normal credits full, continuing
+- [x] Prove immediate stop/cancel recovery with normal credits full, continuing
       admitted wraps under stalled results, and truthful optional-export failure.
-- [ ] Exercise disconnect during pending work/recording and an injected processor
+- [x] Exercise disconnect during pending work/recording and an injected processor
       fault. Preserve actual published state and owners; do not replay a failed
       callback or drop final owners while rendering.
-- [ ] Add a bounded two-thread native scenario; waits/coordination and joins stay
+- [x] Add a bounded two-thread native scenario; waits/coordination and joins stay
       outside guarded callbacks. The render path never waits for the controller.
 - [ ] Measure release idle/control overhead, steady looping, preset bursts,
       state/meter polling and concurrent live exports. Preallocate timing/result

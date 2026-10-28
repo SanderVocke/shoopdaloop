@@ -57,6 +57,9 @@ struct Output {
     result: Result<Report, Error>,
 }
 fn setup() -> (Client, Host, PreparedRoute, LoopId) {
+    setup_with_exports(4)
+}
+fn setup_with_exports(export_slots: usize) -> (Client, Host, PreparedRoute, LoopId) {
     let Prepared {
         client,
         render,
@@ -66,6 +69,7 @@ fn setup() -> (Client, Host, PreparedRoute, LoopId) {
         Config {
             max_frames: 8,
             resource_pages: 128,
+            export_slots,
             ..Config::default()
         },
         bank(),
@@ -134,13 +138,26 @@ impl Host {
     }
 }
 fn cleanup(client: Client, host: Host) {
+    cleanup_with_exports(client, host, 4);
+}
+fn cleanup_with_exports(client: Client, host: Host, exports: usize) {
     drop(client);
     let mut stopped = host.render.into_stopped();
     stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 128);
-    assert_eq!(stopped.resource_usage().free_versions, 32);
-    assert_eq!(stopped.resource_usage().free_snapshots, 32);
-    assert_eq!(stopped.media_usage().references, 0);
+    stopped.cleanup().unwrap();
+    let usage = stopped.resource_usage();
+    assert_eq!(usage.free_pages, 128);
+    assert_eq!(usage.free_versions, 32);
+    assert_eq!(usage.free_snapshots, 32);
+    assert_eq!(usage.reserved_pages, 0);
+    assert_eq!(usage.retired_pages, 0);
+    assert_eq!(usage.retired_versions, 0);
+    assert_eq!(stopped.midi_index_usage().free_versions, 8);
+    let usage = stopped.media_usage();
+    assert_eq!(usage.free_media, 8);
+    assert_eq!(usage.free_exports, exports);
+    assert_eq!(usage.free_pins, 8);
+    assert_eq!(usage.references, 0);
 }
 fn transition(
     client: &mut Client,
@@ -367,7 +384,7 @@ fn disconnected_stop_keeps_recovery_available_when_ui_holds_all_prior_results() 
 
 #[shoop_test]
 fn processor_fault_keeps_actual_component_and_loop_receipts_without_replay() {
-    for fault_at in [0, 6] {
+    for fault_at in [0, 2, 6] {
         let (mut client, mut host, _route, target) = setup();
         let _record = transition(
             &mut client,
@@ -442,6 +459,20 @@ fn processor_fault_keeps_actual_component_and_loop_receipts_without_replay() {
                 .iter()
                 .any(|e| e.id == Some(state.id())
                     && matches!(e.status, ExecutionStatus::Executed(_))));
+        }
+        if fault_at == 2 {
+            assert!(executions.iter().any(|e| matches!(e.status,
+                ExecutionStatus::Executed(raw) if matches!(raw.operation_result,
+                    Some(LoopReply::Transition(completion)) if matches!(completion.outcome,
+                        shoop_loop_engine::Outcome::Applied { frame: Frame(1), .. })))));
+            assert!(executions.iter().any(|e| e.id == Some(state.id())
+                && matches!(
+                    e.status,
+                    ExecutionStatus::Aborted {
+                        error: Error::Capacity,
+                        ..
+                    }
+                )));
         }
         let again = host.step(1, &[]);
         assert_eq!(again.result, Err(Error::Capacity));
@@ -880,4 +911,689 @@ fn foreign_tickets_and_routes_refuse_without_consuming_recovery_or_owner_credits
     assert_eq!(second.outstanding(), 0);
     cleanup(first, one);
     cleanup(second, two);
+}
+
+fn empty_restore(at: u64) -> Vec<(u64, Vec<u8>)> {
+    (0..16u8)
+        .flat_map(|channel| {
+            [
+                (at, vec![0xE0 | channel, 0, 64]),
+                (at, vec![0xB0 | channel, 64, 0]),
+                (at, vec![0xB0 | channel, 69, 0]),
+                (at, vec![0xB0 | channel, 66, 0]),
+            ]
+        })
+        .collect()
+}
+fn playing_cursor() -> (Client, Host, rt_runtime::resource::Cursor) {
+    let (mut client, mut host, _route, target) = setup();
+    transition(
+        &mut client,
+        target,
+        0,
+        Transition::Record {
+            monitor_previous: false,
+        },
+    );
+    transition(
+        &mut client,
+        target,
+        3,
+        Transition::Play {
+            position: 0,
+            retrigger: false,
+        },
+    );
+    let exported = client
+        .loop_at(
+            Frame(3),
+            LoopOperation::Export {
+                target,
+                selection: shoop_loop_engine::runtime::Selection::Playback,
+            },
+        )
+        .unwrap();
+    host.step(4, &[]).result.unwrap();
+    let export = drain(&mut client)
+        .into_iter()
+        .find_map(|execution| {
+            if execution.id != Some(exported.id()) {
+                return None;
+            }
+            let ExecutionStatus::Executed(raw) = execution.status else {
+                panic!("export");
+            };
+            let Some(LoopReply::Export { id, media, .. }) = raw.operation_result else {
+                panic!("export");
+            };
+            assert_eq!(media.view.description.frames, 3);
+            Some(id)
+        })
+        .unwrap();
+    let cursor = client
+        .loop_at(
+            Frame(4),
+            LoopOperation::Cursor {
+                export,
+                midi: false,
+            },
+        )
+        .unwrap();
+    host.step(1, &[]).result.unwrap();
+    let cursor = drain(&mut client)
+        .into_iter()
+        .find_map(|execution| {
+            if execution.id != Some(cursor.id()) {
+                return None;
+            }
+            let ExecutionStatus::Executed(raw) = execution.status else {
+                panic!("cursor");
+            };
+            let Some(LoopReply::Cursor(cursor)) = raw.operation_result else {
+                panic!("cursor");
+            };
+            Some(cursor)
+        })
+        .unwrap();
+    (client, host, cursor)
+}
+
+#[shoop_test]
+fn all_normal_credits_and_both_return_streams_can_stall_while_wraps_and_stop_progress() {
+    for meter_reads in [0, 64] {
+        let (mut client, mut host, cursor) = playing_cursor();
+        let target = LoopId::from_parts(0, 1).unwrap();
+        let mut tickets = Vec::with_capacity(17);
+        for _ in 0..8 {
+            tickets.push(heap::assert_no_heap(|| {
+                client
+                    .loop_at(Frame(5), LoopOperation::State { target })
+                    .unwrap()
+            }));
+        }
+        for _ in 0..8 {
+            let bytes = vec![0; 256].into_boxed_slice();
+            tickets.push(heap::assert_no_heap(|| client.read(cursor, bytes).unwrap()));
+        }
+        assert_eq!(client.outstanding(), 16);
+        assert_eq!(
+            heap::assert_no_heap(|| client.loop_at(Frame(5), LoopOperation::State { target }))
+                .unwrap_err()
+                .error,
+            Error::Full
+        );
+        let bytes = vec![0; 256].into_boxed_slice();
+        let refused = heap::assert_no_heap(|| client.read(cursor, bytes)).unwrap_err();
+        assert_eq!(refused.error, Error::Full);
+        let shoop_engine_service::Request::Read { bytes, .. } = refused.value else {
+            panic!("original read owner");
+        };
+        assert_eq!(bytes.len(), 256);
+        for _ in 0..4 {
+            let begin = host.render.next_frame().0;
+            let out = host.step(8, &[]);
+            out.result.unwrap();
+            assert!(out.recovery.is_empty());
+            for i in 0..8 {
+                let at = begin + i as u64;
+                let expected = (at + 1 + (at - 3) % 3 + 1) as f32;
+                assert_eq!(out.left[i], expected);
+                assert_eq!(out.right[i], expected * 10.);
+            }
+            let expected: Vec<_> = (begin..begin + 8)
+                .filter(|at| at % 3 == 0)
+                .flat_map(empty_restore)
+                .collect();
+            assert_eq!(out.midi, expected);
+            for _ in 0..meter_reads {
+                heap::assert_no_heap(|| client.meters().read_peaks());
+            }
+            assert_eq!(client.outstanding(), 16);
+        }
+        let stop_at = host.render.next_frame();
+        tickets.push(heap::assert_no_heap(|| client.stop().unwrap()));
+        assert_eq!(client.stop().unwrap_err().error, Error::Full);
+        let out = host.step(1, &[]);
+        out.result.unwrap();
+        assert_eq!(out.left, [(stop_at.0 + 1) as f32]);
+        assert_eq!(out.right, [((stop_at.0 + 1) * 10) as f32]);
+        assert!(out.midi.is_empty());
+        assert!(out.recovery.is_empty());
+        let mut held = Vec::with_capacity(17);
+        let mut reads = 0;
+        while let Some(delivery) = client.try_delivery() {
+            assert_eq!(delivery.phase, DeliveryPhase::Runtime);
+            assert!(!matches!(
+                delivery.outcome,
+                rt_runtime::transport::Outcome::Rejected(_)
+            ));
+            if let Some(shoop_engine_service::EngineCommand::Resource(command)) = &delivery.command
+            {
+                assert_eq!(
+                    command.reply(),
+                    Some(rt_runtime::resource::Reply::Read {
+                        written: 24,
+                        eof: true
+                    })
+                );
+                reads += 1;
+            }
+            held.push(delivery);
+        }
+        assert_eq!(held.len(), 17);
+        assert_eq!(reads, 8);
+        let mut states = 0;
+        let mut stopped = false;
+        while let Some(execution) = client.try_execution() {
+            let ExecutionStatus::Executed(raw) = execution.status else {
+                panic!("execution");
+            };
+            assert_eq!(raw.result, Ok(()));
+            match raw.operation_result.unwrap() {
+                LoopReply::State(cut) => {
+                    assert_eq!(cut.frame, Frame(5));
+                    assert_eq!(cut.state.mode, Mode::Playing);
+                    states += 1;
+                }
+                LoopReply::Transition(completion) => {
+                    assert!(
+                        matches!(completion.outcome, shoop_loop_engine::Outcome::Applied { frame, .. } if frame == stop_at)
+                    );
+                    stopped = true;
+                }
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        assert_eq!(states, 8);
+        assert!(stopped);
+        assert_eq!(client.outstanding(), 0);
+        cleanup(client, host);
+        drop((held, tickets));
+    }
+}
+
+#[shoop_test]
+fn cancel_recovery_executes_with_all_normal_credits_held_then_disconnect_reclaims_future_work() {
+    let (mut client, mut host, cursor) = playing_cursor();
+    let target = LoopId::from_parts(0, 1).unwrap();
+    let mut tickets = Vec::with_capacity(16);
+    for at in 1000..1008 {
+        tickets.push(
+            client
+                .loop_at(Frame(at), LoopOperation::State { target })
+                .unwrap(),
+        );
+    }
+    for _ in 0..8 {
+        let bytes = vec![0; 256].into_boxed_slice();
+        tickets.push(client.read(cursor, bytes).unwrap());
+    }
+    host.step(8, &[]).result.unwrap();
+    let cancelled = tickets[0].id();
+    let recovery = heap::assert_no_heap(|| client.cancel_pending(&tickets[0]).unwrap());
+    let at = host.render.next_frame();
+    host.step(1, &[]).result.unwrap();
+    let mut owners = Vec::new();
+    while let Some(delivery) = client.try_delivery() {
+        owners.push(delivery);
+    }
+    assert_eq!(owners.len(), 17);
+    let mut original = false;
+    let mut registration = false;
+    while let Some(execution) = client.try_execution() {
+        let ExecutionStatus::Executed(raw) = execution.status else {
+            panic!("actual cancellation");
+        };
+        assert_eq!(raw.actual_frame, at);
+        assert!(matches!(
+            raw.operation_result,
+            Some(LoopReply::Cancelled {
+                delivered: false,
+                ..
+            })
+        ));
+        if execution.id == Some(cancelled) {
+            assert_eq!(raw.requested_frame, Frame(1000));
+            original = true;
+        } else {
+            assert_eq!(execution.id, Some(recovery.id()));
+            assert_eq!(raw.result, Ok(()));
+            registration = true;
+        }
+    }
+    assert!(original && registration);
+    assert_eq!(client.outstanding(), 7);
+    drop(client);
+    let out = host.step(1, &[]);
+    assert_eq!(out.result.unwrap().phase, Phase::Quiescent);
+    assert_eq!(out.left, [0.]);
+    assert_eq!(out.right, [0.]);
+    assert_eq!(out.recovery, reset_packets());
+    let mut stopped = host.render.into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 128);
+    assert_eq!(stopped.resource_usage().free_versions, 32);
+    assert_eq!(stopped.resource_usage().free_snapshots, 32);
+    assert_eq!(stopped.midi_index_usage().free_versions, 8);
+    assert_eq!(stopped.media_usage().references, 0);
+    drop((owners, tickets, recovery));
+}
+
+#[shoop_test]
+fn saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across_repeated_lifecycles(
+) {
+    for _ in 0..8 {
+        let (mut client, mut host, route, target) = setup_with_exports(1);
+        transition(
+            &mut client,
+            target,
+            0,
+            Transition::Record {
+                monitor_previous: false,
+            },
+        );
+        let first = client
+            .loop_at(
+                Frame(2),
+                LoopOperation::Export {
+                    target,
+                    selection: shoop_loop_engine::runtime::Selection::Recording,
+                },
+            )
+            .unwrap();
+        let refused = client
+            .loop_at(
+                Frame(3),
+                LoopOperation::Export {
+                    target,
+                    selection: shoop_loop_engine::runtime::Selection::Recording,
+                },
+            )
+            .unwrap();
+        let state = client
+            .loop_at(Frame(4), LoopOperation::State { target })
+            .unwrap();
+        let stage = client.stage_route(route, rt_runtime::Epoch(2)).unwrap();
+        let invalid = dsp::PresetId::from_parts(0, 2).unwrap();
+        client.dsp().select(Frame(1), invalid, 1).unwrap();
+        let out = host.step(5, &[]);
+        out.result.unwrap();
+        assert_eq!(out.left, [1., 2., 3., 4., 5.]);
+        assert_eq!(out.right, [10., 20., 30., 40., 50.]);
+        let mut route_refused = false;
+        while let Some(delivery) = client.try_delivery() {
+            if delivery.id == stage.id() {
+                assert_eq!(
+                    delivery.outcome,
+                    rt_runtime::transport::Outcome::Rejected(Error::StaleEpoch)
+                );
+                assert!(matches!(
+                    delivery.command,
+                    Some(shoop_engine_service::EngineCommand::StageGraph { plan: Some(_), .. })
+                ));
+                route_refused = true;
+            }
+        }
+        assert!(route_refused);
+        assert_eq!(
+            client.dsp().try_completion().unwrap().request.result,
+            Some(Err(dsp::Refusal::InvalidPreset { preset: invalid }))
+        );
+        let mut export = None;
+        let mut full = false;
+        let mut recording = false;
+        while let Some(execution) = client.try_execution() {
+            let ExecutionStatus::Executed(raw) = execution.status else {
+                panic!("export execution");
+            };
+            if execution.id == Some(first.id()) {
+                let Some(LoopReply::Export { id, media, .. }) = raw.operation_result else {
+                    panic!("prefix");
+                };
+                assert_eq!(media.view.description.frames, 2);
+                export = Some(id);
+            } else if execution.id == Some(refused.id()) {
+                assert_eq!(
+                    raw.operation_result,
+                    Some(LoopReply::Failed(
+                        shoop_loop_engine::runtime::Failure::Runtime(Error::Capacity)
+                    ))
+                );
+                full = true;
+            } else if execution.id == Some(state.id()) {
+                let Some(LoopReply::State(cut)) = raw.operation_result else {
+                    panic!("state");
+                };
+                assert_eq!(cut.state.mode, Mode::Recording);
+                assert_eq!(cut.state.capture_frames, 4);
+                assert_eq!(cut.capture_failure, None);
+                recording = true;
+            }
+        }
+        assert!(full && recording);
+        let export = export.unwrap();
+        let cursor = client
+            .loop_at(
+                Frame(5),
+                LoopOperation::Cursor {
+                    export,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        host.step(1, &[]).result.unwrap();
+        let cursor = drain(&mut client)
+            .into_iter()
+            .find_map(|execution| {
+                if execution.id != Some(cursor.id()) {
+                    return None;
+                }
+                let ExecutionStatus::Executed(raw) = execution.status else {
+                    panic!("cursor");
+                };
+                let Some(LoopReply::Cursor(cursor)) = raw.operation_result else {
+                    panic!("cursor");
+                };
+                Some(cursor)
+            })
+            .unwrap();
+        let read = client
+            .read(cursor, vec![0; 256].into_boxed_slice())
+            .unwrap();
+        host.step(1, &[]).result.unwrap();
+        let mut bytes_seen = false;
+        while let Some(delivery) = client.try_delivery() {
+            if delivery.id == read.id() {
+                let Some(shoop_engine_service::EngineCommand::Resource(command)) = delivery.command
+                else {
+                    panic!("read owner");
+                };
+                assert_eq!(
+                    command.reply(),
+                    Some(rt_runtime::resource::Reply::Read {
+                        written: 16,
+                        eof: true
+                    })
+                );
+                let rt_runtime::resource::Request::Read { bytes, .. } = command.into_request()
+                else {
+                    panic!("read bytes");
+                };
+                let expected: Vec<u8> = [1f32, 10., 2., 20.]
+                    .into_iter()
+                    .flat_map(f32::to_le_bytes)
+                    .collect();
+                assert_eq!(&bytes[..16], expected.as_slice());
+                bytes_seen = true;
+            }
+        }
+        assert!(bytes_seen);
+        let release = client
+            .loop_at(Frame(7), LoopOperation::Release { export })
+            .unwrap();
+        client.stop().unwrap();
+        host.step(1, &[]).result.unwrap();
+        assert!(drain(&mut client)
+            .iter()
+            .any(|execution| execution.id == Some(release.id())));
+        assert_eq!(client.outstanding(), 0);
+        cleanup_with_exports(client, host, 1);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[shoop_test]
+fn separate_control_thread_observes_exact_execution_while_render_never_waits() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    use std::time::{Duration, Instant};
+    let (mut client, mut host, _route, target) = setup();
+    transition(
+        &mut client,
+        target,
+        0,
+        Transition::Record {
+            monitor_previous: false,
+        },
+    );
+    transition(
+        &mut client,
+        target,
+        3,
+        Transition::Play {
+            position: 0,
+            retrigger: false,
+        },
+    );
+    client
+        .loop_at(Frame(137), LoopOperation::State { target })
+        .unwrap();
+    transition(&mut client, target, 2047, Transition::Stop);
+    let ready = Arc::new(AtomicBool::new(false));
+    let done = Arc::new(AtomicBool::new(false));
+    let control_ready = Arc::clone(&ready);
+    let control_done = Arc::clone(&done);
+    let control = std::thread::spawn(move || {
+        let _preset = heap::assert_no_heap(|| client.dsp().select(Frame(137), id(1), 1).unwrap());
+        control_ready.store(true, Ordering::Release);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut receipts = Vec::with_capacity(4);
+        let mut applied = false;
+        let mut reads = 0;
+        loop {
+            while let Some(delivery) = client.try_delivery() {
+                assert!(!matches!(
+                    delivery.outcome,
+                    rt_runtime::transport::Outcome::Rejected(_)
+                ));
+            }
+            while let Some(execution) = client.try_execution() {
+                receipts.push(execution);
+            }
+            while let Some(completion) = client.dsp().try_completion() {
+                assert_eq!(
+                    completion.request.result,
+                    Some(Ok(dsp::Receipt::Applied {
+                        requested_frame: Frame(137),
+                        frame: Frame(137),
+                        previous_revision: 1,
+                        revision: 2,
+                        preset: id(1),
+                    }))
+                );
+                applied = true;
+            }
+            heap::assert_no_heap(|| client.meters().read_peaks());
+            reads += 1;
+            if control_done.load(Ordering::Acquire) && client.outstanding() == 0 && applied {
+                break;
+            }
+            assert!(Instant::now() < deadline, "bounded control-side completion");
+            std::thread::yield_now();
+        }
+        assert_eq!(receipts.len(), 4);
+        for execution in receipts {
+            let ExecutionStatus::Executed(raw) = execution.status else {
+                panic!("actual receipt");
+            };
+            assert_eq!(raw.result, Ok(()));
+            assert_eq!(raw.late_by(), 0);
+            if let Some(LoopReply::State(cut)) = raw.operation_result {
+                assert_eq!(cut.frame, Frame(137));
+                assert_eq!(cut.state.mode, Mode::Playing);
+                assert_eq!(cut.capture_failure, None);
+            }
+        }
+        assert!(reads > 0);
+        client
+    });
+    let deadline = Instant::now() + Duration::from_secs(15);
+    // Startup coordination occurs before the first guarded callback.
+    while !ready.load(Ordering::Acquire) {
+        assert!(Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    for _ in 0..256 {
+        let begin = host.render.next_frame().0;
+        let out = host.step(8, &[]);
+        out.result.unwrap();
+        assert!(out.recovery.is_empty());
+        for i in 0..8 {
+            let at = begin + i as u64;
+            let playback = if (3..2047).contains(&at) {
+                ((at - 3) % 3 + 1) as f32
+            } else {
+                0.
+            };
+            let live = (at + 1) as f32;
+            let expected = if at < 137 {
+                [live + playback, (live + playback) * 10.]
+            } else {
+                [live * 20. + playback * 5., -live + playback * 0.25]
+            };
+            assert_eq!([out.left[i], out.right[i]], expected);
+        }
+        let expected: Vec<_> = (begin..begin + 8)
+            .filter(|at| (3..2047).contains(at) && at % 3 == 0)
+            .flat_map(empty_restore)
+            .collect();
+        assert_eq!(out.midi, expected);
+    }
+    done.store(true, Ordering::Release);
+    let client = control.join().unwrap();
+    cleanup(client, host);
+}
+
+#[shoop_test]
+fn disconnect_during_recording_retains_full_returns_and_pending_preset_until_stopped_cleanup() {
+    let (mut client, mut host, _route, target) = setup();
+    transition(
+        &mut client,
+        target,
+        0,
+        Transition::Record {
+            monitor_previous: false,
+        },
+    );
+    let exported = client
+        .loop_at(
+            Frame(2),
+            LoopOperation::Export {
+                target,
+                selection: shoop_loop_engine::runtime::Selection::Recording,
+            },
+        )
+        .unwrap();
+    host.step(4, &[]).result.unwrap();
+    let export = drain(&mut client)
+        .into_iter()
+        .find_map(|execution| {
+            if execution.id != Some(exported.id()) {
+                return None;
+            }
+            let ExecutionStatus::Executed(raw) = execution.status else {
+                panic!("prefix");
+            };
+            let Some(LoopReply::Export { id, .. }) = raw.operation_result else {
+                panic!("prefix");
+            };
+            Some(id)
+        })
+        .unwrap();
+    let cursor = client
+        .loop_at(
+            Frame(4),
+            LoopOperation::Cursor {
+                export,
+                midi: false,
+            },
+        )
+        .unwrap();
+    let query = client
+        .loop_at(Frame(4), LoopOperation::State { target })
+        .unwrap();
+    host.step(1, &[]).result.unwrap();
+    let mut recording = false;
+    let mut read_cursor = None;
+    for execution in drain(&mut client) {
+        let ExecutionStatus::Executed(raw) = execution.status else {
+            panic!("state/cursor");
+        };
+        if execution.id == Some(query.id()) {
+            let Some(LoopReply::State(cut)) = raw.operation_result else {
+                panic!("state");
+            };
+            assert_eq!(cut.state.mode, Mode::Recording);
+            assert_eq!(cut.state.capture_frames, 4);
+            assert_eq!(cut.capture_failure, None);
+            recording = true;
+        } else if execution.id == Some(cursor.id()) {
+            let Some(LoopReply::Cursor(cursor)) = raw.operation_result else {
+                panic!("cursor");
+            };
+            read_cursor = Some(cursor);
+        }
+    }
+    assert!(recording);
+    drop((exported, cursor, query));
+    let mut pending = Vec::with_capacity(16);
+    for at in 1000..1008 {
+        pending.push(
+            client
+                .loop_at(Frame(at), LoopOperation::State { target })
+                .unwrap(),
+        );
+    }
+    for _ in 0..8 {
+        let bytes = vec![0; 256].into_boxed_slice();
+        pending.push(client.read(read_cursor.unwrap(), bytes).unwrap());
+    }
+    let preset = client.dsp().select(Frame(1000), id(1), 1).unwrap();
+    let out = host.step(1, &[]);
+    out.result.unwrap();
+    assert_eq!(out.left, [6.]);
+    assert_eq!(out.right, [60.]);
+    assert_eq!(client.outstanding(), 16);
+    // Full owning returns and active capture are left undrained at disconnect.
+    drop(client);
+    let out = host.step(1, &[]);
+    assert_eq!(out.result.unwrap().phase, Phase::Quiescent);
+    assert_eq!(out.left, [0.]);
+    assert_eq!(out.right, [0.]);
+    assert!(out.midi.is_empty());
+    assert_eq!(out.recovery, reset_packets());
+    let mut stopped = host.render.into_stopped();
+    stopped.cleanup().unwrap();
+    stopped.cleanup().unwrap();
+    let resources = stopped.resource_usage();
+    assert_eq!(
+        (
+            resources.free_pages,
+            resources.free_versions,
+            resources.free_snapshots
+        ),
+        (128, 32, 32)
+    );
+    assert_eq!(
+        (
+            resources.reserved_pages,
+            resources.retired_pages,
+            resources.retired_versions
+        ),
+        (0, 0, 0)
+    );
+    assert_eq!(stopped.midi_index_usage().free_versions, 8);
+    let media = stopped.media_usage();
+    assert_eq!(
+        (
+            media.free_media,
+            media.free_exports,
+            media.free_pins,
+            media.references
+        ),
+        (8, 4, 8, 0)
+    );
+    drop((pending, preset));
 }

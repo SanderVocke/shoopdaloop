@@ -173,12 +173,22 @@ RUSTFLAGS="-D warnings" cargo build --locked -p shoop_engine_service --target wa
 python3 scripts/run_wasm_tests.py --profile dev --runtime node --package shoop_engine_service
 ```
 
-Fifteen native guarded tests (fourteen portable/Node, one native-only current-engine
-reference) cover startup loading, the complete public scenario, the physical delay
-probe and exact full audio/MIDI partition oracles; coherent queries, typed
+Twenty native guarded tests (eighteen portable/Node, plus native current-engine
+and two-thread references) cover startup loading, the complete public scenario,
+the physical delay probe and exact full audio/MIDI partition oracles; coherent queries, typed
 preset application and route cuts; zero/end/late/cancelled/refused work; retained/
 foreign tickets; meter polling, stalled results/disconnect and faults before/after
 publication. The public scenario asserts all pages/versions/snapshots, MIDI-index
 rows and media/export/pin pools are free after idempotent stopped cleanup. Native,
 Wasm compilation and actual Node execution are distinct evidence; none is a new
 AudioWorklet, physical-device, latency-compensation or full-feature-parity result.
+
+Further cases fill all sixteen normal credits and both reliable streams, then
+check full wrap output and reserved stop/cancel execution. A one-export limit,
+invalid preset and stale route preserve capture through eight complete lifecycles.
+Disconnect with active recording, sixteen stalled owning returns and a future DSP
+request restores the checked media/resource pool credits; a fault during capture
+preserves prior real receipts without replay. The native two-thread case checks all 2,048 stereo frames and
+restoration packets while the controller polls results/meters. Only startup
+coordination and final joining may wait, outside callbacks. Comparable release
+measurements remain pending; these safety tests are not timing evidence.

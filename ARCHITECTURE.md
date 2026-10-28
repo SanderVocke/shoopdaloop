@@ -138,8 +138,9 @@ scenario checks raw streams, metadata and reclamation across callback partitions
 A D=3 dry/wet probe preserves raw capture and demonstrates missing history,
 postroll and independent logical playback windows; checked latency arithmetic is
 not their implementation. Current-engine channel references remain dev-only.
-Further lifecycle/measurement work and final integration remain pending. See the bounded
-[compatibility inventory](docs/integration/PARITY.md) and
+Full-credit recovery, active-capture teardown and a native two-thread host are
+verified; representative measurements and final integration remain pending. See the
+bounded [compatibility inventory](docs/integration/PARITY.md) and
 [integration contract/evidence](docs/integration/MILESTONE_1.md). Browser/IPC
 execution of this same service and general wire adapters belong to later work.
 
