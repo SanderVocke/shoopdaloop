@@ -25,8 +25,8 @@ Stage7 job passed and was collected at146/299; it cannot certify the five later
 cases. The one accumulated Stage8 selection is now running, as recorded below,
 with900s watchdog, complete workloads/guards/seeds and source isolation unchanged.
 No routine invocation was launched per helper. Stage7 stays7/8 and the separate
-Stage8 interpreter/remote-CI rows remain open; final-head CI/review and Stages9–10
-remain required.
+Stage8 interpreter/remote-CI rows remain open. Stage9 examples/implementation audit
+are now verified; final-head CI/review and Stage10 remain required.
 
 ### Consolidated Stage8 launch — not passing evidence
 
@@ -60,6 +60,25 @@ final examples and LL-A acceptance work while it runs. Do not mutate or duplicat
 the job. An eventual pass can serve final interpreter acceptance only after full
 terminal collection and exact relevant final-source/configuration/inventory
 comparison; it cannot certify final-head CI or review.
+
+### Stage10 native/Wasm checkpoint while this job runs
+
+Supported status at2026-10-28T20:31:19.715900Z still reports **running**, frozen
+`8633d0f0`, full151/304 selection; no completion count is inferred. Final native/
+complete19-package Wasm execution at `24b458ad` verifies all509 scoped code/test/
+dependency/configuration/runner inputs equal that frozen source before/after.
+See [native/Wasm evidence](evidence/final-native-wasm-stage10.md). This comparison
+supports possible reuse only after genuine complete terminal collection and exact
+final inventory/toolchain/flag/source checks. It is not interpreter acceptance.
+
+The final native preflight caught an older PATH mistake: the pinned nextest binary
+is directly under `$HOME/.cache/rt-runtime-nextest-0.9.116`, not its nonexistent
+`bin/`. Prior raw0.9.143 invocations remain0.9.143 despite erroneous historical
+metadata; the fresh complete workspace/discovery uses checksum/version-verified
+0.9.116. Cargo-test/Miri use separate tools; recorded nightly interpreter evidence
+is unchanged. Failed preflights are retained. No safety flag,900s watchdog,
+workload/guard/seed or interpreter job is changed for this evidence-only milestone.
+Stage9 is verified; current interpreter/remote acceptance and Stage10 remain open.
 
 ## Current Stage 7 verification debt
 

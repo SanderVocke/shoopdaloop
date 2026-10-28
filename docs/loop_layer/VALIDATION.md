@@ -42,6 +42,35 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
+## Stage 10 native and complete repository-Wasm checkpoint
+
+[Final native/Wasm evidence](evidence/final-native-wasm-stage10.md) verifies21 strict
+native/policy commands at `24b458ad`:816 library/loop-fixture passes across both
+profiles,2148 workspace passes/four explicit ignored failure controls and91 helper
+tests. The actual prescribed nextest0.9.116 binary/archive are verified. An earlier
+nonexistent cache `bin/` PATH selected0.9.143: historical metadata calling that
+invocation0.9.116 is corrected, not silently relabeled; raw results are unchanged.
+Fresh pinned discovery has exactly the same348 library identities. Generic-fixture
+Cargo tests discover zero cases and prove compilation only, not its native replay.
+
+Complete19-package Node1837/Chromium1838 pass, with exactly two named opt-in ignored
+support canaries/runtime, including189runtime/155loop in each. Full listed/executed/
+passed identity checks and unchanged600s/3600s budgets are retained. All509 scoped
+code/test/dependency/configuration/runner inputs match frozen `8633d0f0` before/
+after. The staged production-worklet asset retains its actual reused `dfd610d9`
+source/input/binary identity; package execution is not a fresh independent loop
+AudioWorklet or explicit application build/smoke. Failed one-off version/nullable-
+metadata preflights are preserved and corrected without changing tests or flags.
+
+The verified486851byte/149file archive retains complete native/Wasm logs, structured
+results/JUnit, tool/skip/source proofs and parent/debt checkpoints. ParentPR878 is
+still open at remote `cc6ccb4a`, not an assumed later local head. Supported Miri
+status at20:31:19Z is still **running** for151/304, not passing or collected. Actual
+hosts/failure controls, release campaigns, explicit application builds/packaged
+smokes, complete current interpreter, checked remote artifacts and PR/final-head
+CI/review remain open. Stage7 stays7/8, Stage8 stays6/8; Stage9 is verified and
+Stage10 remains open. This execution/evidence-only milestone launches no extra Miri.
+
 ## Stage 9 public execution and implementation acceptance audit
 
 All **23 public examples** discovered by Cargo (18 runtime, five loop) execute in
