@@ -89,6 +89,7 @@ def main():
         info.update(LSMinimumSystemVersion='10.15', CFBundlePackageType='APPL',
                     CFBundleShortVersionString=lock['version'], CFBundleVersion=lock['version'])
         plist.write_bytes(plistlib.dumps(info))
+        macho_paths = []
         for path in sorted(app.rglob('*')):
             if not path.is_file() or path.is_symlink():
                 continue
@@ -110,8 +111,11 @@ def main():
                         raise RuntimeError(f'Missing frozen Qt dependency {name}')
                     subprocess.run(['install_name_tool', '-change', dependency,
                                     '@executable_path/' + name, str(path)], check=True)
+            macho_paths.append(path)
+        executable = binary_dir / info['CFBundleExecutable']
+        for path in sorted(macho_paths, key=lambda path: path == executable):
             subprocess.run(['codesign', '--force', '--sign', '-', str(path)], check=True)
-        subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
+        subprocess.run(['codesign', '--force', '--deep', '--sign', '-', str(app)], check=True)
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
     native = apps[0] / 'Contents/MacOS/libcarla_native-plugin.dylib'
     runtime_native = args.normalized_runtime / 'lib/libcarla_native-plugin.dylib'

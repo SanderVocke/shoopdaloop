@@ -74,6 +74,7 @@ def main():
             host.set_custom_data(0, carla.CUSTOM_DATA_TYPE_STRING, 'file', str(tone))
             host.set_parameter_value(1, 0, 0.5)
             host.set_active(0, True); host.set_active(1, True); host.transport_play()
+            source = gain = 0.0
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
                 host.engine_idle()

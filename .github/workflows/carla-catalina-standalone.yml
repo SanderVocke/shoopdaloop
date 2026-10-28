@@ -46,8 +46,19 @@ jobs:
           PY
           mkdir .carla-source
           tar -xzf carla-source.tar.gz --strip-components=1 -C .carla-source
+      - uses: actions/cache/restore@v4
+        id: catalina-cache
+        with:
+          path: .catalina-deps
+          key: macos-15-intel-catalina-libs-v1-${{ hashFiles('scripts/build_macos_catalina_dependencies.sh', 'third_party/carla/runtime-lock.json') }}
       - name: Build the same Catalina dependencies as the bundled runtime
+        if: steps.catalina-cache.outputs.cache-hit != 'true'
         run: bash scripts/build_macos_catalina_dependencies.sh .catalina-deps
+      - uses: actions/cache/save@v4
+        if: steps.catalina-cache.outputs.cache-hit != 'true'
+        with:
+          path: .catalina-deps
+          key: ${{ steps.catalina-cache.outputs.cache-primary-key }}
       - name: Stage complete applications with matched runtime
         shell: bash
         run: |
