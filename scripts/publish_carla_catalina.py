@@ -54,8 +54,11 @@ def main():
                 raise RuntimeError(f'Packaged file checksum mismatch: {path}')
         for app in ['Carla.app', 'Carla-Control.app']:
             verify_payloads({path: data for path, data in payloads.items() if path.startswith(app + '/')}, 'x86_64', '10.15')
+    reference = api(args.repo, 'git/ref/tags/' + TAG)
+    if reference['object']['type'] != 'commit' or reference['object']['sha'] != info['build_commit']:
+        raise RuntimeError('Pre-created publication tag does not match the verified build')
     subprocess.run(['gh', 'release', 'create', TAG, *[str(args.output / name) for name in FILES],
-                    '--repo', args.repo, '--target', info['build_commit'], '--prerelease',
+                    '--repo', args.repo, '--prerelease',
                     '--title', 'Carla 2.5.10 — Catalina standalone A/B package',
                     '--notes-file', str(ROOT / 'docs/carla-catalina-ab.md')], check=True)
 
