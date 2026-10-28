@@ -42,6 +42,52 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
+## Stage 9 public execution and implementation acceptance audit
+
+All **23 public examples** discovered by Cargo (18 runtime, five loop) execute in
+both debug/release: **46 example invocations**, plus warning-denied rustdoc and
+doctest commands, **48 successful commands** in total. Source is
+`3151c2b50f6dcce365e7efc0514d378721b140f2`; all214 scoped execution inputs match
+frozen interpreter candidate `8633d0f0754a2f4445c3d0febb1f1ae2d7e9572e` before and
+after execution. Rust1.97.1/Cargo1.97.1 and both `RUSTFLAGS`/`RUSTDOCFLAGS=-D warnings`
+are recorded. Both doctest harnesses discover **zero tests**; the46 actual runnable
+examples, not nonexistent doctests, supply executable API checks.
+
+This includes `planned_pair`, `pending_operations`, `coordinated_loop`, all focused
+publication/capture/ownership examples and both benchmark binaries. The generic
+benchmark example runs its minimum1024 measured callbacks in each of seven cases;
+the loop example runs its documented eight-callback functionality smoke in all
+fourteen cases. All42 raw CSVs have exact row counts. These are not the final
+three-trial release campaigns or evidence of cold-cache/device/browser deadlines.
+Examples retain their actual scalar/content/outcome/owner assertions; the unguarded
+`coordinated_loop` is not misrepresented as a heap negative control.
+
+Post-acceptance changes already maintained their affected public usage with the
+implementation: sparse/bulk MIDI in runtime chapters8/12 and `midi_seeking`, new
+host/transport commands in the fixture README/WIRE and runtime host-boundary
+reference, and the loop benchmark's command/configuration/limits in its task guide.
+Only the obsolete “no independent host/benchmark” implementation-status sentence
+in `SEMANTICS.md` needed correction here. Accepted tutorials were not reopened,
+duplicated or subjected to a documentation baseline/reconciliation process.
+
+The [itemized acceptance audit](#acceptance-to-evidence-map) now identifies actual
+implementation,34 exact discovered/registered case identities, artifacts,
+intentional legacy differences, unsupported features and remaining evidence limits.
+Identity lookup is not a new execution of those34 cases: their passing native/Wasm
+results remain attributed to the model/host milestones. Stage9's three rows are
+verified; this does **not** make all LL-A criteria or final delivery accepted.
+Stage7 remains7/8, Stage8 remains6/8, and Stage10 remains open. The post-example
+supported status checkpoint still reports the frozen151/304 Stage8 job as running;
+no interpreter completion count, remote acceptance or review approval is inferred.
+
+[Execution archive](evidence/examples-stage9-logs.tar.gz): **95526bytes/99files**,
+SHA256 `62ff1a2be6fa7bae6e63b8b5b7295901b0e1350c40673032a3ef935834d0ba37`.
+Every archived member was byte-verified. It retains Cargo discovery, all48 command/
+exit/wall-time/log-hash records and raw logs,42 CSVs, toolchain/flags/source scope,
+implementation-case identity proof/native discovery, the actual execution command
+and the pending interpreter checkpoint. No new interpreter invocation is justified
+by these example/audit/prose-only checks.
+
 ## Stage 8 broader seeded models and collected Stage7 recovery
 
 [Broader model evidence](evidence/adversarial-models-stage8.md) verifies four new
@@ -1170,22 +1216,93 @@ The pre-existing edits to `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `P
 
 ## Acceptance-to-evidence map
 
-These are required test/evidence groups, not claims of implementation. Add concrete test names and artifacts as stages complete.
+### Audit scope and exact names
 
-| Criterion | Planned implementation/evidence | Status |
+This is the Stage9 **implementation acceptance audit**, not blanket acceptance or
+a retrospective documentation audit. Its code basis is `3151c2b5`, with214 scoped
+execution inputs unchanged from `8633d0f0`; no production/API/dependency change
+followed the bulk candidate `3d10c7a0`. The latest full library/fixture native and
+package-Wasm results are in [broader models](evidence/adversarial-models-stage8.md).
+Actual-host, guard, performance and interpreter evidence retains the separate
+source/platform/run identities given in each linked artifact.
+
+Below, `target::function` denotes an integration-test target plus its literal case
+name, not a guessed exact filter prefix. Run it as `cargo test --locked -p PACKAGE
+--test TARGET FUNCTION -- --exact`. Fixture names are literal unit-test paths for
+`--manifest-path tests/loop_engine_host/Cargo.toml --lib PATH -- --exact`.
+The example archive independently checks28 library and six fixture identities
+against native discovery/current fixture registration. This lookup does not replace
+their executed results or imply formal/exhaustive verification of arbitrary music.
+
+| Criterion | Concrete implementation/test basis | Executed evidence and acceptance boundary |
 | --- | --- | --- |
-| LL-A1 | Four-target dependency audits; both crate builds; native and Node/Chromium execution; host-only browser bindings | Compiler milestone: both boundary audits pass; new crate executes natively and in Node/Chromium. Full integration/CI pending |
-| LL-A2 | Generic synthetic planner dependency/view tests; resolver ownership tests; graph receiver validation | Resolver, generic planner lifecycle and coordinated primitive facade/role validation verified; live topology/program integration pending |
-| LL-A3 | Same-frame A → B → C and nested cascades; one-sample loops exceeding old subdivision allowances | Pure primitive/composite execution, actual facade 128 one-sample media boundaries and integrated A→B→C/delayed nested activation verified; broader lifecycle and independent hosts pending |
-| LL-A4 | Semantic progress proof; valid mutual sync; rejected instantaneous recursion; generated valid/invalid programs | Stage 2 compiler/resolver proof and tests pass; integrated audit pending |
-| LL-A5 | Independent reference journals/audio/MIDI across callback partitions and declaration orders; exact end-boundary cases | Pure semantic journals and coordinated primitive sample/packet/content/journal oracles match across partitions/orders; integrated composites and independent hosts pending |
-| LL-A6 | Debug/release/Wasm allocation/reallocation/deallocation canaries and guarded callback scopes; callback audit | Generic planner/resources and full primitive facade guarded in native debug/release/Wasm and selected Miri; later whole-layer audit and independent-host canaries pending |
-| LL-A7 | Owning return/cancellation/generation/saturation/disconnect/teardown models; selected Miri and concurrency tests | Generic ownership models plus integrated media pins/exports/cancellation/recovery/faulted teardown verified; live replacement and later stress remain pending |
-| LL-A8 | Stereo/MIDI record-to-play, seek/replacement/cleanup/export; FX capture graph; common-prefix exhaustion | Stage 5 complete: indexed audio/MIDI, exact record→play/seek/replacement/cleanup, coherent export, actual separate FX capture graph, common-prefix exhaustion and public lifecycle example |
-| LL-A9 | Integrated prepared composites, primitive/composite interactions, and rendering-observation boundary tests | Countdown, A→B→C, delayed regular/explicit nesting and exact capture outcomes verified; live replacement and broader lifecycle remain pending |
-| LL-A10 | Independent render/maintenance accounting, indexed access, capture reservations, counter/trace exhaustion, pool recovery | Required accounting/indexing/groups and coordinated preflight/settlement verified, including optional export Budget refusal without musical interruption; later mixed integration/audit pending |
-| LL-A11 | New independent native/worklet fixture journals, actual Web Audio output, fixed-memory and failure gates; raw release measurements | Pending new fixture |
-| LL-A12 | Updated runtime/loop guides and executable examples, acceptance audit, milestone commits, final-head CI and review record | Pending |
+| LL-A1 — boundaries | Both library `src/lib.rs` roots forbid unsafe production Rust. `check_rt_runtime_boundary.py` and `check_loop_engine_boundary.py` audit production/build closures for Linux/Windows/macOS/Wasm; browser/device/legacy integration remains fixture-only. | [Broader models](evidence/adversarial-models-stage8.md):193runtime/155loop/60fixture native tests/profile,189runtime+155loop per Node/Chromium, strict builds and dependency policies. [Callback audit](evidence/callback-audit-stage8.md) retains graph/source closure. Four-target dependency graphs are **not** remote OS builds; final remote matrix acceptance remains pending. |
+| LL-A2 — one authority | `resolver.rs` owns timing; generic planner/consumer bindings in runtime `graph.rs`/`executor.rs` are independent of signal routes. `planning_graph::explicit_bindings_are_separate_from_signal_edges_and_canonical`; `planner_execution::decisions_scheduled_actions_and_midi_ignore_host_cuts_and_declarations`; `runtime_topology::graph_and_stopped_topology_publish_together_with_independent_media_and_journals`. | [Stage6 readiness](STAGE6_READINESS.md), [callback audit](evidence/callback-audit-stage8.md) and [broader models](evidence/adversarial-models-stage8.md) cover coherence/epochs and owner publication. Renderers execute decisions; DSP cursors/input projection are not another musical authority. This is not production Session/backend migration. |
+| LL-A3 — every finite transition | `resolver::deep_cascade_executes_beyond_old_wave_limits_under_heap_guard`; `runtime::scenarios::dense_one_sample_media_keeps_all_128_boundaries_with_unread_external_results`; fixture `browser::native_dense::tests::dense_wire_and_capacity_one_actors_preserve_music_with_all_results_stalled`. | [Dense hosts](evidence/dense-host-stage7.md) and [transferred stalls](evidence/transfer-stalls-stage7.md) retain full sample/MIDI/semantic tables across direct/actors/bindings/actual contexts. There is no wave/subdivision/interaction-quantum cutoff. Expensive finite music may miss deadlines; admitted storage is finite. |
+| LL-A4 — structural termination | `compiler::mutual_sync_is_one_component_but_state_changing_feedback_is_invalid`; `compiler::recursive_composites_and_combined_sync_action_cycles_are_rejected`; `topology_staging::all_small_sync_action_graphs_match_independent_reachability_and_canonical_sccs`; `resolver::mutual_sync_needs_a_seed_and_delivers_each_clock_edge_once`. | [Semantics](SEMANTICS.md#boundary-algorithm-and-progress-argument) gives finite component/action/request progress and positive intervals; [broader models](evidence/adversarial-models-stage8.md) adds generated programs/sync rings and arithmetic refusals. Pure Sync SCCs are valid; action feedback/recursive containment is rejected even if a particular execution might terminate. This is a constrained language, not arbitrary callbacks plus a watchdog. |
+| LL-A5 — partition/order invariance | `planner_execution::callback_end_and_zero_length_do_not_settle_or_reexecute_boundaries`; `adversarial_timeline::seeded_programs_preserve_scalar_timing_through_full_receipts_journal_loss_and_rejected_owners`; `adversarial_timeline::seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals`. | [Broader models](evidence/adversarial-models-stage8.md):288 program and288 component runs across whole/single/irregular/zero cuts, declaration orders and journal capacities. [Callback/host evidence](evidence/callback-audit-stage8.md) checks full downstream/semantic/media results. Inputs must be admitted before deadlines; only explicitly nonmusical callback diagnostics/opaque instance identities normalize. Late arrival is not the same experiment. |
+| LL-A6 — callback safety | [Callback audit](evidence/callback-audit-stage8.md) classifies50 production modules, four private test modules and host roots by reachability/types/ownership. `compiler::heap_guards_are_live_in_optimized_and_wasm_tests`; fixture `planner_canary::tests::planner_errors_and_heap_faults_have_exact_lifecycle_origins_and_are_not_successful_cleanup`. | Both-profile native alloc/realloc/dealloc failures and six exact Rust-origin actual-worklet fault gates/profile retain counter/origin/phase/fixed-memory witnesses. Successful controls separately recover owners. `--verify-failures` rejects setup errors/nonzero exits without the exact witness. No safety exemption follows from tracing exclusion. Arbitrary downstream traits, JS/GC, OS/device scheduling and deadlines are outside this audit. |
+| LL-A7 — ownership and admission | `adversarial_delivery::seeded_typed_payloads_receipts_and_recycled_tokens_match_a_full_length_independent_model`; `capture_group_model::generated_capture_ownership_matches_independent_pool_and_content_model`; `capture_group_disconnect::disconnected_control_preserves_capture_owners_at_every_lifecycle_cut`; fixture `graph_transfer::model::seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after_every_action`. | [Broader models](evidence/adversarial-models-stage8.md), [descriptor model](evidence/descriptor-model-stage8.md) and [callback audit](evidence/callback-audit-stage8.md) cover exact rejected/retained owners, slot/generation/sequence exhaustion, cancellation, stalls, faults and cleanup. Copy IDs acquire no lease. Frozen Stage7 Miri299 passed; current304 including five later models remains pending. Disconnect/abandonment never fabricates successful receipts. |
+| LL-A8 — media/capture | `runtime::coordinated_stereo_midi_record_play_seek_export_and_repeated_capture_match_independent_oracles`; `runtime::scenarios::running_capture_exhaustion_preserves_independently_predicted_common_prefix_and_live_audio`; `midi_restore::cleanup_and_sostenuto_restore_match_an_independent_key_pedal_machine`; fixture `browser::native_media::tests::replacement_countdown_prefix_exports_and_bounded_actors_match_complete_oracles`. | [Exports](evidence/exports-stage7.md), [prepared media](evidence/media-host-stage7.md) and [callback/actual-host audit](evidence/callback-audit-stage8.md) verify exact record→play, seek/selection, cleanup/restoration, stereo FX capture, coherent immutable content/stamps/all16 MIDI initial channels and truthful incomplete prefixes. Finite output/index/page capacity remains required; projected MIDI is not full synthesizer history. |
+| LL-A9 — composites and boundary outcomes | `interloop::cascades_nested_clocked_program_and_capture_outcomes_match_independent_media_and_journals`; `runtime_topology::program_graph_scenarios::capture::paired_program_capture_preflight_publishes_both_or_neither_and_records_real_fx_media`; `program_changes::old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_apply_on_refusal`. | [Stage6 readiness](STAGE6_READINESS.md), [dense hosts](evidence/dense-host-stage7.md), [staging](evidence/staging-stage7.md) and [callback audit](evidence/callback-audit-stage8.md) cover regular/explicit nesting, real clocks, pending real-zero publication, family refusal and capture outcomes before affected samples. Nominal units are not a fallback clock; explicit one-pass completion need not stop an unrelated continuing child. |
+| LL-A10 — storage versus work | `planner_execution::required_render_access_and_diagnostics_share_one_callback_envelope`; `planner_execution::resource_allowances_are_not_replenished_by_planning_or_internal_intervals`; `resource_render::required_audio_access_exceeds_exhausted_background_allowance_without_refreshing_it`; `adversarial_capture::seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_exhausted_maintenance`. | [Broader models](evidence/adversarial-models-stage8.md):48 takes/1536 stereo frames, exhausted maintenance bytes, immutable prefixes/all seeks/replay<4 and full pool recovery. [Callback audit](evidence/callback-audit-stage8.md) covers indexes, reservation/publication and deferred reclamation. Required work ignores discretionary quotas, not physical storage/shape/frame/lease validation. Optional unaligned snapshot tails may refuse Budget atomically; raw unindexed MIDI is not playable. |
+| LL-A11 — independent evidence | Fixture `native::tests::bounded_two_thread_and_wire_drivers_match_the_independent_native_oracle` and `browser::native_dense::tests::acknowledged_restart_keeps_media_and_owning_results_while_transport_is_unpolled`; native/public-Wasm/actual offline-live hosts and independent scalar/reference models. | [Callback audit](evidence/callback-audit-stage8.md):17 native commands/profile,20 binding groups/runtime/profile,16 actual successes and six precise failures/profile, complete results/content/ownership and fixed ordinary memory. [Bulk measurements](evidence/bulk-midi-stage8.md) retain43008 measured callbacks,12288 repeated starts and all43 misses. [Frozen Stage7 Miri](evidence/miri-consolidated-stage7.md) proves146commands/299executions only; current151/304, final fresh gates and checked remote artifacts remain pending. No paired speedup, cold-cache margin or browser deadline claim. |
+| LL-A12 — docs and delivery | The authoritative runtime book and loop task guides were maintained with implementation. The [Stage9 execution archive](evidence/examples-stage9-logs.tar.gz) proves46 public example runs plus strict API documentation commands; zero doctests are explicitly reported. This itemized audit records concrete names/artifacts and limitations rather than reopening accepted tutorials. | Stage9 is verified, but final application/generic/loop gates, complete applicable interpreter collection, source-matched remote artifacts, pushed unmerged PR, **final-head** required green CI and checked review status remain mandatory. Milestone commits/local green checks are not delivery or reviewer approval. No completion/merge claim is made. |
+
+### Intentional legacy differences and unsupported features
+
+- Half-open intervals settle callback-end events at the next nonempty call; zero
+  calls are inert. Every admitted finite cascade/wrap executes, instead of legacy
+  event-wave/sub-block limits. Pure sync cycles terminate by seeded occurrence
+  delivery; instantaneous action feedback and recursive containment are unsupported.
+- Arbitration chooses complete desired-state intents, not intermediate audible
+  zero-duration modes. `resolver::pre_clock_stop_suppresses_wrap_and_losing_request_has_terminal_outcome`
+  and `resolver::reactive_stop_does_not_retract_a_clock_that_activated_it` distinguish
+  a pre-clock Stop from a Stop made eligible by an already delivered pulse.
+- A declared idle clock leaves countdowns/composites pending; missing/stale clocks
+  fail, with no nominal-unit fallback. Empty primitive Play fails `EmptyContent`;
+  an empty finish-to-play leaves recording intact, while explicit Stop may freeze
+  an empty take. Imported channels require one explicitly prepared common duration.
+- Record/monitor-previous uses a distinct new take and retained old playback, not
+  in-place overdub/replacing-record. MIDI seek restores strict-pretarget projected
+  state, then equal-frame original packets; it cannot recreate synthesizer voices,
+  vendor SysEx/parameter histories or distinguish two owners of the same physical
+  key/channel. Hosts must route/channelize independently controlled parts.
+- Stop silences audio at its exact sample, without an implicit release tail.
+  `LinearRestart` is explicit and partition invariant; no gain change silently
+  introduces a smoothing restart or block delay.
+- Ready metadata is not active timing/media/routes. Configuration edits require
+  already-stopped owners; one running-program replacement waits for its real
+  zero/stopped cut. All supported publication uses prepared shapes and preflight,
+  not generic callback construction or rollback. Post-publication faults preserve
+  actual epochs/time/media; permanent quiescence recovers owners without replay.
+
+Production Session/backend/worklet migration and complete legacy compatibility,
+prerecord/preplay/latency compensation, full dry/wet application policy, UI/tracks/
+persistence/undo/scripting, devices/plugins, feedback/parallel DSP, resampling,
+MIDI2, unlimited recording/output, shared-memory acceleration and hard deadlines
+remain outside scope. The ordinary FX node proves routing, not plugin hosting.
+
+### Remaining acceptance and evidence limits
+
+Stage9's audit is complete with explicit open obligations, not proof that every
+criterion is finally accepted. Stage7's source-matched remote row, Stage8's current
+interpreter/remote-CI rows, and all final Stage10 delivery gates remain open.
+The active job `20261028T190146-abeee2e59e` is frozen at `8633d0f0`; a running
+checkpoint, native exact dispatch or old299 pass cannot certify its304 executions.
+Earlier timed-out/interrupted diagnostics remain failed. Do not duplicate the
+active job or change900s workloads/guards/seeds/safety flags to obtain green.
+
+Source-scoped actual hosts use separate ordinary non-isolated memories and full
+downstream output, not merely binding returns. Their deliberate acknowledged
+engine pauses are instrumentation, not continuous wall-clock live editing.
+Transfer-buffer credits do not bound hostile MessagePort traffic. Rust guards do
+not measure JS GC, total RSS, devices or scheduler latency. Historical reused Wasm
+assets remain labeled reused; final actual/package/application gates must record
+their own source/binary/run identities. Warm uncontrolled measurements, retained
+misses and censored diagnostics establish neither paired speedup nor cold-cache/
+CI/deadline margin. Final-head CI and review, including an explicit unavailability
+record if no automated reviewer exists, cannot be replaced by this local audit.
 
 ## Stage 0 — Verified pre-implementation baseline
 
