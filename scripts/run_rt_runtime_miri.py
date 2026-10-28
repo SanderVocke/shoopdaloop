@@ -110,6 +110,7 @@ HOST_CASES = (
     "staging_wire::tests::canonical_staging_records_preserve_full_width_and_reject_all_truncations_and_padding",
     "staging_wire::tests::countdown_results_keep_delivery_distinct_from_terminal_frame_and_preserve_credit_on_corruption",
     "staging_wire::tests::staging_client_rejections_preserve_credit_and_nonwrapping_identity_watermarks",
+    "graph_transfer::model::seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after_every_action",
 )
 HOST_CONCURRENCY = (
     "native::tests::bounded_two_thread_and_wire_drivers_match_the_independent_native_oracle",

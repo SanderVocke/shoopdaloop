@@ -17,7 +17,7 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 299)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 300)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 136)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 100)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
@@ -32,10 +32,13 @@ class MiriRunnerTests(unittest.TestCase):
 
     def test_standalone_inventory_keeps_all_cases_and_concurrency_seeds(self):
         cases = runner.selected_cases(runner.HOST_PACKAGE)
-        self.assertEqual(len(cases), 63)
+        self.assertEqual(len(cases), 64)
         initial = [case for case in cases if case[4] == 0]
-        self.assertEqual(len(initial), 59)
-        self.assertEqual(len({case[2][0] for case in initial}), 59)
+        self.assertEqual(len(initial), 60)
+        self.assertEqual(len({case[2][0] for case in initial}), 60)
+        self.assertEqual(initial[-1], (runner.HOST_PACKAGE, "lib", [
+            "graph_transfer::model::seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after_every_action",
+            "--", "--exact"], 1, 0))
         self.assertTrue(all(case[1] == "lib" and case[2][1:] == ["--", "--exact"]
                             and case[3] == 1 for case in cases))
         self.assertEqual([(case[2][0], case[4]) for case in cases if case[4]],
@@ -77,9 +80,9 @@ class MiriRunnerTests(unittest.TestCase):
     def test_measureme_is_one_declared_command_not_a_workload_or_flag_override(self):
         with self.assertRaisesRegex(ValueError, "exactly one selected command"):
             runner.inventory(measureme=True)
-        selected = runner.inventory(runner.HOST_PACKAGE, (10, 63), True)
+        selected = runner.inventory(runner.HOST_PACKAGE, (10, 64), True)
         self.assertTrue(selected["measureme"])
-        self.assertEqual(selected["cases"], runner.inventory(runner.HOST_PACKAGE, (10, 63))["cases"])
+        self.assertEqual(selected["cases"], runner.inventory(runner.HOST_PACKAGE, (10, 64))["cases"])
         self.assertEqual(runner.case_flags(2, Path("reports")), "-Zmiri-seed=2")
         with self.assertRaisesRegex(ValueError, "whitespace"):
             runner.case_flags(0, Path("reports with spaces"), True)

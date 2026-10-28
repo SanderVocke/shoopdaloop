@@ -45,6 +45,21 @@ channels between distinct control/render threads; blocking channel operations an
 join occur outside guarded callbacks. This is offline replay, not live scheduling
 or deadline evidence.
 
+The native test suite also includes an independent descriptor-bank state model:
+
+```sh
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml --lib \
+  graph_transfer::model::seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after_every_action -- --exact
+```
+
+Four seeds run512 mixed actions each, comparing every descriptor/planning table,
+sequence/epoch/generation and retained owner's storage after each action. Interleaved
+banks, partial/aborted payloads, stale/foreign/malformed/replayed records, capacity
+refusal, wrong owning returns and generation/sequence exhaustion preserve prior
+state. Mutating receiver calls are heap-guarded; the allocating reference stays
+outside callbacks. This is payload/ownership validation, not proof that Seal admits
+a semantically valid runtime graph or a fresh browser/Miri execution.
+
 ### 1. Prepare separate playback, FX and capture roles
 
 Preparation creates one primitive loop and a graph that routes live stereo/MIDI

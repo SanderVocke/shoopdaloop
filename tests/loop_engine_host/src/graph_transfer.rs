@@ -472,4 +472,6 @@ impl Receiver {
 }
 
 #[cfg(test)]
+mod model;
+#[cfg(test)]
 pub(crate) mod tests;

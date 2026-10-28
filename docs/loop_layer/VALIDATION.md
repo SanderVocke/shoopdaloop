@@ -41,6 +41,23 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
+## Stage 8 seeded descriptor-bank ownership model
+
+[Descriptor model](evidence/descriptor-model-stage8.md) adds four seeds×512 mixed
+actions with an independent off-render script/state oracle. Complete tables and
+identity/phase/epoch/sequence/owner-storage checks cover both interleaved banks,
+rejection, partial/aborted payloads, wrong owning returns, reuse and nonwrapping
+generation/sequence exhaustion. Mutation remains heap-guarded with real positive
+controls; payload Seal is not semantic runtime graph admission.
+
+Native60fixture tests/profile,72 helpers,2144 workspace passes/four existing skips,
+strict builds/format and policies pass. Registration is now147commands/300executions
+(136runtime+100loop+64host), adding only the new exact seed0 case while retaining
+every old case/count/seed/order. This is not new interpreter or browser evidence.
+Frozen Stage7 recovery retains146/299 and was running at2026-10-28T17:05:49Z.
+Broader models and applicable current/final Miri/remote acceptance remain open;
+Stage8 stays5/8 and Stage7 stays7/8.
+
 ## Callback reachability audit and fresh guard verification
 
 [Callback audit](evidence/callback-audit-stage8.md) completes the previously partial

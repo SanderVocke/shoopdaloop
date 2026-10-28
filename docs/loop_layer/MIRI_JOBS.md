@@ -8,9 +8,27 @@ campaign; [current public guides](../../src/rust/shoop_loop_engine/README.md)
 distinguish examples from this historical gate. Later implementation acceptance
 obligations remain unchanged.
 
+## Current Stage 8 model registration and verification debt
+
+The [descriptor-bank model](evidence/descriptor-model-stage8.md) adds one exact
+seed0 host case: **147 commands/300 executions =136runtime+100loop+64host**.
+Removing only that case reproduces the prior146/299 selection, with every old
+filter/count/seed and relative order retained. Native60fixture tests/profile,
+72 helpers and2144 workspace passes/four existing skips pass; the new case has
+**not run under Miri**. Further program/occurrence, typed-operation, resource/capture
+and partition/stress model coverage still belongs to Stage8. Accumulate those
+changes for the applicable consolidated stage/final selection rather than launching
+a routine run per model helper.
+
+Active Stage7 job `20261028T153110-784d2380c0` keeps frozen `3bf1dbca` and146/299;
+the supported checkpoint at2026-10-28T17:05:49Z was **running**, not a pass. It is
+unchanged and cannot certify this later case. Do not mutate it or launch a duplicate.
+The callback audit is complete; Stage8 is5/8 and Stage7 remains7/8, with complete
+applicable interpreter and source-matched remote artifacts still required.
+
 ## Current Stage 7 verification debt
 
-### Exact bulk recovery collected; complete current selection still pending
+### Exact bulk recovery collected; frozen Stage7 selection still pending
 
 Job **`20261028T145739-89dfd53bdb`**, frozen
 **`3d10c7a06f1e4ad01185d047e4a1c44abf525629`**, ended **passed/exit0** at
@@ -29,11 +47,12 @@ raw log SHA256: `49fe557d99a10d0ef95536ac1dfac2443534ba7186cd541b77faa0c8af2e550
 collected SHA256: `8fe42d40d987d3209074a74554bc81d7fa404ade6fa63006b47604e91e44200b`.
 
 This resolves the exact failure only. Earlier failed/interrupted jobs remain failed;
-there is no paired speedup or CI-margin claim. **Complete current146-command/
-299-execution coverage (136runtime+100loop+63host) remains required**, including
+there is no paired speedup or CI-margin claim. **Complete frozen Stage7 coverage,
+146commands/299executions (136runtime+100loop+63host), remains required**, including
 the bulk-buffer model, plus remote source-matched artifacts. Stage7 stays7/8.
-Stage8 is now4/8 solely because fresh tracing/boundary/test-policy verification
-closes its existing inventory row; callback audit and broader models remain open.
+At that collected-recovery checkpoint Stage8 was4/8 because fresh tracing/boundary/
+test-policy verification closed its inventory row; callback audit and broader
+models were then open. Later audit/model status is recorded above.
 
 The original consolidated failure and subsequent relevant runtime dependency
 changes require complete Stage7 regression coverage, not another routine exact
