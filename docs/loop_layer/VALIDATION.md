@@ -27,7 +27,10 @@ clocked composites and unread-result recovery now also pass all hosts. Prepared
 indexed replacement, tick-delayed recording and coherent capture exhaustion/export
 now also pass all hosts. Actual held-response-buffer
 exhaustion now also passes with newly acknowledged playback and complete recovery.
-No loop benchmark or newer performance/deadline campaign is supplied.
+The native loop benchmark now supplies fourteen guarded real workloads with
+raw release timing/work/storage/credit data and explicit dense deadline misses.
+It is not a browser/device deadline guarantee; see the current benchmark section
+below. Stage8 is3/8, with broader models, callback audit, Miri and CI work open.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -36,6 +39,38 @@ checkout or to documentation authoring. Former docs-changes-loop-layer reference
 now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Stage 8 native benchmark and failed measured-cost interpreter recovery
+
+[Benchmark evidence](evidence/benchmark-stage8.md) records the public driver,
+guarded real-engine example and new performance guide. Fourteen workloads cover
+separate NoPlanner/loop idle, audio1/4/16 loops, short audio/MIDI, continuous
+one-frame clocks, repeated same-frame cascades, nested regular composites, indexed
+seek/selection, FX capture and simultaneous uploads/immutable export reads.
+Three release trials of1024 callbacks/case preserve43,008 raw timing records,
+12,288 verified same-frame cascade starts and all6144 dense/burst deadline misses.
+Every sample/packet/read and exact seek/media state cut is checked outside timing;
+all requests and page/version/snapshot/owning-buffer credits recover completely.
+Preallocated records expose intervals/semantic events/graph visits, required versus
+maintenance work, observed pool high-water samples, submitted/returned request
+credits, actual prepared limits and source/binary/toolchain/hardware identity.
+OS-reported lifetime RSS and sampled pool maxima are explicitly not isolated
+callback peaks. Both profiles' six specific heap canaries,71 helper tests,
+2143 workspace passes/four existing skips, warning-denied build/docs/policies and
+the full14-case debug smoke pass. The guide documents fresh report directories,
+partial-timeout preservation and interpretation. This verifies the two benchmark
+rows, not Stage8 completion or remote CI acceptance.
+
+At the natural benchmark checkpoint, focused job `20261028T113106-86abdbc4e8`
+was terminal **failed/exit1** at2026-10-28T11:46:09.194427Z after902.0025350259966s.
+The same complete exact dense restart/stall command again hit the unchanged900s
+watchdog with zero completed executions. All866 frozen source entries/copied
+supervisor/job hash still match; recorded process identities are dead and passing
+collection refuses it. The candidate has not resolved the timeout; neither these
+censored interpreter times nor the new native campaign prove a speedup. No new
+routine Miri invocation accompanies this native-only feature. Complete145-command/
+298-execution current/final coverage, residual-cost investigation, remote native/
+worklet/Miri artifacts and final delivery remain due. Stage7 stays7/8.
 
 ## Stage 8 measured-cost candidate; Stage7 recovery still pending
 
@@ -61,12 +96,13 @@ The current selection is145 commands/298 executions (135runtime+100loop+63host):
 `midi_state` grows6→7 and the full runtime `midi` target adds six executions. Prior
 filters/seeds/order remain; host batch10/63 is unchanged. Native/Wasm correctness
 is not measured interpreter speedup or timeout recovery. A justified unprofiled
-retry now runs as `20261028T113106-86abdbc4e8` from committed `802833f4`:
-866 frozen entries/strict flags and the sole seed0 flag are verified; the launch
-checkpoint is running, not passing. It targets only that same full exact test;
-complete current/final Miri,
-remote CI artifacts, broader Stage8 audit/models/benchmark and delivery remain
-open. Stage7 is still7/8; no additional Stage8 row is checked.
+retry launched as `20261028T113106-86abdbc4e8` from committed `802833f4`:
+866 frozen entries/strict flags and the sole seed0 flag were verified. Its launch
+checkpoint was running; it subsequently timed out as recorded above, with zero
+completed executions. The selection targets only that same full exact test;
+complete current/final Miri, remote CI artifacts, broader Stage8 audit/models and
+delivery remain open. Stage7 is still7/8; the separate native benchmark evidence
+above closes only its two Stage8 rows.
 
 ## Stage 7 dense timeout recovery candidate
 

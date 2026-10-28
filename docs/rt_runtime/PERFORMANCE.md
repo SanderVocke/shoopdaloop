@@ -2,6 +2,11 @@
 
 These are historical initial-runtime measurements, not a new planner/group/loop campaign or final-head performance certification. `bounded_runtime` uses legacy quota-based capture/resource access; its counters/timings are not required-RenderIo or coordinated-group throughput. Later 1,024-callback documentation smokes are correctness executions, not replacements for the recorded full campaign. No loop benchmark or independent loop-host/newer deadline evidence is supplied in this snapshot. See the [capacity/work reference](../../src/rust/rt_runtime/docs/reference/configuration-and-errors.md) for current accounting.
 
+For the subsequent native loop campaign, use the separate
+[loop measurement guide](../../src/rust/shoop_loop_engine/docs/performance.md)
+and [source-scoped results](../loop_layer/evidence/benchmark-stage8.md). It does
+not replace or relabel the historical runtime measurements below.
+
 Run from the workspace root:
 
 ```sh

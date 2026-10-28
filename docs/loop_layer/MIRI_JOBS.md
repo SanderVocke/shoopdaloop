@@ -217,6 +217,22 @@ and require terminal collection before any passing claim.
   checks; the corrected report records the actual key. No passing result was written.
   The preceding candidate archive predates launch and is not interpreter evidence.
 
+The unprofiled measured-cost recovery subsequently **failed** at
+2026-10-28T11:46:09.194427Z after902.0025350259966s. The same complete exact seed0
+command exceeded the unchanged900s watchdog, with **zero completed executions**
+and no passing raw summary. Terminal verification matched all866 source entries,
+the copied supervisor and original job hash; both recorded supervisor/runner
+start-tick identities are dead. Collection refuses
+`Cannot collect passing evidence: failed`. This candidate did not resolve the
+watchdog failure; censored timeouts establish neither speedup nor slowdown.
+There is no active job from this attempt. No routine duplicate campaign is
+launched for the native-only benchmark addition below. Further recovery needs a
+concrete residual-cost diagnosis or relevant change and the smallest adequate
+selection; complete145-command/298-execution coverage and final-head CI remain
+mandatory. The failure proof/raw logs accompany
+[benchmark-stage8 evidence](evidence/benchmark-stage8.md); benchmark success is
+not interpreter recovery. Stage7 remains7/8.
+
 ### Historical Stage7 registered selection
 
 Stage7 host implementation is ready for its consolidated interpreter gate; no

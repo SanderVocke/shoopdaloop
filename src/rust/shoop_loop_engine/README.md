@@ -62,8 +62,10 @@ stage/activate/release and recycle owners through bounded results. Actual offlin
 graph worklets now transfer descriptors/commands/returns and check downstream output
 against native replay using an explicit audible Ready checkpoint. That test-driver
 pause is not continuous wall-clock live-edit/deadline evidence.
-Program/resource payloads, exports and broader host scenarios remain pending;
-no loop benchmark or production browser adapter is supplied.
+The separate [native benchmark](docs/performance.md) now measures fourteen guarded
+loop workloads with full correctness checks and raw timing/work/credit data;
+it does not measure browser/device deadlines. A production browser adapter is
+still outside this milestone.
 
 ## Timing and ownership contracts
 
@@ -135,6 +137,13 @@ Do not mix standalone resolver mutation with a running facade.
 The resolver owns authoritative timing; separate render operations execute
 supplied interval decisions without their own playback clock. Native and browser hosts use the same semantics;
 transport, devices, UI, and AudioWorklet bindings stay outside this crate.
+
+Native callback measurements are available through
+[`scripts/benchmark_loop_engine.py`](../../../scripts/benchmark_loop_engine.py)
+and the guarded `benchmark_loop` example. [Measuring native callbacks](docs/performance.md)
+explains the fourteen workloads, full scalar/packet checks, raw distributions,
+resource samples, deliberate heap failures and limits. Dense deadline misses are
+reported, never hidden or used as a brittle success threshold.
 
 The implementation contract and progress are tracked in the repository's
 `PLAN_LOOP_LAYER.md` and `docs/loop_layer/`. No full legacy backend compatibility,
