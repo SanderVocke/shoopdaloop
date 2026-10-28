@@ -8,5 +8,9 @@
   "denormal_workload.so": "41d4e1b39bf68969dae414554ed2a1454dbf927b3229cb615069b6f474baa04a",
   "denormal_probe": "eb886b65949a84f655c4445f7038ab195fbb8121cd04dc216a4b73d4f4a4685d",
   "fp_loader_probe": "c0d4aceb3dba5d4a2a8c3a6bf9b06252d805109776cf752191e5d75fd967938c",
-  "optional_vst3_probe": "d6b4881a658014a9373992a077ab8154556adf5cb76561b5c74a12a6464d25fd"
+  "optional_vst3_probe": "d6b4881a658014a9373992a077ab8154556adf5cb76561b5c74a12a6464d25fd",
+  "carla-2.5.9.tar.gz": "226fb5d646b7541b82035080190e7440df1f92372fb798b4ad49289570e5ad81",
+  "version-benchmark": "2e766ff83a6ae4a1564b9d2c182b498e11ae1aa8dc301155e24c702667658158",
+  "Carla-version-2.5.9/bin/libcarla_native-plugin.so": "4e97300f7e08a5e73037d3f581df6b90de3ff570c39a699cae93232682ec26d9",
+  "Carla-version-2.5.9/bin/carla.lv2/carla.so": "f51ca6b68b50a5fb5f5f3e81bd36581980af1e9e8dc9b3c7408440656da320a3"
 }

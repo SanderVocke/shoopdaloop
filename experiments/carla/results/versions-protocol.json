@@ -1,0 +1,31 @@
+{
+  "purpose": "Previous stable version sensitivity; not a recovered user installation or macOS measurement",
+  "shoop_020_published": "2025-11-09T13:26:33Z",
+  "carla_2510_published": "2025-07-31T18:05:01Z",
+  "carla_259_published": "2024-09-22T09:15:44Z",
+  "old_archive_sha256": "226fb5d646b7541b82035080190e7440df1f92372fb798b4ad49289570e5ad81",
+  "current_archive_sha256": "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661",
+  "actual_dated_proxy": "2.5.10 (official release and historical Homebrew formula)",
+  "prior_stable_proxy": "2.5.9",
+  "features": "same local full SDK/compiler, Release plugin target, JUCE VST3, no source patches",
+  "sample_rate": 48000,
+  "frames": 1024,
+  "warmup_blocks": 200,
+  "measured_blocks": 2000,
+  "repeats": 10,
+  "cadence": "continuous throughput",
+  "fp_policy": "Explicit off/on on processing thread before each call, outside timed interval; before/after captured",
+  "artifacts": {
+    "/workspace/work/carla-investigation/Carla-version-2.5.9/bin/libcarla_native-plugin.so": "4e97300f7e08a5e73037d3f581df6b90de3ff570c39a699cae93232682ec26d9",
+    "/workspace/work/carla-investigation/Carla-version-2.5.9/bin/carla.lv2/carla.so": "f51ca6b68b50a5fb5f5f3e81bd36581980af1e9e8dc9b3c7408440656da320a3",
+    "/workspace/work/carla-investigation/Carla-full-reference/bin/libcarla_native-plugin.so": "483ab83c7d78ae54f5089b6addfce86c8c389b548d6bc56cd339bebc671c881a",
+    "/workspace/work/carla-investigation/Carla-full-reference/bin/carla.lv2/carla.so": "754f41dc397fe79b81683b8bd49dce05179d3d629afb47677a40a3a1a13c5975",
+    "/workspace/work/carla-investigation/version-benchmark": "2e766ff83a6ae4a1564b9d2c182b498e11ae1aa8dc301155e24c702667658158",
+    "/workspace/work/carla-investigation/voyage-input.bin": "8eac35e676e81b1d19933f802f957ab6e2468ecb521c6567940b328f62a72c60",
+    "/workspace/work/carla-investigation/voyage/Voyage Voyage.vst3/Contents/x86_64-linux/Voyage Voyage.so": "6f95c452b38ca9a926b26259751b3fe77b4e7d1fced4a4882820be0ad4527c36",
+    "/workspace/work/carla-investigation/states/voyage.xml": "9d709b498420eefb015008beaa362933e3edd25a2002c323b63cc22a4da2290d",
+    "/workspace/work/carla-investigation/repo/experiments/carla/abi_benchmark.cpp": "6fc457fab893ff056ed51d44af946c033393f81a800c735a1b7870df001f5771"
+  },
+  "gcc": "gcc (Debian 14.2.0-19) 14.2.0",
+  "g++": "g++ (Debian 14.2.0-19) 14.2.0"
+}

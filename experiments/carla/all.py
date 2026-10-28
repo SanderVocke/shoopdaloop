@@ -17,12 +17,15 @@ def main():
     parser.add_argument('--skip-prepare',action='store_true')
     parser.add_argument('--reuse-runtimes',action='store_true')
     parser.add_argument('--full-vst3',action='store_true')
+    parser.add_argument('--previous-carla',action='store_true')
     parser.add_argument('--smoke',action='store_true')
     parser.add_argument('--apt-config',type=Path)
     parser.add_argument('--native-sysroot',type=Path)
     parser.add_argument('--current-target',type=Path)
     parser.add_argument('--pin-cpu',type=int,default=min(os.sched_getaffinity(0)))
-    args=parser.parse_args();work=args.work.resolve();results=(args.results_root or work).resolve()
+    args=parser.parse_args()
+    if args.previous_carla and not args.full_vst3:parser.error('--previous-carla requires --full-vst3')
+    work=args.work.resolve();results=(args.results_root or work).resolve()
     work.mkdir(parents=True,exist_ok=True);results.mkdir(parents=True,exist_ok=True)
     def call(command,log,env=None):
         print('Running',log,flush=True)
@@ -35,7 +38,10 @@ def main():
         for flag in ['apt_config','native_sysroot','current_target']:
             if getattr(args,flag): command+=['--'+flag.replace('_','-'),getattr(args,flag)]
         call(command,'bootstrap.log')
+    if args.previous_carla and not args.skip_prepare:
+        call([sys.executable,SCRIPTS/'versions.py','prepare','--work',work],'version-prepare.log')
     call([sys.executable,SCRIPTS/'verify.py',work],'verification.log')
+    if args.previous_carla:call([sys.executable,SCRIPTS/'versions.py','verify','--work',work],'version-verify.log')
     for suite,directory,extra in [('all','results',[]),('controls','controls',[]),('history','history',[]),
                                   ('confirm','confirm',[]),('fp-context','fp-context',['--repeats',1,'--blocks',10,'--paced-blocks',10])]:
         command=[sys.executable,SCRIPTS/'run.py','run','--work',work,'--output',results/directory,'--suite',suite]+extra
@@ -61,6 +67,11 @@ def main():
         supplementary=[sys.executable,SCRIPTS/'supplementary.py','--work',work,'--output',results/'output']
         if args.smoke:supplementary+=['--smoke']
         call(supplementary,'supplementary.log')
+    if args.previous_carla:
+        version_run=[sys.executable,SCRIPTS/'versions.py','run','--work',work,'--output',results/'versions']
+        if args.smoke:version_run+=['--repeats',1,'--blocks',10]
+        call(version_run,'version-progress.log')
+        call([sys.executable,SCRIPTS/'versions.py','analyze','--work',work,'--output',results/'versions'],'version-analysis.log')
     call([sys.executable,SCRIPTS/'analyze.py','--work',work,'--data-root',results,'--output',results/'output'],'analysis.log')
     print('Finished; measurement failures remain explicit in summaries.',flush=True)
 

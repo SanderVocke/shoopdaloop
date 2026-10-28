@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--output',type=Path,required=True);parser.add_argument('--data-root',type=Path);args=parser.parse_args()
     work=args.work;data=args.data_root or work;output=args.output;output.mkdir(parents=True,exist_ok=True)
     groups={};all_rows=[]
-    for directory in ['results','controls','history','pin-control','contention','confirm','fp-context','voyage','voyage-paced']:
+    for directory in ['results','controls','history','pin-control','contention','confirm','fp-context','voyage','voyage-paced','versions']:
         source=data/directory
         if not source.exists(): continue
         rows=runner.summarize(source);all_rows.extend(dict(v,dataset=directory) for v in rows)

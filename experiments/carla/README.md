@@ -212,3 +212,42 @@ python3 experiments/carla/export.py --work "$CARLA_WORK" \
 
 The raw archive stays under `$CARLA_WORK/output`; its checksum/location is recorded
 in `results/raw-archive.json`. Do not commit downloaded binaries or the large archive.
+
+
+## Previous stable Carla and explicit thread FP controls
+
+The release date does not establish an older Carla: ShoopDaLoop 0.2.0 was published
+on 9 November 2025, while Carla 2.5.10 was released on 31 July 2025 and was already
+in Homebrew. Its official universal macOS build advertises 10.12+, but actual payload audits find dependencies requiring macOS 12 (2.5.9) or 13 (2.5.10); the advertised minimum does not prove complete-package Catalina compatibility.
+[Selection evidence](results/versions-selection.json) records the primary sources.
+2.5.9 is tested as the preceding stable release, a plausible older installation,
+without claiming it was the reporter's version or the most common Catalina install.
+The original performance figures describe an i7 Linux laptop, separately from the
+Mac compatibility discussion.
+
+After full VST3 preparation, run the complete additional comparison with:
+
+```sh
+python3 experiments/carla/versions.py all --work "$CARLA_WORK"
+```
+
+Or add `--previous-carla` to the full `all.py --full-vst3` command. This prepares the
+old source before timing, verifies both versions, runs the version matrix and
+includes it in the combined export. A fresh complete smoke replay can use
+`--previous-carla --skip-prepare --full-vst3 --smoke --results-root PATH`.
+
+The version matrix fixes Voyage VST3 1.0.2, factory state/input, 48 kHz/1024 frames,
+full JUCE build features, compiler/dependencies and host. Native/LV2 interfaces and
+explicit FTZ/DAZ off/on form eight cells; each has ten alternating-order repetitions,
+200 warm-up blocks and 2,000 measured continuous blocks. FP register operations
+occur outside the timed interval, and every block records/validates actual before/
+after MXCSR masks plus rate/frames. This is a Linux source-version sensitivity
+comparison, not a macOS binary or physical-device measurement.
+
+Results are in `results/VERSIONS.md`, `versions-comparisons.json`, `versions-runs.csv`
+and `versions-protocol.json`. Full per-block observations are under `$CARLA_WORK/versions`
+and in the exported raw archive. New smoke failures are retained separately from
+primary evidence. The benchmark-only `SHOOP_BENCH_FTZ_DAZ=0|1` option never changes
+normal application behavior. See the report's thread policy recommendation: change
+the actual DSP thread in a scope and restore its prior state, rather than relying
+on a process startup side effect.

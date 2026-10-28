@@ -15,7 +15,7 @@ def main():
     work=args.work.resolve();output=args.output.resolve();output.mkdir(parents=True,exist_ok=True)
     generated=work/'output'
     for name in ['MEASUREMENTS.md','comparisons.json','floating-point.json','meter-audit.json',
-                 'completion-times.svg','build-protocol.json','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
+                 'completion-times.svg','VERSIONS.md','versions-comparisons.json','versions-runs.csv','versions-protocol.json','versions-selection.json','macos-upstream-audit.json','build-protocol.json','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
         if (generated/name).exists():shutil.copy2(generated/name,output/name)
     rows=json.loads((generated/'all-runs.json').read_text())
     with (output/'raw-runs.csv').open('w') as f:
@@ -27,18 +27,18 @@ def main():
     sources=['release-020.tar.gz','release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libshoopdaloop_backend.so',
              'release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libzita-resampler.so',
              'voyage/Voyage Voyage.vst3/Contents/x86_64-linux/Voyage Voyage.so','voyage.zip','voyage-input.bin',
-             'denormal_workload.so','denormal_probe','fp_loader_probe','optional_vst3_probe']
+             'denormal_workload.so','denormal_probe','fp_loader_probe','optional_vst3_probe','carla-2.5.9.tar.gz','version-benchmark','Carla-version-2.5.9/bin/libcarla_native-plugin.so','Carla-version-2.5.9/bin/carla.lv2/carla.so']
     for name in sources:
         path=work/name
         if path.exists():identities[name]=hashlib.sha256(path.read_bytes()).hexdigest()
     (output/'supplementary-identities.json').write_text(json.dumps(identities,indent=2)+'\n')
     archive=generated/'raw-results.tar.gz'
-    directories=['results','controls','history','confirm','fp-context','voyage','voyage-paced','pin-control','contention']
+    directories=['results','controls','history','confirm','fp-context','voyage','voyage-paced','pin-control','contention','versions']
     with tarfile.open(archive,'w:gz') as tar:
         for directory in directories:
             if (work/directory).exists():tar.add(work/directory,arcname=directory)
         for name in ['denormal.csv','voyage-tail-fp.csv','manifest.json','dependency-manifest.json','frozen-core/manifest.json',
-                     'voyage-crash.txt','output/implementation-control.json','output/fp-library-initializers.json',
+                     'voyage-crash.txt','version-build.log','version-verify.log','version-smoke.log','output/versions-selection.json','output/macos-upstream-audit.json','output/implementation-control.json','output/fp-library-initializers.json',
                      'legacy-no-fx.csv','legacy-no-fx.profile.json','legacy-no-fx.log','output/build-protocol.json',
                      'output/legacy-no-fx.csv','output/legacy-no-fx.profile.json','output/legacy-no-fx.log','output/legacy-no-fx-status.json']:
             if (work/name).exists():tar.add(work/name,arcname=name)

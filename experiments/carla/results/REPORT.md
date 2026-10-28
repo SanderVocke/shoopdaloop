@@ -7,7 +7,7 @@ The large steady-state Voyage Voyage processing slowdown reported in [#880](http
 | Hypothesis | Disposition | Evidence and limits |
 |---|---|---|
 | Packaged Carla build targets alone slow DSP | Unsupported by this controlled comparison | Matched-dependency `plugin` and `plugin frontend` recipes produced byte-identical native/LV2 libraries. Timing flags between identical binaries cannot establish a generated-code difference. Unknown distribution/CI dependency differences remain untested. |
-| A Carla version change explains the report | Inconclusive | Controlled runtimes use 2.5.10. The 0.2.0 package contains no Carla runtime, so the user's historical revision/build is unknown. |
+| A Carla version change explains the report | Unsupported in the previous-stable proxy comparison; actual installation inconclusive | Fixed-host Voyage comparisons of 2.5.9/2.5.10 show no material slowdown with FP state held constant. Release dates do not identify the reporter’s installed package. |
 | LV2 → native greatly increases Carla computation | Unsupported for validated workloads | Synthetic ABI LV2/native CPU ratio at 1024 frames: 0.982 [0.930, 1.013]. Adjacent-switch confirmation finds caller CPU overhead without a confirmed inner-Carla increase. Historical small-buffer failures prevent blanket claims. |
 | Rust replacement changed numerical execution | Supported in measured headless contexts | Old processing has FTZ/DAZ enabled, Rust paths have it disabled. An old zita library initializer and same-binary numerical controls demonstrate a mechanism. Physical audio callback threads remain unmeasured. |
 | Bridge/scheduling affects completion | Supported as a mechanism | Controlled contention increases completion tails without comparable mean inner CPU increases. That alone does not explain a higher embedded Carla meter. |
@@ -91,6 +91,23 @@ Current synthetic 1024-frame medians of per-run means:
 
 Pinned-CPU contention increases p99 completion by 1.93× [1.80, 2.05] for bridge, 1.61× [1.53, 1.70] for subprocess, and 2.12× [1.94, 2.40] for engine. Mean inner CPU does not increase similarly; inner wall tails do not consistently increase across these paths. The native tail estimate is noisy and fails directional agreement. These are software scheduling observations, not hardware xruns. Request-to-inner-start includes copies/dispatch and only bounds worker wake-up delay from above.
 
+## Added previous-stable Carla comparison
+
+ShoopDaLoop 0.2.0 was [published on 9 November 2025](https://github.com/SanderVocke/shoopdaloop/releases/tag/v0.2.0). [Carla 2.5.10 was released on 31 July 2025](https://github.com/falkTX/Carla/releases/tag/v2.5.10), and [Homebrew’s contemporaneous formula](https://github.com/Homebrew/homebrew-core/blob/5fbbc037e215a838737db86eec39fcd27d7ba684/Formula/c/carla.rb) already selected it. Release dates therefore do not establish that an older Carla was commonly installed. [Carla 2.5.9](https://github.com/falkTX/Carla/releases/tag/v2.5.9), released 22 September 2024, is used as the preceding-stable/older-installation sensitivity proxy. Installation prevalence and the actual reporter version remain unknown. The original numerical report describes an i7 Linux laptop, separately from the Catalina compatibility discussion.
+
+The official website advertises macOS 10.12+ support. An audit of the actual universal DMGs shows a limitation that the advertised minimum misses: 2.5.9 includes OpenSSL/liblzma dependencies requiring macOS 12, and 2.5.10 includes dependencies requiring macOS 13. The main executables and Carla libraries themselves target 10.12. Thus neither unmodified complete DMG establishes actual Catalina compatibility. [Per-file audit/checksums](macos-upstream-audit.json) and [selection evidence](versions-selection.json) preserve these findings. ShoopDaLoop’s Catalina recipe replaces the incompatible dependencies.
+
+The added fixed-host experiment uses the same compiler/full SDK/release plugin recipe, same Voyage 1.0.2 VST3 and factory state/input, 48 kHz/1024 frames, native/LV2 hosts, and separate explicit FTZ/DAZ off/on strata. Each of eight cells has ten alternating-order repetitions of 200 warm-up + 2,000 measured continuous blocks. All **80 invocations and 160,000 measured blocks pass** output, frame/rate and before/after FP-mask checks. FP register operations are outside the measured interval. This tests Linux source-version effects, not the differing prebuilt macOS packages or physical Catalina audio.
+
+| Interface | FTZ/DAZ | 2.5.10 / 2.5.9 processing-thread CPU ratio [95% CI] |
+|---|---|---:|
+| Native | off | 1.022 [0.952, 1.099] |
+| Native | on | 1.013 [0.932, 1.115] |
+| LV2 | off | 0.986 [0.960, 1.014] |
+| LV2 | on | 0.966 [0.931, 0.997] |
+
+No comparison meets the predeclared ~5.12% CPU or 20% wall-latency screen. The small LV2 decrease with suppression on has an interval excluding 1 but falls below the material-effect threshold. Native uncertainty still permits a smaller slowdown. No large version-driven increase is reproduced. The DSP-meter implementation source file is byte-identical between these revisions. [Full comparison tables](VERSIONS.md), paired ratios and per-run data are retained; this adds a version axis without pretending to recover the reporter’s former runtime.
+
 ## Build features and actual VST3 processing
 
 The controlled minimal builds disable JUCE/DGL/X11, retaining liblo/PyQt tools for LV2 rack registration. Voyage loads but segfaults processing through Carla's native VST3 path. A captured stack ends in `juce::ClientRemappedBuffer<float>` inside the plugin. The fuller build enables JUCE VST3 and processes successfully.
@@ -109,13 +126,13 @@ The same full library (`483ab83c…`) succeeds by default and crashes with signa
 - CPU screen: ≥8 eligible pairs, 95% interval excluding 1, effect above both 5% and three times A/A median absolute ratio deviation, and ≥80% directional agreement. Observed A/A deviation ~1.71%, threshold ~5.12%. Tail screen requires 20%. Multiple comparisons have no multiplicity correction; isolated flags require confirmation. CPU attribution excludes runs with invalid output/misses/incomplete inner matching. Latency summaries retain fallback effects.
 - Instrumentation materially affects empty racks (2.09× caller CPU at 1024 frames). Loaded fixture overhead is not established: 0.990 [0.972, 1.005]. Empty-rack nanosecond differences are not estimates of plugin regression. Low-instrumentation controls are retained.
 
-Final evidence: **2,173 records: 2,125 successful invocations, 48 failed invocations**. Failures comprise 46 historical small-buffer subprocess warm-up/transport failures and two historical Voyage warm-up failures (post-switch bridge repetition 4, subprocess repetition 3). Successful invocations still contain 14,936 invalid-output blocks and 14,939 reported misses, retained in raw records and excluded from CPU attribution. Core current matrix: zero failed invocations, 358 invalid blocks/361 misses. No failed dataset cell was silently retried into a passing result. These failures limit small-buffer historical conclusions.
+Final evidence: **2,253 records: 2,205 successful invocations, 48 failed invocations**. Failures comprise 46 historical small-buffer subprocess warm-up/transport failures and two historical Voyage warm-up failures (post-switch bridge repetition 4, subprocess repetition 3). Successful invocations still contain 14,936 invalid-output blocks and 14,939 reported misses, retained in raw records and excluded from CPU attribution. Core current matrix: zero failed invocations, 358 invalid blocks/361 misses. No failed dataset cell was silently retried into a passing result. These failures limit small-buffer historical conclusions.
 
 Old no-FX routing/output validation passes, but only aggregate backend profiling is available, without comparable per-block full-callback CPU timing. Sessions exercise active monitoring/routing with no recorded-loop workload; complex loop load remains outside the comparison. In-process headless paths keep plugin UI closed and omit normal GUI dispatch; subprocess mode includes its real UI service. GUI-induced contention is not reconstructed.
 
 ## Reproduction, validation and retained data
 
-Follow [runner instructions](../README.md). Final preparation rebuilds/selects pinned adapters and verifies artifacts. A fresh-directory end-to-end smoke replay executes every suite and regenerates analysis: 229 records with five historical subprocess failures explicitly retained. This verifies orchestration/failure accounting, not statistical performance repeatability.
+Follow [runner instructions](../README.md). Final preparation rebuilds/selects pinned adapters and verifies artifacts. A fresh-directory end-to-end smoke replay executes every suite and regenerates analysis: 229 records with five historical subprocess failures explicitly retained. This verifies orchestration/failure accounting, not statistical performance repeatability. The follow-up fresh replay including the version axis contains 237 records, with six historical failures retained; 48 positive version/interface/FP/workload checks and eight deliberate missing/bypass rejections pass.
 
 Passed locally: six positive workload/interface checks; deliberate missing-plugin/bypass/missing-runtime rejection; formatting; warning-denying workspace build; tracing inventory; complete Rust suite (1,809 passed/four skipped); explicitly selected installed-Carla test (one passed). Release adapters also build with warnings denied. Production runtime source and Rust tests are unchanged.
 
