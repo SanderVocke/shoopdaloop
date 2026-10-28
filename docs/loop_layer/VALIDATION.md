@@ -30,7 +30,7 @@ exhaustion now also passes with newly acknowledged playback and complete recover
 The native loop benchmark now supplies fourteen guarded real workloads with
 raw release timing/work/storage/credit data and explicit dense deadline misses.
 It is not a browser/device deadline guarantee; see the current benchmark section
-below. Stage8 is3/8, with broader models, callback audit, Miri and CI work open.
+below. Stage8 is4/8 after tracing-inventory closure, with broader models, callback audit, consolidated Miri and remote CI work open.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -39,6 +39,28 @@ checkout or to documentation authoring. Former docs-changes-loop-layer reference
 now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Collected bulk-MIDI recovery and tracing-policy closure
+
+[Recovery/tracing evidence](evidence/miri-bulk-recovery-tracing-stage8.md) preserves
+terminal collection of `20261028T145739-89dfd53bdb`, frozen `3d10c7a0`. The complete
+unchanged exact host10/63 test passed seed0: one command/one execution, all seven
+internal replays/partitions and guards retained, unchanged900s watchdog.
+Supervisor wall time is770.7792120630038s; command wall time is768.9439976660069s.
+All876 frozen entries/copied supervisor, raw passing report/log hashes and dead
+recorded process identities match. Earlier failures remain failed. This proves
+only the selected command, not complete146-command/299-execution current/final
+coverage, a paired optimization speedup or CI margin. Stage7 remains7/8.
+
+Fresh closed tracing inventory, both four-target production/build dependency
+checks and test-attribute policy pass. All54 library source files (including four
+private test modules) are classified;37 portable entries were already added by
+implementation stages. No inventory churn, application tracing dependency or
+`no_trace` override is needed. Exclusion from application tracing does not exempt
+callbacks from heap/ownership/Miri validation. This verifies that Stage8 row,
+now4/8. The archive's selected owner/quota transaction review is explicitly partial;
+broader models, exhaustive callback audit, consolidated Miri, source-matched remote
+CI and final delivery/review remain open.
 
 ## Stage 8 bulk MIDI preparation/routing candidate
 

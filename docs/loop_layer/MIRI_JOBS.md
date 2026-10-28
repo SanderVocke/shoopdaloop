@@ -10,7 +10,40 @@ obligations remain unchanged.
 
 ## Current Stage 7 verification debt
 
-### Consolidated job failed; recovery required
+### Exact bulk recovery collected; complete current selection still pending
+
+Job **`20261028T145739-89dfd53bdb`**, frozen
+**`3d10c7a06f1e4ad01185d047e4a1c44abf525629`**, ended **passed/exit0** at
+2026-10-28T15:10:30.291589Z and supported collection succeeded. Its unchanged full
+host10/63 test completed one command/one execution, seed0; all seven internal
+replays/partitions, assertions, guards and900s watchdog remain. Sole interpreter
+flag: `-Zmiri-seed=0`. Supervisor monotonic wall time is770.7792120630038s;
+command wall time is768.9439976660069s. Miri's simulated harness time is not wall time.
+
+Post-terminal verification matches all876 immutable entries, source archive/copied
+supervisor, exact inventory and report/log hashes; both recorded process identities
+are dead. See [recovery/tracing evidence](evidence/miri-bulk-recovery-tracing-stage8.md)
+for the raw collected archive. Report SHA256:
+`23cf65e9d6bba1f59db33fe949b7a8c8a1d41fd7daa70877928ed33c39d8d73a`;
+raw log SHA256: `49fe557d99a10d0ef95536ac1dfac2443534ba7186cd541b77faa0c8af2e5509`;
+collected SHA256: `8fe42d40d987d3209074a74554bc81d7fa404ade6fa63006b47604e91e44200b`.
+
+This resolves the exact failure only. Earlier failed/interrupted jobs remain failed;
+there is no paired speedup or CI-margin claim. **Complete current146-command/
+299-execution coverage (136runtime+100loop+63host) remains required**, including
+the bulk-buffer model, plus remote source-matched artifacts. Stage7 stays7/8.
+Stage8 is now4/8 solely because fresh tracing/boundary/test-policy verification
+closes its existing inventory row; callback audit and broader models remain open.
+
+The original consolidated failure and subsequent relevant runtime dependency
+changes require complete Stage7 regression coverage, not another routine exact
+retry. With implementation ready and the failed command recovered, launch one
+required consolidated recovery from a committed frozen snapshot, then continue
+Stage8 work while it runs. Prose/inventory verification alone is not its rationale.
+
+The following entries preserve historical failures and launch checkpoints.
+
+### Original consolidated job failed; full recovery required
 
 Job **`20261028T083225-374aa055bf`** launched at2026-10-28T08:32:25.969265Z
 from immutable commit **`8242de59fbb20ff17eb9724fe154c36aedb257e6`**:
