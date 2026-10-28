@@ -190,6 +190,33 @@ of that same complete exact test/seed0 as the smallest adequate recovery check.
 A successful retry would cover only that case; consolidated current/final coverage,
 remote CI artifacts, remaining Stage8 work and final review remain mandatory.
 
+Focused unprofiled job **`20261028T113106-86abdbc4e8`** launched from committed
+candidate **`802833f492df0b7e8f5a8f1c955c16ea102c2cdd`** at
+2026-10-28T11:31:07.191913Z, supervisorPID3899660:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-7-recovery-measured --commit 802833f4 \
+  --package loop_engine_host_fixture --shard 10/63
+```
+
+Launch verification matched866 frozen source entries/the copied supervisor,
+excluded `.pi/`, confirmed strict Rust/rustdoc/source-commit environment and the
+unchanged exact full-test selection/seed0. Its sole interpreter flag is
+`-Zmiri-seed=0`; there is no profiler or safety-flag override. The launch-verification
+checkpoint was **running**, not passing. No second routine job should run while
+this one is active. Continue useful development; inspect at natural checkpoints
+and require terminal collection before any passing claim.
+
+- Root: `target/loop-layer-miri-jobs/20261028T113106-86abdbc4e8/`.
+- `job.json` SHA256: `aa5e8a8811a161c2fc4a3217bcc01da0b682dc12df562e85f36bd71e63662f69`.
+- Source archive SHA256: `74ba9648fccc81ff345fb9a4b00c1e9b6b39c2a4864ea65882d32f763c5d2d4b`.
+- Copied supervisor SHA256: `75dfb8fdc9b45957a2bfd01e679216e0f5ce28be2dffafdf8aba5b938a36fa1d`.
+- Local proof: `target/loop-layer-midi-sparse-stage8/recovery-launch-verification.json`.
+  Its first reporting attempt used the wrong archive-key name after source/selection
+  checks; the corrected report records the actual key. No passing result was written.
+  The preceding candidate archive predates launch and is not interpreter evidence.
+
 ### Historical Stage7 registered selection
 
 Stage7 host implementation is ready for its consolidated interpreter gate; no

@@ -61,7 +61,10 @@ The current selection is145 commands/298 executions (135runtime+100loop+63host):
 `midi_state` grows6→7 and the full runtime `midi` target adds six executions. Prior
 filters/seeds/order remain; host batch10/63 is unchanged. Native/Wasm correctness
 is not measured interpreter speedup or timeout recovery. A justified unprofiled
-retry targets only that same full exact seed0 test; complete current/final Miri,
+retry now runs as `20261028T113106-86abdbc4e8` from committed `802833f4`:
+866 frozen entries/strict flags and the sole seed0 flag are verified; the launch
+checkpoint is running, not passing. It targets only that same full exact test;
+complete current/final Miri,
 remote CI artifacts, broader Stage8 audit/models/benchmark and delivery remain
 open. Stage7 is still7/8; no additional Stage8 row is checked.
 
