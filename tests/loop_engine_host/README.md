@@ -29,6 +29,11 @@ python3 scripts/run_loop_engine_hosts.py --native-only --profile release
 This runs primitive direct/wire/two-thread replay, all six graph/export/staging/
 dense/stall/media direct/actor pairs and the planner control. Each Rust replay
 checks its independent oracle; Python additionally compares complete actor reports.
+The dense report checker compares the complete semantic byte stream, then indexes
+its event tuples off-render for supplementary membership assertions. Event order,
+multiplicity, all samples/MIDI/receipts and every replay partition remain checked;
+the index is not callback storage or a musical-work limit.
+
 Reports go to `target/loop-engine-host/reports/native-<profile>/`, separately from
 actual browser results, and explicitly identify `native-replay`. Native mode refuses
 actual-worklet failure-gate flags; it cannot substitute for those sessions.

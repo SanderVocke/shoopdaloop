@@ -79,6 +79,22 @@ These are **separate CI batches**, not one uninterrupted invocation. Local stage
 jobs still use the supervised immutable-snapshot workflow; batch support does not
 authorize routine extra interpreter runs.
 
+## Focused failure recovery
+
+A concrete interpreter failure may justify a declared smaller selection. The
+supervisor forwards `--shard INDEX/TOTAL` to both inventory discovery and execution
+and validates batch/full-selection identity and source commit during collection.
+This does not shrink an individual test or waive remaining coverage. For the
+Stage7 dense timeout, host batch10/63 selects exactly the failed seed0 test:
+
+```sh
+python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7-recovery-dense \
+  --commit HEAD --package loop_engine_host_fixture --shard 10/63
+```
+
+Check `--list` before launch and record the exact test, failure rationale and
+pending remainder. A focused recovery pass is not a complete stage pass.
+
 ## Immutable source and isolation
 
 The launcher resolves the requested commit once, exports its Git archive, records
@@ -152,7 +168,7 @@ nix develop --command python3 -m unittest \
   scripts.tests.test_rt_runtime_miri_batches
 ```
 
-Twenty-eight tests cover the selected inventory, exact standalone manifest dispatch,
+Twenty-nine tests cover the selected inventory, exact standalone manifest dispatch,
 seed/report metadata, zero-test refusal, tracked-private-state exclusion without
 losing standalone source/lockfiles, manifest-scope tampering, complete disjoint CI partition/collection and CLI paths,
 durable file output, isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots

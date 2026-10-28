@@ -15,7 +15,10 @@ from scripts import run_rt_runtime_miri_jobs as jobs
 FIXTURE = r'''
 import json,os,signal,subprocess,sys
 from pathlib import Path
-inventory={"toolchain":"fixture","cases":[["rt_runtime","fixture",[],1,0]],"manifests":{"rt_runtime":"Cargo.toml"}}
+inventory={"toolchain":"fixture","cases":[["rt_runtime","fixture",[],1,0]],"manifests":{"rt_runtime":"Cargo.toml"},"full_inventory_sha256":"synthetic-inventory"}
+if "--shard" in sys.argv:
+ index,total=map(int,sys.argv[sys.argv.index("--shard")+1].split("/"))
+ inventory["shard"]={"index":index,"total":total}
 if "--list" in sys.argv:
  print(json.dumps(inventory));sys.exit(0)
 reports=Path(sys.argv[sys.argv.index("--report-dir")+1]);reports.mkdir()
@@ -34,7 +37,7 @@ if mode=="sleep":
    child.wait();sys.exit(143)
  sys.exit(0)
 (reports/"fixture.log").write_text("test result: ok. 1 passed; 0 failed\n")
-(reports/"result.json").write_text(json.dumps({"passed":True,"package_filter":None,"toolchain":"fixture","miri":"synthetic fixture, not Miri","manifests":{"rt_runtime":"Cargo.toml"},"cases":[{"package":"rt_runtime","target":"fixture","arguments":[],"seed":0,"passed":1,"log":"fixture.log"}]}))
+(reports/"result.json").write_text(json.dumps({"passed":True,"package_filter":None,"toolchain":"fixture","miri":"synthetic fixture, not Miri","manifests":{"rt_runtime":"Cargo.toml"},"shard":inventory.get("shard"),"full_inventory_sha256":inventory["full_inventory_sha256"],"source_commit":os.environ.get("MIRI_SOURCE_COMMIT"),"cases":[{"package":"rt_runtime","target":"fixture","arguments":[],"seed":0,"passed":1,"log":"fixture.log"}]}))
 '''
 
 
@@ -162,6 +165,24 @@ class MiriJobTests(unittest.TestCase):
         path.write_text(json.dumps(report))
         with self.assertRaisesRegex(RuntimeError, "Manifest scope mismatch"):
             jobs.collect(job)
+        path.write_text(original)
+        self.assertEqual(jobs.collect(job)["executions"], 1)
+
+    def test_declared_shard_and_full_inventory_scope_survive_snapshot_and_reject_substitution(self):
+        job = jobs.prepare_job(self.repo, self.root / "jobs", "fixture-recovery", "HEAD", None, "1/1")
+        data = json.loads((job / "job.json").read_text())
+        self.assertEqual(data["shard"], "1/1")
+        self.assertEqual(data["command"][-2:], ["--shard", "1/1"])
+        self.assertEqual(data["inventory"]["shard"], {"index": 1, "total": 1})
+        self.launch(job)
+        self.assertEqual(self.wait(job)["status"], "passed")
+        path = job / "reports/result.json"
+        original = path.read_text()
+        for changes in [{"shard": {"index": 2, "total": 2}}, {"full_inventory_sha256": "another-selection"},
+                        {"source_commit": "another-source"}]:
+            path.write_text(json.dumps({**json.loads(original), **changes}))
+            with self.subTest(changes=changes), self.assertRaisesRegex(RuntimeError, "scope mismatch|Source commit mismatch"):
+                jobs.collect(job)
         path.write_text(original)
         self.assertEqual(jobs.collect(job)["executions"], 1)
 

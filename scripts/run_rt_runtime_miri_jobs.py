@@ -87,6 +87,11 @@ def verify_report(job, data):
         raise RuntimeError("Package scope mismatch")
     if report.get("manifests", {}) != inventory.get("manifests", {}):
         raise RuntimeError("Manifest scope mismatch")
+    if (report.get("shard") != inventory.get("shard")
+            or report.get("full_inventory_sha256") != inventory.get("full_inventory_sha256")):
+        raise RuntimeError("Selection scope mismatch")
+    if inventory.get("full_inventory_sha256") and report.get("source_commit") != data["commit"]:
+        raise RuntimeError("Source commit mismatch")
     cases = report.get("cases", [])
     if len(cases) != len(inventory["cases"]):
         raise RuntimeError("Incomplete case inventory")
@@ -109,7 +114,7 @@ def verify_report(job, data):
     return {"executions": sum(c[3] for c in inventory["cases"]), "artifact_sha256": artifacts}
 
 
-def prepare_job(repo, jobs, stage, commit, package):
+def prepare_job(repo, jobs, stage, commit, package, shard=None):
     repo = repo.resolve()
     sha = subprocess.check_output(["git", "rev-parse", "--verify", f"{commit}^{{commit}}"], cwd=repo, text=True).strip()
     entries = subprocess.check_output(["git", "ls-tree", "-r", sha], cwd=repo, text=True).splitlines()
@@ -127,9 +132,10 @@ def prepare_job(repo, jobs, stage, commit, package):
     with tarfile.open(archive) as stream:
         stream.extractall(source, filter="data")
     archive.unlink()
-    command = [sys.executable, RUNNER, "--list"]
-    if package:
-        command += ["--package", package]
+    selection = ["--package", package] if package else []
+    if shard is not None:
+        selection += ["--shard", shard]
+    command = [sys.executable, RUNNER, "--list", *selection]
     inventory = json.loads(subprocess.check_output(command, cwd=source, text=True))
     if not inventory.get("cases") or not inventory.get("toolchain"):
         raise RuntimeError("Snapshot runner supplied no inventory")
@@ -139,10 +145,9 @@ def prepare_job(repo, jobs, stage, commit, package):
             path.chmod(path.stat().st_mode & ~0o222)
     source.chmod(source.stat().st_mode & ~0o222)
     shutil.copy2(Path(__file__), job / "supervisor.py")
-    command = ["nix", "develop", "--no-update-lock-file", f"path:{source}", "--command", "python3", RUNNER, "--report-dir", str(job / "reports")]
-    if package:
-        command += ["--package", package]
-    data = {"id": job.name, "stage": stage, "commit": sha, "package": package,
+    command = ["nix", "develop", "--no-update-lock-file", f"path:{source}", "--command", "python3", RUNNER,
+               "--report-dir", str(job / "reports"), *selection]
+    data = {"id": job.name, "stage": stage, "commit": sha, "package": package, "shard": shard,
             "excluded_paths": [".pi"],
             "created_at": stamp(), "status": "queued", "inventory": inventory,
             "source_manifest": source_manifest, "source_archive_sha256": archive_hash,
@@ -263,6 +268,7 @@ def main():
     start.add_argument("--stage", required=True)
     start.add_argument("--commit", required=True, help="Explicit committed snapshot; uncommitted edits are never included")
     start.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine", "loop_engine_host_fixture"))
+    start.add_argument("--shard", help="Declared INDEX/TOTAL selection; focused failure recovery or CI, not a coverage waiver")
     start.add_argument("--jobs-dir", type=Path, default=ROOT / "target/loop-layer-miri-jobs")
     for name in ("status", "collect", "cancel", "_run"):
         commands.add_parser(name).add_argument("job", type=Path)
@@ -278,7 +284,7 @@ def main():
                 if existing.is_dir() and (existing / "job.json").exists():
                     if status(existing)["status"] in ("running", "queued", "orphaned"):
                         raise RuntimeError(f"Miri job already active: {existing}")
-            job = prepare_job(ROOT, jobs, args.stage, args.commit, args.package)
+            job = prepare_job(ROOT, jobs, args.stage, args.commit, args.package, args.shard)
             pid = launch(job)
         print(json.dumps({"job": str(job), "pid": pid, "commit": json.loads((job / "job.json").read_text())["commit"], "status": "launched", "note": "Not a passing result; continue development and collect later."}))
     elif args.action == "_run":

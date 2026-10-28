@@ -37,6 +37,20 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
+## Stage 7 dense timeout recovery candidate
+
+[Recovery-candidate evidence](evidence/dense-miri-recovery-stage7.md) preserves every
+assertion and all seven replay runs while replacing supplementary off-render linear
+event-membership scans with a BTreeSet index. The full ordered semantic-byte comparison
+is unchanged, including multiplicity. Native57 Python tests,59 fixture tests/profile,
+complete before/after native report equality in both profiles and2141 workspace
+passes/four skips validate the candidate, not an interpreter speedup or recovery.
+The supervisor now forwards/verifies a declared selection and source identity;
+host batch10/63 selects exactly the failed seed0 case with its full workload/guards
+and900s watchdog. The justified focused retry still requires committed immutable
+inputs, terminal success and collection. It cannot establish complete stage/final
+coverage. Actual launch/outcome belongs in [MIRI_JOBS.md](MIRI_JOBS.md).
+
 ## Stage 7 CI host evidence and failed interpreter checkpoint
 
 [CI-host evidence](evidence/ci-hosts-stage7.md) configures both libraries, native

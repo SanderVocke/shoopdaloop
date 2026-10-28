@@ -51,6 +51,22 @@ and justify the smallest adequate affected recovery selection. Continue useful
 implementation work without routinely repeating the full suite. Stage7 remains7/8;
 interpreter recovery, remote CI artifacts and later delivery obligations stay open.
 
+### Dense recovery candidate (native verified; interpreter pending)
+
+The supplementary dense event checks now use an off-render BTreeSet membership
+index after the unchanged complete semantic-byte comparison. All assertions,
+seven replay runs/partitions, frames/packets/receipts, seed0, guards and900s watchdog
+remain unchanged. This removes repeated linear query work, not musical execution;
+no interpreter speedup or recovery is claimed yet. Native57 Python/59 fixture
+checks per profile, both complete native report comparisons and2141 workspace
+passes/four skips validate the candidate. See
+[evidence/dense-miri-recovery-stage7.md](evidence/dense-miri-recovery-stage7.md).
+
+The supervisor now forwards/verifies a declared selection. Host batch10/63 names
+exactly the failed test, so one committed focused job is justified by the actual
+900s timeout. Its eventual pass would prove only that case; all remaining stage/
+final coverage is still required. No replacement has launched at this checkpoint.
+
 ### Registered selection
 
 Stage7 host implementation is ready for its consolidated interpreter gate; no

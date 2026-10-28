@@ -206,7 +206,7 @@ fn check(report: &DenseReport, stalled: bool) {
         .chunks_exact(160)
         .filter(|r| r[0] == 3)
         .map(|r| (get64(r, 8), r[1], get32(r, 16)))
-        .collect::<Vec<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     for target in 0..5 {
         assert!(events.contains(&(0, 10, target)));
     }
