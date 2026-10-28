@@ -18,6 +18,39 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#endif
+
+struct FpPolicy {
+    uint32_t saved; int forced=-1;
+    static uint32_t current() {
+#if defined(__SSE__)
+        return _mm_getcsr();
+#else
+        return 0;
+#endif
+    }
+    FpPolicy():saved(current()) {
+        if(const char* value=std::getenv("SHOOP_BENCH_FTZ_DAZ")) {
+            if(std::string(value)!="0" && std::string(value)!="1")throw std::runtime_error("invalid FP policy");
+            forced=value[0]-'0';
+#if !defined(__SSE__)
+            throw std::runtime_error("FP policy control requires x86 SSE");
+#endif
+        }
+    }
+    void apply() const {
+#if defined(__SSE__)
+        if(forced>=0)_mm_setcsr((saved&~0x8040u)|(forced?0x8040u:0));
+#endif
+    }
+    ~FpPolicy() {
+#if defined(__SSE__)
+        if(forced>=0)_mm_setcsr(saved);
+#endif
+    }
+};
 
 static uint64_t ns(clockid_t id) { timespec t{}; clock_gettime(id,&t); return uint64_t(t.tv_sec)*1000000000+t.tv_nsec; }
 struct EngineInfo { float load; uint32_t xruns; };
@@ -87,6 +120,7 @@ int main(int argc,char** argv) try {
         auto si=static_cast<const LV2_State_Interface*>(ld->extension_data(LV2_STATE__interface)); require(si,"missing state interface");
         require(si->restore(lh,retrieve,nullptr,0,features)==0,"LV2 restore failed"); ld->activate(lh);
     }
+    FpPolicy fp;
     auto process=[&]() {
         if(nd) nd->process(nh,inputs,outputs,frames,nullptr,0);
         else { in_seq->atom.type=map_uri(nullptr,LV2_ATOM__Sequence); in_seq->atom.size=sizeof(LV2_Atom_Sequence_Body); out_seq->atom.size=out_atom.size()*8-sizeof(LV2_Atom); ld->run(lh,frames); }
@@ -104,16 +138,17 @@ int main(int argc,char** argv) try {
             return;
         }
         for(size_t i=0;i<frames;++i) require(std::isfinite(out_l[i]) && std::fabs(out_l[i]-expected(left[i]))<2e-5f && std::fabs(out_r[i]-expected(right[i]))<2e-5f,"output validation failed"); };
-    for(unsigned i=0;i<200;++i) process(); validate();
+    for(unsigned i=0;i<200;++i) { fp.apply(); process(); } validate();
     std::vector<uint64_t> wall(count),cpu(count); std::vector<float> dsp(count);
-    for(size_t i=0;i<count;++i) { auto w=ns(CLOCK_MONOTONIC); auto c=ns(CLOCK_THREAD_CPUTIME_ID); process(); cpu[i]=ns(CLOCK_THREAD_CPUTIME_ID)-c; wall[i]=ns(CLOCK_MONOTONIC)-w; if(meter_info && meter_handle) dsp[i]=meter_info(meter_handle)->load; validate(); }
+    std::vector<uint32_t> fp_before(count),fp_after(count);
+    for(size_t i=0;i<count;++i) { fp.apply(); fp_before[i]=FpPolicy::current(); auto w=ns(CLOCK_MONOTONIC); auto c=ns(CLOCK_THREAD_CPUTIME_ID); process(); cpu[i]=ns(CLOCK_THREAD_CPUTIME_ID)-c; wall[i]=ns(CLOCK_MONOTONIC)-w; fp_after[i]=FpPolicy::current(); if(fp.forced>=0) require((fp_after[i]&0x8040u)==(fp.forced?0x8040u:0),"plugin changed FP policy"); if(meter_info && meter_handle) dsp[i]=meter_info(meter_handle)->load; validate(); }
     if(meter_handle && meter_free) meter_free(meter_handle);
     if(nd) { auto saved=nd->get_state(nh); require(saved,"state unavailable"); if(synthetic) require(std::string(saved).find("shoop_benchmark")!=std::string::npos,"plugin not loaded"); if(voyage) require(std::string(saved).find("<Type>VST3</Type>")!=std::string::npos,"VST3 not loaded"); free(saved); nd->deactivate(nh); nd->cleanup(nh); }
     else {
         if(voyage) { std::string chunk; auto si=static_cast<const LV2_State_Interface*>(ld->extension_data(LV2_STATE__interface)); require(si->save(lh,store_chunk,&chunk,0,features)==0 && chunk.find("<Type>VST3</Type>")!=std::string::npos,"VST3 not loaded through LV2"); }
         ld->deactivate(lh); ld->cleanup(lh);
     }
-    std::ofstream result(argv[7]); result<<"block,wall_ns,cpu_ns,dsp_percent\n"; for(size_t i=0;i<count;++i) result<<i<<','<<wall[i]<<','<<cpu[i]<<','<<dsp[i]<<'\n';
+    std::ofstream result(argv[7]); result<<"block,wall_ns,cpu_ns,dsp_percent,mxcsr_before,mxcsr_after,frames,sample_rate\n"; for(size_t i=0;i<count;++i) result<<i<<','<<wall[i]<<','<<cpu[i]<<','<<dsp[i]<<','<<fp_before[i]<<','<<fp_after[i]<<','<<frames<<",48000\n";
     std::cout<<"validated "<<mode<<" frames="<<frames<<" blocks="<<count<<'\n';
     return 0;
 } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }

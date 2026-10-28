@@ -30,7 +30,7 @@ The audit finds 359,811 of 359,820 meter transitions compatible with peak/decay 
 
 Actual processing-thread MXCSR captures show FTZ/DAZ mask `0x8040` in the as-shipped 0.2.0 dummy backend, and `0x0000` in all twelve Rust contexts (pre-switch/post-switch/current × native/bridge/subprocess/engine), before and after processing.
 
-Fresh-process `dlopen` probes localize a cause: old `libzita-resampler.so` changes MXCSR from `0x1f80` to `0x9fc0`; loading the old backend does the same through its dependencies. Minimal/full Carla native libraries leave it unchanged. The old zita disassembly contains a `set_fast_math` initializer that reads MXCSR, ORs `0x8040`, and writes it back (retained in `zita-fp-initializer.txt`). This changes the **loading thread**, with subsequent threads inheriting state; it is not process-wide. It does not establish the state of a physical JACK callback thread.
+Fresh-process `dlopen` probes localize a cause: old `libzita-resampler.so` changes MXCSR from `0x1f80` to `0x9fc0`; loading the old backend does the same through its dependencies. Minimal/full Carla native libraries leave it unchanged. The old zita disassembly contains a `set_fast_math` initializer that reads MXCSR, ORs `0x8040`, and writes it back (retained in `zita-fp-initializer.txt`). This changes the **loading thread**, with POSIX threads subsequently created by that thread inheriting a copy; it is not process-wide and does not update already-running threads. It does not establish the state of a physical JACK callback thread.
 
 Same Carla/plugin binaries, fresh instances per policy, ten alternating pairs of 2,000 measured blocks:
 
@@ -40,6 +40,16 @@ Same Carla/plugin binaries, fresh instances per policy, ten alternating pairs of
 | Voyage, 200 priming blocks then silent tail, 1024 frames | 1256.4 µs | 1169.0 µs | 1.070 [1.014, 1.131] |
 
 The extreme synthetic test proves sensitivity, not the user's cause. Actual Voyage shows a modest contribution with factory defaults and 8/10 agreeing pairs. Its ~87 µs mean difference is ~0.4 percentage points of a 1024/48 kHz period; it does not explain a large spike by itself.
+
+### Recommended floating-point policy
+
+**FTZ/DAZ live in the calling thread’s MXCSR register, not in a process-global variable.** The operating system saves/restores this CPU state during thread switches. FTZ flushes subnormal results to zero; DAZ treats subnormal input operands as zero. [Intel documents their SSE/AVX scope](https://www.intel.com/content/www/us/en/docs/dpcpp-cpp-compiler/developer-guide-reference/2025-0/set-the-ftz-and-daz-flags.html). [POSIX thread creation inherits a copy of the creator’s floating-point environment](https://www.man7.org/linux/man-pages/man3/pthread_create.3p.html); changing the parent later does not update existing workers. Other thread APIs should not be assumed to have the same inheritance behavior.
+
+For ShoopDaLoop, use an explicit scoped policy around each actual audio processing entry: the driver callback/engine DSP block, the in-process Carla worker’s DSP block, and the subprocess Carla worker’s DSP block. Setting only the UI/main thread or the thread that enqueues work is insufficient. On an exclusively owned persistent worker, initialization at worker entry is also possible, but applying a small scope per processing block establishes the policy again if other code changed it. Restore the caller’s previous state when returning to a host-owned callback thread. Plugin-owned helper threads require their own policy; the host cannot assume a scope on its caller controls an existing third-party pool.
+
+On the tested x86/SSE platform the operation is `saved = _mm_getcsr(); _mm_setcsr(saved | 0x8040);` around DSP, followed by `_mm_setcsr(saved)` at scope exit, preferably through an RAII guard. Preserve unrelated rounding/exception-control bits rather than assigning a fixed complete register value such as `0x9fc0`. Confirm actual processing-thread bits and output in tests. Use a separate architecture-aware implementation on ARM; MXCSR masks do not apply there.
+
+This is an intentional numerical policy for audio, changing gradual underflow behavior. It is preferable to relying on a dependency initializer or enabling broad compiler `fast-math` optimizations merely to get denormal suppression. No production policy is implemented by this investigation. The measured Voyage contribution is modest; this recommendation is not a claim that it fixes the entire reported regression.
 
 ## Historical Voyage, matched cadence
 
