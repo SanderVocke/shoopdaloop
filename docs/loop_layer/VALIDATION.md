@@ -30,7 +30,8 @@ exhaustion now also passes with newly acknowledged playback and complete recover
 The native loop benchmark now supplies fourteen guarded real workloads with
 raw release timing/work/storage/credit data and explicit dense deadline misses.
 It is not a browser/device deadline guarantee; see the current benchmark section
-below. Stage8 is4/8 after tracing-inventory closure, with broader models, callback audit, consolidated Miri and remote CI work open.
+below. Stage8 is5/8 after callback-audit/guard closure, with broader models,
+consolidated Miri and remote CI work open.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -39,6 +40,34 @@ checkout or to documentation authoring. Former docs-changes-loop-layer reference
 now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Callback reachability audit and fresh guard verification
+
+[Callback audit](evidence/callback-audit-stage8.md) completes the previously partial
+transaction and render/resource reviews with the planner/ledger, codec/validator,
+protocol owning-return/quarantine, journal and Wasm descendants. Prepared versus
+callback/stopped reachability, actual stored types, logical leases, private
+invariants, finite progress and callback-shared accounting are classified. No new
+callback safety issue or implementation change was needed. All207 scoped inputs
+match candidate `3d10c7a0`, active frozen source `3bf1dbca` and audit HEAD `e2f808ba`.
+
+Fresh debug/release gates pass191runtime/153loop/59fixture tests/profile (806 total),
+72 helpers,17 native replay commands/profile, twenty Node/Chromium binding groups
+per runtime/profile and sixteen actual offline/live contexts/profile. Six native
+negative controls separately detect allocation/reallocation/deallocation; six
+actual processor/planner failure gates/profile retain exact Rust-origin code,
+heap/phase and fixed-memory witnesses. Actual runs intentionally reuse matching
+verified Wasm, not fresh Wasm builds. Complete downstream/media/results/owner
+recovery is checked independently of intentional fault abandonment. Boundary,
+tracing and test-attribute policies pass; dependency graphs are not remote builds.
+
+This closes the callback-audit row only: Stage8 is5/8 and Stage7 remains7/8. The
+required146-command/299-execution consolidated job was still running at the actual
+2026-10-28T16:30:51Z checkpoint. No extra Miri invocation is justified by this
+review/evidence-only milestone. Broader models, complete interpreter and remote
+CI evidence, final examples/contracts and delivery/review remain open. Arbitrary
+downstream callbacks, JS/browser scheduling, total RSS and deadlines are not
+certified by Rust heap guards.
 
 ## Collected bulk-MIDI recovery and tracing-policy closure
 
