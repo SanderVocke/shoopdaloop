@@ -31,8 +31,8 @@ The native loop benchmark now supplies fourteen guarded real workloads with
 raw release timing/work/storage/credit data and explicit dense deadline misses.
 It is not a browser/device deadline guarantee; see the current benchmark section
 below. Stage8 is6/8 after broader seeded model verification. The frozen Stage7
-146/299 interpreter recovery is collected; the later151/304 selection and checked
-source-matched remote CI remain open.
+146/299 interpreter recovery is collected; the later151/304 selection is running
+from `8633d0f0`, not passed. Checked source-matched remote CI remains open.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -66,6 +66,17 @@ copied supervisor and dead recorded process identities match. It ended2026-10-28
 current151/304 pass, remote acceptance, native timing or reviewer approval.
 Stage7 stays7/8 pending checked source-matched remote artifacts; Stage8 interpreter/
 CI rows and Stages9–10 remain open. No per-helper interpreter run was added.
+
+The accumulated Stage8 selection now runs as `20261028T190146-abeee2e59e` from
+`8633d0f0754a2f4445c3d0febb1f1ae2d7e9572e`, started19:01:47.423617Z. Launch proof
+matches all890 immutable entries, literal committed archive, copied supervisor,
+full151/304 inventory, strict flags/isolated build and214 native-model inputs.
+Recorded supervisor/runner identities are live at the19:06:19Z checkpoint. This
+is **running, not passing**; no completed count is inferred. One applicable
+consolidated Stage8 invocation covers the accumulated new models and retained
+regressions, with900s watchdog/workloads/guards/seeds unchanged. Stage9 examples/
+LL-A audit continue while it runs; final reuse needs full terminal/source
+verification and never replaces final-head CI/review. See [job details](MIRI_JOBS.md).
 
 ## Stage 8 seeded descriptor-bank ownership model
 

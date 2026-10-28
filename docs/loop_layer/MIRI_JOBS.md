@@ -20,13 +20,46 @@ Native193runtime/155loop/60fixture tests/profile,189runtime+155loop per Node/Chr
 eight exact native dispatches,73 helpers and2148 workspace passes/four existing
 skips pass. The broader model row is verified: Stage8 is6/8.
 
-**The descriptor case and four later model cases have not run under Miri.** The
-frozen Stage7 job has now passed and been collected at146/299, as verified below;
-it cannot certify later cases. Commit/freeze the accumulated model milestone for
-one applicable consolidated Stage8 selection, retaining the900s watchdog,
-complete workloads/guards/seeds and source isolation. No routine invocation was
-launched per helper. Stage7 stays7/8 and the separate Stage8 interpreter/remote-CI
-rows remain open; final-head CI/review and Stages9–10 remain required.
+**Complete applicable Stage8/final interpretation remains unverified.** The frozen
+Stage7 job passed and was collected at146/299; it cannot certify the five later
+cases. The one accumulated Stage8 selection is now running, as recorded below,
+with900s watchdog, complete workloads/guards/seeds and source isolation unchanged.
+No routine invocation was launched per helper. Stage7 stays7/8 and the separate
+Stage8 interpreter/remote-CI rows remain open; final-head CI/review and Stages9–10
+remain required.
+
+### Consolidated Stage8 launch — not passing evidence
+
+Job **`20261028T190146-abeee2e59e`** runs from committed candidate
+**`8633d0f0754a2f4445c3d0febb1f1ae2d7e9572e`**, started2026-10-28T19:01:47.423617Z:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-8-consolidated --commit 8633d0f0754a2f4445c3d0febb1f1ae2d7e9572e
+```
+
+The19:06:19Z launch proof verifies all890 source-manifest entries and committed
+literal archive re-export, copied supervisor, complete151/304 JSON-normalized
+inventory, strict Rust/rustdoc/source environment and isolated build. All214 scoped
+native-model implementation/test/dependency/configuration inputs match the frozen
+source. Recorded supervisor117885 and runner117886 identities are live at that
+checkpoint;`.pi/` is excluded. The result is **running**, not passed or collected.
+No completion count is inferred from launch. Old Stage7 recovery is already
+collected and its recorded identities are dead; this is not a duplicate active job.
+
+- Root: `target/loop-layer-miri-jobs/20261028T190146-abeee2e59e/`.
+- Job SHA256: `a139dfecc8735b5fdeab5f752d22364b06acb599fbc67a25576b2dd792075100`.
+- Source archive SHA256: `8c009c30678bbb9d11653b4f0699be7c4e2f9b6f3c4c4bc887f9f4b9f0aa525f`.
+- Copied supervisor SHA256: `75dfb8fdc9b45957a2bfd01e679216e0f5ce28be2dffafdf8aba5b938a36fa1d`.
+- Proof/command: `target/loop-layer-consolidated-stage8/launch-verification.json`
+  and `commands/verify-launch.py` beneath the same directory.
+
+Accumulated descriptor/timeline/receipt/capture additions after the frozen Stage7
+snapshot require this applicable stage selection, not a run per helper. Continue
+final examples and LL-A acceptance work while it runs. Do not mutate or duplicate
+the job. An eventual pass can serve final interpreter acceptance only after full
+terminal collection and exact relevant final-source/configuration/inventory
+comparison; it cannot certify final-head CI or review.
 
 ## Current Stage 7 verification debt
 
