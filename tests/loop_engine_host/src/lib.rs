@@ -29,7 +29,7 @@ mod scenario;
 pub mod wire;
 pub use bridge::Bridge;
 #[cfg(not(target_arch = "wasm32"))]
-pub use browser::native_dense::{run as run_dense, DenseReport};
+pub use browser::native_dense::{run as run_dense, run_stalls, DenseReport};
 #[cfg(not(target_arch = "wasm32"))]
 pub use browser::native_export::{run_exports, ExportReport};
 #[cfg(not(target_arch = "wasm32"))]

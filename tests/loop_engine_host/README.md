@@ -343,14 +343,15 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Seventeen shared public-binding groups execute in Node and Chromium: constructor
+Eighteen shared public-binding groups execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
 records, an eventless same-position seek, two payload checks and three graph command
 checks: full-width/credits, exact activation/retirement and128 real owner returns.
 The export, resource/program-staging and dense musical groups also retain complete native-matched
-reports. These are binding-level Wasm checks, not a claim that the53 native Rust tests
+reports. A separate restart group checks the engine script used during actual
+response-buffer exhaustion. These are binding-level Wasm checks, not a claim that the54 native Rust tests
 were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records by default, or4096 for the dense scenario. It records event-bearing boundaries,
@@ -529,6 +530,45 @@ capacities. See [the clock/report protocol](WIRE.md#dense-musical-host-clock-and
 This case stalls Rust result consumers; it does not yet prove in-flight transferred
 response-buffer exhaustion or capture exhaustion/replacement in an actual worklet.
 
+## Transferred response buffers can stall independently
+
+The browser runner also executes a variant of the dense scenario in both actual
+contexts. After the original131 frames, it accepts all ten Rust receipts but
+**retains all ten transferred96-byte ArrayBuffers on the main side** instead of
+returning their transport credits. The worklet reports zero available response
+buffers; command credits have already returned to the Rust client.
+
+With that transport still exhausted, admit Play131 and Stop135 and acknowledge a
+five-frame call. The first four samples play the retained take; Stop is silent and
+emits cleanup. Polling cannot transfer either command's replies: at engine136,
+worklet/client outstanding counts are both2, main received count is still10, all
+ten real buffers are held, and successful stop refuses15. Return each buffer with
+its original ID and check detachment. Polling now delivers all four additional
+receipts, and successful stop requires all credits and resource pools recovered.
+
+```sh
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --stall-json
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --stall-two-thread-json
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
+  browser::native_dense::tests::acknowledged_restart_keeps_media_and_owning_results_while_transport_is_unpolled -- --exact
+```
+
+Add `--release` before `--bin` or the test filter. Native direct/capacity-one and
+Node/Chromium hosts reproduce the engine script with unpolled replies; they do not
+pretend to transfer MessagePort buffers. All seven requests/fourteen replies,
+136 stereo samples,8713 MIDI packets/130695 bytes and2042 semantic records/326760
+bytes match independent native tables. Actual downstream probes check512 samples
+per channel, including all four marked quanta and zero short-call tails. Offline
+also checks all1280 output samples per channel. Memory capacities stay those of the
+dense fixture; all buffers/credits and256/16/16/0 resources recover. The extra live
+commands arrive after the context has started, but engine pauses and explicit
+acknowledgements—not assumed message deadlines—determine their timing.
+
+`stallReports` and `bindingChecks.stalls` remain distinct evidence. See the
+[wire/report contract](WIRE.md#transferred-response-buffer-exhaustion).
+This proves cooperative response-buffer exhaustion, not a bound on the browser's
+underlying MessagePort queue, hostile input pressure or production live deadlines.
+
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
@@ -545,6 +585,7 @@ capture revisions through native and actual worklet hosts. Resource upload/immut
 reads and prepared nested-program activation/iteration-seek/stop now also run through
 all hosts. Dense one-sample playback, same-frame cascades, clocked regular/explicit
 composites and unread-result recovery now also run through all hosts. Prepared playable
-media replacement, capture exhaustion and live in-flight transfer stalls remain
-host work; raw MIDI uploads are not checkpointed playable sources.
+media replacement and capture exhaustion remain host work. Actual held response
+buffers now also stall independently while newly acknowledged playback continues;
+raw MIDI uploads are not checkpointed playable sources.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

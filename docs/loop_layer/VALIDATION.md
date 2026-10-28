@@ -24,7 +24,8 @@ exports now retain/read/release both capture revisions through native/bindings/a
 worklets. Resource uploads/immutable reads and prepared nested-program staging now
 also pass native/bindings/actual hosts. Dense one-frame playback, same-frame cascades,
 clocked composites and unread-result recovery now also pass all hosts. Prepared
-playable replacement, capture failure and in-flight transfer stalls remain pending.
+playable replacement and capture failure remain pending. Actual held-response-buffer
+exhaustion now also passes with newly acknowledged playback and complete recovery.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -35,7 +36,37 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 dense musical hosts
+## Stage 7 actual transferred-result buffer exhaustion
+
+[Transfer-stall evidence](evidence/transfer-stalls-stage7.md) extends the dense
+script through Play131/Stop135 without changing production Rust or Wasm binaries.
+After the main Rust client accepts ten initial receipts, the main host holds all
+ten transferred96-byte result buffers. All Rust command credits are free, but the
+worklet has zero available transfer buffers. New acknowledged playback renders and
+stops while a blocked poll retains two command/result credits and returns no new
+receipt: engine136, main received10/client outstanding2, worklet outstanding2 and
+ten actual buffers held. Successful stop refuses15. Returning all original buffers
+with checked detachment delivers all four additional receipts and permits cleanup.
+
+Native direct/capacity-one and Node/Chromium scripts reproduce the same engine
+commands with unpolled returns, not fabricated MessagePort transfers. Independent
+complete media/receipt/semantic tables check136 stereo samples,8713 MIDI packets/
+130695 bytes, seven requests/fourteen results and2042 semantic records/326760 bytes
+across native whole/single/irregular/zero partitions. Actual offline/live sessions
+check all512 downstream samples/channel; offline also checks all1280 samples/channel.
+The128/1/2/5 calls are acknowledged driver steps, not runtime quanta or deadlines.
+Dense memory capacities stay fixed; all buffers/counts and256/16/16/0 resources recover.
+
+Both profiles pass54 native tests, eighteen binding groups per Node/Chromium and
+twelve successful actual contexts plus four existing exact Rust-origin failure gates.
+Nineteen Python tests include two new cases rejecting incomplete buffer/credit/stall
+proof, restart audio/short tails, final clocks/memory/recovery and missing contexts.
+Stage7 remains5/8: playable replacement/capture failure, broader interactions,
+planner canaries, consolidated Miri, CI artifacts and Stages8–10 remain open.
+The thirty graph/export/staging/dense/stall native cases are still interpreter debt,
+not passes. This is local host/ownership evidence, not remote CI or performance proof.
+
+## Historical Stage 7 dense musical hosts
 
 [Dense host evidence](evidence/dense-host-stage7.md) records the same prepared
 five-loop scenario through direct facade, primitive wire, capacity-one native

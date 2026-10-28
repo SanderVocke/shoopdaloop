@@ -12,7 +12,7 @@ from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets
 
 
 class DenseTests(unittest.TestCase):
-    def fixture(self):
+    def fixture(self, stalled=False):
         native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_dense_native.json.gz").read_bytes()))
         chunks = [[s[c] for s in native["samples"][:128]] + [native["samples"][128][c]] + [0]*127
                   + [s[c] for s in native["samples"][129:]] + [0]*126 for c in range(2)]
@@ -30,7 +30,43 @@ class DenseTests(unittest.TestCase):
                 "summary":{"bytes":5963776,"finalBytes":5963776,"heap":[0,0,0],"frames":"131","callbacks":"3","returnedBuffers":10,
                     "returnedGraphBuffers":0,"returnedExportBuffers":0,"returnedStagingBuffers":0,"retainedGraphs":0,"retainedExports":0,"retainedStaging":0,
                     "journalOverflow":0,"recovered":[256,16,16,0],"firstFrame":"128","resumeFrame":None,"marker":0}}))
-        return native,{"denseReports":reports}
+        if stalled:
+            native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_stalls_native.json.gz").read_bytes()))
+            for report in reports:
+                report["data"] = copy.deepcopy(native)
+                report["checkpoints"].append({"frame":"136","browser":"896","frames":5})
+                report["starts"].append("896")
+                report["states"].append({"type":"dense-state","frame":"136","outstanding":2,"stop":15})
+                report["summary"].update(frames="136",callbacks="4")
+                report["transferStall"] = {"frame":"136","outstanding":2,"availableBuffers":0,"received":10,"clientOutstanding":2,"heldBuffers":10}
+                for channel in range(2):
+                    report["chunks"][channel].extend([s[channel] for s in native["samples"][131:]] + [0]*123)
+                    if report["offlineAudio"] is not None:
+                        report["offlineAudio"][channel].extend([0]*256)
+                        report["offlineAudio"][channel][896:1024] = report["chunks"][channel][384:512]
+        return native,{"stallReports" if stalled else "denseReports":reports}
+
+    def test_actual_transfer_buffers_and_rust_result_credits_are_separately_required(self):
+        native,result = self.fixture(True); compare_dense_worklets(result,native,stalled=True)
+        for field in ("frame","outstanding","availableBuffers","received","clientOutstanding","heldBuffers"):
+            altered = copy.deepcopy(result); altered["stallReports"][0]["transferStall"].pop(field)
+            with self.assertRaises(RuntimeError,msg=field): compare_dense_worklets(altered,native,stalled=True)
+        for field in ("requests","responses","midiBytes","semanticBytes","samples"):
+            altered = copy.deepcopy(result); altered["stallReports"][0]["data"][field].pop()
+            with self.assertRaises(RuntimeError,msg=field): compare_dense_worklets(altered,native,stalled=True)
+
+    def test_stalled_transport_requires_audible_restart_tail_and_final_recovery(self):
+        native,result = self.fixture(True)
+        for field,index in (("chunks",384),("chunks",389),("offlineAudio",896),("offlineAudio",901)):
+            altered = copy.deepcopy(result); altered["stallReports"][0][field][0][index] += 1
+            with self.assertRaises(RuntimeError): compare_dense_worklets(altered,native,stalled=True)
+        altered = copy.deepcopy(result); altered["stallReports"][0]["states"].pop()
+        with self.assertRaises(RuntimeError): compare_dense_worklets(altered,native,stalled=True)
+        for field,value in (("returnedBuffers",9),("frames","135"),("heap",[1,0,0]),("finalBytes",6029312)):
+            altered = copy.deepcopy(result); altered["stallReports"][0]["summary"][field]=value
+            with self.assertRaises(RuntimeError,msg=field): compare_dense_worklets(altered,native,stalled=True)
+        altered = copy.deepcopy(result); altered["stallReports"].pop()
+        with self.assertRaises(RuntimeError): compare_dense_worklets(altered,native,stalled=True)
 
     def test_dense_complete_media_semantics_receipts_and_contexts_are_required(self):
         native,result = self.fixture(); compare_dense_worklets(result,native)

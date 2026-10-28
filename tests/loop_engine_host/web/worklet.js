@@ -139,7 +139,7 @@ class LoopFixture extends AudioWorkletProcessor {
                 }
                 for(let id=0;id<this.stagingReturns.length;id++){const buffer=this.stagingReturns[id];if(!buffer)continue;const result=this.engine.poll_staging_response();if(result===0)break;if(result!==1)throw new Error(`staging poll failed: ${result}`);new Uint8Array(buffer).set(this.stagingResponse);this.stagingReturns[id]=null;this.port.postMessage({type:"staging-response",id,buffer},[buffer]);if(buffer.byteLength!==0)throw new Error("staging response did not detach");}
                 this.checkMemory();
-                this.port.postMessage({ type: "polled", retainedStaging:this.engine.retained_staging(), outstanding: this.engine.outstanding(), retainedExports: this.engine.retained_exports(), retainedGraphs: this.engine.retained_graphs(), frame: String(this.engine.frame()), firstFrame: this.firstFrame, resumeFrame: this.resumeFrame });
+                this.port.postMessage({ type: "polled", availableResponses:this.returns.filter(buffer=>buffer!==null).length, retainedStaging:this.engine.retained_staging(), outstanding: this.engine.outstanding(), retainedExports: this.engine.retained_exports(), retainedGraphs: this.engine.retained_graphs(), frame: String(this.engine.frame()), firstFrame: this.firstFrame, resumeFrame: this.resumeFrame });
             } else if (data.type === "stop") {
                 if (this.returns.some(buffer => !buffer) || this.graphReturns.some(buffer => !buffer) || this.exportReturns.some(buffer => !buffer) || this.stagingReturns.some(buffer=>!buffer) || this.engine.retained_staging()!==0 || this.engine.outstanding() !== 0 || this.engine.retained_graphs() !== 0 || this.engine.retained_exports() !== 0) throw new Error("stop with outstanding credits/graphs");
                 this.stopped = true;
@@ -193,7 +193,7 @@ class AudioProbe extends AudioWorkletProcessor {
         super();
         this.graphMode = options.processorOptions?.graph === true;
         this.denseMode=options.processorOptions?.dense===true;
-        this.length=this.denseMode?384:options.processorOptions?.staging===true?512:256;
+        this.length=this.denseMode?(options.processorOptions?.stalls===true?512:384):options.processorOptions?.staging===true?512:256;
         this.left = new Float32Array(this.length); this.right = new Float32Array(this.length);
         this.start = null; this.starts = Array(this.length/128).fill(null); this.count = 0;
         this.port.onmessage = () => {

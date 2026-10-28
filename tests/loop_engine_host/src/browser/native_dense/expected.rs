@@ -17,10 +17,10 @@ fn event(frame: u64, target: u32, code: u8, flag: u8, a: u64, b: u64) -> [u8; 16
     bytes
 }
 // Closed-form fixture table, not a call to the resolver or its journal encoder.
-pub(super) fn semantic() -> Vec<u8> {
+pub(super) fn semantic(stalled: bool) -> Vec<u8> {
     let mut bytes = vec![0; 40];
     bytes[..8].copy_from_slice(b"LSJ1\x01\0\xa0\0");
-    for frame in 0u64..131 {
+    for frame in 0u64..if stalled { 136 } else { 131 } {
         let mut events = Vec::new();
         if frame == 0 {
             for (target, code, flag) in [
@@ -41,12 +41,12 @@ pub(super) fn semantic() -> Vec<u8> {
             }
         } else {
             match frame {
-                1 => {
+                1 | 131 => {
                     events.push(event(frame, 0, 2, 0, 0, 0));
                     events.push(event(frame, 0, 10, 0, 0, 0));
                 }
                 64 => events.push(event(frame, 0, 4, 0, 0, 0)),
-                129 => events.push(event(frame, 0, 3, 0, 0, 0)),
+                129 | 135 => events.push(event(frame, 0, 3, 0, 0, 0)),
                 130 => {}
                 _ => {
                     events.push(event(frame, 0, 9, 0, 0, 0));
@@ -80,7 +80,9 @@ pub(super) fn semantic() -> Vec<u8> {
             u32_at(&mut decision, 20, 1);
             let (mode, flags, fields) = match target {
                 0 => {
-                    let cycles = if frame < 2 {
+                    let cycles = if frame >= 131 {
+                        frame.min(134) - 131
+                    } else if frame < 2 {
                         0
                     } else if frame < 64 {
                         frame - 1
@@ -89,20 +91,21 @@ pub(super) fn semantic() -> Vec<u8> {
                     };
                     let pulse = match frame {
                         64 => 63,
-                        129.. => 128,
+                        129..=130 => 128,
+                        135 => 134,
                         _ => frame,
                     };
                     (
                         if frame == 0 {
                             2
-                        } else if frame < 129 {
+                        } else if frame < 129 || (131..135).contains(&frame) {
                             1
                         } else {
                             0
                         },
                         match frame {
-                            0 | 129 => 72,
-                            1 | 64 => 73,
+                            0 | 129 | 135 => 72,
+                            1 | 64 | 131 => 73,
                             130 => 8,
                             _ => 9,
                         },

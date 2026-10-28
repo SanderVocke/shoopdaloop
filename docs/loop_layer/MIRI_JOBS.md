@@ -50,7 +50,14 @@ Dense host coverage adds two cases: `scenario::dense::tests::dense_capture_casca
 (whole/single/irregular/zero partitions in direct and capacity-one actor modes,
 complete independent media/semantic/receipt oracle). Larger fixed MIDI/observer
 storage is prepared off-render; there is no reduced interpreter workload.
-All19 graph-focused, four export-focused, four staging-focused and two dense cases (**29**)
+Transferred-result buffer exhaustion adds
+`browser::native_dense::tests::acknowledged_restart_keeps_media_and_owning_results_while_transport_is_unpolled`:
+the complete136-frame restart script, seven requests/fourteen replies and independent
+media/semantic tables across whole/single/irregular/zero partitions and both actor
+modes. Actual MessagePort buffer holding is JavaScript/browser evidence, not a
+native interpreter feature. The affected dense native support/oracle must be part
+of the consolidated source snapshot.
+All19 graph-focused, four export-focused, four staging-focused and three dense/stall cases (**30**)
 are **not yet registered in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the

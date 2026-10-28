@@ -230,6 +230,15 @@ native tables. The acknowledged128/1/2-frame driver pauses and diagnostic marker
 output are fixture instrumentation, not runtime quanta or deadline guarantees.
 See [the dense host commands and limits](../../../../tests/loop_engine_host/README.md#dense-wraps-cascades-and-clocked-composites).
 
+A further `--stall-json`/`--stall-two-thread-json` variant restarts playback at131
+and stops at135 with replies left unpolled. Actual offline/live sessions hold all
+ten transferred response buffers after accepting the original Rust receipts, then
+admit that new pair and verify rendering while transport buffers remain exhausted.
+Returning the real buffers releases the waiting replies and permits full cleanup.
+This distinguishes Rust result credits from host transfer-buffer credits; the
+underlying MessagePort queue and live deadlines are not thereby bounded. See
+[the transfer-stall commands](../../../../tests/loop_engine_host/README.md#transferred-response-buffers-can-stall-independently).
+
 ## Coherent state and immutable exports
 
 `Operation::State` and `Operation::Export` are deferred to **post-settlement,

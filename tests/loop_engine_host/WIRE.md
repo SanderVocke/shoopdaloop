@@ -735,6 +735,37 @@ These pauses/sideband observations are test-driver instrumentation, not a runtim
 musical quantum, production transport or continuous live-edit/deadline guarantee.
 In-flight transferred-response-buffer exhaustion is not demonstrated by this case.
 
+## Transferred response buffer exhaustion
+
+The `stallReports` variant uses the same dense engine and unchanged LLC1/LLR1
+protocol. It first completes the original131-frame script. The main-side Rust
+client accepts all ten initial responses, releasing command credits, but holds the
+ten actual transferred96-byte ArrayBuffers without posting their `credit` messages.
+`polled.availableResponses` must be zero; it counts available transport buffers,
+not Rust command/result credits.
+
+Admit Play131 and Stop135 after that acknowledgement, with all transport buffers
+still held. A five-frame `dense-step` renders four audible samples and silent Stop.
+A blocked poll must report frame136, two outstanding Rust results and zero available
+transport buffers; main receipt count stays10, client outstanding stays2, and all
+ten original buffers remain held at96 bytes. Stop refuses15. Only then return each
+buffer with its original ID, checking detachment. A subsequent poll returns all
+four new receipts; normal successful stop requires every buffer/credit returned.
+
+`transferStall` records exactly `{frame:"136",outstanding:2,availableBuffers:0,
+received:10,clientOutstanding:2,heldBuffers:10}`. `states` adds the frame136 stop
+refusal. Four checkpoints map128/1/2/5-frame calls to all512 downstream probe samples
+per channel; offline additionally checks all1280 output samples/channel. Complete
+native-shaped data includes seven requests/fourteen replies,136 stereo samples,
+8713 MIDI packets/130695 bytes and2042 semantic records/326760 bytes. Only actual
+sessions normalize. `bindingChecks.stalls` and native `--stall-json`/
+`--stall-two-thread-json` reproduce the engine script with unpolled returns; they
+are not described as actual MessagePort transfers.
+
+This is a cooperative transport-credit exhaustion test, not proof of a bounded
+browser MessagePort queue or guaranteed live message deadlines. All engine steps
+are acknowledged; the runtime does not impose the driver pauses or frame counts.
+
 ## Browser report (`LLH2`)
 
 The runner's JSON report has `format: "LLH2"`. Historical `LLH1` reports lack the

@@ -401,16 +401,20 @@ def compare_export_worklets(result, native):
             raise RuntimeError("live export report claims offline audio")
 
 
-def compare_dense_worklets(result, native):
-    reports = result.get("denseReports")
+def compare_dense_worklets(result, native, *, stalled=False):
+    reports = result.get("stallReports" if stalled else "denseReports")
+    frames = 136 if stalled else 131
+    steps = [128,1,2,5] if stalled else [128,1,2]
+    ends = ["128","129","131","136"] if stalled else ["128","129","131"]
+    offline_frames = 1280 if stalled else 1024
     if not isinstance(reports, list) or [r.get("mode") for r in reports] != ["offline", "live"]:
         raise RuntimeError("both actual dense contexts required")
-    if (len(native["samples"]) != 131 or len(native["requests"]) != 5 or len(native["responses"]) != 10
-            or len(native["midiBytes"]) != 126735 or native["counts"] != [0]*4
+    if (len(native["samples"]) != frames or len(native["requests"]) != (7 if stalled else 5) or len(native["responses"]) != (14 if stalled else 10)
+            or len(native["midiBytes"]) != (130695 if stalled else 126735) or native["counts"] != [0]*4
             or native["recovered"] != [256,16,16,0]):
         raise RuntimeError("incomplete native dense reference")
     semantics = validate_semantic(native["semanticBytes"], capacity=4096)
-    if semantics["boundaries"] != list(map(str,range(131))) or semantics["records"] != 1968:
+    if semantics["boundaries"] != list(map(str,range(frames))) or semantics["records"] != (2042 if stalled else 1968):
         raise RuntimeError("incomplete dense semantic boundaries")
     for report in reports:
         data = json.loads(json.dumps(report["data"]))
@@ -423,23 +427,33 @@ def compare_dense_worklets(result, native):
         if data != native:
             raise RuntimeError("complete dense media/receipts/semantics differ from native")
         cuts = report["checkpoints"]
-        if len(cuts) != 3 or [c["frame"] for c in cuts] != ["128","129","131"] or [c["frames"] for c in cuts] != [128,1,2]:
+        if len(cuts) != len(steps) or [c["frame"] for c in cuts] != ends or [c["frames"] for c in cuts] != steps:
             raise RuntimeError("dense engine step clocks")
         clocks = [int(c["browser"]) for c in cuts]
         if (report["starts"] != [c["browser"] for c in cuts] or clocks[0] < 0
                 or any(c % 128 for c in clocks) or any(b <= a for a,b in zip(clocks,clocks[1:]))):
             raise RuntimeError("dense downstream step clocks")
-        if report["states"] != [{"type":"dense-state","frame":"129","outstanding":4,"stop":15},
-                                {"type":"dense-state","frame":"131","outstanding":5,"stop":15}]:
+        states = [{"type":"dense-state","frame":"129","outstanding":4,"stop":15},
+                  {"type":"dense-state","frame":"131","outstanding":5,"stop":15}]
+        if stalled:
+            states.append({"type":"dense-state","frame":"136","outstanding":2,"stop":15})
+        if report["states"] != states:
             raise RuntimeError("dense stalled credits/recovery evidence")
-        expected = [[s[channel] for s in native["samples"][:128]] + [native["samples"][128][channel]] + [0]*127
-                    + [s[channel] for s in native["samples"][129:]] + [0]*126 for channel in range(2)]
+        stall = {"frame":"136","outstanding":2,"availableBuffers":0,"received":10,"clientOutstanding":2,"heldBuffers":10} if stalled else None
+        if report.get("transferStall") != stall:
+            raise RuntimeError("actual transferred-buffer exhaustion evidence")
+        expected = [[],[]]
+        offset = 0
+        for count in steps:
+            for channel in range(2):
+                expected[channel].extend([s[channel] for s in native["samples"][offset:offset+count]] + [0]*(128-count))
+            offset += count
         if report["chunks"] != expected:
             raise RuntimeError("dense actual stereo/short tails")
         summary = report["summary"]
         if (summary["bytes"] != summary["finalBytes"] or summary["bytes"] != report["ready"]["bytes"]
                 or report["controlBytes"] != report["controlFinalBytes"] or summary["heap"] != [0,0,0]
-                or summary["frames"] != "131" or summary["callbacks"] != "3" or summary["returnedBuffers"] != 10
+                or summary["frames"] != str(frames) or summary["callbacks"] != str(len(steps)) or summary["returnedBuffers"] != 10
                 or summary["returnedGraphBuffers"] != 0 or summary["returnedExportBuffers"] != 0
                 or summary["returnedStagingBuffers"] != 0 or summary["retainedGraphs"] != 0
                 or summary["retainedExports"] != 0 or summary["retainedStaging"] != 0
@@ -449,10 +463,10 @@ def compare_dense_worklets(result, native):
                 or report["ready"]["marker"] != 0 or report["ready"]["shared"] is not False):
             raise RuntimeError("dense fixed memory/isolation/ownership evidence")
         if report["mode"] == "offline":
-            output = [[0]*1024 for _ in range(2)]
+            output = [[0]*offline_frames for _ in range(2)]
             for channel in range(2):
                 for segment, clock in enumerate(clocks):
-                    if clock + 128 > 1024:
+                    if clock + 128 > offline_frames:
                         raise RuntimeError("dense offline clock bounds")
                     output[channel][clock:clock+128] = expected[channel][segment*128:(segment+1)*128]
             if report["offlineAudio"] != output:
@@ -528,7 +542,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 17:
+        if not node.get("passed") or len(node.get("checks", [])) != 18:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:
@@ -544,7 +558,7 @@ def main():
     compare_graph_worklets(result, graph_native)
     result["native_graph_two_thread"] = {"passed": True, "channel_capacity": 1,
                                           "frames": graph_threaded["frames"], "callbacks": graph_threaded["callbacks"]}
-    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging", "dense")}:
+    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging", "dense", "stalls")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)
     exported = json.loads(harness.command([str(executable), "--export-json"], reports / "native-export.json"))
@@ -562,6 +576,11 @@ def main():
     if dense != dense_threaded or result["bindingChecks"]["dense"] != dense:
         raise RuntimeError("complete native/threaded/Node/Chromium dense reports differ")
     compare_dense_worklets(result, dense)
+    stalls = json.loads(harness.command([str(executable), "--stall-json"], reports / "native-stalls.json"))
+    stalls_threaded = json.loads(harness.command([str(executable), "--stall-two-thread-json"], reports / "native-stalls-two-thread.json"))
+    if stalls != stalls_threaded or result["bindingChecks"]["stalls"] != stalls:
+        raise RuntimeError("complete native/threaded/Node/Chromium restart reports differ")
+    compare_dense_worklets(result, stalls, stalled=True)
     result["node"] = node
     for mode in ("--direct", "--wire", "--two-thread"):
         harness.command([str(executable), mode], reports / (mode[2:] + ".log"))

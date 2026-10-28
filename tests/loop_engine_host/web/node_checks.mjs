@@ -13,4 +13,6 @@ result.staging=await stagingBindings(wasm,BrowserClient,BrowserBridge,BrowserSta
 result.checks.push("owning resource uploads and prepared nested-program staging");
 result.dense=await denseBindings(wasm,BrowserClient,BrowserBridge);
 result.checks.push("dense wraps, cascades and clocked composites with unread results");
+result.stalls=await denseBindings(wasm,BrowserClient,BrowserBridge,true);
+result.checks.push("acknowledged restart with unpolled result transport");
 console.log(JSON.stringify({ ...result, node: process.version }));

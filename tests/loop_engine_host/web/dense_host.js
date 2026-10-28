@@ -1,7 +1,7 @@
 const assert=(ok,message)=>{if(!ok)throw new Error(`dense host: ${message}`);};
 const Q=128,RATE=48000;
 const commands=[[1,0],[2,1],[4,64],[4,130]];
-export async function denseBindings(wasm,Client,Bridge){
+export async function denseBindings(wasm,Client,Bridge,stalled=false){
     const client=new Client(0xffffffffffffffffn),bridge=Bridge.new_dense(0xffffffffffffffffn);
     const bytes=wasm.memory.buffer.byteLength,requests=[],responses=[],samples=[];
     try{
@@ -11,8 +11,10 @@ export async function denseBindings(wasm,Client,Bridge){
         assert(client.prepare(3,0n,0n,0)===10,"normal credit saturation");step(128);step(1);
         assert(bridge.outstanding()===4&&bridge.stop()===15,"unread results retained");submit(3,129,4);step(2);
         assert(bridge.outstanding()===5,"recovery independent of four unread normal results");
-        while(true){const result=bridge.poll_response();if(result===0)break;assert(result===1,"binding polling");const response=new Uint8Array(wasm.memory.buffer,bridge.response_ptr(),96);responses.push(Array.from(response));new Uint8Array(wasm.memory.buffer,client.response_ptr(),96).set(response);assert(client.receive()===0&&client.receive()===11,"valid then duplicate receipt");}
-        assert(responses.length===10&&client.outstanding()===0&&bridge.outstanding()===0&&bridge.journal_overflow()===0,"complete binding results");
+        const drain=()=>{while(true){const result=bridge.poll_response();if(result===0)break;assert(result===1,"binding polling");const response=new Uint8Array(wasm.memory.buffer,bridge.response_ptr(),96);responses.push(Array.from(response));new Uint8Array(wasm.memory.buffer,client.response_ptr(),96).set(response);assert(client.receive()===0&&client.receive()===11,"valid then duplicate receipt");}};
+        drain();
+        if(stalled){submit(2,131);submit(3,135);step(5);assert(bridge.outstanding()===2&&client.outstanding()===2&&bridge.stop()===15,"unpolled restart results");drain();}
+        assert(responses.length===(stalled?14:10)&&client.outstanding()===0&&bridge.outstanding()===0&&bridge.journal_overflow()===0,"complete binding results");
         const midiBytes=Array.from(new Uint8Array(wasm.memory.buffer,bridge.journal_ptr(),bridge.journal_len()));assert(bridge.stop()===0,"binding cleanup");
         const semanticBytes=Array.from(new Uint8Array(wasm.memory.buffer,bridge.semantic_ptr(),bridge.semantic_len()));
         const recovered=[bridge.recovered_pages(),bridge.recovered_versions(),bridge.recovered_snapshots(),bridge.media_references()];assert(recovered.join()==="256,16,16,0"&&wasm.memory.buffer.byteLength===bytes,"binding full recovery/fixed memory");
@@ -21,6 +23,11 @@ export async function denseBindings(wasm,Client,Bridge){
 }
 export function makeDenseHost(Host){return class DenseHost extends Host{
     constructor(...args){super(...args);this.denseMode=true;this.offlineFrames=8*Q;this.frame=0n;this.checkpoints=[];this.states=[];}
+    enableStall(){this.stallMode=true;this.offlineFrames=10*Q;this.holding=true;this.heldBuffers=Array(10).fill(null);}
+    message(message){
+        if(!this.stallMode||!this.holding||message.type!=="response")return super.message(message);
+        try{const{id,buffer}=message;assert(Number.isInteger(id)&&id>=0&&id<10&&this.heldBuffers[id]===null&&buffer instanceof ArrayBuffer&&buffer.byteLength===96,"held response envelope");const bytes=new Uint8Array(buffer);new Uint8Array(this.memory.buffer,this.client.response_ptr(),96).set(bytes);assert(this.client.receive()===0,"held response accepted");this.responses.push(Array.from(bytes));this.heldBuffers[id]=buffer;}catch(error){this.reject(error);}
+    }
     async submitDense(kind,at,flags=0){
         assert(this.client.prepare(kind,BigInt(at),0n,flags)===0,"preparation");const request=new Uint8Array(this.memory.buffer,this.client.request_ptr(),64),slot=new DataView(request.buffer,request.byteOffset,64).getUint32(32,true),buffer=this.pool[slot];assert(buffer?.byteLength===64,"input pool");this.pool[slot]=null;new Uint8Array(buffer).set(request);this.requests.push(Array.from(request));const pending=this.wait(`ingested:${slot}`);this.node.port.postMessage({type:"request",slot,buffer},[buffer]);assert(buffer.byteLength===0,"input detached");const reply=await pending;assert(reply.result===0&&reply.buffer instanceof ArrayBuffer&&reply.buffer.byteLength===64,"input returned");this.pool[slot]=reply.buffer;
     }
@@ -36,12 +43,23 @@ export function makeDenseHost(Host){return class DenseHost extends Host{
         this.states.push(await this.call("dense-state"));assert(this.states[0].frame==="129"&&this.states[0].outstanding===4&&this.states[0].stop===15&&this.responses.length===0,"normal results genuinely stalled");
         await this.submitDense(3,129,4);await this.step(2);
         this.states.push(await this.call("dense-state"));assert(this.states[1].frame==="131"&&this.states[1].outstanding===5&&this.states[1].stop===15,"recovery with no normal credit returned");
-        const poll=await this.call("poll",{},"polled"),probe=await this.call("probe",{},"probe",this.probe.port);
-        assert(this.responses.length===10&&this.client.outstanding()===0&&poll.outstanding===0,"all actual results returned");assert(probe.ready&&probe.starts.join()===this.checkpoints.map(c=>c.browser).join(),"downstream stereo/sideband clocks");
-        const chunks=[probe.left,probe.right],samples=[];for(let segment=0;segment<3;segment++)for(let i=0;i<Q;i++){if(i<this.checkpoints[segment].frames)samples.push(chunks.map(channel=>channel[segment*Q+i]));else assert(chunks.every(channel=>channel[segment*Q+i]===0),"short callback tail");}
+        let poll=await this.call("poll",{},"polled"),transferStall=null;
+        if(this.stallMode){
+            assert(this.responses.length===10&&this.client.outstanding()===0&&poll.outstanding===0&&poll.availableResponses===0&&this.heldBuffers.every(buffer=>buffer?.byteLength===96),"all ten buffers held after accepting Rust results");
+            await this.submitDense(2,131);await this.submitDense(3,135);await this.step(5);
+            const blocked=await this.call("poll",{},"polled");
+            transferStall={frame:blocked.frame,outstanding:blocked.outstanding,availableBuffers:blocked.availableResponses,received:this.responses.length,clientOutstanding:this.client.outstanding(),heldBuffers:this.heldBuffers.filter(buffer=>buffer?.byteLength===96).length};
+            assert(JSON.stringify(transferStall)===JSON.stringify({frame:"136",outstanding:2,availableBuffers:0,received:10,clientOutstanding:2,heldBuffers:10}),"transport buffers block returns but not music");
+            this.states.push(await this.call("dense-state"));assert(this.states[2].stop===15,"stop refuses undelivered restart results");
+            this.holding=false;for(let id=0;id<10;id++){const buffer=this.heldBuffers[id];this.heldBuffers[id]=null;this.node.port.postMessage({type:"credit",id,buffer},[buffer]);assert(buffer.byteLength===0,"held return detaches");}
+            poll=await this.call("poll",{},"polled");assert(this.heldBuffers.every(buffer=>buffer===null),"no held buffers remain");
+        }
+        const probe=await this.call("probe",{},"probe",this.probe.port);
+        assert(this.responses.length===(this.stallMode?14:10)&&this.client.outstanding()===0&&poll.outstanding===0,"all actual results returned");assert(probe.ready&&probe.starts.join()===this.checkpoints.map(c=>c.browser).join(),"downstream stereo/sideband clocks");
+        const chunks=[probe.left,probe.right],samples=[];for(let segment=0;segment<this.checkpoints.length;segment++)for(let i=0;i<Q;i++){if(i<this.checkpoints[segment].frames)samples.push(chunks.map(channel=>channel[segment*Q+i]));else assert(chunks.every(channel=>channel[segment*Q+i]===0),"short callback tail");}
         assert(this.pool.every(buffer=>buffer?.byteLength===64),"all input buffers returned");const summary=await this.call("stop",{},"stopped");
-        assert(summary.frames==="131"&&summary.callbacks==="3"&&summary.returnedBuffers===10&&summary.bytes===summary.finalBytes&&summary.heap.join()==="0,0,0"&&summary.journalOverflow===0&&summary.recovered.join()==="256,16,16,0","fixed memory and complete cleanup");assert(this.memory.buffer.byteLength===this.controlBytes&&this.client.marker()===0x51a17&&summary.marker===0&&this.ready.shared===false,"ordinary independent memories");
+        assert(summary.frames===(this.stallMode?"136":"131")&&summary.callbacks===(this.stallMode?"4":"3")&&summary.returnedBuffers===10&&summary.bytes===summary.finalBytes&&summary.heap.join()==="0,0,0"&&summary.journalOverflow===0&&summary.recovered.join()==="256,16,16,0","fixed memory and complete cleanup");assert(this.memory.buffer.byteLength===this.controlBytes&&this.client.marker()===0x51a17&&summary.marker===0&&this.ready.shared===false,"ordinary independent memories");
         let offlineAudio=null;if(this.mode==="offline"){await this.context.resume();const output=await Promise.race([this.finished,this.failure]);offlineAudio=[0,1].map(channel=>Array.from(output.getChannelData(channel)));for(let channel=0;channel<2;channel++)for(let at=0;at<this.offlineFrames;at++){const segment=probe.starts.findIndex(start=>at>=Number(start)&&at<Number(start)+Q);assert(offlineAudio[channel][at]===(segment<0?0:chunks[channel][segment*Q+at-Number(probe.starts[segment])]),"complete offline output");}}else await this.context.close();
-        return{mode:this.mode,session:this.session,ready:this.ready,summary:{...summary,journal:undefined,semantic:undefined},controlBytes:this.controlBytes,controlFinalBytes:this.memory.buffer.byteLength,controlMarker:this.client.marker(),checkpoints:this.checkpoints,states:this.states,starts:probe.starts,chunks,offlineAudio,data:{samples,requests:this.requests,responses:this.responses,midiBytes:Array.from(new Uint8Array(summary.journal)),semanticBytes:Array.from(new Uint8Array(summary.semantic)),recovered:summary.recovered,counts:[this.client.outstanding(),poll.outstanding,poll.retainedGraphs,poll.retainedExports]}};
+        return{mode:this.mode,session:this.session,ready:this.ready,summary:{...summary,journal:undefined,semantic:undefined},controlBytes:this.controlBytes,controlFinalBytes:this.memory.buffer.byteLength,controlMarker:this.client.marker(),transferStall,checkpoints:this.checkpoints,states:this.states,starts:probe.starts,chunks,offlineAudio,data:{samples,requests:this.requests,responses:this.responses,midiBytes:Array.from(new Uint8Array(summary.journal)),semanticBytes:Array.from(new Uint8Array(summary.semantic)),recovered:summary.recovered,counts:[this.client.outstanding(),poll.outstanding,poll.retainedGraphs,poll.retainedExports]}};
     }
 };}
