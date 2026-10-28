@@ -1,4 +1,4 @@
-import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient, BrowserExportClient, BrowserStagingClient } from "./pkg/fixture.js";
+import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient, BrowserExportClient, BrowserStagingClient, BrowserPlannerCanary } from "./pkg/fixture.js";
 import { checkBindings } from "./bindings_checks.js";
 import { makeGraphHost } from "./graph_host.js";
 import { makeExportHost } from "./export_host.js";
@@ -7,6 +7,7 @@ import { makeStagingHost } from "./staging_host.js";
 import { stagingBindings } from "./staging_script.js";
 import { makeDenseHost, denseBindings } from "./dense_host.js";
 import {makeMediaHost,mediaBindings} from "./media_host.js";
+import {makePlannerHost,plannerBindings} from "./planner_host.js";
 const RATE = 48000, Q = 128;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -149,6 +150,7 @@ async function runInner() {
     assert(wasm.memory.buffer instanceof ArrayBuffer, "ordinary non-shared control memory required");
     const requestedCanary = new URLSearchParams(location.search).get("failure");
     const graphCanary = requestedCanary?.startsWith("graph-");
+    const plannerCanary = requestedCanary === "planner" || requestedCanary === "planner-rust-heap";
     const canary = graphCanary ? requestedCanary.slice(6) : requestedCanary;
     const bindingChecks = canary ? null : checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient);
     if (!canary) {
@@ -162,9 +164,11 @@ async function runInner() {
         bindingChecks.checks.push("acknowledged restart with unpolled result transport");
         bindingChecks.media=await mediaBindings(wasm,BrowserClient,BrowserBridge,BrowserStagingClient,BrowserExportClient);
         bindingChecks.checks.push("playable replacement, tick-delayed capture and coherent exhausted prefix export");
+        bindingChecks.planner=plannerBindings(wasm,BrowserPlannerCanary);
+        bindingChecks.checks.push("real resolver planner lifecycle control and distinct planner error/heap origins");
     }
     const reports = [], graphReports = [], exportReports = [];
-    for (const mode of graphCanary ? [] : canary ? ["offline"] : ["offline", "live"]) {
+    for (const mode of graphCanary || plannerCanary ? [] : canary ? ["offline"] : ["offline", "live"]) {
         const session = mode === "offline" ? "18446744073709551615" : "18446744073709551614";
         const client = new BrowserClient(BigInt(session)); client.set_marker(0x51a17);
         const host = new Host(mode, module, wasm.memory, client, session, canary);
@@ -197,7 +201,9 @@ async function runInner() {
     for(const mode of canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551605":"18446744073709551604",client=new BrowserClient(BigInt(session));client.set_marker(0x51a17);const host=new DenseHost(mode,module,wasm.memory,client,session,null);host.enableStall();try{stallReports.push(await host.run());}finally{await host.cleanup();client.free();}}
     const mediaReports=[],MediaHost=makeMediaHost(Host);
     for(const mode of canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551603":"18446744073709551602",client=new BrowserClient(BigInt(session)),stagingClient=new BrowserStagingClient(BigInt(session)),exportClient=new BrowserExportClient(BigInt(session));client.set_marker(0x51a17);const host=new MediaHost(mode,module,wasm.memory,client,session,stagingClient,exportClient);try{mediaReports.push(await host.run());}finally{await host.cleanup();exportClient.free();stagingClient.free();client.free();}}
-    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports, exportReports,stagingReports,denseReports,stallReports,mediaReports };
+    const plannerReports=[],PlannerHost=makePlannerHost(Host);
+    for(const mode of plannerCanary?["offline"]:canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551601":"18446744073709551600",client=new BrowserClient(BigInt(session));client.set_marker(0x51a17);const host=new PlannerHost(mode,module,wasm.memory,client,session,canary??"planner-control");try{plannerReports.push(await host.run());}finally{await host.cleanup();client.free();}}
+    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports, exportReports,stagingReports,denseReports,stallReports,mediaReports,plannerReports };
 }
 export async function run() {
     try { return await runInner(); }

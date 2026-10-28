@@ -2,6 +2,10 @@
 fn main() {
     assert!(loop_engine_host_fixture::allocator_canaries());
     let mode = std::env::args().nth(1).unwrap_or_else(|| "--direct".into());
+    if mode == "--planner-json" {
+        println!("{}", loop_engine_host_fixture::planner_report());
+        return;
+    }
     if mode == "--media-json" || mode == "--media-two-thread-json" {
         println!(
             "{}",

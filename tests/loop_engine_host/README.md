@@ -244,9 +244,10 @@ no separate `wasm-bindgen` executable is required. Missing tools are failures,
 not skipped browser evidence. `--no-build` deliberately reuses that profile's
 existing artifacts; omit it for fresh verification.
 
-Each normal runner invocation requires eight successful sessions: primitive,
-graph-change, immutable-export, resource/program-staging and dense musical scenarios in both offline and live contexts. `--verify-failures`
-additionally checks four intentionally failing sessions.
+Each normal runner invocation requires sixteen successful sessions: primitive,
+graph-change, immutable-export, resource/program-staging, dense musical, transferred
+result stalls, prepared media and planner-control scenarios in both offline/live
+contexts. `--verify-failures` additionally checks six intentionally failing sessions.
 
 ### 1. Prepare two ordinary Wasm instances
 
@@ -343,7 +344,7 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Nineteen shared public-binding groups execute in Node and Chromium: constructor
+Twenty shared public-binding groups execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
@@ -353,7 +354,7 @@ The export, resource/program-staging and dense musical groups also retain comple
 reports. A separate restart group checks the engine script used during actual
 response-buffer exhaustion. The media group checks prepared playable replacement,
 tick-delayed recording and coherent incomplete-prefix export. These are binding-level
-Wasm checks, not a claim that the57 native Rust tests were executed as Wasm test functions.
+Wasm checks, not a claim that the59 native Rust tests were executed as Wasm test functions.
 
 The observer prepares128 fixed160-byte records by default, or4096 for the dense and media scenarios. It records event-bearing boundaries,
 playback discontinuities and changes in resolver journal loss. It omits ordinary
@@ -363,10 +364,12 @@ batch, increments saturating loss counters and leaves music and receipts alone.
 Native tests vary observer capacity and resolver journal capacity across72 runs;
 Wasm checks also exhaust the observer while verifying all audio and receipts.
 
-`--verify-failures` launches four intentionally failing **real worklet** sessions:
-processor and heap faults in both primitive and graph hosts. The FX processor either
-returns an error or allocates/reallocates/deallocates. Individual gates can be run
-with `--failure-canary processor`, `rust-heap`, `graph-processor` or `graph-rust-heap`.
+`--verify-failures` launches six intentionally failing **real worklet** sessions:
+processor and heap faults in both primitive and graph hosts, plus planner error and
+planner heap faults. The FX processor or test-only resolver planner returns an error
+or allocates/reallocates/deallocates. Individual gates can be run with
+`--failure-canary processor`, `rust-heap`, `graph-processor`, `graph-rust-heap`,
+`planner` or `planner-rust-heap`.
 Each child must exit nonzero with the specific diagnostic, matching Rust processor
 witness and heap counts. An unrelated exception or matching text without witnesses
 cannot pass. These failed sessions do not stand in for successful disposal.
@@ -618,6 +621,49 @@ These are deliberately paused, acknowledged driver steps, not mandatory engine
 quanta or continuous live/deadline proof. [Wire details](WIRE.md#prepared-playable-media-and-capture-failure)
 keep catalog selection, delayed terminal frames and capture-status metadata explicit.
 
+## Planner lifecycle controls and deliberate failures
+
+A separate `BrowserPlannerCanary` uses a test-only generic planner around the real
+loop library's Resolver. It is not an injection seam in the production LoopPlanner
+or a replacement for the full facade scenarios above. Startup prepares a one-frame
+loop with Play0, a decision-bound stereo half-gain consumer and all journal/storage.
+There are no external command buffers or owning credits in this small profile.
+
+```sh
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --planner-json
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml planner_canary::tests::resolver_planner_control_is_partition_invariant_with_complete_boundary_tables -- --exact
+```
+
+Add `--release` before `--bin` or the test filter. Native whole/single/irregular/zero
+partitions compare every stereo sample and all512 semantic records/81960 bytes with
+independent tables:128 settled boundaries,128 decisions and256 events at0–127.
+Each interval is one frame because of the admitted loop length, not a work cap.
+Stop does not invent the wrap at128. Planner and consumer destructors assert that
+they run outside guarded rendering; counters saturate without retries.
+
+Node and Chromium check the complete native control report plus both fault modes.
+Actual offline/live controls render128 frames in one driver call, verify all256
+probe samples/channel (128 active then128 silent), all512 offline samples/channel,
+all semantic bytes,128 plan/finish calls and explicit8page/4version/4snapshot recovery.
+Independent ordinary worklet memory stays1,376,256 debug/1,310,720 release bytes;
+Rust heap counts remain zero. Main/worklet markers come from their actual separate
+instance-local static, not a constant identity claim.
+
+| Intentional fault | Render code | Rust planner witness | Plan/finish calls | Heap alloc/realloc/dealloc |
+| --- | ---: | ---: | --- | --- |
+| `planner` | 10 | 3 | 1/0 | 0/0/0 |
+| `planner-rust-heap` | 4294901761 | 4 | 128/128 | 1/5/1 |
+
+The error is injected inside `Planner::plan` after a real resolver preview and
+before commit/consumer execution. The heap violation deliberately grows/drops a Vec
+there, then finishes the control workload; the Rust allocator guard rejects it.
+Both require specific diagnostics, nonzero runner exits, integer Rust-origin/phase
+witnesses, processor witness0 and unchanged actual worklet memory. The runtime's
+callback cursor is128 in both cases: it advances before planner work. In the error
+case, zero finishes and zero output prove that this is **not**128 rendered or
+musically committed frames. A fault is permanent; explicit abandonment is not
+counted as the separate successful control's stop/disposal proof.
+
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
@@ -638,4 +684,6 @@ replacement, tick-delayed recording and common-prefix capture exhaustion/export 
 also pass all hosts. Actual held response
 buffers now also stall independently while newly acknowledged playback continues;
 raw MIDI uploads are not checkpointed playable sources.
+Separate real-resolver planner controls and exact error/heap canaries now also pass
+native, bindings and actual hosts; they do not add a production fault-injection API.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

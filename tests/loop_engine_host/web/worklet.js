@@ -1,11 +1,12 @@
 import { decoderFallback } from "./text_decoder.js";
-import { initSync, BrowserBridge } from "./pkg/fixture.js";
+import { initSync, BrowserBridge, BrowserPlannerCanary } from "./pkg/fixture.js";
 
 class LoopFixture extends AudioWorkletProcessor {
     constructor(options) {
         super();
         this.armed = false; this.stopped = false; this.failed = false; this.firstFrame = null;
         this.canary = options.processorOptions.canary;
+        this.plannerMode = ["planner-control", "planner", "planner-rust-heap"].includes(this.canary);
         this.graphMode = options.processorOptions.graph === true;
         this.exportMode = options.processorOptions.exports === true;
         this.stagingMode = options.processorOptions.staging === true; this.stagingFrames = 0;
@@ -19,12 +20,14 @@ class LoopFixture extends AudioWorkletProcessor {
         try {
             this.wasm = initSync({ module: options.processorOptions.module });
             const session = BigInt(options.processorOptions.session), fault = this.canary === "processor" ? 1 : this.canary === "rust-heap" ? 2 : 0;
-            this.engine = this.mediaMode ? BrowserBridge.new_media(session) : this.denseMode ? BrowserBridge.new_dense(session) : this.stagingMode ? BrowserBridge.new_staging(session) : this.exportMode ? BrowserBridge.new_exports(session) : this.graphMode ? BrowserBridge.new_graphs(session, fault) : new BrowserBridge(session, fault);
+            this.engine = this.plannerMode ? new BrowserPlannerCanary(this.canary === "planner" ? 1 : this.canary === "planner-rust-heap" ? 2 : 0) : this.mediaMode ? BrowserBridge.new_media(session) : this.denseMode ? BrowserBridge.new_dense(session) : this.stagingMode ? BrowserBridge.new_staging(session) : this.exportMode ? BrowserBridge.new_exports(session) : this.graphMode ? BrowserBridge.new_graphs(session, fault) : new BrowserBridge(session, fault);
             this.memory = this.wasm.memory;
             if (!(this.memory.buffer instanceof ArrayBuffer)) throw new Error("ordinary non-shared Wasm memory required");
             this.bytes = this.memory.buffer.byteLength;
-            this.request = new Uint8Array(this.memory.buffer, this.engine.request_ptr(), 64);
-            this.response = new Uint8Array(this.memory.buffer, this.engine.response_ptr(), 96);
+            if (!this.plannerMode) {
+                this.request = new Uint8Array(this.memory.buffer, this.engine.request_ptr(), 64);
+                this.response = new Uint8Array(this.memory.buffer, this.engine.response_ptr(), 96);
+            }
             if (this.graphMode) {
                 this.graphPayload = new Uint8Array(this.memory.buffer, this.engine.graph_payload_ptr(), 96);
                 this.graphRequest = new Uint8Array(this.memory.buffer, this.engine.graph_request_ptr(), 96);
@@ -42,7 +45,11 @@ class LoopFixture extends AudioWorkletProcessor {
     }
     fail(error) {
         this.failed = true;
-        const witness = this.engine ? { code: this.lastResult ?? null, processor: this.engine.fault_witness(),
+        const witness = this.engine ? { code: this.lastResult ?? null, processor: this.plannerMode ? 0 : this.engine.fault_witness(),
+            planner: this.plannerMode ? this.engine.fault_witness() : 0,
+            plans: this.plannerMode ? this.engine.plans() : null, finishes: this.plannerMode ? this.engine.finishes() : null,
+            frame: String(this.engine.frame()), callbacks: String(this.engine.callbacks()),
+            bytes: this.bytes, finalBytes: this.memory.buffer.byteLength,
             heap: [this.engine.heap_allocations(), this.engine.heap_reallocations(), this.engine.heap_deallocations()] } : null;
         this.port.postMessage({ type: "fatal", error: String(error.stack || error), witness });
     }
@@ -50,6 +57,7 @@ class LoopFixture extends AudioWorkletProcessor {
     message(data) {
         try {
             if (this.failed || this.stopped) throw new Error("message after loop host stopped");
+            if (this.plannerMode) { this.plannerMessage(data); return; }
             if (data.type === "request") {
                 if (!(data.buffer instanceof ArrayBuffer) || data.buffer.byteLength !== 64) throw new Error("request envelope");
                 this.request.set(new Uint8Array(data.buffer));
@@ -160,6 +168,24 @@ class LoopFixture extends AudioWorkletProcessor {
             } else { throw new Error("unknown loop host message"); }
         } catch (error) { this.fail(error); }
     }
+    plannerMessage(data) {
+        if (data.type === "planner-arm") {
+            if (this.armed || this.engine.frame() !== 0n || this.engine.plans() !== 0) throw new Error("planner arm state");
+            this.armed = true; this.port.postMessage({type:"planner-armed"});
+        } else if (data.type === "planner-stop") {
+            if (this.armed || this.engine.frame() !== 128n || this.engine.plans() !== 128 || this.engine.finishes() !== 128 || this.engine.fault_witness() !== 0) throw new Error("planner successful stop state");
+            this.checkMemory();
+            const summary = {bytes:this.bytes, frame:String(this.engine.frame()), callbacks:String(this.engine.callbacks()),
+                plans:this.engine.plans(), finishes:this.engine.finishes(), marker:this.engine.marker(),
+                heap:[this.engine.heap_allocations(),this.engine.heap_reallocations(),this.engine.heap_deallocations()]};
+            if (this.engine.stop() !== 0) throw new Error("planner stop failed");
+            this.checkMemory(); summary.finalBytes=this.memory.buffer.byteLength;
+            summary.recovered=[this.engine.recovered_pages(),this.engine.recovered_versions(),this.engine.recovered_snapshots()];
+            const semantic=new Uint8Array(this.memory.buffer,this.engine.semantic_ptr(),this.engine.semantic_len()).slice();
+            this.engine.free();this.engine=null;this.stopped=true;
+            this.port.postMessage({type:"planner-stopped",...summary,semantic:semantic.buffer},[semantic.buffer]);
+        } else throw new Error("unknown planner host message");
+    }
     process(_inputs, outputs) {
         if (this.stopped || this.failed) return false;
         if (!this.armed && !this.primeRequested) return true;
@@ -170,6 +196,8 @@ class LoopFixture extends AudioWorkletProcessor {
             if ((this.graphMode && !priming || this.exportMode && this.engine.frame() === 128n) && this.resumeFrame === null) this.resumeFrame = String(currentFrame);
             const result = this.engine.render(priming ? 1 : this.denseMode ? this.denseFrames : this.stagingMode ? this.stagingFrames : 128);
             this.lastResult = result;
+            if (result === 10 && this.canary === "planner" && this.engine.fault_witness() === 3 && this.engine.plans() === 1 && this.engine.finishes() === 0) throw new Error("intentional loop planner failure canary detected");
+            if (result === 0xffff0001 && this.canary === "planner-rust-heap" && this.engine.fault_witness() === 4 && this.engine.heap_allocations() > 0 && this.engine.heap_reallocations() > 0 && this.engine.heap_deallocations() > 0) throw new Error("intentional loop planner Rust heap failure canary detected");
             if (result === 0xffff0001 && this.canary === "rust-heap" && this.engine.fault_witness() === 2 && this.engine.heap_allocations() > 0 && this.engine.heap_reallocations() > 0 && this.engine.heap_deallocations() > 0) {
                 throw new Error(`intentional loop Rust heap failure canary detected: ${this.engine.heap_allocations()}/${this.engine.heap_reallocations()}/${this.engine.heap_deallocations()}`);
             }
@@ -178,8 +206,8 @@ class LoopFixture extends AudioWorkletProcessor {
             this.checkMemory();
             outputs[0][0].set(this.audio[0]); outputs[0][1].set(this.audio[1]);
             if(this.denseMode)outputs[1][0][0]=1;
-            if (priming || this.exportMode || this.stagingMode || this.denseMode) {
-                if (this.exportMode || this.stagingMode || this.denseMode) this.armed = false;
+            if (priming || this.exportMode || this.stagingMode || this.denseMode || this.plannerMode) {
+                if (this.exportMode || this.stagingMode || this.denseMode || this.plannerMode) this.armed = false;
                 else { this.primeRequested = false; this.primed = true; }
                 this.port.postMessage({ type: "checkpoint", frame: String(this.engine.frame()), browser: String(currentFrame) });
             }

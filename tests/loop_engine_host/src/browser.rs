@@ -23,6 +23,9 @@ pub(crate) mod native_staging;
 pub const HEAP_FAILURE: u32 = 0xffff_0001;
 const JOURNAL_BYTES: usize = 16_384;
 static MARKER: AtomicU32 = AtomicU32::new(0);
+pub(crate) fn instance_marker() -> u32 {
+    MARKER.load(Ordering::Relaxed)
+}
 pub(crate) fn protocol_error(error: wire::Error) -> u32 {
     use wire::Error::*;
     match error {

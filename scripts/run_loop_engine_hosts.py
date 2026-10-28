@@ -575,6 +575,45 @@ def _compare_media_worklets(result, native):
             raise RuntimeError("media live report claims offline output")
 
 
+def compare_planner_worklets(result, native):
+    try:
+        _compare_planner_worklets(result, native)
+    except (KeyError, TypeError, ValueError, IndexError, OverflowError, AttributeError) as error:
+        raise RuntimeError("malformed planner host evidence") from error
+
+
+def _compare_planner_worklets(result, native):
+    reports = result.get("plannerReports")
+    if not isinstance(reports, list) or [r.get("mode") for r in reports] != ["offline", "live"]:
+        raise RuntimeError("both actual planner control contexts required")
+    semantic = validate_semantic(native["semanticBytes"], capacity=512)
+    if (native["samples"] != [[v, v*10] for v in range(1,129)]
+            or semantic["records"] != 512 or semantic["boundaries"] != list(map(str,range(128)))
+            or native["recovered"] != [8,4,4]
+            or [native[k] for k in ("frames","callbacks","plans","finishes")] != [128,1,128,128]):
+        raise RuntimeError("incomplete independent native planner control")
+    audio = [[sample[c] for sample in native["samples"]]+[0]*128 for c in range(2)]
+    for report in reports:
+        summary, ready = report["summary"], report["ready"]
+        if (report["data"] != native or report["audio"] != audio
+                or summary["frame"] != "128" or summary["callbacks"] != "1"
+                or summary["plans"] != 128 or summary["finishes"] != 128
+                or summary["heap"] != [0,0,0] or summary["recovered"] != [8,4,4]
+                or summary["bytes"] != summary["finalBytes"] or summary["bytes"] != ready["bytes"]
+                or report["controlBytes"] != report["controlFinalBytes"]
+                or report["controlMarker"] != 0x51a17 or summary["marker"] != 0
+                or ready["marker"] != 0 or ready["shared"] is not False):
+            raise RuntimeError("planner control media/semantics/lifecycle/memory/recovery differs")
+        start = int(report["start"])
+        if start < 0 or start % 128:
+            raise RuntimeError("planner downstream clock")
+        if report["mode"] == "offline":
+            if start+256 > 512 or report["offlineAudio"] != [[0]*start+c+[0]*(512-start-256) for c in audio]:
+                raise RuntimeError("complete planner offline output differs")
+        elif report["offlineAudio"] is not None:
+            raise RuntimeError("planner live report claims offline output")
+
+
 def compare_native_graphs(native, threaded):
     """Complete direct/threaded replay equality except instance-local graph scope."""
     def normalized(source):
@@ -599,14 +638,28 @@ def compare_native_graphs(native, threaded):
 
 def verify_failure(result, exit_code, kind):
     base_kind = kind.removeprefix("graph-")
-    diagnostic = "intentional loop " + ("processor" if base_kind == "processor" else "Rust heap") + " failure canary detected"
+    if kind not in ("processor", "rust-heap", "graph-processor", "graph-rust-heap", "planner", "planner-rust-heap"):
+        raise RuntimeError("unknown failure canary")
+    planned = base_kind.startswith("planner")
+    error = base_kind in ("processor", "planner")
+    label = "planner" if base_kind == "planner" else "planner Rust heap" if planned else "processor" if error else "Rust heap"
+    diagnostic = "intentional loop " + label + " failure canary detected"
     witness = result.get("workletFailure") or {}
     heap = witness.get("heap", [])
-    expected_code, expected_origin = (10, 1) if base_kind == "processor" else (0xffff0001, 2)
+    expected_code = 10 if error else 0xffff0001
+    expected_origin = (3 if error else 4) if planned else (1 if error else 2)
     if (exit_code == 0 or result.get("passed") is not False or diagnostic not in result.get("failure", "")
-            or witness.get("code") != expected_code or witness.get("processor") != expected_origin
+            or type(witness.get("code")) is not int or witness.get("code") != expected_code
+            or type(witness.get("planner" if planned else "processor")) is not int
+            or witness.get("planner" if planned else "processor") != expected_origin
+            or (planned and (type(witness.get("processor")) is not int or witness.get("processor") != 0
+                or type(witness.get("plans")) is not int or type(witness.get("finishes")) is not int
+                or witness.get("plans") != (1 if error else 128) or witness.get("finishes") != (0 if error else 128)
+                or witness.get("frame") != "128" or witness.get("callbacks") != "1"
+                or type(witness.get("bytes")) is not int or witness.get("bytes", 0) <= 0
+                or witness.get("finalBytes") != witness.get("bytes")))
             or len(heap) != 3 or any(type(count) is not int for count in heap)
-            or (heap != [0, 0, 0] if base_kind == "processor" else any(count <= 0 for count in heap))):
+            or (heap != [0, 0, 0] if error else any(count <= 0 for count in heap))):
         raise RuntimeError(f"{kind} did not fail with its specific Rust-origin witnesses")
     return {"kind": kind, "exit_code": exit_code, "diagnostic": diagnostic, "witness": witness}
 
@@ -615,7 +668,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-build", action="store_true", help="Reuse existing native/Wasm artifacts")
     parser.add_argument("--profile", choices=("debug", "release"), default="release")
-    parser.add_argument("--failure-canary", choices=("processor", "rust-heap", "graph-processor", "graph-rust-heap"), help="Must fail through the corresponding real worklet path")
+    parser.add_argument("--failure-canary", choices=("processor", "rust-heap", "graph-processor", "graph-rust-heap", "planner", "planner-rust-heap"), help="Must fail through the corresponding real worklet path")
     parser.add_argument("--verify-failures", action="store_true")
     args = parser.parse_args()
     reports = ASSETS / "reports" / args.profile
@@ -642,7 +695,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 19:
+        if not node.get("passed") or len(node.get("checks", [])) != 20:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:
@@ -658,7 +711,7 @@ def main():
     compare_graph_worklets(result, graph_native)
     result["native_graph_two_thread"] = {"passed": True, "channel_capacity": 1,
                                           "frames": graph_threaded["frames"], "callbacks": graph_threaded["callbacks"]}
-    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging", "dense", "stalls", "media")}:
+    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging", "dense", "stalls", "media", "planner")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)
     exported = json.loads(harness.command([str(executable), "--export-json"], reports / "native-export.json"))
@@ -686,6 +739,10 @@ def main():
     if media != media_threaded or result["bindingChecks"]["media"] != media:
         raise RuntimeError("complete native/threaded/Node/Chromium media reports differ")
     compare_media_worklets(result, media)
+    planner = json.loads(harness.command([str(executable), "--planner-json"], reports / "native-planner.json"))
+    if result["bindingChecks"]["planner"] != planner:
+        raise RuntimeError("complete native/Node/Chromium planner control differs")
+    compare_planner_worklets(result, planner)
     result["node"] = node
     for mode in ("--direct", "--wire", "--two-thread"):
         harness.command([str(executable), mode], reports / (mode[2:] + ".log"))
@@ -695,7 +752,7 @@ def main():
     result["source_dirty"] = bool(subprocess.check_output(["git", "status", "--porcelain", "--", str(FIXTURE), str(Path(__file__).resolve())], cwd=ROOT, text=True).strip())
     if args.verify_failures:
         result["failure_canaries"] = []
-        for kind in ("processor", "rust-heap", "graph-processor", "graph-rust-heap"):
+        for kind in ("processor", "rust-heap", "graph-processor", "graph-rust-heap", "planner", "planner-rust-heap"):
             failed = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--no-build", "--profile", args.profile, "--failure-canary", kind],
                                     cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=360)
             (reports / f"{kind}-failure-gate.log").write_text(failed.stdout)

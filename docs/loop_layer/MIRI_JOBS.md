@@ -66,7 +66,16 @@ frames, truthful common-prefix exhaustion/export/initial state and direct/capaci
 partition workloads. The existing canonical staging test now covers all27 command
 kinds. Include the new constructor/catalog/cleanup paths and source/oracle support
 in the consolidated snapshot; browser output is not interpreter evidence.
-All19 graph-focused, four export-focused, four staging-focused, three dense/stall and three media cases (**33**)
+Planner lifecycle canaries add two applicable cases:
+`planner_canary::tests::resolver_planner_control_is_partition_invariant_with_complete_boundary_tables`
+and `planner_canary::tests::planner_errors_and_heap_faults_have_exact_lifecycle_origins_and_are_not_successful_cleanup`.
+The first retains full128-frame whole/single/irregular/zero workloads and independent
+512-record semantic tables; the second retains actual planner error and deliberate
+allocator instrumentation, permanent faults and off-render abandonment. Include the
+new module's real Resolver adapter/decision consumer, destructor guards and support
+in the snapshot. The existing dev-only allocator remains enabled; no workload or
+900s watchdog reduction and no immediate per-commit interpreter run is introduced.
+All19 graph-focused, four export-focused, four staging-focused, three dense/stall, three media and two planner cases (**35**)
 are **not yet registered in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the

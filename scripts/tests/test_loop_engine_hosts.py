@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, compare_staging_worklets, compare_dense_worklets, compare_media_worklets, validate_semantic, verify_failure
+from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, compare_staging_worklets, compare_dense_worklets, compare_media_worklets, compare_planner_worklets, validate_semantic, verify_failure
 
 
 class DenseTests(unittest.TestCase):
@@ -218,16 +218,19 @@ class NativeGraphTransportTests(unittest.TestCase):
 class FailureGateTests(unittest.TestCase):
     def report(self, kind):
         kind = kind.removeprefix("graph-")
-        return {
-            "passed": False,
-            "failure": "intentional loop " + ("processor" if kind == "processor" else "Rust heap") + " failure canary detected",
-            "workletFailure": {"code": 10 if kind == "processor" else 0xffff0001,
-                               "processor": 1 if kind == "processor" else 2,
-                               "heap": [0, 0, 0] if kind == "processor" else [1, 7, 1]},
-        }
+        planned = kind.startswith("planner")
+        error = kind in ("processor", "planner")
+        label = "planner" if kind == "planner" else "planner Rust heap" if planned else "processor" if error else "Rust heap"
+        witness = {"code": 10 if error else 0xffff0001,
+                   "processor": 0 if planned else 1 if error else 2,
+                   "heap": [0, 0, 0] if error else [1, 7, 1]}
+        if planned:
+            witness.update(planner=3 if error else 4, plans=1 if error else 128,
+                           finishes=0 if error else 128, frame="128", callbacks="1", bytes=1310720, finalBytes=1310720)
+        return {"passed": False, "failure": "intentional loop " + label + " failure canary detected", "workletFailure": witness}
 
     def test_matching_rust_witnesses_and_nonzero_exit_are_required(self):
-        for kind in ("processor", "rust-heap", "graph-processor", "graph-rust-heap"):
+        for kind in ("processor", "rust-heap", "graph-processor", "graph-rust-heap", "planner", "planner-rust-heap"):
             report = self.report(kind)
             self.assertEqual(verify_failure(report, 1, kind)["witness"], report["workletFailure"])
             with self.assertRaises(RuntimeError):
@@ -239,8 +242,8 @@ class FailureGateTests(unittest.TestCase):
                     verify_failure(altered, 1, kind)
 
     def test_unrelated_fault_and_ineffective_heap_counts_cannot_pass(self):
-        for kind in ("processor", "rust-heap", "graph-processor", "graph-rust-heap"):
-            for field, value in (("processor", 0), ("code", None), ("heap", []), ("heap", ["1", 7, 1])):
+        for kind in ("processor", "rust-heap", "graph-processor", "graph-rust-heap", "planner", "planner-rust-heap"):
+            for field, value in (("planner" if kind.startswith("planner") else "processor", 0), ("code", None), ("heap", []), ("heap", ["1", 7, 1])):
                 altered = self.report(kind)
                 altered["workletFailure"][field] = value
                 with self.assertRaises(RuntimeError):
@@ -250,6 +253,21 @@ class FailureGateTests(unittest.TestCase):
             altered["workletFailure"]["heap"] = counts
             with self.assertRaises(RuntimeError):
                 verify_failure(altered, 1, "rust-heap")
+
+
+class PlannerFailureGateTests(unittest.TestCase):
+    report = FailureGateTests.report
+
+    def test_planner_phase_counters_and_processor_origin_cannot_be_substituted(self):
+        for kind in ("planner", "planner-rust-heap"):
+            for field, value in (("planner", 0), ("planner", 1), ("processor", 1), ("plans", 0),
+                                 ("finishes", 1), ("frame", "1"), ("callbacks", "0"),
+                                 ("plans", True), ("finishes", False), ("processor", False),
+                                 ("bytes", 0), ("finalBytes", 1376256)):
+                altered = self.report(kind)
+                altered["workletFailure"][field] = value
+                with self.assertRaises(RuntimeError):
+                    verify_failure(altered, 1, kind)
 
 
 class SemanticJournalTests(unittest.TestCase):
@@ -511,6 +529,48 @@ class MediaWorkletTests(unittest.TestCase):
             change(altered["mediaReports"][0])
             with self.assertRaises(RuntimeError):
                 compare_media_worklets(altered, native)
+
+
+class PlannerControlTests(unittest.TestCase):
+    """Captured parser inputs; actual worklet execution is a separate gate."""
+    def fixture(self):
+        source = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_planner_reports.json.gz").read_bytes()))
+        return {"plannerReports": source["plannerReports"]}, source["native"]
+
+    def test_planner_control_requires_both_contexts_full_samples_and_semantics(self):
+        result, native = self.fixture()
+        compare_planner_worklets(result, native)
+        for reports in ([], result["plannerReports"][:1], result["plannerReports"][::-1], [None, None]):
+            with self.assertRaises(RuntimeError):
+                compare_planner_worklets({"plannerReports": reports}, native)
+        for field in ("samples", "semanticBytes", "recovered"):
+            altered = copy.deepcopy(result)
+            altered["plannerReports"][0]["data"][field] = []
+            with self.assertRaises(RuntimeError):
+                compare_planner_worklets(altered, native)
+        for change in (lambda r: r["audio"][0].__setitem__(128, 1),
+                       lambda r: r["offlineAudio"][1].__setitem__(0, 1),
+                       lambda r: r.__setitem__("start", "129"),
+                       lambda r: r["data"]["semanticBytes"].__setitem__(88, 99)):
+            altered = copy.deepcopy(result)
+            change(altered["plannerReports"][0])
+            with self.assertRaises(RuntimeError):
+                compare_planner_worklets(altered, native)
+
+    def test_planner_control_requires_real_lifecycle_fixed_memory_and_successful_recovery(self):
+        result, native = self.fixture()
+        for key, value in (("plans", 1), ("finishes", 0), ("callbacks", "2"), ("frame", "0"),
+                           ("heap", [1,0,0]), ("recovered", [7,4,4]), ("marker", 1),
+                           ("finalBytes", result["plannerReports"][0]["summary"]["bytes"]+65536)):
+            altered = copy.deepcopy(result)
+            altered["plannerReports"][0]["summary"][key] = value
+            with self.assertRaises(RuntimeError, msg=key):
+                compare_planner_worklets(altered, native)
+        for key, value in (("controlMarker", 0), ("controlFinalBytes", 0)):
+            altered = copy.deepcopy(result)
+            altered["plannerReports"][1][key] = value
+            with self.assertRaises(RuntimeError):
+                compare_planner_worklets(altered, native)
 
 
 if __name__ == "__main__":

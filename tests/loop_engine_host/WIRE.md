@@ -882,6 +882,33 @@ deallocation counts. The supervisor requires the matching diagnostic **and**
 these fields plus a nonzero exit. Matching text, an unrelated exception, a missing
 binding or a timeout alone is not a passing canary.
 
+## Planner lifecycle control and failure reports
+
+`plannerReports` retains offline/live successful controls of the real Resolver
+inside a test-only generic Planner, not the production facade's LoopPlanner.
+Startup-local Play0 and one-frame length drive128 real plan/finish intervals;
+a decision-bound half-gain consumer checks mode/position/cycles and interval scope.
+This profile has no external command protocol, transfer credits or media leases.
+
+Native `--planner-json` and shared `bindingChecks.planner` compare all128 stereo
+samples and512 LSJ1 records/81960 bytes with independent native tables. Actual
+reports retain all256 downstream samples/channel and512 offline samples/channel,
+acknowledged browser start, native-equal data,128 plans/finishes, fixed ordinary
+main/worklet memories and actual instance-local markers. Successful stopped recovery
+is8 pages/4 versions/4 snapshots. Stop does not settle a future wrap at128.
+
+`--failure-canary planner` returns runtime InvalidState10 inside `Planner::plan`
+after actual preview but before commit/render; witness planner3/plans1/finishes0,
+processor0 and heap0 are required. `planner-rust-heap` grows/drops a Vec inside that
+method: guard result4294901761, planner4/plans128/finishes128, processor0 and positive
+alloc/realloc/dealloc counts (observed1/5/1). Both retain callback count1 and runtime
+cursor128, which advances before planning and is not evidence of completed audio.
+The error path has no finishes/output; the heap path completes music but fails its
+heap contract. Witness code/origins/phase counts must be integers, not booleans.
+Actual failure witnesses retain prepared/final byte lengths; they must be positive
+and equal. Specific diagnostic/nonzero exit/witnesses are all mandatory. Explicit
+fault abandonment never substitutes for the successful control's separate recovery.
+
 ## Semantic boundary journal (`LSJ1`)
 
 This is a fixed, little-endian diagnostic stream, not a Rust layout, a lease,

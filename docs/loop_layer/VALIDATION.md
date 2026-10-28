@@ -18,7 +18,7 @@ commands/owning returns through MessagePort with an audible Ready checkpoint and
 explicit engine pause/resume, full native/reference downstream checks and successful
 recovery. Native capacity-one graph actor transport now also matches complete direct
 replay, with renderer-local owners and callback-external coordination. Stage7 has
-six of eight rows verified, including prepared ingress/program staging and native offline/two-thread/export evidence
+seven of eight rows verified, including prepared ingress/program staging and native offline/two-thread/export evidence
 and the fixture documentation maintained with these implemented milestones. Immutable
 exports now retain/read/release both capture revisions through native/bindings/actual
 worklets. Resource uploads/immutable reads and prepared nested-program staging now
@@ -37,7 +37,39 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 prepared playable replacement and capture exhaustion
+## Stage 7 planner lifecycle controls and deliberate failures
+
+[Planner-canary evidence](evidence/planner-canaries-stage7.md) verifies the guard/
+failure row through the actual Resolver in a test-only generic Planner, not a
+production LoopPlanner injection seam. One-frame startup playback and a decision-
+bound stereo consumer produce128 native/actual samples,512 semantic records/81960
+bytes and128 plan/finish calls. Complete independent native tables agree across
+whole/single/irregular/zero partitions, Node/Chromium and actual offline/live controls.
+Every256 downstream/512 offline sample per channel, stopped8/4/4 recovery, separate
+ordinary memories/markers, fixed1,376,256 debug/1,310,720 release bytes and heap0 are
+checked. This small profile has no external wire/owning credits or captured media;
+the full facade/media protocols remain separately demonstrated above.
+
+Two real worklet canaries require specific diagnostics/nonzero exits, integer
+Rust-origin/phase counts and unchanged actual memory. Planner error10 has witness3,
+processor0, one plan/zero finishes/zero heap. Planner heap failure4294901761 has
+witness4,128 plans/finishes and heap1/5/1. Runtime callback cursor128 advances before
+planning; it is not evidence of128 completed intervals in the error case. The initial
+verifier's mistaken frame0 expectation and resulting failed attempt are retained,
+then corrected against the existing clock contract without changing runtime behavior.
+Permanent faults and explicit abandonment do not replace successful control cleanup.
+
+Final local gates:59 fixture tests/profile, twenty binding groups/runtime/profile,
+sixteen successful actual contexts/six exact failure gates/profile,24 Python tests,
+2141 workspace passes/four existing skips (33.780s warm), warning-denied builds/
+rustdoc/doctests, format/boundary/test/tracing policies and documented commands.
+Two new native cases bring pending Stage7 interpreter debt to35 graph/export/staging/
+dense/stall/media/planner cases plus applicable ingress/observer coverage. No Miri
+job was launched per commit. Stage7 is7/8: consolidated interpreter/CI artifacts,
+Stages8–10 and final-source delivery/review remain open. These are not final-head CI,
+benchmark or hard-deadline results.
+
+## Historical Stage 7 prepared playable replacement and capture exhaustion
 
 [Media-host evidence](evidence/media-host-stage7.md) completes the broad scenario
 row with native direct/capacity-one actors, shared Node/Chromium bindings and actual

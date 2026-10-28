@@ -25,7 +25,11 @@ pub mod graph_transfer;
 pub mod graph_wire;
 mod journal;
 mod native;
+mod planner_canary;
 mod scenario;
+#[cfg(not(target_arch = "wasm32"))]
+pub use planner_canary::report as planner_report;
+pub use planner_canary::BrowserPlannerCanary;
 pub mod wire;
 pub use bridge::Bridge;
 #[cfg(not(target_arch = "wasm32"))]
