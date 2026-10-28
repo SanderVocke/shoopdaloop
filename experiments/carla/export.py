@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Export compact review data and a separate archive of full raw measurements."""
+import argparse
+import csv
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import tarfile
+
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--work',type=Path,required=True)
+    parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
+    work=args.work.resolve();output=args.output.resolve();output.mkdir(parents=True,exist_ok=True)
+    generated=work/'output'
+    for name in ['MEASUREMENTS.md','comparisons.json','floating-point.json','meter-audit.json',
+                 'completion-times.svg','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
+        if (generated/name).exists():shutil.copy2(generated/name,output/name)
+    rows=json.loads((generated/'all-runs.json').read_text())
+    with (output/'raw-runs.csv').open('w') as f:
+        writer=csv.DictWriter(f,fieldnames=sorted(set().union(*(r.keys() for r in rows))))
+        writer.writeheader();writer.writerows(rows)
+    for source,name in [(work/'manifest.json','extended-manifest.json'),(work/'frozen-core/manifest.json','core-manifest.json'),(work/'dependency-manifest.json','dependency-manifest.json')]:
+        if source.exists():shutil.copy2(source,output/name)
+    archive=generated/'raw-results.tar.gz'
+    directories=['results','controls','history','confirm','fp-context','voyage','voyage-paced','pin-control','contention']
+    with tarfile.open(archive,'w:gz') as tar:
+        for directory in directories:
+            if (work/directory).exists():tar.add(work/directory,arcname=directory)
+        for name in ['denormal.csv','voyage-tail-fp.csv','manifest.json','dependency-manifest.json','frozen-core/manifest.json',
+                     'voyage-crash.txt','output/implementation-control.json','output/fp-library-initializers.json',
+                     'output/legacy-no-fx.csv','output/legacy-no-fx-profile.json','output/legacy-no-fx.log']:
+            if (work/name).exists():tar.add(work/name,arcname=name)
+    digest=hashlib.sha256(archive.read_bytes()).hexdigest()
+    (output/'raw-archive.json').write_text(json.dumps({'path':str(archive),'sha256':digest,'bytes':archive.stat().st_size,
+        'scope':'Full per-block CSV, timing captures, commands/status and logs; binaries excluded. Archive retained in workspace, not committed.'},indent=2)+'\n')
+    print('Exported',len(rows),'run summaries; raw archive:',archive)
+
+
+if __name__=='__main__':main()

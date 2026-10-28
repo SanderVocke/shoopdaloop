@@ -77,6 +77,10 @@ def main():
         restore(chain, json.dumps(state).encode())
         time.sleep(.2)
         active(chain, 1)
+    voyage = b'<Type>VST3</Type>' in xml and b'Voyage' in xml
+    voyage_input = None
+    if voyage:
+        voyage_input = struct.unpack('<16384f', Path(os.environ['SHOOP_BENCH_VOYAGE_INPUT']).read_bytes())
     total = (blocks+200)*frames
     outputs = []
     for channel in range(2):
@@ -86,7 +90,8 @@ def main():
         if no_fx: connect(source, sink)
         else:
             connect(source, fx_input(chain, channel)); connect(fx_output(chain, channel), sink)
-        data = (c.c_float*total)(*([.125*(channel+1)]*total))
+        values = list(voyage_input[channel*8192:channel*8192+frames])*(blocks+200) if voyage else [.125*(channel+1)]*total
+        data = (c.c_float*total)(*values)
         queue(source, total, data); request(sink, total); outputs.append(sink)
     time.sleep(.1)
     request_frames(driver, total)
@@ -103,7 +108,17 @@ def main():
                 expected = c.c_float(c.c_float(expected*.9999).value + .00001).value
             expected *= .5
         elif b'audiogain_s' in xml: expected *= .5
-        assert all(abs(v-expected)<.00002 for v in data[200*frames:]), 'invalid historical output'
+        measured = data[200*frames:]
+        if voyage:
+            import math
+            assert all(math.isfinite(v) for v in measured), 'nonfinite Voyage output'
+            for offset in range(0, len(measured), frames):
+                block = measured[offset:offset+frames]
+                energy = sum(v*v for v in block)/frames
+                assert 1e-10 < energy < 16, 'silent or unbounded Voyage output'
+                assert any(abs(v-voyage_input[channel*8192+i])>1e-5 for i,v in enumerate(block)), 'Voyage was bypassed'
+        else:
+            assert all(abs(v-expected)<.00002 for v in measured), 'invalid historical output'
     class ProfileItem(c.Structure):
         _fields_ = [('key', c.c_char_p), ('count', c.c_float), ('average', c.c_float), ('worst', c.c_float), ('recent', c.c_float)]
     class Profile(c.Structure):

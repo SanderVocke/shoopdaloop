@@ -84,7 +84,3 @@ shoop_common = { path = "../shoop_common" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"
-
-[[example]]
-name = "carla_regression_benchmark"
-required-features = ["carla"]

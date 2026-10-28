@@ -1,0 +1,26 @@
+[
+  {
+    "library": "/workspace/work/carla-investigation/release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libzita-resampler.so",
+    "returncode": 0,
+    "result": "before=0x1f80 after=0x9fc0 before_ftz_daz=0x0 after_ftz_daz=0x8040",
+    "error": ""
+  },
+  {
+    "library": "/workspace/work/carla-investigation/release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libshoopdaloop_backend.so",
+    "returncode": 0,
+    "result": "before=0x1f80 after=0x9fc0 before_ftz_daz=0x0 after_ftz_daz=0x8040",
+    "error": ""
+  },
+  {
+    "library": "/workspace/work/carla-investigation/Carla-reference/bin/libcarla_native-plugin.so",
+    "returncode": 0,
+    "result": "before=0x1f80 after=0x1f80 before_ftz_daz=0x0 after_ftz_daz=0x0",
+    "error": ""
+  },
+  {
+    "library": "/workspace/work/carla-investigation/Carla-full-reference/bin/libcarla_native-plugin.so",
+    "returncode": 0,
+    "result": "before=0x1f80 after=0x1f80 before_ftz_daz=0x0 after_ftz_daz=0x0",
+    "error": ""
+  }
+]

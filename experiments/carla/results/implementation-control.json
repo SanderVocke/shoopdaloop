@@ -1,0 +1,12 @@
+[
+  {
+    "mode": "default",
+    "returncode": 0,
+    "library_sha256": "483ab83c7d78ae54f5089b6addfce86c8c389b548d6bc56cd339bebc671c881a"
+  },
+  {
+    "mode": "force-native",
+    "returncode": -11,
+    "library_sha256": "483ab83c7d78ae54f5089b6addfce86c8c389b548d6bc56cd339bebc671c881a"
+  }
+]

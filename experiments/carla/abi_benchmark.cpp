@@ -32,6 +32,10 @@ static intptr_t dispatch(void*,NativeHostDispatcherOpcode,int32_t,intptr_t,void*
 static std::map<std::string,uint32_t> urids;
 static uint32_t map_uri(void*,const char* s) { auto it=urids.find(s); if(it!=urids.end()) return it->second; auto n=urids.size()+1; urids[s]=n; return n; }
 static std::string state;
+static LV2_State_Status store_chunk(LV2_State_Handle handle,uint32_t key,const void* value,size_t size,uint32_t type,uint32_t) {
+    if(key==map_uri(nullptr,"http://kxstudio.sf.net/ns/carla/chunk") && type==map_uri(nullptr,LV2_ATOM__String)) static_cast<std::string*>(handle)->assign(static_cast<const char*>(value),size-1);
+    return LV2_STATE_SUCCESS;
+}
 static const void* retrieve(void*,uint32_t key,size_t* size,uint32_t* type,uint32_t* flags) {
     if(key!=map_uri(nullptr,"http://kxstudio.sf.net/ns/carla/chunk")) return nullptr;
     *size=state.size()+1; *type=map_uri(nullptr,LV2_ATOM__String); *flags=LV2_STATE_IS_POD|LV2_STATE_IS_PORTABLE; return state.c_str();
@@ -44,6 +48,12 @@ int main(int argc,char** argv) try {
     std::ifstream file(argv[4]); require(bool(file),"missing state"); state.assign(std::istreambuf_iterator<char>(file),{});
     void* library=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL); if(!library) throw std::runtime_error(dlerror());
     std::vector<float> left(frames,0.125f),right(frames,0.25f),out_l(frames),out_r(frames);
+    const bool voyage=state.find("<Type>VST3</Type>")!=std::string::npos && state.find("Voyage")!=std::string::npos;
+    if(voyage) {
+        const char* path=std::getenv("SHOOP_BENCH_VOYAGE_INPUT"); require(path,"missing Voyage input path");
+        std::ifstream input(path,std::ios::binary); std::vector<float> data(16384); input.read(reinterpret_cast<char*>(data.data()),65536); require(input.gcount()==65536,"invalid Voyage input");
+        std::copy_n(data.data(),frames,left.data()); std::copy_n(data.data()+8192,frames,right.data());
+    }
     float* inputs[]={left.data(),right.data()}; float* outputs[]={out_l.data(),out_r.data()};
     const NativePluginDescriptor* nd=nullptr; NativePluginHandle nh=nullptr;
     void* meter_handle=nullptr;
@@ -84,13 +94,25 @@ int main(int argc,char** argv) try {
     const bool synthetic=state.find("shoop_benchmark")!=std::string::npos;
     const bool gain=state.find("audiogain_s")!=std::string::npos;
     auto expected=[&](float x) { if(synthetic) { for(unsigned i=0;i<192;++i) x=x*0.9999f+0.00001f; return x*0.5f; } return gain?x*0.5f:x; };
-    auto validate=[&]() { for(size_t i=0;i<frames;++i) require(std::isfinite(out_l[i]) && std::fabs(out_l[i]-expected(left[i]))<2e-5f && std::fabs(out_r[i]-expected(right[i]))<2e-5f,"output validation failed"); };
+    auto validate=[&]() {
+        if(voyage) {
+            for(unsigned channel=0;channel<2;++channel) {
+                double energy=0;bool altered=false;
+                for(size_t i=0;i<frames;++i) { require(std::isfinite(outputs[channel][i]),"nonfinite Voyage output"); energy+=outputs[channel][i]*outputs[channel][i]; altered=altered||std::fabs(outputs[channel][i]-inputs[channel][i])>1e-5f; }
+                require(energy/frames>1e-10 && energy/frames<16 && altered,"Voyage output was silent, bypassed or unbounded");
+            }
+            return;
+        }
+        for(size_t i=0;i<frames;++i) require(std::isfinite(out_l[i]) && std::fabs(out_l[i]-expected(left[i]))<2e-5f && std::fabs(out_r[i]-expected(right[i]))<2e-5f,"output validation failed"); };
     for(unsigned i=0;i<200;++i) process(); validate();
     std::vector<uint64_t> wall(count),cpu(count); std::vector<float> dsp(count);
     for(size_t i=0;i<count;++i) { auto w=ns(CLOCK_MONOTONIC); auto c=ns(CLOCK_THREAD_CPUTIME_ID); process(); cpu[i]=ns(CLOCK_THREAD_CPUTIME_ID)-c; wall[i]=ns(CLOCK_MONOTONIC)-w; if(meter_info && meter_handle) dsp[i]=meter_info(meter_handle)->load; validate(); }
     if(meter_handle && meter_free) meter_free(meter_handle);
-    if(nd) { auto saved=nd->get_state(nh); require(saved,"state unavailable"); if(synthetic) require(std::string(saved).find("shoop_benchmark")!=std::string::npos,"plugin not loaded"); free(saved); nd->deactivate(nh); nd->cleanup(nh); }
-    else { ld->deactivate(lh); ld->cleanup(lh); }
+    if(nd) { auto saved=nd->get_state(nh); require(saved,"state unavailable"); if(synthetic) require(std::string(saved).find("shoop_benchmark")!=std::string::npos,"plugin not loaded"); if(voyage) require(std::string(saved).find("<Type>VST3</Type>")!=std::string::npos,"VST3 not loaded"); free(saved); nd->deactivate(nh); nd->cleanup(nh); }
+    else {
+        if(voyage) { std::string chunk; auto si=static_cast<const LV2_State_Interface*>(ld->extension_data(LV2_STATE__interface)); require(si->save(lh,store_chunk,&chunk,0,features)==0 && chunk.find("<Type>VST3</Type>")!=std::string::npos,"VST3 not loaded through LV2"); }
+        ld->deactivate(lh); ld->cleanup(lh);
+    }
     std::ofstream result(argv[7]); result<<"block,wall_ns,cpu_ns,dsp_percent\n"; for(size_t i=0;i<count;++i) result<<i<<','<<wall[i]<<','<<cpu[i]<<','<<dsp[i]<<'\n';
     std::cout<<"validated "<<mode<<" frames="<<frames<<" blocks="<<count<<'\n';
     return 0;

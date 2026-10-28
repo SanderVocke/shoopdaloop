@@ -49,6 +49,26 @@ mod linux {
         Ok(true)
     }
 
+    fn input_sample(workload: &str, channel: usize, index: usize) -> f32 {
+        if workload == "voyage" {
+            static INPUT: std::sync::OnceLock<Vec<f32>> = std::sync::OnceLock::new();
+            let data = INPUT.get_or_init(|| {
+                let bytes = std::fs::read(
+                    std::env::var("SHOOP_BENCH_VOYAGE_INPUT").expect("missing Voyage input path"),
+                )
+                .expect("missing Voyage input file");
+                assert_eq!(bytes.len(), 8192 * 2 * 4);
+                bytes
+                    .chunks_exact(4)
+                    .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+                    .collect()
+            });
+            data[channel * 8192 + index]
+        } else {
+            0.125 * (channel + 1) as f32
+        }
+    }
+
     enum Runner {
         Processor(Box<dyn CarlaProcessor>),
         Engine {
@@ -59,7 +79,7 @@ mod linux {
         },
     }
     impl Runner {
-        fn prepare(&mut self, frames: usize) {
+        fn prepare(&mut self, frames: usize, workload: &str) {
             if let Self::Engine { engine, inputs, .. } = self {
                 for (channel, port) in inputs.iter().enumerate() {
                     engine
@@ -68,7 +88,11 @@ mod linux {
                         .unwrap()
                         .as_dummy_mut()
                         .unwrap()
-                        .queue_data(&vec![0.125 * (channel + 1) as f32; frames]);
+                        .queue_data(
+                            &(0..frames)
+                                .map(|i| input_sample(workload, channel, i))
+                                .collect::<Vec<_>>(),
+                        );
                 }
             }
         }
@@ -104,9 +128,20 @@ mod linux {
                     },
                 };
                 ensure!(
-                    output[..frames]
-                        .iter()
-                        .all(|v| v.is_finite() && (*v - expected).abs() < 0.00002),
+                    output[..frames].iter().all(|v| v.is_finite())
+                        && if workload == "voyage" {
+                            let energy =
+                                output[..frames].iter().map(|v| v * v).sum::<f32>() / frames as f32;
+                            energy > 1e-10
+                                && energy < 16.0
+                                && output[..frames].iter().enumerate().any(|(i, v)| {
+                                    (*v - input_sample(workload, channel, i)).abs() > 1e-5
+                                })
+                        } else {
+                            output[..frames]
+                                .iter()
+                                .all(|v| (*v - expected).abs() < 0.00002)
+                        },
                     "output mismatch, channel {channel}"
                 );
             }
@@ -151,6 +186,23 @@ mod linux {
             "shoop-carla-native-state:2:rack:{}",
             base64::engine::general_purpose::STANDARD.encode(xml)
         ))?;
+        if args[3] == "voyage" {
+            let saved = processor.save_state()?;
+            let encoded = if saved.starts_with("shoop-carla-native-state:") {
+                saved.rsplit(':').next().unwrap().to_owned()
+            } else {
+                let value: serde_json::Value = serde_json::from_str(&saved)?;
+                value["http://kxstudio.sf.net/ns/carla/chunk"]["value"]
+                    .as_str()
+                    .context("missing state chunk")?
+                    .to_owned()
+            };
+            let decoded = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+            ensure!(
+                String::from_utf8_lossy(&decoded).contains("<Type>VST3</Type>"),
+                "VST3 workload was not loaded"
+            );
+        }
         processor.set_active(true);
         let mut control = None;
         if matches!(mode.as_str(), "bridge" | "subprocess" | "engine") {
@@ -160,10 +212,12 @@ mod linux {
             processor = endpoint;
         }
         for channel in 0..2 {
-            processor
+            let input = processor
                 .audio_input_mut(channel)
-                .context("missing input")?[..frames]
-                .fill(0.125 * (channel + 1) as f32);
+                .context("missing input")?;
+            for (index, value) in input[..frames].iter_mut().enumerate() {
+                *value = input_sample(&args[3], channel, index);
+            }
         }
         let mut runner = if mode == "engine" || mode == "no_fx" {
             let mut session = Session::default();
@@ -217,9 +271,22 @@ mod linux {
             );
             Runner::Processor(processor)
         };
+        let period = std::env::var("SHOOP_BENCH_PACE_PERIOD_NS")
+            .ok()
+            .map(|v| v.parse::<u64>())
+            .transpose()?
+            .map(Duration::from_nanos)
+            .unwrap_or_else(|| Duration::from_secs_f64(frames as f64 / 48_000.0));
+        let mut warm_deadline = Instant::now();
         for _ in 0..200 {
-            runner.prepare(frames);
+            if std::env::var_os("SHOOP_BENCH_PACED_WARMUP").is_some() {
+                if let Some(wait) = warm_deadline.checked_duration_since(Instant::now()) {
+                    std::thread::sleep(wait);
+                }
+            }
+            runner.prepare(frames, &args[3]);
             runner.process(frames)?;
+            warm_deadline += period;
         }
         let workload = if mode == "no_fx" { "empty" } else { &args[3] };
         let mut ready = runner.validate(frames, workload).is_ok();
@@ -228,17 +295,16 @@ mod linux {
                 break;
             }
             std::thread::sleep(Duration::from_secs_f64(frames as f64 / 48_000.0));
-            runner.prepare(frames);
+            runner.prepare(frames, &args[3]);
             runner.process(frames)?;
             ready = runner.validate(frames, workload).is_ok();
         }
         ensure!(ready, "warm-up never produced validated output");
         let before = control.as_ref().map_or(0, |v| v.deadline_misses());
         let mut samples = Vec::with_capacity(blocks);
-        let period = Duration::from_secs_f64(frames as f64 / 48_000.0);
         let mut deadline = Instant::now();
         for _ in 0..blocks {
-            runner.prepare(frames);
+            runner.prepare(frames, &args[3]);
             if paced {
                 if let Some(wait) = deadline.checked_duration_since(Instant::now()) {
                     std::thread::sleep(wait);

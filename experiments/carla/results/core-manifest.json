@@ -1,0 +1,36 @@
+{
+  "baseline": "580f6191c9b2d00c6ad43fcbf30445e590235a49",
+  "pre": "9b169b5ec4f3a9ea86b4e0bdffbbd71882be4069",
+  "post": "0cec63cc03ce0e3d3046e8f06f8de1b3104675be",
+  "v0.2.0": "d08aafcb049f6c7a848c97a18b5c3a1456046696",
+  "cpu_max": "400000 100000\n",
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "scheduler": 0,
+  "artifacts": {
+    "/workspace/work/carla-investigation/workload.so": "f1eb00a7bca6a1c4c811c7f8a3a494c73be95a859e903ca90d4733b3132e6737",
+    "/workspace/work/carla-investigation/native_timing.so": "d29cab1095517767d1266c58f859a88487d7f2f7c9ab019c225003f6d0514f75",
+    "/workspace/work/carla-investigation/abi_benchmark": "5fdb440cde193628402724906e95a7e68643d649de20609f75762c5bc82a7bbd",
+    "/workspace/work/carla-investigation/Carla-reference/bin/libcarla_native-plugin.so": "83ef3d1502ab87f16d45012142520593e3e5b4c95419cf50519c2ae289f2437c",
+    "/workspace/work/carla-investigation/Carla-reference/bin/carla.lv2/carla.so": "406e19ff8c85d433ab2b82cbaaf9e6c5c5d83828f1648a29d444a1c2000a2a8c",
+    "/workspace/work/carla-investigation/Carla-packaged/bin/libcarla_native-plugin.so": "83ef3d1502ab87f16d45012142520593e3e5b4c95419cf50519c2ae289f2437c",
+    "/workspace/work/carla-investigation/Carla-packaged/bin/carla.lv2/carla.so": "406e19ff8c85d433ab2b82cbaaf9e6c5c5d83828f1648a29d444a1c2000a2a8c"
+  },
+  "carla_archive_sha256": "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661",
+  "gcc": "gcc (Debian 14.2.0-19) 14.2.0",
+  "g++": "g++ (Debian 14.2.0-19) 14.2.0",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "harness_commit": "d618d254",
+  "additional_artifacts": {
+    "/workspace/work/carla-investigation/frozen-core/abi_benchmark": "5fdb440cde193628402724906e95a7e68643d649de20609f75762c5bc82a7bbd",
+    "/workspace/work/carla-investigation/frozen-core/pre_benchmark": "800efd392c42f280dc408bd60fcfc99dd3690810dcb49327d79ccbdc639ddde8",
+    "/workspace/work/carla-investigation/frozen-core/carla_regression_benchmark": "eec3b76a5f263655fc4b6db35d6c3ba2ae79e96272fc92ed6db64b266f0b43e2",
+    "/workspace/work/carla-investigation/frozen-core/post_benchmark": "2fee87af106a138e0f9f8d8d745a15bf00d2e9f97c9da1732ba526d4df84a878"
+  }
+}

@@ -13,18 +13,30 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#endif
 
 typedef struct { uint64_t begin, end, cpu, frames; } Sample;
-typedef struct { uint64_t count, capacity, sample_rate, buffer_size; Sample samples[16384]; } Capture;
+typedef struct { uint64_t count, capacity, sample_rate, buffer_size; Sample samples[16384]; uint64_t fp_before, fp_after; } Capture;
 static Capture *capture;
 static void *library;
 static void (*original_process)(NativePluginHandle,float**,float**,uint32_t,const NativeMidiEvent*,uint32_t);
 static uint64_t now(clockid_t c) { struct timespec t; clock_gettime(c,&t); return (uint64_t)t.tv_sec*1000000000+t.tv_nsec; }
+static uint64_t fp_mode(void) {
+#if defined(__SSE__)
+    return _mm_getcsr();
+#else
+    return 0;
+#endif
+}
 static void process(NativePluginHandle h,float **in,float **out,uint32_t n,const NativeMidiEvent *m,uint32_t nm) {
+    if(capture)capture->fp_before=fp_mode();
     uint64_t begin=now(CLOCK_MONOTONIC), cpu=now(CLOCK_THREAD_CPUTIME_ID);
     original_process(h,in,out,n,m,nm);
     cpu=now(CLOCK_THREAD_CPUTIME_ID)-cpu;
     uint64_t end=now(CLOCK_MONOTONIC);
+    if(capture)capture->fp_after=fp_mode();
     if(capture && capture->count<capture->capacity) {
         capture->samples[capture->count++]=(Sample){begin,end,cpu,n};
     }
@@ -46,6 +58,7 @@ static const NativePluginDescriptor *descriptor(const char *symbol) {
     if(!get) abort();
     const NativePluginDescriptor *base=get();
     NativePluginDescriptor *copy=malloc(sizeof(*copy)); memcpy(copy,base,sizeof(*copy));
+    if(original_process && original_process!=base->process) abort();
     original_process=base->process; copy->process=process;
     return copy;
 }
@@ -69,9 +82,11 @@ static LV2_Handle instantiate_lv2(const LV2_Descriptor* d,double rate,const char
 }
 static void (*original_run)(LV2_Handle,uint32_t);
 static void run_lv2(LV2_Handle h,uint32_t n) {
+    if(capture)capture->fp_before=fp_mode();
     uint64_t begin=now(CLOCK_MONOTONIC), cpu=now(CLOCK_THREAD_CPUTIME_ID);
     original_run(h,n);
     cpu=now(CLOCK_THREAD_CPUTIME_ID)-cpu; uint64_t end=now(CLOCK_MONOTONIC);
+    if(capture)capture->fp_after=fp_mode();
     if(capture && capture->count<capture->capacity) capture->samples[capture->count++]=(Sample){begin,end,cpu,n};
 }
 const LV2_Descriptor *lv2_descriptor(uint32_t i) {
@@ -89,6 +104,7 @@ const LV2_Descriptor *lv2_descriptor(uint32_t i) {
     const LV2_Descriptor *(*get)(uint32_t)=dlsym(library,"lv2_descriptor");
     if(!get) abort(); const LV2_Descriptor *base=get(i); if(!base) return NULL;
     LV2_Descriptor *copy=malloc(sizeof(*copy)); memcpy(copy,base,sizeof(*copy));
+    if(original_run && original_run!=base->run) abort();
     original_instantiate_lv2=base->instantiate; copy->instantiate=instantiate_lv2; original_run=base->run; copy->run=run_lv2; return copy;
 }
 const void *lv2ui_descriptor(uint32_t i) {

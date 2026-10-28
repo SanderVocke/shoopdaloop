@@ -1,0 +1,6 @@
+{
+  "path": "/workspace/work/carla-investigation/output/raw-results.tar.gz",
+  "sha256": "839485d62cba2964db80d9e7f7f4c5f7d7ab53bc9cbb7a7fc92deb53f1fbe0b0",
+  "bytes": 112070649,
+  "scope": "Full per-block CSV, timing captures, commands/status and logs; binaries excluded. Archive retained in workspace, not committed."
+}

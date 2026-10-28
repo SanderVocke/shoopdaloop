@@ -38,16 +38,26 @@ activation script. Choose an absolute scratch directory, referred to below as
    settings; start clean after changing detected features. Frontend freezing is
    irrelevant to headless DSP and is excluded. These reproduce build targets,
    not every optional dependency of the Ubuntu packaging runner.
-4. Build the Rust adapter:
+4. `bootstrap.py` installs the current adapter from `adapters/current.rs` in an
+   isolated checkout pinned to `580f6191`, and applies the historical patches in
+   separate checkouts. It builds their examples and copies executables to the
+   scratch root. It does not modify the application's Cargo manifest or source.
+   `run.py prepare` builds the native/LV2 harness, fixture and timing shim and
+   writes artifact/environment manifests.
 
-   ```sh
-   cargo build --locked --release -p shoop_engine --features carla --example carla_regression_benchmark
-   cp target/release/examples/carla_regression_benchmark "$CARLA_WORK/"
-   python3 experiments/carla/run.py prepare --work "$CARLA_WORK"
-   ```
+For the actual Voyage VST3 and numerical controls, use:
 
-   The prepare command builds the fixture, timing shim and native/LV2 harness,
-   writes state files, and records artifact checksums and environment metadata.
+```sh
+python3 experiments/carla/bootstrap.py --work "$CARLA_WORK" --full-vst3 \
+  --native-sysroot /workspace/.setup/native --apt-config /workspace/.setup/apt.conf
+```
+
+This adds the X11/FreeType/JUCE build, verifies the pinned Voyage 1.0.2 archive,
+creates identical seeded binary input, and builds the supplementary probes.
+The minimal build explicitly disables JUCE/DGL/X11; the fuller build checks the
+JUCE dependency probe. Full reference/packaged aliases in the recorded optional
+runs are identical binaries and serve as A/A controls, not independent compiler
+or distribution comparisons. The bootstrap can build both recipes independently.
 
 ## Run
 
@@ -141,4 +151,62 @@ screening threshold is the larger of 5% and three times the median absolute A/A
 ratio deviation; at least 80% of pairs must agree in direction. Latency screening
 requires a 20% effect. A flag is a reason to investigate, not proof of causality.
 The analyzer preserves runs with invalid output and misses in exported records;
-CPU comparisons exclude those runs rather than interpreting fallback as faster DSP.
+CPU comparisons exclude runs with invalid output, deadline misses, or incomplete inner-call matching rather than interpreting fallback as faster DSP. Constant input is deliberate; stale/fallback detection relies on transport counters and call matching in addition to waveform validation.
+
+## Complete execution and verification
+
+`all.py` executes preparation, positive/negative integration checks, the serial
+matrices, numerical controls, supplementary probes and analysis. It preserves
+failed measurements in summaries. Do not interpret process completion as every
+measurement satisfying its deadline.
+
+```sh
+python3 experiments/carla/all.py --work "$CARLA_WORK" --full-vst3 \
+  --native-sysroot /workspace/.setup/native --apt-config /workspace/.setup/apt.conf
+python3 experiments/carla/all.py --work "$CARLA_WORK" --results-root "$CARLA_WORK/replay-smoke" \
+  --skip-prepare --full-vst3 --smoke
+```
+
+The Codex execution sandbox must permit local sockets for subprocess transport.
+A sandbox socket denial is an environment failure, not an application regression.
+The driver kills only its own benchmark process group on a timeout and records
+exit 124; controlled contention children are always cleaned up.
+
+The optional Voyage matrix uses 1024 frames, factory defaults, the same binary
+input file and ten independent repetitions of 200 measured blocks per cell.
+Its output checks require a loaded VST3, finite bounded non-silent output and an
+actual transformation of the input. This is not an exact reproduction of the
+reporter's unknown preset. Failed minimal-runtime VST3 attempts are retained;
+those signals/crashes are not interpreted as timing evidence.
+
+`voyage-paced` additionally uses 200 paced warm-up blocks and the old dummy
+driver's rounded 21.739 ms cadence for current native, current subprocess and
+pre-switch native comparisons. Use it for comparisons against the old paced
+backend; continuous versus paced comparisons are exploratory only.
+
+`denormal_probe` tests two floating-point policies with identical binaries. The
+synthetic diagnostic deliberately produces subnormals; the Voyage variant starts
+a fresh instance for each mode, primes it for 200 blocks and measures a 2,000-block
+silent tail. `fp_loader_probe` reads MXCSR before/after loading a library in a fresh
+process. `supplementary.py` records these loader observations, the old no-FX routing
+check, and the same-full-binary VST3 implementation selector control. Numerical
+probes require x86 SSE; the wider experiment suite requires Linux.
+
+Core results were collected before optional workload extensions. `frozen-core`
+contains the original compiled harnesses/manifest; the original harness milestone
+is commit `d618d254`. Subsequent optional experiments retain the same production
+source baselines and explicitly identify their fuller runtime and protocol. No
+production processing implementation or numerical policy is patched by this PR.
+
+## Recorded findings and export
+
+See [the completed investigation report](results/REPORT.md) and its linked data.
+After analysis, export compact review artifacts and a separate full raw archive:
+
+```sh
+python3 experiments/carla/export.py --work "$CARLA_WORK" \
+  --output experiments/carla/results
+```
+
+The raw archive stays under `$CARLA_WORK/output`; its checksum/location is recorded
+in `results/raw-archive.json`. Do not commit downloaded binaries or the large archive.

@@ -1,0 +1,38 @@
+{
+  "baseline": "580f6191c9b2d00c6ad43fcbf30445e590235a49",
+  "pre": "9b169b5ec4f3a9ea86b4e0bdffbbd71882be4069",
+  "post": "0cec63cc03ce0e3d3046e8f06f8de1b3104675be",
+  "v0.2.0": "d08aafcb049f6c7a848c97a18b5c3a1456046696",
+  "cpu_max": "400000 100000\n",
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "scheduler": 0,
+  "artifacts": {
+    "/workspace/work/carla-investigation/workload.so": "f1eb00a7bca6a1c4c811c7f8a3a494c73be95a859e903ca90d4733b3132e6737",
+    "/workspace/work/carla-investigation/native_timing.so": "502fba2ddfc80d6dbed3b9569db1ad3043e7ea39891a61c819b414344a7e1b8c",
+    "/workspace/work/carla-investigation/abi_benchmark": "c2546f1051c7c83c1254493cb9b136e3c12c27d60d776462f8f053cb0b1b78c3",
+    "/workspace/work/carla-investigation/Carla-reference/bin/libcarla_native-plugin.so": "83ef3d1502ab87f16d45012142520593e3e5b4c95419cf50519c2ae289f2437c",
+    "/workspace/work/carla-investigation/Carla-reference/bin/carla.lv2/carla.so": "406e19ff8c85d433ab2b82cbaaf9e6c5c5d83828f1648a29d444a1c2000a2a8c",
+    "/workspace/work/carla-investigation/Carla-packaged/bin/libcarla_native-plugin.so": "83ef3d1502ab87f16d45012142520593e3e5b4c95419cf50519c2ae289f2437c",
+    "/workspace/work/carla-investigation/Carla-packaged/bin/carla.lv2/carla.so": "406e19ff8c85d433ab2b82cbaaf9e6c5c5d83828f1648a29d444a1c2000a2a8c",
+    "/workspace/work/carla-investigation/carla_regression_benchmark": "ccf4fde30d6bc3b58394232ec2a2d3e0254733fbdd9728b21f5309803b12c68c",
+    "/workspace/work/carla-investigation/pre_benchmark": "b3f5ad781a843e4e724f2d9870309e8e7d5f402da6eef8cad2bfd5152a495c42",
+    "/workspace/work/carla-investigation/post_benchmark": "9c31513748d9ae85ff18d1ab30b7e18738f4bf630aa6d4e0add01216d16eafde",
+    "/workspace/work/carla-investigation/voyage.zip": "97a2ac1e6ba991bfd5f897e368b05a113c598214bd21b5ae0e6197ff4dd92673",
+    "/workspace/work/carla-investigation/voyage-input.bin": "8eac35e676e81b1d19933f802f957ab6e2468ecb521c6567940b328f62a72c60",
+    "/workspace/work/carla-investigation/Carla-full-packaged/bin/libcarla_native-plugin.so": "483ab83c7d78ae54f5089b6addfce86c8c389b548d6bc56cd339bebc671c881a",
+    "/workspace/work/carla-investigation/Carla-full-reference/bin/libcarla_native-plugin.so": "483ab83c7d78ae54f5089b6addfce86c8c389b548d6bc56cd339bebc671c881a",
+    "/workspace/work/carla-investigation/Carla-full-packaged/bin/carla.lv2/carla.so": "754f41dc397fe79b81683b8bd49dce05179d3d629afb47677a40a3a1a13c5975",
+    "/workspace/work/carla-investigation/Carla-full-reference/bin/carla.lv2/carla.so": "754f41dc397fe79b81683b8bd49dce05179d3d629afb47677a40a3a1a13c5975"
+  },
+  "carla_archive_sha256": "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661",
+  "gcc": "gcc (Debian 14.2.0-19) 14.2.0",
+  "g++": "g++ (Debian 14.2.0-19) 14.2.0",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)"
+}

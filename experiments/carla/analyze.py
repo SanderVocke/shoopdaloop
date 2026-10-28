@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Summarize independent repeated runs and bootstrap paired effect sizes."""
 import argparse
+import csv
 import importlib.util
 import json
 import math
@@ -21,11 +22,11 @@ def interval(values):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--work',type=Path,required=True)
-    parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
-    work=args.work;output=args.output;output.mkdir(parents=True,exist_ok=True)
+    parser.add_argument('--output',type=Path,required=True);parser.add_argument('--data-root',type=Path);args=parser.parse_args()
+    work=args.work;data=args.data_root or work;output=args.output;output.mkdir(parents=True,exist_ok=True)
     groups={};all_rows=[]
-    for directory in ['results','controls','history','pin-control','contention']:
-        source=work/directory
+    for directory in ['results','controls','history','pin-control','contention','confirm','fp-context','voyage','voyage-paced']:
+        source=data/directory
         if not source.exists(): continue
         rows=runner.summarize(source);all_rows.extend(dict(v,dataset=directory) for v in rows)
         groups[directory]={}
@@ -39,7 +40,9 @@ def main():
             x,y=baseline[repeat],candidate[repeat]
             if x['status']!='ok' or y['status']!='ok' or metric not in x or metric not in y: continue
             # CPU attribution requires correct output and no missing processing samples.
-            if classification=='CPU' and (x.get('invalid',0) or y.get('invalid',0)): continue
+            if classification=='CPU' and (x.get('invalid',0) or y.get('invalid',0) or x.get('misses',0) or y.get('misses',0)): continue
+            if 'inner' in metric:
+                if x.get('matched_calls') != x.get('blocks') or y.get('matched_calls') != y.get('blocks'): continue
             if x[metric]>0 and y[metric]>0: pairs.append(y[metric]/x[metric]);used.append(repeat)
         record={'comparison':label,'baseline':a,'candidate':b,'metric':metric,'pairs':len(pairs),'dataset':dataset,'type':classification}
         if len(pairs)>=2:
@@ -98,6 +101,56 @@ def main():
             groups.setdefault('pin-control',{})[case+'-loaded']=groups['contention'][case]
             compare('Controlled CPU contention','pin-control',case,case+'-loaded','p99_wall_ns',noise,'latency')
             compare('CPU cost under contention','pin-control',case,case+'-loaded','mean_inner_cpu_ns',noise)
+            compare('Inner wall time under contention','pin-control',case,case+'-loaded','p99_inner_wall_ns',noise,'latency')
+    meter={'transitions':0,'compatible':0,'positive_readings':0,'largest_percent':0}
+    for path in (data/'results').glob('abi-*-native-*.csv'):
+        frames=int(path.stem.split('-')[-3]); period=frames/48000
+        previous=None
+        for row in csv.DictReader(path.open()):
+            if 'dsp_percent' not in row: continue
+            value=float(row['dsp_percent']); outer=100*int(row['wall_ns'])/(period*1e9)
+            meter['positive_readings']+=value>0
+            meter['largest_percent']=max(meter['largest_percent'],value)
+            if previous is not None:
+                decay=previous*(1-period)
+                compatible=abs(value-decay)<.0002 or (value>=previous and value<=outer+100*1.01e-6/period+.0002)
+                meter['transitions']+=1;meter['compatible']+=compatible
+            previous=value
+    (output/'meter-audit.json').write_text(json.dumps(meter,indent=2))
+    for metric in ['mean_caller_cpu_ns','mean_inner_cpu_ns','p99_wall_ns']:
+        compare('Adjacent native-switch confirmation','confirm','history-pre-subprocess-synthetic-1024-continuous','history-post-subprocess-synthetic-1024-continuous',metric,noise,'latency' if metric=='p99_wall_ns' else 'CPU')
+    for mode in ['native','bridge','subprocess','engine']:
+        current=f'engine-reference-{mode}-voyage-1024-continuous'
+        for revision in ['pre','post']:
+            historical=f'history-{revision}-{mode}-voyage-1024-continuous'
+            compare('Voyage historical versus current','voyage',historical,current,'mean_inner_cpu_ns',noise)
+        compare('Voyage native switch','voyage',f'history-pre-{mode}-voyage-1024-continuous',f'history-post-{mode}-voyage-1024-continuous','mean_inner_cpu_ns',noise)
+        compare('Voyage execution paths','voyage','engine-reference-native-voyage-1024-continuous',current,'mean_inner_cpu_ns',noise)
+    old='legacy-020-lv2-voyage-1024-paced'
+    for mode in ['native','bridge','subprocess','engine']:
+        current=f'engine-reference-{mode}-voyage-1024-continuous'
+        compare('Voyage 0.2.0 versus current (cadence differs)','voyage',old,current,'mean_inner_cpu_ns',noise)
+    if 'voyage' in groups and 'voyage-paced' in groups:
+        old='legacy-020-lv2-voyage-1024-paced'
+        groups['voyage-paced'][old]=groups['voyage'].get(old,{})
+        for case in ['history-pre-native-voyage-1024-paced','engine-reference-native-voyage-1024-paced','engine-reference-subprocess-voyage-1024-paced']:
+            compare('Voyage matched cadence versus 0.2.0','voyage-paced',old,case,'mean_inner_cpu_ns',noise)
+    fp=[]
+    for name in ['denormal','voyage-tail-fp']:
+        path=data/(name+'.csv')
+        if not path.exists(): continue
+        observations=list(csv.DictReader(path.open()));means={}
+        for repeat in sorted(set(v['repeat'] for v in observations)):
+            for mode in ['0','1']:
+                values=[int(v['cpu_ns']) for v in observations if v['repeat']==repeat and v['ftz_daz']==mode]
+                if values: means[(repeat,mode)]=statistics.mean(values)
+        ratios=[means[(r,'0')]/means[(r,'1')] for r in sorted(set(v[0] for v in means)) if (r,'0') in means and (r,'1') in means]
+        if ratios:
+            ratio,low,high=interval(ratios)
+            record={'experiment':name,'off_over_on_ratio':ratio,'ci95':[low,high],'pairs':len(ratios),'paired_ratios':ratios,
+                    'mean_cpu_off_ns':statistics.mean(v for (r,m),v in means.items() if m=='0'),'mean_cpu_on_ns':statistics.mean(v for (r,m),v in means.items() if m=='1')}
+            fp.append(record)
+    (output/'floating-point.json').write_text(json.dumps(fp,indent=2))
     (output/'comparisons.json').write_text(json.dumps(comparisons,indent=2))
     (output/'all-runs.json').write_text(json.dumps(all_rows,indent=2))
     text=['# Carla experiment measurements','',f'A/A median absolute paired CPU ratio deviation: {noise:.2%}.',
@@ -108,7 +161,7 @@ def main():
         else:
             text.append(f"| {v['comparison']} | {v['baseline']} → {v['candidate']} | {v['metric']} | {v['pairs']} | insufficient valid pairs | — |")
     text+=['','Flags are screening results under the predeclared thresholds, not causal diagnoses.',
-           'CPU comparisons exclude runs with invalid output; latency summaries retain deadline/fallback effects.',
+           'CPU comparisons exclude runs with invalid output, deadline misses, or incomplete inner-call matching; latency summaries retain deadline/fallback effects.',
            'Old 0.2.0 samples are inner LV2 call timings under its internally paced dummy driver, not full callback timings.']
     (output/'MEASUREMENTS.md').write_text('\n'.join(text)+'\n')
     # Standalone, dependency-free SVG of current synthetic wall-time medians.
