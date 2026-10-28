@@ -15,7 +15,7 @@ def main():
     work=args.work.resolve();output=args.output.resolve();output.mkdir(parents=True,exist_ok=True)
     generated=work/'output'
     for name in ['MEASUREMENTS.md','comparisons.json','floating-point.json','meter-audit.json',
-                 'completion-times.svg','VERSIONS.md','versions-comparisons.json','versions-runs.csv','versions-protocol.json','versions-selection.json','macos-upstream-audit.json','build-protocol.json','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
+                 'completion-times.svg','VERSIONS.md','versions-comparisons.json','versions-runs.csv','versions-protocol.json','versions-selection.json','catalina-package.json','macos-upstream-audit.json','build-protocol.json','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
         if (generated/name).exists():
             if name.endswith('.csv'):(output/name).write_text((generated/name).read_text())
             else:shutil.copy2(generated/name,output/name)

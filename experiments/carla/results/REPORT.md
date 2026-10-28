@@ -108,6 +108,16 @@ The added fixed-host experiment uses the same compiler/full SDK/release plugin r
 
 No comparison meets the predeclared ~5.12% CPU or 20% wall-latency screen. The small LV2 decrease with suppression on has an interval excluding 1 but falls below the material-effect threshold. Native uncertainty still permits a smaller slowdown. No large version-driven increase is reproduced. The DSP-meter implementation source file is byte-identical between these revisions. [Full comparison tables](VERSIONS.md), paired ratios and per-run data are retained; this adds a version axis without pretending to recover the reporter’s former runtime.
 
+## Published standalone Catalina A/B package
+
+A complete [Carla/Carla-Control package is published here](https://github.com/SanderVocke/shoopdaloop/releases/tag/carla-catalina-ab-2.5.10-20261028): [direct ZIP download](https://github.com/SanderVocke/shoopdaloop/releases/download/carla-catalina-ab-2.5.10-20261028/Carla-2.5.10-macos-x86_64-10.15-standalone-ab.zip). It includes the standalone engine, bridges/discovery executables and frozen Python/Qt runtime, for Intel x86_64/macOS 10.15+. ShoopDaLoop is not involved in running it.
+
+This follows the macOS bundle’s actual recipe: pinned upstream Carla 2.5.10 with the same rebuilt Catalina OpenSSL/liblzma dependencies. Carla itself is not recompiled. Native library code/data sections match the normalized ShoopDaLoop component. App containers remain unsigned/not notarized; individual Mach-O files are ad hoc signed.
+
+The successful Intel macOS build validates both GUIs, standalone Dummy-driver audio-file → gain processing at 48 kHz/1024, and repeated checks after ZIP extraction/relocation. Local audits independently verify 179 Carla and 84 Carla-Control Intel Mach-O files, all 287 recorded file hashes, executable modes and the public download checksum. ZIP SHA256: `7e1e963734075c149267549e01484e210c325d531d2c96b888e3c4cdd30bc60a`.
+
+See [package metadata](catalina-package.json) and [A/B instructions](../../../docs/carla-catalina-ab.md). Actual execution on a physical Catalina system remains for the reporter to confirm. Compare system and packaged Carla separately using the same driver, plugin binary/preset, input/routing and period. This directly tests standalone build differences, without ShoopDaLoop’s host/bridge behavior.
+
 ## Build features and actual VST3 processing
 
 The controlled minimal builds disable JUCE/DGL/X11, retaining liblo/PyQt tools for LV2 rack registration. Voyage loads but segfaults processing through Carla's native VST3 path. A captured stack ends in `juce::ClientRemappedBuffer<float>` inside the plugin. The fuller build enables JUCE VST3 and processes successfully.

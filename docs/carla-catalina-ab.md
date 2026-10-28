@@ -47,3 +47,7 @@ The pinned original sources remain available at:
 - Carla: https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz
 - OpenSSL: the version/URL/checksum in `runtime-lock.json` under `macos_catalina_dependencies`.
 - XZ/liblzma: the version/URL/checksum in the same lock entry.
+
+
+Published package and verification assets:
+https://github.com/SanderVocke/shoopdaloop/releases/tag/carla-catalina-ab-2.5.10-20261028
