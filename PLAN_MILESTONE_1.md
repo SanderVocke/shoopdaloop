@@ -2,7 +2,7 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stages 0–4 verified; Stage 5's fixed-latency probe is next.**
+**In progress: Stages 0–5 verified; Stage 6's adversarial cases and measurements are next.**
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
@@ -61,10 +61,17 @@ Execution contract:
   42 stereo frames, 487 MIDI packets and 378 copied media bytes each, plus a separate
   stopped-live-input case. Deliberate sample/packet/outcome mismatches fail in both
   profiles. The service's 13 portable tests pass debug/release/actual Node execution;
-  its Wasm build passes. The current workspace passes 2,169 tests with four existing
-  skips (110 binaries); closed inventory remains 217 modules. Latency findings,
-  further adversarial/two-thread work, measurements and final integration remain
-  Stages 5–7. See the named tests and commands in the integration notes.
+  its Wasm build passes. Its Stage 4 workspace baseline passed 2,169 tests with four
+  existing skips (110 binaries); closed inventory remained 217 modules.
+- Stage 5 executes the declared D=3 raw dry/wet probe across 18 signal/capture/
+  partition cases, plus 24 guarded current-engine channel references. Debug/release
+  transcripts agree exactly. Missing dry history, wet tail and independent playback
+  windows are demonstrated, not implemented by shifting raw media. The service now
+  passes 15 native debug/release tests and 14 actual Node tests (the old-engine
+  reference is native-only); its Wasm build passes. Current workspace: 2,171 passed,
+  four existing skips, 111 binaries; closed inventory 217 modules. Further
+  adversarial/two-thread work, measurements and final integration remain Stages 6–7.
+  See the named tests, committed raw transcript and findings in the integration notes.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency
@@ -319,16 +326,16 @@ is heap/destructor guarded; complete resource/owner recovery is asserted.
 
 ### Stage 5 — Fixed-latency dry/wet compatibility probe
 
-- [ ] Execute the predeclared D-frame delay with impulse/ramp stereo inputs and
+- [x] Execute the predeclared D-frame delay with impulse/ramp stereo inputs and
       timestamped MIDI markers. Keep raw physical capture and proposed logical
       windows separately observable; use independent expectations and partitions.
-- [ ] Compare a narrowly matched current-engine scenario/reference, including
+- [x] Compare a narrowly matched current-engine scenario/reference, including
       start/finish edges and any required tail. Reuse pure latency mapping helpers
       only after verifying their contracts; do not import old session machinery.
-- [ ] Demonstrate what supported public mechanisms can express. Report missing
+- [x] Demonstrate what supported public mechanisms can express. Report missing
       prehistory/postroll/playback-window mechanisms and their proposed owning
       layer, rather than shifting timestamps or trimming output to fake parity.
-- [ ] Document the supported path and concrete gaps. If a required protected-layer
+- [x] Document the supported path and concrete gaps. If a required protected-layer
       change is discovered, pause and coordinate; a documented gap satisfies the
       probe criterion but not unrelated blocked composition acceptance criteria.
 

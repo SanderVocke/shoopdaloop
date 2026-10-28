@@ -138,6 +138,30 @@ To verify a mismatch really fails the executable, use `-- --inject=sample`,
 `-- --inject=packet` or `-- --inject=outcome`; each deliberately fails an oracle and
 exits nonzero. These are negative checks, not successful scenario executions.
 
+## Fixed-delay compatibility probe
+
+```sh
+RUSTFLAGS="-D warnings" cargo run --locked -p shoop_engine_service --example latency_probe
+RUSTFLAGS="-D warnings" cargo run --locked --release -p shoop_engine_service --example latency_probe
+```
+
+The public-API probe captures equal-channel ramps/impulses with dry input on one
+capture channel and the actual **D=3** DSP output on the other. Its 18 portable
+signal/capture/partition cases verify every physical output sample, raw resource
+byte, MIDI marker and initial-state value. It prints the unshifted streams and
+separate proposed windows, with `None` for missing samples rather than synthesized
+or trimmed media. Normal `[4,12)` capture is missing three wet tail samples;
+recording manually until 15 retains those samples but produces an eleven-frame
+take. Negative offset −2 requires dry `[2,10)` and wet `[5,13)`; recording `[2,13)`
+retains both, but is not an eight-frame logical playback view.
+
+A native-only, dev-only current-engine `AudioChannel` reference verifies prepared
+prerecord/postroll and independent channel alignment, then plays/wraps the selected
+eight-frame windows. It consumes the same observed wet stream, not an old plugin
+or session graph. Neither that comparison nor checked `shoop_latency` arithmetic
+adds history, postroll, render advance or playback-window support to this service.
+See [findings and raw evidence](../../../docs/integration/MILESTONE_1.md#stage-5-fixed-delay-physical-evidence-and-compatibility-findings).
+
 ## Verification
 
 Run inside the repository development environment (on Nix: `nix develop`):
@@ -149,8 +173,9 @@ RUSTFLAGS="-D warnings" cargo build --locked -p shoop_engine_service --target wa
 python3 scripts/run_wasm_tests.py --profile dev --runtime node --package shoop_engine_service
 ```
 
-Thirteen portable guarded tests cover startup loading, the complete public
-scenario and exact full audio/MIDI partition oracles; coherent queries, typed
+Fifteen native guarded tests (fourteen portable/Node, one native-only current-engine
+reference) cover startup loading, the complete public scenario, the physical delay
+probe and exact full audio/MIDI partition oracles; coherent queries, typed
 preset application and route cuts; zero/end/late/cancelled/refused work; retained/
 foreign tickets; meter polling, stalled results/disconnect and faults before/after
 publication. The public scenario asserts all pages/versions/snapshots, MIDI-index

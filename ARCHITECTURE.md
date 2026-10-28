@@ -135,7 +135,10 @@ run natively and in Node; their Wasm builds pass. The service tests cover real
 loop/DSP composition, exact typed operation timing, coherent live route changes,
 stereo/MIDI prefix reads and lifecycle ownership. A complete public imported-media
 scenario checks raw streams, metadata and reclamation across callback partitions.
-Latency findings and measurements remain pending. See the bounded
+A D=3 dry/wet probe preserves raw capture and demonstrates missing history,
+postroll and independent logical playback windows; checked latency arithmetic is
+not their implementation. Current-engine channel references remain dev-only.
+Further lifecycle/measurement work and final integration remain pending. See the bounded
 [compatibility inventory](docs/integration/PARITY.md) and
 [integration contract/evidence](docs/integration/MILESTONE_1.md). Browser/IPC
 execution of this same service and general wire adapters belong to later work.

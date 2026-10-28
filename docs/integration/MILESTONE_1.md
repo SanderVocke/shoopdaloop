@@ -2,12 +2,12 @@
 
 ## Status and isolation
 
-Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. Stages 0–4
+Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. Stages 0–5
 are verified against the initial pin: external composition, independent production
-DSP, native service and complete public stereo/MIDI/media scenario. Native
-debug/release, real Node tests and closed workspace gates pass. Shared metadata
-additions were approved. Latency findings, further adversarial/measurement work,
-final integration and full feature parity remain pending.
+DSP, native service, complete public stereo/MIDI/media scenario and the fixed-delay
+compatibility probe. Native debug/release, real Node tests and closed workspace
+gates pass. Shared metadata additions were approved. Further adversarial/measurement
+work, final integration and full feature parity remain pending.
 Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
 
 - Worktree: `/tmp/shoopdaloop-milestone-1`.
@@ -567,6 +567,148 @@ No protected source, fixture, runner, plan or evidence path is changed. No new
 shared-metadata edit was needed. These results do not cover the forthcoming latency
 probe/measurements or final agreed-upstream integration.
 
+## Stage 5: fixed-delay physical evidence and compatibility findings
+
+Run in the repository development environment, with warnings denied:
+
+```sh
+cargo run --locked -p shoop_engine_service --example latency_probe
+cargo run --locked --release -p shoop_engine_service --example latency_probe
+cargo test --locked -p shoop_engine_service --test latency_probe
+cargo test --locked --release -p shoop_engine_service --test latency_probe
+```
+
+The [executable](../../src/rust/shoop_engine_service/examples/latency_probe.rs)
+and its shared portable scenario use only public service calls. Equal stereo
+inputs feed the actual prepared **D=3** DSP with playback gain zero. Capture channel
+zero receives dry live input, channel one receives the delayed DSP output; both
+host outputs remain wet. Every physical engine frame **0–18** is checked against
+`y[t]=x[t−3]`, with prepared zero history before frame 3. The ramp is `x[t]=t+1`;
+the impulse input has `x[2]=−1`, `x[4]=1`, `x[11]=0.5`, `x[12]=0.25`, otherwise zero.
+The frame-12 input's wet value appears at 15 in the untrimmed host trace, outside
+the proposed aligned `[7,15)` window. “Physical” here means engine-frame evidence,
+not a microphone/device measurement.
+
+Controller-74 MIDI markers occur at absolute frames **2,4,11,12,14**, with those
+frame numbers as values. They pass through at their actual frames: this DSP delays
+audio, not MIDI. Raw recording packets use offsets from actual capture start and
+are checked byte-for-byte, as is the strictly-pre-start channel state. For `[4,12)`,
+initial CC74 is 2 and the two recorded packets have relative frames 0 and 7; the
+packet exactly at finish 12 is not captured. No MIDI timestamp is moved to make
+it appear audio-aligned.
+
+### What the public service actually retains
+
+Two signals × three capture intervals × whole/single/irregular-with-zero partitions
+produce **18** cases. Each has exact full stereo output, raw audio/MIDI resource
+bytes, marker order, initial state, settled Stop/export cut, truthful duration and
+complete stopped reclamation. Queries/cursor/read/release IDs are learned at
+explicit control barriers after the initial 16-frame phase. Every nonempty host
+callback invokes one engine; adaptation/processing/publication are heap/free
+guarded. UI collection/printing and proposed-window inspection remain off-render.
+
+| Actual capture | Actual duration | Offset 0: missing dry / wet samples | Offset −2: missing dry / wet samples |
+| --- | --- | --- | --- |
+| `[4,12)` — ordinary raw take | 8 | 0 / 3 | 2 / 1 |
+| `[4,15)` — manually extend Record | 11 | 0 / 0 | 2 / 0 |
+| `[2,13)` — manually start early/end late | 11 | 0 / 2 | 0 / 0 |
+
+The proposed offset-zero windows are dry `[4,12)`, wet `[7,15)`; offset −2 gives
+dry `[2,10)`, wet `[5,13)`. The executable prints these as **separate observations**
+into actual exported bytes; unavailable values remain `None`. It never replaces
+the raw media with a selected/trimmed eight-frame vector. Manual margins make
+samples readable, but the actual loop length remains eleven rather than eight.
+
+For example, the ordinary ramp take exports dry `[5,6,7,8,9,10,11,12]` and wet
+`[2,3,4,5,6,7,8,9]`. Its proposed aligned wet observation is
+`[5,6,7,8,9,None,None,None]`, even though host wet frames 12–14 are actually
+`[10,11,12]`. The DSP continued; the finished capture did not. The impulse at input
+11 similarly appears in host wet frame 14 but is absent from that ordinary take.
+
+The committed [raw transcript](evidence/latency-probe.txt) is native release stdout,
+including every physical sample, actual capture pair, marker, raw MIDI byte,
+proposed window and matched current-channel result. Debug stdout matches it
+byte-for-byte (`cmp`). SHA-256:
+`11b035c709355b2dc696fc0acbf2d15d680d7e812749466e764ea76b50e8eee9`.
+It is a labeled text transcript, not a uniform-column CSV or a performance sample.
+
+### Narrow current-engine reference and checked mapping reuse
+
+The native-only dev helper uses public current-engine `AudioChannel` objects with
+bounded prepared storage, smoothing disabled, identical logical Record **[4,12)**
+and the **same observed wet DSP stream**. It does not run an old session, backend,
+plugin graph or MIDI renderer. Its 24 guarded channel cases cover two signals,
+two recording offsets, three positive block partitions and two channels. Reference
+boundaries are explicit at prerecord/start/finish and tail; the old low-level
+channel is not asserted to have the new service's zero-frame ingress contract.
+
+For offset zero, dry retains `[4,12)` and wet retains `[4,15)` via three postroll
+frames. For offset −2, prepared dry prerecord retains `[2,12)` (two history frames)
+and wet retains `[4,13)` (one postroll frame). The old channel's media-layout offset
+names its retained prefix; its independent capture alignment selects the intended
+eight samples. After the physical tail settles, actual playback and one complete
+repeat both match `x[4..12]` or `x[2..10]` for dry and wet. This demonstrates stored
+window/edge semantics, **not** instantaneous finalized playback before its required
+tail, full current-engine parity or a comparative callback benchmark.
+
+`shoop_latency` contracts were inspected before reuse; its four tests subsequently
+passed alongside the probe's literal-window checks. The probe checks `wet_recording_offset = recording_offset + 3`,
+`RetentionWindow`, absolute `CaptureFrameMapping`, and processor dispatch
+`target_wet−3` against the predeclared literal windows/retention needs. The existing
+`compensated_record_then_play_maps_postroll_across_callbacks_and_wrap` and
+`snapshot_stays_unsettled_through_latency_postroll_then_publishes_complete_take`
+each ran/passed too. These helpers describe domains; they do not acquire history,
+keep capture alive or publish a playback view. `shoop_engine` is native dev-only,
+`shoop_latency` dev-only, and neither is in the new service's production tree.
+
+### Precisely located remaining mechanisms
+
+- **Prehistory:** ordinary public Record at 4 has no retained dry frames 2–3.
+  Starting Record at 2 changes musical admission/state/length; it is not prerecord
+  adoption. A future prepared history reservoir/adoption policy belongs with loop
+  capture roles/lifecycle, backed by bounded runtime storage—not a second clock in
+  the DSP bridge or an implied property of immutable exports.
+- **Postroll:** Stop/finish at 12 freezes the actual take there; there is no admitted
+  tail write into that finished take through 15. Extending Record changes finish
+  and length. A future loop capture/finalization lifecycle must retain its bank,
+  budget and truthful completion while tail data arrives; a service must not claim
+  final immutable content early.
+- **Playback windows:** retaining eleven raw frames does not express dry/wet
+  eight-frame windows with distinct per-channel origins. Current facade operations
+  select whole media/positions; media descriptions have a shared raw duration, not
+  channel capture alignment/logical clip bounds. Such a capability belongs in the
+  loop media/playback-role contract. Generic byte cursors and off-render slicing
+  are observers, not an equivalent musical playback publication.
+- **Latency/render policy:** prepared DSP delay is known in this fixture, not a
+  general automatic latency-reporting protocol. Component capability metadata and
+  composition policy must name latency before the existing musical authority can
+  plan compensated windows/early dispatch. Checked `ProcessorRenderAdvance` math
+  alone supplies neither graph priming nor a new scheduling authority. MIDI window
+  timing/initial-state projection needs its own explicit semantics, rather than
+  silently moving the unchanged marker timestamps.
+
+These documented gaps are the required M1-A8 finding, not implemented production
+compensation. No protected-layer prerequisite is needed to finish this probe, and
+no protected API/source/test was changed to manufacture parity.
+
+### Observed Stage 5 gates
+
+Full service tests passed **15 native debug, 15 native release**. Node 22.22.2
+actually executed **14, zero failed**: thirteen prior portable tests plus the new
+portable physical probe; the old-engine channel comparison is native-only. The
+Wasm library built separately. Native debug/release executables completed all 18
+cases and their full transcripts agreed. Formatting, warning-denied workspace
+build, test policy, closed inventory (**217 modules**), both new-package Wasm
+dependency policies and both four-target runtime/loop dependency boundaries passed.
+Workspace nextest: **2,171 passed, four existing skips, 111 binaries**. No additional
+shared inventory/workflow edit was needed; the lockfile only adds the two new dev
+dependency names to this package's existing entry, with no version changes.
+
+Logs: `target/milestone-1/latency-probe-{debug,gates,workspace-gates}.log` and
+`target/milestone-1/latency-probe-{debug,release}.csv` (the latter are the labeled
+stdout transcripts). Final integrated-head reruns, adversarial/two-thread work and
+raw common-workload performance measurements remain separate requirements.
+
 ## Existing references inspected
 
 - `src/rust/shoop_backend/src/lib.rs`: current application-facing `Backend` trait,
@@ -586,9 +728,9 @@ probe/measurements or final agreed-upstream integration.
 
 ## Remaining work
 
-Stages 0–4 are verified against the initial pin, including approved additive
-metadata, 13 portable service tests, the complete public scenario and closed
-workspace gates. Stages 5–7 must complete latency-probe findings, further adversarial
-lifecycle, two-thread execution and comparable raw measurements. Final integration
-still waits for the agreed completed loop revision and final-head CI/review.
+Stages 0–5 are verified against the initial pin, including approved additive
+metadata, 15 native/14 portable service tests, the complete public scenario,
+fixed-delay findings and closed workspace gates. Stages 6–7 must complete further
+adversarial lifecycle, two-thread execution and comparable raw measurements. Final
+integration still waits for the agreed completed loop revision and final-head CI/review.
 No complete feature-parity, latency compensation or callback-deadline claim is made.
