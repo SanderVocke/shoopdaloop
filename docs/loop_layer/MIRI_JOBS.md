@@ -10,7 +10,7 @@ obligations remain unchanged.
 
 ## Current Stage 7 verification debt
 
-### Consolidated job launched; terminal result pending
+### Consolidated job failed; recovery required
 
 Job **`20261028T083225-374aa055bf`** launched at2026-10-28T08:32:25.969265Z
 from immutable commit **`8242de59fbb20ff17eb9724fe154c36aedb257e6`**:
@@ -31,20 +31,30 @@ At the CI-scheduling inspection checkpoint,9 commands/9 executions had completed
 `09-lib-seed0.log` was running the complete dense acknowledged-restart/stall case.
 This partial progress does not replace terminal collection or cover all291.
 
+The job subsequently **failed** at2026-10-28T08:50:28.447343Z after
+1082.4781163089792s wall time. The dense restart/stall command exceeded the unchanged
+900s watchdog; its partial log ends inside the test, without a passing summary.
+Nine preceding host commands/executions passed; the other135 commands are not
+completed coverage. The supervisor/runner identities are no longer live, source/
+supervisor hashes still match, and `collect` explicitly refuses the failed job.
+Raw state, progress, completed/partial logs and collection refusal are preserved
+with [CI-host evidence](evidence/ci-hosts-stage7.md). No watchdog, workload or guard
+was weakened. Investigation/recovery remains open; no replacement job has launched.
+
 - `job.json` SHA256: `bb53dd4414568c9ff7677ef5390843552853cff5e0c9c247280a7ffd324f4053`.
 - Source archive SHA256: `0cc88b39499bc8db876858a4817faa6308dbc1dda952c5a76a4f6409cc724eed`.
 - Copied supervisor SHA256: `5e9ac63c03b06687db2adcfac79d9c476c736f07cca4d06de3bb13164d23b8e2`.
 
-Launch/input verification is **not a passing interpreter result**. Continue CI/
-other implementation work; inspect at natural checkpoints and collect only after
-terminal success/full inventory/source/artifact verification. Do not start a second
-routine job while this one is active. Stage7 remains7/8, with interpreter/CI
-artifacts and all later delivery obligations open.
+Launch/input verification and nine partial passes are **not a passing complete
+interpreter result**. Preserve this failed job, investigate the expensive command,
+and justify the smallest adequate affected recovery selection. Continue useful
+implementation work without routinely repeating the full suite. Stage7 remains7/8;
+interpreter recovery, remote CI artifacts and later delivery obligations stay open.
 
 ### Registered selection
 
 Stage7 host implementation is ready for its consolidated interpreter gate; no
-Stage7 interpreter result exists yet. The pinned runner now registers all59 native
+complete passing Stage7 interpreter result exists yet. The pinned runner now registers all59 native
 standalone-host library tests at seed0, plus primitive-wire and graph-actor tests
 at seeds1/2:63 host executions. This includes the35 cases detailed below and all24
 remaining ingress/return, observer, codec, allocator and foundation cases. Exact
@@ -56,8 +66,9 @@ The full selection is144 commands/291 executions:128 runtime+100 loop+63 host.
 Host cases run first; all prior81 commands/228 executions retain their filters,
 counts, seeds and relative order. The new `Controller::resource` path and host
 ownership/planner/observer support are included with their runtime/loop regressions.
-The immutable committed Stage7 job above covers this selection with the
-unchanged900s per-command watchdog. Until terminal collection, interpreter/CI
+The immutable committed Stage7 job above attempted this selection with the
+unchanged900s per-command watchdog but failed after nine executions. Until verified
+recovery/complete terminal collection, interpreter/CI
 artifacts and the last Stage7 row remain open. See
 [evidence/miri-registration-stage7.md](evidence/miri-registration-stage7.md).
 Native, public-Wasm binding and actual worklet passes do not extend the collected

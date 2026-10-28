@@ -33,9 +33,16 @@ env:
 
 jobs:
   rt_runtime_miri:
-    name: rt_runtime ownership (Miri)
+    name: Runtime and loop ownership (Miri ${{ matrix.shard }}/16)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    env:
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7
       - name: Install pinned Miri toolchain
@@ -49,15 +56,49 @@ jobs:
           sudo apt-get install --yes build-essential protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: rt-runtime-miri-v1
+          prefix-key: rt-runtime-miri-batches-v2
+          workspaces: |
+            . -> target
+            tests/loop_engine_host -> target
+      - name: Record selected batch inventory
+        run: |
+          mkdir -p target/rt-runtime-miri
+          python3 scripts/run_rt_runtime_miri.py --shard '${{ matrix.shard }}/16' --list > target/rt-runtime-miri/inventory.json
       - name: Run isolated ownership and aliasing checks
-        run: python3 scripts/run_rt_runtime_miri.py
+        run: python3 scripts/run_rt_runtime_miri.py --shard '${{ matrix.shard }}/16'
       - name: Upload Miri evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: rt-runtime-miri-${{ github.run_id }}
+          name: rt-runtime-miri-batch-${{ matrix.shard }}-${{ github.run_id }}
           path: target/rt-runtime-miri
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 14
+
+  miri_complete:
+    name: Complete Miri batch evidence
+    needs: rt_runtime_miri
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download all Miri batches
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rt-runtime-miri-batch-*-${{ github.run_id }}
+          path: target/miri-ci-batches
+      - name: Verify complete source-matched batch coverage
+        run: |
+          python3 scripts/run_rt_runtime_miri.py --verify-batches target/miri-ci-batches
+          test '${{ needs.rt_runtime_miri.result }}' = success
+      - name: Upload verified Miri batch evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rt-runtime-miri-complete-${{ github.run_id }}
+          path: target/miri-ci-batches
+          overwrite: true
           if-no-files-found: error
           retention-days: 14
 
@@ -257,8 +298,12 @@ jobs:
               - 'scripts/check_shoop_test_usage.py'
               - 'scripts/run_rt_runtime_hosts.py'
               - 'scripts/check_rt_runtime_boundary.py'
+              - 'scripts/run_loop_engine_hosts.py'
+              - 'scripts/check_loop_engine_boundary.py'
               - 'src/rust/rt_runtime/**'
+              - 'src/rust/shoop_loop_engine/**'
               - 'tests/rt_runtime_host/**'
+              - 'tests/loop_engine_host/**'
               - 'src/rust/shoop_test_macros/**'
               - 'src/rust/shoop_wasm_test_support/**'
               - 'src/rust/shoop_wasm_runtime_tests/**'
@@ -283,6 +328,10 @@ jobs:
           cache-all-crates: "true"
           cache-on-failure: "true"
           cache-bin: ${{ matrix.target == 'web' }}
+          workspaces: |
+            . -> target
+            tests/rt_runtime_host -> target
+            tests/loop_engine_host -> target
 
       - name: Check local act prerequisites
         if: env.ACT == 'true'
@@ -709,17 +758,24 @@ jobs:
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 
-      - name: Test independent rt_runtime and native hosts
+      - name: Test independent runtime, loop engine and native hosts
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
         shell: bash
         run: |
-          cargo test --locked -p rt_runtime ${{ matrix.cargo_args }}
+          cargo test --locked -p rt_runtime -p shoop_loop_engine ${{ matrix.cargo_args }}
+          cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml ${{ matrix.cargo_args }}
+          cargo fmt --manifest-path tests/loop_engine_host/Cargo.toml -- --check
           cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example gain_graph
+          cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example planned_pair
+          cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example pending_operations
+          cargo run --locked -p shoop_loop_engine ${{ matrix.cargo_args }} --example coordinated_loop
           python3 scripts/run_rt_runtime_hosts.py --native-only --profile '${{ matrix.profile }}'
+          python3 scripts/run_loop_engine_hosts.py --native-only --profile '${{ matrix.profile }}'
           python3 scripts/check_rt_runtime_boundary.py
-          python3 -m unittest scripts.tests.test_rt_runtime_boundary
+          python3 scripts/check_loop_engine_boundary.py
+          python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loop_engine_boundary
 
       - name: Measure guarded rt_runtime release workloads
         if: matrix.target == 'linux' && matrix.profile == 'release'
@@ -736,6 +792,15 @@ jobs:
             target/rt-runtime-host/reports
             target/rt-runtime-bench
           if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload independent loop native replay evidence
+        if: always() && matrix.target != 'web'
+        uses: actions/upload-artifact@v7
+        with:
+          name: loop-host-native-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: target/loop-engine-host/reports/native-${{ matrix.profile }}
+          if-no-files-found: error
           retention-days: 14
 
       - name: Smoke-test Carla benchmarks
@@ -851,6 +916,7 @@ jobs:
           cargo fmt --all -- --check
           python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
+          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loop_engine_hosts scripts.tests.test_loop_host_native_runner
 
       - name: Validate native and multirealm Perfetto traces
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -891,7 +957,7 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package rt_runtime --package shoop_app --package shoop_app_api \
+            --package rt_runtime --package shoop_loop_engine --package shoop_app --package shoop_app_api \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
             --package shoop_latency --package shoop_plugin_protocol --package shoop_scripting \
@@ -986,6 +1052,25 @@ jobs:
           name: rt-runtime-worklet-${{ github.run_id }}
           path: target/rt-runtime-host/reports
           if-no-files-found: warn
+          retention-days: 14
+
+      - name: Run independent loop AudioWorklet and exact failure gates
+        if: matrix.target == 'web' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo fmt --manifest-path tests/loop_engine_host/Cargo.toml -- --check
+          python3 scripts/check_loop_engine_boundary.py
+          python3 scripts/run_loop_engine_hosts.py --profile '${{ matrix.profile }}' --verify-failures
+
+      - name: Upload independent loop AudioWorklet evidence
+        if: always() && matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: loop-host-worklet-${{ matrix.profile }}-${{ github.run_id }}
+          path: target/loop-engine-host/reports/${{ matrix.profile }}
+          if-no-files-found: error
           retention-days: 14
 
       - name: Run retained hosted Chrome AudioWorklet smoke

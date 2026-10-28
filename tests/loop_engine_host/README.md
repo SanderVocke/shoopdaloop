@@ -19,6 +19,20 @@ cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin repla
 cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --two-thread
 ```
 
+For complete native-only evidence without requiring Node, Chromium or Wasm tools:
+
+```sh
+python3 scripts/run_loop_engine_hosts.py --native-only --profile debug
+python3 scripts/run_loop_engine_hosts.py --native-only --profile release
+```
+
+This runs primitive direct/wire/two-thread replay, all six graph/export/staging/
+dense/stall/media direct/actor pairs and the planner control. Each Rust replay
+checks its independent oracle; Python additionally compares complete actor reports.
+Reports go to `target/loop-engine-host/reports/native-<profile>/`, separately from
+actual browser results, and explicitly identify `native-replay`. Native mode refuses
+actual-worklet failure-gate flags; it cannot substitute for those sessions.
+
 Add `--release` before `--bin` for optimized wire/two-thread replay. Each mode
 compares all four partitions with the independently checked direct result before
 printing a summary. No device is needed. The threaded driver uses one-packet
@@ -691,6 +705,22 @@ native dispatch checks and partial output are not passes. The900-second per-comm
 watchdog is unchanged. See the [operational guide](../../docs/loop_layer/MIRI_BACKGROUND.md)
 for source isolation, cancellation, collection and failure handling, and the
 [job history](../../docs/loop_layer/MIRI_JOBS.md) for actual status.
+
+## CI evidence
+
+The build workflow runs both libraries, this fixture's native tests/replays and
+public coordination examples in Linux/Windows/macOS debug/release cells. Both web
+profiles run the complete Node/Chromium bindings, actual offline/live profiles and
+six specific Rust-origin failure gates. Loop source/fixture changes trigger the
+repository Chromium policy suite, and loop Wasm dependencies are checked explicitly.
+Native and worklet reports have separate required artifact uploads.
+
+Miri CI uses16 disjoint batches with a source/selection-matched complete-set verifier;
+missing batches/logs/tests and wrong counts/seeds cannot pass. This scheduling does
+not raise the900s command watchdog or certify expensive commands. See the
+[operational reference](../../docs/loop_layer/MIRI_BACKGROUND.md#ci-batches).
+Workflow configuration/local tests are not remote platform results; final-head green
+required CI and review remain separate delivery obligations.
 
 ## Current scope
 

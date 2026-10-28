@@ -150,6 +150,7 @@ def prepare_job(repo, jobs, stage, commit, package):
             "environment": {"CARGO_TARGET_DIR": str(job / "build"),
                             "GIT_CEILING_DIRECTORIES": str(job),
                             "RUSTFLAGS": "-D warnings", "RUSTDOCFLAGS": "-D warnings",
+                            "MIRI_SOURCE_COMMIT": sha,
                             "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(Path.home() / ".cache/rt-runtime-miri-rustup"))}}
     write_json(job / "job.json", data)
     return job

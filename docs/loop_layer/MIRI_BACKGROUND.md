@@ -54,6 +54,31 @@ identities and POSIX process groups**. The existing foreground runner remains
 portable for CI/other supported environments. No new test workload reductions,
 watchdog increases or acceptance exemptions are introduced.
 
+## CI batches
+
+CI uses16 disjoint round-robin batches rather than putting the entire stage
+selection into one40-minute job. Each batch keeps complete commands, exact filters,
+counts, seeds and the900s per-command watchdog. With the current inventory, each
+batch has nine commands; this is not a guaranteed wall-time margin on CI hardware.
+An individual command exceeding900s still fails and needs investigation.
+
+```sh
+python3 scripts/run_rt_runtime_miri.py --shard 1/16 --list
+python3 scripts/run_rt_runtime_miri.py --shard 1/16
+# After downloading all batch artifacts into separate subdirectories:
+python3 scripts/run_rt_runtime_miri.py --verify-batches target/miri-ci-batches
+```
+
+Reports record the source commit, full-selection fingerprint, batch identity,
+selected manifest scope and run attempt. Collection requires every batch exactly
+once, the current source/full selection, consistent pinned toolchain/version, exact
+case/filter/count/seed records and every passing raw log. Missing/duplicate/mixed
+batches, missing tests, scope substitution and failed summaries cannot pass.
+`verified.json` contains aggregate counts and hashes only after complete validation.
+These are **separate CI batches**, not one uninterrupted invocation. Local stage
+jobs still use the supervised immutable-snapshot workflow; batch support does not
+authorize routine extra interpreter runs.
+
 ## Immutable source and isolation
 
 The launcher resolves the requested commit once, exports its Git archive, records
@@ -123,13 +148,14 @@ Record contention/cache conditions; timings are not deadline guarantees.
 
 ```sh
 nix develop --command python3 -m unittest \
-  scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs
+  scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs \
+  scripts.tests.test_rt_runtime_miri_batches
 ```
 
-Nineteen tests cover the selected inventory, exact standalone manifest dispatch,
+Twenty-eight tests cover the selected inventory, exact standalone manifest dispatch,
 seed/report metadata, zero-test refusal, tracked-private-state exclusion without
-losing standalone source/lockfiles, manifest-scope tampering, durable file output,
-isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
+losing standalone source/lockfiles, manifest-scope tampering, complete disjoint CI partition/collection and CLI paths,
+durable file output, isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
 while development changes, collection, missing results, count/log/source tampering,
 missing supervisor identity, cancellation with descendant cleanup, recovery of a
 known runner after supervisor SIGKILL, single-job admission, and the actual runner's

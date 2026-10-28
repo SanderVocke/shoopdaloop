@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -117,6 +118,106 @@ HOST_CONCURRENCY = (
 def manifest_paths(cases):
     return {package: HOST_MANIFEST if package == HOST_PACKAGE else "Cargo.toml"
             for package, *_ in cases}
+
+
+def shard_spec(value):
+    try:
+        index, total = map(int, value.split("/"))
+        if not 1 <= index <= total:
+            raise ValueError
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("shard must be INDEX/TOTAL with 1 <= INDEX <= TOTAL") from error
+    return index, total
+
+
+def sharded_cases(cases, shard):
+    if shard is None:
+        return cases
+    index, total = shard
+    if total > len(cases):
+        raise ValueError("shard count would create empty batches")
+    return [case for offset, case in enumerate(cases) if offset % total == index - 1]
+
+
+def inventory(package=None, shard=None):
+    cases = selected_cases(package)
+    full = {"toolchain": TOOLCHAIN, "cases": cases, "manifests": manifest_paths(cases)}
+    fingerprint = hashlib.sha256(json.dumps(full, sort_keys=True).encode()).hexdigest()
+    selected = sharded_cases(cases, shard)
+    return {"toolchain": TOOLCHAIN, "cases": selected, "manifests": manifest_paths(selected),
+            "full_inventory_sha256": fingerprint,
+            "shard": {"index": shard[0], "total": shard[1]} if shard else None}
+
+
+def source_commit():
+    recorded = os.environ.get("MIRI_SOURCE_COMMIT") or os.environ.get("GITHUB_SHA")
+    return recorded or subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+
+
+def verify_batches(root):
+    full = inventory()
+    source = source_commit()
+    reports = sorted(root.rglob("result.json"))
+    if not reports:
+        raise RuntimeError("Missing Miri batch reports")
+    found = {}
+    total = None
+    version = None
+    artifacts = {}
+    for path in reports:
+        report = json.loads(path.read_text())
+        shard = report.get("shard")
+        if (not isinstance(shard, dict) or type(shard.get("index")) is not int
+                or type(shard.get("total")) is not int):
+            raise RuntimeError("Missing or invalid Miri batch identity")
+        index, count = shard["index"], shard["total"]
+        if not 1 <= index <= count <= len(full["cases"]) or index in found:
+            raise RuntimeError("Duplicate or invalid Miri batch")
+        if total is not None and total != count:
+            raise RuntimeError("Inconsistent Miri batch count")
+        total = count
+        selected = inventory(shard=(index, count))
+        if (report.get("passed") is not True or report.get("toolchain") != TOOLCHAIN
+                or report.get("package_filter") is not None or report.get("source_commit") != source
+                or report.get("full_inventory_sha256") != full["full_inventory_sha256"]
+                or report.get("manifests") != selected["manifests"]):
+            raise RuntimeError("Miri batch source, inventory or manifest scope mismatch")
+        miri = report.get("miri")
+        if not isinstance(miri, str) or not miri or (version is not None and version != miri):
+            raise RuntimeError("Missing or inconsistent Miri version")
+        version = miri
+        cases = report.get("cases", [])
+        if len(cases) != len(selected["cases"]):
+            raise RuntimeError("Incomplete Miri batch inventory")
+        seen = set()
+        artifacts[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        for case, expected in zip(cases, selected["cases"]):
+            package, target, arguments, minimum, seed = expected
+            if (type(case.get("passed")) is not int or type(case.get("seed")) is not int
+                    or (case.get("package"), case.get("target"), case.get("arguments"),
+                        case.get("passed"), case.get("seed")) != (package, target, arguments, minimum, seed)):
+                raise RuntimeError("Miri batch case/filter/count/seed mismatch")
+            name = case.get("log")
+            if not isinstance(name, str) or Path(name).name != name or name in seen:
+                raise RuntimeError("Invalid or duplicate Miri batch log")
+            seen.add(name)
+            log = path.parent / name
+            summaries = re.findall(r"test result: ok\. (\d+) passed; (\d+) failed", log.read_text())
+            if (not summaries or sum(int(n) for n, _ in summaries) != minimum
+                    or any(int(n) for _, n in summaries)):
+                raise RuntimeError("Missing or mismatched Miri batch log summaries")
+            artifacts[str(log.relative_to(root))] = hashlib.sha256(log.read_bytes()).hexdigest()
+        found[index] = {"report": str(path.relative_to(root)), "run_attempt": report.get("run_attempt"),
+                        "commands": len(cases), "executions": sum(case["passed"] for case in cases)}
+    if set(found) != set(range(1, total + 1)):
+        raise RuntimeError("Incomplete Miri batch set")
+    return {"passed": True, "source_commit": source, "toolchain": TOOLCHAIN, "miri": version,
+            "full_inventory_sha256": full["full_inventory_sha256"], "batches": found,
+            "commands": sum(batch["commands"] for batch in found.values()),
+            "executions": sum(batch["executions"] for batch in found.values()),
+            "artifact_sha256": artifacts,
+            "limitations": ["Separate CI batches, not one uninterrupted interpreter invocation.",
+                            "Proves this recorded source and selected inventory, not whole-workspace coverage."]}
 
 
 def case_command(package, target, arguments):
@@ -243,10 +344,23 @@ def main():
     parser.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine", HOST_PACKAGE), help="Run one package's selected cases")
     parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
     parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
+    parser.add_argument("--shard", type=shard_spec, help="Disjoint CI batch INDEX/TOTAL; keeps whole commands and workloads")
+    parser.add_argument("--verify-batches", type=Path, help="Verify a complete downloaded CI batch set without interpreting tests")
     args = parser.parse_args()
-    cases = selected_cases(args.package)
+    if args.verify_batches is not None:
+        if args.package or args.shard or args.list or args.report_dir:
+            parser.error("--verify-batches cannot be combined with execution/selection options")
+        result = verify_batches(args.verify_batches)
+        atomic_json(args.verify_batches / "verified.json", result)
+        print(json.dumps(result, indent=2))
+        return
+    try:
+        selected = inventory(args.package, args.shard)
+    except ValueError as error:
+        parser.error(str(error))
+    cases = selected["cases"]
     if args.list:
-        print(json.dumps({"toolchain": TOOLCHAIN, "cases": cases, "manifests": manifest_paths(cases)}))
+        print(json.dumps(selected))
         return
     if os.name == "posix":
         signal.signal(signal.SIGTERM, interrupted)
@@ -288,7 +402,9 @@ def main():
         atomic_json(reports / "progress.json", progress)
         print(json.dumps(record), flush=True)
     report = {"passed": True, "package_filter": args.package, "toolchain": TOOLCHAIN, "miri": version, "cases": results,
-              "manifests": manifest_paths(cases),
+              "manifests": selected["manifests"], "shard": selected["shard"],
+              "full_inventory_sha256": selected["full_inventory_sha256"],
+              "source_commit": source_commit(), "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
               "limitations": ["Not a whole-workspace or whole-suite Miri claim.",
                               "Loom's generator/FFI model runs natively, not under Miri.",
                               "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",

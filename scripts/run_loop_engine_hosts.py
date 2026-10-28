@@ -664,14 +664,40 @@ def verify_failure(result, exit_code, kind):
     return {"kind": kind, "exit_code": exit_code, "diagnostic": diagnostic, "witness": witness}
 
 
+def native_replays(executable, reports, profile):
+    primitive = json.loads(harness.command([str(executable), "--json"], reports / "native.json"))
+    results = {"primitive": primitive}
+    for name, option in (("graph", "graph"), ("exports", "export"), ("staging", "staging"),
+                         ("dense", "dense"), ("stalls", "stall"), ("media", "media")):
+        direct = json.loads(harness.command([str(executable), f"--{option}-json"], reports / f"native-{name}.json"))
+        threaded = json.loads(harness.command([str(executable), f"--{option}-two-thread-json"],
+                                             reports / f"native-{name}-two-thread.json"))
+        if name == "graph":
+            compare_native_graphs(direct, threaded)
+        elif direct != threaded:
+            raise RuntimeError(f"complete native/threaded {name} replay reports differ")
+        results[name] = direct
+    results["planner"] = json.loads(harness.command([str(executable), "--planner-json"], reports / "native-planner.json"))
+    for mode in ("--direct", "--wire", "--two-thread"):
+        harness.command([str(executable), mode], reports / (mode[2:] + ".log"))
+    return {"passed": True, "kind": "native-replay", "profile": profile, "native": results,
+            "source_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+            "source_dirty": bool(subprocess.check_output(["git", "status", "--porcelain", "--", str(FIXTURE),
+                                                         str(Path(__file__).resolve())], cwd=ROOT, text=True).strip()),
+            "limitations": ["Native replay only; no fresh Node, Chromium, AudioWorklet or memory-growth evidence."]}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-build", action="store_true", help="Reuse existing native/Wasm artifacts")
     parser.add_argument("--profile", choices=("debug", "release"), default="release")
     parser.add_argument("--failure-canary", choices=("processor", "rust-heap", "graph-processor", "graph-rust-heap", "planner", "planner-rust-heap"), help="Must fail through the corresponding real worklet path")
     parser.add_argument("--verify-failures", action="store_true")
+    parser.add_argument("--native-only", action="store_true", help="Native reference/actor replay only; no browser substitution")
     args = parser.parse_args()
-    reports = ASSETS / "reports" / args.profile
+    if args.native_only and (args.verify_failures or args.failure_canary):
+        parser.error("native replay cannot satisfy actual worklet failure gates")
+    reports = ASSETS / "reports" / ("native-" + args.profile if args.native_only else args.profile)
     if args.failure_canary:
         reports = reports / ("failure-" + args.failure_canary)
     reports.mkdir(parents=True, exist_ok=True)
@@ -684,6 +710,13 @@ def main():
     profile = ["--release"] if args.profile == "release" else []
     if not args.no_build:
         harness.command(["cargo", "build", "--locked", "--manifest-path", manifest, *profile], reports / "native-build.log")
+    if args.native_only:
+        executable = FIXTURE / "target" / args.profile / ("replay.exe" if os.name == "nt" else "replay")
+        result = native_replays(executable, reports, args.profile)
+        (reports / "result.json").write_text(json.dumps(result, indent=2))
+        print(json.dumps({"passed": True, "kind": "native-replay", "profile": args.profile, "reports": str(reports)}, indent=2))
+        return
+    if not args.no_build:
         harness.command(["wasm-pack", "build", str(FIXTURE), "--target", "web", "--release" if args.profile == "release" else "--dev",
                          "--out-dir", str(assets / "pkg"), "--out-name", "fixture", "--no-opt", "--", "--locked"], reports / "wasm-build.log")
     for source in (FIXTURE / "web").iterdir():

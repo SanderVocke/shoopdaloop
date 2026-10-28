@@ -37,7 +37,35 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 standalone interpreter registration (result pending)
+## Stage 7 CI host evidence and failed interpreter checkpoint
+
+[CI-host evidence](evidence/ci-hosts-stage7.md) configures both libraries, native
+fixture tests/replays and public coordination examples in all six native cells;
+both web profiles run all loop bindings/actual contexts/specific failure gates.
+Loop browser-policy/dependency checks and required native/worklet artifacts are
+wired without removing existing runtime/application gates. Native-only reports
+are explicitly labeled replay, use separate paths and reject actual-failure flags.
+
+Miri CI uses16 disjoint whole-command batches and a complete-set verifier requiring
+source/selection/manifest/version, exact cases/counts/seeds and all passing raw logs.
+This addresses aggregate scheduling, not a900s individual-command failure or a
+claim of one uninterrupted run. Local gates pass56 Python tests,59 native fixture
+tests/profile,17 native replay commands/profile, twenty binding groups/runtime/
+profile, sixteen actual contexts/six exact failure gates/profile, actionlint and
+2141 workspace tests/four skips (33.417s warm). Rust/Wasm is unchanged; browser
+checks deliberately reused verified binaries with `--no-build`. Remote native
+platform/CI execution and loop performance work remain pending.
+
+Consolidated job `20261028T083225-374aa055bf` **failed** after nine host passes:
+the complete dense restart/stall test exceeded the unchanged900s watchdog.
+Whole-job wall time was1082.4781163089792s. Source/supervisor hashes remain valid;
+known supervisor/runner identities are no longer live, and collection refuses the
+failed job. Raw partial logs/state/progress are retained. No workload, guard or
+watchdog was weakened; investigation and the smallest justified affected recovery
+remain open. Stage7 stays7/8, Stages8–10 remain open, and no final-head CI or
+complete interpreter pass is claimed.
+
+## Historical Stage 7 standalone interpreter registration (then pending)
 
 [Registration evidence](evidence/miri-registration-stage7.md) adds all59 native
 fixture library tests with exact one-test filters and four additional seed1/2
