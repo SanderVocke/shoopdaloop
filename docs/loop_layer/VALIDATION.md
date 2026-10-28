@@ -37,7 +37,27 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 planner lifecycle controls and deliberate failures
+## Stage 7 standalone interpreter registration (result pending)
+
+[Registration evidence](evidence/miri-registration-stage7.md) adds all59 native
+fixture library tests with exact one-test filters and four additional seed1/2
+primitive-wire/graph-actor executions. Native discovery and63 exact dispatches
+pass; the preceding81-command/228-execution runtime/loop selection is unchanged
+in filters, counts, seeds and relative order. The full selection is144 commands/
+291 executions, with changed host cases first. No host workload, allocator/
+destructor guard or900s per-command watchdog is reduced.
+
+Nineteen tooling/synthetic tests verify manifest dispatch/reporting, missing-test
+refusal, tracked `.pi/` exclusion without losing standalone manifest/lock/source,
+manifest-scope tampering, snapshot isolation and existing interruption/cleanup.
+Fresh warning-denied workspace build/policies and2141 workspace tests/four existing
+skips pass (33.386s warm). These are native/infrastructure results, not Miri,
+fresh browser execution, performance or final-head CI. The required committed
+consolidated snapshot/run, terminal collection and CI artifacts remain pending;
+Stage7 stays7/8 and Stages8–10 remain open. Actual job state belongs in
+[MIRI_JOBS.md](MIRI_JOBS.md).
+
+## Historical Stage 7 planner lifecycle controls and deliberate failures
 
 [Planner-canary evidence](evidence/planner-canaries-stage7.md) verifies the guard/
 failure row through the actual Resolver in a test-only generic Planner, not a

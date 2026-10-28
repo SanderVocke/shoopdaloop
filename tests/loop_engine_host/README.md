@@ -664,6 +664,34 @@ case, zero finishes and zero output prove that this is **not**128 rendered or
 musically committed frames. A fault is permanent; explicit abandonment is not
 counted as the separate successful control's stop/disposal proof.
 
+## Selected interpreter checks
+
+Inspect the standalone selection without running Miri:
+
+```sh
+python3 scripts/run_rt_runtime_miri.py --list --package loop_engine_host_fixture
+```
+
+The pinned nightly-2026-05-04 selection names all59 library tests exactly, plus
+primitive-wire and graph-actor tests at seeds1/2 (63 executions). It uses this
+workspace's manifest/lockfile, full native workloads and the existing allocator/
+destructor guards. This interprets native Rust, not JavaScript or AudioWorklets.
+
+At the applicable consolidated stage gate, commit the intended inputs and launch
+one supervised immutable snapshot from the repository root:
+
+```sh
+python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7 --commit HEAD
+```
+
+The default includes retained runtime/loop regressions:144 commands/291 executions
+across all three packages. Do not launch it after each helper edit. Continue other
+work and collect its terminal result using the returned job directory; launch,
+native dispatch checks and partial output are not passes. The900-second per-command
+watchdog is unchanged. See the [operational guide](../../docs/loop_layer/MIRI_BACKGROUND.md)
+for source isolation, cancellation, collection and failure handling, and the
+[job history](../../docs/loop_layer/MIRI_JOBS.md) for actual status.
+
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets

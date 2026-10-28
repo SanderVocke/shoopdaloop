@@ -85,6 +85,8 @@ def verify_report(job, data):
         raise RuntimeError("Missing pass/version or wrong pinned toolchain")
     if report.get("package_filter") != data["package"]:
         raise RuntimeError("Package scope mismatch")
+    if report.get("manifests", {}) != inventory.get("manifests", {}):
+        raise RuntimeError("Manifest scope mismatch")
     cases = report.get("cases", [])
     if len(cases) != len(inventory["cases"]):
         raise RuntimeError("Incomplete case inventory")
@@ -113,14 +115,14 @@ def prepare_job(repo, jobs, stage, commit, package):
     entries = subprocess.check_output(["git", "ls-tree", "-r", sha], cwd=repo, text=True).splitlines()
     if any(line.startswith("160000 ") for line in entries):
         raise RuntimeError("Submodules need an explicit dependency snapshot; refusing an incomplete export")
-    if any(line.split("\t", 1)[-1].split("/", 1)[0] == ".pi" for line in entries):
-        raise RuntimeError("Refusing to export unrelated .pi state")
+    paths = subprocess.check_output(["git", "ls-tree", "-z", "--name-only", sha], cwd=repo).decode().split("\0")
+    paths = [f":(literal){name}" for name in paths if name and name != ".pi"]
     job = jobs / (time.strftime("%Y%m%dT%H%M%S", time.gmtime()) + "-" + uuid.uuid4().hex[:10])
     job.mkdir(parents=True)
     source = job / "source"
     source.mkdir()
     archive = job / "source.tar"
-    subprocess.run(["git", "archive", "--format=tar", "--output", str(archive), sha], cwd=repo, check=True)
+    subprocess.run(["git", "archive", "--format=tar", "--output", str(archive), sha, "--", *paths], cwd=repo, check=True)
     archive_hash = digest(archive)
     with tarfile.open(archive) as stream:
         stream.extractall(source, filter="data")
@@ -141,11 +143,13 @@ def prepare_job(repo, jobs, stage, commit, package):
     if package:
         command += ["--package", package]
     data = {"id": job.name, "stage": stage, "commit": sha, "package": package,
+            "excluded_paths": [".pi"],
             "created_at": stamp(), "status": "queued", "inventory": inventory,
             "source_manifest": source_manifest, "source_archive_sha256": archive_hash,
             "supervisor_sha256": digest(job / "supervisor.py"), "command": command,
             "environment": {"CARGO_TARGET_DIR": str(job / "build"),
                             "GIT_CEILING_DIRECTORIES": str(job),
+                            "RUSTFLAGS": "-D warnings", "RUSTDOCFLAGS": "-D warnings",
                             "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(Path.home() / ".cache/rt-runtime-miri-rustup"))}}
     write_json(job / "job.json", data)
     return job
@@ -257,7 +261,7 @@ def main():
     start = commands.add_parser("start")
     start.add_argument("--stage", required=True)
     start.add_argument("--commit", required=True, help="Explicit committed snapshot; uncommitted edits are never included")
-    start.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine"))
+    start.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine", "loop_engine_host_fixture"))
     start.add_argument("--jobs-dir", type=Path, default=ROOT / "target/loop-layer-miri-jobs")
     for name in ("status", "collect", "cancel", "_run"):
         commands.add_parser(name).add_argument("job", type=Path)

@@ -45,6 +45,87 @@ CASES = [
 ]
 
 
+HOST_PACKAGE = "loop_engine_host_fixture"
+HOST_MANIFEST = "tests/loop_engine_host/Cargo.toml"
+HOST_CASES = (
+    "bridge_tests::callback_fault_is_permanent_and_pending_wire_ownership_is_reclaimed_off_render",
+    "bridge_tests::client_rejects_duplicate_foreign_and_reordered_receipts_without_releasing_credit",
+    "bridge_tests::malformed_foreign_duplicate_requests_and_disconnect_keep_owners_bounded",
+    "bridge_tests::repeated_slot_reuse_rejects_old_cancellation_and_receipts",
+    "bridge_tests::response_codec_preserves_error_origin_and_rejects_noncanonical_records",
+    "bridge_tests::stalled_normal_returns_preserve_music_and_independent_recovery",
+    "bridge_tests::transport_cancellation_stale_targets_domain_refusal_and_lateness_are_distinct",
+    "bridge_tests::wire_layout_high_bits_and_canonical_rejections_are_heap_free",
+    "bridge_tests::wire_path_matches_complete_native_media_across_partitions",
+    "browser::native_dense::tests::acknowledged_restart_keeps_media_and_owning_results_while_transport_is_unpolled",
+    "browser::native_dense::tests::dense_wire_and_capacity_one_actors_preserve_music_with_all_results_stalled",
+    "browser::native_export::tests::cancelled_reads_eof_stalls_and_128_export_reuses_return_real_owners",
+    "browser::native_export::tests::immutable_exports_hold_both_revisions_across_native_direct_and_bounded_threads",
+    "browser::native_graph::tests::acknowledged_graph_worklet_script_has_complete_partition_invariant_native_reference",
+    "browser::native_graph::tests::bounded_two_thread_graph_transport_matches_complete_native_reference",
+    "browser::native_media::tests::replacement_countdown_prefix_exports_and_bounded_actors_match_complete_oracles",
+    "browser::native_staging::tests::cancelled_owning_chunks_and_128_program_reuses_preserve_real_buffers_and_generations",
+    "browser::native_staging::tests::prepared_resource_uploads_immutable_reads_and_nested_programs_match_bounded_actors",
+    "browser::tests::actual_processor_and_heap_failures_have_distinct_witnesses",
+    "browser::tests::diagnostic_journal_exhaustion_does_not_change_music",
+    "browser::tests::graph_binding_buffers_cover_route_cut_and_reliable_owning_release",
+    "browser::tests::graph_binding_fault_disposal_abandons_credits_without_fabricating_returns",
+    "browser::tests::prepared_binding_buffers_match_native_media_and_recover_all_owners",
+    "browser::tests::same_position_seek_is_observed_without_inventing_a_transition_or_pulse",
+    "client::tests::last_sequence_is_usable_once_without_wrapping",
+    "export_wire::tests::client_identity_credit_and_exhaustion_are_transactional_and_never_wrap",
+    "export_wire::tests::full_width_export_records_reject_truncation_padding_and_invalid_projection",
+    "graph_bridge::tests::local_transport_refusal_returns_the_candidate_and_next_bank_generation_without_rendering",
+    "graph_bridge::tests::unexpected_owning_completion_is_returned_intact_without_recycling_or_fabricating_a_reply",
+    "graph_transfer::tests::busy_stale_foreign_and_malformed_records_do_not_advance_or_destroy_owners",
+    "graph_transfer::tests::cancelled_stale_and_invalid_runtime_candidates_return_the_exact_prepared_owner",
+    "graph_transfer::tests::canonical_records_preserve_full_width_fields_and_reject_all_padding_and_truncations",
+    "graph_transfer::tests::generation_and_sequence_exhaustion_never_wrap_and_recycled_capacities_are_truthful",
+    "graph_transfer::tests::ingress_refusal_stalled_returns_and_disconnect_keep_all_graph_owners_explicit",
+    "graph_transfer::tests::receiver_descriptors_stage_activate_and_recycle_real_facade_graph_owners",
+    "graph_transfer::tests::receiving_is_transactional_ordered_and_independent_of_other_banks",
+    "graph_wire::tests::actual_bridge_graph_staging_activation_and_retirement_match_all_media_and_receipts",
+    "graph_wire::tests::graph_candidate_returns_and_domain_failure_origins_survive_128_wire_cycles",
+    "graph_wire::tests::graph_client_credits_validate_identity_phase_and_last_sequence_without_wrapping",
+    "graph_wire::tests::graph_command_codec_preserves_full_width_fields_and_canonical_padding",
+    "graph_wire::tests::malformed_graph_requests_preserve_receiver_state_and_queued_ready_owners_drop_off_render",
+    "graph_wire::tests::stalled_graph_credits_preserve_music_and_independent_primitive_recovery",
+    "journal::tests::all_event_variants_preserve_full_width_fields_and_canonical_padding",
+    "journal::tests::decision_projection_preserves_large_values_and_absent_optional_fields",
+    "journal::tests::loss_is_sticky_saturating_and_empty_callback_cuts_do_not_consume_records",
+    "native::tests::bounded_two_thread_and_wire_drivers_match_the_independent_native_oracle",
+    "planner_canary::tests::planner_errors_and_heap_faults_have_exact_lifecycle_origins_and_are_not_successful_cleanup",
+    "planner_canary::tests::resolver_planner_control_is_partition_invariant_with_complete_boundary_tables",
+    "scenario::dense::tests::dense_capture_cascades_and_clocked_composites_keep_music_with_unread_results",
+    "scenario::media_case::tests::replacement_countdown_and_capture_exhaustion_keep_exact_prefix_and_live_audio",
+    "scenario::tests::allocator_instrumentation_detects_all_heap_operations",
+    "scenario::tests::guard_rejects_allocation",
+    "scenario::tests::guard_rejects_deallocation",
+    "scenario::tests::guard_rejects_reallocation",
+    "scenario::tests::native_partitions_match_full_media_and_owning_recovery",
+    "scenario::tests::semantic_storage_and_resolver_journal_loss_preserve_media_receipts_and_recovery",
+    "staging_wire::tests::canonical_staging_records_preserve_full_width_and_reject_all_truncations_and_padding",
+    "staging_wire::tests::countdown_results_keep_delivery_distinct_from_terminal_frame_and_preserve_credit_on_corruption",
+    "staging_wire::tests::staging_client_rejections_preserve_credit_and_nonwrapping_identity_watermarks",
+)
+HOST_CONCURRENCY = (
+    "native::tests::bounded_two_thread_and_wire_drivers_match_the_independent_native_oracle",
+    "browser::native_graph::tests::bounded_two_thread_graph_transport_matches_complete_native_reference",
+)
+
+
+def manifest_paths(cases):
+    return {package: HOST_MANIFEST if package == HOST_PACKAGE else "Cargo.toml"
+            for package, *_ in cases}
+
+
+def case_command(package, target, arguments):
+    selection = ["--lib"] if target == "lib" else ["--test", target]
+    manifest = ["--manifest-path", HOST_MANIFEST] if package == HOST_PACKAGE else []
+    return ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", *manifest,
+            "-p", package, *selection, *arguments]
+
+
 def run_case(command, env, log=None):
     if log is not None:
         with log.open("w") as output:
@@ -138,6 +219,10 @@ def selected_cases(package=None):
         "nested_lifecycle::nested_seek_stop_restart_and_direct_priority_preserve_media_cuts_and_pending_outcomes",
     ):
         cases.append(("shoop_loop_engine", "interloop", [name, "--", "--exact"], 1, 0))
+    host = [(HOST_PACKAGE, "lib", [name, "--", "--exact"], 1, 0) for name in HOST_CASES]
+    host.extend((HOST_PACKAGE, "lib", [name, "--", "--exact"], 1, seed)
+                for name in HOST_CONCURRENCY for seed in (1, 2))
+    cases = host + cases
     if package:
         cases = [case for case in cases if case[0] == package]
     return cases
@@ -155,13 +240,13 @@ def interrupted(signum, _frame):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine"), help="Run one package's selected cases")
+    parser.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine", HOST_PACKAGE), help="Run one package's selected cases")
     parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
     parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
     args = parser.parse_args()
     cases = selected_cases(args.package)
     if args.list:
-        print(json.dumps({"toolchain": TOOLCHAIN, "cases": cases}))
+        print(json.dumps({"toolchain": TOOLCHAIN, "cases": cases, "manifests": manifest_paths(cases)}))
         return
     if os.name == "posix":
         signal.signal(signal.SIGTERM, interrupted)
@@ -177,8 +262,7 @@ def main():
     results = []
     for index, (package, target, arguments, minimum, seed) in enumerate(cases):
         case_env = {**env, "MIRIFLAGS": f"-Zmiri-seed={seed}"}
-        selection = ["--lib"] if target == "lib" else ["--test", target]
-        command = ["rustup", "run", TOOLCHAIN, "cargo", "miri", "test", "--locked", "-p", package, *selection, *arguments]
+        command = case_command(package, target, arguments)
         log = reports / f"{index:02d}-{target}-seed{seed}.log"
         progress["current"] = {"command": command, "log": log.name}
         atomic_json(reports / "progress.json", progress)
@@ -188,10 +272,14 @@ def main():
         except subprocess.TimeoutExpired as error:
             output = error.stdout or ""
             log.write_text(output.decode(errors="replace") if isinstance(output, bytes) else output)
+            progress["status"] = "failed"
+            atomic_json(reports / "progress.json", progress)
             raise RuntimeError(f"Miri case timed out: {target} seed {seed}; partial output: {log}") from error
         matches = re.findall(r"test result: ok\. (\d+) passed; (\d+) failed", result.stdout)
         passed = sum(int(count) for count, _ in matches)
         if result.returncode or passed < minimum or any(int(failed) for _, failed in matches):
+            progress["status"] = "failed"
+            atomic_json(reports / "progress.json", progress)
             raise RuntimeError(f"Miri case failed or tests missing: {target} seed {seed}\n{result.stdout[-12000:]}")
         record = {"package": package, "target": target, "arguments": arguments, "seed": seed, "passed": passed, "log": log.name, "seconds": time.monotonic() - case_started}
         results.append(record)
@@ -200,9 +288,11 @@ def main():
         atomic_json(reports / "progress.json", progress)
         print(json.dumps(record), flush=True)
     report = {"passed": True, "package_filter": args.package, "toolchain": TOOLCHAIN, "miri": version, "cases": results,
+              "manifests": manifest_paths(cases),
               "limitations": ["Not a whole-workspace or whole-suite Miri claim.",
                               "Loom's generator/FFI model runs natively, not under Miri.",
                               "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+                              "Standalone loop-host cases retain their full native workloads and allocator/destructor guards.",
                               "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."]}
     atomic_json(reports / "result.json", report)
     progress["status"] = "passed"

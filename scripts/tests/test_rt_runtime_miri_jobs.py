@@ -15,7 +15,7 @@ from scripts import run_rt_runtime_miri_jobs as jobs
 FIXTURE = r'''
 import json,os,signal,subprocess,sys
 from pathlib import Path
-inventory={"toolchain":"fixture","cases":[["rt_runtime","fixture",[],1,0]]}
+inventory={"toolchain":"fixture","cases":[["rt_runtime","fixture",[],1,0]],"manifests":{"rt_runtime":"Cargo.toml"}}
 if "--list" in sys.argv:
  print(json.dumps(inventory));sys.exit(0)
 reports=Path(sys.argv[sys.argv.index("--report-dir")+1]);reports.mkdir()
@@ -34,7 +34,7 @@ if mode=="sleep":
    child.wait();sys.exit(143)
  sys.exit(0)
 (reports/"fixture.log").write_text("test result: ok. 1 passed; 0 failed\n")
-(reports/"result.json").write_text(json.dumps({"passed":True,"package_filter":None,"toolchain":"fixture","miri":"synthetic fixture, not Miri","cases":[{"package":"rt_runtime","target":"fixture","arguments":[],"seed":0,"passed":1,"log":"fixture.log"}]}))
+(reports/"result.json").write_text(json.dumps({"passed":True,"package_filter":None,"toolchain":"fixture","miri":"synthetic fixture, not Miri","manifests":{"rt_runtime":"Cargo.toml"},"cases":[{"package":"rt_runtime","target":"fixture","arguments":[],"seed":0,"passed":1,"log":"fixture.log"}]}))
 '''
 
 
@@ -123,6 +123,47 @@ class MiriJobTests(unittest.TestCase):
         result = jobs.collect(job)
         self.assertEqual(result["executions"], 1)
         self.assertEqual(json.loads((job / "collected.json").read_text())["job"]["commit"], original)
+
+    def test_tracked_goal_state_is_excluded_without_losing_standalone_inputs(self):
+        inputs = {
+            "tests/loop_engine_host/Cargo.toml": "standalone manifest fixture\n",
+            "tests/loop_engine_host/Cargo.lock": "standalone lockfile fixture\n",
+            "tests/loop_engine_host/src/lib.rs": "standalone source fixture\n",
+        }
+        for name, content in inputs.items():
+            path = self.repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        self.git("add", ".pi/private", "tests/loop_engine_host")
+        self.git("commit", "-qm", "tracked state and standalone fixture")
+        self.assertEqual(self.git("ls-tree", "--name-only", "HEAD", ".pi"), ".pi")
+        job = self.prepare()
+        data = json.loads((job / "job.json").read_text())
+        self.assertEqual(data["excluded_paths"], [".pi"])
+        self.assertEqual(data["environment"]["RUSTFLAGS"], "-D warnings")
+        self.assertEqual(data["environment"]["RUSTDOCFLAGS"], "-D warnings")
+        self.assertFalse((job / "source/.pi").exists())
+        self.assertTrue(all(not name.startswith(".pi/") for name in data["source_manifest"]))
+        for name, content in inputs.items():
+            self.assertEqual((job / "source" / name).read_text(), content)
+            self.assertEqual(data["source_manifest"][name]["sha256"], jobs.digest(self.repo / name))
+        self.launch(job)
+        self.assertEqual(self.wait(job)["status"], "passed")
+        self.assertEqual(jobs.collect(job)["executions"], 1)
+
+    def test_manifest_scope_tampering_is_not_passing_evidence(self):
+        job = self.prepare()
+        self.launch(job)
+        self.assertEqual(self.wait(job)["status"], "passed")
+        path = job / "reports/result.json"
+        original = path.read_text()
+        report = json.loads(original)
+        report["manifests"]["rt_runtime"] = "tests/wrong/Cargo.toml"
+        path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(RuntimeError, "Manifest scope mismatch"):
+            jobs.collect(job)
+        path.write_text(original)
+        self.assertEqual(jobs.collect(job)["executions"], 1)
 
     def test_cli_refuses_a_second_active_job(self):
         job = self.prepare("sleep")

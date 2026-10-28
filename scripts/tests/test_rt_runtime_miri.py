@@ -17,7 +17,7 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 228)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 291)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 128)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 100)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
@@ -29,6 +29,67 @@ class MiriRunnerTests(unittest.TestCase):
             if "--exact" in arguments:
                 self.assertIn("--", arguments)
                 self.assertLess(arguments.index("--"), arguments.index("--exact"))
+
+    def test_standalone_inventory_keeps_all_cases_and_concurrency_seeds(self):
+        cases = runner.selected_cases(runner.HOST_PACKAGE)
+        self.assertEqual(len(cases), 63)
+        initial = [case for case in cases if case[4] == 0]
+        self.assertEqual(len(initial), 59)
+        self.assertEqual(len({case[2][0] for case in initial}), 59)
+        self.assertTrue(all(case[1] == "lib" and case[2][1:] == ["--", "--exact"]
+                            and case[3] == 1 for case in cases))
+        self.assertEqual([(case[2][0], case[4]) for case in cases if case[4]],
+                         [(name, seed) for name in runner.HOST_CONCURRENCY for seed in (1, 2)])
+        self.assertTrue(set(runner.HOST_CONCURRENCY).issubset(runner.HOST_CASES))
+        self.assertEqual(runner.manifest_paths(cases), {runner.HOST_PACKAGE: runner.HOST_MANIFEST})
+        arguments = [runner.HOST_CASES[0], "--", "--exact"]
+        self.assertEqual(runner.case_command(runner.HOST_PACKAGE, "lib", arguments),
+                         ["rustup", "run", runner.TOOLCHAIN, "cargo", "miri", "test", "--locked",
+                          "--manifest-path", "tests/loop_engine_host/Cargo.toml", "-p",
+                          runner.HOST_PACKAGE, "--lib", *arguments])
+        self.assertEqual(runner.case_command("rt_runtime", "capture", []),
+                         ["rustup", "run", runner.TOOLCHAIN, "cargo", "miri", "test", "--locked",
+                          "-p", "rt_runtime", "--test", "capture"])
+
+    def test_standalone_dispatch_reports_manifest_and_seed_without_interpreting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory)
+            selected = [(runner.HOST_PACKAGE, "lib", [runner.HOST_CASES[0], "--", "--exact"], 1, 2)]
+            def case(command, env, log):
+                self.assertEqual(command, runner.case_command(*selected[0][:3]))
+                self.assertEqual(env["MIRIFLAGS"], "-Zmiri-seed=2")
+                output = "test result: ok. 1 passed; 0 failed\n"
+                log.write_text(output)
+                return subprocess.CompletedProcess(command, 0, output)
+            with patch.object(sys, "argv", ["runner", "--package", runner.HOST_PACKAGE,
+                                           "--report-dir", str(reports)]), patch.object(
+                runner, "selected_cases", return_value=selected
+            ), patch.object(runner.subprocess, "check_output", return_value="miri fixture"), patch.object(
+                runner, "run_case", side_effect=case
+            ), patch.object(runner.signal, "signal"), contextlib.redirect_stdout(io.StringIO()):
+                runner.main()
+            report = json.loads((reports / "result.json").read_text())
+            self.assertEqual(report["package_filter"], runner.HOST_PACKAGE)
+            self.assertEqual(report["manifests"], {runner.HOST_PACKAGE: runner.HOST_MANIFEST})
+            self.assertEqual(report["cases"][0]["seed"], 2)
+            self.assertEqual(report["cases"][0]["passed"], 1)
+
+    def test_missing_exact_filter_is_not_a_passing_standalone_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def case(command, env, log):
+                output = "test result: ok. 0 passed; 0 failed\n"
+                log.write_text(output)
+                return subprocess.CompletedProcess(command, 0, output)
+            with patch.object(sys, "argv", ["runner", "--report-dir", directory]), patch.object(
+                runner, "selected_cases", return_value=[(runner.HOST_PACKAGE, "lib", ["missing", "--", "--exact"], 1, 0)]
+            ), patch.object(runner.subprocess, "check_output", return_value="miri fixture"), patch.object(
+                runner, "run_case", side_effect=case
+            ), patch.object(runner.signal, "signal"), contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(
+                RuntimeError, "tests missing"
+            ):
+                runner.main()
+            self.assertFalse((Path(directory) / "result.json").exists())
+            self.assertEqual(json.loads((Path(directory) / "progress.json").read_text())["status"], "failed")
 
     def test_case_output_can_stream_to_a_durable_file(self):
         with tempfile.TemporaryDirectory() as directory:

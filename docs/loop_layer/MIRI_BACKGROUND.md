@@ -1,10 +1,9 @@
 # Background stage-level Miri jobs
 
 This is the implementation runner's operational reference, not documentation
-acceptance or an instruction to commit the current checkout. The documentation
-pass uses existing evidence/manual review and starts no new jobs. [MIRI_JOBS.md](MIRI_JOBS.md)
-records the collected Stage 6 result; it does not certify later dirty prose/examples.
-The commands below remain available for a separately authorized implementation gate.
+acceptance or an instruction to commit the current checkout. [MIRI_JOBS.md](MIRI_JOBS.md)
+records collected results and pending implementation coverage. Launch only at an
+applicable authorized implementation gate; prose maintenance alone needs no job.
 
 Use one consolidated background run per applicable numbered-stage milestone, not
 one per smaller edit/commit. Continue development while it runs. The final required
@@ -21,7 +20,7 @@ the runner's `--list` and `--report-dir` support.
 ```sh
 # At an applicable stage milestone, not after each smaller implementation step:
 nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
-  --stage stage-6 --commit HEAD
+  --stage stage-7 --commit HEAD
 
 # Use the job directory printed by start; inspect at natural work checkpoints:
 python3 scripts/run_rt_runtime_miri_jobs.py status /absolute/path/to/job
@@ -35,8 +34,20 @@ Launch returns after creating the snapshot and detached supervisor, not after
 Miri finishes. The supervisor survives the launcher's ordinary exit and streams
 output into files rather than into an interactive tool's pipe. One active job is
 allowed per jobs directory; an atomic launch lock prevents concurrent starts.
-`--package rt_runtime|shoop_loop_engine` is available for a justified affected
-selection, not a substitute for complete required stage/final coverage.
+`--package rt_runtime|shoop_loop_engine|loop_engine_host_fixture` is available for
+a justified affected selection, not a substitute for complete required stage/final
+coverage. Inspect the standalone fixture without interpreting tests:
+
+```sh
+python3 scripts/run_rt_runtime_miri.py --list --package loop_engine_host_fixture
+```
+
+The Stage7 default registers144 commands/291 executions:128 runtime,100 loop and
+63 standalone-host executions. Host coverage is all59 native library tests at
+seed0, plus primitive-wire and graph-actor tests at seeds1/2. Every host filter is
+exact and expects one passing test. New host cases run before retained regressions;
+the preceding81-command/228-execution selection keeps its filters, counts, seeds
+and relative order. No standalone-host workload or guard is reduced for Miri.
 
 This local background wrapper currently requires **Linux `/proc` process
 identities and POSIX process groups**. The existing foreground runner remains
@@ -47,16 +58,24 @@ watchdog increases or acceptance exemptions are introduced.
 
 The launcher resolves the requested commit once, exports its Git archive, records
 all source-file hashes/symlink targets/executable bits, and removes snapshot write
-permissions. Later working-tree edits or commits do not affect it. `.pi/` is not
-exported; tracked `.pi/` or unmaterialized submodules are refused rather than
-silently incorporated/omitted. Archive extraction rejects unsafe paths/links.
+permissions. Later working-tree edits or commits do not affect it. The archive
+explicitly selects committed top-level paths except `.pi/`, including when that
+private state is tracked. `excluded_paths` records that exclusion; no `.pi/` data
+enters the archive or source manifest. Submodules still require an explicit
+dependency snapshot and are refused. Archive extraction rejects unsafe paths/links.
+
+The standalone fixture's manifest, lockfile, production dependencies, Rust support
+and independent oracles are ordinary committed inputs. Inventory and result reports
+record the selected package-to-manifest mapping. Collection rejects mismatched
+manifest scope as well as mismatched cases, counts or seeds.
 
 The supervisor itself is copied and hashed at launch. Nix uses an explicit
 `path:` reference to the exported snapshot's configuration/lockfile; Git discovery
 is capped at the job directory so a snapshot under `target/` cannot accidentally
 resolve the mutable parent checkout. The runner uses its pinned Miri toolchain.
 Each job has isolated Cargo build and report directories outside the source
-snapshot. Registry/toolchain caches may be shared. Source and supervisor integrity
+snapshot, with warning-denied Rust/rustdoc flags recorded in its environment.
+Registry/toolchain caches may be shared. Source and supervisor integrity
 are rechecked before execution and collection. This protects against accidental
 input changes, not a malicious operator who can rewrite every artifact/hash.
 
@@ -107,8 +126,10 @@ nix develop --command python3 -m unittest \
   scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs
 ```
 
-Fourteen tests cover the selected inventory, durable file output, isolated external
-reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
+Nineteen tests cover the selected inventory, exact standalone manifest dispatch,
+seed/report metadata, zero-test refusal, tracked-private-state exclusion without
+losing standalone source/lockfiles, manifest-scope tampering, durable file output,
+isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
 while development changes, collection, missing results, count/log/source tampering,
 missing supervisor identity, cancellation with descendant cleanup, recovery of a
 known runner after supervisor SIGKILL, single-job admission, and the actual runner's
@@ -118,7 +139,7 @@ they do **not** execute Miri or stand in for Rust/Miri evidence.
 The first cancellation fixture incorrectly waited reentrantly inside its signal
 handler, causing a cleanup timeout; it now raises out of the wait before reaping.
 The retained failure is `target/loop-layer-miri-background/python-first.log`.
-The final fourteen-test pass is in `checks.log`. No additional routine Miri run was
+The initial fourteen-test pass is in `checks.log`. No additional routine Miri run was
 started for this tooling step. Its first real interpreter use belongs to the next
 applicable consolidated stage run. Source/log hashes and the unchanged178-case
 inventory are recorded in [evidence/miri-background.json](evidence/miri-background.json).

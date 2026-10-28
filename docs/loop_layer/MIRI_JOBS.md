@@ -10,10 +10,25 @@ obligations remain unchanged.
 
 ## Current Stage 7 verification debt
 
-Stage7 implementation continues; there is no active interpreter job. Native,
-public-Wasm binding and actual worklet passes do not extend the collected Stage6
-inventory. Accumulate the fixture's prepared ingress/return, semantic-observer and
-graph-payload ownership cases for one applicable consolidated Stage7 snapshot/run.
+Stage7 host implementation is ready for its consolidated interpreter gate; no
+Stage7 interpreter result exists yet. The pinned runner now registers all59 native
+standalone-host library tests at seed0, plus primitive-wire and graph-actor tests
+at seeds1/2:63 host executions. This includes the35 cases detailed below and all24
+remaining ingress/return, observer, codec, allocator and foundation cases. Exact
+filters each require one passing test, use the standalone manifest/lockfile and
+retain full workloads/guards. Native discovery and63 exact native dispatches pass;
+these are not interpreter results. Nineteen synthetic/tooling Python tests pass.
+
+The full selection is144 commands/291 executions:128 runtime+100 loop+63 host.
+Host cases run first; all prior81 commands/228 executions retain their filters,
+counts, seeds and relative order. The new `Controller::resource` path and host
+ownership/planner/observer support are included with their runtime/loop regressions.
+One immutable committed Stage7 snapshot/run will cover this selection with the
+unchanged900s per-command watchdog. Until terminal collection, interpreter/CI
+artifacts and the last Stage7 row remain open. See
+[evidence/miri-registration-stage7.md](evidence/miri-registration-stage7.md).
+Native, public-Wasm binding and actual worklet passes do not extend the collected
+Stage6 inventory.
 The new standalone `loop_engine_host_fixture` graph receiver contributes seven
 native cases under `graph_transfer::tests`, including unchanged128-round lifecycle
 workloads, actual route activation, stalled owning returns and disconnect cleanup.
@@ -75,12 +90,13 @@ allocator instrumentation, permanent faults and off-render abandonment. Include 
 new module's real Resolver adapter/decision consumer, destructor guards and support
 in the snapshot. The existing dev-only allocator remains enabled; no workload or
 900s watchdog reduction and no immediate per-commit interpreter run is introduced.
-All19 graph-focused, four export-focused, four staging-focused, three dense/stall, three media and two planner cases (**35**)
-are **not yet registered in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
+All19 graph-focused, four export-focused, four staging-focused, three dense/stall,
+three media and two planner cases (**35**) are now **registered, not interpreted**.
+Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the
-existing900s per-command watchdog, guards and workloads when adding the standalone
-manifest/lockfile and exact filters to the supported selection. Final delivery
+existing900s per-command watchdog, guards and workloads in the registered
+standalone manifest/lockfile and exact-filter selection. Final delivery
 still requires the complete applicable source-matched selection; no routine
 per-commit Miri invocation was launched for this payload foundation.
 
