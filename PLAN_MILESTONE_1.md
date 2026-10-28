@@ -94,6 +94,13 @@ Execution contract:
   M1-A9 results: repeated full release runs, statistics, environment/provenance and
   the final comparable evidence bundle still remain. This checkpoint's workspace
   gates again passed 2,176 tests with four existing skips and closed inventory 217.
+- The repeatable collector and raw-bundle auditor now have nine passing standard
+  unittest cases and a passing seven-process release validation. They retain all
+  compressed raw rows/stderr and verify counts, clocks, frames, work, hashes and
+  recomputed nearest-rank statistics. Final full capture/reporting is still pending.
+  Before capture, the harness now pre-touches result rows and stops its callback
+  clock before storing the returned counters; this is an instrumentation revision,
+  not sample filtering or a change to the declared workload/acceptance.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency

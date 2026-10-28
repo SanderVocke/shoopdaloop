@@ -180,9 +180,30 @@ CSV goes to stdout only after processing; clock/RSS/resource metadata goes to
 stderr outside callbacks. Input adaptation, callback processing and handoff are
 heap/free guarded. Timing/result storage and the owning read buffer are prepared.
 
+The repeatable collector defaults to three fresh-process repetitions, 2,048 samples
+and 128 warm-up callbacks. Build first, use a clean source checkout for evidence,
+and choose an unused output directory:
+
+```sh
+cargo build --locked --release -p shoop_engine_service --example measure_service
+python3 src/rust/shoop_engine_service/examples/measure_service/collect.py target/milestone-1/release-capture --dependency-revision d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94
+python3 src/rust/shoop_engine_service/examples/measure_service/collect.py target/milestone-1/release-capture --audit
+python3 -m unittest discover -s src/rust/shoop_engine_service/examples/measure_service -p test_collect.py
+```
+
+The revision above is the initial tested dependency, not an agreed final upstream
+revision. `--cpu N` restricts only this collector and its children to an allowed CPU;
+affinity is recorded and restored. No governor or other process is changed. Every
+raw row is kept in `.csv.gz`, complete stderr in `.meta.txt`, and source/binary/tool/
+configuration/environment provenance in `manifest.json`. `summary.json` reports
+pooled observations; each manifest run also has its own summary. The auditor
+recomputes all statistics from raw artifacts. `--allow-dirty` is explicitly validation-only and fails a normal final
+audit. The 60-second child timeout is a test-host safeguard, not an audio deadline.
+
 Seven debug/release smoke cases pass, including wraps and continued recording with
-256-byte prefix reads. Repeated final runs, statistics and the comparable raw
-measurement bundle are still pending. Do not treat these validation smoke timings
+256-byte prefix reads; nine parser/statistics/auditor unit cases and a seven-process
+collector validation pass. Final full capture and the comparable report are still
+pending. Do not treat these validation smoke timings
 as performance/deadline evidence. Full protocol, device and plugin costs are not
 modeled by this native host.
 

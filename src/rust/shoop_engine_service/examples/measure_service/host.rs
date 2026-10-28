@@ -94,7 +94,13 @@ pub fn rss_kib() -> Option<u64> {
         .ok()
 }
 fn measure<B: Bench>(mut bench: B, engine: &str, mode: Mode, samples: usize, warmup: usize) {
-    let mut rows = vec![Row::default(); samples];
+    let mut rows = vec![
+        Row {
+            frame: u64::MAX,
+            ..Row::default()
+        };
+        samples
+    ];
     let mut clocks = [0u64; 256];
     for clock in &mut clocks {
         let start = Instant::now();
@@ -120,8 +126,10 @@ fn measure<B: Bench>(mut bench: B, engine: &str, mode: Mode, samples: usize, war
         row.attempts = admission.attempts;
         row.refused = admission.refused;
         let start = Instant::now();
-        row.work = heap::assert_no_heap(|| bench.process());
-        row.callback_ns = nanos(start);
+        let work = heap::assert_no_heap(|| bench.process());
+        let callback_ns = nanos(start);
+        row.work = work;
+        row.callback_ns = callback_ns;
         bench.collect(&mut row.work);
         bench.check(row.frame);
         row.meter_reads = if mode == Mode::Poll { 64 } else { 1 };

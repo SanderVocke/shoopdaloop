@@ -827,7 +827,9 @@ M1-A9 evidence**. Before final collection, the common workload is declared as:
 `callback_ns` includes the same shared heap/free guard plus processing/adaptation/
 handoff; output oracles, control admission, return draining and meter timing are
 outside that span. Callback storage, raw timing rows, clock probes and read buffers
-are prepared; formatting/file I/O occurs after callbacks. `elapsed_wall_ns` covers
+are prepared; result rows are nonzero-initialized/pre-touched before warm-up. The
+callback clock stops before counters are stored in the result row. Formatting/file
+I/O occurs after callbacks. `elapsed_wall_ns` covers
 the unpaced measured host loop including UI/result/oracle work, so its copied-byte
 rate is not a physical-device throughput/deadline guarantee. RSS is whole-process
 Linux RSS including executable/allocator/result storage, not isolated component
@@ -844,6 +846,37 @@ Formatting, warning-denied workspace build, test policy and closed inventory
 `target/milestone-1/measurement-host-{smoke,checkpoint-gates}.log` and the labeled
 `measure-{release-}smoke-*.csv` files. Final collection/statistics/reporting remains
 necessary before checking Stage 6 complete.
+
+### Repeatable collector and raw-bundle validation
+
+[collect.py](../../src/rust/shoop_engine_service/examples/measure_service/collect.py)
+launches one release process per case/repetition and rotates the case order across
+repetitions. It keeps every row as deterministic gzip CSV plus unmodified stderr;
+the manifest hashes those artifacts, the binary, measurement sources and summaries.
+It records source/dependency revisions, clean status, compiler/build flags, affinity,
+CPU/governor/clocksource/cgroup/load/process observations before and after. Source,
+tracked changes and binary identity are checked for stability across collection.
+Optional CPU affinity applies only to the collector and children and is restored;
+no other process/governor is changed. A 60-second outer host timeout preserves
+partial raw/stderr and leaves the manifest incomplete, not an audio-deadline claim.
+
+The bundle audit verifies schema/case/repetition coverage, hashes and complete
+release metadata; it independently recomputes all per-run and pooled statistics
+from raw rows. Nearest-rank p95/p99, all maxima and raw outliers are retained.
+Meter-per-read values are means within measured batches, not an individual atomic
+read latency distribution. The idle no-op control span includes clock/function
+boilerplate; active control spans are admission batches, not a round-trip latency.
+Warm-up performs the declared control/render work with one peak read; timed poll
+load uses 64 reads. Transfer rates expose both unpaced host-loop time and nominal
+48 kHz frame time, neither asserted as physical device/network throughput.
+
+Nine standard unittest cases pass, including malformed work/frames/timings,
+debug-build rejection, nonfinite/negative statistics, nearest-rank tails, dirty or
+incomplete bundles, raw tampering and a forged summary whose hash was updated.
+A real seven-process, 16-sample/two-warm-up release collector validation and audit
+also pass. That bundle used the explicit dirty-source validation opt-in, is stored
+only at `target/milestone-1/collector-validation-1`, and is **not final performance
+evidence**. A clean committed source checkpoint precedes full collection.
 
 ### Durable worktree and regular upstream checkpoints
 
