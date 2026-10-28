@@ -67,6 +67,13 @@ failed host10/63 case remains only a scoped recovery check; complete current/fin
 coverage, broader models/audit and remote/final delivery remain mandatory.
 Stage7 stays7/8, Stage8 stays3/8.
 
+The scoped unprofiled retry is now job `20261028T145739-89dfd53bdb` from committed
+`3d10c7a06f1e4ad01185d047e4a1c44abf525629`:876 immutable entries/copied supervisor,
+exact host10/63 inventory and strict seed0-only flags verified. Its launch
+checkpoint is running, not passing; the native evidence archive predates it.
+Terminal collection and full current/final interpreter coverage remain due.
+See [Miri jobs](MIRI_JOBS.md) for the launch authority and local proof.
+
 ## Stage 8 residual diagnosis and release-measurement CI
 
 [Residual/CI evidence](evidence/residual-ci-stage8.md) records the same full exact

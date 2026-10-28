@@ -304,6 +304,35 @@ A pass would cover only that test, never consolidated current/final coverage.
 See [bulk-MIDI evidence](evidence/bulk-midi-stage8.md). Stage7 remains7/8 and
 Stage8 remains3/8; broader models/audit, remote artifacts and delivery remain due.
 
+Focused unprofiled recovery **`20261028T145739-89dfd53bdb`** launched from
+committed **`3d10c7a06f1e4ad01185d047e4a1c44abf525629`** at
+2026-10-28T14:57:39.512395Z, supervisorPID32129:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-7-recovery-bulk --commit 3d10c7a0 \
+  --package loop_engine_host_fixture --shard 10/63
+```
+
+Launch verification matches876 frozen source entries/the copied supervisor,
+excludes `.pi/`, verifies the unchanged exact host10/63 inventory and strict
+Rust/rustdoc/source-commit environment. Its sole interpreter flag is
+`-Zmiri-seed=0`, with no profiler or inherited safety override. The checkpoint is
+**running**, not passed. The full seven replays/assertions/guards and900s watchdog
+remain. No second routine job should run while this selection is active.
+
+- Root: `target/loop-layer-miri-jobs/20261028T145739-89dfd53bdb/`.
+- Job metadata SHA256: `21667f95e3a4d6c67def55c378fb81358221bf19afaeb3b07280fb8f1c515bdc`.
+- Source archive SHA256: `4a7598ac45912ff2d332bd67fdb445afb0abfa969847f5d5aab98f6095795217`.
+- Copied supervisor SHA256: `75dfb8fdc9b45957a2bfd01e679216e0f5ce28be2dffafdf8aba5b938a36fa1d`.
+- Local launch proof: `target/loop-layer-bulk-midi-stage8/recovery-launch-verification.json`.
+
+The preceding native/portable evidence archive predates this launch and cannot
+certify its result. Continue implementation rather than polling tightly; terminal
+collection/source verification is required before any passing claim. Even a
+successful scoped recovery leaves complete146-command/299-execution current/final
+coverage, broader audit/models and remote/final delivery due.
+
 ### Historical Stage7 registered selection
 
 Stage7 host implementation is ready for its consolidated interpreter gate; no
