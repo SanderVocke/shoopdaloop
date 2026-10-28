@@ -1,0 +1,28 @@
+{
+  "release_url": "https://github.com/SanderVocke/shoopdaloop/releases/tag/carla-catalina-ab-2.5.10-20261028",
+  "download_url": "https://github.com/SanderVocke/shoopdaloop/releases/download/carla-catalina-ab-2.5.10-20261028/Carla-2.5.10-macos-x86_64-10.15-standalone-ab.zip",
+  "sha256": "7e1e963734075c149267549e01484e210c325d531d2c96b888e3c4cdd30bc60a",
+  "bytes": 90738559,
+  "build_commit": "e2c0c8d8ddf12f0d4d58db42b108922591768209",
+  "build_run": 40733475004,
+  "publication_run": 40737293115,
+  "minimum_macos": "10.15",
+  "architecture": "x86_64",
+  "native_sections_match_bundled_runtime": true,
+  "audited_macho_files": {
+    "Carla.app": 179,
+    "Carla-Control.app": 84
+  },
+  "checks": [
+    "two GUI startups",
+    "actual independent standalone Dummy audio-file-to-gain DSP at 48 kHz/1024",
+    "relocated ZIP extraction and repeated probes",
+    "all 287 packaged file hashes verified",
+    "public release download SHA verified"
+  ],
+  "limitations": [
+    "Individual Mach-O files ad hoc signed; legacy app bundles unsigned and not notarized",
+    "Intel hosted macOS validation; actual physical Catalina execution untested"
+  ],
+  "recipe": "Pinned upstream Carla 2.5.10 plus same rebuilt Catalina dependencies as ShoopDaLoop; Carla itself is not recompiled."
+}

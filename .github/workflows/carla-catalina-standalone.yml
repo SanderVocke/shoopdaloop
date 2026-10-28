@@ -1,0 +1,142 @@
+name: Carla Catalina standalone A/B package
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_run_id:
+        description: Publish an already successful package run (blank builds only)
+        type: string
+        required: false
+        default: ''
+  pull_request:
+    branches: [master]
+    paths:
+      - .github/workflows/carla-catalina-standalone.yml
+      - scripts/package_carla_catalina.py
+      - scripts/probe_carla_standalone.py
+      - scripts/build_macos_catalina_dependencies.sh
+      - scripts/carla_runtime.py
+      - scripts/check_macos_compatibility.py
+      - third_party/carla/runtime-lock.json
+      - docs/carla-catalina-ab.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: carla-catalina-standalone-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_run_id == ''
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '10.15'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Test packaging compatibility checks
+        run: python3 -m unittest discover -s scripts/tests
+      - name: Download and verify pinned Carla payload/source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess
+          lock=json.loads(pathlib.Path('third_party/carla/runtime-lock.json').read_text())
+          for entry,name in [(lock['upstream_binaries']['macos-universal'],'carla.dmg'),(lock['source'],'carla-source.tar.gz')]:
+              subprocess.run(['curl','-L','--fail','--retry','3','-o',name,entry['url']],check=True)
+              if hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()!=entry['sha256']:
+                  raise SystemExit('Checksum mismatch: '+name)
+          PY
+          mkdir .carla-source
+          tar -xzf carla-source.tar.gz --strip-components=1 -C .carla-source
+      - uses: actions/cache/restore@v4
+        id: catalina-cache
+        with:
+          path: .catalina-deps
+          key: macos-15-intel-catalina-libs-v1-${{ hashFiles('scripts/build_macos_catalina_dependencies.sh', 'third_party/carla/runtime-lock.json') }}
+      - name: Build the same Catalina dependencies as the bundled runtime
+        if: steps.catalina-cache.outputs.cache-hit != 'true'
+        run: bash scripts/build_macos_catalina_dependencies.sh .catalina-deps
+      - uses: actions/cache/save@v4
+        if: steps.catalina-cache.outputs.cache-hit != 'true'
+        with:
+          path: .catalina-deps
+          key: ${{ steps.catalina-cache.outputs.cache-primary-key }}
+      - name: Stage complete applications with matched runtime
+        shell: bash
+        run: |
+          mkdir .carla-volume
+          hdiutil attach carla.dmg -nobrowse -readonly -mountpoint .carla-volume
+          trap 'hdiutil detach .carla-volume' EXIT
+          python3 scripts/carla_runtime.py normalize --platform macos \
+            --search-root .carla-volume --license .carla-source/doc/GPL.txt \
+            --output .carla-component --macos-dependency-dir .catalina-deps
+          python3 scripts/check_macos_compatibility.py --root .carla-component \
+            --arch x86_64 --minimum-os 10.15 > matched-runtime-compatibility.txt
+          python3 scripts/package_carla_catalina.py --search-root .carla-volume \
+            --dependency-dir .catalina-deps --normalized-runtime .carla-component \
+            --license .carla-source/doc/GPL.txt --output stage/Carla-Catalina-AB
+      - name: Test standalone applications and actual DSP without ShoopDaLoop
+        run: python3 scripts/probe_carla_standalone.py --root stage/Carla-Catalina-AB --carla-source .carla-source
+      - name: Archive, relocate and verify the downloaded layout
+        shell: bash
+        run: |
+          mkdir dist
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          root=pathlib.Path('stage/Carla-Catalina-AB')
+          path=root/'BUILD-INFO.json'
+          info=json.loads(path.read_text())
+          info['files']={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and p!=path}
+          info['validation']=json.loads((root/'standalone-probe.json').read_text())
+          path.write_text(json.dumps(info,indent=2)+'\n')
+          PY
+          archive=dist/Carla-2.5.10-macos-x86_64-10.15-standalone-ab.zip
+          ditto -c -k --sequesterRsrc --keepParent stage/Carla-Catalina-AB "$archive"
+          destination="$RUNNER_TEMP/Carla Δ extracted"
+          mkdir -p "$destination"
+          ditto -x -k "$archive" "$destination"
+          python3 scripts/check_macos_compatibility.py --root "$destination/Carla-Catalina-AB" \
+            --arch x86_64 --minimum-os 10.15 > extracted-compatibility.txt
+          python3 scripts/probe_carla_standalone.py --root "$destination/Carla-Catalina-AB" --carla-source .carla-source
+          cp stage/Carla-Catalina-AB/BUILD-INFO.json dist/
+          cp stage/Carla-Catalina-AB/standalone-probe.json dist/
+          cp stage/Carla-Catalina-AB/compatibility.txt dist/
+          (cd dist && shasum -a 256 *.zip > SHA256SUMS)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: carla-catalina-standalone-${{ github.run_id }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload package diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: carla-catalina-diagnostics-${{ github.run_id }}
+          path: |
+            matched-runtime-compatibility.txt
+            extracted-compatibility.txt
+            stage/Carla-Catalina-AB/*.log
+            stage/Carla-Catalina-AB/standalone-probe.json
+            stage/Carla-Catalina-AB/compatibility.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_run_id != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify and publish the selected standalone package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CARLA_PACKAGE_RUN: ${{ inputs.publish_run_id }}
+        run: python3 scripts/publish_carla_catalina.py --run-id "$CARLA_PACKAGE_RUN"

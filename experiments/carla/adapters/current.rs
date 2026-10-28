@@ -1,0 +1,361 @@
+#[cfg(target_os = "linux")]
+mod linux {
+    use anyhow::{ensure, Context, Result};
+    use base64::Engine as _;
+    use shoop_engine::carla_native::CarlaNativeHost;
+    use shoop_engine::carla_processor::{spawn_processor_bridge, CarlaProcessor};
+    use shoop_engine::carla_subprocess::{
+        parse_nonce, run_carla_worker, CarlaWorkerOptions, SupervisedCarlaProcessor,
+    };
+    use shoop_engine::dummy_port::{DummyAudioPort, PortId};
+    use shoop_engine::engine::{self, Engine, EngineHandle};
+    use shoop_engine::internal_audio_port::InternalAudioPort;
+    use shoop_engine::port::{PortConnectability, PortDirection};
+    use shoop_engine::session::{Port, Session};
+    use shoop_engine::FXChainType;
+    use shoop_plugin_protocol::{ChainId, ProcessGeneration};
+    use std::io::Write;
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    fn clock(id: libc::clockid_t) -> u64 {
+        let mut t = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        assert_eq!(unsafe { libc::clock_gettime(id, &mut t) }, 0);
+        t.tv_sec as u64 * 1_000_000_000 + t.tv_nsec as u64
+    }
+
+    fn worker(args: &[String]) -> Result<bool> {
+        if !args.iter().any(|v| v == "--carla-worker") {
+            return Ok(false);
+        }
+        let value = |key: &str| -> Result<String> {
+            let i = args
+                .iter()
+                .position(|v| v == key)
+                .context("missing worker argument")?;
+            args.get(i + 1).cloned().context("missing worker value")
+        };
+        run_carla_worker(CarlaWorkerOptions {
+            address: value("--carla-worker-address")?.parse()?,
+            nonce: parse_nonce(&value("--carla-worker-nonce")?)?,
+            chain_id: ChainId(value("--carla-worker-chain-id")?.parse()?),
+            generation: ProcessGeneration(value("--carla-worker-generation")?.parse()?),
+            shared_memory_path: value("--carla-worker-shared-memory")?.into(),
+            test_mode: None,
+        })?;
+        Ok(true)
+    }
+
+    fn input_sample(workload: &str, channel: usize, index: usize) -> f32 {
+        if workload == "voyage" {
+            static INPUT: std::sync::OnceLock<Vec<f32>> = std::sync::OnceLock::new();
+            let data = INPUT.get_or_init(|| {
+                let bytes = std::fs::read(
+                    std::env::var("SHOOP_BENCH_VOYAGE_INPUT").expect("missing Voyage input path"),
+                )
+                .expect("missing Voyage input file");
+                assert_eq!(bytes.len(), 8192 * 2 * 4);
+                bytes
+                    .chunks_exact(4)
+                    .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+                    .collect()
+            });
+            data[channel * 8192 + index]
+        } else {
+            0.125 * (channel + 1) as f32
+        }
+    }
+
+    enum Runner {
+        Processor(Box<dyn CarlaProcessor>),
+        Engine {
+            engine: Box<Engine>,
+            _handle: EngineHandle,
+            inputs: Vec<usize>,
+            outputs: Vec<usize>,
+        },
+    }
+    impl Runner {
+        fn prepare(&mut self, frames: usize, workload: &str) {
+            if let Self::Engine { engine, inputs, .. } = self {
+                for (channel, port) in inputs.iter().enumerate() {
+                    engine
+                        .session_mut()
+                        .port_mut(*port)
+                        .unwrap()
+                        .as_dummy_mut()
+                        .unwrap()
+                        .queue_data(
+                            &(0..frames)
+                                .map(|i| input_sample(workload, channel, i))
+                                .collect::<Vec<_>>(),
+                        );
+                }
+            }
+        }
+        fn process(&mut self, frames: usize) -> Result<()> {
+            match self {
+                Self::Processor(host) => host.process(frames),
+                Self::Engine { engine, .. } => {
+                    engine.run_cycle(frames);
+                    Ok(())
+                }
+            }
+        }
+        fn validate(&mut self, frames: usize, workload: &str) -> Result<()> {
+            for channel in 0..2 {
+                let mut expected = 0.125 * (channel + 1) as f32;
+                if workload == "synthetic" {
+                    for _ in 0..192 {
+                        expected = expected * 0.9999 + 0.00001;
+                    }
+                    expected *= 0.5;
+                } else if workload == "gain" {
+                    expected *= 0.5;
+                }
+                let output = match self {
+                    Self::Processor(host) => {
+                        host.audio_output(channel).context("missing output")?
+                    }
+                    Self::Engine {
+                        engine, outputs, ..
+                    } => match engine.session_mut().port_mut(outputs[channel]).unwrap() {
+                        Port::Internal(port) => port.buffer(frames),
+                        _ => unreachable!(),
+                    },
+                };
+                ensure!(
+                    output[..frames].iter().all(|v| v.is_finite())
+                        && if workload == "voyage" {
+                            let energy =
+                                output[..frames].iter().map(|v| v * v).sum::<f32>() / frames as f32;
+                            energy > 1e-10
+                                && energy < 16.0
+                                && output[..frames].iter().enumerate().any(|(i, v)| {
+                                    (*v - input_sample(workload, channel, i)).abs() > 1e-5
+                                })
+                        } else {
+                            output[..frames]
+                                .iter()
+                                .all(|v| (*v - expected).abs() < 0.00002)
+                        },
+                    "output mismatch, channel {channel}"
+                );
+            }
+            Ok(())
+        }
+    }
+    pub fn run() -> Result<()> {
+        let args: Vec<String> = std::env::args().collect();
+        if worker(&args)? {
+            return Ok(());
+        }
+        ensure!(
+            args.len() == 8,
+            "usage: mode state.xml workload frames blocks continuous|paced output.csv"
+        );
+        let mode = &args[1];
+        let frames: usize = args[4].parse()?;
+        let blocks: usize = args[5].parse()?;
+        ensure!(
+            frames > 0 && frames <= 8192 && blocks > 0,
+            "invalid dimensions"
+        );
+        let paced = args[6] == "paced";
+        ensure!(paced || args[6] == "continuous", "unknown pacing");
+        let mut processor: Box<dyn CarlaProcessor> = if mode == "subprocess" {
+            Box::new(SupervisedCarlaProcessor::launch(
+                &std::env::current_exe()?,
+                FXChainType::CarlaRack,
+                48_000,
+                frames as u32,
+                ChainId(10000),
+            )?)
+        } else {
+            Box::new(CarlaNativeHost::instantiate(
+                FXChainType::CarlaRack,
+                48_000,
+                frames as u32,
+            )?)
+        };
+        let xml = std::fs::read(&args[2])?;
+        processor.restore_state(&format!(
+            "shoop-carla-native-state:2:rack:{}",
+            base64::engine::general_purpose::STANDARD.encode(xml)
+        ))?;
+        if args[3] == "voyage" {
+            let saved = processor.save_state()?;
+            let encoded = if saved.starts_with("shoop-carla-native-state:") {
+                saved.rsplit(':').next().unwrap().to_owned()
+            } else {
+                let value: serde_json::Value = serde_json::from_str(&saved)?;
+                value["http://kxstudio.sf.net/ns/carla/chunk"]["value"]
+                    .as_str()
+                    .context("missing state chunk")?
+                    .to_owned()
+            };
+            let decoded = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+            ensure!(
+                String::from_utf8_lossy(&decoded).contains("<Type>VST3</Type>"),
+                "VST3 workload was not loaded"
+            );
+        }
+        processor.set_active(true);
+        let mut control = None;
+        if matches!(mode.as_str(), "bridge" | "subprocess" | "engine") {
+            let (handle, endpoint) = spawn_processor_bridge(processor, 48_000, frames as u32)?;
+            handle.set_active(true);
+            control = Some(handle);
+            processor = endpoint;
+        }
+        for channel in 0..2 {
+            let input = processor
+                .audio_input_mut(channel)
+                .context("missing input")?;
+            for (index, value) in input[..frames].iter_mut().enumerate() {
+                *value = input_sample(&args[3], channel, index);
+            }
+        }
+        let mut runner = if mode == "engine" || mode == "no_fx" {
+            let mut session = Session::default();
+            session.set_sample_rate(48_000);
+            session.set_buffer_size(frames as u32);
+            let mut inputs = Vec::new();
+            let mut outputs = Vec::new();
+            let mut fx_inputs = Vec::new();
+            for channel in 0..2 {
+                let source = session.add_port(Port::Dummy(DummyAudioPort::new(
+                    PortId(channel + 1),
+                    &format!("source{channel}"),
+                    PortDirection::Input,
+                    frames,
+                )));
+                let internal = |name: String| {
+                    Port::Internal(InternalAudioPort::new(
+                        name,
+                        frames,
+                        PortConnectability::INTERNAL,
+                        PortConnectability::INTERNAL,
+                        0,
+                    ))
+                };
+                let input = session.add_port(internal(format!("fx:in{channel}")));
+                let output = session.add_port(internal(format!("fx:out{channel}")));
+                session.connect_ports_internal(source, input)?;
+                if mode == "no_fx" {
+                    session.connect_ports_internal(input, output)?;
+                }
+                inputs.push(source);
+                fx_inputs.push(input);
+                outputs.push(output);
+            }
+            if mode == "engine" {
+                session.set_carla_fx_host("fx", processor);
+                session.set_processor_ports("fx", fx_inputs, outputs.clone(), vec![])?;
+            }
+            session.apply_graph_changes()?;
+            let (engine, handle) = engine::split(session, 8);
+            Runner::Engine {
+                engine: Box::new(engine),
+                _handle: handle,
+                inputs,
+                outputs,
+            }
+        } else {
+            ensure!(
+                matches!(mode.as_str(), "native" | "bridge" | "subprocess"),
+                "unknown mode"
+            );
+            Runner::Processor(processor)
+        };
+        let period = std::env::var("SHOOP_BENCH_PACE_PERIOD_NS")
+            .ok()
+            .map(|v| v.parse::<u64>())
+            .transpose()?
+            .map(Duration::from_nanos)
+            .unwrap_or_else(|| Duration::from_secs_f64(frames as f64 / 48_000.0));
+        let mut warm_deadline = Instant::now();
+        for _ in 0..200 {
+            if std::env::var_os("SHOOP_BENCH_PACED_WARMUP").is_some() {
+                if let Some(wait) = warm_deadline.checked_duration_since(Instant::now()) {
+                    std::thread::sleep(wait);
+                }
+            }
+            runner.prepare(frames, &args[3]);
+            runner.process(frames)?;
+            warm_deadline += period;
+        }
+        let workload = if mode == "no_fx" { "empty" } else { &args[3] };
+        let mut ready = runner.validate(frames, workload).is_ok();
+        for _ in 0..10 {
+            if ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_secs_f64(frames as f64 / 48_000.0));
+            runner.prepare(frames, &args[3]);
+            runner.process(frames)?;
+            ready = runner.validate(frames, workload).is_ok();
+        }
+        ensure!(ready, "warm-up never produced validated output");
+        let before = control.as_ref().map_or(0, |v| v.deadline_misses());
+        let mut samples = Vec::with_capacity(blocks);
+        let mut deadline = Instant::now();
+        for _ in 0..blocks {
+            runner.prepare(frames, &args[3]);
+            if paced {
+                if let Some(wait) = deadline.checked_duration_since(Instant::now()) {
+                    std::thread::sleep(wait);
+                }
+            }
+            let lateness = Instant::now()
+                .saturating_duration_since(deadline)
+                .as_nanos();
+            let start = clock(libc::CLOCK_MONOTONIC);
+            let cpu = clock(libc::CLOCK_THREAD_CPUTIME_ID);
+            let result = runner.process(frames);
+            let cpu = clock(libc::CLOCK_THREAD_CPUTIME_ID) - cpu;
+            let end = clock(libc::CLOCK_MONOTONIC);
+            result?;
+            let valid = runner
+                .validate(frames, if mode == "no_fx" { "empty" } else { &args[3] })
+                .is_ok();
+            samples.push((start, end, cpu, lateness, valid));
+            deadline += period;
+            if Instant::now().saturating_duration_since(deadline) > period {
+                deadline = Instant::now();
+            }
+        }
+        let after = control.as_ref().map_or(0, |v| v.deadline_misses());
+        let mut file = std::fs::File::create(Path::new(&args[7]))?;
+        writeln!(
+            file,
+            "block,start_ns,end_ns,wall_ns,caller_cpu_ns,lateness_ns,valid,bridge_deadline_misses"
+        )?;
+        for (i, (s, e, c, l, v)) in samples.iter().enumerate() {
+            writeln!(file, "{i},{s},{e},{},{c},{l},{v},{}", e - s, after - before)?;
+        }
+        ensure!(
+            samples.iter().all(|v| v.4) || after > before,
+            "invalid output without reported bridge misses"
+        );
+        println!(
+            "mode={mode} frames={frames} blocks={blocks} misses={} invalid={}",
+            after - before,
+            samples.iter().filter(|v| !v.4).count()
+        );
+        Ok(())
+    }
+}
+
+fn main() {
+    #[cfg(target_os = "linux")]
+    if let Err(error) = linux::run() {
+        eprintln!("{error:#}");
+        std::process::exit(1);
+    }
+    #[cfg(not(target_os = "linux"))]
+    eprintln!("Carla regression timing experiments require Linux clocks.");
+}

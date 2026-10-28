@@ -1,0 +1,50 @@
+{
+  "shoop_release": {
+    "version": "0.2.0",
+    "published_at": "2025-11-09T13:26:33Z",
+    "source": "https://github.com/SanderVocke/shoopdaloop/releases/tag/v0.2.0"
+  },
+  "carla_releases": [
+    {
+      "version": "2.5.10",
+      "published_at": "2025-07-31T18:05:01Z",
+      "source": "https://github.com/falkTX/Carla/releases/tag/v2.5.10"
+    },
+    {
+      "version": "2.5.9",
+      "published_at": "2024-09-22T09:15:44Z",
+      "source": "https://github.com/falkTX/Carla/releases/tag/v2.5.9"
+    }
+  ],
+  "homebrew_at_shoop_release": {
+    "version": "2.5.10 revision 1",
+    "commit": "5fbbc037e215a838737db86eec39fcd27d7ba684",
+    "date": "2025-10-28T04:02:31Z",
+    "source": "https://github.com/Homebrew/homebrew-core/blob/5fbbc037e215a838737db86eec39fcd27d7ba684/Formula/c/carla.rb"
+  },
+  "homebrew_prior_stable": {
+    "version": "2.5.9 revision 1",
+    "commit": "0ed706e7cd1a3cfad439f39389d6ac004806bf01",
+    "date": "2024-11-28T02:50:55Z",
+    "source": "https://github.com/Homebrew/homebrew-core/blob/0ed706e7cd1a3cfad439f39389d6ac004806bf01/Formula/c/carla.rb",
+    "source_sha256": "226fb5d646b7541b82035080190e7440df1f92372fb798b4ad49289570e5ad81"
+  },
+  "macos_compatibility": {
+    "official_2_5_10_minimum": "Advertised 10.12; complete DMG fails actual 10.15 dependency audit",
+    "catalina": "10.15",
+    "source": "https://kx.studio/Downloads",
+    "audited_dependency_minima": {
+      "2.5.9": {
+        "libcrypto.3.dylib": "12.0",
+        "liblzma.5.dylib": "12.0",
+        "libssl.3.dylib": "12.0"
+      },
+      "2.5.10": {
+        "libcrypto.3.dylib": "13.0",
+        "liblzma.5.dylib": "13.0"
+      }
+    }
+  },
+  "selection": "Contemporaneous official release and Homebrew formula select 2.5.10, but advertised OS support is not proof that its full binary package runs on Catalina. Previous stable 2.5.9 is an older-installation sensitivity proxy, not a proven most-common/working Catalina package.",
+  "limitations": "Availability and compatibility do not establish installation prevalence. Actual reporter Carla version is unknown; original performance figures were on an i7-7600U Linux laptop, distinct from the Catalina compatibility discussion. Version timing uses Linux source builds, not macOS binaries. Both audited upstream DMGs contain dependencies requiring newer macOS than Catalina. Actual historical installation cannot be inferred from release dates alone."
+}
