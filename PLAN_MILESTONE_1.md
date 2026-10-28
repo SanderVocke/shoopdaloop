@@ -111,6 +111,14 @@ Execution contract:
   run variation, admission/refusals, copy throughput and RSS/pool observations are
   reported without tuning or parity/deadline claims. Final-head integration,
   reruns, CI/review and acceptance audit remain Stage 7, not satisfied by this data.
+- Stage 7 preflight observed shared HEAD `15cfb7fc`, an explicitly incomplete loop
+  plan and an in-progress `rt_runtime/src/buffer.rs` edit. No completed revision was
+  agreed or imported. PR #889 at `fc246d0c` is OPEN/draft with no check rollup,
+  workflow runs or submitted reviews; that is not CI/review success. The current
+  workflow automatically targets master, not this stacked PR's loop-branch base;
+  its existing manual dispatch can be used after final integration without
+  weakening triggers/gates. Initial-pin acceptance mapping and final rerun planning
+  may continue independently; final dependency agreement remains mandatory.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency

@@ -1039,6 +1039,33 @@ source. Regular buildable commits/pushes on `feat/milestone-1-engine-service` re
 the upstream recovery path; local persistence is not a substitute for pushing.
 The loop executor's checkout/branch and protected work were not changed.
 
+## Stage 7 preflight: final dependency and remote gates remain open
+
+After Stage 6 was pushed as `fc246d0c`, read-only inspection observed shared HEAD
+`15cfb7fc570c5e37f362febe5f9221d3ad58dcd2` and an in-progress runtime buffer edit.
+The loop plan explicitly still has incomplete host/Miri/CI, adversarial/audit and
+final delivery work. This is **not an agreed completed dependency revision**.
+Nothing from that finishing work was copied, fixed or imported; the tested
+milestone dependency remains `d038c208` until explicit completed-revision agreement.
+
+CI guidance and the current workflow were inspected. Actual PR #889 query at
+`fc246d0c538e37748056e72d3a8f31ad721fcfb4` returned OPEN/draft, base
+`feat/loop-execution-layer`, empty check rollup, no branch workflow runs, empty
+review decision and no submitted reviews. `gh pr checks 889` returned exit 1 with
+"no checks reported". These are **absence observations, not CI success, approval
+or proof that no reviewer is configured**. Local logs:
+`target/milestone-1/stage-7-{pr-state.json,workflow-runs.json,pr-checks.txt}`.
+
+The existing build workflow's push/PR automatic branch filters target `master`,
+not this stacked branch/base. It already offers `workflow_dispatch`; after agreed
+integration, dispatch the final branch, verify its exact head/attempt and actual
+native/Wasm discovery/artifacts, then follow failures/reviews to their required
+outcome. No workflow trigger, protected gate or shared implementation was changed
+for this preflight. Final integration must preserve upstream's loop-package
+checker argument alongside both new package arguments. A provisional initial-pin
+acceptance map and final-rerun checklist can proceed while that dependency gate is
+open, but cannot substitute for its completed agreed source or final-head evidence.
+
 ## Existing references inspected
 
 - `src/rust/shoop_backend/src/lib.rs`: current application-facing `Backend` trait,
