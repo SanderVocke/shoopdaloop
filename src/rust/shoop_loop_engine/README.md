@@ -145,6 +145,24 @@ explains the fourteen workloads, full scalar/packet checks, raw distributions,
 resource samples, deliberate heap failures and limits. Dense deadline misses are
 reported, never hidden or used as a brittle success threshold.
 
+## Adversarial regression models
+
+```sh
+cargo test --locked -p shoop_loop_engine --test adversarial_timeline
+cargo test --locked -p rt_runtime --test adversarial_delivery --test adversarial_capture
+```
+
+Add `--release` for the optimized profile. The timeline target compares seeded
+programs and sync components with independent scalar/event expectations while
+request credits stay full and optional journals overflow. The runtime targets
+check typed payload/receipt ownership and retained capture/index content across
+partitions, refusals, stale/reused identities and exhausted maintenance credits.
+Actual mutations are heap-guarded; allocating references and destruction stay
+off-render. These are regression models, not fresh worklet, deadline or interpreter
+certification. The [validation record](../../../docs/loop_layer/VALIDATION.md)
+identifies actual native/Wasm results and outstanding source-scoped interpreter
+coverage.
+
 The implementation contract and progress are tracked in the repository's
 `PLAN_LOOP_LAYER.md` and `docs/loop_layer/`. No full legacy backend compatibility,
 unlimited recording, or hard-real-time deadline guarantee is promised.

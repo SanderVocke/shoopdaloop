@@ -30,8 +30,9 @@ exhaustion now also passes with newly acknowledged playback and complete recover
 The native loop benchmark now supplies fourteen guarded real workloads with
 raw release timing/work/storage/credit data and explicit dense deadline misses.
 It is not a browser/device deadline guarantee; see the current benchmark section
-below. Stage8 is5/8 after callback-audit/guard closure, with broader models,
-consolidated Miri and remote CI work open.
+below. Stage8 is6/8 after broader seeded model verification. The frozen Stage7
+146/299 interpreter recovery is collected; the later151/304 selection and checked
+source-matched remote CI remain open.
 
 The following sections are chronological records, including old open-stage counts,
 while-running jobs, source/hash checks and the then-required goal pause/commit/worker
@@ -40,6 +41,31 @@ checkout or to documentation authoring. Former docs-changes-loop-layer reference
 now resolve under [the implementation-review archive](../../src/rust/rt_runtime/docs-previous/implementation-review/README.md);
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
+
+## Stage 8 broader seeded models and collected Stage7 recovery
+
+[Broader model evidence](evidence/adversarial-models-stage8.md) verifies four new
+full-length cases:288 scalar program runs,288 sync-component runs, four seeds×512
+typed receipt/payload actions and48 retained stereo/MIDI capture/index takes.
+Complete state/journal/content/credit/owner checks cover optional journal loss,
+all18 typed outcome witnesses, refusal watermarks, malformed/overflowing inputs,
+forced generation reuse, immutable prefixes and zero remaining maintenance bytes.
+The preceding descriptor/sparse/bulk and lifecycle models remain unchanged. Native
+193runtime/155loop/60fixture tests/profile,189runtime+155loop per Node/Chromium,
+eight exact native dispatches,73 helpers and2148 workspace passes/four existing
+skips pass;208 existing scoped source/configuration inputs match `dfd610d9`.
+This closes the model row only: Stage8 is6/8. Current registration151commands/
+304executions preserves the entire preceding147/300 selection as an exact prefix;
+the five model additions since frozen Stage7 have no interpreter pass yet.
+
+[Consolidated Stage7 recovery](evidence/miri-consolidated-stage7.md) has separately
+passed and been collected from `3bf1dbca`:146commands/299executions,878 immutable
+entries and all147 report/raw-log hashes, strict flags, literal source re-export,
+copied supervisor and dead recorded process identities match. It ended2026-10-28
+18:25:48.965005Z after10478.51554903097s monotonic supervisor time. This is not a
+current151/304 pass, remote acceptance, native timing or reviewer approval.
+Stage7 stays7/8 pending checked source-matched remote artifacts; Stage8 interpreter/
+CI rows and Stages9–10 remain open. No per-helper interpreter run was added.
 
 ## Stage 8 seeded descriptor-bank ownership model
 

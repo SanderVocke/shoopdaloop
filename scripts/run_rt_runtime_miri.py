@@ -48,6 +48,14 @@ CASES = [
 ]
 
 
+STAGE8_MODELS = (
+    ("rt_runtime", "adversarial_delivery", "seeded_typed_payloads_receipts_and_recycled_tokens_match_a_full_length_independent_model"),
+    ("rt_runtime", "adversarial_capture", "seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_exhausted_maintenance"),
+    ("shoop_loop_engine", "adversarial_timeline", "seeded_programs_preserve_scalar_timing_through_full_receipts_journal_loss_and_rejected_owners"),
+    ("shoop_loop_engine", "adversarial_timeline", "seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals"),
+)
+
+
 HOST_PACKAGE = "loop_engine_host_fixture"
 HOST_MANIFEST = "tests/loop_engine_host/Cargo.toml"
 HOST_CASES = (
@@ -341,6 +349,8 @@ def selected_cases(package=None):
     host.extend((HOST_PACKAGE, "lib", [name, "--", "--exact"], 1, seed)
                 for name in HOST_CONCURRENCY for seed in (1, 2))
     cases = host + cases
+    cases.extend((owner, target, [name, "--", "--exact"], 1, 0)
+                 for owner, target, name in STAGE8_MODELS)
     if package:
         cases = [case for case in cases if case[0] == package]
     return cases

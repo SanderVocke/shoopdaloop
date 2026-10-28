@@ -10,25 +10,39 @@ obligations remain unchanged.
 
 ## Current Stage 8 model registration and verification debt
 
-The [descriptor-bank model](evidence/descriptor-model-stage8.md) adds one exact
-seed0 host case: **147 commands/300 executions =136runtime+100loop+64host**.
-Removing only that case reproduces the prior146/299 selection, with every old
-filter/count/seed and relative order retained. Native60fixture tests/profile,
-72 helpers and2144 workspace passes/four existing skips pass; the new case has
-**not run under Miri**. Further program/occurrence, typed-operation, resource/capture
-and partition/stress model coverage still belongs to Stage8. Accumulate those
-changes for the applicable consolidated stage/final selection rather than launching
-a routine run per model helper.
+The [broader models](evidence/adversarial-models-stage8.md) append four exact seed0
+commands to the preceding [descriptor-bank selection](evidence/descriptor-model-stage8.md):
+**151 commands/304 executions =138runtime+102loop+64host**. Removing only those four
+commands reproduces the complete prior147/300 inventory as an exact prefix;
+every previous case/filter/count/seed and relative order is retained. Three new
+Rust test files have full-length native/Wasm workloads with no Miri-only shortening.
+Native193runtime/155loop/60fixture tests/profile,189runtime+155loop per Node/Chromium,
+eight exact native dispatches,73 helpers and2148 workspace passes/four existing
+skips pass. The broader model row is verified: Stage8 is6/8.
 
-Active Stage7 job `20261028T153110-784d2380c0` keeps frozen `3bf1dbca` and146/299;
-the supported checkpoint at2026-10-28T17:05:49Z was **running**, not a pass. It is
-unchanged and cannot certify this later case. Do not mutate it or launch a duplicate.
-The callback audit is complete; Stage8 is5/8 and Stage7 remains7/8, with complete
-applicable interpreter and source-matched remote artifacts still required.
+**The descriptor case and four later model cases have not run under Miri.** The
+frozen Stage7 job has now passed and been collected at146/299, as verified below;
+it cannot certify later cases. Commit/freeze the accumulated model milestone for
+one applicable consolidated Stage8 selection, retaining the900s watchdog,
+complete workloads/guards/seeds and source isolation. No routine invocation was
+launched per helper. Stage7 stays7/8 and the separate Stage8 interpreter/remote-CI
+rows remain open; final-head CI/review and Stages9–10 remain required.
 
 ## Current Stage 7 verification debt
 
-### Exact bulk recovery collected; frozen Stage7 selection still pending
+### Consolidated recovery passed and collected
+
+[Verified complete collection](evidence/miri-consolidated-stage7.md):
+`20261028T153110-784d2380c0`, immutable `3bf1dbca`, **146 commands/299 executions**,
+ended2026-10-28T18:25:48.965005Z after10478.51554903097s supervisor wall time.
+All878 entries, literal committed source re-export, copied supervisor, complete
+inventory/strict flags,147 report/raw-log hashes, dead recorded process identities
+and supported collection match. Earlier failed jobs remain failed. This closes the
+frozen interpreter recovery, not the later151/304 selection, remote artifacts or
+final-head CI/review. Stage7 therefore remains7/8. The following entries preserve
+the earlier checkpoints rather than overriding this terminal result.
+
+### Earlier checkpoint: exact bulk recovery collected; full selection pending
 
 Job **`20261028T145739-89dfd53bdb`**, frozen
 **`3d10c7a06f1e4ad01185d047e4a1c44abf525629`**, ended **passed/exit0** at
@@ -60,7 +74,7 @@ retry. With implementation ready and the failed command recovered, launch one
 required consolidated recovery from a committed frozen snapshot, then continue
 Stage8 work while it runs. Prose/inventory verification alone is not its rationale.
 
-### Consolidated Stage7 recovery launched — not passing evidence
+### Historical launch checkpoint — not then passing evidence
 
 Required consolidated recovery **`20261028T153110-784d2380c0`** launched from
 **`3bf1dbca7c93f486be50cd7359555172dad723f3`** at

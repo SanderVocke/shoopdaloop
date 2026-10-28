@@ -17,9 +17,9 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 300)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 136)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 100)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 304)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 138)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 102)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
             cases = [c for c in runner.selected_cases("shoop_loop_engine") if c[1] == target]
             self.assertEqual(len(cases), count)
@@ -29,6 +29,20 @@ class MiriRunnerTests(unittest.TestCase):
             if "--exact" in arguments:
                 self.assertIn("--", arguments)
                 self.assertLess(arguments.index("--"), arguments.index("--exact"))
+
+    def test_full_length_stage8_models_have_four_additive_exact_commands(self):
+        expected = (
+            ("rt_runtime", "adversarial_delivery", "seeded_typed_payloads_receipts_and_recycled_tokens_match_a_full_length_independent_model"),
+            ("rt_runtime", "adversarial_capture", "seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_exhausted_maintenance"),
+            ("shoop_loop_engine", "adversarial_timeline", "seeded_programs_preserve_scalar_timing_through_full_receipts_journal_loss_and_rejected_owners"),
+            ("shoop_loop_engine", "adversarial_timeline", "seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals"),
+        )
+        cases = runner.selected_cases()
+        self.assertEqual(runner.STAGE8_MODELS, expected)
+        self.assertEqual(len(cases), 151)
+        self.assertEqual(cases[-4:], [(owner, target, [name, "--", "--exact"], 1, 0)
+                                    for owner, target, name in expected])
+        self.assertEqual([case for case in cases if case[1].startswith("adversarial_")], cases[-4:])
 
     def test_standalone_inventory_keeps_all_cases_and_concurrency_seeds(self):
         cases = runner.selected_cases(runner.HOST_PACKAGE)
