@@ -2,7 +2,8 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stage 0 baseline verified; Stage 1 composition work pending.** Written on 2026-10-27 from
+**In progress: Stages 0–1 verified; production implementation begins in Stage 2.**
+Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
 slice. Browser/IPC deployments of the resulting service belong to the following
@@ -37,8 +38,17 @@ Execution contract:
 - Baseline: 341 native tests passed with warnings denied, and both dependency
   boundary checks passed for their four configured targets. See
   [integration notes](docs/integration/MILESTONE_1.md) for commands and limitations.
-- No Rust implementation or protected-source change has been made. The confirmed
-  typed-control gap requires the Stage 1 public-extension feasibility spike.
+- External composition spike: five guarded tests pass debug/release, including
+  exact typed preset timing, stalled results, recovery and generation refusals;
+  its independent DSP library builds for Wasm. No protected-source change is made.
+- Existing workspace gates: warning-denied build and nextest pass (2,141 passed,
+  four existing skips). Production new crates, Node execution and final-head
+  integration remain pending, not implied by these baseline results.
+- Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
+  Stage 1 contracts, finite limits, composition decision and probe definition are
+  recorded in the integration notes; Stages 2–7 are not yet implemented.
+- Shared-metadata scope request pending: only new-module tracing inventory rows
+  and new-package additions to the existing Wasm dependency CI invocation.
 
 ## Goals and scope
 
@@ -188,7 +198,7 @@ working names; update commands if Stage 1 chooses different names.
       latency/session modules; do not treat historical proposal names as APIs.
 - [x] Run targeted baseline runtime/loop tests and boundary checks in the agreed
       environment. If a dependency fails, invoke the pause rules before coding.
-- [ ] Push the isolated branch and open a draft PR when there is a meaningful
+- [x] Push the isolated branch and open a draft PR when there is a meaningful
       owned commit; state that loop integration is dependency-gated.
 
 **Verification:** baseline commands identify their source revision; no protected
@@ -196,24 +206,24 @@ files are changed. Branch/PR base and permitted shared-file edits are explicit.
 
 ### Stage 1 — Parity contracts and a local-composition feasibility gate
 
-- [ ] Build `docs/integration/PARITY.md` from actual app operations and tests:
+- [x] Build `docs/integration/PARITY.md` from actual app operations and tests:
       record/play/seek/sync/composites, replacing/overdub, dry/wet, prerecord/preplay,
       latency, routing/processors/devices, state/waveforms, media replacement,
       persistence/undo and scripting. Mark unsupported/future behaviour honestly.
-- [ ] Specify this slice's inputs, outputs, finite capacities, state/export cuts,
+- [x] Specify this slice's inputs, outputs, finite capacities, state/export cuts,
       same-frame command ordering, timing, recovery and teardown. Specify the
       native public caller API without prematurely introducing byte serialization.
-- [ ] Prove the custom-operation path in a minimal external compile/test spike.
+- [x] Prove the custom-operation path in a minimal external compile/test spike.
       Trace how `SelectPreparedPreset` reaches the DSP at frame F and how an actual
       terminal result returns while retaining bounded owners through stalls.
-- [ ] Compare only viable public extension paths. Record the chosen composition
+- [x] Compare only viable public extension paths. Record the chosen composition
       and why it preserves the existing loop planner and callback allowances.
       If a protected change is required, stop and request a separately owned
       prerequisite; do not proceed with an imitation or unapproved modification.
-- [ ] Define the fixed-delay probe's D-frame delay, physical/logical intervals,
+- [x] Define the fixed-delay probe's D-frame delay, physical/logical intervals,
       retained margins/tail needs and old-engine reference expectations. Full
       compensation is not assumed; define how a missing mechanism is demonstrated.
-- [ ] Update `ARCHITECTURE.md` with the proposed service and remaining gaps; settle
+- [x] Update `ARCHITECTURE.md` with the proposed service and remaining gaps; settle
       new module names and the allowed change set.
 
 **Verification:** an external spike demonstrates a real typed operation and

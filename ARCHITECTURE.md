@@ -12,9 +12,10 @@ For now, the architecture covers only:
 - The loop-execution layer, `shoop_loop_engine`.
 - A proposed modular, transport-independent control protocol and its adapters.
 - How another processing component, such as an audio plugin host, could participate.
+- The narrow native engine-service composition slice now under implementation.
 
 **The rest of the stack is not yet described here.** In particular, the complete
-session/application layer, feature-parity mapping, device integration, persistence,
+session/application layer, full feature-parity mapping, device integration, persistence,
 undo, scripting, UI integration and migration strategy require further design.
 References to a future application composition point do not specify those layers.
 
@@ -103,7 +104,36 @@ code or permit arbitrary processor construction during rendering.
 
 A general local composition interface for independent processor operations and
 planner coordination remains to be designed. The wire protocol must not conceal
-that execution-side requirement.
+that execution-side requirement. A bounded component-owned path is being proven
+for the native slice below; it is not a universal processor-operation interface.
+
+## Native engine-service slice
+
+The proposed `shoop_engine_service` composes the existing loop facade and an
+independent `shoop_example_dsp` in one graph with one render owner. The DSP module
+knows runtime processor/control types, not loops, devices or application backends.
+The service prepares/imports content, connects roles and exposes native typed
+control plus independent telemetry; it does not define the eventual session stack.
+
+An external feasibility spike demonstrates a narrow prepared control bridge without
+changing protected loop/runtime APIs. A component-owned render control handle
+snapshots typed requests once per host callback. Its processor alone changes its
+private prepared state at the requested frame within the runtime-supplied interval,
+then acknowledges actual timing/revision through reserved reliable returns. A
+fixed copy-only directive mailbox is internal to that component, not shared mutable
+access to the loop or another processor. No second scheduler/clock, nested engine,
+extra engine callback or float-encoded operation is introduced.
+
+The initial slice has finite admission/resource limits, separate recovery, atomic
+peak telemetry, coherent loop queries and immutable export/read ownership. Prepared
+fixed-role route changes remain loop/runtime configuration operations; a DSP preset
+change does not imply an atomic transaction with a loop query or graph activation.
+
+The production service, complete stereo/MIDI/media scenario, latency findings and
+measurements are still pending. See the bounded
+[compatibility inventory](docs/integration/PARITY.md) and
+[integration contract/evidence](docs/integration/MILESTONE_1.md). Browser/IPC
+execution of this same service and general wire adapters belong to later work.
 
 ## Proposed protocol architecture
 
