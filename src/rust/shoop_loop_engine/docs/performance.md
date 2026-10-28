@@ -22,6 +22,13 @@ Choose a fresh report directory: the driver refuses to overwrite one. Commands
 have a600-second watchdog; timeout preserves partial output and never writes a
 passing aggregate. This is separate from the unchanged900-second Miri watchdog.
 
+The Linux release CI cell runs the same driver with `--iterations 1024 --trials 3`.
+Each run/attempt uses a fresh directory under the runner's temporary directory.
+The `loop-engine-bench-<run-id>-<attempt>` artifact retains the complete report,
+raw CSVs and logs even after failure; a missing report directory fails artifact
+upload. Inspect the actual run's artifact and source identity before attributing
+results to a PR head. A local invocation is not remote CI acceptance.
+
 For a short functionality smoke, not representative timing:
 
 ```sh

@@ -233,6 +233,45 @@ mandatory. The failure proof/raw logs accompany
 [benchmark-stage8 evidence](evidence/benchmark-stage8.md); benchmark success is
 not interpreter recovery. Stage7 remains7/8.
 
+### Residual-cost diagnosis after the measured-cost timeout (failed)
+
+The concrete unprofiled timeout above justified profiling the same whole exact
+host10/63 command again, now against the measured-cost implementation. Diagnostic
+job **`20261028T131907-e502c4cd23`** used committed
+**`0b853b4a68cdd73092ad62a6ebf22a2e2a931f84`**, seed0 and `--measureme`.
+Relevant interpreted library/fixture/support sources, manifests/locks,
+configuration and runner scripts match the failed `802833f4` input. Its872 frozen
+entries and copied supervisor were verified; `.pi/` is excluded. The full seven
+replays, assertions, guards and900s watchdog were unchanged.
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-7-residual-diagnosis --commit 0b853b4a \
+  --package loop_engine_host_fixture --shard 10/63 --measureme
+```
+
+At a natural development checkpoint, identity/ancestry/command/seed/profiler-path
+checks preceded SIGINT to interpreterPID3939463, finalizing measureme's string
+index before the hard watchdog. This intentionally interrupted diagnostic
+**failed/exit1**,2026-10-28T13:19:07.543223Z–13:30:18.412422Z,
+**670.8692323739524s**, **zero completed test executions**. Frozen source/supervisor
+still match; recorded supervisor3939332 and runner3939334 identities are dead.
+Passing collection refuses `Cannot collect passing evidence: failed`.
+There is no active job from this attempt.
+
+The2,389,684,069-byte finalized raw profile has SHA256
+`d4a413d92e027d3d7b9172d98f4d2fb24721086ca5465a7fb38867901f5bfafc`.
+Analysis used a checked copy outside job reports and the existing pinned analyzer;
+the raw file remains local. Its666.539662436s/14,839 labels cover completed function
+events, not a completed test. Inclusive costs include routing104.405s,
+merge-window95.478s, packet parsing78.209s, MIDI-buffer preparation74.402s and
+restoration66.904s. Nested values overlap; the profile also exposes large
+state-valued seek/result paths. Different interrupted prefixes are not paired
+speedup measurements or native callback timings. No further routine unprofiled
+retry is launched: implementation/model work must address concrete residual costs.
+Complete145-command/298-execution coverage and remote/final delivery remain due.
+See [residual diagnosis and CI evidence](evidence/residual-ci-stage8.md).
+
 ### Historical Stage7 registered selection
 
 Stage7 host implementation is ready for its consolidated interpreter gate; no

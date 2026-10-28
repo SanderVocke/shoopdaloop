@@ -43,6 +43,18 @@ class LoopBenchmarkTests(unittest.TestCase):
     def verify(self):
         return runner.verify_records("\n".join(map(json.dumps, self.records)), self.raw, 2)
 
+    def test_ci_measures_release_and_requires_raw_artifact(self):
+        workflow = (runner.ROOT / ".github/workflows/build_and_test.yml").read_text()
+        measure = workflow.split("- name: Measure guarded loop release workloads", 1)[1].split("- name:", 1)[0]
+        self.assertIn("matrix.target == 'linux' && matrix.profile == 'release'", measure)
+        self.assertIn("--iterations 1024 --trials 3", measure)
+        self.assertIn("runner.temp", measure)
+        self.assertIn("github.run_attempt", measure)
+        artifact = workflow.split("- name: Upload guarded loop measurement evidence", 1)[1].split("- name:", 1)[0]
+        self.assertIn("if: always()", artifact)
+        self.assertIn("if-no-files-found: error", artifact)
+        self.assertIn("scripts.tests.test_loop_benchmark", workflow)
+
     def test_timeout_retains_partial_output_and_fails(self):
         log = self.raw / "timeout.log"
         error = runner.subprocess.TimeoutExpired(["benchmark"], 600, output=b"partial", stderr=b" diagnostic")

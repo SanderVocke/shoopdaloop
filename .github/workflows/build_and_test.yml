@@ -783,6 +783,24 @@ jobs:
           RUSTFLAGS: -D warnings
         run: python3 scripts/benchmark_rt_runtime.py --iterations 4096 --trials 1
 
+      - name: Measure guarded loop release workloads
+        if: matrix.target == 'linux' && matrix.profile == 'release'
+        env:
+          RUSTFLAGS: -D warnings
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          python3 scripts/benchmark_loop_engine.py --iterations 1024 --trials 3 \
+            --report-dir '${{ runner.temp }}/loop-engine-bench-${{ github.run_id }}-${{ github.run_attempt }}'
+
+      - name: Upload guarded loop measurement evidence
+        if: always() && matrix.target == 'linux' && matrix.profile == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: loop-engine-bench-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/loop-engine-bench-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload rt_runtime native and benchmark evidence
         if: always() && matrix.target != 'web'
         uses: actions/upload-artifact@v7
@@ -916,7 +934,7 @@ jobs:
           cargo fmt --all -- --check
           python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
-          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loop_engine_hosts scripts.tests.test_loop_host_native_runner
+          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loop_engine_hosts scripts.tests.test_loop_host_native_runner scripts.tests.test_loop_benchmark
 
       - name: Validate native and multirealm Perfetto traces
         if: matrix.target == 'linux' && matrix.profile == 'debug'

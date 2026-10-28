@@ -40,6 +40,30 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
+## Stage 8 residual diagnosis and release-measurement CI
+
+[Residual/CI evidence](evidence/residual-ci-stage8.md) records the same full exact
+host test/seed0 under diagnostic profiling after its measured-cost retry timed
+out. Frozen `0b853b4a`/872 entries and the supervisor match; an identity/ancestry/
+command-verified SIGINT finalized the profile at a natural checkpoint. Job
+`20261028T131907-e502c4cd23` failed/exit1 after670.8692323739524s with zero completed
+test executions; recorded processes are dead and passing collection refuses it.
+Completed function events identify residual routing/merge, packet parsing,
+preparation and state-valued seek costs. Inclusive costs overlap and different
+interrupted prefixes do not establish speedup, test completion or native timing.
+
+Linux release CI now runs the existing14-case native benchmark with1024 measured
+callbacks/case and three trials. Its fresh runner-temporary run/attempt directory
+is uploaded even after failure, with missing artifacts rejected. Seventy-two
+helper tests, actionlint and the exact local payload pass:43,008 callbacks,
+12,288 repeated cascade starts, six specific heap canaries and all6144 dense/burst
+deadline misses retained. No production Rust/dependency/manifest/lock, interpreter
+inventory, workload, guard or watchdog changes occur. This is local wiring and
+command validation, not remote CI or fresh package-Wasm/actual-worklet evidence.
+Initial callback source inspection is not an exhaustive audit. Stage7 remains7/8,
+Stage8 remains3/8; complete145-command/298-execution interpreter coverage, broader
+models/audit and remote/final delivery remain mandatory.
+
 ## Stage 8 native benchmark and failed measured-cost interpreter recovery
 
 [Benchmark evidence](evidence/benchmark-stage8.md) records the public driver,
