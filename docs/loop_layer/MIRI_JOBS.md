@@ -41,6 +41,43 @@ retry. With implementation ready and the failed command recovered, launch one
 required consolidated recovery from a committed frozen snapshot, then continue
 Stage8 work while it runs. Prose/inventory verification alone is not its rationale.
 
+### Consolidated Stage7 recovery launched — not passing evidence
+
+Required consolidated recovery **`20261028T153110-784d2380c0`** launched from
+**`3bf1dbca7c93f486be50cd7359555172dad723f3`** at
+2026-10-28T15:31:10.449476Z, supervisorPID32802:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-7-consolidated-recovery --commit 3bf1dbca
+```
+
+It selects the complete current **146 commands/299 executions =136runtime+
+100loop+63host**. All878 immutable entries and the copied supervisor match, `.pi/`
+is excluded, complete inventory equality is verified, and warning-denied Rust/
+rustdoc/source-commit environment and isolated build match. No profiling or safety
+override is enabled; seed flags follow the unchanged declared inventory. Both
+recorded supervisor/runner identities are live at this launch checkpoint.
+
+The original consolidated failure, relevant runtime dependency changes and now
+collected exact recovery justify this complete stage gate; prose/trace-inventory
+verification alone would not. The checkpoint is **running**, not passed. Retain
+900s per-command watchdog, full workloads/guards and terminal collection. Continue
+Stage8 implementation/audit rather than poll or launch a routine duplicate.
+
+- Root: `target/loop-layer-miri-jobs/20261028T153110-784d2380c0/`.
+- Job SHA256: `2ef0873da407abdeb054ecdd5e8c595d3f6fa36ab1fb10af3cd7400ea83bfc2b`.
+- Source archive SHA256: `20d8a871153e2f37c871360738b5125344d00fc7402fe3ffa49415c7b369780c`.
+- Copied supervisor SHA256: `75dfb8fdc9b45957a2bfd01e679216e0f5ce28be2dffafdf8aba5b938a36fa1d`.
+- Launch proof: `target/loop-layer-consolidated-recovery-stage7/launch-verification.json`.
+
+The initial proof helper compared decoded JSON lists with Python tuples and refused
+before writing a proof. Full JSON-normalized equality then passed, retaining every
+field; no job, source, selection or runner changed. This helper correction is not
+an interpreter failure or a passing result. The preceding recovery archive predates
+this new launch and cannot certify it. Stage7 stays7/8; remote artifacts and later
+final-head CI/review remain mandatory even if this consolidated job eventually passes.
+
 The following entries preserve historical failures and launch checkpoints.
 
 ### Original consolidated job failed; full recovery required

@@ -62,6 +62,16 @@ now4/8. The archive's selected owner/quota transaction review is explicitly part
 broader models, exhaustive callback audit, consolidated Miri, source-matched remote
 CI and final delivery/review remain open.
 
+The required consolidated recovery has launched as `20261028T153110-784d2380c0`
+from committed `3bf1dbca7c93f486be50cd7359555172dad723f3`:878 immutable entries/
+copied supervisor, complete146-command/299-execution inventory, strict flags and
+isolated build verified, recorded process identities live at the launch checkpoint.
+It is **running**, not passing. The actual prior full failure and relevant runtime
+changes justify the complete stage gate after the scoped recovery; no routine
+prose-triggered rerun or duplicate is scheduled. The initial verification helper's
+Python tuple/list mismatch was corrected by full JSON-normalized comparison, not
+by discarding fields or changing selection. See [Miri jobs](MIRI_JOBS.md).
+
 ## Stage 8 bulk MIDI preparation/routing candidate
 
 [Bulk-MIDI evidence](evidence/bulk-midi-stage8.md) records safe bulk Event
