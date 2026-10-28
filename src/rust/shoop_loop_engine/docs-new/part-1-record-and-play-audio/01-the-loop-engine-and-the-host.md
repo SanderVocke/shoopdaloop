@@ -18,10 +18,10 @@ All of this can happen inside one eight-frame host callback. The engine divides 
 
 ## Control and rendering
 
-Preparation returns two objects:
+Preparation returns both objects to the calling thread. It does not create threads or attach either object to a particular thread:
 
-- The **controller** submits requests and collects their results. Keep it on the control side of your application.
-- The **engine** owns the running loops and their media. The host calls `Engine::process` with borrowed input/output buffers.
+- The **controller** submits requests and collects their results. Use it from your application's command-handling code.
+- The **engine** owns the running loops and their media. Store it in your host's audio-processing state and call `Engine::process` for each block of borrowed input/output buffers.
 
 ```text
 Control side                            Render side
@@ -33,13 +33,13 @@ Controller: collect results        ◄─── Engine: report admission and out
 Host input buffers ───────────────────► Engine ───────────────────► host outputs
 ```
 
-There is one control producer and one render owner. A live application can put them on different threads, but it must not access the engine concurrently. Our offline example alternates submission, processing, and result collection on one thread.
+“Control side” and “render side” describe responsibilities, not automatic thread placement. For a threaded audio host, your application moves the engine into the audio callback's state—for example, into a Rust `move` closure—and keeps the controller on the application thread. Each object has one owner; do not access the engine concurrently. Our offline example keeps both on one thread and calls `process` directly.
 
 ## One loop, two signal roles
 
-A loop has one musical identity and timeline. Its **capture** role receives the signal to record; its **playback** role sends recorded content into the graph.
+A loop has one musical identity and timeline. For audio/MIDI, the engine creates two graph processors—its **signal roles**. The **capture** processor receives the signal to record; the **playback** processor sends recorded content into the graph.
 
-Keeping these roles separate lets you choose what is recorded and what is heard. The first example connects host input to capture and playback to host output. There is no live-input monitoring route, so the output is silent while the empty loop records.
+Keeping these processors separate lets you choose what is recorded and what is heard. The first example connects host input to capture and playback to host output. There is no live-input monitoring route, so the output is silent while the empty loop records.
 
 The engine's resolver decides the loop's mode and position before processing each interval. Playback and capture follow those decisions; they do not maintain competing loop clocks. You use the integrated `runtime::Engine` here, not a separate resolver that you must drive yourself.
 
