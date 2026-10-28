@@ -1139,6 +1139,20 @@ checker argument alongside both new package arguments. A provisional initial-pin
 acceptance map and final-rerun checklist can proceed while that dependency gate is
 open, but cannot substitute for its completed agreed source or final-head evidence.
 
+**Handoff blocked after three consecutive Stage 7 goal turns.** Preflight,
+provisional acceptance/rerun preparation and the final read-only handoff check all
+found the same unmet prerequisite. Latest observed shared SHA remains
+`15cfb7fc570c5e37f362febe5f9221d3ad58dcd2`, with runtime buffer/Miri tooling edits.
+Its loop plan explicitly records Stage 7 at 7/8, Stage 8 at 3/8 and Stages 9–10
+incomplete. `gh pr list --head feat/loop-execution-layer --state all --limit 10`
+returned no entries; this observation is not proof of completion or of global PR
+absence. No completed agreed revision was supplied. Independent preparation is
+pushed as `67f90f20`; there is no new DSP/service failure to repair. Dependent work
+stops without importing or modifying the unfinished snapshot. Resume requires the
+owner's completed full SHA and agreement that it is the integration point, followed
+by the ordered isolated reruns above. All final criteria/gates remain open; the
+milestone and draft PR are not delivered merely because the initial-pin slice passes.
+
 ## Existing references inspected
 
 - `src/rust/shoop_backend/src/lib.rs`: current application-facing `Backend` trait,

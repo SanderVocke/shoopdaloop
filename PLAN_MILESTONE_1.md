@@ -2,7 +2,7 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stages 0–6 verified against the initial pin (7/8 stages); final integration/delivery remains.**
+**Blocked at Stage 7: Stages 0–6 verified against the initial pin (7/8 stages); final integration requires the completed agreed loop-layer revision.**
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
@@ -125,6 +125,16 @@ Execution contract:
   not the final acceptance audit. Warning-denied rustdoc for both owned crates
   passes; their doctest selections contain zero tests each and add no executable
   coverage. All Stage 7 checkboxes remain open until actual final-head evidence.
+- The same completed-upstream prerequisite remains unmet over three consecutive
+  Stage 7 goal turns: CI/dependency preflight, acceptance/rerun preparation and a
+  final read-only handoff check. Shared HEAD remains `15cfb7fc570c5e37f362febe5f9221d3ad58dcd2`
+  with runtime/Miri edits; its loop plan records Stage 7 at 7/8, Stage 8 at 3/8 and
+  Stages 9–10 incomplete. The matching delivery-PR query returned no entries;
+  neither that absence nor the latest commit establishes completed agreement.
+  Independent preparation is pushed as `67f90f20`; dependent work is blocked,
+  not complete. Resume after the owning executor finishes and supplies the full
+  agreed integration SHA, then execute the recorded isolated final rerun sequence.
+  This is an external coordination prerequisite, not a new DSP/service test failure.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency
