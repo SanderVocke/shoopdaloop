@@ -60,27 +60,32 @@ def main():
     function('wait_process', None, pointer)(driver)
     assert function('get_buffer_size', unsigned, pointer)(driver) == frames
     assert function('get_sample_rate', unsigned, pointer)(driver) == 48000
-    chain = create_chain(session, 0, b'benchmark')
-    assert chain, 'Carla chain unavailable'
-    deadline = time.monotonic()+10
-    while True:
-        result = status(chain); ready = result.contents.ready; free_status(result)
-        if ready: break
-        assert time.monotonic() < deadline, 'chain initialization timed out'
-        time.sleep(.01)
-    xml = Path(state_path).read_bytes()
-    state = {'http://kxstudio.sf.net/ns/carla/chunk': {'type': 'http://lv2plug.in/ns/ext/atom#String',
-              'value': base64.b64encode(xml+b'\0').decode()}}
-    restore(chain, json.dumps(state).encode())
-    time.sleep(.2)
-    active(chain, 1)
+    chain = None
+    no_fx = state_path == 'none'
+    xml = b'' if no_fx else Path(state_path).read_bytes()
+    if not no_fx:
+        chain = create_chain(session, 0, b'benchmark')
+        assert chain, 'Carla chain unavailable'
+        deadline = time.monotonic()+10
+        while True:
+            result = status(chain); ready = result.contents.ready; free_status(result)
+            if ready: break
+            assert time.monotonic() < deadline, 'chain initialization timed out'
+            time.sleep(.01)
+        state = {'http://kxstudio.sf.net/ns/carla/chunk': {'type': 'http://lv2plug.in/ns/ext/atom#String',
+                  'value': base64.b64encode(xml+b'\0').decode()}}
+        restore(chain, json.dumps(state).encode())
+        time.sleep(.2)
+        active(chain, 1)
     total = (blocks+200)*frames
     outputs = []
     for channel in range(2):
         source = open_port(session, driver, f'source{channel}'.encode(), 0, 0)
         sink = open_port(session, driver, f'output{channel}'.encode(), 1, 0)
         assert source and sink
-        connect(source, fx_input(chain, channel)); connect(fx_output(chain, channel), sink)
+        if no_fx: connect(source, sink)
+        else:
+            connect(source, fx_input(chain, channel)); connect(fx_output(chain, channel), sink)
         data = (c.c_float*total)(*([.125*(channel+1)]*total))
         queue(source, total, data); request(sink, total); outputs.append(sink)
     time.sleep(.1)
@@ -99,7 +104,22 @@ def main():
             expected *= .5
         elif b'audiogain_s' in xml: expected *= .5
         assert all(abs(v-expected)<.00002 for v in data[200*frames:]), 'invalid historical output'
+    class ProfileItem(c.Structure):
+        _fields_ = [('key', c.c_char_p), ('count', c.c_float), ('average', c.c_float), ('worst', c.c_float), ('recent', c.c_float)]
+    class Profile(c.Structure):
+        _fields_ = [('count', unsigned), ('items', c.POINTER(ProfileItem))]
+    profile = function('get_profiling_report', c.POINTER(Profile), pointer)(session)
+    details = []
+    for i in range(profile.contents.count):
+        item = profile.contents.items[i]
+        details.append({'key': item.key.decode(), 'count': item.count, 'average': item.average, 'worst': item.worst, 'recent': item.recent})
+    function('destroy_profiling_report', None, c.POINTER(Profile))(profile)
+    Path(output).with_suffix('.profile.json').write_text(json.dumps(details, indent=2))
     destroy_session(session); destroy_driver(driver)
+    if no_fx:
+        Path(output).write_text('block,wall_ns,cpu_ns\n')
+        print('validated as-shipped 0.2.0 no-FX; only aggregate backend profiling is available, not per-block CPU timing')
+        return
     capture = Path(os.environ['SHOOP_BENCH_CAPTURE']).read_bytes()
     count, capacity, rate, configured = struct.unpack_from('QQQQ', capture)
     assert rate == 48000 and configured == frames, ('invalid configured period', rate, configured)

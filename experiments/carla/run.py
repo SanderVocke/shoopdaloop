@@ -113,7 +113,9 @@ def summarize(directory):
             capture = metadata.with_suffix('.bin')
             if capture.exists():
                 blob = capture.read_bytes()
-                count, capacity = struct.unpack_from('QQ', blob)
+                count, capacity, configured_rate, configured_frames = struct.unpack_from('QQQQ', blob)
+                row['captured_configured_rate'] = configured_rate
+                row['captured_configured_frames'] = configured_frames
                 inner = [struct.unpack_from('QQQQ', blob, 32+i*32) for i in range(min(count, capacity))]
                 # Join to the caller's measured interval; do not mix warm-up or late stale completions.
                 intervals = [(int(v['start_ns']), int(v['end_ns'])) for v in samples if 'start_ns' in v]
@@ -177,6 +179,7 @@ def run(work, directory, suite, repeats, blocks, paced_blocks):
                         cases.append(('history', revision, mode, workload, frames, 'continuous'))
                 cases.append(('history', revision, 'no_fx', 'empty', frames, 'continuous'))
         for workload in ['empty', 'gain', 'synthetic']:
+            cases.append(('history', 'pre', 'native', workload, 128, 'paced'))
             cases.append(('legacy', '020', 'lv2', workload, 128, 'continuous'))
             cases.append(('legacy', '020', 'lv2', workload, 1024, 'paced'))
     for repeat in range(repeats):
@@ -187,6 +190,8 @@ def run(work, directory, suite, repeats, blocks, paced_blocks):
             if prefix.with_suffix('.json').exists():
                 continue
             count = paced_blocks if pacing == 'paced' else blocks
+            if kind == 'history' and recipe == 'pre' and pacing == 'paced':
+                count = blocks
             if kind == 'abi':
                 library = 'libcarla_native-plugin.so' if mode == 'native' else 'carla.lv2/carla.so'
                 args = [work / 'abi_benchmark', mode, work / f'Carla-{recipe}/bin' / library,
@@ -209,7 +214,7 @@ def run(work, directory, suite, repeats, blocks, paced_blocks):
             started = time.time()
             code = command(args, prefix.with_suffix('.log'), env, timeout=max(120, count*frames/48000*3))
             metadata = {'case': case, 'repeat': repeat, 'status': 'ok' if code == 0 else 'failed',
-                        'returncode': code, 'command': [str(v) for v in args], 'elapsed_seconds': time.time()-started,
+                        'returncode': code, 'command': [str(v) for v in args], 'sample_rate': 48000, 'configured_frames': frames, 'pacing': pacing, 'elapsed_seconds': time.time()-started,
                         'affinity': sorted(os.sched_getaffinity(0)), 'scheduler': os.sched_getscheduler(0), 'cpu_stat_before': before, 'cpu_stat_after': Path('/sys/fs/cgroup/cpu.stat').read_text()}
             prefix.with_suffix('.json').write_text(json.dumps(metadata, indent=2))
             print(f'{case} repeat={repeat} {metadata["status"]}', flush=True)

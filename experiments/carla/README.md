@@ -6,6 +6,19 @@ Rust, and Carla 2.5.10 source. They do not measure hardware xruns.
 
 ## Prepare
 
+A single preparation command automates the steps below (network access and the
+listed build tools are prerequisites):
+
+```sh
+python3 experiments/carla/bootstrap.py --work "$CARLA_WORK"
+```
+
+This environment additionally uses `--apt-config /workspace/.setup/apt.conf`.
+`--reuse-runtimes` reuses previously verified builds; `--current-target PATH`
+selects an existing Cargo cache. The default keeps build outputs in the scratch
+area. Historical adapter patches are included and applied only to isolated
+checkouts. Build/download failures stop preparation and retain logs.
+
 Use an isolated checkout at baseline `580f6191` and source the environment's Rust
 activation script. Choose an absolute scratch directory, referred to below as
 `$CARLA_WORK`. No benchmark changes the normal application's processing path.
@@ -45,6 +58,10 @@ from evidence runs:
 ```sh
 python3 experiments/carla/run.py run --work "$CARLA_WORK" --output "$CARLA_WORK/smoke" --suite all --repeats 1 --blocks 10 --paced-blocks 10
 python3 experiments/carla/run.py run --work "$CARLA_WORK" --output "$CARLA_WORK/results" --suite all
+python3 experiments/carla/run.py run --work "$CARLA_WORK" --output "$CARLA_WORK/controls" --suite controls
+python3 experiments/carla/run.py run --work "$CARLA_WORK" --output "$CARLA_WORK/history" --suite history
+python3 experiments/carla/verify.py "$CARLA_WORK"
+python3 experiments/carla/analyze.py --work "$CARLA_WORK" --output "$CARLA_WORK/output"
 python3 experiments/carla/run.py summarize --work "$CARLA_WORK" --output "$CARLA_WORK/results"
 ```
 
@@ -94,3 +111,34 @@ a regression. Report effect sizes and paired confidence intervals. Separate
 continuous throughput, paced completion latency, inner CPU cost, and inner wall
 time. VM descheduling and throttling can affect wall time and tail latency.
 A missing historical/runtime cell is inconclusive, not evidence of no regression.
+
+## Contention and historical controls
+
+Use `--suite contention --pin-cpu CPU` in one output directory, then the same
+command with `--load` in another. Choose a CPU in the allowed affinity mask. The
+load is a bounded-lifetime child sharing the selected CPU and is terminated in a
+`finally` block. `--pin-cpu` affects the runner and its children, not other tasks.
+Use `pin-control` and `contention` directory names for automatic analysis.
+
+The controls suite compares native calls with/without timing interposition and
+an independently repeated identical configuration. The history suite compares
+both Rust revisions and the as-shipped 0.2.0 backend. For the old backend, 128-frame
+runs use 2,000 blocks per repetition; 1024-frame runs are paced diagnostics using
+200 blocks per repetition. Its driver attachment is asynchronous: the adapter
+waits before creating FX and independently verifies the nominal period captured
+by the LV2 shim. The old dummy driver always paces internally, so no old whole
+callback latency is compared against new continuous throughput.
+
+For a supplemental old no-FX routing/profiling check, run `legacy020.py` with
+`none` instead of a state path and the same environment used by a history case.
+The output CSV intentionally has no per-block timings; the `.profile.json` file
+contains aggregate backend profiling. Do not treat that as a primary paired CPU
+comparison. Legacy backend profiling units must be checked against its source.
+
+The analyzer uses geometric means of paired per-run ratios and a deterministic
+bootstrap 95% interval, requiring at least eight valid independent pairs. The CPU
+screening threshold is the larger of 5% and three times the median absolute A/A
+ratio deviation; at least 80% of pairs must agree in direction. Latency screening
+requires a 20% effect. A flag is a reason to investigate, not proof of causality.
+The analyzer preserves runs with invalid output and misses in exported records;
+CPU comparisons exclude those runs rather than interpreting fallback as faster DSP.

@@ -55,8 +55,8 @@ Depends on Stage 1. Extend existing examples/shared benchmark support rather tha
 
 Depends on Stage 2; run before engine comparisons.
 
-- [ ] Run the two-build/two-interface matrix with all core workloads, starting at 1024 frames and expanding to 256/128. Alternate order and include repeated identical-baseline runs.
-- [ ] Compare configured buffer size against actual processing frames and reproduce Carla's meter behavior from diagnostic samples. Treat meter spikes separately from mean cost.
+- [x] Run the two-build/two-interface matrix with all core workloads, starting at 1024 frames and expanding to 256/128. Alternate order and include repeated identical-baseline runs.
+- [x] Compare configured buffer size against actual processing frames and reproduce Carla's meter behavior from diagnostic samples. Treat meter spikes separately from mean cost.
 - [ ] If older Carla provenance is available, repeat the relevant fixed-host comparison across revisions, keeping plugin/compiler settings constant where possible.
 - [ ] Verification: check output equivalence and build identities for every cell; summarize paired CPU/wall-time differences and uncertainty. A build effect requires a same-revision comparison; a version effect requires a fixed recipe comparison or an explicit confounding qualification.
 
@@ -64,8 +64,8 @@ Depends on Stage 2; run before engine comparisons.
 
 Depends on Stage 3's validated harness/runtime selection; continue even if Stage 3 finds no difference.
 
-- [ ] Hold Carla/plugin binaries fixed and compare direct native, in-process bridge, subprocess bridge, and full headless engine processing. Exercise all core workloads, including no-FX engine and empty-rack controls.
-- [ ] Run continuous and paced cases at the three frame sizes. Verify that the full engine actually invokes the intended chain and accounts for every sub-block.
+- [x] Hold Carla/plugin binaries fixed and compare direct native, in-process bridge, subprocess bridge, and full headless engine processing. Exercise all core workloads, including no-FX engine and empty-rack controls.
+- [x] Run continuous and paced cases at the three frame sizes. Verify that the full engine actually invokes the intended chain and accounts for every sub-block.
 - [ ] Repeat selected paced comparisons with a bounded, reproducible CPU-contention workload. Record worker/callback policies and test affinity changes only where supported. Stop the load after each run.
 - [ ] Verification: correlate end-to-end spikes with inner Carla wall/CPU time and worker wake-up delays. Distinguish increased execution cost from scheduling/blocking; unchanged inner timing with worse completion latency does not explain an increased embedded Carla meter.
 
@@ -73,7 +73,7 @@ Depends on Stage 3's validated harness/runtime selection; continue even if Stage
 
 Depends on Stages 3–4 establishing reliable measurements.
 
-- [ ] Build 0.2.0, pre-switch, post-switch, and pinned current versions in isolation. Add minimal headless adapters using each version's real processing path; do not rewrite historical processing algorithms.
+- [x] Run the authentic 0.2.0 release backend and build pre-switch, post-switch, and pinned current versions in isolation. Add minimal headless adapters using each version's real processing path; do not rewrite historical processing algorithms.
 - [ ] Reconstruct equivalent no-FX and loaded-FX sessions with matching active monitoring, routing, and loop work. Hold Carla/plugin binaries constant where compatible; separately report as-shipped comparisons with differing runtimes.
 - [ ] Repeat the paired protocol and identify the earliest supported slow/fast boundary. If a historical adapter or dependency cannot be made equivalent, document the blocked comparison and complete unaffected cases.
 - [ ] Bisect only a repeatable regression interval. Freeze the workload/metric and decision threshold before bisecting; skip incompatible commits and reconfirm both neighboring revisions with repeated measurements.
@@ -120,3 +120,8 @@ Depends on completion or explicit disposition of every experiment cell.
 - Stage 2 complete: source-preserving benchmark adapters and preparation/measurement drivers are implemented; positive/negative workload checks reject missing plugins, bypass and missing runtimes. Existing examples were extended by adding a dedicated investigation example rather than altering their default behavior. Request-to-inner-start includes copies/dispatch, so report it as an upper bound on worker wake-up latency. Exact wake-up attribution would require additional engine instrumentation and is not inferred from these samples.
 - Warm-up validation now allows at most ten paced retries after the continuous warm-up. This avoids classifying one transient warm-up deadline miss as a missing plugin; measured misses and invalid output remain unfiltered.
 - 0.2.0 initialization must wait for its asynchronous driver attachment before creating FX. A rejected pilot initialized Carla with the session's pre-attachment default period; the adapter now waits and asserts 48 kHz/the selected block size. The LV2 timing shim independently records the configured period and rejects mismatches.
+
+- Primary evidence collection is running serially with compilation stopped. Historical comparison includes a 2,000-block, 128-frame paced pre-switch native-host control because the old dummy driver always paces; comparing only old paced samples against new continuous samples would confound CPU idle/cold-cache behavior.
+- Result export uses `/workspace/work/carla-investigation/output`: the chat frontend's designated `/codex/.../output` path is not mounted writable in the managed execution environment (read-only `/codex` filesystem). The reproducible outputs and raw samples remain in the managed workspace.
+
+- Core matrix complete: 870 runs, zero failed harness invocations; 358 invalid-output blocks accompanied by 361 bridge deadline misses. These remain in raw records and latency summaries; CPU comparisons exclude affected runs. At 1024-frame synthetic load, median per-run mean completion is ~771/802/839/829 microseconds for native/bridge/subprocess/full engine, while corresponding inner CPU time is ~770/770/786/766 microseconds. These are preliminary current-only measurements, not historical-regression conclusions.
