@@ -2,6 +2,12 @@ name: Carla Catalina standalone A/B package
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_run_id:
+        description: Publish an already successful package run (blank builds only)
+        type: string
+        required: false
+        default: ''
   pull_request:
     branches: [master]
     paths:
@@ -23,6 +29,7 @@ concurrency:
 
 jobs:
   package:
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_run_id == ''
     runs-on: macos-15-intel
     timeout-minutes: 45
     env:
@@ -119,3 +126,17 @@ jobs:
             stage/Carla-Catalina-AB/compatibility.txt
           if-no-files-found: ignore
           retention-days: 14
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_run_id != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify and publish the selected standalone package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CARLA_PACKAGE_RUN: ${{ inputs.publish_run_id }}
+        run: python3 scripts/publish_carla_catalina.py --run-id "$CARLA_PACKAGE_RUN"
