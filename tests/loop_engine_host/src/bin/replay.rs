@@ -2,6 +2,13 @@
 fn main() {
     assert!(loop_engine_host_fixture::allocator_canaries());
     let mode = std::env::args().nth(1).unwrap_or_else(|| "--direct".into());
+    if mode == "--media-json" || mode == "--media-two-thread-json" {
+        println!(
+            "{}",
+            loop_engine_host_fixture::run_media(mode == "--media-two-thread-json", &[57]).json()
+        );
+        return;
+    }
     if mode == "--stall-json" || mode == "--stall-two-thread-json" {
         println!(
             "{}",

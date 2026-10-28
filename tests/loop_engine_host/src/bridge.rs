@@ -53,6 +53,7 @@ pub struct Bridge {
     graphs: Option<Box<crate::graph_bridge::Graphs>>,
     exports: Option<Box<crate::export_bridge::Exports>>,
     staging: Option<Box<crate::staging_bridge::Staging>>,
+    imported: [Option<rt_runtime::ResourceId>; 4],
     fault_witness: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 impl Bridge {
@@ -71,13 +72,38 @@ impl Bridge {
             return Err(WireError::Operation);
         }
         let fault_witness = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let (control, engine, target) = if mode == 2 {
+        let mut imported = [None; 4];
+        let (control, engine, target) = if mode == 3 {
+            let (control, engine, target, resources) =
+                scenario::media_case::prepare(fault_witness.clone());
+            imported = resources.map(Some);
+            (control, engine, target)
+        } else if mode == 2 {
             scenario::dense::prepare(fault_witness.clone())
         } else if mode == 1 {
             scenario::prepare_staged(fault_witness.clone())
         } else {
             scenario::prepare_with_fault(fault, fault_witness.clone())
         };
+        let mut staging = (mode == 1 || mode == 3)
+            .then(|| Box::new(crate::staging_bridge::Staging::new(session)));
+        if mode == 3 {
+            staging
+                .as_mut()
+                .unwrap()
+                .set_catalog([0, 7].map(|revision| {
+                    Some(
+                        control
+                            .media()
+                            .iter()
+                            .find(|m| {
+                                m.target == target && m.revision == rt_runtime::Revision(revision)
+                            })
+                            .unwrap()
+                            .media,
+                    )
+                }));
+        }
         Ok(Self {
             control,
             engine,
@@ -88,8 +114,14 @@ impl Bridge {
             quarantine: None,
             faulted: false,
             graphs: None,
-            exports: None,
-            staging: (mode == 1).then(|| Box::new(crate::staging_bridge::Staging::new(session))),
+            exports: (mode == 3).then(|| {
+                Box::new(crate::export_bridge::Exports::new(
+                    session,
+                    (scenario::media_case::PAGES * 64) as u32,
+                ))
+            }),
+            staging,
+            imported,
             fault_witness,
         })
     }
@@ -118,6 +150,12 @@ impl Bridge {
     }
     pub fn with_dense(session: u64) -> Result<Self, WireError> {
         Self::prepare(session, 0, 2)
+    }
+    pub fn with_media(session: u64) -> Result<Self, WireError> {
+        Self::prepare(session, 0, 3)
+    }
+    pub(crate) fn imported_resources(&self) -> [Option<rt_runtime::ResourceId>; 4] {
+        self.imported
     }
     pub fn staging_ingest(&mut self, bytes: &[u8]) -> Result<(), WireError> {
         crate::guarded(|| {

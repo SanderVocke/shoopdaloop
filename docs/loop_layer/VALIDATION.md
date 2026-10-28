@@ -18,13 +18,14 @@ commands/owning returns through MessagePort with an audible Ready checkpoint and
 explicit engine pause/resume, full native/reference downstream checks and successful
 recovery. Native capacity-one graph actor transport now also matches complete direct
 replay, with renderer-local owners and callback-external coordination. Stage7 has
-five of eight rows verified, including prepared ingress/program staging and native offline/two-thread/export evidence
+six of eight rows verified, including prepared ingress/program staging and native offline/two-thread/export evidence
 and the fixture documentation maintained with these implemented milestones. Immutable
 exports now retain/read/release both capture revisions through native/bindings/actual
 worklets. Resource uploads/immutable reads and prepared nested-program staging now
 also pass native/bindings/actual hosts. Dense one-frame playback, same-frame cascades,
 clocked composites and unread-result recovery now also pass all hosts. Prepared
-playable replacement and capture failure remain pending. Actual held-response-buffer
+indexed replacement, tick-delayed recording and coherent capture exhaustion/export
+now also pass all hosts. Actual held-response-buffer
 exhaustion now also passes with newly acknowledged playback and complete recovery.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
@@ -36,7 +37,42 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 actual transferred-result buffer exhaustion
+## Stage 7 prepared playable replacement and capture exhaustion
+
+[Media-host evidence](evidence/media-host-stage7.md) completes the broad scenario
+row with native direct/capacity-one actors, shared Node/Chromium bindings and actual
+non-isolated offline/live worklets in both profiles. Receiver-local catalog selection
+replaces indexed stereo/MIDI content at4; Seek6 and declared-source RecordAfter
+separate delivery7 from actual9. Preflight exhausts42 prepared pages before49,
+retaining40 common incomplete frames without interrupting unrelated live audio.
+Query64 and immutable Export65/read/all16 initial channels/Release verify revision8,
+both source cuts49/stamps9–49,320 audio bytes,30 MIDI bytes, prior playback revision7
+and full42/16/16/0 recovery. Raw uploaded MIDI remains unindexed and correctly refuses522.
+
+Independent complete tables check91 samples,274 MIDI packets/4110 bytes,552 semantic
+records/88360 bytes (91 boundaries/182 decisions/279 events), and all4 primitive/
+8 staging/46 export results. Native capture-call partitions include whole/single/
+irregular/zero in both actor modes; only positive raw resource append revisions and
+callback counts may differ. Actual30 acknowledged calls1/6/57 then27 one-frame steps
+check every3840 downstream sample/channel and all7936 offline samples/channel,
+including short-call zero tails. The pauses are driver instrumentation, not a runtime
+interaction quantum or continuous live/deadline claim.
+
+Both profiles pass57 fixture tests, nineteen binding groups/runtime, fourteen
+successful actual contexts and four existing exact Rust-origin failure gates;
+21 Python tests include two new media mutation cases. Workspace regression passes
+2141 tests/four existing skips (34.419s warm), warning-denied builds/rustdoc, loop
+doctests, format/boundary/test/tracing policies and documented media modes/filter.
+Media worklet memory remains3,342,336 debug/3,276,800 release bytes, heap0; all7 input/
+14 response buffers return. The prepared2688-byte resource backing/read64/request96/
+response1024/two-bank/one-export-credit metrics are components, not total native RSS.
+
+Stage7 is6/8. Planner-specific canaries, consolidated Miri/CI artifacts and
+Stages8–10 remain open. Three applicable media cases raise unregistered/uninterpreted
+graph/export/staging/dense/stall/media debt to33, plus applicable ingress/observer
+coverage. This is local host evidence, not final-head CI, performance or delivery.
+
+## Historical Stage 7 actual transferred-result buffer exhaustion
 
 [Transfer-stall evidence](evidence/transfer-stalls-stage7.md) extends the dense
 script through Play131/Stop135 without changing production Rust or Wasm binaries.

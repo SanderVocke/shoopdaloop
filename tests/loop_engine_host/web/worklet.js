@@ -10,6 +10,7 @@ class LoopFixture extends AudioWorkletProcessor {
         this.exportMode = options.processorOptions.exports === true;
         this.stagingMode = options.processorOptions.staging === true; this.stagingFrames = 0;
         this.denseMode = options.processorOptions.dense === true; this.denseFrames = 0;
+        this.mediaMode = options.processorOptions.media === true;
         this.stagingReturns = this.stagingMode ? Array.from({length:2},()=>new ArrayBuffer(256)) : [];
         this.exportReturns = this.exportMode ? Array.from({ length: 2 }, () => new ArrayBuffer(1024)) : [];
         this.primeRequested = false; this.primed = false; this.resumeFrame = null;
@@ -18,7 +19,7 @@ class LoopFixture extends AudioWorkletProcessor {
         try {
             this.wasm = initSync({ module: options.processorOptions.module });
             const session = BigInt(options.processorOptions.session), fault = this.canary === "processor" ? 1 : this.canary === "rust-heap" ? 2 : 0;
-            this.engine = this.denseMode ? BrowserBridge.new_dense(session) : this.stagingMode ? BrowserBridge.new_staging(session) : this.exportMode ? BrowserBridge.new_exports(session) : this.graphMode ? BrowserBridge.new_graphs(session, fault) : new BrowserBridge(session, fault);
+            this.engine = this.mediaMode ? BrowserBridge.new_media(session) : this.denseMode ? BrowserBridge.new_dense(session) : this.stagingMode ? BrowserBridge.new_staging(session) : this.exportMode ? BrowserBridge.new_exports(session) : this.graphMode ? BrowserBridge.new_graphs(session, fault) : new BrowserBridge(session, fault);
             this.memory = this.wasm.memory;
             if (!(this.memory.buffer instanceof ArrayBuffer)) throw new Error("ordinary non-shared Wasm memory required");
             this.bytes = this.memory.buffer.byteLength;
@@ -193,7 +194,7 @@ class AudioProbe extends AudioWorkletProcessor {
         super();
         this.graphMode = options.processorOptions?.graph === true;
         this.denseMode=options.processorOptions?.dense===true;
-        this.length=this.denseMode?(options.processorOptions?.stalls===true?512:384):options.processorOptions?.staging===true?512:256;
+        this.length=options.processorOptions?.media===true?3840:this.denseMode?(options.processorOptions?.stalls===true?512:384):options.processorOptions?.staging===true?512:256;
         this.left = new Float32Array(this.length); this.right = new Float32Array(this.length);
         this.start = null; this.starts = Array(this.length/128).fill(null); this.count = 0;
         this.port.onmessage = () => {

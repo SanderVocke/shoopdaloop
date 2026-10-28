@@ -16,6 +16,8 @@ pub(crate) mod native_export;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod native_graph;
 #[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod native_media;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod native_staging;
 
 pub const HEAP_FAILURE: u32 = 0xffff_0001;
@@ -141,6 +143,7 @@ pub struct BrowserBridge {
     exports: Option<Box<ExportBuffers>>,
     staging: Option<Box<StagingBuffers>>,
     dense: bool,
+    media_case: bool,
 }
 struct StagingBuffers {
     request: [u8; crate::staging_wire::REQUEST_BYTES],
@@ -175,6 +178,22 @@ impl BrowserBridge {
                 + crate::journal::STRIDE * crate::scenario::dense::RECORDS
         ]
         .into_boxed_slice();
+        Ok(host)
+    }
+    pub fn new_media(session: u64) -> Result<Self, u32> {
+        let mut host = Self::from_core(Bridge::with_media(session).map_err(protocol_error)?, false);
+        host.media_case = true;
+        host.midi_output = [MidiBuffer::new(1024, 4096).unwrap()];
+        host.semantic =
+            vec![0; crate::journal::HEADER + crate::journal::STRIDE * 4096].into_boxed_slice();
+        host.staging = Some(Box::new(StagingBuffers {
+            request: [0; crate::staging_wire::REQUEST_BYTES],
+            response: [0; crate::staging_wire::RESPONSE_BYTES],
+        }));
+        host.exports = Some(Box::new(ExportBuffers {
+            request: [0; crate::export_wire::REQUEST_BYTES],
+            response: [0; crate::export_wire::RESPONSE_BYTES],
+        }));
         Ok(host)
     }
     pub fn new_staging(session: u64) -> Result<Self, u32> {
@@ -341,6 +360,7 @@ impl BrowserBridge {
             exports: None,
             staging: None,
             dense: false,
+            media_case: false,
         }
     }
 }
@@ -527,6 +547,7 @@ impl BrowserBridge {
         {
             return 15;
         }
+        let imported = core.imported_resources();
         let mut stopped = self.core.take().unwrap().into_stopped();
         let semantic = stopped
             .observer()
@@ -538,6 +559,11 @@ impl BrowserBridge {
         self.semantic_len = semantic.len();
         if let Err(error) = stopped.cleanup() {
             return wire::runtime_error(error);
+        }
+        for resource in imported.into_iter().flatten() {
+            if let Err(error) = stopped.resources().remove(resource) {
+                return wire::runtime_error(error);
+            }
         }
         for _ in 0..512 {
             stopped.resources().begin_callback();
@@ -570,6 +596,8 @@ impl BrowserBridge {
             };
             if at < if self.dense { 1 } else { 4 } {
                 self.input_left[offset] = 2. * (at + 1) as f32;
+            } else if self.media_case {
+                self.input_left[offset] = 2.;
             } else if self.exports.is_some() && (128..132).contains(&at) {
                 self.input_left[offset] = 20. * (at - 127) as f32;
             }

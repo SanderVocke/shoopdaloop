@@ -475,6 +475,106 @@ def compare_dense_worklets(result, native, *, stalled=False):
             raise RuntimeError("dense live report claims offline output")
 
 
+def compare_media_worklets(result, native):
+    try:
+        _compare_media_worklets(result, native)
+    except (KeyError, TypeError, ValueError, IndexError, OverflowError) as error:
+        raise RuntimeError("malformed media host evidence") from error
+
+
+def _compare_media_worklets(result, native):
+    reports = result.get("mediaReports")
+    steps = [1, 6, 57] + [1] * 27
+    if not isinstance(reports, list) or [r.get("mode") for r in reports] != ["offline", "live"]:
+        raise RuntimeError("both actual media contexts required")
+    sizes = (("requests", 64, 8, 2), ("responses", 96, 8, 4),
+             ("stagingRequests", 128, 8, 4), ("stagingResponses", 256, 8, 8),
+             ("exportRequests", 96, 8, 26), ("exportResponses", 1024, 16, 46))
+    if (len(native["samples"]) != 91 or len(native["midiBytes"]) != 4110
+            or native["counts"] != [0]*8 or native["recovered"] != [42,16,16,0]
+            or native["storage"] != [2688,64,96,1024,2,1]
+            or (native["frames"], native["callbacks"]) != (91,30)
+            or any(len(native[field]) != count for field, _, _, count in sizes)):
+        raise RuntimeError("incomplete native media reference")
+    semantics = validate_semantic(native["semanticBytes"], capacity=4096)
+    if semantics["records"] != 552 or semantics["boundaries"] != list(map(str,range(91))):
+        raise RuntimeError("incomplete media semantic boundaries")
+    for report in reports:
+        data = json.loads(json.dumps(report["data"]))
+        session = int(report["session"])
+        for field, size, offset, count in sizes:
+            if len(data[field]) != count:
+                raise RuntimeError("incomplete media wire results")
+            for packet in data[field]:
+                if len(packet) != size or int.from_bytes(bytes(packet[offset:offset+8]),"little") != session:
+                    raise RuntimeError("media wire size/session")
+                packet[offset:offset+8] = [255]*8
+        if data != native:
+            raise RuntimeError("complete media content/metadata/receipts/semantics differ from native")
+        cuts = report["checkpoints"]
+        ends, frame = [], 0
+        for count in steps:
+            frame += count
+            ends.append(str(frame))
+        if [c["frames"] for c in cuts] != steps or [c["frame"] for c in cuts] != ends:
+            raise RuntimeError("media acknowledged engine step clocks")
+        clocks = [int(c["browser"]) for c in cuts]
+        if (report["starts"] != [c["browser"] for c in cuts] or clocks[0] < 0
+                or any(c % 128 for c in clocks) or any(b <= a for a,b in zip(clocks,clocks[1:]))):
+            raise RuntimeError("media downstream clocks")
+        expected, frame = [[],[]], 0
+        for count in steps:
+            for channel in range(2):
+                expected[channel].extend([s[channel] for s in native["samples"][frame:frame+count]] + [0]*(128-count))
+            frame += count
+        if report["chunks"] != expected:
+            raise RuntimeError("media downstream samples/short-call tails")
+        ingress = report["ingress"]
+        staged = [i for i in ingress if i["kind"] == "staging"]
+        exported = [i for i in ingress if i["kind"] == "export"]
+        if (len(ingress) != 34 or len(staged) != 8 or len(exported) != 26
+                or [i["result"] for i in staged] != [2,9,0,7,7,0,0,0]
+                or [i["frame"] for i in staged] != ["0"]*3+["1"]*3+["7","64"]
+                or [i["bytes"] for i in staged if i["result"] == 0] != report["data"]["stagingRequests"]
+                or [i["result"] for i in exported] != [0]*26
+                or [i["frame"] for i in exported] != list(map(str,range(65,91)))
+                or [i["bytes"] for i in exported] != report["data"]["exportRequests"]):
+            raise RuntimeError("media ingress/refusal/owning retry evidence")
+        bad, foreign = list(staged[2]["bytes"]), list(staged[2]["bytes"])
+        bad[0] ^= 1
+        foreign[8] ^= 128
+        if staged[0]["bytes"] != bad or staged[1]["bytes"] != foreign:
+            raise RuntimeError("media malformed/foreign retry")
+        for probe, index in zip(staged[3:5], [1 << 32, (1 << 64)-1]):
+            alias = list(staged[5]["bytes"])
+            alias[48:56] = index.to_bytes(8,"little")
+            if probe["bytes"] != alias:
+                raise RuntimeError("media catalog Wasm32 alias rejection")
+        summary = report["summary"]
+        if (summary["bytes"] != summary["finalBytes"] or summary["bytes"] != report["ready"]["bytes"]
+                or report["controlBytes"] != report["controlFinalBytes"] or summary["heap"] != [0,0,0]
+                or summary["frames"] != "91" or summary["callbacks"] != "30"
+                or summary["returnedBuffers"] != 10 or summary["returnedGraphBuffers"] != 0
+                or summary["returnedExportBuffers"] != 2 or summary["returnedStagingBuffers"] != 2
+                or [summary[k] for k in ("retainedGraphs","retainedExports","retainedStaging","journalOverflow")] != [0]*4
+                or summary["recovered"] != [42,16,16,0] or report["ready"]["exportStorage"] != native["storage"]
+                or summary["firstFrame"] != str(clocks[0]) or summary["resumeFrame"] is not None
+                or report["controlMarker"] != 0x51a17 or summary["marker"] != 0
+                or report["ready"]["marker"] != 0 or report["ready"]["shared"] is not False):
+            raise RuntimeError("media memory/isolation/complete ownership evidence")
+        if report["mode"] == "offline":
+            output = [[0]*7936 for _ in range(2)]
+            for channel in range(2):
+                for segment, clock in enumerate(clocks):
+                    if clock+128 > 7936:
+                        raise RuntimeError("media offline clock bounds")
+                    output[channel][clock:clock+128] = expected[channel][segment*128:(segment+1)*128]
+            if report["offlineAudio"] != output:
+                raise RuntimeError("complete media offline output differs")
+        elif report["offlineAudio"] is not None:
+            raise RuntimeError("media live report claims offline output")
+
+
 def compare_native_graphs(native, threaded):
     """Complete direct/threaded replay equality except instance-local graph scope."""
     def normalized(source):
@@ -542,7 +642,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 18:
+        if not node.get("passed") or len(node.get("checks", [])) != 19:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:
@@ -558,7 +658,7 @@ def main():
     compare_graph_worklets(result, graph_native)
     result["native_graph_two_thread"] = {"passed": True, "channel_capacity": 1,
                                           "frames": graph_threaded["frames"], "callbacks": graph_threaded["callbacks"]}
-    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging", "dense", "stalls")}:
+    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging", "dense", "stalls", "media")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)
     exported = json.loads(harness.command([str(executable), "--export-json"], reports / "native-export.json"))
@@ -581,6 +681,11 @@ def main():
     if stalls != stalls_threaded or result["bindingChecks"]["stalls"] != stalls:
         raise RuntimeError("complete native/threaded/Node/Chromium restart reports differ")
     compare_dense_worklets(result, stalls, stalled=True)
+    media = json.loads(harness.command([str(executable), "--media-json"], reports / "native-media.json"))
+    media_threaded = json.loads(harness.command([str(executable), "--media-two-thread-json"], reports / "native-media-two-thread.json"))
+    if media != media_threaded or result["bindingChecks"]["media"] != media:
+        raise RuntimeError("complete native/threaded/Node/Chromium media reports differ")
+    compare_media_worklets(result, media)
     result["node"] = node
     for mode in ("--direct", "--wire", "--two-thread"):
         harness.command([str(executable), mode], reports / (mode[2:] + ".log"))

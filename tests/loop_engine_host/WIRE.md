@@ -633,6 +633,9 @@ All fields are unsigned little-endian; unused fields/data bytes must be zero.
 | 21/22 | Recycle displaced program / Cancel candidate |
 | 23/24 | Play at position0 / Stop; A packs target slot low32/generation high32 |
 | 25/26 | Program status / SeekIteration (A packed target, B iteration, no retrigger) |
+| 27 | Select prepared playable media: A packed target, B receiver-local catalog ordinal; preserve-position false |
+| 28 | Record after source ticks: A packed target, B packed declared sync source, C ticks to skip; monitor-previous false |
+| 29 | Coherent state query: A packed target |
 
 Resource kinds1–11 require requested frame0: maintenance executes at callback
 admission, not a promised sample timestamp. Other commands carry absolute frames.
@@ -661,7 +664,15 @@ is revision; Snapshot is revision/bytes/frames/channels(0 Midi)/source cut. Curs
 and Read report next byte position. Role validation reports Ready1 or progress0
 plus validated frames. Program validation/status reports Ready1 or progress0 plus
 validation steps. Activate reports graph/topology epochs. Transitions report the
-actual applied frame. Other metadata is zero.
+actual applied frame. QueryState metadata is cut frame/captured frames/capture revision/
+state bits/capture error. State bits are mode0 Stopped/1 Playing/2 Recording,
+incomplete4 and monitor-previous8; capture error0 means none,2 means Capacity.
+The query itself remains Applied with header error0. Other metadata is zero.
+
+For RecordAfter, delivered is the runtime delivery cut, not the later musical
+terminal frame. Applied requires observed >= delivered and metadata88 == observed;
+other applied timing commands still require observed == delivered. Requested and
+effective frames remain distinct from both. Invalid terminal fields preserve credit.
 
 Program Begin/Append return their actual64-byte payload at admission, including
 cancellation/refusal; credit remains occupied after Admitted until its domain
@@ -765,6 +776,35 @@ are not described as actual MessagePort transfers.
 This is a cooperative transport-credit exhaustion test, not proof of a bounded
 browser MessagePort queue or guaranteed live message deadlines. All engine steps
 are acknowledged; the runtime does not impose the driver pauses or frame counts.
+
+## Prepared playable media and capture failure
+
+`BrowserBridge.new_media` prepares indexed audio/MIDI imports and a readonly two-entry
+catalog in the receiver. Ordinals0/1 select content revisions0/7, not Rust MediaId
+parts or transferable leases. The client rejects ordinals >=2 before taking credit;
+the receiver independently checks full-width indices before changing its watermark.
+Actual probes with2^32 and u64::MAX return Slot7 and preserve the valid retry.
+The existing program-bank generation/one staging credit carries these scalar musical
+operations; a catalog ID is borrowed and does not add an owning bank flag.
+
+`bindingChecks.media`, native `--media-json` / `--media-two-thread-json` and actual
+`mediaReports` share the [replacement/countdown/exhaustion script](README.md#replace-playable-media-and-export-an-exhausted-capture).
+Record requested/effective/delivered7 applies at9 after two declared-source ticks.
+Query64 reports stopped/incomplete,40 captured frames/revision8 and Capacity2.
+Immutable Export65 keeps both source cuts49 and capture stamps9–49, while the
+resolver's previous playback content remains revision7/length3. Export cursor/read/
+all16 initial channels/Release use unchanged LLE1/LLF1 owning transport.
+
+The actual host enables primitive, staging and export pools together, with independent
+Rust credits and fixed application-level transfer buffers. It uses the dense marker
+output solely to identify30 rendered quanta. Engine steps1/6/57 then27 one-frame
+calls total91 frames; all3840 downstream samples/channel, zero short tails and all7936
+offline samples/channel are checked. Four primitive/eight staging/46 export results,
+274 MIDI packets and552 semantic records match the complete native oracle. Session
+bytes alone normalize in fixed-step actual reports. Native partition comparisons
+separately permit positive raw resource append revisions, not content revision changes.
+Success requires all7 input/14 response buffers, zero owner/command counts and
+42page/16version/16snapshot/0reference recovery. Driver pauses are not deadline proof.
 
 ## Browser report (`LLH2`)
 

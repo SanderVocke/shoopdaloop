@@ -343,7 +343,7 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Eighteen shared public-binding groups execute in Node and Chromium: constructor
+Nineteen shared public-binding groups execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
@@ -351,10 +351,11 @@ records, an eventless same-position seek, two payload checks and three graph com
 checks: full-width/credits, exact activation/retirement and128 real owner returns.
 The export, resource/program-staging and dense musical groups also retain complete native-matched
 reports. A separate restart group checks the engine script used during actual
-response-buffer exhaustion. These are binding-level Wasm checks, not a claim that the54 native Rust tests
-were executed as Wasm test functions.
+response-buffer exhaustion. The media group checks prepared playable replacement,
+tick-delayed recording and coherent incomplete-prefix export. These are binding-level
+Wasm checks, not a claim that the57 native Rust tests were executed as Wasm test functions.
 
-The observer prepares128 fixed160-byte records by default, or4096 for the dense scenario. It records event-bearing boundaries,
+The observer prepares128 fixed160-byte records by default, or4096 for the dense and media scenarios. It records event-bearing boundaries,
 playback discontinuities and changes in resolver journal loss. It omits ordinary
 callback cuts and never invents a transition or pulse for an eventless seek. If a
 whole boundary's decisions/events do not fit, it drops that entire diagnostic
@@ -569,6 +570,54 @@ acknowledgements—not assumed message deadlines—determine their timing.
 This proves cooperative response-buffer exhaustion, not a bound on the browser's
 underlying MessagePort queue, hostile input pressure or production live deadlines.
 
+## Replace playable media and export an exhausted capture
+
+The media profile prepares two indexed stereo/MIDI revisions off-render. It uses
+the real facade, a two-entry receiver-local media catalog, two loops and42 resource
+pages; uploaded raw MIDI is still not an indexed playable source.
+
+1. Admit Play0 and Seek6(position1), then explicitly start the one-frame clock loop
+   at0. Select catalog entry1 at4: revision0's four frames become revision7's three
+   frames, with exact cleanup/indexed MIDI restoration. No Rust media handle crosses
+   the wire. The target declares that clock as its sync source.
+2. Deliver Record7 with `AfterTicks { skip: 2 }`. Its reliable receipt distinguishes
+   requested/effective/delivered7 from actual9. Recording does not monitor previous
+   playback. Stereo live/FX output remains1/10 after recording starts.
+3. At49, preflight cannot reserve the next interval. Four imported pages, five
+   audio-prefix pages, one MIDI-prefix page and the32-page worst-case MIDI reserve
+   exhaust the42-page preparation. Capture stops **before** sample49, retaining a
+   common40-frame incomplete prefix. Unrelated live audio and the clock continue.
+4. Query settled state at64: stopped/incomplete, capture revision8/40 frames and
+   Capacity. Playback content remains revision7/length3; failure does not invent a
+   successful playback replacement. Export latest at65 and check source cuts49,
+   both capture stamps9–49, all320 audio bytes, both MIDI packets and all16 initial
+   channel projections, including held notes62/70. Explicit Release returns generation2.
+
+```sh
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --media-json
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --media-two-thread-json
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml browser::native_media::tests::replacement_countdown_prefix_exports_and_bounded_actors_match_complete_oracles -- --exact
+```
+
+Add `--release` before `--bin` or before the test filter. Native direct/capacity-one
+actors compare the complete report across whole/single/irregular/zero capture-call
+partitions. Only callback counts and positive raw resource append revisions may vary;
+logical content revisions, timeline state, media and receipts never normalize.
+
+Node/Chromium and actual offline/live hosts run the same acknowledged script:
+1/6/57-frame calls then27 one-frame owning query/export/read/release calls,91 frames
+in30 callbacks. Independent tables check every sample,274 MIDI packets/4110 bytes,
+552 semantic records/88360 bytes, two primitive/four staging/26 export requests and
+all4/8/46 results. The downstream marker probe checks all3840 samples/channel and
+all short-call tails; offline additionally checks all7936 output samples/channel.
+Ordinary worklet memory remains3,342,336 debug/3,276,800 release bytes, with zero
+Rust heap activity and full42page/16version/16snapshot/0reference recovery. All five
+primitive/one staging/one export input buffers and ten/two/two result buffers return.
+
+These are deliberately paused, acknowledged driver steps, not mandatory engine
+quanta or continuous live/deadline proof. [Wire details](WIRE.md#prepared-playable-media-and-capture-failure)
+keep catalog selection, delayed terminal frames and capture-status metadata explicit.
+
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
@@ -585,7 +634,8 @@ capture revisions through native and actual worklet hosts. Resource upload/immut
 reads and prepared nested-program activation/iteration-seek/stop now also run through
 all hosts. Dense one-sample playback, same-frame cascades, clocked regular/explicit
 composites and unread-result recovery now also run through all hosts. Prepared playable
-media replacement and capture exhaustion remain host work. Actual held response
+replacement, tick-delayed recording and common-prefix capture exhaustion/export now
+also pass all hosts. Actual held response
 buffers now also stall independently while newly acknowledged playback continues;
 raw MIDI uploads are not checkpointed playable sources.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

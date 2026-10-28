@@ -39,6 +39,9 @@ fn canonical_staging_records_preserve_full_width_and_reject_all_truncations_and_
         STOP,
         STATUS,
         SEEK_ITERATION,
+        SELECT,
+        RECORD_AFTER,
+        QUERY_STATE,
     ] {
         let mut r = request(kind);
         if kind == BEGIN {
@@ -46,11 +49,14 @@ fn canonical_staging_records_preserve_full_width_and_reject_all_truncations_and_
             put32(&mut r.data, 4, 2);
             r.args = [u64::MAX; 3];
         }
-        if matches!(kind, WRITE | READ | APPEND | PLAY | STOP) {
+        if matches!(kind, WRITE | READ | APPEND | PLAY | STOP | QUERY_STATE) {
             r.args[0] = u64::MAX;
         }
-        if matches!(kind, ACTIVATE | SEEK_ITERATION) {
+        if matches!(kind, ACTIVATE | SEEK_ITERATION | SELECT) {
             r.args = [u64::MAX, u64::MAX, 0];
+        }
+        if kind == RECORD_AFTER {
+            r.args = [u64::MAX; 3];
         }
         if !resource(kind) {
             r.at = u64::MAX;
@@ -74,8 +80,9 @@ fn canonical_staging_records_preserve_full_width_and_reject_all_truncations_and_
                             >= 40
                                 + 8 * match kind {
                                     BEGIN => 3,
-                                    WRITE | READ | APPEND | PLAY | STOP => 1,
-                                    ACTIVATE | SEEK_ITERATION => 2,
+                                    WRITE | READ | APPEND | PLAY | STOP | QUERY_STATE => 1,
+                                    ACTIVATE | SEEK_ITERATION | SELECT => 2,
+                                    RECORD_AFTER => 3,
                                     _ => 0,
                                 }
                 {
@@ -100,6 +107,46 @@ fn canonical_staging_records_preserve_full_width_and_reject_all_truncations_and_
             bad[at] = 1;
             assert!(Response::decode(&bad).is_err(), "result padding {at}");
         }
+    }
+}
+#[test]
+fn countdown_results_keep_delivery_distinct_from_terminal_frame_and_preserve_credit_on_corruption()
+{
+    let mut client = Client::new(u64::MAX).unwrap();
+    let mut r = request(RECORD_AFTER);
+    r.bank = 0;
+    r.generation = 1;
+    r.at = 7;
+    r.args = [1u64 << 32, (1u64 << 32) | 1, 2];
+    let r = Request::decode(&client.prepare(r).unwrap()).unwrap();
+    client
+        .receive(&Response::new(r, 1, ADMITTED, 17, 7, 7).0)
+        .unwrap();
+    let mut applied = Response::new(r, 2, APPLIED, 17, 7, 9);
+    put32(&mut applied.0, 84, 1);
+    put64(&mut applied.0, 48, 7);
+    put64(&mut applied.0, 88, 9);
+    for at in [24, 32, 40, 48, 56, 88] {
+        let mut bad = applied.0;
+        bad[at] ^= 1;
+        assert!(client.receive(&bad).is_err());
+        assert_eq!(client.outstanding(), 1);
+    }
+    for kind in [PLAY, SELECT, QUERY_STATE] {
+        let mut bad = applied.0;
+        bad[6] = kind;
+        assert!(Response::decode(&bad).is_err());
+    }
+    client.receive(&applied.0).unwrap();
+    assert_eq!(client.outstanding(), 0);
+    let last = client.last;
+    for index in [2, 1u64 << 32, u64::MAX] {
+        let mut select = r;
+        select.kind = SELECT;
+        select.args = [1u64 << 32, index, 0];
+        assert_eq!(client.prepare(select), Err(Error::Slot));
+        assert_eq!(client.last, last);
+        assert_eq!(client.outstanding(), 0);
     }
 }
 #[test]

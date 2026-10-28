@@ -52,6 +52,7 @@ pub(crate) struct Staging {
     last: u64,
     resources: [ResourceBank; BANKS],
     programs: [ProgramBank; BANKS],
+    catalog: [Option<shoop_loop_engine::media::MediaId>; BANKS],
     buffer: Option<Box<[u8]>>,
     pending: Option<Pending>,
 }
@@ -72,9 +73,16 @@ impl Staging {
                 generation: 1,
                 id: None,
             }),
+            catalog: [None; BANKS],
             buffer: Some(vec![0; 64].into_boxed_slice()),
             pending: None,
         }
+    }
+    pub(crate) fn set_catalog(
+        &mut self,
+        catalog: [Option<shoop_loop_engine::media::MediaId>; BANKS],
+    ) {
+        self.catalog = catalog;
     }
     pub(crate) fn outstanding(&self) -> usize {
         usize::from(self.pending.is_some())
@@ -153,6 +161,34 @@ impl Staging {
             },
             RECYCLE => Operation::TopologyRecycle { id: stage()? },
             CANCEL => Operation::TopologyCancel { id: stage()? },
+            SELECT => Operation::Select {
+                target: LoopId::from_parts(r.args[0] as u32, (r.args[0] >> 32) as u32)
+                    .map_err(|_| wire::Error::Identity)?,
+                timing: Timing::At,
+                media: *self
+                    .catalog
+                    .get(usize::try_from(r.args[1]).map_err(|_| wire::Error::Slot)?)
+                    .ok_or(wire::Error::Slot)?
+                    .as_ref()
+                    .ok_or(wire::Error::State)?,
+                preserve_position: false,
+            },
+            RECORD_AFTER => Operation::Transition {
+                target: LoopId::from_parts(r.args[0] as u32, (r.args[0] >> 32) as u32)
+                    .map_err(|_| wire::Error::Identity)?,
+                timing: Timing::AfterTicks {
+                    source: LoopId::from_parts(r.args[1] as u32, (r.args[1] >> 32) as u32)
+                        .map_err(|_| wire::Error::Identity)?,
+                    skip: r.args[2],
+                },
+                transition: Transition::Record {
+                    monitor_previous: false,
+                },
+            },
+            QUERY_STATE => Operation::State {
+                target: LoopId::from_parts(r.args[0] as u32, (r.args[0] >> 32) as u32)
+                    .map_err(|_| wire::Error::Identity)?,
+            },
             PLAY | STOP | SEEK_ITERATION => Operation::Transition {
                 target: LoopId::from_parts(r.args[0] as u32, (r.args[0] >> 32) as u32)
                     .map_err(|_| wire::Error::Identity)?,
@@ -566,14 +602,37 @@ impl Staging {
                             self.programs[index].generation =
                                 self.programs[index].generation.checked_add(1).unwrap_or(0);
                         }
-                        (PLAY | STOP | SEEK_ITERATION, Reply::Transition(completion)) => {
-                            match completion.outcome {
-                                shoop_loop_engine::Outcome::Applied { frame } => {
-                                    put64(&mut response.0, 88, frame.0)
-                                }
-                                _ => return Err(Error::InvalidState),
-                            }
+                        (QUERY_STATE, Reply::State(cut)) => {
+                            put64(&mut response.0, 88, cut.frame.0);
+                            put64(&mut response.0, 96, cut.state.capture_frames);
+                            put64(&mut response.0, 104, cut.state.capture_revision.0);
+                            let mode = match cut.state.mode {
+                                shoop_loop_engine::Mode::Stopped => 0,
+                                shoop_loop_engine::Mode::Playing => 1,
+                                shoop_loop_engine::Mode::Recording => 2,
+                            };
+                            put64(
+                                &mut response.0,
+                                112,
+                                mode | u64::from(cut.state.capture_incomplete) * 4
+                                    | u64::from(cut.state.monitor_previous) * 8,
+                            );
+                            put64(
+                                &mut response.0,
+                                120,
+                                cut.capture_failure
+                                    .map_or(0, |e| u64::from(wire::runtime_error(e))),
+                            );
                         }
+                        (
+                            PLAY | STOP | SEEK_ITERATION | SELECT | RECORD_AFTER,
+                            Reply::Transition(completion),
+                        ) => match completion.outcome {
+                            shoop_loop_engine::Outcome::Applied { frame } => {
+                                put64(&mut response.0, 88, frame.0)
+                            }
+                            _ => return Err(Error::InvalidState),
+                        },
                         _ => return Err(Error::InvalidState),
                     }
                     put32(&mut response.0, 64, APPLIED);

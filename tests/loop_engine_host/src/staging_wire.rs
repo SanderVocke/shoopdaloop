@@ -32,6 +32,9 @@ pub const PLAY: u8 = 23;
 pub const STOP: u8 = 24;
 pub const STATUS: u8 = 25;
 pub const SEEK_ITERATION: u8 = 26;
+pub const SELECT: u8 = 27;
+pub const RECORD_AFTER: u8 = 28;
+pub const QUERY_STATE: u8 = 29;
 pub const ADMITTED: u32 = 1;
 pub const APPLIED: u32 = 2;
 pub const CANCELLED: u32 = 3;
@@ -68,7 +71,7 @@ impl Request {
         }
         if !(resource(self.kind)
             || (SOURCE..=RELEASE_SOURCE).contains(&self.kind)
-            || (PROGRAM_BEGIN..=SEEK_ITERATION).contains(&self.kind))
+            || (PROGRAM_BEGIN..=QUERY_STATE).contains(&self.kind))
         {
             return Err(Error::Operation);
         }
@@ -90,8 +93,9 @@ impl Request {
         }
         let used = match self.kind {
             BEGIN => 3,
-            WRITE | READ | APPEND | PLAY | STOP => 1,
-            ACTIVATE | SEEK_ITERATION => 2,
+            WRITE | READ | APPEND | PLAY | STOP | QUERY_STATE => 1,
+            ACTIVATE | SEEK_ITERATION | SELECT => 2,
+            RECORD_AFTER => 3,
             _ => 0,
         };
         if self.args[used..].iter().any(|v| *v != 0) {
@@ -185,7 +189,7 @@ impl Response {
         let len = get32(b, 128) as usize;
         if !(resource(kind)
             || (SOURCE..=RELEASE_SOURCE).contains(&kind)
-            || (PROGRAM_BEGIN..=SEEK_ITERATION).contains(&kind))
+            || (PROGRAM_BEGIN..=QUERY_STATE).contains(&kind))
             || !(1..=3).contains(&phase)
             || (phase == 3) != resource(kind)
             || !(ADMITTED..=FAILED).contains(&status)
@@ -208,7 +212,11 @@ impl Response {
             || (flags & 1 == 0 && get64(b, 48) != 0)
             || (phase == 2
                 && status == APPLIED
-                && (flags & 1 == 0 || get64(b, 48) != get64(b, 40) || get64(b, 56) != get64(b, 48)))
+                && (flags & 1 == 0
+                    || get64(b, 48) != get64(b, 40)
+                    || get64(b, 56) < get64(b, 48)
+                    || (kind != RECORD_AFTER && get64(b, 56) != get64(b, 48))
+                    || (kind == RECORD_AFTER && get64(b, 88) != get64(b, 56))))
             || (flags & 2 != 0 && (kind != READ || status != APPLIED))
             || (len != 0
                 && !(matches!(kind, WRITE | READ) && phase == 3
@@ -279,6 +287,9 @@ impl Client {
             .ok_or(Error::Slot)?;
         if bank.generation == 0 || request.generation != bank.generation {
             return Err(Error::Identity);
+        }
+        if request.kind == SELECT && request.args[1] >= BANKS as u64 {
+            return Err(Error::Slot);
         }
         request.session = self.session;
         request.sequence = self.last.checked_add(1).ok_or(Error::Exhausted)?;

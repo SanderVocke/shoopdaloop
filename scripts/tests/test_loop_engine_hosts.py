@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, compare_staging_worklets, compare_dense_worklets, validate_semantic, verify_failure
+from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, compare_staging_worklets, compare_dense_worklets, compare_media_worklets, validate_semantic, verify_failure
 
 
 class DenseTests(unittest.TestCase):
@@ -461,6 +461,56 @@ class GraphWorkletReportTests(unittest.TestCase):
         altered = copy.deepcopy(result); altered["graphReports"][0]["graphResponses"][2][56] ^= 1
         with self.assertRaises(RuntimeError):
             compare_graph_worklets(altered, native)
+
+
+class MediaWorkletTests(unittest.TestCase):
+    """Captured parser inputs, not fresh browser or musical execution evidence."""
+    def fixture(self):
+        source = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_media_reports.json.gz").read_bytes()))
+        return {"mediaReports": source["mediaReports"]}, source["native"]
+
+    def test_media_requires_all_content_receipts_state_projection_and_contexts(self):
+        result, native = self.fixture()
+        compare_media_worklets(result, native)
+        for field in ("samples", "requests", "responses", "stagingRequests", "stagingResponses",
+                      "exportRequests", "exportResponses", "midiBytes", "semanticBytes"):
+            altered = copy.deepcopy(result)
+            altered["mediaReports"][0]["data"][field] = []
+            with self.assertRaises(RuntimeError, msg=field):
+                compare_media_worklets(altered, native)
+        for field, index, at in (("stagingResponses", 5, 88), ("stagingResponses", 7, 120),
+                                 ("exportResponses", 1, 136), ("exportResponses", 14, 256),
+                                 ("exportResponses", 45, 84)):
+            altered = copy.deepcopy(result)
+            altered["mediaReports"][0]["data"][field][index][at] ^= 1
+            with self.assertRaises(RuntimeError):
+                compare_media_worklets(altered, native)
+        for reports in ([], result["mediaReports"][:1], result["mediaReports"][::-1]):
+            with self.assertRaises(RuntimeError):
+                compare_media_worklets({"mediaReports": reports}, native)
+
+    def test_media_requires_clocked_downstream_tails_alias_refusals_and_full_recovery(self):
+        result, native = self.fixture()
+        for field, value in (("heap", [1,0,0]), ("frames", "90"), ("callbacks", "29"),
+                             ("returnedExportBuffers", 1), ("returnedStagingBuffers", 1),
+                             ("recovered", [41,16,16,0]), ("retainedExports", 1),
+                             ("finalBytes", result["mediaReports"][0]["summary"]["bytes"]+65536)):
+            altered = copy.deepcopy(result)
+            altered["mediaReports"][0]["summary"][field] = value
+            with self.assertRaises(RuntimeError, msg=field):
+                compare_media_worklets(altered, native)
+        for change in (lambda r: r["chunks"][0].__setitem__(127, 1),
+                       lambda r: r["offlineAudio"][0].__setitem__(0, 1),
+                       lambda r: r["checkpoints"][2].__setitem__("frames", 56),
+                       lambda r: r["starts"].__setitem__(1, r["starts"][0]),
+                       lambda r: r["ingress"][3].__setitem__("result", 0),
+                       lambda r: r["ingress"][3]["bytes"].__setitem__(48, 1),
+                       lambda r: r["data"]["counts"].__setitem__(7, 1),
+                       lambda r: r.__setitem__("controlFinalBytes", r["controlBytes"]+65536)):
+            altered = copy.deepcopy(result)
+            change(altered["mediaReports"][0])
+            with self.assertRaises(RuntimeError):
+                compare_media_worklets(altered, native)
 
 
 if __name__ == "__main__":

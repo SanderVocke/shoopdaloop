@@ -57,7 +57,16 @@ media/semantic tables across whole/single/irregular/zero partitions and both act
 modes. Actual MessagePort buffer holding is JavaScript/browser evidence, not a
 native interpreter feature. The affected dense native support/oracle must be part
 of the consolidated source snapshot.
-All19 graph-focused, four export-focused, four staging-focused and three dense/stall cases (**30**)
+Prepared media adds three applicable native cases:
+`scenario::media_case::tests::replacement_countdown_and_capture_exhaustion_keep_exact_prefix_and_live_audio`,
+`browser::native_media::tests::replacement_countdown_prefix_exports_and_bounded_actors_match_complete_oracles`,
+and `staging_wire::tests::countdown_results_keep_delivery_distinct_from_terminal_frame_and_preserve_credit_on_corruption`.
+They retain complete indexed replacement/MIDI restoration, delayed delivery/terminal
+frames, truthful common-prefix exhaustion/export/initial state and direct/capacity-one
+partition workloads. The existing canonical staging test now covers all27 command
+kinds. Include the new constructor/catalog/cleanup paths and source/oracle support
+in the consolidated snapshot; browser output is not interpreter evidence.
+All19 graph-focused, four export-focused, four staging-focused, three dense/stall and three media cases (**33**)
 are **not yet registered in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the

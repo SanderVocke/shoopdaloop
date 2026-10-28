@@ -6,6 +6,7 @@ import { exportBindings } from "./export_script.js";
 import { makeStagingHost } from "./staging_host.js";
 import { stagingBindings } from "./staging_script.js";
 import { makeDenseHost, denseBindings } from "./dense_host.js";
+import {makeMediaHost,mediaBindings} from "./media_host.js";
 const RATE = 48000, Q = 128;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -53,10 +54,10 @@ class Host {
         await this.context.audioWorklet.addModule("./worklet.js");
         const ready = this.wait("ready");
         this.node = new AudioWorkletNode(this.context, "loop-fixture", { numberOfInputs: 0, numberOfOutputs: this.denseMode ? 2 : 1,
-            outputChannelCount: this.denseMode ? [2,1] : [2], processorOptions: { module: this.module, session: this.session, canary: this.canary, graph: this.graph, exports: this.exportMode === true, staging:this.stagingMode===true,dense:this.denseMode===true } });
+            outputChannelCount: this.denseMode ? [2,1] : [2], processorOptions: { module: this.module, session: this.session, canary: this.canary, graph: this.graph, exports: this.exportMode === true, staging:this.stagingMode===true,dense:this.denseMode===true,media:this.mediaMode===true } });
         this.node.port.onmessage = ({ data }) => this.message(data);
         this.node.onprocessorerror = () => this.reject(new Error("loop AudioWorklet processorerror"));
-        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: this.denseMode ? 2 : 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { graph: this.graph || this.exportMode === true || this.stagingMode===true,staging:this.stagingMode===true,dense:this.denseMode===true,stalls:this.stallMode===true } });
+        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: this.denseMode ? 2 : 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { graph: this.graph || this.exportMode === true || this.stagingMode===true,staging:this.stagingMode===true,dense:this.denseMode===true,stalls:this.stallMode===true,media:this.mediaMode===true } });
         this.probe.port.onmessage = ({ data }) => this.message(data);
         this.probe.onprocessorerror = () => this.reject(new Error("audio probe processorerror"));
         this.node.connect(this.probe);
@@ -159,6 +160,8 @@ async function runInner() {
         bindingChecks.checks.push("dense wraps, cascades and clocked composites with unread results");
         bindingChecks.stalls=await denseBindings(wasm,BrowserClient,BrowserBridge,true);
         bindingChecks.checks.push("acknowledged restart with unpolled result transport");
+        bindingChecks.media=await mediaBindings(wasm,BrowserClient,BrowserBridge,BrowserStagingClient,BrowserExportClient);
+        bindingChecks.checks.push("playable replacement, tick-delayed capture and coherent exhausted prefix export");
     }
     const reports = [], graphReports = [], exportReports = [];
     for (const mode of graphCanary ? [] : canary ? ["offline"] : ["offline", "live"]) {
@@ -192,7 +195,9 @@ async function runInner() {
     for(const mode of canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551607":"18446744073709551606",client=new BrowserClient(BigInt(session));client.set_marker(0x51a17);const host=new DenseHost(mode,module,wasm.memory,client,session,null);try{denseReports.push(await host.run());}finally{await host.cleanup();client.free();}}
     const stallReports=[];
     for(const mode of canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551605":"18446744073709551604",client=new BrowserClient(BigInt(session));client.set_marker(0x51a17);const host=new DenseHost(mode,module,wasm.memory,client,session,null);host.enableStall();try{stallReports.push(await host.run());}finally{await host.cleanup();client.free();}}
-    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports, exportReports,stagingReports,denseReports,stallReports };
+    const mediaReports=[],MediaHost=makeMediaHost(Host);
+    for(const mode of canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551603":"18446744073709551602",client=new BrowserClient(BigInt(session)),stagingClient=new BrowserStagingClient(BigInt(session)),exportClient=new BrowserExportClient(BigInt(session));client.set_marker(0x51a17);const host=new MediaHost(mode,module,wasm.memory,client,session,stagingClient,exportClient);try{mediaReports.push(await host.run());}finally{await host.cleanup();exportClient.free();stagingClient.free();client.free();}}
+    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports, exportReports,stagingReports,denseReports,stallReports,mediaReports };
 }
 export async function run() {
     try { return await runInner(); }

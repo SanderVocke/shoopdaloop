@@ -4,7 +4,9 @@ use rt_runtime::{
     resource::{self, Format},
     ResourceId, Revision,
 };
-use shoop_loop_engine::{media, Mode, Trigger};
+use shoop_loop_engine::media;
+#[cfg(test)]
+use shoop_loop_engine::Mode;
 
 pub(crate) const PAGES: usize = 42;
 fn upload(
@@ -132,7 +134,7 @@ pub(crate) fn prepare(
     let topology = compile(
         Limits {
             loop_slots: 2,
-            pending_requests: 5,
+            pending_requests: 7,
             journal_events: 1024,
             ..Limits::default()
         },
@@ -142,7 +144,7 @@ pub(crate) fn prepare(
                     id: id(0),
                     kind: LoopKind::Primitive,
                     length: 4,
-                    sync_source: None,
+                    sync_source: Some(id(1)),
                 },
                 LoopSpec {
                     id: id(1),
@@ -151,11 +153,6 @@ pub(crate) fn prepare(
                     sync_source: None,
                 },
             ],
-            triggers: vec![Trigger {
-                source: id(0),
-                target: id(1),
-                mode: Mode::Playing,
-            }],
             ..TopologyDescription::default()
         },
     )
@@ -194,7 +191,7 @@ pub(crate) fn prepare(
         store,
         Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
-            normal_requests: 4,
+            normal_requests: 6,
             media_slots: 8,
             export_slots: 2,
         },
@@ -265,6 +262,17 @@ mod tests {
                     },
                 },
             ),
+            (
+                0,
+                Operation::Transition {
+                    target: LoopId::from_parts(1, 1).unwrap(),
+                    timing: Timing::At,
+                    transition: Transition::Play {
+                        position: 0,
+                        retrigger: false,
+                    },
+                },
+            ),
         ] {
             control
                 .submit(Lane::Normal, Frame(at), operation)
@@ -323,12 +331,12 @@ mod tests {
         while control.try_completion().is_some() {
             completions += 1;
         }
-        assert_eq!(completions, 4);
+        assert_eq!(completions, 5);
         let mut replies = Vec::new();
         while let Some(reply) = control.try_execution() {
             replies.push(reply);
         }
-        assert_eq!(replies.len(), 4);
+        assert_eq!(replies.len(), 5);
         let countdown = replies
             .iter()
             .find(|r| r.requested_frame == Frame(7))
@@ -362,6 +370,42 @@ mod tests {
             };
             assert_eq!(*sample, [value, value * 10.], "sample {frame}");
         }
+        let mut expected = vec![(0, vec![0x90, 60, 100])];
+        fn restore(frame: u64, held: &[(u8, u8)], out: &mut Vec<(u64, Vec<u8>)>) {
+            for channel in 0..16 {
+                out.push((frame, vec![0xe0 | channel, 0, 64]));
+                for cc in [64, 69, 66] {
+                    out.push((frame, vec![0xb0 | channel, cc, 0]));
+                }
+                if channel == 0 {
+                    for &(key, velocity) in held {
+                        out.push((frame, vec![0x90, key, velocity]));
+                    }
+                }
+            }
+        }
+        restore(0, &[(55, 31)], &mut expected);
+        expected.extend([
+            (0, vec![0x90, 61, 100]),
+            (2, vec![0x80, 60, 45]),
+            (2, vec![0x80, 61, 45]),
+            (4, vec![0x80, 55, 0]),
+        ]);
+        restore(4, &[(70, 50)], &mut expected);
+        expected.extend([
+            (4, vec![0x90, 62, 90]),
+            (6, vec![0x80, 62, 0]),
+            (6, vec![0x80, 70, 0]),
+        ]);
+        restore(6, &[(62, 90), (70, 50)], &mut expected);
+        expected.extend([(7, vec![0x80, 62, 45]), (8, vec![0x80, 70, 0])]);
+        restore(8, &[(70, 50)], &mut expected);
+        expected.extend([
+            (8, vec![0x90, 62, 90]),
+            (9, vec![0x80, 62, 0]),
+            (9, vec![0x80, 70, 0]),
+        ]);
+        assert_eq!(midi, expected);
         while control.try_completion().is_some() {}
         let mut cut = None;
         let mut exported = None;
@@ -373,6 +417,9 @@ mod tests {
             }
         }
         let cut = cut.unwrap();
+        assert_eq!(cut.state.content_length, 3);
+        assert_eq!(cut.state.content_revision, Revision(7));
+        assert_eq!(cut.state.capture_revision, Revision(8));
         assert_eq!(cut.state.capture_frames, 40);
         assert!(cut.state.capture_incomplete);
         assert_eq!(cut.capture_failure, Some(Error::Capacity));
@@ -387,6 +434,7 @@ mod tests {
             .flatten()
         {
             assert_eq!(source.snapshot.description.frames, 40);
+            assert_eq!(source.snapshot.cut_frame, Frame(49));
             let capture = source.snapshot.capture.unwrap();
             assert_eq!(capture.incomplete, Some(Error::Capacity));
             let mut cursor = stopped.resources().cursor(source.snapshot.id).unwrap();

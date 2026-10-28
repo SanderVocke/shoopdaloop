@@ -35,6 +35,8 @@ pub use browser::native_export::{run_exports, ExportReport};
 #[cfg(not(target_arch = "wasm32"))]
 pub use browser::native_graph::{run_graph, run_graph_two_thread, GraphReport};
 #[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_media::{run as run_media, MediaReport};
+#[cfg(not(target_arch = "wasm32"))]
 pub use browser::native_staging::{run as run_staging, StagingReport};
 pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
 pub use browser_export_client::BrowserExportClient;

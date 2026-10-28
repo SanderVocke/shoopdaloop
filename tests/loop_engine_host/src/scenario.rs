@@ -20,8 +20,7 @@ use std::sync::{
 };
 
 pub(crate) mod dense;
-#[cfg(test)]
-mod media_case;
+pub(crate) mod media_case;
 
 const FRAMES: usize = 13;
 const PAGES: usize = 256;

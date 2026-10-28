@@ -152,12 +152,16 @@ impl Host {
     pub fn new_dense(session: u64, threaded: bool) -> Self {
         Self::prepare(session, threaded, 3)
     }
+    pub fn new_media(session: u64, threaded: bool) -> Self {
+        Self::prepare(session, threaded, 4)
+    }
     fn bridge(session: u64, mode: u8) -> BrowserBridge {
         match mode {
             0 => BrowserBridge::new_graphs(session, 0).unwrap(),
             1 => BrowserBridge::new_exports(session).unwrap(),
             2 => BrowserBridge::new_staging(session).unwrap(),
             3 => BrowserBridge::new_dense(session).unwrap(),
+            4 => BrowserBridge::new_media(session).unwrap(),
             _ => unreachable!(),
         }
     }
