@@ -52,9 +52,11 @@ refusal, tracked `.pi/` exclusion without losing standalone manifest/lock/source
 manifest-scope tampering, snapshot isolation and existing interruption/cleanup.
 Fresh warning-denied workspace build/policies and2141 workspace tests/four existing
 skips pass (33.386s warm). These are native/infrastructure results, not Miri,
-fresh browser execution, performance or final-head CI. The required committed
-consolidated snapshot/run, terminal collection and CI artifacts remain pending;
-Stage7 stays7/8 and Stages8–10 remain open. Actual job state belongs in
+fresh browser execution, performance or final-head CI. Consolidated job
+`20261028T083225-374aa055bf` is now running from committed `8242de59`, with144
+commands/291 expected executions and856 verified immutable source entries.
+Terminal collection and CI artifacts remain pending; Stage7 stays7/8 and
+Stages8–10 remain open. Actual job state belongs in
 [MIRI_JOBS.md](MIRI_JOBS.md).
 
 ## Historical Stage 7 planner lifecycle controls and deliberate failures

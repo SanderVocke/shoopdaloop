@@ -10,6 +10,39 @@ obligations remain unchanged.
 
 ## Current Stage 7 verification debt
 
+### Consolidated job launched; terminal result pending
+
+Job **`20261028T083225-374aa055bf`** launched at2026-10-28T08:32:25.969265Z
+from immutable commit **`8242de59fbb20ff17eb9724fe154c36aedb257e6`**:
+
+```sh
+nix develop --command python3 scripts/run_rt_runtime_miri_jobs.py start \
+  --stage stage-7 --commit 8242de59
+```
+
+Expected scope:144 commands/291 executions (128 runtime+100 loop+63 host), pinned
+nightly-2026-05-04, unchanged900s per-command watchdog, full host workloads and
+guards. Job root: `target/loop-layer-miri-jobs/20261028T083225-374aa055bf/`.
+Post-launch verification found the supervisor running, matched all856 source
+entries and the copied supervisor, confirmed both workspace manifests/lockfiles,
+native support/oracles and dev allocator inputs, and found no `.pi/` export.
+The exact package-to-manifest mapping and warning-denied flags are recorded.
+At the CI-scheduling inspection checkpoint,9 commands/9 executions had completed;
+`09-lib-seed0.log` was running the complete dense acknowledged-restart/stall case.
+This partial progress does not replace terminal collection or cover all291.
+
+- `job.json` SHA256: `bb53dd4414568c9ff7677ef5390843552853cff5e0c9c247280a7ffd324f4053`.
+- Source archive SHA256: `0cc88b39499bc8db876858a4817faa6308dbc1dda952c5a76a4f6409cc724eed`.
+- Copied supervisor SHA256: `5e9ac63c03b06687db2adcfac79d9c476c736f07cca4d06de3bb13164d23b8e2`.
+
+Launch/input verification is **not a passing interpreter result**. Continue CI/
+other implementation work; inspect at natural checkpoints and collect only after
+terminal success/full inventory/source/artifact verification. Do not start a second
+routine job while this one is active. Stage7 remains7/8, with interpreter/CI
+artifacts and all later delivery obligations open.
+
+### Registered selection
+
 Stage7 host implementation is ready for its consolidated interpreter gate; no
 Stage7 interpreter result exists yet. The pinned runner now registers all59 native
 standalone-host library tests at seed0, plus primitive-wire and graph-actor tests
@@ -23,7 +56,7 @@ The full selection is144 commands/291 executions:128 runtime+100 loop+63 host.
 Host cases run first; all prior81 commands/228 executions retain their filters,
 counts, seeds and relative order. The new `Controller::resource` path and host
 ownership/planner/observer support are included with their runtime/loop regressions.
-One immutable committed Stage7 snapshot/run will cover this selection with the
+The immutable committed Stage7 job above covers this selection with the
 unchanged900s per-command watchdog. Until terminal collection, interpreter/CI
 artifacts and the last Stage7 row remain open. See
 [evidence/miri-registration-stage7.md](evidence/miri-registration-stage7.md).
@@ -91,7 +124,8 @@ new module's real Resolver adapter/decision consumer, destructor guards and supp
 in the snapshot. The existing dev-only allocator remains enabled; no workload or
 900s watchdog reduction and no immediate per-commit interpreter run is introduced.
 All19 graph-focused, four export-focused, four staging-focused, three dense/stall,
-three media and two planner cases (**35**) are now **registered, not interpreted**.
+three media and two planner cases (**35**) are now **registered, without a collected
+passing interpreter result**.
 Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the
