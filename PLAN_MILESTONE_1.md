@@ -2,7 +2,7 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stages 0–3 verified; Stage 4's complete public scenario is next.**
+**In progress: Stages 0–4 verified; Stage 5's fixed-latency probe is next.**
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
@@ -54,10 +54,17 @@ Execution contract:
   release and actual Node execution, plus a warning-denied Wasm build. Full audio
   and 133-packet MIDI oracles, typed DSP timing, coherent route cuts/live stereo
   prefix reads, recovery/disconnect/fault receipts and inert state/meter polling
-  pass. The current workspace passes 2,165 tests with four existing skips; closed
-  inventory contains 217 modules. Startup imports, the full public example/MIDI
-  prefix scenario, latency findings, measurements and final integration remain
-  Stages 4–7. See the named tests and commands in the integration notes.
+  pass. Its Stage 3 workspace baseline passed 2,165 tests with four existing skips
+  and closed inventory contained 217 modules.
+- Stage 4 adds off-render startup stereo/indexed-MIDI import and the complete public
+  `one_track` example. All six partition/declaration-order runs pass debug/release:
+  42 stereo frames, 487 MIDI packets and 378 copied media bytes each, plus a separate
+  stopped-live-input case. Deliberate sample/packet/outcome mismatches fail in both
+  profiles. The service's 13 portable tests pass debug/release/actual Node execution;
+  its Wasm build passes. The current workspace passes 2,169 tests with four existing
+  skips (110 binaries); closed inventory remains 217 modules. Latency findings,
+  further adversarial/two-thread work, measurements and final integration remain
+  Stages 5–7. See the named tests and commands in the integration notes.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency
@@ -291,19 +298,19 @@ not allocate or alter musical execution. Inspect protected-path diffs before com
 
 ### Stage 4 — Complete public scenario and media visibility
 
-- [ ] Add `one_track` using only public service APIs and deterministic stereo/MIDI
+- [x] Add `one_track` using only public service APIs and deterministic stereo/MIDI
       inputs, including initial MIDI state while stopped and equal-frame events.
-- [ ] Import initial immutable content off-render; record a distinct revision;
+- [x] Import initial immutable content off-render; record a distinct revision;
       finish and play at an interior frame; wrap, seek and select retained original
       content; activate a DSP preset and supported fixed-role route change.
-- [ ] Export a prefix while recording continues. Read audio/MIDI and initial-state
+- [x] Export a prefix while recording continues. Read audio/MIDI and initial-state
       metadata through owning buffers, continue appending, reread the same export
       unchanged, then release it and verify stale/double release refusal.
-- [ ] Check all samples, absolute packets, state cuts, media metadata and terminal
+- [x] Check all samples, absolute packets, state cuts, media metadata and terminal
       records against independently constructed expectations, not just hashes or
       the implementation's own journal. Exercise whole/single/irregular partitions
       and alternate valid declaration order with sufficient capacity.
-- [ ] Stop, deliver required MIDI cleanup/recovery while callbacks still run, then
+- [x] Stop, deliver required MIDI cleanup/recovery while callbacks still run, then
       extract/clean up and drive finite reclamation. Print summaries only off-render.
 
 **Verification:** the example runs in native debug/release and exits nonzero on

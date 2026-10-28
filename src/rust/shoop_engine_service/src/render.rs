@@ -191,6 +191,9 @@ impl Stopped {
     pub fn media_usage(&self) -> shoop_loop_engine::media::Usage {
         self.inner.media_usage()
     }
+    pub fn midi_index_usage(&mut self) -> rt_runtime::resource::MidiIndexUsage {
+        self.inner.resources().midi_index_usage()
+    }
     /// Finite off-render cleanup/reclamation; it does not settle unrendered time.
     pub fn cleanup(&mut self) -> Result<(), Error> {
         self.inner.cleanup()?;

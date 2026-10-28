@@ -45,6 +45,20 @@ impl Default for Config {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct InitialMidi {
+    pub frame: u64,
+    pub bytes: Vec<u8>,
+}
+
+/// Owned startup content. MIDI state is strictly before the first original packet.
+#[derive(Clone, Debug)]
+pub struct InitialContent {
+    pub audio: [Vec<f32>; 2],
+    pub midi: Vec<InitialMidi>,
+    pub midi_initial: rt_runtime::midi_state::MidiState,
+}
+
 pub struct Prepared {
     pub client: Client,
     pub render: Render,

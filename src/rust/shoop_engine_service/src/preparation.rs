@@ -1,8 +1,11 @@
-use crate::{control, dsp, CaptureTap, Config, Prepared, PreparedRoute, Render};
+use crate::{control, dsp, CaptureTap, Config, InitialContent, Prepared, PreparedRoute, Render};
 use rt_runtime::{
     graph::{Connection, Endpoint, GraphDescription, PortType},
-    resource::{CaptureGroupConfig, MidiIndexConfig, ResourceStore},
-    Budgets, Error, NodeId, PlannerId,
+    resource::{
+        encode_midi_record, CaptureGroupConfig, Description, Format, MidiIndexConfig,
+        ResourceStore, UploadId,
+    },
+    Budgets, Error, Frame, NodeId, PlannerId, Revision,
 };
 use shoop_loop_engine::{
     audio::Smoothing,
@@ -15,6 +18,25 @@ pub fn prepare(
     config: Config,
     presets: Vec<dsp::Preset>,
     initial: dsp::PresetId,
+) -> Result<Prepared, Failure> {
+    prepare_inner(config, presets, initial, None)
+}
+
+/// Construct initial immutable stereo/indexed-MIDI media entirely off-render.
+pub fn prepare_with_content(
+    config: Config,
+    presets: Vec<dsp::Preset>,
+    initial: dsp::PresetId,
+    content: InitialContent,
+) -> Result<Prepared, Failure> {
+    prepare_inner(config, presets, initial, Some(content))
+}
+
+fn prepare_inner(
+    config: Config,
+    presets: Vec<dsp::Preset>,
+    initial: dsp::PresetId,
+    content: Option<InitialContent>,
 ) -> Result<Prepared, Failure> {
     if config.max_frames == 0 || config.max_frames > 64 || config.export_slots == 0 {
         return Err(Error::InvalidConfig.into());
@@ -49,7 +71,7 @@ pub fn prepare(
         ..rt_runtime::Config::default()
     }
     .prepare()?;
-    let resources = ResourceStore::with_capture_groups(
+    let mut resources = ResourceStore::with_capture_groups(
         runtime,
         Some(MidiIndexConfig {
             versions: 8,
@@ -66,6 +88,12 @@ pub fn prepare(
     let playback = NodeId::from_parts(0, 1)?;
     let capture = NodeId::from_parts(1, 1)?;
     let effect = NodeId::from_parts(2, 1)?;
+    let imports = content
+        .map(|content| import(&mut resources, target, content))
+        .transpose()?
+        .into_iter()
+        .collect::<Vec<_>>();
+    let length = imports.first().map_or(0, |input| input.description.frames);
     let topology = compile(
         Limits {
             loop_slots: 1,
@@ -76,7 +104,7 @@ pub fn prepare(
             loops: vec![LoopSpec {
                 id: target,
                 kind: LoopKind::Primitive,
-                length: 0,
+                length,
                 sync_source: None,
             }],
             ..TopologyDescription::default()
@@ -105,7 +133,7 @@ pub fn prepare(
             midi_bytes: 512,
             packet_bytes: 512,
         }],
-        Vec::new(),
+        imports,
         vec![(effect, prepared_dsp.processor)],
         initial_graph,
     )?;
@@ -125,6 +153,104 @@ pub fn prepare(
         route,
         target,
     })
+}
+
+fn import(
+    resources: &mut ResourceStore,
+    target: LoopId,
+    content: InitialContent,
+) -> Result<shoop_loop_engine::media::Input, Error> {
+    use shoop_loop_engine::media;
+    let frames = content.audio[0].len();
+    if frames == 0 || content.audio[1].len() != frames {
+        return Err(Error::InvalidShape);
+    }
+    let audio_len = frames.checked_mul(8).ok_or(Error::Capacity)?;
+    let midi_len = content.midi.iter().try_fold(0usize, |n, packet| {
+        if packet.bytes.len() > 512 {
+            return Err(Error::Capacity);
+        }
+        n.checked_add(12)
+            .and_then(|n| n.checked_add(packet.bytes.len()))
+            .ok_or(Error::Capacity)
+    })?;
+    if audio_len > resources.config().resource_bytes()
+        || midi_len > resources.config().resource_bytes()
+    {
+        return Err(Error::Capacity);
+    }
+    let frames = u64::try_from(frames).map_err(|_| Error::Capacity)?;
+    let mut audio = Vec::with_capacity(audio_len);
+    for frame in 0..content.audio[0].len() {
+        for channel in &content.audio {
+            audio.extend_from_slice(&channel[frame].to_le_bytes());
+        }
+    }
+    let mut midi = vec![0; midi_len];
+    let mut offset = 0;
+    for packet in &content.midi {
+        offset += encode_midi_record(packet.frame, &packet.bytes, &mut midi[offset..])?;
+    }
+    let mut sources = [None; 2];
+    for (index, (format, bytes)) in [
+        (Format::Audio { channels: 2 }, audio.as_slice()),
+        (Format::Midi, midi.as_slice()),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let resource = resources.create()?;
+        let description = Description {
+            format,
+            frames,
+            bytes: bytes.len(),
+        };
+        let upload = if format == Format::Midi {
+            resources.begin_indexed_midi_upload(
+                resource,
+                Revision(0),
+                description,
+                &content.midi_initial,
+            )?
+        } else {
+            resources.begin_upload(resource, Revision(0), description)?
+        };
+        write_initial(resources, upload, bytes)?;
+        resources.commit(upload)?;
+        resources.begin_callback();
+        let snapshot = resources.snapshot(resource, Frame(0))?;
+        let read = resources.read_index(snapshot.id)?;
+        sources[index] = Some(media::Source {
+            snapshot,
+            index: read,
+        });
+        // Immutable leases own the versions; no mutable startup handle is retained.
+        resources.remove(resource)?;
+    }
+    Ok(media::Input {
+        description: media::Description {
+            owner: target,
+            revision: Revision(0),
+            frames,
+            channels: 2,
+            midi: true,
+        },
+        audio: sources[0],
+        midi: sources[1],
+    })
+}
+
+fn write_initial(
+    resources: &mut ResourceStore,
+    upload: UploadId,
+    bytes: &[u8],
+) -> Result<(), Error> {
+    for (index, chunk) in bytes.chunks(32).enumerate() {
+        // Preparation-only progress, before any engine callback or admission.
+        resources.begin_callback();
+        resources.write_upload(upload, index * 32, chunk)?;
+    }
+    resources.finish_upload(upload)
 }
 
 fn graph(tap: CaptureTap, playback: NodeId, effect: NodeId, capture: NodeId) -> GraphDescription {

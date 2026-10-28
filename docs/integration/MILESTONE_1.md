@@ -2,11 +2,13 @@
 
 ## Status and isolation
 
-Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. The Stage 1
-external composition spike and independent production DSP are verified, including
-native debug/release and real Node tests. Shared metadata additions were approved
-and their gates pass. Service implementation and feature-parity acceptance remain
-pending. Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
+Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. Stages 0–4
+are verified against the initial pin: external composition, independent production
+DSP, native service and complete public stereo/MIDI/media scenario. Native
+debug/release, real Node tests and closed workspace gates pass. Shared metadata
+additions were approved. Latency findings, further adversarial/measurement work,
+final integration and full feature parity remain pending.
+Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
 
 - Worktree: `/tmp/shoopdaloop-milestone-1`.
 - Branch: `feat/milestone-1-engine-service`.
@@ -478,8 +480,92 @@ only the service argument alongside its earlier DSP argument, preserving existin
 rows/checkers/gates. Final integration must retain both upstream and milestone
 additions. All protected paths remain identical to the initial dependency pin.
 The [service README](../../src/rust/shoop_engine_service/README.md) describes public
-hosting, capacities and ownership. Its initial empty-loop preparation is not yet
-the required startup-import/full-MIDI-prefix example.
+hosting, capacities and ownership. At Stage 3 only empty-loop preparation was
+implemented; Stage 4 below adds the required startup-import/full-MIDI-prefix case.
+
+## Stage 4: startup imports and complete public scenario
+
+`prepare_with_content` takes owned planar stereo, ordered `InitialMidi` packets
+and a strictly-pre-first-packet `MidiState`. Off-render loading uses public resource
+uploads, interleaved little-endian audio, canonical MIDI records and indexed state.
+Its finite resource-accounting loop runs before any engine callback/admission; it
+is not a warm-up `Engine::process` or a way to renew rendering quotas. Snapshot
+leases retain the imported versions; mutable startup resource handles are removed
+before ownership transfers to the public loop facade. Two new startup tests prove
+actual frame-zero stereo/MIDI, shape/packet-capacity refusals, multi-page loading
+and recovery of all page/version/snapshot/MIDI-index/media/export/pin pools.
+
+The [public example](../../src/rust/shoop_engine_service/examples/one_track.rs)
+shares its public-API scenario with two portable integration tests. A separate
+stopped-input case first proves that live note 60 observed while Stopped appears
+in the recording's initial state: all eight stereo frames/133 MIDI packets, its
+metadata and ninth-frame cleanup agree. That service is reclaimed before starting
+the main imported-content case; it is not a preparation callback for that case.
+
+The main scenario has these physical engine-frame cuts:
+
+| Frame | Operation/evidence |
+| --- | --- |
+| 0 | Play imported four-frame revision zero and retain its export; first stereo output is `[-9,110]`, not silence. |
+| 1 | Record a distinct revision with imported-playback cleanup and live MIDI state. |
+| 2 | Retire initial residency; its export retains the original through later role replacement. |
+| 4 | Publish post-DSP → live capture routing and a coherent query; retain a three-frame live prefix. |
+| 5 | Typed preset activation reports actual frame 5/revision 2. |
+| 5–9 | Read/reread unchanged stereo/MIDI prefix and all 16 initial-state channels while recording appends. Also read original imported media. |
+| 9–10 | Release prefix, reject double release and stale cursor; capture continues. |
+| 12 | Finish the eleven-frame take and immediately play its frame zero at an interior callback cut. Same-frame live CC precedes playback packets. |
+| 23,25,33 | Wrap, seek to position 3, then wrap again; full packet restoration/order and samples agree. |
+| 35 | Select the retained original after initial residency/old playback ownership were removed; a same-frame query sees the settled selection. |
+| 40–42 | Stop with exact note cleanup, release exports/displaced graph, and extract/reclaim. |
+
+Independent scalar tables/formulas and explicit full packet sequences check every
+sample and all **487 absolute MIDI packets**. Expected resource bytes are manually
+constructed, not copied from runtime journals/encoders. All **378 copied media
+bytes** agree: prefix stereo/MIDI twice, original imports and completed take.
+Initial-state expectations come from the explicit golden pre-record packets;
+all channel values and held-note velocities are checked through the immutable
+lease. Metadata is the channel/key projection, not an external synthesizer snapshot.
+Peaks are `[980,110]`. Pool checks include 512 free pages, 32 versions/snapshots,
+eight MIDI-index versions, eight media/pin slots, four exports, zero references and
+zero reserved/retired storage after idempotent stopped cleanup.
+
+Whole-per-phase, single-frame and irregular/zero partitions run with both valid
+query declaration orders. Required control-side barriers learn graph/lease/cursor
+IDs and preserve on-time declarations; “whole” does not falsely mean a 42-frame
+callback that somehow observes results mid-callback. Every nonempty callback
+still calls one engine. The prepared input table, adaptation, ingress, processing
+and publication are heap/free guarded; UI journaling/owner disposal/printing stay
+off-render. Normal completion remains distinct from admission.
+
+Observed warning-denied commands in the Nix development environment:
+
+```sh
+cargo test --locked -p shoop_engine_service
+cargo test --locked --release -p shoop_engine_service
+cargo run --locked -p shoop_engine_service --example one_track
+cargo run --locked --release -p shoop_engine_service --example one_track
+cargo build --locked -p shoop_engine_service --target wasm32-unknown-unknown
+python3 scripts/run_wasm_tests.py --profile dev --runtime node --package shoop_engine_service
+```
+
+Debug/release each passed **13 tests** and all six main executable runs, reporting
+`frames=42 packets=487 copied_media_bytes=378`; callback counts were 11/42/30 for
+whole/single/irregular phases. Actual pinned Node executed **13, zero failed**;
+Wasm library build passed separately. In **both** native profiles, each
+`-- --inject=sample`, `-- --inject=packet`, and `-- --inject=outcome` produced the
+intended assertion panic/exit 101 after a successful build. These six negative
+checks are failures by design, not passed musical scenarios.
+
+The same workspace gates listed for Stage 3 passed again: warning-denied build,
+formatting, test attributes, closed inventory (**217 modules**), new-package Wasm
+dependency policy, and both four-target dependency boundaries. Nextest passed
+**2,169 tests, four existing skips, 110 binaries**. Final-state logs:
+`target/milestone-1/one-track-gates.log`,
+`target/milestone-1/one-track-workspace-gates.log`, and
+`target/milestone-1/one-track-inject-{debug,release}-{sample,packet,outcome}.log`.
+No protected source, fixture, runner, plan or evidence path is changed. No new
+shared-metadata edit was needed. These results do not cover the forthcoming latency
+probe/measurements or final agreed-upstream integration.
 
 ## Existing references inspected
 
@@ -500,10 +586,9 @@ the required startup-import/full-MIDI-prefix example.
 
 ## Remaining work
 
-Stages 0–3 are verified against the initial pin, including approved additive
-metadata, nine portable service tests and closed workspace gates. Stages 4–7 must
-complete startup imports, the full public stereo/MIDI/media example and immutable
-MIDI-prefix/initial-state evidence, latency-probe findings, further adversarial
-lifecycle, two-thread execution and measurements. Final integration still waits
-for the agreed completed loop revision and final-head CI/review.
+Stages 0–4 are verified against the initial pin, including approved additive
+metadata, 13 portable service tests, the complete public scenario and closed
+workspace gates. Stages 5–7 must complete latency-probe findings, further adversarial
+lifecycle, two-thread execution and comparable raw measurements. Final integration
+still waits for the agreed completed loop revision and final-head CI/review.
 No complete feature-parity, latency compensation or callback-deadline claim is made.

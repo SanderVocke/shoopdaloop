@@ -11,8 +11,13 @@ or a browser/IPC protocol.
 `prepare(config, presets, initial_preset)` returns `Prepared { client, render,
 route, target }`. Preparation creates the roles, graph, preset storage, queues,
 MIDI index/capture storage and an alternate **Live** capture route off-render.
-The initial loop is empty. Initial-content import and the complete public scenario
-are subsequent milestone work, not capabilities claimed by these initial tests.
+This constructor starts with an empty loop. `prepare_with_content(config, presets,
+initial_preset, InitialContent)` instead imports planar stereo samples, ordered
+`InitialMidi` packets and their strictly-pre-first-packet `MidiState`. Loading is
+off-render: audio becomes interleaved little-endian floats and MIDI uses the public
+indexed resource format. Leases retain both immutable versions; mutable startup
+resource handles are removed rather than leaked into stopped cleanup. Preparation
+uses finite resource upload accounting, never a silent engine callback.
 
 - `Client` is the single control-side producer. Move it to the control thread;
   do not share it as multiple producers. Its typed loop requests and `dsp()` client
@@ -102,6 +107,37 @@ DSP storage has its own checked `dsp::Config`. Finite capacity is not a promise
 that every possible MIDI restoration or retained take fits. Inspect refusals,
 capture failures and overflow diagnostics. No callback-deadline claim follows.
 
+## Complete public scenario
+
+Run the [one_track example](examples/one_track.rs):
+
+```sh
+RUSTFLAGS="-D warnings" cargo run --locked -p shoop_engine_service --example one_track
+RUSTFLAGS="-D warnings" cargo run --locked --release -p shoop_engine_service --example one_track
+```
+
+A separate stopped-input case verifies a live held note observed before Record,
+its exported initial state, and exact cleanup. The main scenario imports four
+stereo/MIDI frames, plays frame zero, records a distinct eleven-frame take, exports
+a live prefix, changes capture routing at frame 4 and selects the DSP preset at 5.
+It reads/rereads the unchanged stereo/MIDI prefix and all sixteen initial-state
+channels while recording continues. Double release and a stale cursor refuse
+without stopping recording. Playback begins immediately at interior frame 12,
+wraps, seeks at 25, selects the exported original at 35 after its resident reference
+was retired, stops with MIDI cleanup at 40, and releases/reclaims every owner.
+
+Whole-per-phase, single-frame and irregular/zero callbacks run with both valid
+query declaration orders. Required off-render barriers learn graph IDs, leases
+and cursors; they are not extra internal engine callbacks or warm-up blocks.
+Every run checks all **42 stereo frames, 487 absolute MIDI packets, 378 copied media
+bytes**, coherent cuts, metadata, results and peaks. The input event table is
+prepared; input adaptation and rendering are heap/free guarded. Control-side
+journaling, owner disposal and printing are outside rendering.
+
+To verify a mismatch really fails the executable, use `-- --inject=sample`,
+`-- --inject=packet` or `-- --inject=outcome`; each deliberately fails an oracle and
+exits nonzero. These are negative checks, not successful scenario executions.
+
 ## Verification
 
 Run inside the repository development environment (on Nix: `nix develop`):
@@ -113,10 +149,11 @@ RUSTFLAGS="-D warnings" cargo build --locked -p shoop_engine_service --target wa
 python3 scripts/run_wasm_tests.py --profile dev --runtime node --package shoop_engine_service
 ```
 
-Nine portable guarded tests exercise exact full audio/MIDI partition oracles,
-coherent queries, typed preset application, route cuts/live stereo prefix reads,
-zero/end/late/cancelled/refused requests, retained cancellation flags, foreign
-identities, meter polling, stalled returns/disconnect and processor faults before/
-after actual publication. They assert free page/version/snapshot pools and zero
-media references after cleanup. Native, Wasm compilation and actual Node execution are distinct evidence; none is a new
+Thirteen portable guarded tests cover startup loading, the complete public
+scenario and exact full audio/MIDI partition oracles; coherent queries, typed
+preset application and route cuts; zero/end/late/cancelled/refused work; retained/
+foreign tickets; meter polling, stalled results/disconnect and faults before/after
+publication. The public scenario asserts all pages/versions/snapshots, MIDI-index
+rows and media/export/pin pools are free after idempotent stopped cleanup. Native,
+Wasm compilation and actual Node execution are distinct evidence; none is a new
 AudioWorklet, physical-device, latency-compensation or full-feature-parity result.

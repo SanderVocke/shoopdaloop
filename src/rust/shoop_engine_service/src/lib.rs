@@ -7,7 +7,7 @@ mod render;
 mod types;
 
 pub use control::{Client, Ticket};
-pub use preparation::prepare;
+pub use preparation::{prepare, prepare_with_content};
 pub use render::{Render, Stopped};
 pub use shoop_example_dsp as dsp;
 pub use shoop_loop_engine::{
