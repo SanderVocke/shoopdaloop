@@ -165,6 +165,11 @@ src/rust/shoop_engine/src/session.rs,mixed_realtime_and_control,instrumented_dir
 src/rust/shoop_engine/src/state.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/state_mirror.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/wave_generator.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_example_dsp/src/control.rs,portable_dsp_library,excluded,Independent prepared component control exposes bounded typed outcomes without an application tracing dependency.
+src/rust/shoop_example_dsp/src/lib.rs,portable_dsp_library,excluded,Independent DSP declarations and off-render preparation; application hosts own orchestration tracing.
+src/rust/shoop_example_dsp/src/meters.rs,portable_dsp_library,excluded,Atomic peak publication and read/reset are bounded telemetry primitives without application tracing work.
+src/rust/shoop_example_dsp/src/processor.rs,portable_dsp_library,excluded,Prepared DSP and MIDI fan-in run within host rendering; structured receipts and meters expose outcomes without application tracing.
+src/rust/shoop_example_dsp/src/types.rs,portable_dsp_library,excluded,Component-native values and pure capacity validation contain no runtime I/O or application tracing.
 src/rust/shoop_latency/src/lib.rs,non_realtime_support,instrumented_indirect,"Pure bounded policy resolution is called from traced backend/application operation boundaries and contains no runtime I/O."
 src/rust/shoop_plugin_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_script_resources/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

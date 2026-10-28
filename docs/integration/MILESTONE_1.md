@@ -3,8 +3,10 @@
 ## Status and isolation
 
 Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. The Stage 1
-external composition spike is verified; production DSP/service implementation and
-feature-parity acceptance remain pending. Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
+external composition spike and independent production DSP are verified, including
+native debug/release and real Node tests. Shared metadata additions were approved
+and their gates pass. Service implementation and feature-parity acceptance remain
+pending. Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
 
 - Worktree: `/tmp/shoopdaloop-milestone-1`.
 - Branch: `feat/milestone-1-engine-service`.
@@ -126,8 +128,8 @@ refined during implementation without changing these timing/ownership contracts.
 - The directive contains only frame/preset/revision metadata. Preset banks and
   scratch remain processor-owned. The native client has no mailbox access.
   Release/acquire publication and single render-thread ownership are exercised by
-  the spike; the involved atomics compile for Wasm. The complete production
-  component still needs its Stage 2 portability, lifecycle and boundary tests.
+  the spike; Stage 2 records the production component's native/Node lifecycle and
+  boundary tests. Full service-level lifecycle validation remains Stages 3–6.
 - One normal component operation can remain pending; recovery has an independent
   slot and priority. A stalled result consumer must not prevent an admitted future
   activation, autonomous loop wraps or recovery. No stream of future generic
@@ -294,8 +296,85 @@ successful narrow design, not a copy of the resolver or the private loop node.
 The allowed implementation changes are new crate trees, their required root
 lockfile entries, these integration documents, `ARCHITECTURE.md` and the milestone
 plan. The standalone spike can be removed after its proof is preserved in the new
-crates' tests and commit history. No runtime, loop, shared test runner or CI edit is
-approved implicitly; coordinate any shared discovery change separately.
+crates' tests and commit history. The user subsequently approved the metadata and
+future necessary edits, with explicit care for the concurrent finishing work.
+Check shared files against both committed and working concurrent changes before
+editing. Preserve protected loop/runtime ownership and use additive changes where
+possible; this approval does not turn an unfinished upstream snapshot into a final
+integration revision.
+
+## Stage 2: independent production DSP
+
+Implemented under `src/rust/shoop_example_dsp/` with only `rt_runtime` as a
+production dependency and `#![forbid(unsafe_code)]`:
+
+- Prepared generation-checked preset bank, bounded pre-touched delay storage,
+  native typed client/render endpoints and component-instance-checked tickets.
+- Per-channel live/playback coefficients, stereo source exchange, fixed-delay
+  mode and exact-frame whole-preset activation with revision/reset semantics.
+- Stable two-input MIDI fan-in, separate normal/recovery credits, truthful refusal
+  details and preserved actual acknowledgements after a later processor failure.
+- Atomic peak-since-publication-read mirrors, independent UI polling, and explicit
+  NaN/infinity telemetry handling without changing the signal.
+
+Fifteen guarded tests pass in native debug, native release **and actual Node**.
+They check complete sample/absolute-packet oracles across callback partitions,
+physical D = 3 delay and reset history, zero/callback-end frames, stale generations/
+revisions, foreign component tickets, held-flag `Busy`, recovery under full normal
+credit, disconnection, before/after-publication faults and capacity paths. MIDI
+output `Full` is handled according to the existing runtime contract: continuing
+audio, overflow diagnostics, ordinary-output suppression and an explicitly drained
+separate recovery sink. The new fixture checks all 32 independent expected
+all-sound-off/all-notes-off packets; no runtime/loop code or test was changed.
+
+Observed Stage 2 gates:
+
+| Gate | Result |
+| --- | --- |
+| `cargo test --locked -p shoop_example_dsp` with warnings denied | 15 passed |
+| Same package release tests with warnings denied | 15 passed |
+| Warning-denied `wasm32-unknown-unknown` library build | Passed |
+| Existing Wasm runner, dev/Node, selected new package | 15 executed, zero failed |
+| Warning-denied root workspace build | Passed |
+| Root nextest suite, app backend feature, CI profile | 2,156 passed; four existing skips; 106 binaries |
+| Formatting and test attribute policy | Passed |
+| Closed tracing inventory | Passed: 212 modules; five new portable-library entries only |
+| New-package Wasm dependency policy | Passed; production tree is `rt_runtime -> rtrb` |
+
+The Nix shell currently provides Node 22.23.2, while the existing runner requires
+22.22.2. Its first invocation refused before running any test. An already installed
+Nix-store Node 22.22.2 was then selected **inside** the project development shell;
+the unmodified runner validated that version and executed all 15 tests:
+
+```sh
+nix develop --command bash -c '
+  export PATH="/nix/store/6s9qrnf23whlvphz6p5fkczfhpaj0zya-nodejs-22.22.2/bin:$PATH"
+  export CARGO_BUILD_JOBS=2
+  python3 scripts/run_wasm_tests.py --profile dev --runtime node --package shoop_example_dsp
+'
+```
+
+That store path is local evidence, not a portable installation instruction. CI
+uses its provisioned pinned tool. No version gate, runner or flake was modified.
+Local logs: `target/milestone-1/dsp-{gates,node,workspace-gates,metadata-gates}.log`.
+The earlier workspace-gates log ends in the then-missing five inventory rows;
+metadata-gates records the subsequent approved registration and successful closed
+check, without waiving that gate. Build output
+now uses an isolated ignored directory on disk,
+`/home/sander/dev/shoopdaloop/target/milestone-1-engine-service`, symlinked from this
+worktree's `target`; the shared checkout's source and other build namespaces are
+unchanged. This avoids exhausting `/tmp`'s RAM-backed filesystem.
+
+The approved tracing rows are only for the new DSP's `control.rs`, `lib.rs`,
+`meters.rs`, `processor.rs` and `types.rs`. Like the portable runtime/loop library,
+this independent low-level component has no application tracing dependency; its
+receipts and meters expose structured outcomes. Existing inventory rows and
+checker logic remain unchanged. The existing Wasm dependency CI invocation gains
+only `--package shoop_example_dsp`; portable test discovery already executed all
+15 tests through package metadata. Before editing, both shared files and repository
+guidance were unchanged from the dependency base in the concurrent checkout,
+whose loop-host finishing commits had advanced to `8242de59`. None of that ongoing
+work was imported or modified. Continue actual service/loop integration in Stage 3.
 
 ## Existing references inspected
 
@@ -316,8 +395,9 @@ approved implicitly; coordinate any shared discovery change separately.
 
 ## Remaining work
 
-Stage 1's bounded composition gate is satisfied. Stages 2–7 must implement the
-production DSP/service, complete stereo/MIDI/media scenarios, portable Node tests,
-latency-probe findings, adversarial lifecycle and measurements. Final integration
+Stages 0–2 are verified, including Stage 2's approved shared metadata and closed
+gates. Stages 3–7 must implement the production service, complete stereo/MIDI/media
+scenarios, its portable Node tests, latency-probe findings, adversarial lifecycle
+and measurements. Final integration
 still waits for the agreed completed loop revision and final-head CI/review.
 No complete feature-parity, latency compensation or callback-deadline claim is made.

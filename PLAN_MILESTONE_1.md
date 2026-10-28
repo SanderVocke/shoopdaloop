@@ -2,7 +2,7 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stages 0–1 verified; production implementation begins in Stage 2.**
+**In progress: Stages 0–2 verified; Stage 3 engine service is next.**
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
@@ -41,14 +41,24 @@ Execution contract:
 - External composition spike: five guarded tests pass debug/release, including
   exact typed preset timing, stalled results, recovery and generation refusals;
   its independent DSP library builds for Wasm. No protected-source change is made.
-- Existing workspace gates: warning-denied build and nextest pass (2,141 passed,
-  four existing skips). Production new crates, Node execution and final-head
-  integration remain pending, not implied by these baseline results.
+- Stage 1 workspace baseline: warning-denied build and nextest pass (2,141 passed,
+  four existing skips). These are historical baseline results, not final-head
+  integration evidence.
 - Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
   Stage 1 contracts, finite limits, composition decision and probe definition are
-  recorded in the integration notes; Stages 2–7 are not yet implemented.
-- Shared-metadata scope request pending: only new-module tracing inventory rows
-  and new-package additions to the existing Wasm dependency CI invocation.
+  recorded in the integration notes. Stage 2's new DSP is implemented and has
+  15 passing guarded tests in native debug, native release and real Node execution;
+  its Wasm library build also passes. The full current native suite passes 2,156
+  tests with four existing skips. Stages 3–7 are not yet implemented.
+- The user approved these and future necessary edits while emphasizing the loop
+  executor's ongoing finishing work. Before the additive metadata patch, the shared
+  inventory/workflow and repository guidance were checked against the dependency
+  base and concurrent checkout: no overlapping edit was present. Five new DSP
+  inventory rows and its package argument were added without changing existing
+  rows, checker logic or gates. Closed inventory (212 modules), Wasm dependency
+  policy, formatting, test attributes and warning-denied workspace build pass.
+  Protected runtime/loop paths remain unchanged; final upstream agreement remains
+  pending. Continue checking concurrent edits before touching shared files.
 
 ## Goals and scope
 
@@ -232,15 +242,20 @@ contracts before substantive implementation; no acceptance criteria are weakened
 
 ### Stage 2 — Independent prepared DSP and its tests
 
-- [ ] Add the independent DSP crate, component-defined preset IDs/operations/results,
+- [x] Add the independent DSP crate, component-defined preset IDs/operations/results,
       fixed pre-touched scratch/preset banks and off-render lifecycle.
-- [ ] Implement deterministic stereo processing and bounded stable MIDI passthrough/
+- [x] Implement deterministic stereo processing and bounded stable MIDI passthrough/
       fan-in. Include a fixed-delay mode suitable for the later probe.
-- [ ] Implement the Stage 1 control path with typed preset activation/revision,
+- [x] Implement the Stage 1 control path with typed preset activation/revision,
       malformed/stale request refusal and exact frame semantics. No magic float IDs.
-- [ ] Add independent scalar/packet references, equal-time ordering, zero/edge frame,
+- [x] Add independent scalar/packet references, equal-time ordering, zero/edge frame,
       preset-transition, capacity, destructor and heap-guard tests. Add portable
       test registration and Wasm configuration using existing repository conventions.
+- [x] Obtain the requested shared-metadata scope approval, register only the new
+      production modules in `docs/tracing_coverage.csv`, rerun the closed tracing
+      gate and commit the verified Stage 2 source. No existing row/checker is to
+      be changed. This earlier inventory registration is required by the existing
+      checker as soon as a new production crate is introduced.
 
 **Verification:** native debug/release tests and Wasm build pass. Dependency
 inspection proves no loop/old-engine/backend/UI dependency. Processing and normal

@@ -129,6 +129,7 @@ peak telemetry, coherent loop queries and immutable export/read ownership. Prepa
 fixed-role route changes remain loop/runtime configuration operations; a DSP preset
 change does not imply an atomic transaction with a loop query or graph activation.
 
+The independent DSP library is implemented and tested natively and in Node/Wasm.
 The production service, complete stereo/MIDI/media scenario, latency findings and
 measurements are still pending. See the bounded
 [compatibility inventory](docs/integration/PARITY.md) and

@@ -4400,6 +4400,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_example_dsp"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_latency"
 version = "0.3.0"
 dependencies = [
