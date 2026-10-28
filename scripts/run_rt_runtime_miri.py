@@ -44,6 +44,7 @@ CASES = [
     ("host_processor", [], 2),
     ("lifecycle", ["--", "--skip", "deterministic_admission_model", "--skip", "cancellation_flag_model"], 10),
     ("resource_execution", ["resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"], 1),
+    ("lib", ["buffer::tests::bulk_preparation_and_window_merges_match_scalar_packets_through_refusal_reset_and_reuse", "--", "--exact"], 1),
 ]
 
 

@@ -35,6 +35,15 @@ The note-off is incomplete and changes no prior packet. The SysEx includes both 
 
 `push(offset, frames, packet)` requires nondecreasing offsets in `[0, frames)`. `insert` maintains stable timestamp order and permits inserting earlier offsets, with descriptor-shifting work bounded by event capacity. Both preserve existing contents on refusal.
 
+Preparation writes every descriptor slot and byte, including recovery storage;
+bulk initialization does not leave lazy/uninitialized packet slots. Routing may
+copy an already-validated whole source in bulk when its rebased timestamps append
+after existing packets. This preserves stable equal-time source order even when
+payload bytes were originally inserted out of timestamp order. Partial windows
+or interleaved timestamps retain ordinary stable insertion. Both paths preflight
+capacity and use the same overflow/reset protocol; no packet or interval quota
+is introduced.
+
 Host input buffers must also fit the runtime's configured event/byte limits and callback frame range. Oversized/malformed host input is an invalid callback, not the internal fan-in overload recovery shown below.
 
 ## 2. Process only this interval's offsets

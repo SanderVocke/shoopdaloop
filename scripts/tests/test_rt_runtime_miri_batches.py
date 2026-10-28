@@ -19,7 +19,7 @@ class MiriPartitionTests(unittest.TestCase):
         batches = [runner.inventory(shard=(index, 16)) for index in range(1, 17)]
         self.assertTrue(all(batch["cases"] for batch in batches))
         self.assertEqual(sum(len(batch["cases"]) for batch in batches), len(full))
-        self.assertEqual(sum(case[3] for batch in batches for case in batch["cases"]), 298)
+        self.assertEqual(sum(case[3] for batch in batches for case in batch["cases"]), 299)
         keyed = lambda case: json.dumps(case)
         self.assertEqual(sorted(map(keyed, full)), sorted(keyed(case) for batch in batches for case in batch["cases"]))
         self.assertEqual(len({batch["full_inventory_sha256"] for batch in batches}), 1)

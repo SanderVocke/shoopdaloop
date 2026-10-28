@@ -40,6 +40,33 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
+## Stage 8 bulk MIDI preparation/routing candidate
+
+[Bulk-MIDI evidence](evidence/bulk-midi-stage8.md) records safe bulk Event
+preparation/full pre-touch and validated whole-source append after complete
+capacity/window/stable-order checks. Partial/interleaved insertion and all reset,
+packet and musical semantics remain unchanged. The independent guarded scalar
+model runs1280 buffer-reuse rounds and11 preparation capacities; its actual
+allocation/reallocation/deallocation witness prevents an inactive guard passing.
+
+Native191runtime/153loop/59fixture tests/profile,187runtime+153loop in each
+Node/Chromium, twenty loop binding groups/runtime/profile, sixteen actual loop
+contexts/six exact failure gates/profile, complete old/new native report equality,
+fresh generic-host controls,72 helper tests and2144 workspace passes/four existing
+skips pass. The generic fixture always builds release Wasm, even when native
+replay uses debug; both native profiles and their actual-host controls were rerun.
+Affected MIDI/coordination examples, warning-denied docs/builds, policies and closed
+207-module tracing pass. The initial Wasm test-only type-inference failure is
+preserved; explicit `sum::<usize>()` fixes it without weakening the assertion.
+
+Current registration adds one exact runtime model command:146 commands/299
+executions =136runtime+100loop+63host. Every prior case/count/seed/order remains.
+No interpreter pass/speedup or current native benchmark timing is inferred from
+these correctness gates. A justified frozen unprofiled retry of the same complete
+failed host10/63 case remains only a scoped recovery check; complete current/final
+coverage, broader models/audit and remote/final delivery remain mandatory.
+Stage7 stays7/8, Stage8 stays3/8.
+
 ## Stage 8 residual diagnosis and release-measurement CI
 
 [Residual/CI evidence](evidence/residual-ci-stage8.md) records the same full exact

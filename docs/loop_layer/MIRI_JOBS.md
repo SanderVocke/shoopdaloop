@@ -180,7 +180,7 @@ are unchanged. Native190runtime/153loop/59fixture tests per profile,186runtime/
 per profile, complete native report equality and2143 workspace passes/four skips
 validate this candidate. No interpreter speedup/recovery is claimed yet.
 
-The current selection is **145 commands/298 executions =135runtime+100loop+63host**.
+At that candidate checkpoint the selection was **145 commands/298 executions =135runtime+100loop+63host**.
 All prior filters/seeds and their relative order remain. `midi_state` grows from
 six to seven tests; the full `rt_runtime` `midi` target adds six executions (five
 existing tests plus the new insertion model). No prior coverage is removed.
@@ -271,6 +271,38 @@ speedup measurements or native callback timings. No further routine unprofiled
 retry is launched: implementation/model work must address concrete residual costs.
 Complete145-command/298-execution coverage and remote/final delivery remain due.
 See [residual diagnosis and CI evidence](evidence/residual-ci-stage8.md).
+
+### Bulk-MIDI candidate: native/portable verified, interpreter recovery pending
+
+The residual profile above motivates safe bulk Event preparation and validated
+whole-source MIDI append. All configured slots/bytes are still pre-touched;
+capacity/window/recovery checks and stable equal-time ordering are preserved.
+Partial or interleaved windows retain the existing insertion path. No workload,
+seven replay runs, assertion, guard, seed or900s watchdog is reduced.
+
+The independent guarded model executes1280 buffer-reuse rounds and checks11
+preparation capacities, complete scalar packet order/content, variable packet
+sizes/SysEx, byte-layout permutations, rebasing, empty windows, arithmetic refusal
+and32-packet reset behavior. Its allocation/reallocation/deallocation witness
+proves active instrumentation. Native191runtime/153loop/59fixture tests/profile,
+187runtime+153loop per Node/Chromium, all loop binding/actual-host/failure gates,
+complete native before/after equality, fresh generic-host controls,72 helper tests
+and2144 workspace passes/four skips validate semantics, not interpreter speedup.
+
+The **current selection is146 commands/299 executions =136runtime+100loop+63host**.
+One exact runtime-library model command is added; all prior cases/counts/seeds and
+relative order are explicitly compared and retained. Host10/63 is unchanged.
+The registered model name is
+`buffer::tests::bulk_preparation_and_window_merges_match_scalar_packets_through_refusal_reset_and_reuse`.
+It uses `-- --exact`, minimum1 and seed0; no new interpreter invocation is inferred
+from native dispatch or registration.
+
+The actual prior timeout plus these measured-cost implementation/model changes
+justify one unprofiled retry of the same complete exact failed host command as the
+smallest adequate recovery selection, after committing/freezing the candidate.
+A pass would cover only that test, never consolidated current/final coverage.
+See [bulk-MIDI evidence](evidence/bulk-midi-stage8.md). Stage7 remains7/8 and
+Stage8 remains3/8; broader models/audit, remote artifacts and delivery remain due.
 
 ### Historical Stage7 registered selection
 

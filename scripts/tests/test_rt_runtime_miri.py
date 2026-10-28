@@ -17,8 +17,8 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 298)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 135)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 299)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 136)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 100)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
             cases = [c for c in runner.selected_cases("shoop_loop_engine") if c[1] == target]
