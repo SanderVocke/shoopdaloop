@@ -1,0 +1,12 @@
+{
+  "release-020.tar.gz": "8345a107d73326daf78c38a55c2b200412d562a1031f1fd84f1f10e413a40332",
+  "release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libshoopdaloop_backend.so": "428b0a1bb005c2234fa815cf785a77583bc2218f6acdeaf459d0986f7bee002d",
+  "release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libzita-resampler.so": "4a2f7d78c662f305c22534eb01e1af75277974aa990dde21fc438d6492c075ac",
+  "voyage/Voyage Voyage.vst3/Contents/x86_64-linux/Voyage Voyage.so": "6f95c452b38ca9a926b26259751b3fe77b4e7d1fced4a4882820be0ad4527c36",
+  "voyage.zip": "97a2ac1e6ba991bfd5f897e368b05a113c598214bd21b5ae0e6197ff4dd92673",
+  "voyage-input.bin": "8eac35e676e81b1d19933f802f957ab6e2468ecb521c6567940b328f62a72c60",
+  "denormal_workload.so": "41d4e1b39bf68969dae414554ed2a1454dbf927b3229cb615069b6f474baa04a",
+  "denormal_probe": "eb886b65949a84f655c4445f7038ab195fbb8121cd04dc216a4b73d4f4a4685d",
+  "fp_loader_probe": "c0d4aceb3dba5d4a2a8c3a6bf9b06252d805109776cf752191e5d75fd967938c",
+  "optional_vst3_probe": "d6b4881a658014a9373992a077ab8154556adf5cb76561b5c74a12a6464d25fd"
+}

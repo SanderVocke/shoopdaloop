@@ -1,0 +1,20 @@
+{
+  "core": {
+    "source": "Carla v2.5.10, archive checksum in core-manifest.json",
+    "targets": {"reference": "make -j2 plugin", "packaged": "make -j2 plugin frontend"},
+    "features": "liblo and PyQt5 tools enabled; minimal headless build without JUCE/DGL/X11",
+    "mode": "Release (DEBUG unset), upstream Makefile defaults",
+    "base_optimization_flags": "-O3 -ffast-math -fdata-sections -ffunction-sections -mtune=generic -msse -msse2 -mfpmath=sse",
+    "link_optimization": "-O1 --as-needed --gc-sections (upstream defaults)",
+    "note": "Core features were frozen before compiling the optional fuller SDK. Default bootstrap now explicitly forces HAVE_JUCE_LINUX_DEPS=false HAVE_DGL=false HAVE_X11=false to keep this choice reproducible."
+  },
+  "full": {
+    "features": "X11/FreeType/JUCE dependency probe enabled, native prepared SDK merged with minimal liblo/LV2 dependencies",
+    "overrides": "CFLAGS/CXXFLAGS=-I<work>/deps/usr/include; LDFLAGS=-L<work>/deps/usr/lib/x86_64-linux-gnu; PKG_CONFIG_SYSROOT_DIR=<work>/deps",
+    "mode": "Release, same upstream optimization defaults",
+    "note": "Recorded optional packaged artifact is copied/incremental and byte-identical to full reference. Optional aliases are A/A, not independent build recipes."
+  },
+  "rust": "cargo build --locked --release -p shoop_engine --features lv2 (pre) / carla (post,current) --example carla_regression_benchmark; RUSTFLAGS=-D warnings; no fast-math override",
+  "c_harness": "g++ -O2 -std=c++17; workload gcc -O3 -fPIC -shared; timing shim gcc -O2 -fPIC -shared; no -ffast-math",
+  "historical_backend": "Authentic public v0.2.0 Linux portable backend, not rebuilt; its original compiler flags are unknown."
+}

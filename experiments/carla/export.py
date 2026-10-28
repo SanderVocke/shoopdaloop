@@ -15,7 +15,7 @@ def main():
     work=args.work.resolve();output=args.output.resolve();output.mkdir(parents=True,exist_ok=True)
     generated=work/'output'
     for name in ['MEASUREMENTS.md','comparisons.json','floating-point.json','meter-audit.json',
-                 'completion-times.svg','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
+                 'completion-times.svg','build-protocol.json','implementation-control.json','fp-library-initializers.json','zita-fp-initializer.txt']:
         if (generated/name).exists():shutil.copy2(generated/name,output/name)
     rows=json.loads((generated/'all-runs.json').read_text())
     with (output/'raw-runs.csv').open('w') as f:
@@ -23,6 +23,15 @@ def main():
         writer.writeheader();writer.writerows(rows)
     for source,name in [(work/'manifest.json','extended-manifest.json'),(work/'frozen-core/manifest.json','core-manifest.json'),(work/'dependency-manifest.json','dependency-manifest.json')]:
         if source.exists():shutil.copy2(source,output/name)
+    identities={}
+    sources=['release-020.tar.gz','release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libshoopdaloop_backend.so',
+             'release-020/shoopdaloop-0.2.0.release-linux-x64.portable/lib/libzita-resampler.so',
+             'voyage/Voyage Voyage.vst3/Contents/x86_64-linux/Voyage Voyage.so','voyage.zip','voyage-input.bin',
+             'denormal_workload.so','denormal_probe','fp_loader_probe','optional_vst3_probe']
+    for name in sources:
+        path=work/name
+        if path.exists():identities[name]=hashlib.sha256(path.read_bytes()).hexdigest()
+    (output/'supplementary-identities.json').write_text(json.dumps(identities,indent=2)+'\n')
     archive=generated/'raw-results.tar.gz'
     directories=['results','controls','history','confirm','fp-context','voyage','voyage-paced','pin-control','contention']
     with tarfile.open(archive,'w:gz') as tar:

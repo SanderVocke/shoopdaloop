@@ -98,7 +98,7 @@ int main(int argc,char** argv) try {
         if(voyage) {
             for(unsigned channel=0;channel<2;++channel) {
                 double energy=0;bool altered=false;
-                for(size_t i=0;i<frames;++i) { require(std::isfinite(outputs[channel][i]),"nonfinite Voyage output"); energy+=outputs[channel][i]*outputs[channel][i]; altered=altered||std::fabs(outputs[channel][i]-inputs[channel][i])>1e-5f; }
+                for(size_t i=0;i<frames;++i) { require(std::isfinite(outputs[channel][i]),"nonfinite Voyage output"); const double sample=outputs[channel][i]; energy+=sample*sample; altered=altered||std::fabs(outputs[channel][i]-inputs[channel][i])>1e-5f; }
                 require(energy/frames>1e-10 && energy/frames<16 && altered,"Voyage output was silent, bypassed or unbounded");
             }
             return;
