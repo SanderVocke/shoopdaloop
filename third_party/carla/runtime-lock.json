@@ -38,7 +38,7 @@
       "build": "verified upstream universal release payload, normalized by scripts/carla_runtime.py",
       "minimum_os": "10.15",
       "dependency_rebuilds": "macos_catalina_dependencies; replace both libraries in the native and frozen Python runtime layouts; omit unused QtDesigner/QtHelp bindings whose frameworks are not bundled upstream",
-      "validation": "every bundled Intel Mach-O is audited for minimum OS and non-system dependency closure; Catalina runtime testing is pending",
+      "validation": "every bundled Intel Mach-O is audited for minimum OS and non-system dependency closure; the initial distribution was confirmed working on an actual macOS 10.15 system by a stakeholder",
       "signing": "unsigned application archive; no signing identity or installer is introduced"
     },
     "macos-arm64": {
