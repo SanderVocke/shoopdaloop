@@ -24,8 +24,12 @@ pub struct Journal {
 }
 impl Journal {
     pub fn new(records: usize) -> Self {
-        assert!(records <= RECORDS);
-        let mut bytes = vec![0; HEADER + STRIDE * records].into_boxed_slice();
+        assert!(u32::try_from(records).is_ok());
+        let size = records
+            .checked_mul(STRIDE)
+            .and_then(|size| size.checked_add(HEADER))
+            .expect("semantic storage size");
+        let mut bytes = vec![0; size].into_boxed_slice();
         for byte in bytes.iter_mut() {
             *byte = std::hint::black_box(0);
         }

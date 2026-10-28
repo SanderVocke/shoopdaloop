@@ -245,7 +245,7 @@ not skipped browser evidence. `--no-build` deliberately reuses that profile's
 existing artifacts; omit it for fresh verification.
 
 Each normal runner invocation requires eight successful sessions: primitive,
-graph-change, immutable-export and resource/program-staging scenarios in both offline and live contexts. `--verify-failures`
+graph-change, immutable-export, resource/program-staging and dense musical scenarios in both offline and live contexts. `--verify-failures`
 additionally checks four intentionally failing sessions.
 
 ### 1. Prepare two ordinary Wasm instances
@@ -343,17 +343,17 @@ MIDI observation and return recycling. Memory length must stay fixed after
 preparation. JavaScript allocation/GC, structured cloning and browser scheduling
 are outside these Rust heap guarantees; there is no deadline certification.
 
-Sixteen shared public-binding groups execute in Node and Chromium: constructor
+Seventeen shared public-binding groups execute in Node and Chromium: constructor
 refusal, full-width identities/frames and independent credits, rendering and
 receipt validation, fixed-memory diagnostic exhaustion without changing audio,
 successful recovery, actual processor/heap failure witnesses, semantic boundary
 records, an eventless same-position seek, two payload checks and three graph command
 checks: full-width/credits, exact activation/retirement and128 real owner returns.
-The export and resource/program-staging groups also retain complete native-matched
-reports. These are binding-level Wasm checks, not a claim that the51 native Rust tests
+The export, resource/program-staging and dense musical groups also retain complete native-matched
+reports. These are binding-level Wasm checks, not a claim that the53 native Rust tests
 were executed as Wasm test functions.
 
-The observer prepares128 fixed160-byte records. It records event-bearing boundaries,
+The observer prepares128 fixed160-byte records by default, or4096 for the dense scenario. It records event-bearing boundaries,
 playback discontinuities and changes in resolver journal loss. It omits ordinary
 callback cuts and never invents a transition or pulse for an eventless seek. If a
 whole boundary's decisions/events do not fit, it drops that entire diagnostic
@@ -369,7 +369,7 @@ Each child must exit nonzero with the specific diagnostic, matching Rust process
 witness and heap counts. An unrelated exception or matching text without witnesses
 cannot pass. These failed sessions do not stand in for successful disposal.
 
-For successful sessions, collect all six admission/execution records, return all
+For successful primitive sessions, collect all six admission/execution records, return all
 request/response buffers, and stop invoking the engine before explicit cleanup
 and destruction. Both contexts check complete pool recovery. The live context is
 then closed; the offline context renders its remaining silent tail.
@@ -478,6 +478,57 @@ truncations/padding/full-width values, and transactional client/nonwrapping iden
 Successful stop refuses15 while a resource/program/source remains retained.
 Fault abandonment is off-render and does not fabricate returned credits.
 
+## Dense wraps, cascades and clocked composites
+
+Prepare `BrowserBridge.new_dense(session)` (native: `Bridge::with_dense`) before
+rendering. This opt-in scenario uses the unchanged primitive LLC1/LLR1 protocol,
+four normal credits and one independent recovery credit:
+
+1. Admit Record0, Play1, Seek64 and Seek130 before rendering. A fifth normal request
+   refuses Busy10 without consuming a sequence. Record one stereo/MIDI frame;
+   playback starts at1 and the same-position seek at64 is a real discontinuity.
+2. A's Record-start pulse starts timing-only B→C in the same frame. B's one-frame
+   clock also drives a regular→explicit composite pair. The regular cursor makes
+   32 complete passes; the explicit cursor ends at4, while C continues playing.
+   This checks the simultaneous trigger/program ordering, not an audible composite
+   stop or a nominal fallback clock.
+3. Render128 frames and then one more without polling any results. All four normal
+   bridge credits remain occupied; successful stop refuses15. Submit recovery Stop
+   at129 and render two frames. Stop suppresses A's due wrap and emits MIDI cleanup;
+   the already-admitted Seek130 now fails with domain InvalidState261, not a renderer
+   fault. B/C and their clocks still progress. All five command credits remain held
+   until polling returns all ten admission/execution records.
+4. Compare all131 stereo samples,8449 MIDI packets/126735 bytes and1968 semantic
+   records/314920 bytes against independent scalar/closed-form tables. The journal
+   contains131 boundaries,655 complete decisions and1182 ordered events. Native
+   whole/single/irregular/zero-call partitions and both actor modes agree on every
+   report byte. Cleanup recovers256 pages/16 versions/16 snapshots/zero references.
+
+```sh
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --dense-json
+cargo run --locked --manifest-path tests/loop_engine_host/Cargo.toml --bin replay -- --dense-two-thread-json
+cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml \
+  browser::native_dense::tests::dense_wire_and_capacity_one_actors_preserve_music_with_all_results_stalled -- --exact
+```
+
+Add `--release` before `--bin` or the test filter for release. The ordinary browser
+runner runs this scenario in both actual contexts and shared Node/Chromium bindings.
+The actual driver acknowledges128/1/2-frame calls with engine pauses between them;
+this is not a runtime interaction quantum or continuous live scheduling guarantee.
+A separate mono **probe marker output** marks each rendered quantum, including the
+silent recovery quantum. It does not modify the stereo signal. The downstream probe
+checks all384 stereo samples/channel, matching all three clocks and zero short-call
+tails; offline additionally checks all1024 output samples/channel. Both ordinary
+Wasm memories stay fixed and all five input/ten response buffers return before stop.
+
+The dense configuration prepares16384 MIDI events/65536 payload bytes per runtime
+port and host output,262144 MIDI journal bytes and655400 semantic bytes. Those are
+finite component capacities, not total native RSS. Larger diagnostic storage does
+not cap or throttle musical progression. The standard scenarios keep their smaller
+capacities. See [the clock/report protocol](WIRE.md#dense-musical-host-clock-and-report).
+This case stalls Rust result consumers; it does not yet prove in-flight transferred
+response-buffer exhaustion or capture exhaustion/replacement in an actual worklet.
+
 ## Current scope
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
@@ -492,7 +543,8 @@ bounded two-thread graph payload/command/return transport also matches direct
 replay. Immutable snapshot/read/release now additionally verifies both retained
 capture revisions through native and actual worklet hosts. Resource upload/immutable
 reads and prepared nested-program activation/iteration-seek/stop now also run through
-all hosts. Broader clocked composites, cascades, one-sample loops, prepared playable
+all hosts. Dense one-sample playback, same-frame cascades, clocked regular/explicit
+composites and unread-result recovery now also run through all hosts. Prepared playable
 media replacement, capture exhaustion and live in-flight transfer stalls remain
 host work; raw MIDI uploads are not checkpointed playable sources.
 No loop benchmark, production adapter or hard-deadline guarantee is supplied.

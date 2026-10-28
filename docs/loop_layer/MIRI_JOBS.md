@@ -44,7 +44,13 @@ actor modes), plus two `staging_wire::tests` (full-width codecs/all truncations/
 padding and transactional/nonwrapping client identities). The new
 `Controller::resource` forwarding path and prepared topology/source settings are
 also relevant source inputs for the consolidated selection.
-All19 graph-focused, four export-focused and four staging-focused cases (**27**)
+Dense host coverage adds two cases: `scenario::dense::tests::dense_capture_cascades_and_clocked_composites_keep_music_with_unread_results`
+(direct facade, unchanged131-frame full media/cleanup workload) and
+`browser::native_dense::tests::dense_wire_and_capacity_one_actors_preserve_music_with_all_results_stalled`
+(whole/single/irregular/zero partitions in direct and capacity-one actor modes,
+complete independent media/semantic/receipt oracle). Larger fixed MIDI/observer
+storage is prepared off-render; there is no reduced interpreter workload.
+All19 graph-focused, four export-focused, four staging-focused and two dense cases (**29**)
 are **not yet registered in the pinned interpreter runner or interpreted**. Node/Chromium now execute shared
 public payload and command bindings, including128 real candidate return cycles;
 they do not execute these native test functions or extend Miri coverage. Keep the

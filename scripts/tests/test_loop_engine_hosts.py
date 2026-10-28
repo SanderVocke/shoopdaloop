@@ -8,7 +8,54 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, compare_staging_worklets, validate_semantic, verify_failure
+from run_loop_engine_hosts import compare_graph_bindings, compare_graph_worklets, compare_native_graphs, compare_export_worklets, compare_staging_worklets, compare_dense_worklets, validate_semantic, verify_failure
+
+
+class DenseTests(unittest.TestCase):
+    def fixture(self):
+        native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_dense_native.json.gz").read_bytes()))
+        chunks = [[s[c] for s in native["samples"][:128]] + [native["samples"][128][c]] + [0]*127
+                  + [s[c] for s in native["samples"][129:]] + [0]*126 for c in range(2)]
+        output = [[0]*1024 for _ in range(2)]
+        for channel in range(2):
+            for segment, start in enumerate((128,384,640)):
+                output[channel][start:start+128] = chunks[channel][segment*128:(segment+1)*128]
+        reports = []
+        for mode in ("offline","live"):
+            reports.append(copy.deepcopy({"mode":mode,"session":str((1<<64)-1),"data":native,
+                "checkpoints":[{"frame":str(frame),"browser":str(browser),"frames":frames} for frame,browser,frames in ((128,128,128),(129,384,1),(131,640,2))],
+                "states":[{"type":"dense-state","frame":"129","outstanding":4,"stop":15},{"type":"dense-state","frame":"131","outstanding":5,"stop":15}],
+                "starts":["128","384","640"],"chunks":chunks,"offlineAudio":output if mode=="offline" else None,
+                "ready":{"bytes":5963776,"shared":False,"marker":0},"controlBytes":5963776,"controlFinalBytes":5963776,"controlMarker":0x51a17,
+                "summary":{"bytes":5963776,"finalBytes":5963776,"heap":[0,0,0],"frames":"131","callbacks":"3","returnedBuffers":10,
+                    "returnedGraphBuffers":0,"returnedExportBuffers":0,"returnedStagingBuffers":0,"retainedGraphs":0,"retainedExports":0,"retainedStaging":0,
+                    "journalOverflow":0,"recovered":[256,16,16,0],"firstFrame":"128","resumeFrame":None,"marker":0}}))
+        return native,{"denseReports":reports}
+
+    def test_dense_complete_media_semantics_receipts_and_contexts_are_required(self):
+        native,result = self.fixture(); compare_dense_worklets(result,native)
+        for field in ("samples","requests","responses","midiBytes","semanticBytes","recovered","counts"):
+            altered = copy.deepcopy(result); altered["denseReports"][0]["data"][field].pop()
+            with self.assertRaises(RuntimeError,msg=field): compare_dense_worklets(altered,native)
+        for field,offset in (("requests",24),("responses",72)):
+            altered = copy.deepcopy(result); altered["denseReports"][0]["data"][field][0][offset] ^= 1
+            with self.assertRaises(RuntimeError): compare_dense_worklets(altered,native)
+        altered = copy.deepcopy(result); altered["denseReports"].pop()
+        with self.assertRaises(RuntimeError): compare_dense_worklets(altered,native)
+
+    def test_dense_short_tail_silent_stop_stalls_clocks_and_memory_are_checked(self):
+        native,result = self.fixture()
+        for field,value in (("returnedBuffers",9),("heap",[0,1,0]),("finalBytes",6029312),("callbacks","2"),("retainedGraphs",1),("journalOverflow",1)):
+            altered = copy.deepcopy(result); altered["denseReports"][0]["summary"][field] = value
+            with self.assertRaises(RuntimeError,msg=field): compare_dense_worklets(altered,native)
+        for field,value in (("states",[]),("checkpoints",[]),("starts",["128"]*3),("controlFinalBytes",6029312),("offlineAudio",None)):
+            altered = copy.deepcopy(result); altered["denseReports"][0][field] = value
+            with self.assertRaises(RuntimeError,msg=field): compare_dense_worklets(altered,native)
+        for field,index in (("chunks",129),("chunks",256),("offlineAudio",640)):
+            altered = copy.deepcopy(result); altered["denseReports"][0][field][0][index] = 1
+            with self.assertRaises(RuntimeError): compare_dense_worklets(altered,native)
+        altered = copy.deepcopy(result); altered["denseReports"][0]["checkpoints"][2]["browser"]="128"
+        with self.assertRaises(RuntimeError): compare_dense_worklets(altered,native)
 
 
 class StagingTests(unittest.TestCase):

@@ -9,6 +9,7 @@ class LoopFixture extends AudioWorkletProcessor {
         this.graphMode = options.processorOptions.graph === true;
         this.exportMode = options.processorOptions.exports === true;
         this.stagingMode = options.processorOptions.staging === true; this.stagingFrames = 0;
+        this.denseMode = options.processorOptions.dense === true; this.denseFrames = 0;
         this.stagingReturns = this.stagingMode ? Array.from({length:2},()=>new ArrayBuffer(256)) : [];
         this.exportReturns = this.exportMode ? Array.from({ length: 2 }, () => new ArrayBuffer(1024)) : [];
         this.primeRequested = false; this.primed = false; this.resumeFrame = null;
@@ -17,7 +18,7 @@ class LoopFixture extends AudioWorkletProcessor {
         try {
             this.wasm = initSync({ module: options.processorOptions.module });
             const session = BigInt(options.processorOptions.session), fault = this.canary === "processor" ? 1 : this.canary === "rust-heap" ? 2 : 0;
-            this.engine = this.stagingMode ? BrowserBridge.new_staging(session) : this.exportMode ? BrowserBridge.new_exports(session) : this.graphMode ? BrowserBridge.new_graphs(session, fault) : new BrowserBridge(session, fault);
+            this.engine = this.denseMode ? BrowserBridge.new_dense(session) : this.stagingMode ? BrowserBridge.new_staging(session) : this.exportMode ? BrowserBridge.new_exports(session) : this.graphMode ? BrowserBridge.new_graphs(session, fault) : new BrowserBridge(session, fault);
             this.memory = this.wasm.memory;
             if (!(this.memory.buffer instanceof ArrayBuffer)) throw new Error("ordinary non-shared Wasm memory required");
             this.bytes = this.memory.buffer.byteLength;
@@ -54,6 +55,12 @@ class LoopFixture extends AudioWorkletProcessor {
                 const result = this.engine.ingest();
                 this.checkMemory();
                 this.port.postMessage({ type: "ingested", slot: data.slot, result, buffer: data.buffer }, [data.buffer]);
+            } else if(data.type === "dense-step") {
+                if(!this.denseMode||this.armed||String(this.engine.frame())!==data.frame||!Number.isInteger(data.frames)||data.frames<1||data.frames>128)throw new Error("dense step clock/shape");
+                this.denseFrames=data.frames;this.armed=true;this.port.postMessage({type:"dense-stepping"});
+            } else if(data.type === "dense-state") {
+                if(!this.denseMode||this.armed)throw new Error("dense state while armed");
+                this.checkMemory();this.port.postMessage({type:"dense-state",frame:String(this.engine.frame()),outstanding:this.engine.outstanding(),stop:this.engine.stop()});
             } else if(data.type === "staging-request") {
                 if(!this.stagingMode||data.slot!==0||!(data.buffer instanceof ArrayBuffer)||data.buffer.byteLength!==128)throw new Error("staging input envelope");
                 this.stagingRequest.set(new Uint8Array(data.buffer));const frame=String(this.engine.frame()),result=this.engine.ingest_staging();this.checkMemory();this.port.postMessage({type:"staging-ingested",slot:0,result,frame,buffer:data.buffer},[data.buffer]);if(data.buffer.byteLength!==0)throw new Error("staging input did not detach");
@@ -156,11 +163,11 @@ class LoopFixture extends AudioWorkletProcessor {
         if (this.stopped || this.failed) return false;
         if (!this.armed && !this.primeRequested) return true;
         try {
-            if (outputs.length !== 1 || outputs[0].length !== 2 || outputs[0].some(channel => channel.length !== 128)) throw new Error("loop quantum shape");
+            if (outputs.length !== (this.denseMode ? 2 : 1) || outputs[0].length !== 2 || outputs[0].some(channel => channel.length !== 128)) throw new Error("loop quantum shape");
             if (this.firstFrame === null) this.firstFrame = String(currentFrame);
             const priming = this.primeRequested;
             if ((this.graphMode && !priming || this.exportMode && this.engine.frame() === 128n) && this.resumeFrame === null) this.resumeFrame = String(currentFrame);
-            const result = this.engine.render(priming ? 1 : this.stagingMode ? this.stagingFrames : 128);
+            const result = this.engine.render(priming ? 1 : this.denseMode ? this.denseFrames : this.stagingMode ? this.stagingFrames : 128);
             this.lastResult = result;
             if (result === 0xffff0001 && this.canary === "rust-heap" && this.engine.fault_witness() === 2 && this.engine.heap_allocations() > 0 && this.engine.heap_reallocations() > 0 && this.engine.heap_deallocations() > 0) {
                 throw new Error(`intentional loop Rust heap failure canary detected: ${this.engine.heap_allocations()}/${this.engine.heap_reallocations()}/${this.engine.heap_deallocations()}`);
@@ -169,8 +176,9 @@ class LoopFixture extends AudioWorkletProcessor {
             if (result !== 0) throw new Error(`loop rendering failed: ${result}`);
             this.checkMemory();
             outputs[0][0].set(this.audio[0]); outputs[0][1].set(this.audio[1]);
-            if (priming || this.exportMode || this.stagingMode) {
-                if (this.exportMode || this.stagingMode) this.armed = false;
+            if(this.denseMode)outputs[1][0][0]=1;
+            if (priming || this.exportMode || this.stagingMode || this.denseMode) {
+                if (this.exportMode || this.stagingMode || this.denseMode) this.armed = false;
                 else { this.primeRequested = false; this.primed = true; }
                 this.port.postMessage({ type: "checkpoint", frame: String(this.engine.frame()), browser: String(currentFrame) });
             }
@@ -184,7 +192,8 @@ class AudioProbe extends AudioWorkletProcessor {
     constructor(options) {
         super();
         this.graphMode = options.processorOptions?.graph === true;
-        this.length=options.processorOptions?.staging===true?512:256;
+        this.denseMode=options.processorOptions?.dense===true;
+        this.length=this.denseMode?384:options.processorOptions?.staging===true?512:256;
         this.left = new Float32Array(this.length); this.right = new Float32Array(this.length);
         this.start = null; this.starts = Array(this.length/128).fill(null); this.count = 0;
         this.port.onmessage = () => {
@@ -198,7 +207,7 @@ class AudioProbe extends AudioWorkletProcessor {
         if (!input || input.length !== 2) return true;
         for (let channel = 0; channel < 2; channel++) output[channel].set(input[channel]);
         if (this.start === null && input[0].some(value => value !== 0)) this.start = String(currentFrame);
-        if (this.start !== null && this.count < this.length && (!this.graphMode || input[0].some(value => value !== 0))) {
+        if (this.start !== null && this.count < this.length && (this.denseMode ? inputs[1]?.[0]?.[0] === 1 : !this.graphMode || input[0].some(value => value !== 0))) {
             this.starts[this.count / 128] = String(currentFrame);
             this.left.set(input[0], this.count); this.right.set(input[1], this.count); this.count += 128;
         }

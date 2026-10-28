@@ -3,6 +3,7 @@ import { initSync, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGr
 import { checkBindings } from "./bindings_checks.js";
 import { exportBindings } from "./export_script.js";
 import { stagingBindings } from "./staging_script.js";
+import { denseBindings } from "./dense_host.js";
 const module = new WebAssembly.Module(readFileSync(new URL("./pkg/fixture_bg.wasm", import.meta.url)));
 const wasm = initSync({ module });
 const result = checkBindings(wasm, BrowserClient, BrowserBridge, BrowserGraphReceiver, BrowserGraphClient);
@@ -10,4 +11,6 @@ result.exports = await exportBindings(wasm, BrowserClient, BrowserBridge, Browse
 result.checks.push("immutable exports across both revisions and all 16 initial MIDI channels");
 result.staging=await stagingBindings(wasm,BrowserClient,BrowserBridge,BrowserStagingClient);
 result.checks.push("owning resource uploads and prepared nested-program staging");
+result.dense=await denseBindings(wasm,BrowserClient,BrowserBridge);
+result.checks.push("dense wraps, cascades and clocked composites with unread results");
 console.log(JSON.stringify({ ...result, node: process.version }));

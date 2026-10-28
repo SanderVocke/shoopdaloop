@@ -29,6 +29,8 @@ mod scenario;
 pub mod wire;
 pub use bridge::Bridge;
 #[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_dense::{run as run_dense, DenseReport};
+#[cfg(not(target_arch = "wasm32"))]
 pub use browser::native_export::{run_exports, ExportReport};
 #[cfg(not(target_arch = "wasm32"))]
 pub use browser::native_graph::{run_graph, run_graph_two_thread, GraphReport};

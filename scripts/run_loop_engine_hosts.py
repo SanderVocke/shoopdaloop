@@ -20,14 +20,14 @@ FIXTURE = ROOT / "tests/loop_engine_host"
 ASSETS = ROOT / "target/loop-engine-host"
 
 
-def validate_semantic(data, *, complete=True):
+def validate_semantic(data, *, complete=True, capacity=128):
     """Validate LSJ1 framing/canonical fields without reconstructing musical policy."""
     data = bytes(data)
     if len(data) < 40 or data[:8] != b"LSJ1\x01\x00\xa0\x00" or any(data[12:16]):
         raise RuntimeError("semantic journal header")
     count = struct.unpack_from("<I", data, 8)[0]
     loss = struct.unpack_from("<QQQ", data, 16)
-    if count > 128 or len(data) != 40 + count * 160:
+    if count > capacity or len(data) != 40 + count * 160:
         raise RuntimeError("semantic journal length")
     if (bool(loss[0]) != bool(loss[1])) or loss[1] < loss[0] or (complete and any(loss)):
         raise RuntimeError("incomplete semantic journal")
@@ -401,6 +401,66 @@ def compare_export_worklets(result, native):
             raise RuntimeError("live export report claims offline audio")
 
 
+def compare_dense_worklets(result, native):
+    reports = result.get("denseReports")
+    if not isinstance(reports, list) or [r.get("mode") for r in reports] != ["offline", "live"]:
+        raise RuntimeError("both actual dense contexts required")
+    if (len(native["samples"]) != 131 or len(native["requests"]) != 5 or len(native["responses"]) != 10
+            or len(native["midiBytes"]) != 126735 or native["counts"] != [0]*4
+            or native["recovered"] != [256,16,16,0]):
+        raise RuntimeError("incomplete native dense reference")
+    semantics = validate_semantic(native["semanticBytes"], capacity=4096)
+    if semantics["boundaries"] != list(map(str,range(131))) or semantics["records"] != 1968:
+        raise RuntimeError("incomplete dense semantic boundaries")
+    for report in reports:
+        data = json.loads(json.dumps(report["data"]))
+        session = int(report["session"])
+        for field, size in (("requests",64),("responses",96)):
+            for packet in data[field]:
+                if len(packet) != size or int.from_bytes(bytes(packet[8:16]),"little") != session:
+                    raise RuntimeError("dense wire session/size")
+                packet[8:16] = [255]*8
+        if data != native:
+            raise RuntimeError("complete dense media/receipts/semantics differ from native")
+        cuts = report["checkpoints"]
+        if len(cuts) != 3 or [c["frame"] for c in cuts] != ["128","129","131"] or [c["frames"] for c in cuts] != [128,1,2]:
+            raise RuntimeError("dense engine step clocks")
+        clocks = [int(c["browser"]) for c in cuts]
+        if (report["starts"] != [c["browser"] for c in cuts] or clocks[0] < 0
+                or any(c % 128 for c in clocks) or any(b <= a for a,b in zip(clocks,clocks[1:]))):
+            raise RuntimeError("dense downstream step clocks")
+        if report["states"] != [{"type":"dense-state","frame":"129","outstanding":4,"stop":15},
+                                {"type":"dense-state","frame":"131","outstanding":5,"stop":15}]:
+            raise RuntimeError("dense stalled credits/recovery evidence")
+        expected = [[s[channel] for s in native["samples"][:128]] + [native["samples"][128][channel]] + [0]*127
+                    + [s[channel] for s in native["samples"][129:]] + [0]*126 for channel in range(2)]
+        if report["chunks"] != expected:
+            raise RuntimeError("dense actual stereo/short tails")
+        summary = report["summary"]
+        if (summary["bytes"] != summary["finalBytes"] or summary["bytes"] != report["ready"]["bytes"]
+                or report["controlBytes"] != report["controlFinalBytes"] or summary["heap"] != [0,0,0]
+                or summary["frames"] != "131" or summary["callbacks"] != "3" or summary["returnedBuffers"] != 10
+                or summary["returnedGraphBuffers"] != 0 or summary["returnedExportBuffers"] != 0
+                or summary["returnedStagingBuffers"] != 0 or summary["retainedGraphs"] != 0
+                or summary["retainedExports"] != 0 or summary["retainedStaging"] != 0
+                or summary["journalOverflow"] != 0 or summary["recovered"] != [256,16,16,0]
+                or summary["firstFrame"] != str(clocks[0]) or summary["resumeFrame"] is not None
+                or report["controlMarker"] != 0x51a17 or summary["marker"] != 0
+                or report["ready"]["marker"] != 0 or report["ready"]["shared"] is not False):
+            raise RuntimeError("dense fixed memory/isolation/ownership evidence")
+        if report["mode"] == "offline":
+            output = [[0]*1024 for _ in range(2)]
+            for channel in range(2):
+                for segment, clock in enumerate(clocks):
+                    if clock + 128 > 1024:
+                        raise RuntimeError("dense offline clock bounds")
+                    output[channel][clock:clock+128] = expected[channel][segment*128:(segment+1)*128]
+            if report["offlineAudio"] != output:
+                raise RuntimeError("complete dense offline output differs")
+        elif report["offlineAudio"] is not None:
+            raise RuntimeError("dense live report claims offline output")
+
+
 def compare_native_graphs(native, threaded):
     """Complete direct/threaded replay equality except instance-local graph scope."""
     def normalized(source):
@@ -468,7 +528,7 @@ def main():
     node = None
     if not args.failure_canary:
         node = json.loads(harness.command(["node", str(assets / "node_checks.mjs")], reports / "node-checks.json"))
-        if not node.get("passed") or len(node.get("checks", [])) != 16:
+        if not node.get("passed") or len(node.get("checks", [])) != 17:
             raise RuntimeError("incomplete Node binding checks")
     with harness.server() as url:
         with urllib.request.urlopen(url + "/index.html") as response:
@@ -484,7 +544,7 @@ def main():
     compare_graph_worklets(result, graph_native)
     result["native_graph_two_thread"] = {"passed": True, "channel_capacity": 1,
                                           "frames": graph_threaded["frames"], "callbacks": graph_threaded["callbacks"]}
-    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging")}:
+    if result.get("bindingChecks") != {key: node[key] for key in ("passed", "checks", "graph", "exports", "staging", "dense")}:
         raise RuntimeError("Chromium binding checks differ from Node")
     compare_graph_bindings(result["bindingChecks"]["graph"], native)
     exported = json.loads(harness.command([str(executable), "--export-json"], reports / "native-export.json"))
@@ -497,6 +557,11 @@ def main():
     if staged != staged_threaded or result["bindingChecks"]["staging"] != staged:
         raise RuntimeError("complete native/threaded/Node/Chromium staging reports differ")
     compare_staging_worklets(result, staged)
+    dense = json.loads(harness.command([str(executable), "--dense-json"], reports / "native-dense.json"))
+    dense_threaded = json.loads(harness.command([str(executable), "--dense-two-thread-json"], reports / "native-dense-two-thread.json"))
+    if dense != dense_threaded or result["bindingChecks"]["dense"] != dense:
+        raise RuntimeError("complete native/threaded/Node/Chromium dense reports differ")
+    compare_dense_worklets(result, dense)
     result["node"] = node
     for mode in ("--direct", "--wire", "--two-thread"):
         harness.command([str(executable), mode], reports / (mode[2:] + ".log"))

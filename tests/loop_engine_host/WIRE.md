@@ -699,6 +699,42 @@ native fixed-partition replay. `bindingChecks.staging` is separate binding-level
 execution; native direct/threaded JSON reports and downstream Web Audio must all
 agree. The gzip fixture used by Python parser tests is data, not execution evidence.
 
+## Dense musical host clock and report
+
+`BrowserBridge.new_dense(session)`/`Bridge::with_dense(session)` prepare a separate
+five-loop fixture using the unchanged64-byte LLC1/96-byte LLR1 protocol. Four
+normal requests (Record0, Play1, Seek64, Seek130) are ingested before rendering.
+The driver deliberately does not poll results through128+1 frames; all four credits
+remain held. The independent recovery Stop129 occupies slot4 and executes during
+the final two-frame call. Seek130 then fails with domain InvalidState261. Only after
+frame131 are all ten ordered admission/execution records polled and acknowledged.
+
+- `dense-step {frame,frames}` checks the exact paused engine frame and1–128-frame
+  shape; `dense-stepping` acknowledges arming one callback. `checkpoint` returns
+  the actual resulting engine frame and Web Audio quantum origin.
+- `dense-state` requires a disarmed dense host and returns frame/outstanding/stop.
+  Both probes require stop refusal15: frame129/four results held, frame131/five held.
+- A separate mono marker output is one at the first sample of each rendered
+  quantum. The independent downstream probe uses that sideband to capture all
+  three actual stereo quanta, including the silent recovery call. The marker is
+  not mixed into or used to calculate the stereo samples.
+- The five input buffers and ten response buffers retain the primitive ownership
+  rules. Successful stop requires every returned buffer and zero command credits.
+
+`denseReports` contains both actual contexts, complete native-shaped `data`
+(samples, requests, responses, MIDI/semantic bytes, recovery/counts), three
+checkpoints, both stalled-result probes, actual downstream clocks and384 stereo
+probe samples/channel. Offline additionally retains all1024 output frames/channel.
+Only the actual session field normalizes for fixed-partition native comparison.
+`bindingChecks.dense` is a separate Node/Chromium binding report, not worklet proof.
+Native `--dense-json`/`--dense-two-thread-json` agree completely across whole/single/
+irregular/zero partitions. Their independent oracle checks131 samples,8449 MIDI
+packets and every byte of1968 semantic records (131 boundaries/655 decisions/1182
+ordered events). The larger observer bank has4096 records; no loss is accepted.
+These pauses/sideband observations are test-driver instrumentation, not a runtime
+musical quantum, production transport or continuous live-edit/deadline guarantee.
+In-flight transferred-response-buffer exhaustion is not demonstrated by this case.
+
 ## Browser report (`LLH2`)
 
 The runner's JSON report has `format: "LLH2"`. Historical `LLH1` reports lack the
@@ -798,7 +834,7 @@ alone is **not** proof that the following audio interval rendered successfully.
 | 0 | 4 | ASCII `LSJ1` |
 | 4 | 2 | Version1 |
 | 6 | 2 | Record stride160 |
-| 8 | 4 | Used record count, at most128 |
+| 8 | 4 | Used record count, bounded by prepared observer capacity |
 | 12 | 4 | Reserved zero |
 | 16 | 8 | Observer-dropped whole boundaries |
 | 24 | 8 | Observer-dropped records |
@@ -806,7 +842,7 @@ alone is **not** proof that the following audio interval rendered successfully.
 
 The total length is exactly `40 + count * 160`. The resolver loss high-water mark
 stays nonzero even if a later counter resets; it is not an invented aggregate of
-loss across resets. The capacity is128 records, not a musical transition quota.
+loss across resets. The default capacity is128 records; the dense host prepares4096. Neither is a musical transition quota.
 The normal fixture uses15 records/2440 bytes: four boundaries, four decisions and
 seven events. Observer and stopped-export storage are both prepared before render.
 

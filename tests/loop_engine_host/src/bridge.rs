@@ -61,9 +61,9 @@ impl Bridge {
         Self::with_fault(session, 0)
     }
     pub(crate) fn with_fault(session: u64, fault: u8) -> Result<Self, WireError> {
-        Self::prepare(session, fault, false)
+        Self::prepare(session, fault, 0)
     }
-    fn prepare(session: u64, fault: u8, staging: bool) -> Result<Self, WireError> {
+    fn prepare(session: u64, fault: u8, mode: u8) -> Result<Self, WireError> {
         if session == 0 {
             return Err(WireError::Session);
         }
@@ -71,7 +71,9 @@ impl Bridge {
             return Err(WireError::Operation);
         }
         let fault_witness = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let (control, engine, target) = if staging {
+        let (control, engine, target) = if mode == 2 {
+            scenario::dense::prepare(fault_witness.clone())
+        } else if mode == 1 {
             scenario::prepare_staged(fault_witness.clone())
         } else {
             scenario::prepare_with_fault(fault, fault_witness.clone())
@@ -87,7 +89,7 @@ impl Bridge {
             faulted: false,
             graphs: None,
             exports: None,
-            staging: staging.then(|| Box::new(crate::staging_bridge::Staging::new(session))),
+            staging: (mode == 1).then(|| Box::new(crate::staging_bridge::Staging::new(session))),
             fault_witness,
         })
     }
@@ -112,7 +114,10 @@ impl Bridge {
         Ok(bridge)
     }
     pub fn with_staging(session: u64) -> Result<Self, WireError> {
-        Self::prepare(session, 0, true)
+        Self::prepare(session, 0, 1)
+    }
+    pub fn with_dense(session: u64) -> Result<Self, WireError> {
+        Self::prepare(session, 0, 2)
     }
     pub fn staging_ingest(&mut self, bytes: &[u8]) -> Result<(), WireError> {
         crate::guarded(|| {

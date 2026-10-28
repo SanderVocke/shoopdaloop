@@ -220,6 +220,16 @@ revisions, explicit raw-MIDI refusal, and prepared nested-program activation.
 Its default browser runner additionally verifies all bytes in separate-memory
 Node/Chromium/actual offline/live paths; see its runnable setup below.
 
+The fixture also provides `--dense-json`/`--dense-two-thread-json` for a prepared
+one-frame stereo/MIDI take, same-frame A→B→C starts and clocked regular/explicit
+composites. Hold all four normal result credits through128+1 frames, then submit
+independent recovery Stop129. The held Seek130 refuses InvalidState after Stop;
+internal clocks continue without borrowing external credits. Both actual browser
+contexts compare all media, receipts and semantic records with the independent
+native tables. The acknowledged128/1/2-frame driver pauses and diagnostic marker
+output are fixture instrumentation, not runtime quanta or deadline guarantees.
+See [the dense host commands and limits](../../../../tests/loop_engine_host/README.md#dense-wraps-cascades-and-clocked-composites).
+
 ## Coherent state and immutable exports
 
 `Operation::State` and `Operation::Export` are deferred to **post-settlement,

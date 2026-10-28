@@ -19,6 +19,8 @@ use std::sync::{
     Arc,
 };
 
+pub(crate) mod dense;
+
 const FRAMES: usize = 13;
 const PAGES: usize = 256;
 

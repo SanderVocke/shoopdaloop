@@ -5,6 +5,7 @@ import { makeExportHost } from "./export_host.js";
 import { exportBindings } from "./export_script.js";
 import { makeStagingHost } from "./staging_host.js";
 import { stagingBindings } from "./staging_script.js";
+import { makeDenseHost, denseBindings } from "./dense_host.js";
 const RATE = 48000, Q = 128;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -51,14 +52,15 @@ class Host {
         assert(this.context.sampleRate === RATE, "unexpected sample rate");
         await this.context.audioWorklet.addModule("./worklet.js");
         const ready = this.wait("ready");
-        this.node = new AudioWorkletNode(this.context, "loop-fixture", { numberOfInputs: 0, numberOfOutputs: 1,
-            outputChannelCount: [2], processorOptions: { module: this.module, session: this.session, canary: this.canary, graph: this.graph, exports: this.exportMode === true, staging:this.stagingMode===true } });
+        this.node = new AudioWorkletNode(this.context, "loop-fixture", { numberOfInputs: 0, numberOfOutputs: this.denseMode ? 2 : 1,
+            outputChannelCount: this.denseMode ? [2,1] : [2], processorOptions: { module: this.module, session: this.session, canary: this.canary, graph: this.graph, exports: this.exportMode === true, staging:this.stagingMode===true,dense:this.denseMode===true } });
         this.node.port.onmessage = ({ data }) => this.message(data);
         this.node.onprocessorerror = () => this.reject(new Error("loop AudioWorklet processorerror"));
-        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { graph: this.graph || this.exportMode === true || this.stagingMode===true,staging:this.stagingMode===true } });
+        this.probe = new AudioWorkletNode(this.context, "loop-audio-probe", { numberOfInputs: this.denseMode ? 2 : 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { graph: this.graph || this.exportMode === true || this.stagingMode===true,staging:this.stagingMode===true,dense:this.denseMode===true } });
         this.probe.port.onmessage = ({ data }) => this.message(data);
         this.probe.onprocessorerror = () => this.reject(new Error("audio probe processorerror"));
         this.node.connect(this.probe);
+        if(this.denseMode)this.node.connect(this.probe,1,1);
         if (this.mode === "offline") {
             this.probe.connect(this.context.destination);
             const pause = this.context.suspend(Q / RATE);
@@ -153,6 +155,8 @@ async function runInner() {
         bindingChecks.checks.push("immutable exports across both revisions and all 16 initial MIDI channels");
         bindingChecks.staging=await stagingBindings(wasm,BrowserClient,BrowserBridge,BrowserStagingClient);
         bindingChecks.checks.push("owning resource uploads and prepared nested-program staging");
+        bindingChecks.dense=await denseBindings(wasm,BrowserClient,BrowserBridge);
+        bindingChecks.checks.push("dense wraps, cascades and clocked composites with unread results");
     }
     const reports = [], graphReports = [], exportReports = [];
     for (const mode of graphCanary ? [] : canary ? ["offline"] : ["offline", "live"]) {
@@ -182,7 +186,9 @@ async function runInner() {
     }
     const stagingReports=[],StagingHost=makeStagingHost(Host);
     for(const mode of canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551609":"18446744073709551608";const client=new BrowserClient(BigInt(session)),stagingClient=new BrowserStagingClient(BigInt(session));client.set_marker(0x51a17);const host=new StagingHost(mode,module,wasm.memory,client,session,stagingClient);try{stagingReports.push(await host.run());}finally{await host.cleanup();stagingClient.free();client.free();}}
-    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports, exportReports,stagingReports };
+    const denseReports=[],DenseHost=makeDenseHost(Host);
+    for(const mode of canary?[]:["offline","live"]){const session=mode==="offline"?"18446744073709551607":"18446744073709551606",client=new BrowserClient(BigInt(session));client.set_marker(0x51a17);const host=new DenseHost(mode,module,wasm.memory,client,session,null);try{denseReports.push(await host.run());}finally{await host.cleanup();client.free();}}
+    return { format: "LLH2", passed: true, cross_origin_isolated: crossOriginIsolated, bindingChecks, reports, graphReports, exportReports,stagingReports,denseReports };
 }
 export async function run() {
     try { return await runInner(); }

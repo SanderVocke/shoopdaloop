@@ -22,7 +22,9 @@ five of eight rows verified, including prepared ingress/program staging and nati
 and the fixture documentation maintained with these implemented milestones. Immutable
 exports now retain/read/release both capture revisions through native/bindings/actual
 worklets. Resource uploads/immutable reads and prepared nested-program staging now
-also pass native/bindings/actual hosts; broader host scenarios remain pending.
+also pass native/bindings/actual hosts. Dense one-frame playback, same-frame cascades,
+clocked composites and unread-result recovery now also pass all hosts. Prepared
+playable replacement, capture failure and in-flight transfer stalls remain pending.
 No loop benchmark or newer performance/deadline campaign is supplied.
 
 The following sections are chronological records, including old open-stage counts,
@@ -33,7 +35,40 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
-## Stage 7 resource uploads and prepared program staging
+## Stage 7 dense musical hosts
+
+[Dense host evidence](evidence/dense-host-stage7.md) records the same prepared
+five-loop scenario through direct facade, primitive wire, capacity-one native
+actors, Node/Chromium bindings and actual offline/live worklets. Four normal
+credits remain held through128+1 frames; independent recovery Stop129 works before
+any result is polled, and the held Seek130 correctly fails InvalidState261. The
+one-frame captured stereo/MIDI content plays at1, seeks at64 and cleans up at129.
+Same-frame A→B→C starts and clocked regular/explicit cursors continue independently
+of external credits. The explicit cursor ends at4 while C remains playing; this
+is not an audible composite-stop claim or a fallback-clock scenario.
+
+Full independent tables check131 stereo samples,8449 MIDI packets/126735 bytes,
+ten admission/execution records and1968 semantic records/314920 bytes across native
+whole/single/irregular/zero partitions. Actual128/1/2-frame calls acknowledge engine
+clocks and deliberately pause between calls. A separate mono marker output lets
+the downstream probe capture all384 stereo samples/channel, including the silent
+recovery quantum and zero short-call tails. Offline also checks all1024 samples per
+channel. Ordinary Wasm memory stays5,963,776 debug/5,898,240 release bytes; heap0,
+all ten result/five input buffers returned, zero credits and256/16/16/0 recovery.
+
+Both profiles pass53 fixture tests, seventeen binding groups per Node/Chromium,
+ten successful actual contexts plus four existing exact Rust-origin failure gates.
+Seventeen Python tests include two new mutation cases requiring complete dense
+media/semantic/receipt, stalled-credit, clock, silent-tail, memory and ownership
+proof. Workspace regression passes2141 tests/four existing skips; warning-denied
+build/docs/format/policies and documented native modes/filter pass. Miri remains
+pending:29 graph/export/staging/dense cases plus applicable ingress/observer debt
+are not newly interpreted. No production library, dependency, manifest or lockfile
+changes are made in this milestone. Stage7 remains5/8: broader replacement/capture
+failure/in-flight transfer stalls, planner canaries, CI artifacts and Stages8–10
+remain open. This is not performance, deadline, remote-CI or final-delivery evidence.
+
+## Historical Stage 7 resource uploads and prepared program staging
 
 [Full staging evidence](evidence/staging-stage7.md) records native direct/capacity-one
 actors, shared Node/Chromium bindings and actual separate-memory offline/live worklets

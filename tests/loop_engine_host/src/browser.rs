@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod native_dense;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod native_export;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod native_graph;
@@ -126,7 +128,7 @@ pub struct BrowserBridge {
     right: [f32; 128],
     midi_input: [MidiBuffer; 1],
     midi_output: [MidiBuffer; 1],
-    journal: [u8; JOURNAL_BYTES],
+    journal: Box<[u8]>,
     journal_len: usize,
     journal_overflow: u32,
     semantic: Box<[u8]>,
@@ -138,6 +140,7 @@ pub struct BrowserBridge {
     recovered: [u32; 4],
     exports: Option<Box<ExportBuffers>>,
     staging: Option<Box<StagingBuffers>>,
+    dense: bool,
 }
 struct StagingBuffers {
     request: [u8; crate::staging_wire::REQUEST_BYTES],
@@ -156,6 +159,23 @@ impl BrowserBridge {
             Bridge::with_fault(session, fault).map_err(protocol_error)?,
             false,
         ))
+    }
+    pub fn new_dense(session: u64) -> Result<Self, u32> {
+        let mut host = Self::from_core(Bridge::with_dense(session).map_err(protocol_error)?, false);
+        host.dense = true;
+        host.midi_output = [MidiBuffer::new(
+            crate::scenario::dense::MIDI_EVENTS,
+            crate::scenario::dense::MIDI_BYTES,
+        )
+        .unwrap()];
+        host.journal = vec![0; 262144].into_boxed_slice();
+        host.semantic = vec![
+            0;
+            crate::journal::HEADER
+                + crate::journal::STRIDE * crate::scenario::dense::RECORDS
+        ]
+        .into_boxed_slice();
+        Ok(host)
     }
     pub fn new_staging(session: u64) -> Result<Self, u32> {
         let mut host = Self::from_core(
@@ -308,7 +328,7 @@ impl BrowserBridge {
             right: [0.; 128],
             midi_input: [MidiBuffer::new(2, 6).unwrap()],
             midi_output: [MidiBuffer::new(256, 1024).unwrap()],
-            journal: [0; JOURNAL_BYTES],
+            journal: vec![0; JOURNAL_BYTES].into_boxed_slice(),
             journal_len: 0,
             journal_overflow: 0,
             semantic: vec![0; crate::journal::BYTES].into_boxed_slice(),
@@ -320,6 +340,7 @@ impl BrowserBridge {
             recovered: [0; 4],
             exports: None,
             staging: None,
+            dense: false,
         }
     }
 }
@@ -547,7 +568,7 @@ impl BrowserBridge {
             let Some(at) = start.checked_add(offset as u64) else {
                 return 3;
             };
-            if at < 4 {
+            if at < if self.dense { 1 } else { 4 } {
                 self.input_left[offset] = 2. * (at + 1) as f32;
             } else if self.exports.is_some() && (128..132).contains(&at) {
                 self.input_left[offset] = 20. * (at - 127) as f32;
@@ -555,7 +576,7 @@ impl BrowserBridge {
             self.input_right[offset] = self.input_left[offset] * 10.;
         }
         for (at, packet) in [(0, [0x90, 60, 100]), (2, [0x80, 60, 45])] {
-            if at >= start && (at - start) < frames as u64 {
+            if (!self.dense || at == 0) && at >= start && (at - start) < frames as u64 {
                 if let Err(error) = self.midi_input[0].push((at - start) as u32, frames, &packet) {
                     return wire::runtime_error(error);
                 }
