@@ -11,7 +11,9 @@ coverage is also verified; comparable measurements, final integration and full
 feature parity remain pending.
 Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
 
-- Worktree: `/tmp/shoopdaloop-milestone-1`.
+- Current persistent worktree:
+  `/home/sander/dev/shoopdaloop/.cache/milestone-1-worktree`.
+  Initially `/tmp/shoopdaloop-milestone-1`; that path is now a compatibility symlink.
 - Branch: `feat/milestone-1-engine-service`.
 - Initial dependency revision: `d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94`.
 - That revision was the checked-out and remote `feat/loop-execution-layer` head
@@ -784,6 +786,83 @@ Only owned tests/docs changed; no further dependencies, shared metadata or prote
 source/fixtures/evidence were edited. These results do not supply raw callback
 percentiles, command/meter costs, live-export throughput or a common-workload
 current-engine baseline: those are the remaining Stage 6 work.
+
+## Stage 6 measurement-host checkpoint and declared collection contract
+
+The native-only [measure_service host](../../src/rust/shoop_engine_service/examples/measure_service.rs)
+is buildable and smoke-validated. It is a collector checkpoint, **not completed
+M1-A9 evidence**. Before final collection, the common workload is declared as:
+
+- 48 kHz nominal rate, **64-frame callbacks**, one **4,096-frame** stereo/MIDI loop,
+  empty MIDI input/content, smoothing/delay disabled, unity live/playback gains.
+  Live inputs are `[0.25,0.5]`; imported playback samples are `[0.5,1]`. Common idle
+  outputs must be `[0.25,0.5]`, common steady outputs `[0.75,1.5]` at every sample,
+  including actual wraps. Both common hosts have an empty MIDI channel; actual
+  restoration packet counts remain observable rather than being erased to imply
+  equal internal work.
+- The new service includes its real loop facade, independent stereo DSP, bounded
+  typed bridge, MIDI restoration, meters and reserved optional work. The baseline
+  uses public current-engine `Engine`/`Session`, prepared bounded audio/MIDI
+  channels and driver-style external ports, live passthrough plus loop playback,
+  and a prepared graph. It is not a two-channel scalar microbenchmark or an old
+  plugin/session compatibility claim. Port adaptation, graph shape, meter fields,
+  MIDI capacities/policies and prepared resource storage differ and must be
+  separated from genuine common-workload overhead in the eventual report.
+- Service-only preset load admits one prepared configuration each callback and
+  truthfully refuses a second with `Full`; equal coefficients preserve the sample
+  oracle while actual revisions advance. Poll load adds one coherent state query
+  and 64 independent peak reads per callback. Export load records continuously
+  from zero and cycles prefix export/cursor/owning **256-byte reads**/release; every
+  copied byte agrees with the retained constant stereo input. This is a declared
+  representative transfer load, not maximum possible throughput.
+- Each process runs one implementation/workload. Intended final collection is
+  **three fresh-process repetitions, 2,048 measured callbacks after 128 warm-up
+  callbacks** per case, all raw samples retained. Median, nearest-rank p95/p99/max,
+  command attempts/refusals, meter costs, byte throughput and memory observations
+  must include source/configuration/tool/environment provenance. Clock overhead is
+  reported, not subtracted to manufacture a result. The host's current bounds are
+  16–2,048 samples and 1–512 warm-up callbacks, keeping active capture inside its
+  prepared 8,192 × 256-byte page pool.
+
+`callback_ns` includes the same shared heap/free guard plus processing/adaptation/
+handoff; output oracles, control admission, return draining and meter timing are
+outside that span. Callback storage, raw timing rows, clock probes and read buffers
+are prepared; formatting/file I/O occurs after callbacks. `elapsed_wall_ns` covers
+the unpaced measured host loop including UI/result/oracle work, so its copied-byte
+rate is not a physical-device throughput/deadline guarantee. RSS is whole-process
+Linux RSS including executable/allocator/result storage, not isolated component
+allocation; resource/media pool counts are reported separately before cleanup.
+
+Observed validation: all seven debug smokes (16 samples/two warm-up) and all seven
+warning-denied release smokes (128 samples/two warm-up, including real wraps) pass.
+The native-only examples also compile for Wasm with an explicit non-runnable
+measurement entry point; that is a build check, not Wasm timing/execution evidence.
+Formatting, warning-denied workspace build, test policy and closed inventory
+(**217 modules**) passed; nextest again passed **2,176, four existing skips,
+111 binaries**. The portable library/test source is unchanged from the preceding
+20-native/18-Node checkpoint; no new portable test is claimed. Logs:
+`target/milestone-1/measurement-host-{smoke,checkpoint-gates}.log` and the labeled
+`measure-{release-}smoke-*.csv` files. Final collection/statistics/reporting remains
+necessary before checking Stage 6 complete.
+
+### Durable worktree and regular upstream checkpoints
+
+After the user's reboot-risk reminder, the isolated checkout moved off `/tmp` to
+`/home/sander/dev/shoopdaloop/.cache/milestone-1-worktree`, an already ignored area
+of the writable repository on disk. Direct `git worktree move` could not cross
+filesystems, and the sibling `/home/sander/dev` location was read-only; copying the
+owned checkout and `git worktree repair` established the verified persistent path.
+The original directory was retained as `/tmp/shoopdaloop-milestone-1.before-persistent-move`;
+`/tmp/shoopdaloop-milestone-1` is now just a symlink. The existing disk-backed build
+namespace is unchanged, and no shared ignore/source change was required.
+
+The initial measurement WIP was also archived before relocation at
+`target/milestone-1/measurement-host-wip-before-move.tar.gz`, SHA-256
+`76e4bfc37469a269c9bb07e4a9bfa67b787e4d4054b02842127436ae70f8e0e5`.
+That historical archive contains the pre-move partial host, not later validated
+source. Regular buildable commits/pushes on `feat/milestone-1-engine-service` remain
+the upstream recovery path; local persistence is not a substitute for pushing.
+The loop executor's checkout/branch and protected work were not changed.
 
 ## Existing references inspected
 

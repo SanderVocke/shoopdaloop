@@ -162,6 +162,30 @@ or session graph. Neither that comparison nor checked `shoop_latency` arithmetic
 adds history, postroll, render advance or playback-window support to this service.
 See [findings and raw evidence](../../../docs/integration/MILESTONE_1.md#stage-5-fixed-delay-physical-evidence-and-compatibility-findings).
 
+## Native measurement host — collector checkpoint
+
+```sh
+cargo run --locked --release -p shoop_engine_service --example measure_service -- service steady 128 2
+cargo run --locked --release -p shoop_engine_service --example measure_service -- current steady 128 2
+```
+
+Arguments are `service|current WORKLOAD SAMPLES WARMUP`. Service workloads are
+`idle`, `steady`, `preset`, `poll`, `export`; the current-engine comparison supports
+`idle` and `steady`. All use 64-frame callbacks and constant inputs; the common
+idle/steady graphs retain a 4,096-frame stereo take and check identical stereo
+samples. Export load instead starts an empty, continuously growing recording.
+MIDI packet counts expose restoration-policy differences rather than filtering
+them away.
+CSV goes to stdout only after processing; clock/RSS/resource metadata goes to
+stderr outside callbacks. Input adaptation, callback processing and handoff are
+heap/free guarded. Timing/result storage and the owning read buffer are prepared.
+
+Seven debug/release smoke cases pass, including wraps and continued recording with
+256-byte prefix reads. Repeated final runs, statistics and the comparable raw
+measurement bundle are still pending. Do not treat these validation smoke timings
+as performance/deadline evidence. Full protocol, device and plugin costs are not
+modeled by this native host.
+
 ## Verification
 
 Run inside the repository development environment (on Nix: `nix develop`):

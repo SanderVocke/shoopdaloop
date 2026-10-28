@@ -31,8 +31,12 @@ Execution contract:
 
 ## Progress
 
-- Worktree: `/tmp/shoopdaloop-milestone-1`, branch
-  `feat/milestone-1-engine-service`; the shared checkout remains untouched.
+- Persistent worktree:
+  `/home/sander/dev/shoopdaloop/.cache/milestone-1-worktree`, branch
+  `feat/milestone-1-engine-service`. `/tmp/shoopdaloop-milestone-1` is now only a
+  compatibility symlink. The user requested regular upstream checkpoints because
+  `/tmp` can disappear on reboot; the worktree was copied/repaired onto disk and
+  its old directory retained. The loop executor's checkout was not switched or reset.
 - Pinned initial loop/runtime revision: `d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94`.
   Final completed-upstream agreement/integration is still pending.
 - Baseline: 341 native tests passed with warnings denied, and both dependency
@@ -82,6 +86,14 @@ Execution contract:
   closed inventory 217 modules. Raw comparable release measurements remain before
   Stage 6 can be checked complete. The retained-ticket fixture failure and its
   off-render ticket-lifetime correction are recorded in the integration notes.
+- A native-only measurement host is now implemented and smoke-validated for five
+  service workloads and paired current-engine idle/steady graphs. All seven cases
+  pass debug and release; 128-sample release smokes include real wraps. Uniform raw
+  CSV and separate metadata expose callback/control/meter costs, packets, copied
+  bytes and RSS/pool occupancy. These are executable validation smokes, not accepted
+  M1-A9 results: repeated full release runs, statistics, environment/provenance and
+  the final comparable evidence bundle still remain. This checkpoint's workspace
+  gates again passed 2,176 tests with four existing skips and closed inventory 217.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency
