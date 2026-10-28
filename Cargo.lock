@@ -4400,6 +4400,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_engine_service"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "rtrb",
+ "shoop_example_dsp",
+ "shoop_loop_engine",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_example_dsp"
 version = "0.3.0"
 dependencies = [

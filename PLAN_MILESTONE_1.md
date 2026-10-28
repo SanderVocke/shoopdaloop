@@ -2,7 +2,7 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stages 0–2 verified; Stage 3 engine service is next.**
+**In progress: Stages 0–3 verified; Stage 4's complete public scenario is next.**
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
@@ -48,8 +48,16 @@ Execution contract:
   Stage 1 contracts, finite limits, composition decision and probe definition are
   recorded in the integration notes. Stage 2's new DSP is implemented and has
   15 passing guarded tests in native debug, native release and real Node execution;
-  its Wasm library build also passes. The full current native suite passes 2,156
-  tests with four existing skips. Stages 3–7 are not yet implemented.
+  its Wasm library build also passes. Its Stage 2 native workspace baseline passed
+  2,156 tests with four existing skips.
+- Stage 3 adds the real native service with nine guarded tests passing debug,
+  release and actual Node execution, plus a warning-denied Wasm build. Full audio
+  and 133-packet MIDI oracles, typed DSP timing, coherent route cuts/live stereo
+  prefix reads, recovery/disconnect/fault receipts and inert state/meter polling
+  pass. The current workspace passes 2,165 tests with four existing skips; closed
+  inventory contains 217 modules. Startup imports, the full public example/MIDI
+  prefix scenario, latency findings, measurements and final integration remain
+  Stages 4–7. See the named tests and commands in the integration notes.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency
@@ -263,18 +271,18 @@ refusal paths perform no heap allocation/freeing; invalid requests change no sta
 
 ### Stage 3 — Engine service, native endpoints and telemetry
 
-- [ ] Add preparation and separate typed control/render endpoints around the actual
+- [x] Add preparation and separate typed control/render endpoints around the actual
       loop facade and Stage 2 DSP, with one graph/render owner and checked IDs.
-- [ ] Build the stereo/MIDI live+playback -> DSP -> output+capture graph before the
+- [x] Build the stereo/MIDI live+playback -> DSP -> output+capture graph before the
       first callback, plus optional staged graph storage for the required route cut.
-- [ ] Expose only the needed loop/DSP operations, state/export/read/release and
+- [x] Expose only the needed loop/DSP operations, state/export/read/release and
       explicit stop/disconnect/cleanup. Preserve requested/admitted/terminal phases
       and local owning returns; specify late and callback-end behaviour.
-- [ ] Add peak-since-read mirrors with independent UI reads and loop-state
+- [x] Add peak-since-read mirrors with independent UI reads and loop-state
       publication via supported query/observer APIs. Avoid a meter request queue.
-- [ ] Implement prepared credit limits, recovery and stopped reclamation for the
+- [x] Implement prepared credit limits, recovery and stopped reclamation for the
       new service-owned resources. Do not replace loop-owned lifecycle machinery.
-- [ ] Test the public endpoints, including ordinary command failures, no-warm-up
+- [x] Test the public endpoints, including ordinary command failures, no-warm-up
       initial state and the selected graph route activation semantics.
 
 **Verification:** guarded native tests prove local calls reach both real components,

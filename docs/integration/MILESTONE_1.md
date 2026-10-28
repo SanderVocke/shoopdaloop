@@ -68,8 +68,8 @@ promises of sufficient capacity for arbitrary MIDI or application workloads.
 | Host channels | Stereo input/output; one MIDI input/output |
 | MIDI storage | 2,048 events and 8,192 bytes per port; 512-byte individual packets |
 | Resource pool | 32 slots; 4,096 pages of 256 bytes; no callback growth |
-| Capture preparation | Two banks/groups, two members per group, 8,192 staging bytes per group |
-| MIDI indexing | Eight prepared versions, eight checkpoints/version, 128 replay events |
+| Capture preparation | Two banks/groups, two members per group, 32,768 staging bytes per group |
+| MIDI indexing | Eight prepared versions, 32 checkpoints/version, 128 replay events |
 | Runtime ingress/scheduling | 16 normal command slots plus its existing recovery slot; 32 scheduled events |
 | Runtime callback budgets | 16 commands, 32 events, 128 validation steps, 1,024 optional transfer bytes, 16 publications |
 | Loop domain | One loop slot; eight normal requests plus recovery; eight media slots; four exports |
@@ -104,7 +104,10 @@ refined during implementation without changing these timing/ownership contracts.
 
 - Queue admission reserves a reliable return. It is not semantic execution.
   Preserve the loop facade's separate owning completion and domain execution
-  streams. Poll and destroy owners only off-render.
+  streams. Applications poll/dispose owning returns off-render. The service's
+  render-side facade controller may move public owners into pre-reserved return
+  storage, but must not destroy them or retain its private cancellation flags in
+  the UI stream.
 - A DSP `SelectPreparedPreset` names a generation-checked prepared preset, a
   requested absolute engine frame and the expected component revision. Its
   component-defined terminal result must distinguish applied frame/from-to
@@ -376,6 +379,108 @@ guidance were unchanged from the dependency base in the concurrent checkout,
 whose loop-host finishing commits had advanced to `8242de59`. None of that ongoing
 work was imported or modified. Continue actual service/loop integration in Stage 3.
 
+## Stage 3: native service and endpoints
+
+The production service wrapper is implemented using only the pinned public
+loop APIs. Its render owner keeps the loop controller, with bounded native
+frontend queues, independently reserved owning/domain returns and a separate
+render-owned disconnect-stop reservation. Public completion owners are moved to
+its UI pipe while the controller's private prepared cancellation flag remains
+local; holding a previous UI recovery result must not pin that local recovery
+flag. A bounded request/inner-sequence table correlates outcomes; it does not
+schedule musical time. The existing resolver/scheduler still owns execution.
+
+The first new-wrapper tests correctly refused its underprovisioned preparation.
+The earlier provisional 8,192-byte capture group cannot hold the requested 2,048
+MIDI event headers: the public capture-member format needs `events * 12 + bytes`,
+plus the stereo audio block. At maximum 64 frames this is
+`2048 * 12 + 512 + 64 * 2 * 4 = 25,600` bytes per group. The service now prepares
+32,768 bytes/group, retaining two members (interleaved stereo audio plus MIDI)
+and two banks. This corrects only new service storage, not a dependency defect or
+acceptance change. Runtime host MIDI ports remain 2,048 events/8,192 bytes; loop
+role packet storage is separately bounded at 512 bytes and is not advertised as
+unlimited MIDI throughput.
+
+The full independent sample oracle also checked the actual transition outcomes and
+caught a first-record `Capacity` refusal. Interval reservation preflights the full
+2,048-event bound against the MIDI index's 128-event replay interval: one initial
+checkpoint plus 16 possible additions requires at least 17 checkpoints. The
+service now prepares 32/version rather than the provisional eight. This is a
+second service-configuration correction; no sample/packet expectation or protected
+implementation is changed to obtain a pass.
+
+### Observed service verification
+
+`src/rust/shoop_engine_service/tests/service.rs` contains nine guarded portable
+cases. The initial graph processes frame zero without a warm-up callback. The
+record/play/preset case checks every stereo sample and all 133 absolute MIDI
+packets across whole, single-frame, irregular and zero-frame partitions. MIDI
+expectations include the public restoration contract: canonical center pitch and
+released CC64/69/66 on all 16 channels, plus the initially held note, at each play/
+wrap entry. They do not discard restoration packets to compare only notes.
+
+The route/prefix case stages a prepared graph, activates it at an interior cut,
+and changes capture from post-DSP to live input without restarting the take.
+A same-frame query delivered before activation observes graph epoch 2 and unchanged
+topology epoch 0. It reads the retained stereo prefix through an owning buffer after
+further recording and checks all raw interleaved bytes. Initial graph epoch 1 and
+resolver epoch 0 are distinct: a draft test supplied topology epoch 1 and correctly
+received `Timeline(InvalidState)` before that test precondition was corrected.
+An additional rejection case checks wrong graph epoch returns `StaleEpoch` with
+the candidate owner, not a successful activation.
+
+Other cases verify normal-credit refusal, retained-ticket `Busy`, foreign route/
+ticket identity, cancellation before forwarding, requested/delivered/actual late
+loop-query frames, zero/end boundaries, invariant complete streams with state
+queries and zero/one/64 meter polls, stalled owning/semantic recovery returns,
+disconnect stop, and processor faults before/after actual DSP publication. Faults
+retain real prior receipts, explicitly abort unfinished service work, do not replay
+the callback, and recover all resource pages/versions/snapshots with zero media
+references after stopped extraction. Zero calls
+report zero work rather than recycling the preceding report's counters.
+
+Observed commands in `nix develop`, with two build/test workers and warnings denied:
+
+```sh
+cargo test --locked -p shoop_engine_service
+cargo test --locked --release -p shoop_engine_service
+cargo build --locked -p shoop_engine_service --target wasm32-unknown-unknown
+python3 scripts/run_wasm_tests.py --profile dev --runtime node --package shoop_engine_service
+cargo fmt --all -- --check
+cargo build --locked --workspace
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace \
+  --features shoop_engine/app_backend --profile ci --test-threads 2
+python3 scripts/check_shoop_test_usage.py
+python3 scripts/check_tracing_coverage.py --require-closed
+python3 scripts/check_wasm_test_dependencies.py \
+  --package shoop_example_dsp --package shoop_engine_service
+python3 scripts/check_rt_runtime_boundary.py
+python3 scripts/check_loop_engine_boundary.py
+```
+
+Native debug **9 passed**, native release **9 passed**, and actual pinned Node
+**9 executed / zero failed**. The Wasm build passed separately. The local Node
+selection is the same preinstalled pinned 22.22.2 tool described for Stage 2; no
+runner/version check was changed. Workspace nextest passed **2,165 tests, four
+existing skips, 108 binaries**. Closed tracing passed with **217 modules**;
+formatting, warning-denied workspace build, test policy, both new packages' Wasm
+dependency policy and Linux/Windows/macOS/Wasm dependency-boundary checks passed.
+These are native tests and target/dependency checks, not Windows/macOS execution,
+a new AudioWorklet application or device evidence. Logs:
+`target/milestone-1/service-gates.log` and
+`target/milestone-1/service-workspace-gates.log`.
+
+Only five new service inventory rows and its new-package argument were added to
+shared metadata. The concurrent checkout had advanced to `dbe6d623`, with workflow
+finishing changes including the loop package in the same Wasm-check invocation.
+Those changes were inspected but not imported piecemeal; this isolated patch adds
+only the service argument alongside its earlier DSP argument, preserving existing
+rows/checkers/gates. Final integration must retain both upstream and milestone
+additions. All protected paths remain identical to the initial dependency pin.
+The [service README](../../src/rust/shoop_engine_service/README.md) describes public
+hosting, capacities and ownership. Its initial empty-loop preparation is not yet
+the required startup-import/full-MIDI-prefix example.
+
 ## Existing references inspected
 
 - `src/rust/shoop_backend/src/lib.rs`: current application-facing `Backend` trait,
@@ -395,9 +500,10 @@ work was imported or modified. Continue actual service/loop integration in Stage
 
 ## Remaining work
 
-Stages 0–2 are verified, including Stage 2's approved shared metadata and closed
-gates. Stages 3–7 must implement the production service, complete stereo/MIDI/media
-scenarios, its portable Node tests, latency-probe findings, adversarial lifecycle
-and measurements. Final integration
-still waits for the agreed completed loop revision and final-head CI/review.
+Stages 0–3 are verified against the initial pin, including approved additive
+metadata, nine portable service tests and closed workspace gates. Stages 4–7 must
+complete startup imports, the full public stereo/MIDI/media example and immutable
+MIDI-prefix/initial-state evidence, latency-probe findings, further adversarial
+lifecycle, two-thread execution and measurements. Final integration still waits
+for the agreed completed loop revision and final-head CI/review.
 No complete feature-parity, latency compensation or callback-deadline claim is made.

@@ -109,11 +109,12 @@ for the native slice below; it is not a universal processor-operation interface.
 
 ## Native engine-service slice
 
-The proposed `shoop_engine_service` composes the existing loop facade and an
+The native `shoop_engine_service` composes the existing loop facade and an
 independent `shoop_example_dsp` in one graph with one render owner. The DSP module
 knows runtime processor/control types, not loops, devices or application backends.
-The service prepares/imports content, connects roles and exposes native typed
-control plus independent telemetry; it does not define the eventual session stack.
+The service prepares roles/routing, exposes native typed control and independent
+telemetry, and preserves public media ownership. Startup imports and the complete
+public scenario are the next stage; this does not define the eventual session stack.
 
 An external feasibility spike demonstrates a narrow prepared control bridge without
 changing protected loop/runtime APIs. A component-owned render control handle
@@ -129,9 +130,11 @@ peak telemetry, coherent loop queries and immutable export/read ownership. Prepa
 fixed-role route changes remain loop/runtime configuration operations; a DSP preset
 change does not imply an atomic transaction with a loop query or graph activation.
 
-The independent DSP library is implemented and tested natively and in Node/Wasm.
-The production service, complete stereo/MIDI/media scenario, latency findings and
-measurements are still pending. See the bounded
+The independent DSP and native service libraries are implemented and guarded tests
+run natively and in Node; their Wasm builds pass. The service tests cover real
+loop/DSP composition, exact typed operation timing, coherent live route changes,
+stereo prefix reads and lifecycle ownership. The complete imported stereo/MIDI
+scenario, latency findings and measurements remain pending. See the bounded
 [compatibility inventory](docs/integration/PARITY.md) and
 [integration contract/evidence](docs/integration/MILESTONE_1.md). Browser/IPC
 execution of this same service and general wire adapters belong to later work.
