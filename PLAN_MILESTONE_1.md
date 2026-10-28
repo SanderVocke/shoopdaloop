@@ -119,6 +119,12 @@ Execution contract:
   its existing manual dispatch can be used after final integration without
   weakening triggers/gates. Initial-pin acceptance mapping and final rerun planning
   may continue independently; final dependency agreement remains mandatory.
+- A provisional M1-A1–M1-A10 implementation/evidence map and ordered final rerun
+  sequence now identify named owned tests, artifacts, exclusions and still-open
+  closure conditions in the integration notes. This is initial-pin preparation,
+  not the final acceptance audit. Warning-denied rustdoc for both owned crates
+  passes; their doctest selections contain zero tests each and add no executable
+  coverage. All Stage 7 checkboxes remain open until actual final-head evidence.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency

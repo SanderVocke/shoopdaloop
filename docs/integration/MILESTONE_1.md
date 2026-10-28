@@ -1039,6 +1039,79 @@ source. Regular buildable commits/pushes on `feat/milestone-1-engine-service` re
 the upstream recovery path; local persistence is not a substitute for pushing.
 The loop executor's checkout/branch and protected work were not changed.
 
+## Provisional acceptance map and final rerun sequence
+
+This maps the unchanged **M1-A1–M1-A10** criteria to actual initial-pin implementation
+and evidence. It is **not final acceptance**: the completed agreed dependency,
+final integrated-head reruns, remote CI and review/delivery conditions are still
+unfulfilled. Named tests below are exact search anchors in the linked owned test
+files; historical counts refer to their recorded source, not future integrated code.
+
+| Criterion | Initial-pin implementation and observed evidence | Still required for final closure |
+| --- | --- | --- |
+| **M1-A1 compatibility direction** | [Parity inventory](PARITY.md) maps current backend/engine tests, reusable latency/session modules, intended owners and explicit gaps. [Architecture](../../ARCHITECTURE.md) distinguishes implemented native slice from proposed protocols and undescribed application layers. | Keep any affected ownership/compatibility findings current after integration; do not reinterpret this bounded map as complete feature parity. |
+| **M1-A2 independent composition** | DSP [manifest](../../src/rust/shoop_example_dsp/Cargo.toml) has only runtime production dependencies. Service [preparation](../../src/rust/shoop_engine_service/src/preparation.rs) and [render](../../src/rust/shoop_engine_service/src/render.rs) compose one real loop facade and DSP graph. `actual_loop_and_component_control_match_full_partition_oracles_without_warmup` exercises both; five standalone composition-spike tests passed both profiles. Four-target production/build boundaries and Wasm dependency isolation passed. | Recheck production trees/boundaries and one-render-owner paths against the completed dependency; rerun the spike if its public seams are affected. |
+| **M1-A3 typed DSP control** | DSP [tests](../../src/rust/shoop_example_dsp/tests/dsp.rs): `first_callback_has_real_audio_and_interior_configuration_changes`, `frame_zero_and_callback_end_activation_have_exact_nonempty_semantics`, `refusal_details_preserve_requested_frames_and_do_not_change_state`. Component-defined preset IDs/requests/receipts report actual timing/revisions; service partition oracle checks frame 5 and native two-thread case checks frame 137. | Rerun exact-frame/refusal/revision oracles; keep generic callback-start metadata distinct from actual application receipts. No float-encoded operation or loop-vocabulary substitute. |
+| **M1-A4 musical/media correctness** | [Public scenario tests](../../src/rust/shoop_engine_service/tests/one_track.rs): `public_scenario_matches_complete_oracles_across_all_partitions` and `alternate_valid_query_declaration_order_preserves_the_public_scenario`. Six runs/profile each check 42 stereo frames, 487 absolute packets and 378 copied bytes, plus stopped-live-input history. All sample/packet/outcome injections fail with intended assertions in debug/release. | Run both profiles and all three negative executable probes again on final head; no hash-only or normalized-packet substitute. |
+| **M1-A5 configuration cuts** | [Startup tests](../../src/rust/shoop_engine_service/tests/startup.rs): `startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_resource_handle_leaks`; [service tests](../../src/rust/shoop_engine_service/tests/service.rs): `prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes`, plus full public route/preset scenario. Preparation has valid initial graph/roles before first engine call; zero/end requests and graph/topology epochs are checked. | Repeat frame-zero/no-hidden-callback, coherent live route and interior preset checks; do not claim atomic DSP/loop/graph transactions. |
+| **M1-A6 visibility** | DSP `peaks_accumulate_since_read_without_control_requests_or_dsp_changes` and `meter_read_frequency_changes_neither_samples_nor_packets`; service `state_queries_and_meter_read_frequency_leave_complete_streams_unchanged`. Complete scenario rereads stereo/MIDI prefix and every initial-state channel while capture appends; stale cursor/double release and retention ownership are checked. | Rerun complete streams/bytes/metadata and 0/1/64 read-frequency cases; meter atomics remain separate from coherent resolver cuts. |
+| **M1-A7 safety/lifecycle** | Both production crates forbid unsafe code. Debug/release and portable Node guards cover prepared ingress, render/publication/returns and refusals. Service tests `all_normal_credits_and_both_return_streams_can_stall_while_wraps_and_stop_progress`, `cancel_recovery_executes_with_all_normal_credits_held_then_disconnect_reclaims_future_work`, `saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across_repeated_lifecycles`, `disconnect_during_recording_retains_full_returns_and_pending_preset_until_stopped_cleanup`, `processor_fault_keeps_actual_component_and_loop_receipts_without_replay`, and `separate_control_thread_observes_exact_execution_while_render_never_waits` prove stated bounds/recovery and off-render reclamation. | Reinspect changed callback-reachable adapter paths and rerun these guards at final head; preserve nonblocking callbacks, actual published results and complete stopped recovery. Pool recovery is not zero process RSS. |
+| **M1-A8 parity-risk probe** | [Latency tests](../../src/rust/shoop_engine_service/tests/latency_probe.rs): `physical_capture_markers_and_missing_windows_agree_across_partitions`, native `current_engine_retains_history_postroll_and_independent_logical_windows`. Eighteen physical cases/24 legacy channel references, raw [237-line transcript](evidence/latency-probe.txt), exact debug/release agreement and checked mapping arithmetic identify missing history/tail/window mechanisms. | Rerun raw physical/marker oracles and narrow old references. Findings satisfy the probe, not production compensation; no trimming or timestamp shifts. |
+| **M1-A9 measurement/portability** | [Release report](#stage-6-release-measurements-on-the-initial-dependency-pin): 43,008 observations, comparable common Engine/Session workload, raw artifacts/provenance, all tails/refusals/throughput/RSS, explicit regressions and work differences; nine collector/auditor tests pass. DSP 15 and service 20 native tests/profile; actual Node 15+18, separate Wasm builds. | Run fresh native/Wasm/actual Node discovery and clean-source release collection after final integration. Retain prior artifacts as historical; no unmeasured equivalence/deadline claim. |
+| **M1-A10 collaboration/delivery** | Isolated persistent worktree, regular pushed milestones, draft PR #889 and empty protected-path differences against initial pin. Only agreed additive shared metadata was edited; unfinished owner work remains untouched. Run instructions and scoped findings are updated. | **Not fulfilled:** agreed completed-upstream integration, final-head regressions/CI/artifacts, ready-for-review transition, review outcome/explicit unavailability and independent final completion audit. Empty check/review selections are not success. |
+
+Owned rustdoc preparation at `3f1c3329`: in Nix, `RUSTFLAGS` and `RUSTDOCFLAGS` both
+`-D warnings`, `cargo doc --locked --no-deps -p shoop_example_dsp -p shoop_engine_service`
+passed. `cargo test --locked --doc` for those packages selected **zero tests in each**;
+this is explicitly no new executable coverage. Log:
+`target/milestone-1/stage-7-owned-rustdoc.log`. Runnable example/guarded suite evidence
+above remains distinct. This provisional map does not check the final audit row.
+
+### Ordered final reruns — execute only after dependency agreement
+
+1. Obtain the completed dependency **full SHA and agreement**, with its final
+   required host/Miri/regression inventory. Inspect source/status read-only; do not
+   infer completion from the latest commit or copy a mutable snapshot. Pause for
+   coordination if a protected public API change/prerequisite is necessary.
+2. Integrate that whole agreed revision into this isolated branch. Resolve only
+   milestone-owned adapters and agreed additive metadata; preserve every upstream
+   fix and the loop-package checker argument alongside DSP/service arguments.
+   Do not switch/reset/stash the other executor. Record the integrated code SHA
+   and compare protected paths against the new dependency, not just the old pin.
+3. Inside Nix, warning-denied debug/release DSP/service tests, public `one_track`
+   and `latency_probe` executables and all three deliberate `one_track` mismatch
+   injections. Confirm full samples/packets/bytes, startup, route/preset cuts,
+   state/meter independence, full-credit stalls, cancellation, active disconnect,
+   faults, repeated cleanup and bounded two-thread execution. Current baseline is
+   **35 native tests/profile**, not a substitute for recording final discovery.
+   Rerun the standalone composition spike in both profiles when affected.
+4. Build both libraries for Wasm; use the pinned provisioned Node and actual
+   repository runner, recording per-package discovered/executed counts and native
+   exclusions. Current portable baseline is **33 actual Node tests**, never an
+   empty-selection success. Run Wasm dependency policy and both four-target
+   production/build boundaries, plus applicable borrowing/host regressions.
+5. Run formatting in the isolated tree only, warning-denied workspace build,
+   nextest workspace/app-backend/CI profile, test policy, closed tracing inventory,
+   warning-denied owned rustdoc/doctests and collector unit tests. Preserve existing
+   skip/facility meanings; any newly changed discovery/skips require explanation.
+6. Run the completed upstream plan's applicable runtime/loop native, Node/Chromium,
+   actual host/worklet/failure and selected Miri requirements. Source-matched
+   upstream evidence may be reused only under its explicit freshness contract;
+   it must not be called a fresh local run. Do not fix protected tests, lower
+   workloads or bypass an unresolved upstream verification gate.
+7. From a clean **committed measurement source**, rebuild the release host and
+   capture/audit a new uniquely named bundle with the declared workload and full
+   provenance. Keep `service-release-c2734153` unchanged. Compare differences and
+   regressions with work/environment caveats, not favorable medians alone.
+8. Update this implementation/evidence map using actual final artifacts; leave
+   unmet criteria open. Push, mark ready only at the appropriate delivery point,
+   dispatch the existing workflow for the final branch if automatic filters do
+   not select the stacked PR, and verify exact head/attempt, real discovery and
+   artifacts through green. Address actual automated review or explicitly record
+   absence/unavailability without inventing approval. Relevant changes require
+   reruns/new-head CI; obtain the independent completion audit before declaring
+   the milestone complete. No repository merge is authorized by this checklist.
+
 ## Stage 7 preflight: final dependency and remote gates remain open
 
 After Stage 6 was pushed as `fc246d0c`, read-only inspection observed shared HEAD
