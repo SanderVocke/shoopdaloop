@@ -1,0 +1,27 @@
+head=c273415371d4cab1973a35d2ee316037fcdf195e dependency=d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94 clean=True
+started=2026-10-28T13:46:53.640057+00:00 finished=2026-10-28T13:46:54.739093+00:00
+manifest_sha256=d1fa08af8ea80301815bf31cd0cacf7278f08d4e66397d573a9102f6bcde74e5
+CASE | per-round callback median/p99/max ns
+current/idle | r1: 2895.0/3056/16210 | r2: 2184.0/2254/7885 | r3: 2154.0/2826/13185
+current/steady | r1: 3166.0/5871/13265 | r2: 2385.0/4448/14968 | r3: 2345.0/4358/10921
+service/export | r1: 6903.0/8846/26069 | r2: 5160.0/5721/16681 | r3: 5130.0/6763/13265
+service/idle | r1: 5391.0/5501/30688 | r2: 4037.0/4128/12323 | r3: 4028.0/5179/13075
+service/poll | r1: 5029.0/21340/28964 | r2: 3767.0/15850/35497 | r3: 3778.0/15930/16952
+service/preset | r1: 4378.0/20619/22943 | r2: 3817.0/17864/19036 | r3: 3277.0/15409/17263
+service/steady | r1: 4288.0/20429/21340 | r2: 4308.0/20589/22993 | r3: 3206.0/15209/21921
+ALL TIMING DISTRIBUTIONS independently recomputed with integer nearest ranks: OK
+STEADY STRATA (all rows retained in primary summary):
+service/steady packets=False: {'n': 6048, 'median': 4269.0, 'p95': 4359, 'p99': 4409, 'max': 15429}
+service/steady packets=True: {'n': 96, 'median': 20459.0, 'p95': 20779, 'p99': 22993, 'max': 22993}
+current/steady packets=False: {'n': 6144, 'median': 2385.0, 'p95': 3196, 'p99': 4459, 'max': 14968}
+WORST CALLBACKS:
+current/idle r1 index=377 frame=32320 ns=16210 packets=0 copied=0
+current/steady r2 index=327 frame=29120 ns=14968 packets=0 copied=0
+service/export r1 index=137 frame=16960 ns=26069 packets=0 copied=256
+service/idle r1 index=303 frame=27584 ns=30688 packets=0 copied=0
+service/poll r2 index=320 frame=28672 ns=35497 packets=64 copied=0
+service/preset r1 index=1280 frame=90112 ns=22943 packets=64 copied=0
+service/steady r2 index=960 frame=69632 ns=22993 packets=64 copied=0
+COMMON POOLED MEDIAN REGRESSIONS (different internal work declared):
+idle: +1863.0 ns (85.263%)
+steady: +1893.0 ns (79.371%)

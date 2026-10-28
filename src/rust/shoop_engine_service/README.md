@@ -162,7 +162,7 @@ or session graph. Neither that comparison nor checked `shoop_latency` arithmetic
 adds history, postroll, render advance or playback-window support to this service.
 See [findings and raw evidence](../../../docs/integration/MILESTONE_1.md#stage-5-fixed-delay-physical-evidence-and-compatibility-findings).
 
-## Native measurement host — collector checkpoint
+## Native measurement host and release observations
 
 ```sh
 cargo run --locked --release -p shoop_engine_service --example measure_service -- service steady 128 2
@@ -200,12 +200,15 @@ pooled observations; each manifest run also has its own summary. The auditor
 recomputes all statistics from raw artifacts. `--allow-dirty` is explicitly validation-only and fails a normal final
 audit. The 60-second child timeout is a test-host safeguard, not an audio deadline.
 
-Seven debug/release smoke cases pass, including wraps and continued recording with
-256-byte prefix reads; nine parser/statistics/auditor unit cases and a seven-process
-collector validation pass. Final full capture and the comparable report are still
-pending. Do not treat these validation smoke timings
-as performance/deadline evidence. Full protocol, device and plugin costs are not
-modeled by this native host.
+Seven debug/release host cases and nine parser/statistics/auditor unit cases pass.
+The [initial-pin release report](../../../docs/integration/MILESTONE_1.md#stage-6-release-measurements-on-the-initial-dependency-pin)
+retains **43,008 observations**, source/binary/environment provenance and per-run/
+pooled statistics. Observed service idle/steady medians were **4.048/4.278 µs**,
+versus the matched current-engine **2.185/2.385 µs**. Higher costs, MIDI restoration
+work differences, variation, all tails, control/meter costs, prefix-copy rates and
+RSS/pool observations are explicit; these are not performance-parity or device-
+deadline results. Final integrated-head reruns remain required. Full protocol,
+device and plugin costs are not modeled by this native host.
 
 ## Verification
 
@@ -235,5 +238,5 @@ Disconnect with active recording, sixteen stalled owning returns and a future DS
 request restores the checked media/resource pool credits; a fault during capture
 preserves prior real receipts without replay. The native two-thread case checks all 2,048 stereo frames and
 restoration packets while the controller polls results/meters. Only startup
-coordination and final joining may wait, outside callbacks. Comparable release
-measurements remain pending; these safety tests are not timing evidence.
+coordination and final joining may wait, outside callbacks. These safety tests are
+not timing evidence; the separate release-host observations are linked above.

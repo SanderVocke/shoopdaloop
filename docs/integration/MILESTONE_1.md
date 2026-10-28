@@ -2,13 +2,14 @@
 
 ## Status and isolation
 
-Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. Stages 0–5
+Milestone implementation is in progress under `PLAN_MILESTONE_1.md`. Stages 0–6
 are verified against the initial pin: external composition, independent production
-DSP, native service, complete public stereo/MIDI/media scenario and the fixed-delay
-compatibility probe. Native debug/release, real Node tests and closed workspace
-gates pass. Shared metadata additions were approved. Stage 6's adversarial/two-thread
-coverage is also verified; comparable measurements, final integration and full
-feature parity remain pending.
+DSP, native service, complete public stereo/MIDI/media scenario, fixed-delay
+compatibility probe, adversarial/two-thread coverage and comparable release-host
+measurements. Native debug/release, real Node tests and closed workspace gates pass.
+Shared metadata additions were approved. The measurements expose higher service
+costs, not performance parity. Stage 7's agreed completed-upstream integration,
+final-head reruns, CI/review and delivery remain; full feature parity is not claimed.
 Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
 
 - Current persistent worktree:
@@ -714,8 +715,9 @@ raw common-workload performance measurements remain separate requirements.
 
 ## Stage 6 checkpoint: adversarial lifecycle and native two-thread execution
 
-The first four Stage 6 checklist items are verified. Measurements and the matched
-current-engine performance baseline remain pending; **Stage 6 is not complete**.
+Historical safety checkpoint: the first four Stage 6 checklist items were verified
+here. Measurements and the matched performance baseline were then pending; their
+subsequent completion is recorded in the release-results section below.
 New tests extend the existing guarded public-service suite:
 
 - `all_normal_credits_and_both_return_streams_can_stall_while_wraps_and_stop_progress`:
@@ -785,13 +787,14 @@ passed. Workspace nextest: **2,176 passed, four existing skips, 111 binaries**.
 Only owned tests/docs changed; no further dependencies, shared metadata or protected
 source/fixtures/evidence were edited. These results do not supply raw callback
 percentiles, command/meter costs, live-export throughput or a common-workload
-current-engine baseline: those are the remaining Stage 6 work.
+current-engine baseline; those were supplied by the separate release capture below.
 
 ## Stage 6 measurement-host checkpoint and declared collection contract
 
 The native-only [measure_service host](../../src/rust/shoop_engine_service/examples/measure_service.rs)
-is buildable and smoke-validated. It is a collector checkpoint, **not completed
-M1-A9 evidence**. Before final collection, the common workload is declared as:
+was made buildable and smoke-validated before full collection. Its initial smoke
+checkpoint alone was **not completed M1-A9 evidence**. The common workload was
+declared before the release capture as:
 
 - 48 kHz nominal rate, **64-frame callbacks**, one **4,096-frame** stereo/MIDI loop,
   empty MIDI input/content, smoothing/delay disabled, unity live/playback gains.
@@ -844,8 +847,8 @@ Formatting, warning-denied workspace build, test policy and closed inventory
 111 binaries**. The portable library/test source is unchanged from the preceding
 20-native/18-Node checkpoint; no new portable test is claimed. Logs:
 `target/milestone-1/measurement-host-{smoke,checkpoint-gates}.log` and the labeled
-`measure-{release-}smoke-*.csv` files. Final collection/statistics/reporting remains
-necessary before checking Stage 6 complete.
+`measure-*smoke-*.csv` files. Those validation smokes are distinct from the full
+release capture and report below.
 
 ### Repeatable collector and raw-bundle validation
 
@@ -876,9 +879,148 @@ incomplete bundles, raw tampering and a forged summary whose hash was updated.
 A real seven-process, 16-sample/two-warm-up release collector validation and audit
 also pass. That bundle used the explicit dirty-source validation opt-in, is stored
 only at `target/milestone-1/collector-validation-1`, and is **not final performance
-evidence**. A clean committed source checkpoint precedes full collection.
+evidence**. A clean committed source checkpoint preceded full collection.
 
-### Durable worktree and regular upstream checkpoints
+## Stage 6 release measurements on the initial dependency pin
+
+**Measurement source:** `c273415371d4cab1973a35d2ee316037fcdf195e`, clean at capture;
+**dependency:** `d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94`. Capture ran on
+2026-10-28 at 13:46:53–13:46:54 UTC. This completes Stage 6 against the initial pin,
+not Stage 7's final integrated-head rerun or a performance-parity requirement.
+
+- [Manifest/provenance and per-run results](evidence/service-release-c2734153/manifest.json).
+- [Pooled numerical summary](evidence/service-release-c2734153/summary.json).
+- All **21 `.csv.gz` raw files and 21 unmodified `.meta.txt` files** are alongside
+  those JSON files: seven cases × three fresh processes × 2,048 measured callbacks
+  after 128 warm-up callbacks = **43,008 raw observations**, **6,144 per case**.
+- Binary SHA-256: `a53250cca3643187d206b9747ae6120f6dfc9783d8f4e760b0e4bcdfc2bfb4c0`.
+  Manifest SHA-256: `d1fa08af8ea80301815bf31cd0cacf7278f08d4e66397d573a9102f6bcde74e5`.
+  Source/binary stability and every raw/metadata/summary hash passed the bundle
+  audit. A separate [integer-rank recomputation transcript](evidence/service-release-c2734153/independent-rank-check.txt)
+  from every CSV agrees with all per-run and pooled callback/control/meter distributions.
+- Nix development environment; warning-denied native release build; Rust 1.97.1,
+  Cargo 1.97.1, Linux 7.0.3 x86_64, AMD Ryzen AI 7 350 (8 cores/16 threads), logical
+  CPU **15**, `tsc` clocksource, **powersave governor with boost enabled**. Governor
+  and other processes were not changed. Visible namespace/process/load observations
+  are retained, not proof of exclusive CPU ownership or an idle physical machine.
+  Cgroup CPU-limit information was unavailable (`null`).
+
+### Instrumented callback costs and measured regressions
+
+Microseconds; pooled median and nearest-rank p95/p99/max. No observation was removed,
+clock-subtracted or winsorized. Clock probes reported **30–40 ns** medians.
+
+| Case | Median µs | p95 µs | p99 µs | Max µs |
+| --- | ---: | ---: | ---: | ---: |
+| Current idle | 2.185 | 2.916 | 2.956 | 16.210 |
+| Service idle | 4.048 | 5.430 | 5.470 | 30.688 |
+| Current steady | 2.385 | 3.196 | 4.459 | 14.968 |
+| Service steady | 4.278 | 4.369 | 20.378 | 22.993 |
+| Service preset bursts | 3.818 | 4.429 | 17.674 | 22.943 |
+| Service state + peak polling | 3.807 | 5.100 | 15.930 | 35.497 |
+| Service recording + prefix copies | 5.190 | 6.973 | 7.144 | 26.069 |
+
+The common idle median is **1.863 µs higher (+85.3%)**; common steady is
+**1.893 µs higher (+79.4%)**. These are observed regressions for the declared
+instrumented harness, not an isolated framework-overhead estimate. Both graphs
+produce every expected stereo sample. The service additionally runs its independent
+four-input DSP/bridge and loop-role graph; the legacy graph uses Engine/Session
+ports/channels, with different scheduling/telemetry/storage work. No claim of
+superiority, perceptual equivalence or "no noticeable difference" follows.
+
+Steady MIDI work is explicitly **not identical**: the service emits **6,144**
+canonical restoration packets over **96** timed wrap callbacks (64 each); the old
+empty-MIDI channel emits **zero**. Service steady message-free callbacks (6,048)
+have median/p95/p99 **4.269/4.359/4.409 µs**, while its 96 restoration callbacks have
+**20.459/20.779/22.993 µs**. This diagnostic stratification retains every callback
+in the primary table; it does not discard intended restoration or make the MIDI
+streams equivalent. Even the message-free service median remains above the old
+baseline, so MIDI differences do not explain away the idle/steady cost gap.
+
+Run-to-run variation is material. Median ranges across the three processes were:
+current idle **2.154–2.895 µs**, service idle **4.028–5.391 µs**; current steady
+**2.345–3.166 µs**, service steady **3.206–4.308 µs**. The preset and polling pooled
+medians being below plain service steady do **not** establish negative control
+cost; short unpaced runs, ordering and uncontrolled frequency/scheduling state
+preclude that inference. Per-run distributions and all worst samples remain raw.
+
+Follow-up before production integration: profile the broader graph/interval and
+ingress work behind the idle/message-free gap, evaluate realistic track/processor
+loads and storage sizing, and measure under actual device scheduling. The largest
+observed callback (**35.497 µs**, poll round 2/frame 28,672, with restoration) is
+not a real-time upper bound or physical-device deadline guarantee.
+
+### Control admission and stereo peak-group reads
+
+Nanoseconds, **median / p95 / p99 / max** per callback batch. Zero-operation control
+spans are clock/function boilerplate; active spans are admission batches, not RTTs.
+
+| Case | Control admission ns | Peak-read batch ns |
+| --- | --- | --- |
+| Current idle | 30 / 40 / 41 / 61 | 90 / 120 / 121 / 4428 |
+| Current steady | 30 / 40 / 41 / 50 | 90 / 120 / 121 / 250 |
+| Service idle | 30 / 40 / 41 / 131 | 50 / 61 / 70 / 441 |
+| Service steady | 40 / 41 / 41 / 130 | 60 / 61 / 70 / 4829 |
+| Service preset bursts | 111 / 150 / 170 / 2004 | 50 / 61 / 70 / 1873 |
+| Service state + peak polling | 110 / 151 / 161 / 2023 | 1062 / 1423 / 1423 / 11401 |
+| Service recording + prefix copies | 110 / 150 / 160 / 3657 | 50 / 61 / 70 / 80 |
+
+Preset load attempted **12,288** operations: **6,144 applied** at their actual
+requested frames/revisions and **6,144 deliberately refused `Full`**. Polling and
+export each admitted **6,144** requests with **zero refusals**; polling observed
+6,144 real coherent executions. No other case refused work. Separate DSP receipts
+are checked by the host, not miscounted as loop execution records.
+
+A normal service meter call reads/resets two peak atomics; the current baseline
+reads two full port-state mirrors, so these are not equal field/atomic workloads.
+Polling performs **64 stereo peak-group reads** per callback; its batch-mean
+per-read median is **16.594 ns**, not an individual atomic-read latency estimate.
+The one-group and 64-group times include different stopwatch amortization.
+
+### Live audio-prefix copies and retained storage
+
+Across the three recording processes, **1,568,256 bytes** were copied and checked
+through owning 256-byte buffers while capture continued. There were 6,144 owning
+returns and 18 export/cursor/release semantic executions. Copied bytes count API
+copies, including overlapping prefixes, not unique persisted media or MIDI
+transfer. No optional export/transfer refusal occurred with this configuration.
+
+- Timed unpaced host-loop elapsed sum: **39,244,131 ns**; observed copied-byte rate
+  **39.962 MB/s** (decimal), including UI/result/oracle work but not later CSV I/O.
+- The same admitted byte volume over nominal 48 kHz frame time corresponds to
+  **191,437.5 bytes/s**, below the declared one-256-byte-read-per-64-frame maximum
+  of 192,000 bytes/s. Neither number is a network/device throughput guarantee.
+- Each process captured **139,264 stereo frames including warm-up**, retaining
+  **4,352 × 256-byte pages = 1,114,112 audio bytes** before stopped cleanup.
+  The prepared resource pool was **8,192 pages (2 MiB)**, not the service default.
+  Common imported idle/steady cases retained 128 pages = 32,768 audio bytes.
+  Pool counts do not account for the entire prepared process memory.
+
+Whole-process Linux RSS in KiB, identical across repetitions for each listed phase:
+
+| Case | After warm-up | Live after timed loop | After cleanup/drop |
+| --- | ---: | ---: | ---: |
+| Current idle / steady | 5992 | 5992 | 6036 |
+| Service idle | 12712 | 12712 | 6620 |
+| Service steady / preset | 12716 | 12716 | 6624 |
+| Service polling | 12784 | 12784 | 6692 |
+| Service prefix copies | 12776 | 12784 | 6692 |
+
+RSS includes loaded code, allocator residency and result/host storage. The higher
+service RSS and small post-drop residue are not isolated library allocation or
+proof of a leak; stable live RSS while capture fills pre-touched pages is not
+zero retained media. Before cleanup, every service process reports two retained
+versions/snapshots and zero reserved/retired pages; after cleanup the host asserts
+**8,192 free pages, 32 versions, 32 snapshots, eight MIDI-index versions, eight media
+slots, four exports, eight pins, zero media references**, with no reserved/retired
+storage. The earlier repeated-lifecycle tests separately prove idempotent cleanup.
+
+These results satisfy the initial-pin measurement portion of M1-A9. They do not
+supply browser/AudioWorklet/IPC performance, plugin/session parity, production
+latency compensation, completed-upstream integration or final CI/review. Stage 7
+must rerun the relevant scenarios and measurements against its agreed final head.
+
+## Durable worktree and regular upstream checkpoints
 
 After the user's reboot-risk reminder, the isolated checkout moved off `/tmp` to
 `/home/sander/dev/shoopdaloop/.cache/milestone-1-worktree`, an already ignored area

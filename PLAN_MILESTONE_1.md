@@ -2,7 +2,7 @@
 
 ## Status, purpose and execution contract
 
-**In progress: Stages 0–5 verified; Stage 6 lifecycle/two-thread proofs pass, measurements remain.**
+**In progress: Stages 0–6 verified against the initial pin (7/8 stages); final integration/delivery remains.**
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
@@ -83,24 +83,34 @@ Execution contract:
   checked media/resource pool credits; a native two-thread host checks every
   sample/packet and the exact frame-137 DSP receipt. Service tests: 20 native debug/release, 18 actual Node;
   Wasm build passes. Workspace: 2,176 passed, four existing skips, 111 binaries;
-  closed inventory 217 modules. Raw comparable release measurements remain before
-  Stage 6 can be checked complete. The retained-ticket fixture failure and its
-  off-render ticket-lifetime correction are recorded in the integration notes.
+  closed inventory 217 modules. The separate release capture below closes the two
+  measurement items. The retained-ticket fixture failure and its off-render
+  ticket-lifetime correction are recorded in the integration notes.
 - A native-only measurement host is now implemented and smoke-validated for five
   service workloads and paired current-engine idle/steady graphs. All seven cases
   pass debug and release; 128-sample release smokes include real wraps. Uniform raw
   CSV and separate metadata expose callback/control/meter costs, packets, copied
   bytes and RSS/pool occupancy. These are executable validation smokes, not accepted
-  M1-A9 results: repeated full release runs, statistics, environment/provenance and
-  the final comparable evidence bundle still remain. This checkpoint's workspace
+  M1-A9 results; the subsequent clean-source capture below supplies the repeated
+  measurements, statistics and provenance. This host checkpoint's workspace
   gates again passed 2,176 tests with four existing skips and closed inventory 217.
 - The repeatable collector and raw-bundle auditor now have nine passing standard
   unittest cases and a passing seven-process release validation. They retain all
   compressed raw rows/stderr and verify counts, clocks, frames, work, hashes and
-  recomputed nearest-rank statistics. Final full capture/reporting is still pending.
-  Before capture, the harness now pre-touches result rows and stops its callback
+  recomputed nearest-rank statistics. Full clean-source capture/reporting is now
+  recorded below. Before capture, the harness pre-touches result rows and stops its callback
   clock before storing the returned counters; this is an instrumentation revision,
   not sample filtering or a change to the declared workload/acceptance.
+- Stage 6 is complete against the initial dependency pin: clean source `c2734153`
+  produced 21 release processes / 43,008 raw callback observations with matching
+  full sample/media oracles, strict bundle audit and independent integer-rank
+  recomputation. Raw gzip CSV, stderr, source/binary/environment provenance and
+  per-run/pooled statistics are committed with the report. The declared common
+  workload shows higher service median costs: idle 4.048 vs 2.185 µs (+85.3%) and
+  steady 4.278 vs 2.385 µs (+79.4%). All tails, canonical MIDI differences, material
+  run variation, admission/refusals, copy throughput and RSS/pool observations are
+  reported without tuning or parity/deadline claims. Final-head integration,
+  reruns, CI/review and acceptance audit remain Stage 7, not satisfied by this data.
 - The user approved these and future necessary edits while emphasizing the loop
   executor's ongoing finishing work. Before the additive metadata patch, the shared
   inventory/workflow and repository guidance were checked against the dependency
@@ -384,11 +394,11 @@ made, and no loop implementation is changed to force the experiment to pass.
       callback or drop final owners while rendering.
 - [x] Add a bounded two-thread native scenario; waits/coordination and joins stay
       outside guarded callbacks. The render path never waits for the controller.
-- [ ] Measure release idle/control overhead, steady looping, preset bursts,
+- [x] Measure release idle/control overhead, steady looping, preset bursts,
       state/meter polling and concurrent live exports. Preallocate timing/result
       storage; format/file I/O stays outside rendering. Record raw samples, median,
       p95/p99/max callback cost, refusals, transfer throughput and retained memory.
-- [ ] Run a current-engine baseline on a declared common workload/configuration.
+- [x] Run a current-engine baseline on a declared common workload/configuration.
       Separate differing work/semantics from genuine overhead. Establish no
       superiority or "no noticeable difference" claim from noisy averages.
 
