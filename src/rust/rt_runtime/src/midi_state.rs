@@ -33,10 +33,25 @@ pub enum ParameterFamily {
     Nrpn,
 }
 
+struct Keys(u128);
+impl Iterator for Keys {
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0 == 0 {
+            return None;
+        }
+        let key = self.0.trailing_zeros() as u8;
+        self.0 &= self.0 - 1;
+        Some(key)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChannelState {
     notes: [NoteState; 128],
     controllers: [Option<u8>; 128],
+    note_keys: u128,
+    controller_keys: u128,
     program: Option<u8>,
     program_bank: [Option<u8>; 2],
     pitch_bend: u16,
@@ -54,6 +69,8 @@ impl Default for ChannelState {
         Self {
             notes: [NoteState::default(); 128],
             controllers,
+            note_keys: 0,
+            controller_keys: (1 << 64) | (1 << 66) | (1 << 69),
             program: None,
             program_bank: [None; 2],
             pitch_bend: 8192,
@@ -70,6 +87,39 @@ impl ChannelState {
     }
     pub fn controller(&self, controller: u8) -> Option<u8> {
         self.controllers.get(controller as usize).copied().flatten()
+    }
+    /// Non-default notes in ascending key order, including known zero pressure
+    /// and pedal-latched notes. Omitted keys still have the default projection.
+    pub fn projected_notes(&self) -> impl Iterator<Item = (u8, NoteState)> + '_ {
+        Keys(self.note_keys).map(|key| (key, self.notes[key as usize]))
+    }
+    /// Known controls in ascending number order, including known zero values.
+    pub fn known_controllers(&self) -> impl Iterator<Item = (u8, u8)> + '_ {
+        Keys(self.controller_keys)
+            .map(|cc| (cc, self.controllers[cc as usize].expect("known control")))
+    }
+    fn refresh_note(&mut self, key: u8) {
+        let note = self.notes[key as usize];
+        let bit = 1u128 << key;
+        if note.velocity != 0 || note.held || note.sostenuto || note.pressure.is_some() {
+            self.note_keys |= bit;
+        } else {
+            self.note_keys &= !bit;
+        }
+    }
+    fn refresh_notes(&mut self) {
+        for key in 0..128 {
+            self.refresh_note(key);
+        }
+    }
+    fn set_controller(&mut self, cc: u8, value: Option<u8>) {
+        self.controllers[cc as usize] = value;
+        let bit = 1u128 << cc;
+        if value.is_some() {
+            self.controller_keys |= bit;
+        } else {
+            self.controller_keys &= !bit;
+        }
     }
     pub fn program(&self) -> Option<u8> {
         self.program
@@ -109,6 +159,7 @@ impl ChannelState {
                 note.velocity = 0;
             }
         }
+        self.refresh_notes();
     }
     fn notes_off(&mut self, sound_off: bool) {
         for note in &mut self.notes {
@@ -118,6 +169,7 @@ impl ChannelState {
                 note.sostenuto = false;
             }
         }
+        self.refresh_notes();
         self.release_unheld();
     }
     fn reset_controls(&mut self) {
@@ -135,6 +187,12 @@ impl ChannelState {
         for cc in 98..=101 {
             self.controllers[cc] = Some(127);
         }
+        self.controller_keys = 0;
+        for cc in 0..128 {
+            if self.controllers[cc].is_some() {
+                self.controller_keys |= 1u128 << cc;
+            }
+        }
         self.pitch_bend = 8192;
         self.pressure = Some(0);
         self.reset_controllers = true;
@@ -143,6 +201,7 @@ impl ChannelState {
             note.sostenuto = false;
             note.pressure = Some(0);
         }
+        self.note_keys = u128::MAX;
         self.release_unheld();
     }
     fn control(&mut self, cc: u8, value: u8) {
@@ -153,29 +212,31 @@ impl ChannelState {
             123 => self.notes_off(false),
             66 => {
                 let was_down = self.down(66);
-                self.controllers[66] = Some(value);
+                self.set_controller(66, Some(value));
                 if value < 64 && was_down {
                     for note in &mut self.notes {
                         note.sostenuto = false;
                     }
+                    self.refresh_notes();
                     self.release_unheld();
                 } else if value >= 64 && !was_down {
                     for note in &mut self.notes {
                         note.sostenuto = note.held;
                     }
+                    self.refresh_notes();
                 }
             }
             _ => {
                 let released_hold = matches!(cc, 64 | 69) && self.down(cc as usize) && value < 64;
-                self.controllers[cc as usize] = Some(value);
+                self.set_controller(cc, Some(value));
                 match cc {
                     6 | 38 => self.parameter_history_untracked = true,
                     98 | 99 => self.parameter_family = Some(ParameterFamily::Nrpn),
                     100 | 101 => self.parameter_family = Some(ParameterFamily::Rpn),
-                    124 => self.controllers[125] = None,
-                    125 => self.controllers[124] = None,
-                    126 => self.controllers[127] = None,
-                    127 => self.controllers[126] = None,
+                    124 => self.set_controller(125, None),
+                    125 => self.set_controller(124, None),
+                    126 => self.set_controller(127, None),
+                    127 => self.set_controller(126, None),
                     _ => {}
                 }
                 if matches!(cc, 124..=127) {
@@ -226,6 +287,7 @@ impl MidiState {
             MessageKind::NoteOn { key, velocity, .. } => {
                 channel.notes[key as usize].velocity = velocity;
                 channel.notes[key as usize].held = true;
+                channel.refresh_note(key);
             }
             MessageKind::NoteOff { key, .. } => {
                 let sustain = channel.down(64) || channel.down(69);
@@ -234,12 +296,16 @@ impl MidiState {
                 if !sustain && !note.sostenuto {
                     note.velocity = 0;
                 }
+                channel.refresh_note(key);
             }
             MessageKind::ControlChange {
                 controller, value, ..
             } => channel.control(controller, value),
             _ => match data[0] & 0xf0 {
-                0xa0 => channel.notes[data[1] as usize].pressure = Some(data[2]),
+                0xa0 => {
+                    channel.notes[data[1] as usize].pressure = Some(data[2]);
+                    channel.refresh_note(data[1]);
+                }
                 0xc0 => {
                     channel.program = Some(data[1]);
                     channel.program_bank = [channel.controllers[0], channel.controllers[32]];

@@ -127,6 +127,43 @@ fn midi_writer_rejects_malformed_messages_without_mutating_prior_events() {
 }
 
 #[shoop_test]
+fn ordered_insert_append_and_middle_paths_match_stable_scalar_sort_with_owning_reuse() {
+    let mut buffer = MidiBuffer::new(32, 96).unwrap();
+    let mut seed = 0x95c3_187a_d014_b762u64;
+    for round in 0..64 {
+        buffer.clear();
+        let mut expected = Vec::new();
+        for sequence in 0..40u8 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let offset = match round % 4 {
+                0 => u32::from(sequence / 5),
+                1 => 7 - u32::from(sequence / 5),
+                2 => 3,
+                _ => (seed >> 32) as u32 % 8,
+            };
+            let packet = [0x90, sequence, round as u8 + 1];
+            let result = assert_no_heap(|| buffer.insert(offset, 8, &packet));
+            if expected.len() == 32 {
+                assert_eq!(result, Err(Error::Full));
+            } else {
+                result.unwrap();
+                expected.push((offset, packet));
+                expected.sort_by_key(|entry| entry.0);
+            }
+            assert_eq!(buffer.len(), expected.len());
+            assert_eq!(buffer.byte_len(), expected.len() * 3);
+            for (index, (offset, packet)) in expected.iter().enumerate() {
+                assert_eq!(buffer.get(index), Some((*offset, packet.as_slice())));
+            }
+        }
+        assert_eq!(
+            assert_no_heap(|| buffer.insert(8, 8, &[0x90, 1, 1])),
+            Err(Error::InvalidEvent)
+        );
+        assert_eq!(buffer.len(), 32);
+    }
+}
+#[shoop_test]
 fn reset_recovery_is_reserved_bounded_and_backpressure_does_not_skip_notes() {
     let mut reset = ResetState::default();
     let mut sink = MidiBuffer::new(1, 3).unwrap();

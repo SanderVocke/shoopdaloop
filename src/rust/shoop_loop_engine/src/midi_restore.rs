@@ -38,8 +38,7 @@ pub fn cleanup(state: &MidiState, mut sink: impl FnMut(&[u8]) -> Result<(), Erro
                 result.send(&mut sink, &[0xb0 | channel, cc, 0]);
             }
         }
-        for key in 0..128 {
-            let note = state.note(key).expect("MIDI key");
+        for (key, note) in state.projected_notes() {
             if note.held() || note.velocity() != 0 {
                 result.send(&mut sink, &[0x80 | channel, key, 0]);
             }
@@ -104,12 +103,12 @@ pub fn restore(state: &MidiState, mut sink: impl FnMut(&[u8]) -> Result<(), Erro
                 control(&mut result, &mut sink, state, channel, cc);
             }
         }
-        for cc in 0..128 {
+        for (cc, value) in state.known_controllers() {
             if !matches!(
                 cc,
                 0 | 6 | 32 | 38 | 64 | 66 | 69 | 96..=101 | 120 | 121 | 123
             ) {
-                control(&mut result, &mut sink, state, channel, cc);
+                result.send(&mut sink, &[0xb0 | channel, cc, value]);
             }
         }
         if state.controller(6).is_some() || state.controller(38).is_some() {
@@ -148,22 +147,19 @@ pub fn restore(state: &MidiState, mut sink: impl FnMut(&[u8]) -> Result<(), Erro
             ],
         );
         if sostenuto >= 64 {
-            for key in 0..128 {
-                let note = state.note(key).expect("MIDI key");
+            for (key, note) in state.projected_notes() {
                 if note.sostenuto() && note.velocity() != 0 {
                     result.send(&mut sink, &[0x90 | channel, key, note.velocity()]);
                 }
             }
             result.send(&mut sink, &[0xb0 | channel, 66, sostenuto]);
         }
-        for key in 0..128 {
-            let note = state.note(key).expect("MIDI key");
+        for (key, note) in state.projected_notes() {
             if note.velocity() != 0 && !(sostenuto >= 64 && note.sostenuto()) {
                 result.send(&mut sink, &[0x90 | channel, key, note.velocity()]);
             }
         }
-        for key in 0..128 {
-            let note = state.note(key).expect("MIDI key");
+        for (key, note) in state.projected_notes() {
             if note.velocity() != 0 && !note.held() {
                 result.send(&mut sink, &[0x80 | channel, key, 0]);
             }

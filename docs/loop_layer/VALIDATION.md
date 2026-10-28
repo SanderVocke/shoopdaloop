@@ -37,6 +37,34 @@ now resolve under [the implementation-review archive](../../src/rust/rt_runtime/
 the [documentation plan](../../DOCS_REWRITE_PLAN.md) owns completion without new
 handoffs/checkers/jobs. Historical reports, failures and raw measurements are unchanged.
 
+## Stage 8 measured-cost candidate; Stage7 recovery still pending
+
+[Measured-cost evidence](evidence/midi-sparse-stage8.md) records the diagnostic's
+intentional SIGINT finalization, failed/exit1 terminal state after821.2866128640017s,
+zero completed executions, verified immutable inputs and passing-collection refusal.
+The finalized profile's816.845415594s/14,530 labels describe completed function
+events only. It measured repeated dense note lookups, preparation and ordered
+insertion; nested inclusive times overlap and are not native callback performance.
+
+Fixed channel bit indexes now support ascending exact projection traversal; bulk
+pre-touch still writes all prepared storage, and ordered insertion has a stable
+append fast path. Two new guarded models compare with dense getters/scalar stable
+sort; all existing full musical workloads, packets, seven replay runs, guards,
+seeds and900s watchdog remain. Native190runtime/153loop/59fixture tests per profile,
+186runtime/153loop in each Node/Chromium, all freshly rebuilt loop bindings/actual
+contexts/six exact failures per profile and2143 workspace passes/four skips pass.
+Complete native report data equals the preceding archived reports in both profiles.
+Runtime chapter12, loop restoration guidance and affected runnable examples are
+maintained with the implementation; warning-denied docs/doctests/examples pass.
+
+The current selection is145 commands/298 executions (135runtime+100loop+63host):
+`midi_state` grows6→7 and the full runtime `midi` target adds six executions. Prior
+filters/seeds/order remain; host batch10/63 is unchanged. Native/Wasm correctness
+is not measured interpreter speedup or timeout recovery. A justified unprofiled
+retry targets only that same full exact seed0 test; complete current/final Miri,
+remote CI artifacts, broader Stage8 audit/models/benchmark and delivery remain
+open. Stage7 is still7/8; no additional Stage8 row is checked.
+
 ## Stage 7 dense timeout recovery candidate
 
 [Recovery-candidate evidence](evidence/dense-miri-recovery-stage7.md) preserves every

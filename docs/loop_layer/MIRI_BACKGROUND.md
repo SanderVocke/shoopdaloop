@@ -42,12 +42,15 @@ coverage. Inspect the standalone fixture without interpreting tests:
 python3 scripts/run_rt_runtime_miri.py --list --package loop_engine_host_fixture
 ```
 
-The Stage7 default registers144 commands/291 executions:128 runtime,100 loop and
-63 standalone-host executions. Host coverage is all59 native library tests at
-seed0, plus primitive-wire and graph-actor tests at seeds1/2. Every host filter is
-exact and expects one passing test. New host cases run before retained regressions;
-the preceding81-command/228-execution selection keeps its filters, counts, seeds
-and relative order. No standalone-host workload or guard is reduced for Miri.
+The current selection registers145 commands/298 executions:135 runtime,100 loop
+and63 standalone-host executions. The Stage8 sparse-projection/ordered-insert
+models add seven runtime executions to the historical144-command/291-execution
+Stage7 selection; no prior cases, seeds or workloads are removed. Host coverage is
+all59 native library tests at seed0, plus primitive-wire and graph-actor tests at
+seeds1/2. Every host filter is exact and expects one passing test. New host cases
+run before retained regressions. Every prior filter/seed and relative order remain;
+the grouped runtime `midi_state` count grows6→7 and the full runtime `midi` target
+adds six executions. No standalone-host workload or guard is reduced for Miri.
 
 This local background wrapper currently requires **Linux `/proc` process
 identities and POSIX process groups**. The existing foreground runner remains
@@ -58,8 +61,9 @@ watchdog increases or acceptance exemptions are introduced.
 
 CI uses16 disjoint round-robin batches rather than putting the entire stage
 selection into one40-minute job. Each batch keeps complete commands, exact filters,
-counts, seeds and the900s per-command watchdog. With the current inventory, each
-batch has nine commands; this is not a guaranteed wall-time margin on CI hardware.
+counts, seeds and the900s per-command watchdog. With the current inventory, one
+batch has ten commands and the other fifteen have nine; this is not a guaranteed
+wall-time margin on CI hardware.
 An individual command exceeding900s still fails and needs investigation.
 
 ```sh

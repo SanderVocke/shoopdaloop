@@ -23,6 +23,85 @@ fn note(state: &MidiState, channel: u8, key: u8) -> (u8, bool, bool) {
     let n = state.channel(channel).unwrap().note(key).unwrap();
     (n.velocity(), n.held(), n.sostenuto())
 }
+fn check_indexes(state: &MidiState, channel: u8) {
+    assert_no_heap(|| {
+        let channel = state.channel(channel).unwrap();
+        let mut notes = channel.projected_notes();
+        let mut controls = channel.known_controllers();
+        for key in 0..128 {
+            let note = channel.note(key).unwrap();
+            if note.velocity() != 0 || note.held() || note.sostenuto() || note.pressure().is_some()
+            {
+                assert_eq!(notes.next(), Some((key, note)));
+            }
+            if let Some(value) = channel.controller(key) {
+                assert_eq!(controls.next(), Some((key, value)));
+            }
+        }
+        assert_eq!(notes.next(), None);
+        assert_eq!(controls.next(), None);
+    });
+}
+#[shoop_test]
+fn sparse_projection_indexes_match_dense_getters_across_resets_modes_and_all_keys() {
+    let mut state = MidiState::default();
+    for channel in 0..16 {
+        check_indexes(&state, channel);
+        for key in 0..128 {
+            send(&mut state, &[0x90 | channel, key, 1 + key % 127]);
+            send(&mut state, &[0xa0 | channel, key, 0]);
+            send(&mut state, &[0x80 | channel, key, 0]);
+        }
+        check_indexes(&state, channel);
+        send(&mut state, &[0xb0 | channel, 121, 0]);
+        check_indexes(&state, channel);
+    }
+    let mut seed = 0x2d87_a674_c692_175bu64;
+    for step in 0..4096 {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let channel = ((seed >> 32) & 15) as u8;
+        let key = ((seed >> 40) & 127) as u8;
+        let value = ((seed >> 48) & 127) as u8;
+        let packet = match (seed >> 24) % 10 {
+            0 => [0x90 | channel, key, value],
+            1 => [0x80 | channel, key, value],
+            2 => [0xa0 | channel, key, value],
+            3 => [0xb0 | channel, key, value],
+            4 => [0xb0 | channel, [64, 66, 69][key as usize % 3], value],
+            5 => [0xb0 | channel, [120, 121, 123][key as usize % 3], 0],
+            6 => [0xb0 | channel, 124 + key % 4, value],
+            7 => [0xc0 | channel, value, 0],
+            8 => [0xd0 | channel, value, 0],
+            _ => [0xe0 | channel, key, value],
+        };
+        send(
+            &mut state,
+            &packet[..if matches!(packet[0] & 0xf0, 0xc0 | 0xd0) {
+                2
+            } else {
+                3
+            }],
+        );
+        check_indexes(&state, channel);
+        if step % 128 == 0 {
+            let before = state;
+            assert_no_heap(|| {
+                assert_eq!(
+                    state.apply_packet(&[0xb0, 128, 0], 3),
+                    Err(Error::InvalidEvent)
+                )
+            });
+            assert_eq!(state, before);
+            roundtrip(&state);
+            for channel in 0..16 {
+                check_indexes(&state, channel);
+            }
+        }
+        if step % 257 == 0 {
+            send(&mut state, &[0xff]);
+        }
+    }
+}
 #[shoop_test]
 fn repeated_pedal_values_match_an_independent_three_hold_ledger() {
     let mut state = MidiState::default();

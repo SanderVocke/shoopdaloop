@@ -99,7 +99,7 @@ remain open.
 - Copied supervisor SHA256: `c2cd7c0db36774db2a086e0721745ccca750b786b02870756abdbfb304fcd20d`.
 - Local launch/input report: `target/loop-layer-miri-recovery-stage7/launch-verification.json`.
 
-### Exact-test diagnostic profiling launched (pending)
+### Exact-test diagnostic profiling (interrupted; not a pass)
 
 The second concrete timeout justifies profiling the same one-command/full-test
 selection before further optimization. `--measureme` adds only Miri's function
@@ -145,7 +145,52 @@ checkpoints rather than waiting/polling. Complete Stage7/final coverage stays op
 - Copied supervisor SHA256: `75dfb8fdc9b45957a2bfd01e679216e0f5ce28be2dffafdf8aba5b938a36fa1d`.
 - Local launch/input report: `target/loop-layer-miri-profile-stage7/launch-verification.json`.
 
-### Registered selection
+The diagnostic was deliberately interrupted with SIGINT to the identity-verified
+interpreter child so Miri could finalize its profile before the unchanged hard
+watchdog. An earlier identity/path assertion refused to signal; the corrected
+check matched the actual isolated build path before signalling. The supervisor
+recorded **failed**, exit1, at2026-10-28T10:34:59.550132Z after821.2866128640017s,
+with **zero completed executions**. All864 source entries/supervisor still match;
+collection refuses `Cannot collect passing evidence: failed`. This interruption
+is diagnostic data, never a shortened passing workload or a timeout-recovery pass.
+
+The live profile initially lacked its string index and could not be decoded.
+After finalization, a copy outside reports decoded successfully with the pinned
+analyzer:816.845415594s of recorded completed function events and14,530 labels.
+MIDI restore consumed231.277s inclusive, cleanup72.915s across its two instantiations;
+there were1,576,960 note lookups. Journal/MIDI-buffer preparation consumed98.057s/
+120.302s inclusive; ordered MIDI insertion consumed108.454s inclusive, including
+66.720s in partition-point lookup. These nested times must not be summed as
+independent costs or mistaken for completed execution/native callback timings.
+The3,232,339,355-byte raw profile remains in the job; SHA256
+`c1e1a5fdf46b5a8232e8d5ba2aa63cc96cf1214cbcb64e82a8d21e8caa316268`.
+See [measured-cost candidate evidence](evidence/midi-sparse-stage8.md) for analysis,
+raw failed logs and subsequent native/Wasm verification, not an interpreter pass.
+
+### Measured-cost candidate and current registered selection
+
+Fixed channel bit indexes now expose ascending non-default-note/known-control
+iteration; cleanup/restoration retains every required packet and its order.
+Bulk pre-touch still writes all prepared bytes/slots, and ordered insertion has an
+append fast path with unchanged stable middle insertion/refusal. Two new guarded
+models compare indexes with dense getters and insertion with a scalar stable sort.
+Existing full musical workloads, seven replay runs, guards/seeds and900s watchdog
+are unchanged. Native190runtime/153loop/59fixture tests per profile,186runtime/
+153loop tests in each Node/Chromium, all loop bindings/actual contexts/six failures
+per profile, complete native report equality and2143 workspace passes/four skips
+validate this candidate. No interpreter speedup/recovery is claimed yet.
+
+The current selection is **145 commands/298 executions =135runtime+100loop+63host**.
+All prior filters/seeds and their relative order remain. `midi_state` grows from
+six to seven tests; the full `rt_runtime` `midi` target adds six executions (five
+existing tests plus the new insertion model). No prior coverage is removed.
+Host batch10/63 and its fingerprint remain unchanged. The repeated concrete dense
+timeout plus measured-cost implementation changes justify one unprofiled retry
+of that same complete exact test/seed0 as the smallest adequate recovery check.
+A successful retry would cover only that case; consolidated current/final coverage,
+remote CI artifacts, remaining Stage8 work and final review remain mandatory.
+
+### Historical Stage7 registered selection
 
 Stage7 host implementation is ready for its consolidated interpreter gate; no
 complete passing Stage7 interpreter result exists yet. The pinned runner now registers all59 native

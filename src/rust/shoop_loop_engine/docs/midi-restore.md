@@ -18,6 +18,13 @@ The state retains a program-bank snapshot and selector-family ordering hint. CC1
 
 This is the existing **channel/key projection**, not external synthesizer state. Per-voice envelopes, vendor SysEx and RPN/NRPN parameter-value histories are not reconstructed. `Emission::parameter_history_untracked` makes observed Data Entry/relative-command history explicit. Nulling selectors is a deliberate protective operation, including components whose previous values were unknown. Only known selector values are restored afterwards; unknown components may remain null. This prevents accidental parameter writes, not recovery of missing history or a claim that unknown values were reconstructed. The caller must not present this warning as full device-state restoration. Opaque SysEx and all original parameter packets remain part of later media playback; they are not synthesized from this projection.
 
+Restoration traverses fixed sparse indexes in ascending key/controller order rather
+than scanning unobserved slots. Indexing includes known zero pressure/control values
+and pedal-latched projections; it does not omit required messages, cap transitions
+or change packet ordering. All sixteen channels still establish their required
+neutral pitch/hold baseline. Fully populated state still visits every required
+key/control and retains the same worst-case emission bounds.
+
 ## Capacity and failure
 
 `CLEANUP_MAX_EVENTS` is **2096** and `RESTORE_MAX_EVENTS` is **8449**, conservative fixed-protocol bounds rather than musical work quotas. Three bytes per event is a safe byte bound; ordinary program/pressure/reset packets can be shorter. A capture producer's reservation must also include original playback events and the runtime's separate recovery events/bytes. These helpers impose no arbitrary subdivision or event-processing cutoff.

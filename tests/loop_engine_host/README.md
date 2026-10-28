@@ -703,8 +703,9 @@ one supervised immutable snapshot from the repository root:
 python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7 --commit HEAD
 ```
 
-The default includes retained runtime/loop regressions:144 commands/291 executions
-across all three packages. Do not launch it after each helper edit. Continue other
+The current default includes retained runtime/loop regressions and the Stage8
+sparse-projection/ordered-insert models:145 commands/298 executions across all
+three packages. The original Stage7 snapshot's144/291 remains historical. Do not launch it after each helper edit. Continue other
 work and collect its terminal result using the returned job directory; launch,
 native dispatch checks and partial output are not passes. The900-second per-command
 watchdog is unchanged. See the [operational guide](../../docs/loop_layer/MIRI_BACKGROUND.md)

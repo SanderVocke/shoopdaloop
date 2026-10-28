@@ -115,6 +115,16 @@ The fixed projection has sixteen channels and 128 keys per channel:
 - CC120 clears notes; CC123/mode changes release held notes while respecting holds. Reset All Controllers establishes its documented baseline while retaining unrelated program/control information. Momentary reset/all-notes commands and CC96/97 are not cached controls to replay after restoring notes.
 - The last RPN/NRPN selector family is retained, but parameter-value/history reconstruction is explicitly untracked. System Reset clears the projection and records a marker. Arbitrary SysEx/device state is not reconstructed.
 
+`ChannelState::projected_notes()` visits non-default key projections in ascending
+key order; it includes known zero poly pressure and pedal-latched keys, not just
+currently held keys. `known_controllers()` visits every known control in ascending
+number order, including known zero values. Both borrow fixed bit indexes maintained
+with state updates; neither allocates or scans media history. The `midi_seeking`
+example checks these iterators under the heap guard. Omitted note keys have the
+default projection; omitted controls are unknown. Dense `note`/`controller` lookups
+remain available. The fixed indexes contribute to `size_of::<MidiState>()` and
+therefore to the prepared checkpoint storage arithmetic above.
+
 `MidiState::apply_packet` validates atomically before updating. `from_channels` only reassembles copied channel states and the reset marker: obtain all of them from the same immutable cut. It cannot make independently sampled live fields coherent.
 
 ## State lookup is not restoration

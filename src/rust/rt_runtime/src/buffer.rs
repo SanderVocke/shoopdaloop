@@ -211,12 +211,8 @@ impl MidiBuffer {
             byte_capacity: bytes,
             recovering: false,
         };
-        for event in &mut buffer.events {
-            *std::hint::black_box(event) = Event::default();
-        }
-        for byte in &mut buffer.bytes {
-            *std::hint::black_box(byte) = 0;
-        }
+        std::hint::black_box(&mut *buffer.events).fill(Event::default());
+        std::hint::black_box(&mut *buffer.bytes).fill(0);
         Ok(buffer)
     }
     pub fn len(&self) -> usize {
@@ -293,8 +289,14 @@ impl MidiBuffer {
             return Err(Error::Full);
         }
         crate::midi::Message::parse(payload, self.byte_capacity)?;
-        let index = self.events[..self.event_len].partition_point(|event| event.offset <= offset);
-        self.events.copy_within(index..self.event_len, index + 1);
+        let index = if self.event_len == 0 || self.events[self.event_len - 1].offset <= offset {
+            self.event_len
+        } else {
+            let index =
+                self.events[..self.event_len].partition_point(|event| event.offset <= offset);
+            self.events.copy_within(index..self.event_len, index + 1);
+            index
+        };
         self.events[index] = Event {
             offset,
             start: self.byte_len as u32,

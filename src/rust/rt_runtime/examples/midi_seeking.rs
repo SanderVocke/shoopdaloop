@@ -178,6 +178,20 @@ fn checkpoint_states() -> Result<(), Error> {
     )?;
     let mut initial = MidiState::default();
     initial.apply_packet(&[0x90, 62, 40], 3)?;
+    assert_no_heap(|| {
+        let channel = initial.channel(0).unwrap();
+        let mut notes = channel.projected_notes();
+        assert_eq!(
+            notes.next().map(|(key, note)| (key, note.velocity())),
+            Some((62, 40))
+        );
+        assert_eq!(notes.next(), None);
+        let mut controls = channel.known_controllers();
+        for cc in [64, 66, 69] {
+            assert_eq!(controls.next(), Some((cc, 0)));
+        }
+        assert_eq!(controls.next(), None);
+    });
     let records: [(u64, &[u8]); 5] = [
         (0, &[0x90, 60, 100]),
         (1, &[0xb0, 64, 127]),

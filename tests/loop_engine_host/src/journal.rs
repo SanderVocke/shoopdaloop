@@ -30,9 +30,7 @@ impl Journal {
             .and_then(|size| size.checked_add(HEADER))
             .expect("semantic storage size");
         let mut bytes = vec![0; size].into_boxed_slice();
-        for byte in bytes.iter_mut() {
-            *byte = std::hint::black_box(0);
-        }
+        std::hint::black_box(&mut *bytes).fill(0);
         bytes[..4].copy_from_slice(b"LSJ1");
         bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
         bytes[6..8].copy_from_slice(&(STRIDE as u16).to_le_bytes());
