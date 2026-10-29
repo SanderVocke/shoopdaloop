@@ -697,7 +697,7 @@ fn seeded_owner_activation_model_checks_references_generations_and_retained_medi
 }
 
 #[shoop_test]
-fn mixed_media_roles_and_saturated_exports_share_leases_and_recover_exactly_once() {
+fn mixed_media_node_pairs_and_saturated_exports_share_leases_and_recover_exactly_once() {
     let mut store = store();
     let a = pair(&mut store, 1.);
     let b = pair(&mut store, 20.);
@@ -914,7 +914,7 @@ fn malformed_foreign_duplicate_and_unindexed_inputs_return_owners_without_public
 }
 
 #[shoop_test]
-fn optional_metadata_capacity_and_cancelled_reservations_do_not_steal_internal_roles() {
+fn optional_metadata_capacity_and_cancelled_reservations_do_not_steal_internal_node_pairs() {
     let mut store = store();
     let ids = pair(&mut store, 3.);
     let mut ledger = Ledger::prepare(1, 1, 0, 0).unwrap();

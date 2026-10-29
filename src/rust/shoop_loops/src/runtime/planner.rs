@@ -565,7 +565,7 @@ impl LoopPlanner {
     }
     pub(super) fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
         self.resolver.quiesce();
-        self.roles.cleanup(&mut resources.io())?;
+        self.node_pairs.cleanup(&mut resources.io())?;
         self.topologies
             .cleanup(&mut self.resolver)
             .map_err(|error| match error {
@@ -648,8 +648,8 @@ impl Planner for LoopPlanner {
             operation,
             Operation::Cancel { .. }
                 | Operation::TopologyCancel { .. }
-                | Operation::RoleCancel { .. }
-                | Operation::RoleSourceRelease { .. }
+                | Operation::NodePairCancel { .. }
+                | Operation::NodePairSourceRelease { .. }
                 | Operation::Transition {
                     timing: Timing::At,
                     transition: Transition::Stop,
@@ -664,7 +664,7 @@ impl Planner for LoopPlanner {
     ) -> Result<Disposition<Reply>, Error> {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
-        self.roles.callback(context.callback_start);
+        self.node_pairs.callback(context.callback_start);
         let result = (|| -> Result<Disposition<Reply>, Failure> {
             if !context.payload.is_empty()
                 && !matches!(
@@ -675,79 +675,83 @@ impl Planner for LoopPlanner {
                 return Err(Error::InvalidShape.into());
             }
             let topology_status = match operation {
-                Operation::RoleSnapshot { resource } => {
-                    let (id, snapshot) =
-                        self.roles
-                            .snapshot(resource, context.frame, &mut context.resources)?;
-                    return Ok(Disposition::Complete(Reply::RoleSource {
+                Operation::NodePairSnapshot { resource } => {
+                    let (id, snapshot) = self.node_pairs.snapshot(
+                        resource,
+                        context.frame,
+                        &mut context.resources,
+                    )?;
+                    return Ok(Disposition::Complete(Reply::NodePairSource {
                         id,
                         snapshot,
-                        status: self.roles.source_status(id)?,
+                        status: self.node_pairs.source_status(id)?,
                     }));
                 }
-                Operation::RoleSourceStatus { id } => {
-                    return Ok(Disposition::Complete(Reply::RoleSourceStatus {
+                Operation::NodePairSourceStatus { id } => {
+                    return Ok(Disposition::Complete(Reply::NodePairSourceStatus {
                         id,
-                        status: self.roles.source_status(id)?,
+                        status: self.node_pairs.source_status(id)?,
                     }))
                 }
-                Operation::RoleSourceValidate { id } => {
-                    return Ok(Disposition::Complete(Reply::RoleSourceStatus {
+                Operation::NodePairSourceValidate { id } => {
+                    return Ok(Disposition::Complete(Reply::NodePairSourceStatus {
                         id,
-                        status: self.roles.validate_source(id, &mut context.resources)?,
+                        status: self
+                            .node_pairs
+                            .validate_source(id, &mut context.resources)?,
                     }))
                 }
-                Operation::RoleSourceRelease { id } => {
-                    self.roles.release_source(id, &mut context.resources)?;
-                    return Ok(Disposition::Complete(Reply::RoleSourceReleased { id }));
+                Operation::NodePairSourceRelease { id } => {
+                    self.node_pairs.release_source(id, &mut context.resources)?;
+                    return Ok(Disposition::Complete(Reply::NodePairSourceReleased { id }));
                 }
-                Operation::RoleBegin { slot, changes } => {
-                    let id = self.roles.begin(slot, changes)?;
-                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                Operation::NodePairBegin { slot, changes } => {
+                    let id = self.node_pairs.begin(slot, changes)?;
+                    return Ok(Disposition::Complete(Reply::NodePairStatus {
                         id,
-                        status: self.roles.status(id)?,
+                        status: self.node_pairs.status(id)?,
                     }));
                 }
-                Operation::RoleAppend {
+                Operation::NodePairAppend {
                     id,
                     previous,
                     initial,
                 } => {
-                    self.append_role(id, previous, initial, &mut context.resources)?;
-                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                    self.append_node_pair(id, previous, initial, &mut context.resources)?;
+                    return Ok(Disposition::Complete(Reply::NodePairStatus {
                         id,
-                        status: self.roles.status(id)?,
+                        status: self.node_pairs.status(id)?,
                     }));
                 }
-                Operation::RoleStatus { id } => {
-                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                Operation::NodePairStatus { id } => {
+                    return Ok(Disposition::Complete(Reply::NodePairStatus {
                         id,
-                        status: self.roles.status(id)?,
+                        status: self.node_pairs.status(id)?,
                     }))
                 }
-                Operation::RoleCancel { id } => {
-                    self.roles.cancel(id, &mut context.resources)?;
-                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                Operation::NodePairCancel { id } => {
+                    self.node_pairs.cancel(id, &mut context.resources)?;
+                    return Ok(Disposition::Complete(Reply::NodePairStatus {
                         id,
-                        status: self.roles.status(id)?,
+                        status: self.node_pairs.status(id)?,
                     }));
                 }
-                Operation::RoleRecycle { id } => {
-                    self.roles.recycle(id)?;
-                    return Ok(Disposition::Complete(Reply::RoleStatus {
+                Operation::NodePairRecycle { id } => {
+                    self.node_pairs.recycle(id)?;
+                    return Ok(Disposition::Complete(Reply::NodePairStatus {
                         id,
-                        status: self.roles.status(id)?,
+                        status: self.node_pairs.status(id)?,
                     }));
                 }
                 Operation::ConfigurationActivate {
-                    roles,
+                    node_pairs,
                     topology,
                     graph,
                     graph_epoch,
                     topology_epoch,
                 } => {
                     let (graph_epoch, topology_epoch) = self.activate_configuration(
-                        roles,
+                        node_pairs,
                         topology,
                         graph,
                         graph_epoch,
@@ -756,7 +760,7 @@ impl Planner for LoopPlanner {
                         &mut context.resources,
                     )?;
                     return Ok(Disposition::Complete(Reply::ConfigurationActivated {
-                        roles,
+                        node_pairs,
                         topology,
                         graph,
                         graph_epoch,
@@ -1043,15 +1047,15 @@ impl Planner for LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::RoleSnapshot { .. }
-                | Operation::RoleSourceStatus { .. }
-                | Operation::RoleSourceValidate { .. }
-                | Operation::RoleSourceRelease { .. }
-                | Operation::RoleBegin { .. }
-                | Operation::RoleAppend { .. }
-                | Operation::RoleStatus { .. }
-                | Operation::RoleCancel { .. }
-                | Operation::RoleRecycle { .. }
+                Operation::NodePairSnapshot { .. }
+                | Operation::NodePairSourceStatus { .. }
+                | Operation::NodePairSourceValidate { .. }
+                | Operation::NodePairSourceRelease { .. }
+                | Operation::NodePairBegin { .. }
+                | Operation::NodePairAppend { .. }
+                | Operation::NodePairStatus { .. }
+                | Operation::NodePairCancel { .. }
+                | Operation::NodePairRecycle { .. }
                 | Operation::ConfigurationActivate { .. }
                 | Operation::GraphStatus { .. }
                 | Operation::GraphActivate { .. }

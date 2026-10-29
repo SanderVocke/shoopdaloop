@@ -1,7 +1,7 @@
 //! Prepared loop planner/consumers and a restricted runtime/control facade.
 //!
-//! One resolver settles musical state; separate physical roles execute borrowed
-//! decisions. Prepared timing/source/role banks and graph slots have distinct
+//! One resolver settles musical state; separate physical playback/capture nodes execute borrowed
+//! decisions. Prepared timing/source/node pair banks and graph slots have distinct
 //! ownership, cut and recycle contracts. Publication is not general rollback.
 use crate::{
     audio, media, midi, Decision, LoopId, LoopKind, Mode, PreparedTopology, RequestId, Resolver,
@@ -20,15 +20,16 @@ use rt_runtime::{
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
 mod configuration;
+mod node_pairs;
 mod planner;
 mod processor;
-mod roles;
 mod topology;
 use crate::topology::staging::{Progress, StageId, Status};
-pub use processor::Node;
-pub use roles::{
-    RoleInitial, RoleSettings, RoleSourceId, RoleSourceStatus, RoleStageId, RoleStatus,
+pub use node_pairs::{
+    NodePairInitial, NodePairSettings, NodePairSourceId, NodePairSourceStatus, NodePairStageId,
+    NodePairStatus,
 };
+pub use processor::Node;
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
 pub use topology::TopologySettings;
 
@@ -97,44 +98,44 @@ pub enum Selection {
     Recording,
 }
 /// Typed musical/control work. Admission, runtime delivery and domain outcome are
-/// distinct. Recovery permits Cancel, TopologyCancel, RoleCancel, RoleSourceRelease
+/// distinct. Recovery permits Cancel, TopologyCancel, NodePairCancel, NodePairSourceRelease
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
-    RoleSnapshot {
+    NodePairSnapshot {
         resource: rt_runtime::ResourceId,
     },
-    RoleSourceValidate {
-        id: RoleSourceId,
+    NodePairSourceValidate {
+        id: NodePairSourceId,
     },
-    RoleSourceStatus {
-        id: RoleSourceId,
+    NodePairSourceStatus {
+        id: NodePairSourceId,
     },
-    RoleSourceRelease {
-        id: RoleSourceId,
+    NodePairSourceRelease {
+        id: NodePairSourceId,
     },
-    RoleBegin {
+    NodePairBegin {
         slot: usize,
         changes: usize,
     },
-    RoleAppend {
-        id: RoleStageId,
+    NodePairAppend {
+        id: NodePairStageId,
         previous: Option<LoopId>,
-        initial: Option<RoleInitial>,
+        initial: Option<NodePairInitial>,
     },
-    RoleStatus {
-        id: RoleStageId,
+    NodePairStatus {
+        id: NodePairStageId,
     },
-    RoleCancel {
-        id: RoleStageId,
+    NodePairCancel {
+        id: NodePairStageId,
     },
-    RoleRecycle {
-        id: RoleStageId,
+    NodePairRecycle {
+        id: NodePairStageId,
     },
     /// Publish stopped logical-owner edits, initial media, timing and routes.
     /// Queuing Stop for the same frame does not satisfy the already-stopped check.
     ConfigurationActivate {
-        roles: RoleStageId,
+        node_pairs: NodePairStageId,
         topology: StageId,
         graph: GraphStageId,
         graph_epoch: Epoch,
@@ -143,7 +144,7 @@ pub enum Operation {
     GraphStatus {
         id: GraphStageId,
     },
-    /// Immediate prepared routing change with fixed logical/physical roles.
+    /// Immediate prepared routing change with fixed logical/physical node pairs.
     GraphActivate {
         id: GraphStageId,
         graph_epoch: Epoch,
@@ -251,24 +252,24 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
-    RoleSource {
-        id: RoleSourceId,
+    NodePairSource {
+        id: NodePairSourceId,
         snapshot: Snapshot,
-        status: RoleSourceStatus,
+        status: NodePairSourceStatus,
     },
-    RoleSourceStatus {
-        id: RoleSourceId,
-        status: RoleSourceStatus,
+    NodePairSourceStatus {
+        id: NodePairSourceId,
+        status: NodePairSourceStatus,
     },
-    RoleSourceReleased {
-        id: RoleSourceId,
+    NodePairSourceReleased {
+        id: NodePairSourceId,
     },
-    RoleStatus {
-        id: RoleStageId,
-        status: RoleStatus,
+    NodePairStatus {
+        id: NodePairStageId,
+        status: NodePairStatus,
     },
     ConfigurationActivated {
-        roles: RoleStageId,
+        node_pairs: NodePairStageId,
         topology: StageId,
         graph: GraphStageId,
         graph_epoch: Epoch,
@@ -437,7 +438,7 @@ pub struct LoopPlanner {
     settings: Settings,
     resolver: Resolver,
     topologies: topology::Topologies,
-    roles: roles::Roles,
+    node_pairs: node_pairs::NodePairs,
     graph_epoch: Epoch,
     ledger: media::Ledger,
     rows: Box<[Option<Row>]>,
@@ -465,7 +466,7 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
     pub fn media(&self) -> &[PreparedMedia] {
         &self.media
     }
-    /// Allocating control-side compilation for the prepared physical roles.
+    /// Allocating control-side compilation for the prepared physical node pairs.
     pub fn compile_graph(&self, graph: &GraphDescription) -> Result<PreparedPlan, Error> {
         let bindings: Vec<_> = self
             .graph_bindings
@@ -580,7 +581,7 @@ impl<P: Processor<LoopPlanner>> Controller<P> {
     }
 }
 impl<P: Processor<LoopPlanner>> Engine<P> {
-    /// Allocating preparation. Every primitive requires both role consumers;
+    /// Allocating preparation. Every primitive requires both playback and capture consumers;
     /// effects must declare no planning access. Graph staging is separately opt-in.
     pub fn prepare(
         config: PreparedConfig,
@@ -628,7 +629,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             Some(observer),
         )
     }
-    /// Prepare timing candidates; role-generation staging remains disabled.
+    /// Prepare timing candidates; node-pair generation staging remains disabled.
     pub fn prepare_with_staging(
         config: PreparedConfig,
         topology: PreparedTopology,
@@ -651,11 +652,11 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             effects,
             graph,
             staging,
-            RoleSettings::default(),
+            NodePairSettings::default(),
             observer,
         )
     }
-    /// Prepare bounded configuration candidates and physical role templates.
+    /// Prepare bounded configuration candidates and physical node pair templates.
     /// Unassigned templates remain outside the initial signal graph.
     pub fn prepare_with_configuration_staging(
         config: PreparedConfig,
@@ -667,7 +668,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
         effects: Vec<(NodeId, P)>,
         graph: GraphDescription,
         staging: TopologySettings,
-        role_settings: RoleSettings,
+        node_pair_settings: NodePairSettings,
         observer: Option<Box<dyn BoundaryObserver>>,
     ) -> Result<(Controller<P>, Self), Failure> {
         let (topologies, topology) = topology::Topologies::prepare(topology, staging)?;
@@ -678,7 +679,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             return Err(Error::InvalidConfig.into());
         }
         let slots = limits.loop_slots;
-        let roles = roles::Roles::prepare(slots, role_settings)?;
+        let node_pairs = node_pairs::NodePairs::prepare(slots, node_pair_settings)?;
         let bytes = slots
             .checked_mul(
                 size_of::<Row>()
@@ -711,7 +712,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             let spec = resolver.topology().node(binding.target).ok();
             let assigned = spec.is_some();
             let slot = binding.target.slot() as usize;
-            if slot >= slots || (!assigned && role_settings.candidates == 0) {
+            if slot >= slots || (!assigned && node_pair_settings.candidates == 0) {
                 return Err(Error::InvalidId.into());
             }
             if spec.is_some_and(|spec| spec.kind != LoopKind::Primitive)
@@ -884,7 +885,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             }
             nodes.push(PreparedNode::new(id, Node::Effect(effect)));
         }
-        if role_settings.candidates == 0 && graph.nodes.len() != nodes.len() {
+        if node_pair_settings.candidates == 0 && graph.nodes.len() != nodes.len() {
             return Err(Error::InvalidShape.into());
         }
         catalog.sort_by_key(|m| (m.target, m.revision));
@@ -923,7 +924,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             settings,
             resolver,
             topologies,
-            roles,
+            node_pairs,
             graph_epoch: Epoch(1),
             ledger,
             rows,
@@ -973,7 +974,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             Self { runtime },
         ))
     }
-    /// Allocating preparation before the first nonempty callback; physical roles stay fixed.
+    /// Allocating preparation before the first nonempty callback; physical node pairs stay fixed.
     pub fn prepare_graph_staging(&mut self, candidates: usize) -> Result<(), Error> {
         self.runtime.prepare_graph_staging(candidates)
     }

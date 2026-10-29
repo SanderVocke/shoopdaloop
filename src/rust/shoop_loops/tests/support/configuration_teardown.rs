@@ -4,14 +4,14 @@ use super::*;
 fn disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_published_capture_claims(
 ) {
     for phase in 0..8 {
-        let mut h = Harness::with_roles(
+        let mut h = Harness::with_node_pairs(
             true,
             0,
             false,
             staging(),
             8,
             if phase == 7 { Some(Frame(7)) } else { None },
-            RoleSettings {
+            NodePairSettings {
                 candidates: 2,
                 sources: 8,
                 source_packets_per_callback: 64,
@@ -24,14 +24,14 @@ fn disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_pub
         if phase == 0 {
             h.op(
                 0,
-                Operation::RoleSnapshot {
+                Operation::NodePairSnapshot {
                     resource: h.imports[1],
                 },
             );
         } else if phase == 1 {
             h.op(
                 0,
-                Operation::RoleSnapshot {
+                Operation::NodePairSnapshot {
                     resource: h.imports[1],
                 },
             );
@@ -39,11 +39,11 @@ fn disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_pub
         } else {
             let sources = source_pair(&mut h);
             if phase >= 3 {
-                let roles = begin(&mut h, 0, if phase == 3 { 2 } else { 1 });
+                let node_pairs = begin(&mut h, 0, if phase == 3 { 2 } else { 1 });
                 h.op(
                     3,
-                    Operation::RoleAppend {
-                        id: roles,
+                    Operation::NodePairAppend {
+                        id: node_pairs,
                         previous: Some(id(1)),
                         initial: Some(initial(target, sources, false)),
                     },
@@ -56,7 +56,7 @@ fn disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_pub
                         &compile(limits(0), &changed_description(2, false)).unwrap(),
                     );
                     let graph = h.graph(0, 1, false, false);
-                    let applied = h.op(7, configuration(roles, topology, graph, 1, 0));
+                    let applied = h.op(7, configuration(node_pairs, topology, graph, 1, 0));
                     h.op(
                         7,
                         transition(
@@ -93,7 +93,7 @@ fn disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_pub
                         assert_eq!(
                             h.reply(applied),
                             Reply::ConfigurationActivated {
-                                roles,
+                                node_pairs,
                                 topology,
                                 graph,
                                 graph_epoch: Epoch(2),

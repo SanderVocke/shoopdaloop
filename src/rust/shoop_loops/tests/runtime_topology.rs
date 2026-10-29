@@ -252,25 +252,25 @@ impl Harness {
         media_slots: usize,
         fault: Option<Frame>,
     ) -> Self {
-        Self::with_roles(
+        Self::with_node_pairs(
             media,
             journal,
             reverse,
             staging,
             media_slots,
             fault,
-            RoleSettings::default(),
+            NodePairSettings::default(),
             false,
         )
     }
-    fn with_roles(
+    fn with_node_pairs(
         media: bool,
         journal: usize,
         reverse: bool,
         staging: TopologySettings,
         media_slots: usize,
         fault: Option<Frame>,
-        roles: RoleSettings,
+        node_pairs: NodePairSettings,
         spare: bool,
     ) -> Self {
         let config = Config {
@@ -421,7 +421,7 @@ impl Harness {
             },
             graph,
             staging,
-            roles,
+            node_pairs,
             media.then(|| Box::new(Log::new()) as Box<dyn BoundaryObserver>),
         )
         .unwrap();
@@ -942,7 +942,7 @@ fn staging_work_shares_the_callback_budget_and_recovery_ignores_normal_receipt_s
 }
 
 #[shoop_test]
-fn stale_scope_generation_role_and_malformed_candidates_preserve_the_working_timeline() {
+fn stale_scope_generation_node_pair_and_malformed_candidates_preserve_the_working_timeline() {
     let mut h = Harness::new(false, 0, false, staging());
     h.op(0, play(0));
     let source = compile(limits(0), &description(false, false)).unwrap();
@@ -2963,8 +2963,8 @@ fn intervening_live_graph_change_refuses_pending_program_without_publishing_its_
     }
 }
 #[shoop_test]
-fn graph_pair_preflight_rejects_role_scope_epoch_and_cancelled_owners_without_partial_publication()
-{
+fn graph_pair_preflight_rejects_node_pair_scope_epoch_and_cancelled_owners_without_partial_publication(
+) {
     let mut disabled = Harness::new(false, 0, false, staging());
     assert_eq!(
         disabled.engine.prepare_graph_staging(0),

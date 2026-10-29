@@ -2,20 +2,20 @@ use super::*;
 use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 
 #[shoop_test]
-fn role_and_source_generations_retire_and_failed_validation_keeps_its_owned_snapshot() {
-    let settings = RoleSettings {
+fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned_snapshot() {
+    let settings = NodePairSettings {
         candidates: 1,
         sources: 1,
         source_packets_per_callback: 1,
     };
     assert!(matches!(
-        Roles::prepare(usize::MAX, settings),
+        NodePairs::prepare(usize::MAX, settings),
         Err(Error::Capacity)
     ));
     assert!(matches!(
-        Roles::prepare(
+        NodePairs::prepare(
             1,
-            RoleSettings {
+            NodePairSettings {
                 candidates: 0,
                 ..settings
             }
@@ -23,9 +23,9 @@ fn role_and_source_generations_retire_and_failed_validation_keeps_its_owned_snap
         Err(Error::InvalidConfig)
     ));
     assert!(matches!(
-        Roles::prepare(
+        NodePairs::prepare(
             1,
-            RoleSettings {
+            NodePairSettings {
                 sources: 0,
                 ..settings
             }
@@ -33,9 +33,9 @@ fn role_and_source_generations_retire_and_failed_validation_keeps_its_owned_snap
         Err(Error::InvalidConfig)
     ));
     assert!(matches!(
-        Roles::prepare(
+        NodePairs::prepare(
             1,
-            RoleSettings {
+            NodePairSettings {
                 source_packets_per_callback: 0,
                 ..settings
             }
@@ -43,17 +43,23 @@ fn role_and_source_generations_retire_and_failed_validation_keeps_its_owned_snap
         Err(Error::InvalidConfig)
     ));
     assert!(matches!(
-        Roles::prepare(
+        NodePairs::prepare(
             1,
-            RoleSettings {
+            NodePairSettings {
                 source_packets_per_callback: usize::MAX,
                 ..settings
             }
         ),
         Err(Error::Capacity)
     ));
-    assert_eq!(RoleStageId::from_parts([0, 0, 1]), Err(Error::InvalidId));
-    assert_eq!(RoleSourceId::from_parts([1, 0, 0]), Err(Error::InvalidId));
+    assert_eq!(
+        NodePairStageId::from_parts([0, 0, 1]),
+        Err(Error::InvalidId)
+    );
+    assert_eq!(
+        NodePairSourceId::from_parts([1, 0, 0]),
+        Err(Error::InvalidId)
+    );
     let config = rt_runtime::Config {
         resource_slots: 2,
         resource_pages: 8,
@@ -111,38 +117,42 @@ fn role_and_source_generations_retire_and_failed_validation_keeps_its_owned_snap
         .unwrap();
     store.finish_upload(token).unwrap();
     store.commit(token).unwrap();
-    let mut roles = Roles::prepare(1, settings).unwrap();
-    let mut validation = Roles::prepare(1, settings).unwrap();
-    roles.banks[0].generation = u32::MAX - 1;
-    roles.sources[0].generation = u32::MAX - 1;
+    let mut node_pairs = NodePairs::prepare(1, settings).unwrap();
+    let mut validation = NodePairs::prepare(1, settings).unwrap();
+    node_pairs.banks[0].generation = u32::MAX - 1;
+    node_pairs.sources[0].generation = u32::MAX - 1;
     assert_no_heap(|| {
-        let id = roles.begin(0, 0).unwrap();
+        let id = node_pairs.begin(0, 0).unwrap();
         assert_eq!(id.parts()[2], u32::MAX);
-        assert_eq!(roles.begin(0, 0), Err(Error::Busy));
-        roles.cancel(id, &mut store.io()).unwrap();
-        assert_eq!(roles.begin(0, 0), Err(Error::Exhausted));
-        assert_eq!(roles.status(id), Ok(RoleStatus::Idle));
-        let (old, _) = roles.snapshot(audio, Frame(0), &mut store.io()).unwrap();
+        assert_eq!(node_pairs.begin(0, 0), Err(Error::Busy));
+        node_pairs.cancel(id, &mut store.io()).unwrap();
+        assert_eq!(node_pairs.begin(0, 0), Err(Error::Exhausted));
+        assert_eq!(node_pairs.status(id), Ok(NodePairStatus::Idle));
+        let (old, _) = node_pairs
+            .snapshot(audio, Frame(0), &mut store.io())
+            .unwrap();
         assert_eq!(old.parts()[2], u32::MAX - 1);
         assert_eq!(
-            roles.release_source(old, &mut foreign.io()),
+            node_pairs.release_source(old, &mut foreign.io()),
             Err(Error::InvalidId)
         );
         assert_eq!(
-            roles.source_status(old),
-            Ok(RoleSourceStatus::Ready { max_packet: 0 })
+            node_pairs.source_status(old),
+            Ok(NodePairSourceStatus::Ready { max_packet: 0 })
         );
-        roles.release_source(old, &mut store.io()).unwrap();
-        let (last, _) = roles.snapshot(audio, Frame(0), &mut store.io()).unwrap();
+        node_pairs.release_source(old, &mut store.io()).unwrap();
+        let (last, _) = node_pairs
+            .snapshot(audio, Frame(0), &mut store.io())
+            .unwrap();
         assert_eq!(last.parts()[2], u32::MAX);
         assert_eq!(
-            roles.release_source(old, &mut store.io()),
+            node_pairs.release_source(old, &mut store.io()),
             Err(Error::InvalidId)
         );
-        roles.release_source(last, &mut store.io()).unwrap();
-        assert_eq!(roles.sources[0].generation, 0);
+        node_pairs.release_source(last, &mut store.io()).unwrap();
+        assert_eq!(node_pairs.sources[0].generation, 0);
         assert_eq!(
-            roles.snapshot(audio, Frame(0), &mut store.io()),
+            node_pairs.snapshot(audio, Frame(0), &mut store.io()),
             Err(Error::Capacity)
         );
         let (failed, _) = validation
@@ -155,7 +165,7 @@ fn role_and_source_generations_retire_and_failed_validation_keeps_its_owned_snap
         );
         assert_eq!(
             validation.source_status(failed),
-            Ok(RoleSourceStatus::Failed(Error::InvalidId))
+            Ok(NodePairSourceStatus::Failed(Error::InvalidId))
         );
         assert_eq!(
             validation.validate_source(failed, &mut store.io()),
@@ -173,14 +183,14 @@ fn role_and_source_generations_retire_and_failed_validation_keeps_its_owned_snap
         validation.callback(Frame(1));
         assert_eq!(
             validation.validate_source(ready, &mut store.io()),
-            Ok(RoleSourceStatus::Validating { packets: 1 })
+            Ok(NodePairSourceStatus::Validating { packets: 1 })
         );
         validation.callback(Frame(2));
         assert_eq!(
             validation.validate_source(ready, &mut store.io()),
-            Ok(RoleSourceStatus::Ready { max_packet: 3 })
+            Ok(NodePairSourceStatus::Ready { max_packet: 3 })
         );
-        roles.cleanup(&mut store.io()).unwrap();
+        node_pairs.cleanup(&mut store.io()).unwrap();
         validation.cleanup(&mut store.io()).unwrap();
         validation.cleanup(&mut store.io()).unwrap();
         store.remove(audio).unwrap();

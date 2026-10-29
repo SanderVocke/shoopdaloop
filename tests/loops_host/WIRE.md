@@ -233,7 +233,7 @@ a later sequence. Sequence `u64::MAX` is usable once; no subsequent record can p
 ### 3. Hand off, validate, return
 
 Seal proves only framing and declared-count completeness. It does not check live
-catalog generations, signal ordering/cycles, planner signatures or loop-role
+catalog generations, signal ordering/cycles, planner signatures or loop node-pair
 compatibility. `take(id)` changes Sealed→Loaned and returns local owning
 `Loan { id, epoch, plan }`. Submit the plan with `Controller::stage_graph`; process
 real callbacks and inspect its owning completion. Only receiver-side runtime
@@ -627,7 +627,7 @@ All fields are unsigned little-endian; unused fields/data bytes must be zero.
 | 6/7 | Acquire snapshot / create cursor |
 | 8 | Read: A exact expected cursor byte position; reusable64-byte buffer |
 | 9/10/11 | Release snapshot / Remove resource / Cancel upload |
-| 13/14/15 | Acquire role source / validate / release |
+| 13/14/15 | Acquire node pair source / validate / release |
 | 17/18 | Begin timing program (data header) / Append (A first record, data one record) |
 | 19/20 | Validate / Activate (A graph epoch, B topology epoch) |
 | 21/22 | Recycle displaced program / Cancel candidate |
@@ -661,7 +661,7 @@ Format/target/epoch/catalog validation remains separate runtime/domain work.
 
 Bank flags are resource1/upload2/snapshot4/source8, or program256. Commit metadata
 is revision; Snapshot is revision/bytes/frames/channels(0 Midi)/source cut. Cursor
-and Read report next byte position. Role validation reports Ready1 or progress0
+and Read report next byte position. Node pair validation reports Ready1 or progress0
 plus validated frames. Program validation/status reports Ready1 or progress0 plus
 validation steps. Activate reports graph/topology epochs. Transitions report the
 actual applied frame. QueryState metadata is cut frame/captured frames/capture revision/
@@ -685,7 +685,7 @@ preserve client state and credit. Sequences accept u64::MAX once; generation MAX
 retires at0 on Remove/Recycle/Cancel rather than wrapping.
 
 Raw uploaded MIDI can be snapshotted/read but lacks the checkpoint index required
-for a playable role source. The fixture requires exact domain failure522 and
+for a playable node pair source. The fixture requires exact domain failure522 and
 unchanged retained flags, then explicit release/remove; it does not advertise raw
 MIDI as playback-ready or replace existing playable media with it.
 

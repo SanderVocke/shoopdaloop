@@ -1,4 +1,4 @@
-//! Nested musical control over a real facade with timing-only physical roles.
+//! Nested musical control over a real facade with timing-only physical node pairs.
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     graph::{GraphDescription, PortCounts},

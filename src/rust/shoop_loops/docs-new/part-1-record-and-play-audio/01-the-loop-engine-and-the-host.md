@@ -35,9 +35,9 @@ Host input buffers ───────────────────► 
 
 “Control side” and “render side” describe responsibilities, not automatic thread placement. For a threaded audio host, your application moves the engine into the audio callback's state—for example, into a Rust `move` closure—and keeps the controller on the application thread. Each object has one owner; do not access the engine concurrently. Our offline example keeps both on one thread and calls `process` directly.
 
-## One loop, two signal roles
+## One loop, two signal nodes
 
-A loop has one musical identity and timeline. For audio/MIDI, the engine creates two graph processors—its **signal roles**. The **capture** processor receives the signal to record; the **playback** processor sends recorded content into the graph.
+A loop has one musical identity and timeline. For audio/MIDI, the engine creates two graph processors—its **signal nodes**. The **capture** processor receives the signal to record; the **playback** processor sends recorded content into the graph.
 
 Keeping these processors separate lets you choose what is recorded and what is heard. The first example connects host input to capture and playback to host output. There is no live-input monitoring route, so the output is silent while the empty loop records.
 

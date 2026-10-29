@@ -56,7 +56,7 @@ playback and capture nodes with intervening effects:
 host input + retained loop playback -> independent DSP -> output + loop capture
 ```
 
-The current facade owns its `GraphRuntime`, resources, prepared physical roles
+The current facade owns its `GraphRuntime`, resources, prepared physical node pairs
 and lifecycle. The application still supplies supported routes/effects; this is
 not another graph executor or a complete application backend. One runtime has one
 planner. Independently planning domains need explicit composition, not installation
@@ -136,8 +136,8 @@ costs still apply; continuous recovery need not guarantee normal fairness.
 Ticket cancellation before dequeue, queued typed cancellation and delivered-domain
 cancellation are different cuts. Standalone `RequestId` requires correct caller
 routing; the facade cancels by originating runtime `Sequence`. The facade's exact
-payload-free recovery-safe set is Cancel, TopologyCancel, RoleCancel,
-RoleSourceRelease and nonfuture `Timing::At` Stop. Recovery terminates during
+payload-free recovery-safe set is Cancel, TopologyCancel, NodePairCancel,
+NodePairSourceRelease and nonfuture `Timing::At` Stop. Recovery terminates during
 planning at its delivery frame before positive samples. Queries, validation,
 exports and activation remain normal work; recovery cannot activate graphs.
 
@@ -381,12 +381,12 @@ prepared output capacity; unlimited MIDI/recording is not promised.
 
 | Operation | Implemented cut / scope |
 | --- | --- |
-| TopologyActivate | Delivery-time fixed IDs/kinds; changed programs already stopped; roles/media/routes unchanged |
-| ProgramActivate | One owning selected-program/nominal-length change at stopped/true zero; other timing/graph/roles fixed |
-| GraphActivate | Immediate compatible fixed-role route/binding change, including continued capture |
+| TopologyActivate | Delivery-time fixed IDs/kinds; changed programs already stopped; node pairs/media/routes unchanged |
+| ProgramActivate | One owning selected-program/nominal-length change at stopped/true zero; other timing/graph/node pairs fixed |
+| GraphActivate | Immediate compatible fixed node-pair route/binding change, including continued capture |
 | TopologyGraphActivate | Paired compatible immediate timing/routes; logical owners fixed, changed programs stopped |
-| ConfigurationActivate | Already-stopped logical generation/media edits with matching topology/routes over prepared physical roles |
-| ProgramGraphActivate | Pending selected program/routes at actual zero/stopped entry; IDs/kinds/sync/triggers/other programs and physical roles fixed |
+| ConfigurationActivate | Already-stopped logical generation/media edits with matching topology/routes over prepared physical node pairs |
+| ProgramGraphActivate | Pending selected program/routes at actual zero/stopped entry; IDs/kinds/sync/triggers/other programs and physical node pairs fixed |
 
 LTP1 encodes flat prepared timing tables, ordered bounded chunks and scoped
 receiver-bank lifecycle, not Rust layouts/pointers or a whole control protocol.
@@ -408,8 +408,8 @@ Generic structural graph validation cannot establish loop playback/capture pair,
 decision binding, input-tracking and media-shape correctness. The facade enforces
 these over prepared physical templates, not arbitrary processor construction/port
 resizing. A queued same-frame Stop has not settled and cannot satisfy an immediate
-already-stopped configuration precondition. Successful RoleAppend consumes source
-IDs; rejection transfers none. Role/source, timing/program, graph retirement and
+already-stopped configuration precondition. Successful NodePairAppend consumes source
+IDs; rejection transfers none. Node pair/source, timing/program, graph retirement and
 external exports recycle independently; old-generation exports remain valid.
 
 `prepare_with_initial_graph` installs validated routes/bindings off-render at epoch
@@ -450,7 +450,7 @@ not architectural claims of performance parity.
 
 The current `runtime::Engine<P>` owns `GraphRuntime<Node<P>, LoopPlanner>`.
 Although the resolver and low-level renderers are public, the production planner
-and role processors lack a complete public standalone preparation/install path.
+and node pair processors lack a complete public standalone preparation/install path.
 Applications cannot simply install those production components in their own
 runtime without reproducing coordination. One planner per runtime and the facade's
 operation vocabulary constrain independently controlled/planning domains.
@@ -460,12 +460,12 @@ unrelated DSP/routes. Any alternative must preserve:
 
 1. Required playback/capture consumers, decision bindings and input tracking on every relevant graph activation.
 2. Paired program/routing publication at the real cut after full preflight.
-3. Coherent logical-generation/media/physical-role reassignment and retained exports.
+3. Coherent logical-generation/media/physical node-pair reassignment and retained exports.
 4. Capture reservation/freeze and failure feedback before affected musical samples.
 5. Reliable receipts, bounded owners, cancellation and post-fault reclamation.
 
 The critique recommends a preparable coordinated subsystem in an application-owned
-runtime, explicit protected-role/activation contracts, and an optional turnkey
+runtime, explicit protected node-pair/activation contracts, and an optional turnkey
 Engine facade. **That is a proposal, not an adopted refactor or existing API.**
 It cannot relax the approved musical/media guarantees or be silently implemented
 under the loop's remaining verification tasks.
@@ -482,7 +482,7 @@ are reference/reuse candidates, not dependencies to pull into the portable core.
 | Sync/composites/countdowns | Existing resolver/programs | Implemented loop capability; M1's one-loop scenario is not inter-loop parity proof |
 | Replacing/overdub/dry-wet policy | Application/session routing plus required loop/media mechanisms | In-place modes/full policy excluded; no implied additive-overdub contract |
 | Prerecord/preplay/latency correction | Reuse checked `shoop_latency` math; explicit retained history/tail/windows needed | Probe findings identify gaps, not a completed mechanism |
-| Routes/processors/presets | Runtime validates signal DAG; loop coordinates roles; service/component owns DSP control | Prepared route/preset slice works; real plugin hosting/dynamic construction deferred |
+| Routes/processors/presets | Runtime validates signal DAG; loop coordinates node pairs; service/component owns DSP control | Prepared route/preset slice works; real plugin hosting/dynamic construction deferred |
 | Device/driver switching | Existing host/device layer adapted later | Not supplied by portable libraries/service |
 | State/meters/waveforms | Settled loop cuts, separate peak telemetry, off-render analysis over immutable media | Slice has state/peaks/live exports; full waveform publication/UI freshness deferred |
 | MIDI initial state and cleanup | Loop projection/capture plus runtime reset recovery | Supported projection/packets, not arbitrary synthesizer state |

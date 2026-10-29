@@ -10,8 +10,8 @@ use rt_runtime::{Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId, Revisi
 use shoop_loops::audio::Smoothing;
 use shoop_loops::media::{Export, ExportId};
 use shoop_loops::runtime::{
-    Binding, Controller, Engine, Failure, LoopPlanner, Operation, Reply, RoleInitial, RoleSettings,
-    RoleSourceStatus, RoleStatus, Settings, TopologySettings,
+    Binding, Controller, Engine, Failure, LoopPlanner, NodePairInitial, NodePairSettings,
+    NodePairSourceStatus, NodePairStatus, Operation, Reply, Settings, TopologySettings,
 };
 use shoop_loops::topology::staging::{StageId, Status};
 use shoop_loops::{
@@ -355,7 +355,7 @@ fn run(parts: &[usize]) {
             records_per_callback: 1,
             validation_steps_per_callback: 64,
         },
-        RoleSettings {
+        NodePairSettings {
             candidates: 1,
             sources: 1,
             source_packets_per_callback: 1,
@@ -395,14 +395,14 @@ fn run(parts: &[usize]) {
         &mut engine,
         transition(owner(1), Transition::Stop),
     );
-    let Reply::RoleSource {
+    let Reply::NodePairSource {
         id: source,
-        status: RoleSourceStatus::Ready { max_packet: 0 },
+        status: NodePairSourceStatus::Ready { max_packet: 0 },
         ..
     } = operation(
         &mut control,
         &mut engine,
-        Operation::RoleSnapshot {
+        Operation::NodePairSnapshot {
             resource: old.view.audio.unwrap().snapshot.resource,
         },
     )
@@ -410,32 +410,33 @@ fn run(parts: &[usize]) {
     else {
         panic!("source")
     };
-    let Reply::RoleStatus {
-        id: roles,
-        status: RoleStatus::Receiving {
-            received: 0,
-            expected: 1,
-        },
+    let Reply::NodePairStatus {
+        id: node_pairs,
+        status:
+            NodePairStatus::Receiving {
+                received: 0,
+                expected: 1,
+            },
     } = operation(
         &mut control,
         &mut engine,
-        Operation::RoleBegin {
+        Operation::NodePairBegin {
             slot: 0,
             changes: 1,
         },
     )
     .0
     else {
-        panic!("role begin")
+        panic!("node_pair begin")
     };
     assert_eq!(
         operation(
             &mut control,
             &mut engine,
-            Operation::RoleAppend {
-                id: roles,
+            Operation::NodePairAppend {
+                id: node_pairs,
                 previous: Some(owner(1)),
-                initial: Some(RoleInitial {
+                initial: Some(NodePairInitial {
                     target: owner(2),
                     frames: 2,
                     audio: Some(source),
@@ -446,16 +447,16 @@ fn run(parts: &[usize]) {
             }
         )
         .0,
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Ready
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Ready
         }
     );
     assert_eq!(
         operation(
             &mut control,
             &mut engine,
-            Operation::RoleSourceRelease { id: source }
+            Operation::NodePairSourceRelease { id: source }
         )
         .0,
         Reply::Failed(Failure::Runtime(Error::InvalidId))
@@ -480,7 +481,7 @@ fn run(parts: &[usize]) {
     let graph = *graph;
     drop((completion, ticket));
     let activate = Operation::ConfigurationActivate {
-        roles,
+        node_pairs,
         topology,
         graph,
         graph_epoch: Epoch(1),
@@ -502,12 +503,12 @@ fn run(parts: &[usize]) {
         operation(
             &mut control,
             &mut engine,
-            Operation::RoleStatus { id: roles }
+            Operation::NodePairStatus { id: node_pairs }
         )
         .0,
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Ready
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Ready
         }
     );
     assert_eq!(
@@ -548,7 +549,7 @@ fn run(parts: &[usize]) {
     assert_eq!(
         results[0],
         Reply::ConfigurationActivated {
-            roles,
+            node_pairs,
             topology,
             graph,
             graph_epoch: Epoch(2),
@@ -622,12 +623,12 @@ fn run(parts: &[usize]) {
         operation(
             &mut control,
             &mut engine,
-            Operation::RoleRecycle { id: roles }
+            Operation::NodePairRecycle { id: node_pairs }
         )
         .0,
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Idle
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Idle
         }
     );
     assert_eq!(

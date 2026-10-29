@@ -192,7 +192,7 @@ Stages 5 and 6 both depend on 4 but not on each other.
       `check_loops_boundary.py`, `run_loops_hosts.py`, `benchmark_loops.py` and
       their `scripts/tests`, plus `tests/loops_host`. Update paths and links
       in the current docs. Commit.
-- [ ] Rename `Role*` → `NodePair*` (types, operations, replies, module, docs).
+- [x] Rename `Role*` → `NodePair*` (types, operations, replies, module, docs).
       Commit separately.
 
 **Verify:** workspace build, fmt check and all Stage 0 suites, with identical

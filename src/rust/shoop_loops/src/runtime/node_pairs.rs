@@ -2,7 +2,7 @@ use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[cfg(test)]
-#[path = "roles_tests.rs"]
+#[path = "node_pairs_tests.rs"]
 mod tests;
 
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
@@ -31,40 +31,40 @@ macro_rules! identity {
         }
     };
 }
-identity!(RoleStageId);
-identity!(RoleSourceId);
+identity!(NodePairStageId);
+identity!(NodePairSourceId);
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct RoleSettings {
+pub struct NodePairSettings {
     pub candidates: usize,
     pub sources: usize,
     pub source_packets_per_callback: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RoleSourceStatus {
+pub enum NodePairSourceStatus {
     Validating { packets: usize },
     Ready { max_packet: usize },
     Failed(Error),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RoleStatus {
+pub enum NodePairStatus {
     Idle,
     Receiving { received: usize, expected: usize },
     Ready,
     Taken,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RoleInitial {
+pub struct NodePairInitial {
     pub target: LoopId,
     pub frames: u64,
-    pub audio: Option<RoleSourceId>,
-    pub midi: Option<RoleSourceId>,
+    pub audio: Option<NodePairSourceId>,
+    pub midi: Option<NodePairSourceId>,
     pub gain: f32,
     pub preserve_input: bool,
 }
 #[derive(Clone, Copy)]
 pub(super) struct Edit {
     pub previous: Option<LoopId>,
-    pub initial: Option<RoleInitial>,
+    pub initial: Option<NodePairInitial>,
 }
 impl Edit {
     pub(super) fn slot(self) -> Result<usize, Error> {
@@ -86,21 +86,21 @@ struct SourceSlot {
 }
 pub(super) struct Bank {
     generation: u32,
-    status: RoleStatus,
+    status: NodePairStatus,
     pub edits: Vec<Edit>,
     pub changes: Vec<media::OwnerChange>,
 }
-pub(super) struct Roles {
+pub(super) struct NodePairs {
     scope: u32,
     loops: usize,
     banks: Box<[Bank]>,
     sources: Box<[SourceSlot]>,
-    settings: RoleSettings,
+    settings: NodePairSettings,
     callback: Option<Frame>,
     steps: usize,
 }
-impl Roles {
-    pub(super) fn prepare(loops: usize, settings: RoleSettings) -> Result<Self, Error> {
+impl NodePairs {
+    pub(super) fn prepare(loops: usize, settings: NodePairSettings) -> Result<Self, Error> {
         if (settings.candidates == 0 && settings.sources != 0)
             || (settings.sources == 0) != (settings.source_packets_per_callback == 0)
         {
@@ -158,7 +158,7 @@ impl Roles {
             changes.clear();
             banks.push(Bank {
                 generation: 0,
-                status: RoleStatus::Idle,
+                status: NodePairStatus::Idle,
                 edits,
                 changes,
             });
@@ -186,7 +186,7 @@ impl Roles {
             steps: 0,
         })
     }
-    pub(super) fn source(&self, id: RoleSourceId) -> Result<media::Source, Error> {
+    pub(super) fn source(&self, id: NodePairSourceId) -> Result<media::Source, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
         }
@@ -202,26 +202,29 @@ impl Roles {
             self.steps = self.settings.source_packets_per_callback;
         }
     }
-    pub(super) fn source_status(&self, id: RoleSourceId) -> Result<RoleSourceStatus, Error> {
+    pub(super) fn source_status(
+        &self,
+        id: NodePairSourceId,
+    ) -> Result<NodePairSourceStatus, Error> {
         self.source(id)?;
         let slot = &self.sources[id.slot as usize];
         Ok(if let Some(error) = slot.failure {
-            RoleSourceStatus::Failed(error)
+            NodePairSourceStatus::Failed(error)
         } else if slot.cursor.is_some() {
-            RoleSourceStatus::Validating {
+            NodePairSourceStatus::Validating {
                 packets: slot.packets,
             }
         } else {
-            RoleSourceStatus::Ready {
+            NodePairSourceStatus::Ready {
                 max_packet: slot.max_packet,
             }
         })
     }
     pub(super) fn validate_source(
         &mut self,
-        id: RoleSourceId,
+        id: NodePairSourceId,
         io: &mut ResourceIo<'_>,
-    ) -> Result<RoleSourceStatus, Error> {
+    ) -> Result<NodePairSourceStatus, Error> {
         self.source(id)?;
         let slot = &mut self.sources[id.slot as usize];
         if let Some(error) = slot.failure {
@@ -246,7 +249,7 @@ impl Roles {
         }
         self.source_status(id)
     }
-    fn take_source(&mut self, id: RoleSourceId) -> media::Source {
+    fn take_source(&mut self, id: NodePairSourceId) -> media::Source {
         let slot = &mut self.sources[id.slot as usize];
         let source = slot.source.take().expect("validated source");
         slot.generation = slot.generation.checked_add(1).unwrap_or(0);
@@ -257,7 +260,7 @@ impl Roles {
         resource: rt_runtime::ResourceId,
         frame: Frame,
         io: &mut ResourceIo<'_>,
-    ) -> Result<(RoleSourceId, Snapshot), Error> {
+    ) -> Result<(NodePairSourceId, Snapshot), Error> {
         let index = self
             .sources
             .iter()
@@ -289,7 +292,7 @@ impl Roles {
         slot.packets = 0;
         slot.failure = None;
         Ok((
-            RoleSourceId {
+            NodePairSourceId {
                 scope: self.scope,
                 slot: index as u32,
                 generation: slot.generation,
@@ -299,7 +302,7 @@ impl Roles {
     }
     pub(super) fn release_source(
         &mut self,
-        id: RoleSourceId,
+        id: NodePairSourceId,
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
         let source = self.source(id)?;
@@ -310,7 +313,7 @@ impl Roles {
         self.take_source(id);
         Ok(())
     }
-    pub(super) fn bank(&self, id: RoleStageId) -> Result<&Bank, Error> {
+    pub(super) fn bank(&self, id: NodePairStageId) -> Result<&Bank, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
         }
@@ -319,16 +322,16 @@ impl Roles {
             .filter(|s| s.generation == id.generation)
             .ok_or(Error::InvalidId)
     }
-    pub(super) fn bank_mut(&mut self, id: RoleStageId) -> Result<&mut Bank, Error> {
+    pub(super) fn bank_mut(&mut self, id: NodePairStageId) -> Result<&mut Bank, Error> {
         self.bank(id)?;
         Ok(&mut self.banks[id.slot as usize])
     }
-    pub(super) fn status(&self, id: RoleStageId) -> Result<RoleStatus, Error> {
+    pub(super) fn status(&self, id: NodePairStageId) -> Result<NodePairStatus, Error> {
         Ok(self.bank(id)?.status)
     }
-    pub(super) fn begin(&mut self, slot: usize, count: usize) -> Result<RoleStageId, Error> {
+    pub(super) fn begin(&mut self, slot: usize, count: usize) -> Result<NodePairStageId, Error> {
         let bank = self.banks.get_mut(slot).ok_or(Error::InvalidId)?;
-        if bank.status != RoleStatus::Idle {
+        if bank.status != NodePairStatus::Idle {
             return Err(Error::Busy);
         }
         if count > self.loops {
@@ -336,14 +339,14 @@ impl Roles {
         }
         bank.generation = bank.generation.checked_add(1).ok_or(Error::Exhausted)?;
         bank.status = if count == 0 {
-            RoleStatus::Ready
+            NodePairStatus::Ready
         } else {
-            RoleStatus::Receiving {
+            NodePairStatus::Receiving {
                 received: 0,
                 expected: count,
             }
         };
-        Ok(RoleStageId {
+        Ok(NodePairStageId {
             scope: self.scope,
             slot: slot as u32,
             generation: bank.generation,
@@ -351,14 +354,14 @@ impl Roles {
     }
     pub(super) fn append(
         &mut self,
-        id: RoleStageId,
+        id: NodePairStageId,
         edit: Edit,
         binding: Binding,
         ledger: &mut media::Ledger,
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
         let bank = self.bank(id)?;
-        let RoleStatus::Receiving { received, expected } = bank.status else {
+        let NodePairStatus::Receiving { received, expected } = bank.status else {
             return Err(Error::InvalidState);
         };
         let slot = edit.slot()?;
@@ -372,7 +375,7 @@ impl Roles {
                 return Err(Error::InvalidShape);
             }
             for source in [initial.audio, initial.midi].into_iter().flatten() {
-                let RoleSourceStatus::Ready { max_packet } = self.source_status(source)? else {
+                let NodePairSourceStatus::Ready { max_packet } = self.source_status(source)? else {
                     return Err(Error::InvalidState);
                 };
                 if max_packet > binding.packet_bytes {
@@ -410,21 +413,25 @@ impl Roles {
         bank.edits.push(edit);
         bank.changes.push(change);
         bank.status = if received + 1 == expected {
-            RoleStatus::Ready
+            NodePairStatus::Ready
         } else {
-            RoleStatus::Receiving {
+            NodePairStatus::Receiving {
                 received: received + 1,
                 expected,
             }
         };
         Ok(())
     }
-    pub(super) fn applied(&mut self, id: RoleStageId) {
-        self.bank_mut(id).expect("validated bank").status = RoleStatus::Taken;
+    pub(super) fn applied(&mut self, id: NodePairStageId) {
+        self.bank_mut(id).expect("validated bank").status = NodePairStatus::Taken;
     }
-    pub(super) fn cancel(&mut self, id: RoleStageId, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub(super) fn cancel(
+        &mut self,
+        id: NodePairStageId,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<(), Error> {
         let bank = self.bank_mut(id)?;
-        if matches!(bank.status, RoleStatus::Taken | RoleStatus::Idle) {
+        if matches!(bank.status, NodePairStatus::Taken | NodePairStatus::Idle) {
             return Err(Error::InvalidState);
         }
         for input in bank.changes.iter().filter_map(|c| c.input()) {
@@ -443,30 +450,30 @@ impl Roles {
             }
         }
         bank.edits.clear();
-        bank.status = RoleStatus::Idle;
+        bank.status = NodePairStatus::Idle;
         Ok(())
     }
-    pub(super) fn recycle(&mut self, id: RoleStageId) -> Result<(), Error> {
+    pub(super) fn recycle(&mut self, id: NodePairStageId) -> Result<(), Error> {
         let bank = self.bank_mut(id)?;
-        if bank.status != RoleStatus::Taken {
+        if bank.status != NodePairStatus::Taken {
             return Err(Error::InvalidState);
         }
         bank.changes.clear();
         bank.edits.clear();
-        bank.status = RoleStatus::Idle;
+        bank.status = NodePairStatus::Idle;
         Ok(())
     }
     pub(super) fn cleanup(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
         for index in 0..self.banks.len() {
             let bank = &self.banks[index];
-            let id = RoleStageId {
+            let id = NodePairStageId {
                 scope: self.scope,
                 slot: index as u32,
                 generation: bank.generation,
             };
             match bank.status {
-                RoleStatus::Idle => {}
-                RoleStatus::Taken => self.recycle(id)?,
+                NodePairStatus::Idle => {}
+                NodePairStatus::Taken => self.recycle(id)?,
                 _ => self.cancel(id, io)?,
             }
         }
@@ -474,7 +481,7 @@ impl Roles {
             let slot = &self.sources[index];
             if slot.source.is_some() {
                 self.release_source(
-                    RoleSourceId {
+                    NodePairSourceId {
                         scope: self.scope,
                         slot: index as u32,
                         generation: slot.generation,

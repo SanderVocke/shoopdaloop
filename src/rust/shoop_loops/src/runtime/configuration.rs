@@ -1,14 +1,14 @@
 use super::*;
 
 impl LoopPlanner {
-    pub(super) fn append_role(
+    pub(super) fn append_node_pair(
         &mut self,
-        id: RoleStageId,
+        id: NodePairStageId,
         previous: Option<LoopId>,
-        initial: Option<RoleInitial>,
+        initial: Option<NodePairInitial>,
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
-        let edit = roles::Edit { previous, initial };
+        let edit = node_pairs::Edit { previous, initial };
         let row = self
             .rows
             .get(edit.slot()?)
@@ -20,12 +20,12 @@ impl LoopPlanner {
         if initial.is_some_and(|i| i.preserve_input && !row.assigned) {
             return Err(Error::InvalidState);
         }
-        self.roles
+        self.node_pairs
             .append(id, edit, row.binding, &mut self.ledger, io)
     }
     pub(super) fn activate_configuration(
         &mut self,
-        roles: RoleStageId,
+        node_pairs: NodePairStageId,
         topology: StageId,
         graph: GraphStageId,
         graph_epoch: Epoch,
@@ -36,12 +36,12 @@ impl LoopPlanner {
         if self.resolver.epoch() != topology_epoch {
             return Err(crate::Error::InvalidState.into());
         }
-        if self.roles.status(roles)? != RoleStatus::Ready {
+        if self.node_pairs.status(node_pairs)? != NodePairStatus::Ready {
             return Err(Error::InvalidState.into());
         }
         let permit = graphs.prepare_activation(graph, graph_epoch)?;
         let candidate = self.topologies.candidate(topology)?;
-        let bank = self.roles.bank(roles)?;
+        let bank = self.node_pairs.bank(node_pairs)?;
         for edit in &bank.edits {
             let row = self
                 .rows
@@ -122,7 +122,7 @@ impl LoopPlanner {
         if bindings != permit.candidate().planning().bindings.len() {
             return Err(Error::InvalidShape.into());
         }
-        let bank = self.roles.bank_mut(roles)?;
+        let bank = self.node_pairs.bank_mut(node_pairs)?;
         let media = self
             .ledger
             .prepare_owner_activation(io, &mut bank.changes)?;
@@ -131,7 +131,7 @@ impl LoopPlanner {
         media.commit();
         for edit in &bank.edits {
             let slot = edit.slot().expect("validated edit");
-            let row = self.rows[slot].as_mut().expect("prepared role");
+            let row = self.rows[slot].as_mut().expect("prepared node_pair");
             row.assigned = edit.initial.is_some();
             if let Some(initial) = edit.initial {
                 row.binding.target = initial.target;
@@ -146,7 +146,7 @@ impl LoopPlanner {
             row.failure = None;
             row.overflows = 0;
         }
-        self.roles.applied(roles);
+        self.node_pairs.applied(node_pairs);
         self.graph_epoch = permit.commit();
         Ok((self.graph_epoch, self.resolver.epoch()))
     }

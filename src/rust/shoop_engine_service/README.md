@@ -9,7 +9,7 @@ or a browser/IPC protocol.
 ## Preparation and hosting
 
 `prepare(config, presets, initial_preset)` returns `Prepared { client, render,
-route, target }`. Preparation creates the roles, graph, preset storage, queues,
+route, target }`. Preparation creates the loop nodes, graph, preset storage, queues,
 MIDI index/capture storage and an alternate **Live** capture route off-render.
 This constructor starts with an empty loop. `prepare_with_content(config, presets,
 initial_preset, InitialContent)` instead imports planar stereo samples, ordered
@@ -28,7 +28,7 @@ uses finite resource upload accounting, never a silent engine callback.
   ingress and calls the existing loop engine exactly once. The resolver remains
   authoritative; there is no service clock, nested runtime or callback splitting
   to renew quotas.
-- Initial roles/graph are ready before frame zero. Initial graph epoch is **1**;
+- Initial loop nodes/graph are ready before frame zero. Initial graph epoch is **1**;
   initial resolver/topology epoch is **0**. These are different counters.
 - `render.midi_recovery()` is a separate reserved output. Deliver its packets as
   well as ordinary MIDI before the next call. Ordinary playback restoration may
@@ -45,7 +45,7 @@ or send packets to a device. Destruction is off-render.
 ## Typed control and visibility
 
 `loop_at` admits the supported transition/selection/gain/state/export/cursor/
-release and fixed-role graph operations. Native admission is not runtime admission
+release and fixed node-pair graph operations. Native admission is not runtime admission
 or actual execution:
 
 1. A successful call reserves a service credit and returns a component-checked
@@ -77,8 +77,8 @@ atomic transaction.
 
 `stage_route` transfers a prepared candidate. Its actual StageGraph delivery names
 a Ready ID. Submit GraphActivate with current graph/topology epochs to publish the
-fixed-role route at its frame. The candidate changes capture from post-DSP to live
-input, preserving physical roles, the current take and loop state. Retired graph
+fixed node-pair route at its frame. The candidate changes capture from post-DSP to live
+input, preserving physical node pairs, the current take and loop state. Retired graph
 storage is independently released or reclaimed when stopped.
 
 Exports retain immutable public leases. Obtain cursors, submit preallocated owning
@@ -96,7 +96,7 @@ Optional refusals are domain outcomes, not permission to stop admitted recording
 | Native returns | 17 owning slots; ten semantic slots; retained fault spills |
 | Facade callback | 16 commands/publications; 32 scheduled events; 128 validation steps; 1,024 optional-transfer bytes |
 | Runtime host MIDI | 2,048 events / 8,192 bytes per port |
-| Loop role MIDI | 2,048 events; 512 packet/data bytes per interval |
+| Loop node MIDI | 2,048 events; 512 packet/data bytes per interval |
 | Capture | Two groups/banks; stereo audio plus MIDI; 32,768 staging bytes/group |
 | MIDI index | Eight versions; 32 checkpoints/version; 128-event replay interval |
 | Resource pool | 32 resource/version/snapshot slots; default 4,096 × 256-byte pages |

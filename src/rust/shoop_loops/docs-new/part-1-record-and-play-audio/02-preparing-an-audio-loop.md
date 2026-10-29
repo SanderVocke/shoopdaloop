@@ -100,7 +100,7 @@ A **topology** describes loops and their musical relationships. This one has a s
 
 ## 3. Bind playback and capture
 
-Give the two signal roles distinct runtime node identities and bind them to the loop:
+Give the two signal nodes distinct runtime node identities and bind them to the loop:
 
 ```rust
     let playback = NodeId::from_parts(0, 1).unwrap();
@@ -119,7 +119,7 @@ Give the two signal roles distinct runtime node identities and bind them to the 
     };
 ```
 
-`NodeId` addresses a physical signal role; `LoopId` addresses the musical loop. They are different types even when their slot numbers happen to match.
+`NodeId` addresses a physical signal node; `LoopId` addresses the musical loop. They are different types even when their slot numbers happen to match.
 
 Playback has two outputs and capture has two inputs. The engine constructs both processors and connects them to its timing decisions. We need no custom DSP. Unity gain and no boundary smoothing keep the expected samples exact; abrupt starts and wraps may click with real audio. The three MIDI capacity fields are unused because `midi` is false.
 

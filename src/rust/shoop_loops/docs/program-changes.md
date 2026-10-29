@@ -18,7 +18,7 @@ A one-frame source clocks an old four-iteration program. The pair is delivered a
 start+1, waits until actual zero at start+4, then publishes a two-iteration program
 and bypass route together. Scalar effect output changes from 1 to 2 at that exact
 sample, both epochs advance, and the continuing child retains its four cycles.
-Whole/single/split calls and zero at the cut agree under heap guards. Roles are
+Whole/single/split calls and zero at the cut agree under heap guards. Node pairs are
 timing-only: those samples witness the independent effect route, not loop media.
 Timing storage and the displaced graph return independently; stopped cleanup
 recovers the remaining owners. Mixed-media refusal/cancellation remains covered
@@ -122,12 +122,12 @@ lookups and finite target traversal. This adds no allocation, destruction, block
 external-producer retry or arbitrary musical-work limit. These costs are not a
 constant-time operation or a callback deadline guarantee.
 
-This standalone API does not update a runtime signal graph, physical role bindings,
+This standalone API does not update a runtime signal graph, physical node pair bindings,
 resource claims or logical generations. The facade connects staged receiver owners, reliable execution tokens, current
 epoch checks, capture-family preflight and stopped cleanup to it. ProgramGraphActivate
 holds only a reference to an unlocked Ready graph while waiting, then rechecks it
 and borrows publication authority at the real cut. Logical IDs/kinds, sync/triggers,
-other programs and physical roles stay fixed. Stopped-owner ConfigurationActivate
+other programs and physical node pairs stay fixed. Stopped-owner ConfigurationActivate
 is a different transaction for generation edits. No path offers arbitrary processor
 construction, port resizing, independent-host or deadline certification.
 

@@ -21,12 +21,12 @@ Whole, single-frame and split music callbacks agree. A zero call at publication 
 
 | Operation | Changes | Actual cut/preconditions |
 |---|---|---|
-| `TopologyActivate` | Timing topology only; exact logical IDs/kinds, current roles/media/graph retained | Immediate delivery; changed programs already stopped. |
-| `ProgramActivate` | One selected program and nominal length; fixed graph/roles/IDs | Pending owning transaction at stopped or actual zero entry. |
-| `GraphActivate` | Signal routes; fixed primitive roles/decision bindings | Immediate delivery; preserves domain/media state, including continuing recording. |
-| `TopologyGraphActivate` | Timing topology and routes; fixed logical IDs/roles | Immediate delivery; changed programs already stopped. |
+| `TopologyActivate` | Timing topology only; exact logical IDs/kinds, current node pairs/media/graph retained | Immediate delivery; changed programs already stopped. |
+| `ProgramActivate` | One selected program and nominal length; fixed graph/node pairs/IDs | Pending owning transaction at stopped or actual zero entry. |
+| `GraphActivate` | Signal routes; fixed primitive node pairs/decision bindings | Immediate delivery; preserves domain/media state, including continuing recording. |
+| `TopologyGraphActivate` | Timing topology and routes; fixed logical IDs/node pairs | Immediate delivery; changed programs already stopped. |
 | `ConfigurationActivate` | Stopped logical owner edits, initial media, matching topology and routes | Edited old owners/changed programs already stopped at delivery; clean capture rows/Idle groups. |
-| `ProgramGraphActivate` | One selected program/nominal length and routes; fixed logical IDs/roles | Pending owning transaction at stopped or actual zero entry; graph rechecked at the cut. |
+| `ProgramGraphActivate` | One selected program/nominal length and routes; fixed logical IDs/node pairs | Pending owning transaction at stopped or actual zero entry; graph rechecked at the cut. |
 
 All require empty payloads and normal-lane admission. Topology header/chunk operations are the separate payload-bearing preparation path. Scheduled admission, runtime execution and typed domain success remain separate results.
 
@@ -34,9 +34,9 @@ All require empty payloads and normal-lane admission. Topology header/chunk oper
 
 `Engine::prepare_with_staging` adds timing receiver banks through `TopologySettings { candidates, records_per_callback, validation_steps_per_callback }`, followed by an optional observer. All zero disables them; enabled settings are positive. Existing constructors leave them disabled.
 
-For logical owner edits, use `prepare_with_configuration_staging`, passing the same ordinary arguments, TopologySettings, RoleSettings and optional observer. RoleSettings reserves candidate banks/source slots. All zero disables it; source count/packet allowance must both be zero or both positive, and sources require candidate banks. Timing-only edits can use zero sources.
+For logical owner edits, use `prepare_with_configuration_staging`, passing the same ordinary arguments, TopologySettings, NodePairSettings and optional observer. NodePairSettings reserves candidate banks/source slots. All zero disables it; source count/packet allowance must both be zero or both positive, and sources require candidate banks. Timing-only edits can use zero sources.
 
-Supply physical Binding templates off-render. Each active primitive needs its own playback/capture pair. Additional unassigned role templates may occupy unused logical slots but stay outside the initial graph. IDs, signatures, channel/MIDI shapes, smoothing and group storage remain prepared/fixed. Effects are also prepared and included in the initial graph, even if initially unrouted. Changing a logical LoopId generation does not replace physical NodeId generations.
+Supply physical Binding templates off-render. Each active primitive needs its own playback/capture pair. Additional unassigned node pair templates may occupy unused logical slots but stay outside the initial graph. IDs, signatures, channel/MIDI shapes, smoothing and group storage remain prepared/fixed. Effects are also prepared and included in the initial graph, even if initially unrouted. Changing a logical LoopId generation does not replace physical NodeId generations.
 
 Enable graph-owner slots separately with `engine.prepare_graph_staging(count)`, once before the first nonempty callback. Timing staging does not implicitly enable them. Preparation checks retained metadata/scratch/storage products; allocator overhead, compiler temporaries, payloads and other owners are separate costs, not an exact RSS or deadline bound.
 
@@ -57,21 +57,21 @@ Compile signal metadata off-render using the retained control-side catalog:
 
 Here `graph(true)` is the example's route-description helper, not a library builder. Compile filters immutable decision bindings to consumers present in that description. Applied StageGraph completion means **Ready**, not active; the changed owning request contains GraphStageId. Refusal/cancellation returns the candidate owner. Actual retained vector capacity is checked, not only populated rows.
 
-GraphStageId/GraphStageStatus are distinct from timing StageId/Status and RoleStageId/RoleStatus. Copying them acquires no owner, lock or cross-instance authorization.
+GraphStageId/GraphStageStatus are distinct from timing StageId/Status and NodePairStageId/NodePairStatus. Copying them acquires no owner, lock or cross-instance authorization.
 
 ## 3. Prepare a logical owner batch when needed
 
-`RoleSnapshot { resource }` acquires a scoped local source lease. The raw ResourceId requires same-store caller routing; the returned RoleSourceId additionally carries bank scope/generation checks. Audio is immediately Ready. Indexed MIDI starts Validating; `RoleSourceValidate` scans packet headers with a callback-shared allowance, including EOF, until Ready reports maximum packet size. Status observes progress; failure stays latched until release. Snapshot/tail-copy acquisition still uses ordinary resource capacity/background allowances.
+`NodePairSnapshot { resource }` acquires a scoped local source lease. The raw ResourceId requires same-store caller routing; the returned NodePairSourceId additionally carries bank scope/generation checks. Audio is immediately Ready. Indexed MIDI starts Validating; `NodePairSourceValidate` scans packet headers with a callback-shared allowance, including EOF, until Ready reports maximum packet size. Status observes progress; failure stays latched until release. Snapshot/tail-copy acquisition still uses ordinary resource capacity/background allowances.
 
-Begin a bank with `RoleBegin { slot, changes }`, then append unique-slot edits:
+Begin a bank with `NodePairBegin { slot, changes }`, then append unique-slot edits:
 
 - `previous: None`, `initial: Some(...)`: add an unassigned prepared row.
 - Both Some: replace the same slot with a strictly newer logical generation.
 - `initial: None`: remove the exact previous owner.
 
-RoleInitial supplies target, duration, optional audio/MIDI sources, finite gain and `preserve_input`; initial logical revision is zero. Shape/duration/index/packet/current-owner checks precede transfer. Successful RoleAppend consumes its source IDs into the candidate; rejected append transfers nothing. The example deliberately checks release through a consumed source ID returns InvalidId.
+NodePairInitial supplies target, duration, optional audio/MIDI sources, finite gain and `preserve_input`; initial logical revision is zero. Shape/duration/index/packet/current-owner checks precede transfer. Successful NodePairAppend consumes its source IDs into the candidate; rejected append transfers nothing. The example deliberately checks release through a consumed source ID returns InvalidId.
 
-Prepare matching timing IDs/lengths and a graph containing exactly each resulting primitive's prepared pair/bindings. Generic DAG validity cannot prove that domain relationship. Reserve enough **currently free** media metadata for every new initial owner; do not count credits that old-role retirement might later free. Old residency, exports and pins remain separate owners.
+Prepare matching timing IDs/lengths and a graph containing exactly each resulting primitive's prepared pair/bindings. Generic DAG validity cannot prove that domain relationship. Reserve enough **currently free** media metadata for every new initial owner; do not count credits that old-node pair retirement might later free. Old residency, exports and pins remain separate owners.
 
 ## 4. Preflight at the actual cut, then publish
 
@@ -79,7 +79,7 @@ The example's payload-free request is:
 
 ```rust
     let activate = Operation::ConfigurationActivate {
-        roles,
+        node_pairs,
         topology,
         graph,
         graph_epoch: Epoch(1),
@@ -95,7 +95,7 @@ Same-frame Play uses the newly published owner/configuration during settlement. 
 
 `preserve_input: true` retains the existing physical capture projection and is invalid on a previously unassigned row. Otherwise reset precedes the first reservation/consumer call and clears after finish, not every interval. Initial MIDI state is strictly before F; packets at F remain captured originals. Neither setting reconciles arbitrary downstream synth/FX state or sends device cleanup.
 
-## Live fixed-role routes and immediate pairs
+## Live fixed node-pair routes and immediate pairs
 
 GraphActivate validates every primitive's playback/capture consumers and exact planner/decision slots, with no missing/extra bindings. It preserves current content/take identities and physical consumer cursors/projections. Routing can change while recording: samples from F follow the new route without restarting the take. It supplies no automatic note/pedal cleanup.
 
@@ -119,9 +119,9 @@ The [program_graph_cut example](../examples/program_graph_cut.rs) supplies the p
             },
 ```
 
-The old route emits 1 until actual zero four frames after start; sample F emits 2, the new program has two iterations, and both returned epochs change. The continuing child retains four cycles rather than restarting. This guarded whole/single/split example uses timing-only roles and a separate scalar effect route, not loop-media output. See [program changes](program-changes.md) for run commands and standalone ownership.
+The old route emits 1 until actual zero four frames after start; sample F emits 2, the new program has two iterations, and both returned epochs change. The continuing child retains four cycles rather than restarting. This guarded whole/single/split example uses timing-only node pairs and a separate scalar effect route, not loop-media output. See [program changes](program-changes.md) for run commands and standalone ownership.
 
-ProgramActivate transfers a Ready timing bank into the resolver's single owning program transaction and reserves a normal domain request. Only the selected composite's program/nominal length may change; IDs/kinds, sync/triggers, other programs and roles remain fixed. Its timing slot is Taken while pending.
+ProgramActivate transfers a Ready timing bank into the resolver's single owning program transaction and reserves a normal domain request. Only the selected composite's program/nominal length may change; IDs/kinds, sync/triggers, other programs and node pairs remain fixed. Its timing slot is Taken while pending.
 
 ProgramGraphActivate additionally preflights a compatible Ready graph at admission. The graph remains **Ready and unlocked** while the program waits. A stopped cut or real zero entry qualifies; an idle cursor at zero does not repeatedly qualify, and an idle clock can leave the request pending indefinitely without blocking unrelated music.
 
@@ -135,9 +135,9 @@ Read ProgramChanged/ProgramGraphChanged as terminal domain results, including th
 
 After successful program finish, internal collection frees its domain slot without waiting for external result consumption. Success retains displaced timing storage until TopologyRecycle, plus a separately Taken graph for a successful pair. Failure/cancellation restores timing Ready; the graph remains in whatever state independent operations left it.
 
-Normal sequence Cancel cancels pending work without silently releasing the graph. Recovery-safe TopologyCancel also requests recycling of the unpublished timing owner: Taken can persist until finish, then becomes Idle. It cannot undo applied publication. RoleCancel releases unpublished Receiving/Ready edit sources; RoleRecycle handles Taken role metadata. RoleSourceRelease is separately recovery-safe. None forces graph activation through recovery.
+Normal sequence Cancel cancels pending work without silently releasing the graph. Recovery-safe TopologyCancel also requests recycling of the unpublished timing owner: Taken can persist until finish, then becomes Idle. It cannot undo applied publication. NodePairCancel releases unpublished Receiving/Ready edit sources; NodePairRecycle handles Taken node pair metadata. NodePairSourceRelease is separately recovery-safe. None forces graph activation through recovery.
 
-`release_graph` returns unused/displaced graph ownership through a reliable normal completion. Dispose/reuse it off-render. The example separately recycles role metadata, topology storage and the retired initial graph while retained old exports remain readable; it later releases every export and checks cleanup twice recovers all declared pools.
+`release_graph` returns unused/displaced graph ownership through a reliable normal completion. Dispose/reuse it off-render. The example separately recycles node pair metadata, topology storage and the retired initial graph while retained old exports remain readable; it later releases every export and checks cleanup twice recovers all declared pools.
 
 ## Fault and evidence boundaries
 

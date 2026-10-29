@@ -55,12 +55,12 @@ fn input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_c
         for partitioned in [false, true] {
             let mut h = prepared(true, 0, false, 64, false);
             let sources = source_pair(&mut h);
-            let roles = begin(&mut h, 0, 1);
+            let node_pairs = begin(&mut h, 0, 1);
             let target = generation(1, 2);
             h.op(
                 3,
-                Operation::RoleAppend {
-                    id: roles,
+                Operation::NodePairAppend {
+                    id: node_pairs,
                     previous: Some(id(1)),
                     initial: Some(initial(target, sources, preserve)),
                 },
@@ -74,7 +74,7 @@ fn input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_c
             assert_no_heap(|| h.control.parameter(Frame(6), node(4), u32::MAX, 1.))
                 .unwrap_or_else(|e| panic!("{:?}", e.error));
             let graph = h.graph(0, 1, false, false);
-            let activated = h.op(7, configuration(roles, topology, graph, 1, 0));
+            let activated = h.op(7, configuration(node_pairs, topology, graph, 1, 0));
             h.op(
                 7,
                 transition(
@@ -129,7 +129,7 @@ fn input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_c
             assert_eq!(
                 h.reply(activated),
                 Reply::ConfigurationActivated {
-                    roles,
+                    node_pairs,
                     topology,
                     graph,
                     graph_epoch: Epoch(2),

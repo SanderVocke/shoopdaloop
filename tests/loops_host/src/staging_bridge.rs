@@ -13,7 +13,8 @@ use rt_runtime::{
 };
 use shoop_loops::{
     runtime::{
-        Controller, Failure, LoopPlanner, Node, Operation, Reply, RoleSourceId, RoleSourceStatus,
+        Controller, Failure, LoopPlanner, Node, NodePairSourceId, NodePairSourceStatus, Operation,
+        Reply,
     },
     topology::staging::{StageId, Status as ProgramStatus},
     LoopId, Timing, Transition,
@@ -25,7 +26,7 @@ struct ResourceBank {
     upload: Option<UploadId>,
     snapshot: Option<Snapshot>,
     cursor: Option<Cursor>,
-    source: Option<RoleSourceId>,
+    source: Option<NodePairSourceId>,
 }
 impl ResourceBank {
     fn flags(&self) -> u32 {
@@ -133,12 +134,12 @@ impl Staging {
                 if self.resources[bank].source.is_some() {
                     return Err(wire::Error::Busy);
                 }
-                Operation::RoleSnapshot {
+                Operation::NodePairSnapshot {
                     resource: self.resources[bank].resource.ok_or(wire::Error::State)?,
                 }
             }
-            VALIDATE_SOURCE => Operation::RoleSourceValidate { id: source()? },
-            RELEASE_SOURCE => Operation::RoleSourceRelease { id: source()? },
+            VALIDATE_SOURCE => Operation::NodePairSourceValidate { id: source()? },
+            RELEASE_SOURCE => Operation::NodePairSourceRelease { id: source()? },
             PROGRAM_BEGIN => {
                 if self.programs[bank].id.is_some() {
                     return Err(wire::Error::Busy);
@@ -549,7 +550,7 @@ impl Staging {
                     match (r.kind, reply) {
                         (
                             SOURCE,
-                            Reply::RoleSource {
+                            Reply::NodePairSource {
                                 id,
                                 snapshot,
                                 status,
@@ -559,10 +560,10 @@ impl Staging {
                             put64(&mut response.0, 104, snapshot.revision.0);
                             source_status(&mut response, status);
                         }
-                        (VALIDATE_SOURCE, Reply::RoleSourceStatus { status, .. }) => {
+                        (VALIDATE_SOURCE, Reply::NodePairSourceStatus { status, .. }) => {
                             source_status(&mut response, status)
                         }
-                        (RELEASE_SOURCE, Reply::RoleSourceReleased { .. }) => {
+                        (RELEASE_SOURCE, Reply::NodePairSourceReleased { .. }) => {
                             self.resources[index].source = None
                         }
                         (PROGRAM_BEGIN, Reply::TopologyStatus { id, status }) => {
@@ -669,11 +670,11 @@ fn offset(value: u64) -> Result<usize, wire::Error> {
     }
     usize::try_from(value).map_err(|_| wire::Error::Operation)
 }
-fn source_status(response: &mut Response, status: RoleSourceStatus) {
+fn source_status(response: &mut Response, status: NodePairSourceStatus) {
     let (state, value) = match status {
-        RoleSourceStatus::Validating { packets } => (0, packets as u64),
-        RoleSourceStatus::Ready { max_packet } => (1, max_packet as u64),
-        RoleSourceStatus::Failed(error) => (2, u64::from(wire::runtime_error(error))),
+        NodePairSourceStatus::Validating { packets } => (0, packets as u64),
+        NodePairSourceStatus::Ready { max_packet } => (1, max_packet as u64),
+        NodePairSourceStatus::Failed(error) => (2, u64::from(wire::runtime_error(error))),
     };
     put64(&mut response.0, 88, state);
     put64(&mut response.0, 96, value);

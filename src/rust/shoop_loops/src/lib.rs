@@ -5,7 +5,7 @@
 //! supplied positions/discontinuities without advancing another clock.
 //!
 //! [`runtime::Engine`] coordinates prepared signal consumers, capture preflight,
-//! typed requests and settled state/export. Timing-only, fixed-role routing,
+//! typed requests and settled state/export. Timing-only, fixed node-pair routing,
 //! stopped-owner configuration and pending program/graph publication are distinct
 //! transactions over prepared physical templates, not arbitrary live construction.
 //! [`media::Ledger`] manages explicit leases/references but cannot certify a musical

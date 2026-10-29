@@ -45,9 +45,9 @@ src/rust/shoop_loops/src/runtime/mod.rs,portable_loop_library,excluded,Portable 
 src/rust/shoop_loops/src/runtime/planner.rs,portable_loop_library,excluded,Guarded coordinated boundary execution; semantic journals and optional prepared observers expose diagnostics without application tracing.
 src/rust/shoop_loops/src/runtime/processor.rs,portable_loop_library,excluded,Guarded playback and capture consumers; generic runtime work and explicit MIDI overflow observations remain accounted.
 src/rust/shoop_loops/src/runtime/topology.rs,portable_loop_library,excluded,Prepared topology ingestion and owning activation/recycling; typed receipts and coherent epochs expose outcomes without callback tracing.
-src/rust/shoop_loops/src/runtime/configuration.rs,portable_loop_library,excluded,Coordinated prepared role and graph and media publication; typed results expose preflight refusals and resulting epochs without callback tracing.
-src/rust/shoop_loops/src/runtime/roles.rs,portable_loop_library,excluded,Fixed source receivers and role edit banks; bounded validation and owning cleanup use typed results without application tracing.
-src/rust/shoop_loops/src/runtime/roles_tests.rs,portable_loop_library_tests,excluded,Guarded private identity exhaustion and source ownership tests.
+src/rust/shoop_loops/src/runtime/configuration.rs,portable_loop_library,excluded,Coordinated prepared node pair and graph and media publication; typed results expose preflight refusals and resulting epochs without callback tracing.
+src/rust/shoop_loops/src/runtime/node_pairs.rs,portable_loop_library,excluded,Fixed source receivers and node pair edit banks; bounded validation and owning cleanup use typed results without application tracing.
+src/rust/shoop_loops/src/runtime/node_pairs_tests.rs,portable_loop_library_tests,excluded,Guarded private identity exhaustion and source ownership tests.
 src/rust/shoop_loops/src/state.rs,portable_loop_library,excluded,Plain-data authoritative state; no execution boundary to instrument.
 src/rust/shoop_loops/src/topology.rs,portable_loop_library,excluded,Prepared timing metadata and borrowed views expose checked results without a host tracing dependency.
 src/rust/shoop_loops/src/topology/staging.rs,portable_loop_library,excluded,Guarded metadata ingestion and owning recycling expose scoped status and progress without application tracing.

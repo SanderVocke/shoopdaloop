@@ -209,7 +209,7 @@ fn prepare_mode(
             Default::default()
         },
         if staged {
-            shoop_loops::runtime::RoleSettings {
+            shoop_loops::runtime::NodePairSettings {
                 candidates: 1,
                 sources: 2,
                 source_packets_per_callback: 8,

@@ -7,7 +7,7 @@ on the callback. It is portable native/Wasm code with no browser dependency.
 **Ready means timing metadata is validated.** It does not certify runtime graph
 bindings, media/resource compatibility, current activation epochs or historical
 loop-generation watermarks. The facade adds distinct
-[publication paths](topology-activation.md) with their own identity, physical-role,
+[publication paths](topology-activation.md) with their own identity, physical node-pair,
 media and epoch checks. Do not bypass those checks with unrestricted live mutation.
 
 ## Preparation and lifecycle
@@ -169,11 +169,11 @@ progress while another candidate is incomplete/failed. Scope/generation exhausti
 and production-type borrow/move refusals are also checked.
 
 The facade adds reliable receipts, scoped cancellation, retained owners and
-callback-shared work. Its timing-only, fixed-role graph, stopped-owner configuration
+callback-shared work. Its timing-only, fixed node-pair graph, stopped-owner configuration
 and pending program/graph operations are implemented, with different compatibility
 and cut rules. Immediate standalone replace_topology still refuses changed running
 programs; stage_program is the separate owning zero/stopped-cut transaction.
 The [configuration example](../examples/configuration_cut.rs) shows timing ingestion
-alongside graph/source/role preparation and independent recycling. Existing test
+alongside graph/source/node pair preparation and independent recycling. Existing test
 reports retain their historical scope; no independent loop AudioWorklet or newer
 loop benchmark evidence is supplied in this snapshot.

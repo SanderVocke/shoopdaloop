@@ -8,23 +8,23 @@ fn call(h: &mut Harness, operation: Operation) -> Reply {
 }
 fn unchanged(
     h: &mut Harness,
-    roles: RoleStageId,
+    node_pairs: NodePairStageId,
     topologies: [StageId; 2],
     graphs: [GraphStageId; 2],
     media: media::MediaId,
 ) {
     let at = h.engine.next_frame().0;
-    let role = h.op(at, Operation::RoleStatus { id: roles });
+    let node_pair = h.op(at, Operation::NodePairStatus { id: node_pairs });
     let ts = topologies.map(|id| h.op(at, Operation::TopologyStatus { id }));
     let gs = graphs.map(|id| h.op(at, Operation::GraphStatus { id }));
     let cut = h.op(at, Operation::State { target: id(1) });
     h.step(1);
     h.drain();
     assert_eq!(
-        h.reply(role),
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Ready
+        h.reply(node_pair),
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Ready
         }
     );
     for (sequence, id) in ts.into_iter().zip(topologies) {
@@ -65,20 +65,20 @@ fn unchanged(
 fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_ready() {
     let mut h = prepared(true, 0, false, 64, false);
     let sources = source_pair(&mut h);
-    let roles = begin(&mut h, 0, 1);
+    let node_pairs = begin(&mut h, 0, 1);
     let target = generation(1, 2);
     assert_eq!(
         call(
             &mut h,
-            Operation::RoleAppend {
-                id: roles,
+            Operation::NodePairAppend {
+                id: node_pairs,
                 previous: Some(id(1)),
                 initial: Some(initial(target, sources, true))
             }
         ),
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Ready
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Ready
         }
     );
     let mut wrong = changed_description(2, false);
@@ -109,45 +109,45 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
         .find(|m| m.target == id(1))
         .unwrap()
         .media;
-    let [scope, slot, generation] = roles.parts();
-    let foreign_role = RoleStageId::from_parts([scope + 1, slot, generation]).unwrap();
+    let [scope, slot, generation] = node_pairs.parts();
+    let foreign_node_pair = NodePairStageId::from_parts([scope + 1, slot, generation]).unwrap();
     let [scope, slot, generation] = graph.parts();
     let foreign_graph = GraphStageId::from_parts(scope + 1, slot, generation).unwrap();
     let foreign_topology = StageId::from_parts(u32::MAX, 1).unwrap();
     for (operation, error) in [
         (
-            configuration(foreign_role, topology, graph, 1, 0),
+            configuration(foreign_node_pair, topology, graph, 1, 0),
             Failure::Runtime(Error::InvalidId),
         ),
         (
-            configuration(roles, foreign_topology, graph, 1, 0),
+            configuration(node_pairs, foreign_topology, graph, 1, 0),
             Failure::Timeline(shoop_loops::Error::InvalidId),
         ),
         (
-            configuration(roles, topology, foreign_graph, 1, 0),
+            configuration(node_pairs, topology, foreign_graph, 1, 0),
             Failure::Runtime(Error::InvalidId),
         ),
         (
-            configuration(roles, topology, graph, 0, 0),
+            configuration(node_pairs, topology, graph, 0, 0),
             Failure::Runtime(Error::StaleEpoch),
         ),
         (
-            configuration(roles, topology, graph, 1, 1),
+            configuration(node_pairs, topology, graph, 1, 1),
             Failure::Timeline(shoop_loops::Error::InvalidState),
         ),
         (
-            configuration(roles, bad_topology, graph, 1, 0),
+            configuration(node_pairs, bad_topology, graph, 1, 0),
             Failure::Runtime(Error::InvalidShape),
         ),
         (
-            configuration(roles, topology, bad_graph, 1, 0),
+            configuration(node_pairs, topology, bad_graph, 1, 0),
             Failure::Runtime(Error::InvalidShape),
         ),
     ] {
         assert_eq!(call(&mut h, operation), Reply::Failed(error));
         unchanged(
             &mut h,
-            roles,
+            node_pairs,
             [bad_topology, topology],
             [bad_graph, graph],
             media,
@@ -159,12 +159,12 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
     h.step(1);
     h.drain();
     assert_eq!(
-        call(&mut h, configuration(roles, topology, graph, 1, 0)),
+        call(&mut h, configuration(node_pairs, topology, graph, 1, 0)),
         Reply::Failed(Failure::Timeline(shoop_loops::Error::InvalidState))
     );
     unchanged(
         &mut h,
-        roles,
+        node_pairs,
         [bad_topology, topology],
         [bad_graph, graph],
         media,
@@ -177,7 +177,7 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
         h.control.submit(
             Lane::Normal,
             h.engine.next_frame(),
-            configuration(roles, topology, graph, 1, 0),
+            configuration(node_pairs, topology, graph, 1, 0),
         )
     })
     .unwrap_or_else(|e| panic!("{:?}", e.error));
@@ -191,7 +191,7 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
         h.control.submit(
             Lane::Recovery,
             h.engine.next_frame(),
-            configuration(roles, topology, graph, 1, 0),
+            configuration(node_pairs, topology, graph, 1, 0),
         )
     })
     .unwrap_or_else(|e| panic!("{:?}", e.error));
@@ -206,7 +206,7 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
     let unexpected = h.send(
         Lane::Normal,
         h.engine.next_frame().0,
-        configuration(roles, topology, graph, 1, 0),
+        configuration(node_pairs, topology, graph, 1, 0),
         Box::new([1]),
     );
     h.step(1);
@@ -217,15 +217,15 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
     );
     unchanged(
         &mut h,
-        roles,
+        node_pairs,
         [bad_topology, topology],
         [bad_graph, graph],
         media,
     );
     assert_eq!(
-        call(&mut h, configuration(roles, topology, graph, 1, 0)),
+        call(&mut h, configuration(node_pairs, topology, graph, 1, 0)),
         Reply::ConfigurationActivated {
-            roles,
+            node_pairs,
             topology,
             graph,
             graph_epoch: Epoch(2),
@@ -233,11 +233,11 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
         }
     );
     assert_eq!(
-        call(&mut h, Operation::RoleCancel { id: roles }),
+        call(&mut h, Operation::NodePairCancel { id: node_pairs }),
         Reply::Failed(Failure::Runtime(Error::InvalidState))
     );
     assert_eq!(
-        call(&mut h, configuration(roles, topology, graph, 2, 1)),
+        call(&mut h, configuration(node_pairs, topology, graph, 2, 1)),
         Reply::Failed(Failure::Runtime(Error::InvalidState))
     );
     let Reply::State(cut) = call(&mut h, Operation::State { target }) else {
@@ -260,14 +260,14 @@ fn configuration_refusals_and_final_resolver_failure_leave_all_three_owners_read
 #[shoop_test]
 fn batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishing_a_prefix() {
     for media_slots in [3, 4] {
-        let mut h = Harness::with_roles(
+        let mut h = Harness::with_node_pairs(
             false,
             0,
             false,
             staging(),
             media_slots,
             None,
-            RoleSettings {
+            NodePairSettings {
                 candidates: 2,
                 sources: 0,
                 source_packets_per_callback: 0,
@@ -275,12 +275,12 @@ fn batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishin
             false,
         );
         h.engine.prepare_graph_staging(2).unwrap();
-        let roles = begin(&mut h, 0, 2);
+        let node_pairs = begin(&mut h, 0, 2);
         for slot in 0..2 {
             let reply = call(
                 &mut h,
-                Operation::RoleAppend {
-                    id: roles,
+                Operation::NodePairAppend {
+                    id: node_pairs,
                     previous: Some(id(slot)),
                     initial: Some(timing_initial(
                         generation(slot, 2),
@@ -290,15 +290,15 @@ fn batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishin
             );
             assert_eq!(
                 reply,
-                Reply::RoleStatus {
-                    id: roles,
+                Reply::NodePairStatus {
+                    id: node_pairs,
                     status: if slot == 0 {
-                        RoleStatus::Receiving {
+                        NodePairStatus::Receiving {
                             received: 1,
                             expected: 2,
                         }
                     } else {
-                        RoleStatus::Ready
+                        NodePairStatus::Ready
                     }
                 }
             );
@@ -312,14 +312,14 @@ fn batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishin
         }
         let topology = h.ready(0, &compile(limits(0), &description).unwrap());
         let graph = h.graph(0, 1, true, false);
-        let result = call(&mut h, configuration(roles, topology, graph, 1, 0));
+        let result = call(&mut h, configuration(node_pairs, topology, graph, 1, 0));
         assert_eq!(
             result,
             if media_slots == 3 {
                 Reply::Failed(Failure::Runtime(Error::Capacity))
             } else {
                 Reply::ConfigurationActivated {
-                    roles,
+                    node_pairs,
                     topology,
                     graph,
                     graph_epoch: Epoch(2),
@@ -346,13 +346,13 @@ fn batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishin
             );
         }
         assert_eq!(
-            call(&mut h, Operation::RoleStatus { id: roles }),
-            Reply::RoleStatus {
-                id: roles,
+            call(&mut h, Operation::NodePairStatus { id: node_pairs }),
+            Reply::NodePairStatus {
+                id: node_pairs,
                 status: if media_slots == 3 {
-                    RoleStatus::Ready
+                    NodePairStatus::Ready
                 } else {
-                    RoleStatus::Taken
+                    NodePairStatus::Taken
                 }
             }
         );

@@ -588,7 +588,7 @@ impl Ledger {
         }
         Ok(())
     }
-    /// Remove internal roles. Resident content and outstanding exports remain owned.
+    /// Remove internal references. Resident content and outstanding exports remain owned.
     pub fn unbind(&mut self, io: &mut ResourceIo<'_>, id: LoopId) -> Result<(), Error> {
         let owner = self.owner(id)?;
         for media in [owner.playback, owner.latest].into_iter().flatten() {

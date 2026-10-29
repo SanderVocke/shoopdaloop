@@ -44,7 +44,7 @@ every callback and compare relevant callback partitions/zero boundaries:
 - `configuration_cut`: already-stopped generation/media/timing/route publication,
   running/same-frame-Stop refusal and retained old versus newly scaled audio.
 - `program_graph_cut`: pending until actual zero, then paired epochs and exact
-  scalar route output with a continuing child. Its roles are timing-only.
+  scalar route output with a continuing child. Its node pairs are timing-only.
 
 Preparation and owning-return destruction stay off-render. Regression models and
 historical native/Wasm/interpreter evidence have separate source/platform scopes;
@@ -94,10 +94,10 @@ path retains one prepared program candidate, selects a zero/stopped cut, preflig
 without publication, and swaps owners only on commit. It preserves logical
 identities, sync/trigger metadata and other programs. The facade's `ProgramActivate`
 connects it to receiver banks, reliable runtime receipts and capture preflight;
-ProgramGraphActivate pairs it with prepared routing. Fixed-role GraphActivate,
+ProgramGraphActivate pairs it with prepared routing. Fixed node-pair GraphActivate,
 immediate TopologyGraphActivate and already-stopped ConfigurationActivate are
 separate interfaces. All retain prepared physical shapes; logical generation edits
-are not running physical-role replacement. `quiesce()` permanently
+are not running physical node-pair replacement. `quiesce()` permanently
 ends resolver execution so faulted/stopped teardown can collect owners without
 finishing an unrendered interval. Dispose returned/rejected owners off-render.
 

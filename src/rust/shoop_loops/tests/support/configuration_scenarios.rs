@@ -9,14 +9,14 @@ mod sources;
 mod teardown;
 
 fn prepared(media: bool, journal: usize, reverse: bool, packets: usize, spare: bool) -> Harness {
-    let mut h = Harness::with_roles(
+    let mut h = Harness::with_node_pairs(
         media,
         journal,
         reverse,
         staging(),
         8,
         None,
-        RoleSettings {
+        NodePairSettings {
             candidates: 2,
             sources: 8,
             source_packets_per_callback: packets,
@@ -40,25 +40,25 @@ fn changed_description(number: u32, reverse: bool) -> TopologyDescription {
     description.programs[0].sections[0].entries[0].target = generation(1, number);
     description
 }
-fn begin(h: &mut Harness, slot: usize, count: usize) -> RoleStageId {
+fn begin(h: &mut Harness, slot: usize, count: usize) -> NodePairStageId {
     let sequence = h.op(
         h.engine.next_frame().0,
-        Operation::RoleBegin {
+        Operation::NodePairBegin {
             slot,
             changes: count,
         },
     );
     h.step(1);
     h.drain();
-    let Reply::RoleStatus { id, status } = h.reply(sequence) else {
-        panic!("role begin")
+    let Reply::NodePairStatus { id, status } = h.reply(sequence) else {
+        panic!("node_pair begin")
     };
     assert_eq!(
         status,
         if count == 0 {
-            RoleStatus::Ready
+            NodePairStatus::Ready
         } else {
-            RoleStatus::Receiving {
+            NodePairStatus::Receiving {
                 received: 0,
                 expected: count,
             }
@@ -66,23 +66,23 @@ fn begin(h: &mut Harness, slot: usize, count: usize) -> RoleStageId {
     );
     id
 }
-fn source_pair(h: &mut Harness) -> [RoleSourceId; 2] {
+fn source_pair(h: &mut Harness) -> [NodePairSourceId; 2] {
     let at = h.engine.next_frame().0;
     let audio = h.op(
         at,
-        Operation::RoleSnapshot {
+        Operation::NodePairSnapshot {
             resource: h.imports[0],
         },
     );
     let midi = h.op(
         at,
-        Operation::RoleSnapshot {
+        Operation::NodePairSnapshot {
             resource: h.imports[1],
         },
     );
     h.step(1);
     h.drain();
-    let Reply::RoleSource {
+    let Reply::NodePairSource {
         id: audio,
         snapshot,
         status,
@@ -92,9 +92,9 @@ fn source_pair(h: &mut Harness) -> [RoleSourceId; 2] {
     };
     assert_eq!(
         (snapshot.description.frames, status),
-        (4, RoleSourceStatus::Ready { max_packet: 0 })
+        (4, NodePairSourceStatus::Ready { max_packet: 0 })
     );
-    let Reply::RoleSource {
+    let Reply::NodePairSource {
         id: midi,
         snapshot,
         status,
@@ -104,22 +104,22 @@ fn source_pair(h: &mut Harness) -> [RoleSourceId; 2] {
     };
     assert_eq!(
         (snapshot.description.frames, status),
-        (4, RoleSourceStatus::Validating { packets: 0 })
+        (4, NodePairSourceStatus::Validating { packets: 0 })
     );
     loop {
         let seq = h.op(
             h.engine.next_frame().0,
-            Operation::RoleSourceValidate { id: midi },
+            Operation::NodePairSourceValidate { id: midi },
         );
         h.step(1);
         h.drain();
         match h.reply(seq) {
-            Reply::RoleSourceStatus {
-                status: RoleSourceStatus::Ready { max_packet: 3 },
+            Reply::NodePairSourceStatus {
+                status: NodePairSourceStatus::Ready { max_packet: 3 },
                 ..
             } => break,
-            Reply::RoleSourceStatus {
-                status: RoleSourceStatus::Validating { .. },
+            Reply::NodePairSourceStatus {
+                status: NodePairSourceStatus::Validating { .. },
                 ..
             } => {}
             other => panic!("{other:?}"),
@@ -144,22 +144,26 @@ fn play_new(target: LoopId) -> Operation {
     )
 }
 fn configuration(
-    roles: RoleStageId,
+    node_pairs: NodePairStageId,
     topology: StageId,
     graph: GraphStageId,
     graph_epoch: u64,
     topology_epoch: u64,
 ) -> Operation {
     Operation::ConfigurationActivate {
-        roles,
+        node_pairs,
         topology,
         graph,
         graph_epoch: Epoch(graph_epoch),
         topology_epoch: Epoch(topology_epoch),
     }
 }
-fn initial(target: LoopId, sources: [RoleSourceId; 2], preserve_input: bool) -> RoleInitial {
-    RoleInitial {
+fn initial(
+    target: LoopId,
+    sources: [NodePairSourceId; 2],
+    preserve_input: bool,
+) -> NodePairInitial {
+    NodePairInitial {
         target,
         frames: 4,
         audio: Some(sources[0]),
@@ -178,12 +182,12 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
     ] {
         let mut h = prepared(true, journal, reverse, 64, false);
         let sources = source_pair(&mut h);
-        let roles = begin(&mut h, 0, 1);
+        let node_pairs = begin(&mut h, 0, 1);
         let next = generation(1, 2);
         let appended = h.op(
             3,
-            Operation::RoleAppend {
-                id: roles,
+            Operation::NodePairAppend {
+                id: node_pairs,
                 previous: Some(id(1)),
                 initial: Some(initial(next, sources, true)),
             },
@@ -192,9 +196,9 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
         h.drain();
         assert_eq!(
             h.reply(appended),
-            Reply::RoleStatus {
-                id: roles,
-                status: RoleStatus::Ready
+            Reply::NodePairStatus {
+                id: node_pairs,
+                status: NodePairStatus::Ready
             }
         );
         let topology = h.ready(
@@ -227,7 +231,7 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
                 selection: Selection::Playback,
             },
         );
-        let refused = h.op(8, configuration(roles, topology, graph, 1, 0));
+        let refused = h.op(8, configuration(node_pairs, topology, graph, 1, 0));
         h.op(9, stop(1));
         let pending = h.op(
             9,
@@ -248,11 +252,11 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
                 selection: Selection::Latest,
             },
         );
-        let applied = h.op(10, configuration(roles, topology, graph, 1, 0));
+        let applied = h.op(10, configuration(node_pairs, topology, graph, 1, 0));
         h.op(10, play_new(next));
         let current = h.op(10, Operation::State { target: next });
         let stale = h.op(10, Operation::State { target: id(1) });
-        let stale_source = h.op(10, Operation::RoleSourceRelease { id: sources[0] });
+        let stale_source = h.op(10, Operation::NodePairSourceRelease { id: sources[0] });
         h.op(11, Operation::Retire { media: old_media });
         h.op(
             12,
@@ -295,7 +299,7 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
         assert_eq!(
             h.reply(applied),
             Reply::ConfigurationActivated {
-                roles,
+                node_pairs,
                 topology,
                 graph,
                 graph_epoch: Epoch(2),
@@ -438,7 +442,7 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
             h.op(at, Operation::Release { export });
         }
         h.op(at, Operation::Retire { media: new_initial });
-        h.op(at, Operation::RoleRecycle { id: roles });
+        h.op(at, Operation::NodePairRecycle { id: node_pairs });
         h.op(at, Operation::TopologyRecycle { id: topology });
         assert_no_heap(|| h.control.release_graph(graph))
             .unwrap_or_else(|e| panic!("{:?}", e.error));
@@ -626,8 +630,8 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
     }
 }
 
-fn timing_initial(target: LoopId, frames: u64) -> RoleInitial {
-    RoleInitial {
+fn timing_initial(target: LoopId, frames: u64) -> NodePairInitial {
+    NodePairInitial {
         target,
         frames,
         audio: None,
@@ -665,11 +669,11 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
         let mut h = prepared(false, 0, reverse, 4, true);
         let second = generation(2, 2);
         let third = generation(2, 3);
-        let roles = begin(&mut h, 0, 1);
+        let node_pairs = begin(&mut h, 0, 1);
         let appended = h.op(
             1,
-            Operation::RoleAppend {
-                id: roles,
+            Operation::NodePairAppend {
+                id: node_pairs,
                 previous: None,
                 initial: Some(timing_initial(second, 3)),
             },
@@ -678,9 +682,9 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
         h.drain();
         assert_eq!(
             h.reply(appended),
-            Reply::RoleStatus {
-                id: roles,
-                status: RoleStatus::Ready
+            Reply::NodePairStatus {
+                id: node_pairs,
+                status: NodePairStatus::Ready
             }
         );
         let topology = h.ready(
@@ -689,7 +693,7 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
         );
         let graph = spare_graph(&mut h, 1, reverse);
         assert_eq!(h.engine.next_frame(), Frame(5));
-        let applied = h.op(5, configuration(roles, topology, graph, 1, 0));
+        let applied = h.op(5, configuration(node_pairs, topology, graph, 1, 0));
         h.op(5, play(0));
         h.op(5, play_new(second));
         let first = h.op(5, Operation::State { target: second });
@@ -705,7 +709,7 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
         assert_eq!(
             h.reply(applied),
             Reply::ConfigurationActivated {
-                roles,
+                node_pairs,
                 topology,
                 graph,
                 graph_epoch: Epoch(2),
@@ -749,17 +753,17 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
                 transition: Transition::Stop,
             },
         );
-        h.op(10, Operation::RoleRecycle { id: roles });
+        h.op(10, Operation::NodePairRecycle { id: node_pairs });
         h.op(10, Operation::TopologyRecycle { id: topology });
         assert_no_heap(|| h.control.release_graph(graph))
             .unwrap_or_else(|e| panic!("{:?}", e.error));
         h.step(1);
         h.drain();
         let removed = begin(&mut h, 0, 1);
-        assert_eq!(removed.parts()[2], roles.parts()[2] + 1);
+        assert_eq!(removed.parts()[2], node_pairs.parts()[2] + 1);
         h.op(
             12,
-            Operation::RoleAppend {
+            Operation::NodePairAppend {
                 id: removed,
                 previous: Some(second),
                 initial: None,
@@ -784,7 +788,7 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
         assert_eq!(
             h.reply(removal),
             Reply::ConfigurationActivated {
-                roles: removed,
+                node_pairs: removed,
                 topology: removed_topology,
                 graph: removed_graph,
                 graph_epoch: Epoch(3),
@@ -818,7 +822,7 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
                 media: initial_media,
             },
         );
-        h.op(17, Operation::RoleRecycle { id: removed });
+        h.op(17, Operation::NodePairRecycle { id: removed });
         h.op(
             17,
             Operation::TopologyRecycle {
@@ -832,7 +836,7 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
         let readded = begin(&mut h, 0, 1);
         h.op(
             19,
-            Operation::RoleAppend {
+            Operation::NodePairAppend {
                 id: readded,
                 previous: None,
                 initial: Some(timing_initial(third, 3)),
@@ -851,7 +855,7 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
             configuration(readded, final_topology, final_graph, 3, 2),
         );
         h.op(23, play_new(third));
-        let old_bank = h.op(23, Operation::RoleStatus { id: roles });
+        let old_bank = h.op(23, Operation::NodePairStatus { id: node_pairs });
         let old_state = h.op(24, Operation::State { target: second });
         let new_state = h.op(24, Operation::State { target: third });
         let final_wrap = h.op(26, Operation::State { target: third });
@@ -868,7 +872,7 @@ fn inactive_prepared_consumers_support_kind_change_removal_and_readd_without_ret
         assert_eq!(
             h.reply(applied),
             Reply::ConfigurationActivated {
-                roles: readded,
+                node_pairs: readded,
                 topology: final_topology,
                 graph: final_graph,
                 graph_epoch: Epoch(4),

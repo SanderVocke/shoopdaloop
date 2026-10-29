@@ -1163,7 +1163,7 @@ fn lightweight(
     )
 }
 #[shoop_test]
-fn facade_role_validation_invalid_operations_and_imported_revision_exhaustion_are_checked() {
+fn facade_node_pair_validation_invalid_operations_and_imported_revision_exhaustion_are_checked() {
     let input = |revision| media::Input {
         description: media::Description {
             owner: id(),

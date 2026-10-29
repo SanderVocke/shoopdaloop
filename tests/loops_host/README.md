@@ -60,10 +60,10 @@ state. Mutating receiver calls are heap-guarded; the allocating reference stays
 outside callbacks. This is payload/ownership validation, not proof that Seal admits
 a semantically valid runtime graph or a fresh browser/Miri execution.
 
-### 1. Prepare separate playback, FX and capture roles
+### 1. Prepare separate playback, FX and capture nodes
 
 Preparation creates one primitive loop and a graph that routes live stereo/MIDI
-and loop playback through a mix/half-gain processor to the host and capture role.
+and loop playback through a mix/half-gain processor to the host and capture node.
 All runtime buffers, media metadata and two capture banks exist before rendering.
 The render configuration permits 128 frames per callback and sets the obsolete
 subrange budget to zero. The native driver allocates its result report outside
@@ -154,7 +154,7 @@ cargo test --locked --manifest-path tests/loops_host/Cargo.toml --release \
 
 The native test stages routes at frame0, observes Ready after one sample, then
 activates a host-output bypass at frame4. Capture still receives half-gain FX;
-host playback now goes directly from the playback role. All13 left samples must be
+host playback now goes directly from the playback node. All13 left samples must be
 `1,2,3,4,1,2,3,4,1,2,3,4,0`, with right ten times left, the same134 MIDI packets,
 exact receipts/epochs, unchanged semantic timeline and complete resource recovery.
 Three partitions after the common one-frame staging acknowledgement must agree.
@@ -470,10 +470,10 @@ actors, Node/Chromium bindings and actual separate-memory offline/live worklets:
    Create a separate resource, upload64 bytes of stereo10–17/right×10, finish,
    commit revision1 and retain a snapshot/cursor. Upload100–107/right×10 as
    revision2 while that snapshot remains alive. Read every old byte again, release
-   the old snapshot, then read every new byte. Validate/release an audio role source.
+   the old snapshot, then read every new byte. Validate/release an audio node pair source.
 2. Upload a separate64-byte MIDI resource with note-on and a37-byte SysEx, then
    check every packet/timestamp/byte. Raw byte uploads have no playback checkpoint
-   index: `RoleSnapshot` must return domain failure522, not a renderer fault or a
+   index: `NodePairSnapshot` must return domain failure522, not a renderer fault or a
    playable source. Release/remove both resources; local generations become2.
 3. Upload a precompiled `LTP1` header and15 ordered64-byte records, validate with
    observable progress, activate graph/topology epochs1/0→1/1, and recycle the

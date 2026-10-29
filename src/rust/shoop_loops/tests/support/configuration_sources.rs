@@ -12,46 +12,47 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
     h.op(0, play(0));
     let a = h.op(
         0,
-        Operation::RoleSnapshot {
+        Operation::NodePairSnapshot {
             resource: h.imports[1],
         },
     );
     let b = h.op(
         0,
-        Operation::RoleSnapshot {
+        Operation::NodePairSnapshot {
             resource: h.imports[1],
         },
     );
     h.step(1);
     h.drain();
-    let Reply::RoleSource { id: a, .. } = h.reply(a) else {
+    let Reply::NodePairSource { id: a, .. } = h.reply(a) else {
         panic!("source a")
     };
-    let Reply::RoleSource { id: b, .. } = h.reply(b) else {
+    let Reply::NodePairSource { id: b, .. } = h.reply(b) else {
         panic!("source b")
     };
-    let one = h.op(1, Operation::RoleSourceValidate { id: a });
-    let other = h.op(2, Operation::RoleSourceValidate { id: b });
-    let again = h.op(3, Operation::RoleSourceValidate { id: a });
+    let one = h.op(1, Operation::NodePairSourceValidate { id: a });
+    let other = h.op(2, Operation::NodePairSourceValidate { id: b });
+    let again = h.op(3, Operation::NodePairSourceValidate { id: a });
     h.step(3);
     h.drain();
     for (sequence, id, packets) in [(one, a, 1), (other, b, 0), (again, a, 1)] {
         assert_eq!(
             h.reply(sequence),
-            Reply::RoleSourceStatus {
+            Reply::NodePairSourceStatus {
                 id,
-                status: RoleSourceStatus::Validating { packets }
+                status: NodePairSourceStatus::Validating { packets }
             }
         );
     }
-    let roles = begin(&mut h, 0, 1);
+    let node_pairs = begin(&mut h, 0, 1);
     let resource = h.imports[0];
-    let Reply::RoleSource { id: audio, .. } = call(&mut h, Operation::RoleSnapshot { resource })
+    let Reply::NodePairSource { id: audio, .. } =
+        call(&mut h, Operation::NodePairSnapshot { resource })
     else {
         panic!("audio")
     };
-    let edit = Operation::RoleAppend {
-        id: roles,
+    let edit = Operation::NodePairAppend {
+        id: node_pairs,
         previous: Some(id(1)),
         initial: Some(initial(generation(1, 2), [audio, b], true)),
     };
@@ -60,37 +61,37 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
         Reply::Failed(Failure::Runtime(Error::InvalidState))
     );
     for packets in [Some(2), None] {
-        let expected = packets.map_or(RoleSourceStatus::Ready { max_packet: 3 }, |packets| {
-            RoleSourceStatus::Validating { packets }
+        let expected = packets.map_or(NodePairSourceStatus::Ready { max_packet: 3 }, |packets| {
+            NodePairSourceStatus::Validating { packets }
         });
         assert_eq!(
-            call(&mut h, Operation::RoleSourceValidate { id: a }),
-            Reply::RoleSourceStatus {
+            call(&mut h, Operation::NodePairSourceValidate { id: a }),
+            Reply::NodePairSourceStatus {
                 id: a,
                 status: expected
             }
         );
     }
     assert_eq!(
-        call(&mut h, Operation::RoleStatus { id: roles }),
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Receiving {
+        call(&mut h, Operation::NodePairStatus { id: node_pairs }),
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Receiving {
                 received: 0,
                 expected: 1
             }
         }
     );
     for changed in [
-        RoleInitial {
+        NodePairInitial {
             gain: f32::NAN,
             ..initial(generation(1, 2), [audio, a], true)
         },
-        RoleInitial {
+        NodePairInitial {
             frames: 3,
             ..initial(generation(1, 2), [audio, a], true)
         },
-        RoleInitial {
+        NodePairInitial {
             midi: Some(audio),
             ..initial(generation(1, 2), [audio, a], true)
         },
@@ -98,8 +99,8 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
         assert_eq!(
             call(
                 &mut h,
-                Operation::RoleAppend {
-                    id: roles,
+                Operation::NodePairAppend {
+                    id: node_pairs,
                     previous: Some(id(1)),
                     initial: Some(changed)
                 }
@@ -108,42 +109,43 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
         );
     }
     assert_eq!(
-        call(&mut h, Operation::RoleSourceStatus { id: audio }),
-        Reply::RoleSourceStatus {
+        call(&mut h, Operation::NodePairSourceStatus { id: audio }),
+        Reply::NodePairSourceStatus {
             id: audio,
-            status: RoleSourceStatus::Ready { max_packet: 0 }
+            status: NodePairSourceStatus::Ready { max_packet: 0 }
         }
     );
     assert_eq!(
         call(
             &mut h,
-            Operation::RoleAppend {
-                id: roles,
+            Operation::NodePairAppend {
+                id: node_pairs,
                 previous: Some(id(1)),
                 initial: Some(initial(generation(1, 2), [audio, a], true))
             }
         ),
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Ready
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Ready
         }
     );
     for source in [audio, a] {
         assert_eq!(
-            call(&mut h, Operation::RoleSourceRelease { id: source }),
+            call(&mut h, Operation::NodePairSourceRelease { id: source }),
             Reply::Failed(Failure::Runtime(Error::InvalidId))
         );
     }
     let mut retained = vec![b];
     for _ in 0..7 {
-        let Reply::RoleSource { id, .. } = call(&mut h, Operation::RoleSnapshot { resource })
+        let Reply::NodePairSource { id, .. } =
+            call(&mut h, Operation::NodePairSnapshot { resource })
         else {
             panic!("capacity source")
         };
         retained.push(id);
     }
     assert_eq!(
-        call(&mut h, Operation::RoleSnapshot { resource }),
+        call(&mut h, Operation::NodePairSnapshot { resource }),
         Reply::Failed(Failure::Runtime(Error::Capacity))
     );
     assert_eq!(retained[1].parts()[1], a.parts()[1]);
@@ -167,7 +169,7 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
     let cancel = h.send(
         Lane::Recovery,
         h.engine.next_frame().0,
-        Operation::RoleCancel { id: roles },
+        Operation::NodePairCancel { id: node_pairs },
         Box::new([]),
     );
     h.step(1);
@@ -176,7 +178,7 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
     let release = h.send(
         Lane::Recovery,
         h.engine.next_frame().0,
-        Operation::RoleSourceRelease { id: b },
+        Operation::NodePairSourceRelease { id: b },
         Box::new([]),
     );
     h.step(1);
@@ -184,12 +186,12 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
     h.drain();
     assert_eq!(
         h.reply(cancel),
-        Reply::RoleStatus {
-            id: roles,
-            status: RoleStatus::Idle
+        Reply::NodePairStatus {
+            id: node_pairs,
+            status: NodePairStatus::Idle
         }
     );
-    assert_eq!(h.reply(release), Reply::RoleSourceReleased { id: b });
+    assert_eq!(h.reply(release), Reply::NodePairSourceReleased { id: b });
     h.send(
         Lane::Recovery,
         h.engine.next_frame().0,
@@ -201,20 +203,20 @@ fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under
     h.step(1);
     h.drain();
     assert_eq!(
-        call(&mut h, Operation::RoleSourceStatus { id: retained[1] }),
-        Reply::RoleSourceStatus {
+        call(&mut h, Operation::NodePairSourceStatus { id: retained[1] }),
+        Reply::NodePairSourceStatus {
             id: retained[1],
-            status: RoleSourceStatus::Ready { max_packet: 0 }
+            status: NodePairSourceStatus::Ready { max_packet: 0 }
         }
     );
     assert_eq!(
-        call(&mut h, Operation::RoleSourceRelease { id: a }),
+        call(&mut h, Operation::NodePairSourceRelease { id: a }),
         Reply::Failed(Failure::Runtime(Error::InvalidId))
     );
     let next = begin(&mut h, 0, 1);
-    assert_eq!(next.parts()[2], roles.parts()[2] + 1);
+    assert_eq!(next.parts()[2], node_pairs.parts()[2] + 1);
     assert_eq!(
-        call(&mut h, Operation::RoleCancel { id: roles }),
+        call(&mut h, Operation::NodePairCancel { id: node_pairs }),
         Reply::Failed(Failure::Runtime(Error::InvalidId))
     );
     let end = h.engine.next_frame().0;

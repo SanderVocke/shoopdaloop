@@ -301,7 +301,7 @@ def selected_cases(package=None):
         "full_domain_slots_unread_graph_results_and_retirement_do_not_gate_clock_or_recovery",
         "full_normal_domain_slots_and_unread_program_results_allow_clock_progress_and_recovery",
         "graph_and_stopped_topology_publish_together_with_independent_media_and_journals",
-        "graph_pair_preflight_rejects_role_scope_epoch_and_cancelled_owners_without_partial_publication",
+        "graph_pair_preflight_rejects_node_pair_scope_epoch_and_cancelled_owners_without_partial_publication",
         "intervening_live_graph_change_refuses_pending_program_without_publishing_its_zero_actions",
         "live_route_cut_keeps_recording_prefix_and_midi_continuity_without_restarting_the_take",
         "paired_graph_topology_owners_survive_disconnect_and_post_publication_render_fault",
@@ -315,7 +315,7 @@ def selected_cases(package=None):
         "running_program_bank_activation_matches_independent_media_states_and_ordered_journals",
         "staged_fixed_graph_activation_preserves_media_and_matches_independent_timeline",
         "staging_work_shares_the_callback_budget_and_recovery_ignores_normal_receipt_stalls",
-        "stale_scope_generation_role_and_malformed_candidates_preserve_the_working_timeline",
+        "stale_scope_generation_node_pair_and_malformed_candidates_preserve_the_working_timeline",
         "stopped_extraction_recovers_receiving_validating_ready_failed_and_retired_banks",
         "timing_activation_during_capture_keeps_the_take_prefix_and_recorded_fx_media_coherent",
         "topology_revalidation_completes_countdown_receipts_and_cancelled_delivery_keeps_the_candidate",
@@ -335,7 +335,7 @@ def selected_cases(package=None):
         "scenarios::recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits",
         "scenarios::stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners",
         "scenarios::dense_one_sample_media_keeps_all_128_boundaries_with_unread_external_results",
-        "scenarios::facade_role_validation_invalid_operations_and_imported_revision_exhaustion_are_checked",
+        "scenarios::facade_node_pair_validation_invalid_operations_and_imported_revision_exhaustion_are_checked",
         "scenarios::integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts",
     ):
         cases.append(("shoop_loops", "runtime", [name, "--", "--exact"], 1, 0))
