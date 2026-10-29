@@ -300,6 +300,7 @@ pub(crate) fn runtime_error(error: rt_runtime::Error) -> u32 {
         Incomplete => 18,
         Budget => 19,
         StaleRevision => 20,
+        Cancelled => 21,
     }
 }
 pub(crate) fn loop_error(error: shoop_loops::Error) -> u32 {

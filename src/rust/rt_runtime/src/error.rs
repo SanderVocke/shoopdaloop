@@ -22,6 +22,7 @@ pub enum Error {
     Incomplete,
     Budget,
     StaleRevision,
+    Cancelled,
 }
 
 impl std::fmt::Display for Error {
@@ -47,6 +48,7 @@ impl std::fmt::Display for Error {
             Self::Incomplete => "resource content is incomplete",
             Self::Budget => "callback work budget exhausted",
             Self::StaleRevision => "resource revision no longer matches",
+            Self::Cancelled => "scheduled action was cancelled before delivery",
         })
     }
 }

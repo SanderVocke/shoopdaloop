@@ -8,7 +8,7 @@ use rt_runtime::graph::{
 use rt_runtime::planner::{
     ConsumerAccess, DecisionBinding, FinishContext, PlanContext, Planner, PlannerSpec,
 };
-use rt_runtime::processor::{ProcessBlock, Processor};
+use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::resource::ResourceStore;
 use rt_runtime::schedule::Action;
 use rt_runtime::transport::{Lane, Outcome};
@@ -21,6 +21,9 @@ static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 #[derive(Clone, Copy)]
 enum Op {
     Set(f32),
+}
+impl ProcessorOperation for Op {
+    type Result = f32;
 }
 
 struct Clock {
@@ -35,8 +38,8 @@ struct Clock {
 impl Planner for Clock {
     type Decision = f32;
     type Observation = usize;
-    type Operation = Op;
-    type Result = f32;
+    type Operation = ();
+    type Result = ();
 
     fn spec(&self) -> Option<PlannerSpec> {
         Some(PlannerSpec {
@@ -49,7 +52,7 @@ impl Planner for Clock {
     fn decisions(&self) -> &[f32] {
         &self.values
     }
-    fn plan(&mut self, context: PlanContext<'_, Op, f32>) -> Result<Frame, Error> {
+    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
         assert_eq!(context.graph_epoch, Epoch(1));
         assert_eq!(
             context.callback_start,
@@ -61,7 +64,7 @@ impl Planner for Clock {
             .checked_add(self.quantum - context.frame.0 as usize % self.quantum)
             .map(|end| end.min(context.ceiling))
     }
-    fn finish(&mut self, context: FinishContext<'_, usize, Op, f32>) -> Result<(), Error> {
+    fn finish(&mut self, context: FinishContext<'_, usize>) -> Result<(), Error> {
         assert_eq!(context.observations.len(), 2);
         let frames = (context.interval.end.0 - context.interval.start.0) as usize;
         let mut seen = [false; 2];
@@ -79,7 +82,7 @@ impl Planner for Clock {
 }
 
 struct Gain(f32);
-impl Processor<Clock> for Gain {
+impl Processor<Clock, Op> for Gain {
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: 1,
@@ -286,7 +289,7 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
     let execution = control.try_execution().unwrap();
     assert_eq!(execution.sequence, ticket.sequence());
     assert_eq!(execution.actual_frame, Frame(13));
-    assert_eq!(execution.operation_result, Some(0.5));
+    assert_eq!(execution.processor_result, Some(0.5));
     assert_eq!(execution.result, Ok(()));
     assert_eq!(control.outstanding(), 0);
     let (planner, resources) = runtime.into_planner_and_resources();

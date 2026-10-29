@@ -14,8 +14,9 @@ pub enum Target {
     Processor(NodeId),
 }
 
+/// `O` is the planner's operation family; `Q` is the processors' family.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Action<O = ()> {
+pub enum Action<O = (), Q = ()> {
     Parameter {
         node: NodeId,
         parameter: u32,
@@ -31,10 +32,10 @@ pub enum Action<O = ()> {
     },
     Processor {
         node: NodeId,
-        operation: O,
+        operation: Q,
     },
 }
-impl<O: Copy> Action<O> {
+impl<O: Copy, Q: Copy> Action<O, Q> {
     pub fn target(self) -> Target {
         match self {
             Self::Planner { planner, .. } => Target::Planner(planner),
@@ -61,6 +62,14 @@ impl<O: Copy> Action<O> {
     fn typed(self) -> bool {
         matches!(self, Self::Planner { .. } | Self::Processor { .. })
     }
+    fn accepts<R, S>(self, value: &Value<R, S>) -> bool {
+        matches!(
+            (self, value),
+            (Self::Parameter { .. } | Self::Midi { .. }, Value::Ordinary)
+                | (Self::Planner { .. }, Value::Planner(_))
+                | (Self::Processor { .. }, Value::Processor(_))
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,10 +94,10 @@ impl ReceiptToken {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Execution<O = (), R = ()> {
+pub struct Execution<O = (), R = (), Q = (), S = ()> {
     pub sequence: Sequence,
     pub lane: Lane,
-    pub action: Action<O>,
+    pub action: Action<O, Q>,
     pub requested_frame: Frame,
     /// Actual action delivery, absent when work terminates before delivery.
     pub delivered_frame: Option<Frame>,
@@ -96,9 +105,12 @@ pub struct Execution<O = (), R = ()> {
     pub actual_frame: Frame,
     /// Runtime delivery/receipt error. A domain outcome is carried separately.
     pub result: Result<(), Error>,
+    /// Planner operation outcome.
     pub operation_result: Option<R>,
+    /// Processor operation outcome.
+    pub processor_result: Option<S>,
 }
-impl<O, R> Execution<O, R> {
+impl<O, R, Q, S> Execution<O, R, Q, S> {
     /// Delivery lateness relative to the request, not time spent Pending.
     /// Returns zero when no delivery occurred.
     pub fn late_by(&self) -> u64 {
@@ -108,19 +120,19 @@ impl<O, R> Execution<O, R> {
 }
 
 #[derive(Clone, Copy)]
-struct Record<O, R> {
+struct Record<O, R, Q, S> {
     slot: usize,
-    execution: Execution<O, R>,
+    execution: Execution<O, R, Q, S>,
 }
 
-pub struct Results<O = (), R = ()> {
-    completed: Consumer<Record<O, R>>,
+pub struct Results<O = (), R = (), Q = (), S = ()> {
+    completed: Consumer<Record<O, R, Q, S>>,
     released: Producer<usize>,
     pending_release: Option<usize>,
 }
-impl<O: Copy, R: Copy> Results<O, R> {
+impl<O: Copy, R: Copy, Q: Copy, S: Copy> Results<O, R, Q, S> {
     /// Consuming a terminal record releases its credit at a later callback boundary.
-    pub fn try_execution(&mut self) -> Option<Execution<O, R>> {
+    pub fn try_execution(&mut self) -> Option<Execution<O, R, Q, S>> {
         if let Some(slot) = self.pending_release.take() {
             if let Err(PushError::Full(slot)) = self.released.push(slot) {
                 self.pending_release = Some(slot);
@@ -136,7 +148,7 @@ impl<O: Copy, R: Copy> Results<O, R> {
 }
 
 #[derive(Clone, Copy)]
-struct Event<O> {
+struct Event<O, Q> {
     sequence: Sequence,
     lane: Lane,
     requested_frame: Frame,
@@ -144,92 +156,63 @@ struct Event<O> {
     admitted_frame: Frame,
     delivered_frame: Option<Frame>,
     terminal: bool,
-    action: Action<O>,
+    action: Action<O, Q>,
     payload_len: usize,
 }
-impl<O: Copy> Event<O> {
+impl<O: Copy, Q: Copy> Event<O, Q> {
     fn order(self) -> (Frame, (Target, u8, u32), Sequence) {
         (self.effective_frame, self.action.order(), self.sequence)
     }
 }
 
-pub struct Due<'a, O = ()> {
+pub struct Due<'a, O = (), Q = ()> {
     pub sequence: Sequence,
     pub frame: Frame,
-    pub action: Action<O>,
+    pub action: Action<O, Q>,
     pub payload: &'a [u8],
 }
 
 /// Removing a due event does not release its terminal reservation. Payload and
 /// receipt fields borrow disjoint storage, allowing completion during delivery.
-pub struct Delivery<'a, O, R> {
+pub struct Delivery<'a, O, R, Q = (), S = ()> {
     pub token: ReceiptToken,
     pub lane: Lane,
     pub requested_frame: Frame,
     pub frame: Frame,
-    pub action: Action<O>,
+    pub action: Action<O, Q>,
     pub payload: &'a [u8],
-    pub receipts: ReceiptWriter<'a, O, R>,
+    pub receipts: Receipts<'a, O, R, Q, S>,
 }
 
-pub struct ReceiptWriter<'a, O, R> {
-    scope: u32,
-    frame: Frame,
-    events: &'a mut [Option<Event<O>>],
-    pending: &'a mut Vec<usize>,
-    completed: &'a mut Producer<Record<O, R>>,
-    pending_result: &'a mut Option<Record<O, R>>,
+enum Value<R, S> {
+    Ordinary,
+    Planner(R),
+    Processor(S),
 }
-impl<O: Copy, R: Copy> ReceiptWriter<'_, O, R> {
-    pub fn reborrow(&mut self) -> ReceiptWriter<'_, O, R> {
-        ReceiptWriter {
-            scope: self.scope,
-            frame: self.frame,
-            events: self.events,
-            pending: self.pending,
-            completed: self.completed,
-            pending_result: self.pending_result,
-        }
-    }
-    /// Resolve one retained token at this writer's frame. A still-retained terminal
-    /// token gives InvalidState; stale/reused identities give InvalidId. External
-    /// result consumption recycles its credit at a later callback boundary.
-    pub fn complete(&mut self, token: ReceiptToken, result: Result<R, Error>) -> Result<(), Error> {
-        self.resolve(token, result.map(Some), false)
-    }
-    pub(crate) fn ordinary(
-        &mut self,
-        token: ReceiptToken,
-        result: Result<(), Error>,
-    ) -> Result<(), Error> {
-        self.resolve(token, result.map(|()| None), false)
-    }
-    /// Cancel a normal typed event before delivery. Its result retains the slot;
-    /// delivered pending work is cancelled by completing its retained token.
-    pub fn cancel_queued(&mut self, sequence: Sequence, result: R) -> Result<(), Error> {
-        let slot = self
-            .events
-            .iter()
-            .position(|event| {
-                event.is_some_and(|event| {
-                    event.sequence == sequence && event.lane == Lane::Normal && event.action.typed()
-                })
+
+struct Store<O, R, Q, S> {
+    scope: u32,
+    events: Vec<Option<Event<O, Q>>>,
+    pending: Vec<usize>,
+    completed: Producer<Record<O, R, Q, S>>,
+    pending_result: Option<Record<O, R, Q, S>>,
+}
+impl<O: Copy, R: Copy, Q: Copy, S: Copy> Store<O, R, Q, S> {
+    /// Slot of a normal-lane typed action that has not been delivered yet.
+    fn queued(&self, sequence: Sequence, planner: bool) -> Option<usize> {
+        self.events.iter().position(|event| {
+            event.is_some_and(|event| {
+                event.sequence == sequence
+                    && event.lane == Lane::Normal
+                    && matches!(event.action, Action::Planner { .. }) == planner
             })
-            .ok_or(Error::InvalidId)?;
-        self.resolve(
-            ReceiptToken {
-                scope: self.scope,
-                slot,
-                sequence,
-            },
-            Ok(Some(result)),
-            true,
-        )
+        })
     }
     fn resolve(
         &mut self,
+        frame: Frame,
         token: ReceiptToken,
-        result: Result<Option<R>, Error>,
+        result: Result<Value<R, S>, Error>,
         queued: bool,
     ) -> Result<(), Error> {
         if token.scope != self.scope {
@@ -248,7 +231,7 @@ impl<O: Copy, R: Copy> ReceiptWriter<'_, O, R> {
         }
         let delivered_frame = event.delivered_frame;
         let queued_index = if queued {
-            if self.frame < event.admitted_frame {
+            if frame < event.admitted_frame {
                 return Err(Error::InvalidFrame);
             }
             if delivered_frame.is_some() {
@@ -262,20 +245,26 @@ impl<O: Copy, R: Copy> ReceiptWriter<'_, O, R> {
             )
         } else {
             let delivered = delivered_frame.ok_or(Error::InvalidState)?;
-            if self.frame < delivered {
+            if frame < delivered {
                 return Err(Error::InvalidFrame);
             }
             None
         };
         if result
             .as_ref()
-            .is_ok_and(|value| value.is_some() != event.action.typed())
+            .is_ok_and(|value| !event.action.accepts(value))
         {
             return Err(Error::InvalidEvent);
         }
         if self.pending_result.is_some() {
             return Err(Error::Full);
         }
+        let (result, operation_result, processor_result) = match result {
+            Ok(Value::Ordinary) => (Ok(()), None, None),
+            Ok(Value::Planner(value)) => (Ok(()), Some(value), None),
+            Ok(Value::Processor(value)) => (Ok(()), None, Some(value)),
+            Err(error) => (Err(error), None, None),
+        };
         let record = Record {
             slot: token.slot,
             execution: Execution {
@@ -284,9 +273,10 @@ impl<O: Copy, R: Copy> ReceiptWriter<'_, O, R> {
                 action: event.action,
                 requested_frame: event.requested_frame,
                 delivered_frame,
-                actual_frame: self.frame,
-                result: result.map(|_| ()),
-                operation_result: result.ok().flatten(),
+                actual_frame: frame,
+                result,
+                operation_result,
+                processor_result,
             },
         };
         event.terminal = true;
@@ -294,25 +284,116 @@ impl<O: Copy, R: Copy> ReceiptWriter<'_, O, R> {
             self.pending.remove(index);
         }
         if let Err(PushError::Full(record)) = self.completed.push(record) {
-            *self.pending_result = Some(record);
+            self.pending_result = Some(record);
         }
         Ok(())
     }
 }
 
-pub struct Scheduler<O = (), R = ()> {
-    scope: u32,
+trait PlannerReceipts<O, R> {
+    fn scope(&self) -> u32;
+    fn queued(&self, sequence: Sequence) -> Option<usize>;
+    fn resolve(
+        &mut self,
+        frame: Frame,
+        token: ReceiptToken,
+        result: Result<R, Error>,
+        queued: bool,
+    ) -> Result<(), Error>;
+}
+impl<O: Copy, R: Copy, Q: Copy, S: Copy> PlannerReceipts<O, R> for Store<O, R, Q, S> {
+    fn scope(&self) -> u32 {
+        self.scope
+    }
+    fn queued(&self, sequence: Sequence) -> Option<usize> {
+        Store::queued(self, sequence, true)
+    }
+    fn resolve(
+        &mut self,
+        frame: Frame,
+        token: ReceiptToken,
+        result: Result<R, Error>,
+        queued: bool,
+    ) -> Result<(), Error> {
+        Store::resolve(self, frame, token, result.map(Value::Planner), queued)
+    }
+}
+
+/// Planner receipt authority at one frame, independent of processor operation types.
+pub struct ReceiptWriter<'a, O, R> {
+    frame: Frame,
+    store: &'a mut dyn PlannerReceipts<O, R>,
+}
+impl<O, R> ReceiptWriter<'_, O, R> {
+    pub fn reborrow(&mut self) -> ReceiptWriter<'_, O, R> {
+        ReceiptWriter {
+            frame: self.frame,
+            store: &mut *self.store,
+        }
+    }
+    /// Resolve one retained token at this writer's frame. A still-retained terminal
+    /// token gives InvalidState; stale/reused identities give InvalidId. External
+    /// result consumption recycles its credit at a later callback boundary.
+    pub fn complete(&mut self, token: ReceiptToken, result: Result<R, Error>) -> Result<(), Error> {
+        self.store.resolve(self.frame, token, result, false)
+    }
+    /// Cancel a normal typed planner event before delivery. Its result retains the
+    /// slot; delivered pending work is cancelled by completing its retained token.
+    pub fn cancel_queued(&mut self, sequence: Sequence, result: R) -> Result<(), Error> {
+        let slot = self.store.queued(sequence).ok_or(Error::InvalidId)?;
+        let token = ReceiptToken {
+            scope: self.store.scope(),
+            slot,
+            sequence,
+        };
+        self.store.resolve(self.frame, token, Ok(result), true)
+    }
+}
+
+/// Receipt authority for one delivered event, including processor results.
+pub struct Receipts<'a, O, R, Q, S> {
+    frame: Frame,
+    store: &'a mut Store<O, R, Q, S>,
+}
+impl<O: Copy, R: Copy, Q: Copy, S: Copy> Receipts<'_, O, R, Q, S> {
+    /// Planner view of this receipt authority.
+    pub fn planner(&mut self) -> ReceiptWriter<'_, O, R> {
+        ReceiptWriter {
+            frame: self.frame,
+            store: &mut *self.store,
+        }
+    }
+    pub fn complete(&mut self, token: ReceiptToken, result: Result<R, Error>) -> Result<(), Error> {
+        self.store
+            .resolve(self.frame, token, result.map(Value::Planner), false)
+    }
+    pub fn complete_processor(
+        &mut self,
+        token: ReceiptToken,
+        result: Result<S, Error>,
+    ) -> Result<(), Error> {
+        self.store
+            .resolve(self.frame, token, result.map(Value::Processor), false)
+    }
+    pub(crate) fn ordinary(
+        &mut self,
+        token: ReceiptToken,
+        result: Result<(), Error>,
+    ) -> Result<(), Error> {
+        self.store
+            .resolve(self.frame, token, result.map(|()| Value::Ordinary), false)
+    }
+}
+
+pub struct Scheduler<O = (), R = (), Q = (), S = ()> {
     normal_capacity: usize,
     recovery_available: bool,
-    events: Vec<Option<Event<O>>>,
-    pending: Vec<usize>,
+    store: Store<O, R, Q, S>,
     free: Vec<usize>,
     payload: Box<[u8]>,
     payload_stride: usize,
     midi_payload_limit: usize,
-    completed: Producer<Record<O, R>>,
     released: Consumer<usize>,
-    pending_result: Option<Record<O, R>>,
     highest_sequence: [Sequence; 2],
 }
 
@@ -322,11 +403,11 @@ pub fn scheduler(config: PreparedConfig) -> Result<(Results, Scheduler), Error> 
 
 /// Extra payload stride and the independent recovery receipt are prepared once.
 /// The caller validates target signatures, operation semantics, and recovery safety.
-pub fn typed_scheduler<O: Copy, R: Copy>(
+pub fn typed_scheduler<O: Copy, R: Copy, Q: Copy, S: Copy>(
     config: PreparedConfig,
     operation_bytes: usize,
     recovery: bool,
-) -> Result<(Results<O, R>, Scheduler<O, R>), Error> {
+) -> Result<(Results<O, R, Q, S>, Scheduler<O, R, Q, S>), Error> {
     let limits = config.limits();
     if operation_bytes > i32::MAX as usize {
         return Err(Error::Capacity);
@@ -344,8 +425,8 @@ pub fn typed_scheduler<O: Copy, R: Copy>(
         .min(limits.budgets.transfer_bytes);
     for size in [
         payload_stride,
-        size_of::<Option<Event<O>>>(),
-        size_of::<Record<O, R>>(),
+        size_of::<Option<Event<O, Q>>>(),
+        size_of::<Record<O, R, Q, S>>(),
         size_of::<usize>(),
     ] {
         if total
@@ -382,34 +463,36 @@ pub fn typed_scheduler<O: Copy, R: Copy>(
             pending_release: None,
         },
         Scheduler {
-            scope,
             normal_capacity: capacity,
             recovery_available: recovery,
-            events,
-            pending,
+            store: Store {
+                scope,
+                events,
+                pending,
+                completed,
+                pending_result: None,
+            },
             free: (0..capacity).rev().collect(),
             payload,
             payload_stride,
             midi_payload_limit: limits
                 .midi_bytes_per_port
                 .min(limits.budgets.transfer_bytes),
-            completed,
             released: recycle,
-            pending_result: None,
             highest_sequence: [Sequence(0); 2],
         },
     ))
 }
 
-impl<O: Copy, R: Copy> Scheduler<O, R> {
+impl<O: Copy, R: Copy, Q: Copy, S: Copy> Scheduler<O, R, Q, S> {
     pub fn capacity(&self) -> usize {
         self.normal_capacity
     }
     pub fn delivery_limit(&self) -> usize {
-        self.events.len()
+        self.store.events.len()
     }
     pub fn pending(&self) -> usize {
-        self.pending.len()
+        self.store.pending.len()
     }
     pub fn available(&self) -> usize {
         self.free.len()
@@ -421,24 +504,25 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         self.payload_stride
     }
     pub fn recovery_pending(&self) -> bool {
-        self.events
+        self.store
+            .events
             .get(self.normal_capacity)
             .and_then(Option::as_ref)
             .is_some_and(|event| !event.terminal)
     }
 
     pub fn begin_callback(&mut self) -> usize {
-        if let Some(record) = self.pending_result.take() {
-            if let Err(PushError::Full(record)) = self.completed.push(record) {
-                self.pending_result = Some(record);
+        if let Some(record) = self.store.pending_result.take() {
+            if let Err(PushError::Full(record)) = self.store.completed.push(record) {
+                self.store.pending_result = Some(record);
             }
         }
-        let count = self.released.slots().min(self.events.len());
+        let count = self.released.slots().min(self.store.events.len());
         for _ in 0..count {
             let Ok(slot) = self.released.pop() else {
                 break;
             };
-            self.events[slot] = None;
+            self.store.events[slot] = None;
             if slot == self.normal_capacity {
                 self.recovery_available = true;
             } else {
@@ -453,7 +537,7 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         sequence: Sequence,
         requested_frame: Frame,
         now: Frame,
-        action: Action<O>,
+        action: Action<O, Q>,
         payload: &[u8],
     ) -> Result<Admission, Error> {
         self.admit_on(
@@ -470,7 +554,7 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         sequence: Sequence,
         requested_frame: Frame,
         now: Frame,
-        action: Action<O>,
+        action: Action<O, Q>,
         payload: &[u8],
     ) -> Result<Admission, Error> {
         if requested_frame > now || !payload.is_empty() || !matches!(action, Action::Planner { .. })
@@ -492,7 +576,7 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         sequence: Sequence,
         requested_frame: Frame,
         now: Frame,
-        action: Action<O>,
+        action: Action<O, Q>,
         payload: &[u8],
     ) -> Result<Admission, Error> {
         let lane_index = usize::from(lane == Lane::Recovery);
@@ -536,11 +620,11 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         };
         let start = slot * self.payload_stride;
         self.payload[start..start + payload.len()].copy_from_slice(payload);
-        let index = self.pending.partition_point(|&index| {
-            self.events[index].is_some_and(|previous| previous.order() <= event.order())
+        let index = self.store.pending.partition_point(|&index| {
+            self.store.events[index].is_some_and(|previous| previous.order() <= event.order())
         });
-        self.events[slot] = Some(event);
-        self.pending.insert(index, slot);
+        self.store.events[slot] = Some(event);
+        self.store.pending.insert(index, slot);
         self.highest_sequence[lane_index] = sequence;
         Ok(Admission {
             sequence,
@@ -549,14 +633,14 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         })
     }
     pub fn next_frame(&self) -> Option<Frame> {
-        self.events[*self.pending.first()?].map(|event| event.effective_frame)
+        self.store.events[*self.store.pending.first()?].map(|event| event.effective_frame)
     }
-    pub fn due(&self, frame: Frame) -> Option<Due<'_, O>> {
-        if self.pending_result.is_some() {
+    pub fn due(&self, frame: Frame) -> Option<Due<'_, O, Q>> {
+        if self.store.pending_result.is_some() {
             return None;
         }
-        let slot = *self.pending.first()?;
-        let event = self.events[slot]?;
+        let slot = *self.store.pending.first()?;
+        let event = self.store.events[slot]?;
         if event.effective_frame > frame {
             return None;
         }
@@ -568,22 +652,22 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
             payload: &self.payload[start..start + event.payload_len],
         })
     }
-    pub fn deliver(&mut self, frame: Frame) -> Option<Delivery<'_, O, R>> {
-        if self.pending_result.is_some() {
+    pub fn deliver(&mut self, frame: Frame) -> Option<Delivery<'_, O, R, Q, S>> {
+        if self.store.pending_result.is_some() {
             return None;
         }
-        let slot = *self.pending.first()?;
-        let event = self.events[slot].as_mut()?;
+        let slot = *self.store.pending.first()?;
+        let event = self.store.events[slot].as_mut()?;
         if event.effective_frame > frame {
             return None;
         }
         event.delivered_frame = Some(frame);
         let event = *event;
-        self.pending.remove(0);
+        self.store.pending.remove(0);
         let start = slot * self.payload_stride;
         Some(Delivery {
             token: ReceiptToken {
-                scope: self.scope,
+                scope: self.store.scope,
                 slot,
                 sequence: event.sequence,
             },
@@ -592,24 +676,16 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
             frame,
             action: event.action,
             payload: &self.payload[start..start + event.payload_len],
-            receipts: ReceiptWriter {
-                scope: self.scope,
+            receipts: Receipts {
                 frame,
-                events: &mut self.events,
-                pending: &mut self.pending,
-                completed: &mut self.completed,
-                pending_result: &mut self.pending_result,
+                store: &mut self.store,
             },
         })
     }
     pub fn receipts(&mut self, frame: Frame) -> ReceiptWriter<'_, O, R> {
         ReceiptWriter {
-            scope: self.scope,
             frame,
-            events: &mut self.events,
-            pending: &mut self.pending,
-            completed: &mut self.completed,
-            pending_result: &mut self.pending_result,
+            store: &mut self.store,
         }
     }
     /// Immediate ordinary parameter/MIDI completion. Typed operations use delivery receipts.
@@ -619,11 +695,11 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         actual_frame: Frame,
         result: Result<(), Error>,
     ) -> Result<(), Error> {
-        if self.pending_result.is_some() {
+        if self.store.pending_result.is_some() {
             return Err(Error::Full);
         }
-        let slot = *self.pending.first().ok_or(Error::InvalidState)?;
-        let event = self.events[slot].ok_or(Error::InvalidState)?;
+        let slot = *self.store.pending.first().ok_or(Error::InvalidState)?;
+        let event = self.store.events[slot].ok_or(Error::InvalidState)?;
         if event.sequence != sequence {
             return Err(Error::InvalidId);
         }
@@ -635,5 +711,17 @@ impl<O: Copy, R: Copy> Scheduler<O, R> {
         }
         let mut delivery = self.deliver(actual_frame).ok_or(Error::InvalidState)?;
         delivery.receipts.ordinary(delivery.token, result)
+    }
+    /// Cancel a queued normal-lane parameter, MIDI or processor action before
+    /// delivery. Planner operations are cancelled by their planner.
+    pub fn cancel(&mut self, frame: Frame, sequence: Sequence) -> Result<(), Error> {
+        let slot = self.store.queued(sequence, false).ok_or(Error::InvalidId)?;
+        let token = ReceiptToken {
+            scope: self.store.scope,
+            slot,
+            sequence,
+        };
+        self.store
+            .resolve(frame, token, Err(Error::Cancelled), true)
     }
 }

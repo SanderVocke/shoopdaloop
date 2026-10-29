@@ -8,7 +8,7 @@ use rt_runtime::graph::{
 use rt_runtime::planner::{
     ConsumerAccess, DecisionBinding, FinishContext, PlanContext, Planner, PlannerSpec,
 };
-use rt_runtime::processor::{ProcessBlock, Processor};
+use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::schedule::Action;
 use rt_runtime::transport::Lane;
 use rt_runtime::{Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId};
@@ -16,6 +16,9 @@ use rt_runtime::{Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId};
 #[derive(Clone, Copy)]
 enum GainOperation {
     Set(f32),
+}
+impl ProcessorOperation for GainOperation {
+    type Result = f32;
 }
 
 struct AlternatingGain {
@@ -25,8 +28,8 @@ struct AlternatingGain {
 impl Planner for AlternatingGain {
     type Decision = f32;
     type Observation = usize;
-    type Operation = GainOperation;
-    type Result = f32;
+    type Operation = ();
+    type Result = ();
     fn spec(&self) -> Option<PlannerSpec> {
         Some(PlannerSpec {
             id: self.id,
@@ -38,17 +41,14 @@ impl Planner for AlternatingGain {
     fn decisions(&self) -> &[f32] {
         &self.decision
     }
-    fn plan(&mut self, context: PlanContext<'_, GainOperation, f32>) -> Result<Frame, Error> {
+    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
         self.decision[0] = 1.0 + ((context.frame.0 / 8) % 2) as f32;
         Ok(context
             .frame
             .checked_add(8 - (context.frame.0 % 8) as usize)?
             .min(context.ceiling))
     }
-    fn finish(
-        &mut self,
-        context: FinishContext<'_, usize, GainOperation, f32>,
-    ) -> Result<(), Error> {
+    fn finish(&mut self, context: FinishContext<'_, usize>) -> Result<(), Error> {
         if context.observations.len() != 1
             || context.observations[0].value as u64
                 != context.interval.end.0 - context.interval.start.0
@@ -61,7 +61,7 @@ impl Planner for AlternatingGain {
 struct Gain {
     parameter: f32,
 }
-impl Processor<AlternatingGain> for Gain {
+impl Processor<AlternatingGain, GainOperation> for Gain {
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: 1,
@@ -196,7 +196,7 @@ fn main() -> Result<(), Error> {
     let execution = control.try_execution().ok_or(Error::InvalidState)?;
     assert_eq!(execution.actual_frame, Frame(13));
     assert_eq!(execution.result, Ok(()));
-    assert_eq!(execution.operation_result, Some(0.5));
+    assert_eq!(execution.processor_result, Some(0.5));
     assert_eq!(runtime.diagnostics().subranges, 5);
     while control.try_completion().is_some() {}
     println!("planned gain: 32 checked samples, five intervals, one exact-frame event");

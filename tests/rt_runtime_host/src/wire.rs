@@ -156,6 +156,7 @@ pub fn error_code(error: Error) -> u32 {
         Error::Incomplete => 18,
         Error::Budget => 19,
         Error::StaleRevision => 20,
+        Error::Cancelled => 21,
     }
 }
 pub fn decode_step(bytes: &[u8]) -> Result<NodeStep, Error> {

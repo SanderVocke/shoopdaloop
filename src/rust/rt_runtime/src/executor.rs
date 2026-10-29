@@ -11,7 +11,7 @@ use crate::planner::{
     ConsumerAccess, ConsumerSpec, DecisionBinding, DecisionView, Disposition, FinishContext,
     Interval, NoPlanner, Observations, OperationContext, PlanContext, Planner,
 };
-use crate::processor::{ProcessBlock, Processor};
+use crate::processor::{ProcessBlock, Processor, ProcessorOperation};
 use crate::resource::{self, ResourceStore};
 use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
@@ -20,14 +20,14 @@ use std::marker::PhantomData;
 
 /// Capture a prepared processor's port signature outside rendering. A runtime slot
 /// can later accept another generation with the same signature, not a larger one.
-pub struct PreparedNode<P, L: Planner = NoPlanner> {
+pub struct PreparedNode<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     id: NodeId,
     ports: PortCounts,
     access: ConsumerAccess,
     processor: P,
-    marker: PhantomData<fn() -> L>,
+    marker: PhantomData<fn() -> (L, Q)>,
 }
-impl<P: Processor<L>, L: Planner> PreparedNode<P, L> {
+impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q> {
     pub fn new(id: NodeId, processor: P) -> Self {
         Self {
             id,
@@ -45,7 +45,7 @@ impl<P: Processor<L>, L: Planner> PreparedNode<P, L> {
     }
 }
 
-pub enum Command<P, L: Planner = NoPlanner> {
+pub enum Command<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     StageGraph {
         slot: usize,
         expected_epoch: Epoch,
@@ -64,17 +64,21 @@ pub enum Command<P, L: Planner = NoPlanner> {
         node: NodeId,
     },
     Install {
-        prepared: Option<PreparedNode<P, L>>,
+        prepared: Option<PreparedNode<P, L, Q>>,
     },
     Schedule {
         at: Frame,
-        action: Action<L::Operation>,
+        action: Action<L::Operation, Q>,
         payload: Box<[u8]>,
+    },
+    /// Cancel a scheduled parameter, MIDI or processor action before its delivery.
+    Cancel {
+        sequence: Sequence,
     },
     ResetMidi,
     Resource(resource::ResourceCommand),
 }
-impl<P, L: Planner> Command<P, L> {
+impl<P, L: Planner, Q: ProcessorOperation> Command<P, L, Q> {
     pub fn stage_graph(slot: usize, expected_epoch: Epoch, plan: PreparedPlan) -> Self {
         Self::StageGraph {
             slot,
@@ -121,35 +125,35 @@ pub struct Diagnostics {
     pub midi_index_work: crate::resource::MidiIndexWork,
 }
 
-pub struct Control<P, L: Planner = NoPlanner> {
-    transport: ControlEndpoint<Command<P, L>, Retired<P>, Diagnostics>,
-    executions: schedule::Results<L::Operation, L::Result>,
+pub struct Control<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    transport: ControlEndpoint<Command<P, L, Q>, Retired<P>, Diagnostics>,
+    executions: schedule::Results<L::Operation, L::Result, Q, Q::Result>,
     config: PreparedConfig,
 }
-impl<P, L: Planner> Control<P, L> {
+impl<P, L: Planner, Q: ProcessorOperation> Control<P, L, Q> {
     pub fn prepare_submissions(&mut self) -> Result<(), Error> {
         self.transport.prepare_submissions()
     }
     pub fn submit(
         &mut self,
         lane: Lane,
-        request: Command<P, L>,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L>>> {
+        request: Command<P, L, Q>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q>>> {
         self.submit_inner(lane, request, false)
     }
     pub fn submit_prepared(
         &mut self,
         lane: Lane,
-        request: Command<P, L>,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L>>> {
+        request: Command<P, L, Q>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q>>> {
         self.submit_inner(lane, request, true)
     }
     fn submit_inner(
         &mut self,
         lane: Lane,
-        mut request: Command<P, L>,
+        mut request: Command<P, L, Q>,
         prepared: bool,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L>>> {
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q>>> {
         if let Command::Resource(command) = &mut request {
             command.reset_reply();
             if let Err(error) = command.envelope(self.config) {
@@ -165,10 +169,12 @@ impl<P, L: Planner> Control<P, L> {
             self.transport.submit(lane, request)
         }
     }
-    pub fn try_completion(&mut self) -> Option<transport::Completion<Command<P, L>, Retired<P>>> {
+    pub fn try_completion(
+        &mut self,
+    ) -> Option<transport::Completion<Command<P, L, Q>, Retired<P>>> {
         self.transport.try_completion()
     }
-    pub fn try_execution(&mut self) -> Option<Execution<L::Operation, L::Result>> {
+    pub fn try_execution(&mut self) -> Option<Execution<L::Operation, L::Result, Q, Q::Result>> {
         self.executions.try_execution()
     }
     pub fn try_telemetry(&mut self) -> Option<Diagnostics> {
@@ -181,7 +187,7 @@ impl<P, L: Planner> Control<P, L> {
         self.transport.connected()
     }
 }
-type Ingress<P, L> = RenderEndpoint<Command<P, L>, Retired<P>, Diagnostics>;
+type Ingress<P, L, Q> = RenderEndpoint<Command<P, L, Q>, Retired<P>, Diagnostics>;
 
 struct Buffers {
     input: Box<[f32]>,
@@ -243,7 +249,7 @@ fn activation_compatible<P>(
     Ok(())
 }
 
-pub struct GraphRuntime<P, L: Planner = NoPlanner> {
+pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     clock: RenderRuntime,
     catalog: Catalog,
     slots: Vec<Option<Slot<P>>>,
@@ -252,11 +258,11 @@ pub struct GraphRuntime<P, L: Planner = NoPlanner> {
     validator: PlanValidator,
     validating: Option<Sequence>,
     epoch: Epoch,
-    ingress: Ingress<P, L>,
+    ingress: Ingress<P, L, Q>,
     diagnostics: Diagnostics,
     emergency: Option<Retired<P>>,
     ingress_fault: bool,
-    scheduler: Scheduler<L::Operation, L::Result>,
+    scheduler: Scheduler<L::Operation, L::Result, Q, Q::Result>,
     recovery: Vec<ResetState>,
     recovery_remaining: Vec<usize>,
     resources: ResourceStore,
@@ -285,18 +291,18 @@ impl<P: Processor> GraphRuntime<P> {
     }
 }
 
-impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q> {
     /// Compile and install the initial graph during off-render preparation.
     /// Returns epoch one at frame zero; no callback, ingress credit, receipt or
     /// planner/processor execution is used. Failure drops inputs off-render.
     pub fn prepare_with_initial_graph(
         config: PreparedConfig,
-        nodes: Vec<PreparedNode<P, L>>,
+        nodes: Vec<PreparedNode<P, L, Q>>,
         planner: L,
         resources: ResourceStore,
         graph: &GraphDescription,
         bindings: &[DecisionBinding],
-    ) -> Result<(Control<P, L>, Self), Error> {
+    ) -> Result<(Control<P, L, Q>, Self), Error> {
         let (control, mut runtime) =
             Self::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
         let plan = compile_planned(&runtime.catalog, graph, bindings)?;
@@ -307,9 +313,9 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
 
     pub fn prepare_with_planner(
         config: PreparedConfig,
-        nodes: Vec<PreparedNode<P, L>>,
+        nodes: Vec<PreparedNode<P, L, Q>>,
         planner: L,
-    ) -> Result<(Control<P, L>, Self), Error> {
+    ) -> Result<(Control<P, L, Q>, Self), Error> {
         Self::prepare_with_planner_and_resources(
             config,
             nodes,
@@ -320,10 +326,10 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
 
     pub fn prepare_with_planner_and_resources(
         config: PreparedConfig,
-        nodes: Vec<PreparedNode<P, L>>,
+        nodes: Vec<PreparedNode<P, L, Q>>,
         planner: L,
         resources: ResourceStore,
-    ) -> Result<(Control<P, L>, Self), Error> {
+    ) -> Result<(Control<P, L, Q>, Self), Error> {
         if resources.config() != config {
             return Err(Error::InvalidConfig);
         }
@@ -693,6 +699,9 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                             })
                     }
                 }
+                Command::Cancel { sequence } => {
+                    self.scheduler.cancel(self.diagnostics.frame, *sequence)
+                }
                 Command::Commit {
                     expected_epoch,
                     plan,
@@ -873,7 +882,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                                     recovery: event.lane == Lane::Recovery,
                                     payload: event.payload,
                                     resources: self.resources.planner_io(at, at),
-                                    receipts: event.receipts.reborrow(),
+                                    receipts: event.receipts.planner(),
                                 },
                             )
                         };
@@ -936,7 +945,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
                                 Action::Planner { .. } => Err(Error::InvalidState),
                             });
                         if matches!(action, Action::Processor { .. }) {
-                            event.receipts.complete(
+                            event.receipts.complete_processor(
                                 event.token,
                                 result.and_then(|value| value.ok_or(Error::InvalidState)),
                             )?;
@@ -1126,9 +1135,9 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
     }
 }
 
-fn validate_action<O: Copy>(
+fn validate_action<O: Copy, Q: Copy>(
     catalog: &Catalog,
-    action: Action<O>,
+    action: Action<O, Q>,
     bytes: usize,
 ) -> Result<(), Error> {
     let limit = match action {
@@ -1180,11 +1189,11 @@ fn remove_processor<P>(
     Ok(processor)
 }
 
-fn install_processor<P, L: Planner>(
+fn install_processor<P, L: Planner, Q: ProcessorOperation>(
     slots: &mut [Option<Slot<P>>],
     catalog: &mut Catalog,
     epoch: &mut Epoch,
-    prepared: &mut Option<PreparedNode<P, L>>,
+    prepared: &mut Option<PreparedNode<P, L, Q>>,
 ) -> Result<(), Error> {
     let node = prepared.as_ref().ok_or(Error::InvalidState)?;
     let slot = slots

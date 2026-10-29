@@ -85,8 +85,10 @@ fn seeded_typed_payloads_receipts_and_recycled_tokens_match_a_full_length_indepe
     let mut coverage = [0usize; 12];
     let mut outcomes = [0usize; 18];
     for mut seed in [0x91a3_4218_u64, 0x725c_8931, 0xf163_8a97, 0xa831_7905] {
-        let (mut reader, mut scheduler) = typed_scheduler::<u32, u32>(config, 4, true).unwrap();
-        let (_foreign_reader, mut foreign) = typed_scheduler::<u32, u32>(config, 4, true).unwrap();
+        let (mut reader, mut scheduler) =
+            typed_scheduler::<u32, u32, (), ()>(config, 4, true).unwrap();
+        let (_foreign_reader, mut foreign) =
+            typed_scheduler::<u32, u32, (), ()>(config, 4, true).unwrap();
         let foreign_token = assert_no_heap(|| {
             foreign
                 .admit(Sequence(1), Frame(0), Frame(0), action(Sequence(1)), &[])

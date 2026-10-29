@@ -34,7 +34,8 @@ fn action(value: u32) -> Action<u32> {
 
 #[shoop_test]
 fn typed_payload_storage_does_not_expand_the_midi_packet_limit() {
-    let (_results, mut scheduler) = typed_scheduler::<u32, u32>(config(), 32, true).unwrap();
+    let (_results, mut scheduler) =
+        typed_scheduler::<u32, u32, (), ()>(config(), 32, true).unwrap();
     assert_no_heap(|| {
         assert_eq!(scheduler.payload_limit(), 32);
         scheduler
@@ -60,7 +61,8 @@ fn typed_payload_storage_does_not_expand_the_midi_packet_limit() {
 
 #[shoop_test]
 fn pending_receipts_keep_credits_and_distinguish_delivery_from_completion() {
-    let (mut results, mut scheduler) = typed_scheduler::<u32, u64>(config(), 8, true).unwrap();
+    let (mut results, mut scheduler) =
+        typed_scheduler::<u32, u64, (), ()>(config(), 8, true).unwrap();
     assert_no_heap(|| {
         scheduler
             .admit(Sequence(1), Frame(2), Frame(5), action(7), &[1, 2, 3])
@@ -116,7 +118,8 @@ fn pending_receipts_keep_credits_and_distinguish_delivery_from_completion() {
 
 #[shoop_test]
 fn independent_recovery_slot_survives_normal_saturation_and_lane_reordering() {
-    let (mut results, mut scheduler) = typed_scheduler::<u32, u32>(config(), 0, true).unwrap();
+    let (mut results, mut scheduler) =
+        typed_scheduler::<u32, u32, (), ()>(config(), 0, true).unwrap();
     assert_no_heap(|| {
         scheduler
             .admit_recovery(Sequence(3), Frame(0), Frame(0), action(0), &[])
@@ -159,7 +162,8 @@ fn independent_recovery_slot_survives_normal_saturation_and_lane_reordering() {
 
 #[shoop_test]
 fn queued_cancellation_has_no_delivery_and_retains_its_terminal_slot() {
-    let (mut results, mut scheduler) = typed_scheduler::<u32, u32>(config(), 0, true).unwrap();
+    let (mut results, mut scheduler) =
+        typed_scheduler::<u32, u32, (), ()>(config(), 0, true).unwrap();
     assert_no_heap(|| {
         scheduler
             .admit(Sequence(1), Frame(100), Frame(0), action(1), &[])
@@ -188,8 +192,8 @@ fn queued_cancellation_has_no_delivery_and_retains_its_terminal_slot() {
 
 #[shoop_test]
 fn foreign_tokens_payload_overflow_and_future_recovery_are_explicit() {
-    let (_reader_a, mut a) = typed_scheduler::<u32, u32>(config(), 8, true).unwrap();
-    let (mut reader_b, mut b) = typed_scheduler::<u32, u32>(config(), 8, true).unwrap();
+    let (_reader_a, mut a) = typed_scheduler::<u32, u32, (), ()>(config(), 8, true).unwrap();
+    let (mut reader_b, mut b) = typed_scheduler::<u32, u32, (), ()>(config(), 8, true).unwrap();
     assert_no_heap(|| {
         for scheduler in [&mut a, &mut b] {
             scheduler
@@ -241,7 +245,8 @@ struct ModelEntry {
 #[shoop_test]
 fn seeded_receipt_lifecycle_matches_independent_slot_and_terminal_model() {
     use std::collections::VecDeque;
-    let (mut results, mut scheduler) = typed_scheduler::<u32, u32>(config(), 0, true).unwrap();
+    let (mut results, mut scheduler) =
+        typed_scheduler::<u32, u32, (), ()>(config(), 0, true).unwrap();
     let mut model: [Option<ModelEntry>; 3] = [None; 3];
     let mut expected = VecDeque::new();
     let mut random = 0xa36b_2047_2f58_81d9u64;
@@ -456,7 +461,7 @@ fn seeded_receipt_lifecycle_matches_independent_slot_and_terminal_model() {
 
 #[shoop_test]
 fn disconnected_results_retain_pending_and_completed_receipts_without_reexecution() {
-    let (reader, mut scheduler) = typed_scheduler::<u32, u32>(config(), 0, true).unwrap();
+    let (reader, mut scheduler) = typed_scheduler::<u32, u32, (), ()>(config(), 0, true).unwrap();
     drop(reader);
     assert_no_heap(|| {
         scheduler

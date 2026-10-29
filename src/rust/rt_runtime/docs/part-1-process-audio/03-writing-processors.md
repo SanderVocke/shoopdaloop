@@ -96,7 +96,7 @@ cargo run -p rt_runtime --example prepared_processor
 
 Boxed dispatch allows different implementations in the same runtime. An enum is an alternative when the set of implementations is known. `Processor: Send` permits moving the runtime to its render owner; it does not provide concurrent processor access.
 
-Implement `set_parameter` for numeric control and smoothing, as shown in [Changing parameters at an exact sample](../part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md). [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md) cover typed commands.
+Implement `set_parameter` for numeric control and smoothing, as shown in [Changing parameters at an exact sample](../part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md). [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md) cover typed commands. A processor declares its own operation family as the second parameter of `Processor<L, Q>`; it is independent of any planner's operations, and defaults to `()` for processors without typed operations.
 
 For planner consumers, `planning()` declares prepared decision/observation access. An explicit `DecisionBinding` selects the immutable slot borrowed through `block.decision`; `block.observations` stamps the producer and enforces its own reservation. Another consumer's unused allowance cannot be borrowed. These views cannot survive later planner mutation. See [Planning processing intervals](../part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md); ordinary processors need no such declaration.
 

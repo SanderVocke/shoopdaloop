@@ -118,6 +118,7 @@ Errors are compact Copy values. Representative causes follow; each operation's s
 | `Incomplete` | Unfinished upload/record or missing group contribution. |
 | `Budget` | Optional callback copy/validation allowance exhausted; not required-render throughput refusal. |
 | `StaleRevision` | Expected resource revision no longer matches. |
+| `Cancelled` | A scheduled parameter, MIDI or processor action was cancelled by `Command::Cancel` before delivery. |
 
 Admission refusal returns the original value in `SubmitError::value`. An admitted owning completion has Applied/Scheduled/Rejected/Cancelled separately from later execution results. An execution has a runtime `Result<(), Error>` and optional typed domain result. A domain can report Refused while runtime delivery is `Ok(())`; neither success flag implies general domain publication.
 

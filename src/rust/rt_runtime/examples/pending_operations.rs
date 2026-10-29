@@ -7,7 +7,7 @@ use rt_runtime::planner::{
     ConsumerAccess, DecisionBinding, Disposition, FinishContext, OperationContext, PlanContext,
     Planner, PlannerSpec,
 };
-use rt_runtime::processor::{ProcessBlock, Processor};
+use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::resource::ResourceStore;
 use rt_runtime::schedule::{Action, ReceiptToken};
 use rt_runtime::transport::{Lane, Outcome, Ticket};
@@ -20,7 +20,6 @@ static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
     Wait { until: Frame, value: f32 },
-    Multiply(f32),
     Cancel(Sequence),
     Stop,
     Payload,
@@ -32,6 +31,12 @@ enum Reply {
     Cancelled,
     Stopped,
     Refused,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Multiply(f32);
+impl ProcessorOperation for Multiply {
+    type Result = f32;
 }
 
 struct Domain {
@@ -113,7 +118,6 @@ impl Planner for Domain {
                 Ok(Disposition::Complete(Reply::Applied(value)))
             }
             Op::Refuse => Ok(Disposition::Complete(Reply::Refused)),
-            Op::Multiply(_) => Err(Error::InvalidEvent),
         }
     }
     fn plan(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<Frame, Error> {
@@ -146,7 +150,7 @@ impl Planner for Domain {
 }
 
 struct Gain(f32);
-impl Processor<Domain> for Gain {
+impl Processor<Domain, Multiply> for Gain {
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: 1,
@@ -162,17 +166,14 @@ impl Processor<Domain> for Gain {
     }
     fn operation(
         &mut self,
-        operation: Op,
+        Multiply(value): Multiply,
         context: rt_runtime::processor::OperationContext<'_>,
-    ) -> Result<Reply, Error> {
-        let Op::Multiply(value) = operation else {
-            return Err(Error::InvalidEvent);
-        };
+    ) -> Result<f32, Error> {
         if !value.is_finite() || !context.payload.is_empty() {
             return Err(Error::InvalidEvent);
         }
         self.0 = value;
-        Ok(Reply::Applied(value))
+        Ok(value)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, Domain>) -> Result<(), Error> {
         let gain = *block.decision.as_ref().ok_or(Error::InvalidState)?.value * self.0;
@@ -184,7 +185,13 @@ impl Processor<Domain> for Gain {
     }
 }
 
-fn prepare() -> Result<(Control<Gain, Domain>, GraphRuntime<Gain, Domain>), Error> {
+fn prepare() -> Result<
+    (
+        Control<Gain, Domain, Multiply>,
+        GraphRuntime<Gain, Domain, Multiply>,
+    ),
+    Error,
+> {
     let config = Config {
         max_frames: 32,
         audio_inputs: 1,
@@ -241,7 +248,7 @@ fn prepare() -> Result<(Control<Gain, Domain>, GraphRuntime<Gain, Domain>), Erro
 }
 
 fn send(
-    control: &mut Control<Gain, Domain>,
+    control: &mut Control<Gain, Domain, Multiply>,
     lane: Lane,
     at: Frame,
     operation: Op,
@@ -262,7 +269,7 @@ fn send(
 }
 
 fn render(
-    runtime: &mut GraphRuntime<Gain, Domain>,
+    runtime: &mut GraphRuntime<Gain, Domain, Multiply>,
     frames: usize,
     output: &mut [f32; 32],
 ) -> Result<(), Error> {
@@ -326,7 +333,7 @@ fn delayed_result() -> Result<(), Error> {
                 at: Frame(25),
                 action: Action::Processor {
                     node: NodeId::from_parts(0, 1)?,
-                    operation: Op::Multiply(0.5),
+                    operation: Multiply(0.5),
                 },
                 payload: Box::default(),
             },
@@ -335,10 +342,7 @@ fn delayed_result() -> Result<(), Error> {
     render(&mut runtime, 4, &mut output)?;
     assert_eq!(output[..4], [3.0, 1.5, 1.5, 1.5]);
     drop(control.try_completion().unwrap());
-    assert_eq!(
-        control.try_execution().unwrap().operation_result,
-        Some(Reply::Applied(0.5))
-    );
+    assert_eq!(control.try_execution().unwrap().processor_result, Some(0.5));
     assert_eq!(control.outstanding(), 0);
     let (domain, resources) = runtime.into_planner_and_resources();
     assert!(domain.pending.is_none());
@@ -465,7 +469,6 @@ fn refusal_results() -> Result<(), Error> {
     for (operation, payload, expected, domain) in [
         (Op::Payload, vec![1, 2, 3], Err(Error::InvalidEvent), None),
         (Op::Refuse, vec![], Ok(()), Some(Reply::Refused)),
-        (Op::Multiply(2.0), vec![], Err(Error::InvalidEvent), None),
     ] {
         control
             .submit(
@@ -488,6 +491,24 @@ fn refusal_results() -> Result<(), Error> {
         assert_eq!(result.result, expected);
         assert_eq!(result.operation_result, domain);
     }
+    control
+        .submit(
+            Lane::Normal,
+            Command::Schedule {
+                at: runtime.next_frame(),
+                action: Action::Processor {
+                    node: NodeId::from_parts(0, 1)?,
+                    operation: Multiply(f32::NAN),
+                },
+                payload: Box::default(),
+            },
+        )
+        .map_err(|refusal| refusal.error)?;
+    render(&mut runtime, 1, &mut output)?;
+    drop(control.try_completion().unwrap());
+    let result = control.try_execution().unwrap();
+    assert_eq!(result.result, Err(Error::InvalidEvent));
+    assert_eq!(result.processor_result, None);
     control
         .submit(
             Lane::Normal,

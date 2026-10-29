@@ -50,7 +50,7 @@ Here gain alternates between 1.0 and 2.0 every eight frames. The planner selects
 [0,8) [8,13) [13,16) [16,24) [24,32)
 ```
 
-The scheduled change is an immediate typed processor operation used to expose that cut. Chapter 14 explains the operation/result family.
+The scheduled change is an immediate typed processor operation used to expose that cut. The planner itself accepts no operations here, so its operation and result types are `()`; the processors declare their own family. Chapter 14 explains both families.
 
 ## 2. Declare each consumer's access and bind it
 

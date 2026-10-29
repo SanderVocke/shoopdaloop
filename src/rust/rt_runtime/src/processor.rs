@@ -7,8 +7,8 @@ use crate::{Error, Frame, PreparedConfig};
 
 /// Construction and disposal of processors belong to non-render contexts.
 /// Implementations must preallocate and pre-touch their working storage here.
-pub trait PrepareProcessor<L: Planner = NoPlanner> {
-    type Prepared: Processor<L>;
+pub trait PrepareProcessor<L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    type Prepared: Processor<L, Q>;
     fn prepare(self, config: PreparedConfig) -> Result<Self::Prepared, Error>;
 }
 
@@ -31,10 +31,19 @@ pub struct OperationContext<'a> {
     pub resources: crate::resource::ResourceIo<'a>,
 }
 
+/// A Copy operation family accepted by processors, independent of any planner's
+/// operations. `()` is the family of processors without typed operations.
+pub trait ProcessorOperation: Copy + Send + 'static {
+    type Result: Copy + Send + 'static;
+}
+impl ProcessorOperation for () {
+    type Result = ();
+}
+
 /// Implementations must not allocate, deallocate, lock, wait, perform I/O, or panic
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
-pub trait Processor<L: Planner = NoPlanner>: Send {
+pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
     /// Queried during preparation, never by the render callback.
     fn ports(&self) -> PortCounts;
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
@@ -45,9 +54,9 @@ pub trait Processor<L: Planner = NoPlanner>: Send {
     /// Typed processor operations are immediate; only planners may retain receipts.
     fn operation(
         &mut self,
-        _operation: L::Operation,
+        _operation: Q,
         _context: OperationContext<'_>,
-    ) -> Result<L::Result, Error> {
+    ) -> Result<Q::Result, Error> {
         Err(Error::InvalidEvent)
     }
     /// Apply a bounded parameter mutation immediately before its target sample.
@@ -56,12 +65,12 @@ pub trait Processor<L: Planner = NoPlanner>: Send {
     }
 }
 
-impl<L: Planner, P: Processor<L> + ?Sized> Processor<L> for Box<P> {
+impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
     fn operation(
         &mut self,
-        operation: L::Operation,
+        operation: Q,
         context: OperationContext<'_>,
-    ) -> Result<L::Result, Error> {
+    ) -> Result<Q::Result, Error> {
         (**self).operation(operation, context)
     }
     fn planning(&self) -> ConsumerAccess {

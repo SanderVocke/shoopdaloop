@@ -143,10 +143,10 @@ Rejected means runtime admission/delivery failed. Failed means successful runtim
 delivery produced a domain failure, including an early `Reply::Failed` before a
 resolver request was installed. Do not flatten those outcomes into one success bit.
 
-Runtime errors 1–20, in order: InvalidConfig, Capacity, Exhausted, InvalidShape,
+Runtime errors 1–21, in order: InvalidConfig, Capacity, Exhausted, InvalidShape,
 InvalidFrame, InvalidId, InvalidEvent, Full, Disconnected, InvalidState, InvalidGraph,
 Cycle, PortType, StaleEpoch, Busy, InvalidParameter, InvalidOffset, Incomplete,
-Budget, StaleRevision. Codes 513–532 are those same errors returned as a domain
+Budget, StaleRevision, Cancelled. Codes 513–533 are those same errors returned as a domain
 `Failure::Runtime`, rather than a runtime delivery error.
 
 Timeline errors 257–268, in order: InvalidConfig, Capacity, InvalidId, DuplicateId,

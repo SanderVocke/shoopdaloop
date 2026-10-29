@@ -14,11 +14,20 @@ The [pending operations example](../../examples/pending_operations.rs) implement
 cargo run -p rt_runtime --example pending_operations
 ```
 
-`Wait` changes the domain value at a selected future boundary; `Multiply` changes a processor immediately; `Cancel` and `Stop` provide bounded recovery. The example asserts separate command/domain results, four different frames, all three cancellation points, finite recovery capacity and distinct refusal types. Callbacks—including delivery, planning and receipt completion—are heap-guarded.
+`Wait` changes the domain value at a selected future boundary; the processor's `Multiply` changes its gain immediately; `Cancel` and `Stop` provide bounded recovery. The example asserts separate command/domain results, four different frames, all three planner cancellation points, finite recovery capacity and distinct refusal types. Callbacks—including delivery, planning and receipt completion—are heap-guarded.
 
-## 1. Define a Copy operation/result family
+## 1. Define Copy operation/result families
 
-`Planner::Operation` and `Planner::Result` are Copy application types. `Action::Planner { planner, operation }` and `Action::Processor { node, operation }` carry them through `Command::Schedule`. A processor may reject an operation meaningful only to the planner, or vice versa.
+A planner and the processors each have their own family. `Planner::Operation` and `Planner::Result` are Copy application types. A processor names its family as the second parameter of `Processor<L, Q>`, where `Q: ProcessorOperation` supplies the result type:
+
+```rust
+struct Multiply(f32);
+impl ProcessorOperation for Multiply {
+    type Result = f32;
+}
+```
+
+The runtime carries the processor family as its third parameter, `GraphRuntime<P, L, Q>`; it defaults to `()` for processors without operations. `Action::Planner { planner, operation }` and `Action::Processor { node, operation }` carry the two families through `Command::Schedule`, so a processor operation cannot be addressed to the planner or the other way round. An application with several kinds of processor uses an enum for `Q`, just as it does for the processor type itself.
 
 Additional payload bytes are separately bounded by preparation declarations (`PlannerSpec::operation_bytes` or `ConsumerAccess::operation_bytes`) and callback staging allowance. The enum's Rust size is not its payload-byte limit. Delivery borrows the payload; it does not transfer a long-lived reference into the planner.
 
@@ -71,17 +80,19 @@ The command completion reports `Scheduled { effective_frame: Frame(10), late_by:
 
 `actual_frame` is the terminal frame, not necessarily delivery. `late_by()` measures delivery lateness, not the domain's ten-frame wait. Match both result streams by sequence.
 
-The later processor Multiply operation runs at frame 25 and immediately returns `Reply::Applied(0.5)`. Its output changes from 3.0 to 1.5 at that frame. The longer pending protocol belongs to the planner, not the processor callback.
+The later processor Multiply operation runs at frame 25 and immediately returns `0.5`, reported in the execution's separate `processor_result` field. Its output changes from 3.0 to 1.5 at that frame. The longer pending protocol belongs to the planner, not the processor callback.
 
 ## Cancellation has three separate cuts
 
 | Request state | Mechanism | Observable result |
 |---|---|---|
 | Before transport dequeue | `ticket.cancel()` | Command Cancelled if observed; no scheduled execution existed |
-| Scheduled typed action, not delivered | `receipts.cancel_queued(sequence, value)` | Terminal execution with `delivered_frame: None` |
+| Scheduled typed planner action, not delivered | `receipts.cancel_queued(sequence, value)` | Terminal execution with `delivered_frame: None` |
 | Delivered pending domain work | Complete its retained token | Terminal execution retains its real delivery frame |
 
 The example exercises each. Its Cancel operation first looks for the delivered pending token; otherwise it cancels a queued normal typed action. A duplicate completion of a still-terminal token returns `InvalidState`, not a second outcome. Scoped sequence checks also prevent an old token resolving a reused slot.
+
+Parameter, MIDI and processor actions have no planner to cancel them. Submit `Command::Cancel { sequence }` on either lane to terminate one that has not been delivered yet; its execution reports `Err(Cancelled)` with `delivered_frame: None`. Cancelling a planner action this way refuses with `InvalidId`, as does cancelling work that was already delivered: use the planner's own cancellation for its operations.
 
 The ticket flag is best effort only before its original dequeue. It cannot unschedule an accepted action, cancel a retained token, or undo a published domain effect. Parking normal validation for recovery does not create another cancellation observation; see [chapter 5](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md).
 
@@ -105,7 +116,7 @@ The example checks:
 |---|---|---|
 | Stale planner identity | Rejected(InvalidId) | None: not admitted into schedule |
 | Three-byte payload for four-byte decode | Scheduled | Runtime `Err(InvalidEvent)`, no domain value |
-| Multiply delivered to planner | Scheduled | Runtime `Err(InvalidEvent)`, no domain value |
+| Nonfinite Multiply delivered to the processor | Scheduled | Runtime `Err(InvalidEvent)`, no processor value |
 | Explicit domain Refuse | Scheduled | Runtime `Ok(())`, domain `Some(Reply::Refused)` |
 
 An identity can also become stale after admission, as the removed processor example in [chapter 6](../part-2-control-a-running-graph/06-routing-and-live-graph-edits.md) demonstrates. Generic `Ok(())` means successful runtime delivery/completion, not necessarily application publication.

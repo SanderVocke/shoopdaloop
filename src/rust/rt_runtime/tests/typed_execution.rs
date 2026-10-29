@@ -5,7 +5,7 @@ use rt_runtime::graph::{
     compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType,
 };
 use rt_runtime::planner::*;
-use rt_runtime::processor::{ProcessBlock, Processor};
+use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::schedule::{Action, Execution, ReceiptToken};
 use rt_runtime::transport::{Lane, Outcome};
 use rt_runtime::{Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId, Sequence};
@@ -30,7 +30,6 @@ enum Op {
     Cancel(Sequence),
     Stop,
     Payload,
-    Node(u32),
     Refuse,
     BadRecovery,
     StopOnPlan,
@@ -47,6 +46,11 @@ enum Reply {
     Cancelled,
     Stopped,
     Refused,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NodeOp(u32);
+impl ProcessorOperation for NodeOp {
+    type Result = u32;
 }
 struct Domain {
     context_mode: bool,
@@ -145,7 +149,6 @@ impl Planner for Domain {
             }
             Op::FailFull => Err(Error::Full),
             Op::BadRecovery => Ok(Disposition::Pending),
-            Op::Node(_) => Err(Error::InvalidEvent),
         }
     }
     fn plan(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<Frame, Error> {
@@ -187,7 +190,7 @@ impl Drop for Domain {
 struct Gain {
     factor: u32,
 }
-impl Processor<Domain> for Gain {
+impl Processor<Domain, NodeOp> for Gain {
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: 1,
@@ -204,19 +207,15 @@ impl Processor<Domain> for Gain {
     }
     fn operation(
         &mut self,
-        operation: Op,
+        NodeOp(value): NodeOp,
         context: rt_runtime::processor::OperationContext<'_>,
-    ) -> Result<Reply, Error> {
+    ) -> Result<u32, Error> {
         assert!(context.frame >= context.requested_frame);
-        if let Op::Node(value) = operation {
-            if !context.payload.is_empty() {
-                return Err(Error::InvalidEvent);
-            }
-            self.factor = value;
-            Ok(Reply::Applied(value))
-        } else {
-            Err(Error::InvalidEvent)
+        if !context.payload.is_empty() {
+            return Err(Error::InvalidEvent);
         }
+        self.factor = value;
+        Ok(value)
     }
     fn set_parameter(&mut self, _: u32, value: f32) -> Result<(), Error> {
         self.factor = value as u32;
@@ -265,8 +264,8 @@ fn config(events: usize) -> rt_runtime::PreparedConfig {
     .unwrap()
 }
 struct Harness {
-    control: Control<Gain, Domain>,
-    runtime: GraphRuntime<Gain, Domain>,
+    control: Control<Gain, Domain, NodeOp>,
+    runtime: GraphRuntime<Gain, Domain, NodeOp>,
     output: [f32; 128],
 }
 impl Harness {
@@ -329,7 +328,7 @@ impl Harness {
     fn submit(
         &mut self,
         lane: Lane,
-        command: Command<Gain, Domain>,
+        command: Command<Gain, Domain, NodeOp>,
     ) -> rt_runtime::transport::Ticket {
         self.control
             .submit(lane, command)
@@ -366,7 +365,7 @@ impl Harness {
             )
         })
     }
-    fn replies(&mut self) -> Vec<Execution<Op, Reply>> {
+    fn replies(&mut self) -> Vec<Execution<Op, Reply, NodeOp, u32>> {
         std::iter::from_fn(|| self.control.try_execution()).collect()
     }
     fn drain(&mut self) -> Vec<Outcome> {
@@ -411,7 +410,7 @@ fn graph_epoch_and_callback_origin_are_authoritative_across_internal_intervals()
 
 #[shoop_test]
 fn pending_and_immediate_typed_results_and_samples_are_partition_invariant() {
-    fn run(partitions: &[usize]) -> (Vec<f32>, Vec<Execution<Op, Reply>>) {
+    fn run(partitions: &[usize]) -> (Vec<f32>, Vec<Execution<Op, Reply, NodeOp, u32>>) {
         let mut h = Harness::new(3);
         h.operation(Lane::Normal, 0, Op::Delay { until: 6, value: 3 }, &[]);
         h.submit(
@@ -420,7 +419,7 @@ fn pending_and_immediate_typed_results_and_samples_are_partition_invariant() {
                 at: Frame(9),
                 action: Action::Processor {
                     node: node(),
-                    operation: Op::Node(4),
+                    operation: NodeOp(4),
                 },
                 payload: Box::new([]),
             },
@@ -624,7 +623,7 @@ fn typed_processor_and_planner_actions_share_exact_frame_ordering_with_parameter
             at: Frame(7),
             action: Action::Processor {
                 node: node(),
-                operation: Op::Node(3),
+                operation: NodeOp(3),
             },
             payload: Box::new([]),
         },
@@ -654,7 +653,8 @@ fn typed_processor_and_planner_actions_share_exact_frame_ordering_with_parameter
         .iter()
         .all(|result| result.actual_frame == Frame(7) && result.result == Ok(())));
     assert_eq!(replies[1].operation_result, None);
-    assert_eq!(replies[2].operation_result, Some(Reply::Applied(3)));
+    assert_eq!(replies[2].operation_result, None);
+    assert_eq!(replies[2].processor_result, Some(3));
 }
 
 #[shoop_test]
@@ -760,7 +760,7 @@ fn removed_processor_generation_returns_an_execution_failure_and_retired_owner()
             at: Frame(8),
             action: Action::Processor {
                 node: node(),
-                operation: Op::Node(8),
+                operation: NodeOp(8),
             },
             payload: Box::new([]),
         },
@@ -788,4 +788,57 @@ fn removed_processor_generation_returns_an_execution_failure_and_retired_owner()
     assert_eq!(result[0].actual_frame, Frame(8));
     assert_eq!(result[0].result, Err(Error::InvalidId));
     assert_eq!(h.runtime.epoch(), Epoch(4));
+}
+
+#[shoop_test]
+fn generic_cancel_terminates_only_queued_non_planner_actions() {
+    let mut h = Harness::new(4);
+    let processor = h
+        .submit(
+            Lane::Normal,
+            Command::Schedule {
+                at: Frame(6),
+                action: Action::Processor {
+                    node: node(),
+                    operation: NodeOp(4),
+                },
+                payload: Box::new([]),
+            },
+        )
+        .sequence();
+    let planner = h.operation(Lane::Normal, 6, Op::Set(2), &[]);
+    h.step(2).unwrap();
+    h.drain();
+    h.submit(
+        Lane::Recovery,
+        Command::Cancel {
+            sequence: processor,
+        },
+    );
+    h.submit(Lane::Normal, Command::Cancel { sequence: planner });
+    h.step(8).unwrap();
+    assert_eq!(
+        h.drain(),
+        [Outcome::Applied, Outcome::Rejected(Error::InvalidId)]
+    );
+    assert_eq!(h.output[..4], [1.0; 4]);
+    assert_eq!(h.output[4..8], [2.0; 4]);
+    let replies = h.replies();
+    assert_eq!(replies.len(), 2);
+    assert_eq!(replies[0].sequence, processor);
+    assert_eq!(replies[0].result, Err(Error::Cancelled));
+    assert_eq!(replies[0].delivered_frame, None);
+    assert_eq!(replies[0].actual_frame, Frame(2));
+    assert_eq!(replies[0].processor_result, None);
+    assert_eq!(replies[1].sequence, planner);
+    assert_eq!(replies[1].operation_result, Some(Reply::Applied(2)));
+    h.submit(
+        Lane::Normal,
+        Command::Cancel {
+            sequence: processor,
+        },
+    );
+    h.step(1).unwrap();
+    assert_eq!(h.drain(), [Outcome::Rejected(Error::InvalidId)]);
+    assert!(h.replies().is_empty());
 }

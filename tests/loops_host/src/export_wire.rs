@@ -194,7 +194,7 @@ impl Response {
             || (status == FAILED
                 && !(1..=20).contains(&get32(bytes, 72))
                 && !(257..=268).contains(&get32(bytes, 72))
-                && !(513..=532).contains(&get32(bytes, 72)))
+                && !(513..=533).contains(&get32(bytes, 72)))
             || (status == FAILED && phase != 2)
             || (status == REJECTED && phase == 2)
             || (status == CANCELLED && phase == 2)
