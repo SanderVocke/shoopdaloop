@@ -5,6 +5,8 @@
 ## Authority and execution
 
 This is the single maintained planning/status document for the workstreams below.
+The one exception is the [composable loop refactor](PLAN_REFACTOR.md), which the
+user commissioned as its own plan; this document links its status.
 It consolidates the plans present at `fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a`.
 Superseded plans and their redirect pages have been retired from the root.
 [Readable historical views](docs/history/README.md) preserve the original text with
@@ -38,7 +40,7 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | [Native composition / Milestone 1](#native-composition--milestone-1) | Native DSP/service implemented; narrowed consolidation delivered | Original full final acceptance is unclaimed; further full validation is distinct from the completed merge/smoke/push request |
 | Runtime book and existing loop guides | Documentation completion recorded; accepted guides remain authoritative | Maintain only affected material with future changes; no retrospective book audit or handoff queue |
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
-| [Composable loop boundary](#proposed-next-work) | Critique/proposed direction | Decide whether to expose a reusable subsystem plus optional facade; no refactor authorized here |
+| [Composable loop boundary](PLAN_REFACTOR.md) | Refactor executed under its own plan: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations | Composing several planners in one runtime remains future work |
 | [Common transport / application integration](#proposed-next-work) | Proposed, not delivered | Scope a next milestone before implementation; no IPC/network or production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
@@ -230,7 +232,9 @@ scripts are required. `docs-previous/` is historical, not another set to synchro
 
 ### Delivered scope and limits
 
-The native `shoop_example_dsp` and `shoop_engine_service` are implemented. The later
+The native `shoop_example_dsp` and `shoop_engine_service` are implemented, and the
+[composable loop refactor](PLAN_REFACTOR.md) rebuilt them on the loop parts and
+scheduled processor operations with unchanged scenario oracles. The later
 user request to merge, smoke test, commit and push is delivered at source merge
 `30d09bbdf4bbfd8f63b4eb58cc3e111b8e7a7a8c`. It preserved the newer runtime/loop
 implementation. The old dependency wait is not an active blocker for using this
@@ -244,7 +248,7 @@ criteria. If full acceptance is requested later, scope and execute the original
 broader reruns against an agreed source; do not substitute the smoke results.
 
 The slice contains one logical stereo/MIDI loop, independent prepared DSP, native
-typed request/result endpoints, fixed-role route changes, meters, coherent state,
+typed request/result endpoints, fixed node-pair route changes, meters, coherent state,
 startup imports, retained media selection and live immutable exports. Its D=3
 probe identifies missing history/postroll/playback-window mechanisms; it does not
 implement latency compensation. Excluded: production backend/UI/devices, full
@@ -292,7 +296,7 @@ plan in this migration; continuation/adoption requires a user decision.
 
 These are design directions, not authorized implementation checkboxes:
 
-1. Resolve the composability question in [ARCHITECTURE.md](ARCHITECTURE.md#open-composability-decision): reusable coordinated loop subsystem in an application-owned runtime, with the existing graph-owning facade optional. Preserve all timing/media/binding/publication invariants; do not assume a refactor is already agreed.
+1. Resolved by the [composable loop refactor](PLAN_REFACTOR.md): see [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary). When a second planning domain is needed, compose planners explicitly rather than nesting runtimes.
 2. Define a bounded next service/protocol slice: one logical scenario through typed native calls, independent-memory AudioWorklet and native IPC. No three unrelated demos or premature universal protocol.
 3. After that foundation, scope an opt-in real application backend using existing UI/modules and the old backend as a selectable fallback/reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
 4. Close parity gaps driven by real workflows, then consider broader deployment. Full dry/wet, prerecord/preplay/latency windows, production plugins/devices, persistence/undo/scripting and network operation remain future work.

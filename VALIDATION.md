@@ -39,7 +39,49 @@ completion. Do not maintain a second editable Miri ledger or native task plan.
 | Native Milestone 1 | Stages 0–6 verified at original pin; narrower merge/smoke/push delivered at `30d09bbd` | Original full integrated Stage 7/M1-A10 closure, fresh merged-head release/Node/browser/Miri/CI/review |
 | Runtime book / existing loop documentation | Completed authoring/examples/editorial work recorded in archived documentation plans | Not a fresh engine audit, platform campaign or implementation acceptance |
 | Native bus-FX fix | Completed regression/build/suite and PR #873 delivery recorded | No new live check of that PR during migration |
-| Replacement loop book / protocol / composability refactor | Draft or proposed only | No implementation or acceptance claim |
+| Replacement loop book / protocol | Draft or proposed only | No implementation or acceptance claim |
+| [Composable loop refactor](PLAN_REFACTOR.md) | Local stage-by-stage verification recorded [below](#composable-loop-refactor-evidence) | Remote CI and review (no PR was requested); acceptance of the open portable-loop checks |
+
+<a id="composable-loop-refactor-evidence"></a>
+
+## Composable loop refactor evidence
+
+Executed under [PLAN_REFACTOR.md](PLAN_REFACTOR.md), on Linux (AMD Ryzen 9 5950X)
+in `nix develop`, with `RUSTFLAGS="-D warnings"`. The baseline is source
+`2d13b8da`. Local runs relax only two tool pins: the Nix shell provides Node 22.23.2
+(pinned 22.22.2), and Chromium/chromedriver 151 come from nixpkgs (pinned 147).
+Miri ran outside the Nix shell with the pinned `nightly-2026-05-04`; inside it,
+host proc-macro builds of `ctor`'s `linktime-proc-macro` fail.
+
+| Stage | Source | Verified |
+| --- | --- | --- |
+| 1 — rename | `2031ee25`, `ec2d05a8` | Workspace build, fmt; debug/release `rt_runtime` 193, `shoop_loops` 155, DSP 15, service 20; host crate 60; native, Node (189/155/15/18) and browser hosts with failure canaries; boundary, tracing, test-usage and script unit tests — all identical to the baseline |
+| 2/3 — runtime | `b96f5165`, `b7ec7886`, `fad7f7a0` | `rt_runtime` 197 (four new: generic cancellation, three admission paths) in debug/release and 193 on Node; all 18 runtime examples; native and browser hosts; Miri (seed 0) on `typed_schedule`, `typed_execution`, `planner_admission`, `planner_execution`, `graph_activation`, `initial_graph`, `contracts`, `lifecycle` and the delivery model |
+| 4/5 — loop parts, hosts | `4929d185` | `shoop_loops` 159 (four new graph guards) in debug/release and on Node; all loop examples in both profiles and the draft-book example; host crate 60; native and browser loop hosts with failure canaries |
+| 6 — demonstrator | `87fc3c85` | DSP 15 and service 20 in debug/release, 15/18 on Node; `one_track` 42 frames / 487 packets / 378 bytes and `latency_probe` 18 cases in both profiles; Wasm build; dependency and boundary checks |
+
+The `rt_runtime` docs checker (`check_rt_runtime_docs.py`) reports the same stale
+pending-chapter and example-inventory lists on the unchanged baseline as after the
+refactor; it is not run in CI.
+
+Five links in unchanged milestone reports under `docs/loop_layer/evidence/` point at
+pre-rename paths (`shoop_loop_engine`, `tests/loop_engine_host`). Evidence stays
+byte-for-byte as recorded; the renamed files are `src/rust/shoop_loops/` and
+`tests/loops_host/`.
+
+### Loop invariants and their tests
+
+Each guarantee kept from the earlier critique has tests that fail if its guard is
+removed. The generic-path guards are new; the rest run unchanged through the
+dev-only test assembly.
+
+| Invariant | Tests (`shoop_loops`) |
+| --- | --- |
+| Required consumers, bindings and input tracking | `graph_guards.rs` (initial graph, generic commit without a node, crossed bindings, processor install/remove; all four fail with the hooks disabled); `invalid_candidate_shapes_epochs_and_raw_program_tags_return_owners_without_mutation` |
+| Paired program/routing publication | `running_program_and_routes_publish_at_one_zero_cut_with_full_independent_reference`; `paired_cancellation_released_generations_and_intervening_graphs_never_publish_the_program` |
+| Node-pair reassignment | `candidate_capture_preflight_failure_preserves_old_configuration_and_retries_without_revision_gaps`; `input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_capture` |
+| Capture preflight before affected samples | `capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes`; `record_to_play_and_monitored_capture_failure_use_exact_common_boundaries` |
+| Receipts, cancellation and reclamation | `recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits`; `permanent_quiescence_recovers_pending_speculative_and_committed_owners_without_advancing_time`; `stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners` |
 
 ## Loop evidence
 

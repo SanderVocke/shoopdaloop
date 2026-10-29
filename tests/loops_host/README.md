@@ -128,7 +128,7 @@ clean up off-render rather than replaying frames or inventing terminal results.
 
 ## Transfer prepared graph descriptors (payload foundation)
 
-Run the native receiver→real-facade route-cut test in either profile:
+Run the native receiver→assembled-loop-runtime route-cut test in either profile:
 
 ```sh
 cargo test --locked --manifest-path tests/loops_host/Cargo.toml \
@@ -286,7 +286,7 @@ contexts. `--verify-failures` additionally checks six intentionally failing sess
 ### 1. Prepare two ordinary Wasm instances
 
 The main instance owns `BrowserClient` (and `BrowserGraphClient` for graph sessions); the AudioWorklet instance owns
-`BrowserBridge` and the actual loop facade. Both instantiate the same compiled
+`BrowserBridge` and the assembled loop runtime. Both instantiate the same compiled
 module, with separate ordinary memories. A main-instance marker is absent in the
 worklet; both memories must be non-shared. The server sets no COOP/COEP headers
 and the page must not be cross-origin isolated.
@@ -610,7 +610,7 @@ underlying MessagePort queue, hostile input pressure or production live deadline
 ## Replace playable media and export an exhausted capture
 
 The media profile prepares two indexed stereo/MIDI revisions off-render. It uses
-the real facade, a two-entry receiver-local media catalog, two loops and42 resource
+the assembled loop runtime, a two-entry receiver-local media catalog, two loops and42 resource
 pages; uploaded raw MIDI is still not an indexed playable source.
 
 1. Admit Play0 and Seek6(position1), then explicitly start the one-frame clock loop
@@ -659,7 +659,7 @@ keep catalog selection, delayed terminal frames and capture-status metadata expl
 
 A separate `BrowserPlannerCanary` uses a test-only generic planner around the real
 loop library's Resolver. It is not an injection seam in the production LoopPlanner
-or a replacement for the full facade scenarios above. Startup prepares a one-frame
+or a replacement for the full loop scenarios above. Startup prepares a one-frame
 loop with Play0, a decision-bound stereo half-gain consumer and all journal/storage.
 There are no external command buffers or owning credits in this small profile.
 
@@ -751,7 +751,7 @@ required CI and review remain separate delivery obligations.
 
 Native direct/wire/two-thread replay and real non-isolated offline/live worklets
 now exercise this primitive scenario. This is **not Stage 7 completion**.
-Prepared graph payload materialization has native facade and public-Wasm binding
+Prepared graph payload materialization has native and public-Wasm binding
 coverage. Opt-in native graph commands now stage/activate/release and recycle
 owners through bounded wire results. Public graph command bindings execute in
 Node/Chromium with complete native-oracle comparisons. Actual offline/live graph

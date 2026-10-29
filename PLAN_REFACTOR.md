@@ -265,7 +265,7 @@ counts plus the new tests; Wasm build and Node tests; boundary script; and
 
 ### Stage 5 — Test hosts
 
-- [ ] Port `tests/loops_host` (native, wire, two-thread, browser/AudioWorklet)
+- [x] Port `tests/loops_host` (native, wire, two-thread, browser/AudioWorklet)
       to the support crate and `LoopClient`.
 
 **Verify:** `run_loops_hosts.py` native and browser with `--verify-failures`,
@@ -294,15 +294,15 @@ boundary checks; release `measure_service` against the Stage 0 baseline.
 
 ### Stage 7 — Architecture, plan and validation documents
 
-- [ ] `ARCHITECTURE.md`: layer table; the "Responsibilities and timing
+- [x] `ARCHITECTURE.md`: layer table; the "Responsibilities and timing
       authority" and "Native service composition" sections; close the open
       composability decision; record planner composition as future work.
-- [ ] `PLAN.md`: workstream table (replace "Composable loop boundary" with a
+- [x] `PLAN.md`: workstream table (replace "Composable loop boundary" with a
       link to this plan and its status); "Proposed next work" item 1; new names
       in the loop workstream and Milestone 1 sections, with their criteria
       unchanged.
 - [ ] `VALIDATION.md`: refactor evidence and the A12 measurements.
-- [ ] Sweep the current docs, scripts and CI for old names (A11).
+- [x] Sweep the current docs, scripts and CI for old names (A11).
 
 **Verify:** a grep for `shoop_loop_engine`, `Engine::prepare`,
 `loop_engine_host` and `Role` outside the historical paths finds nothing; all

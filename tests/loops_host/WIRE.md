@@ -21,7 +21,8 @@ on the render side, before rendering. The nonzero `u64` session is a host routin
 identity. Use a new identity for a new connection; it is not authentication.
 The native deterministic fixture uses one fixed identity per isolated test run.
 
-The bridge prepares the actual loop facade, cancellation-flag base owners and five
+The bridge assembles the loop parts into a runtime with the dev-only test-support
+crate, and prepares cancellation-flag base owners and five
 fixed wire slots. Slots 0–3 are normal; slot 4 is independent recovery. Each slot
 can retain one admission response and one terminal execution response. These are
 external protocol capacities, not limits on internal loop wraps or intervals.
@@ -44,7 +45,7 @@ A Busy request may retry the same bytes **before sending a later sequence**.
 Keep sends ordered: reordering, corruption or a foreign connection is a protocol
 failure, not permission to release an accepted request's credit.
 
-Ingress uses the facade's prepared submission API under the heap guard. Supported
+Ingress uses the runtime's prepared submission API under the heap guard. Supported
 requests have empty owning payloads. A runtime submission refusal becomes an
 admission rejection response; it is distinct from a malformed wire record.
 Recovery accepts only Stop in slot 4, and the runtime rejects a future recovery
@@ -59,7 +60,7 @@ its replacement.
 ## 3. Render and collect without growing storage
 
 Supply prepared audio/MIDI buffers to `Bridge::process`. Its guard includes actual
-loop rendering and collection/recycling of the facade's owning completions and
+loop rendering and collection/recycling of the runtime's owning completions and
 terminal receipts. Collection examines at most the five external credits per
 result stream, once per nonempty callback; it does not throttle musical work.
 Zero callbacks do not collect or settle new work.
@@ -225,7 +226,7 @@ Begin is legal only in Idle. Append all declared steps, then edges, then the
 single Planning record if planned, then bindings, then Seal. Step/edge/binding
 offsets must be exactly the next index. Unplanned descriptors require zero bindings.
 Zero counts are valid payload declarations, not proof of compatibility with the
-loop facade. Each call consumes at most one external record; there is no retry or
+loop planner. Each call consumes at most one external record; there is no retry or
 musical-work loop. Any malformed/stale/foreign/out-of-order/Busy refusal leaves all
 banks and the sequence watermark unchanged. Retry rejected bytes before sending
 a later sequence. Sequence `u64::MAX` is usable once; no subsequent record can pass.
@@ -235,7 +236,7 @@ a later sequence. Sequence `u64::MAX` is usable once; no subsequent record can p
 Seal proves only framing and declared-count completeness. It does not check live
 catalog generations, signal ordering/cycles, planner signatures or loop node-pair
 compatibility. `take(id)` changes Sealed→Loaned and returns local owning
-`Loan { id, epoch, plan }`. Submit the plan with `Controller::stage_graph`; process
+`Loan { id, epoch, plan }`. Submit the plan with `LoopControl::stage_graph`; process
 real callbacks and inspect its owning completion. Only receiver-side runtime
 validation can produce a Ready scoped graph ID. Ready is not active.
 
@@ -326,7 +327,7 @@ known graph/bank mappings.
 Unexpected owning completions are returned intact to a prepared quarantine and
 permanently fault the outer bridge. Unexpected local owning refusals are retained
 in a separate prepared slot. Neither path destroys an owner on the callback.
-Intentional disconnect/abandonment stops callbacks before consuming the engine;
+Intentional disconnect/abandonment stops callbacks before consuming the runtime;
 it disposes queued/Ready owners off-render without fabricating returns or results.
 
 The public graph command bindings below execute these same native methods in
@@ -885,7 +886,7 @@ binding or a timeout alone is not a passing canary.
 ## Planner lifecycle control and failure reports
 
 `plannerReports` retains offline/live successful controls of the real Resolver
-inside a test-only generic Planner, not the production facade's LoopPlanner.
+inside a test-only generic Planner, not the loop library's LoopPlanner.
 Startup-local Play0 and one-frame length drive128 real plan/finish intervals;
 a decision-bound half-gain consumer checks mode/position/cycles and interval scope.
 This profile has no external command protocol, transfer credits or media leases.

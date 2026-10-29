@@ -302,6 +302,7 @@ jobs:
               - 'scripts/check_loops_boundary.py'
               - 'src/rust/rt_runtime/**'
               - 'src/rust/shoop_loops/**'
+              - 'src/rust/shoop_loops_test_support/**'
               - 'tests/rt_runtime_host/**'
               - 'tests/loops_host/**'
               - 'src/rust/shoop_test_macros/**'
@@ -758,7 +759,7 @@ jobs:
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 
-      - name: Test independent runtime, loop engine and native hosts
+      - name: Test independent runtime, loop library and native hosts
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings

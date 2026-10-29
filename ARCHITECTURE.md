@@ -20,10 +20,11 @@ snapshot-status paragraphs there do not describe the current tree.
 
 | Layer | Implemented responsibility | Boundary |
 | --- | --- | --- |
-| `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, typed scheduling/results, resource/index/capture pools, staged graph permits, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
-| `shoop_loops` | One resolver for primitive/composite timing, playback/capture consumers, media ledger and coordinated control/publication | Depends on runtime, not legacy backend; current complete integration is graph-owning facade-first |
-| `shoop_example_dsp` | Independent prepared stereo/MIDI processor, typed preset bridge and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
-| `shoop_engine_service` | Native composition of the real loop facade and independent DSP in one graph/render owner; typed controls, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
+| `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, independently typed planner and processor operations, resource/index/capture pools, staged graph permits, planner admission of generic graph/processor changes, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
+| `shoop_loops` | Parts for an application-owned runtime: the `LoopPlanner` (one resolver for primitive/composite timing, media ledger, capture lifecycle and coordinated publication), its playback/capture `LoopNodes` and a control-side `LoopClient` | Depends on runtime, not legacy backend; owns no runtime, resource store or control endpoint |
+| `shoop_loops_test_support` | Dev-only assembly of the loop parts with optional effects, for tests, benchmarks and test hosts | Not used by production crates; not part of the loop library's API |
+| `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
+| `shoop_engine_service` | Native composition owning one runtime with the loop parts and independent DSP; typed loop/DSP controls through one ordered path, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
 | Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
 | Existing application | Existing backends, devices, sessions, UI, scripting, files and production browser hosting | Not migrated to this stack by these milestones |
 | Common modular protocol, service browser/IPC/network deployment | Proposed | Not implemented merely because test-host codecs or Wasm libraries exist |
@@ -56,11 +57,13 @@ playback and capture nodes with intervening effects:
 host input + retained loop playback -> independent DSP -> output + loop capture
 ```
 
-The current facade owns its `GraphRuntime`, resources, prepared physical node pairs
-and lifecycle. The application still supplies supported routes/effects; this is
-not another graph executor or a complete application backend. One runtime has one
-planner. Independently planning domains need explicit composition, not installation
-of competing clocks or nested engines.
+The application owns the `GraphRuntime`, its resource store, its node type, the
+control endpoint and the lifecycle; it installs the loop library's planner and nodes
+next to its other processors. The loop planner still coordinates everything loop
+timing and media depend on, and the runtime asks it to admit generic graph commits
+and processor install/remove, so these cannot drop or replace its nodes or bindings.
+One runtime has one planner. Independently planning domains need explicit
+composition, not installation of competing clocks or nested engines.
 
 ### Callback safety, finite storage and musical cost
 
@@ -90,7 +93,10 @@ planner termination, browser scheduling or callback deadlines.
 
 ### One callback envelope and borrowed authority
 
-`GraphRuntime<P, L>` defaults to `NoPlanner`. `Planner`/`PlannerSpec`,
+`GraphRuntime<P, L, Q>` defaults to `NoPlanner` and no processor operations.
+Planner operations (`Planner::Operation`) and processor operations (the `Q` of
+`Processor<L, Q>`) are typed independently, so a DSP crate defines its own family
+and depends only on `rt_runtime`. `Planner`/`PlannerSpec`,
 `DecisionBinding`, `ConsumerAccess` and prepared associated `Copy` types give one
 planner decision storage and independently reserved producer observation slots.
 Validate generations, binding completeness/order and observation capacity before
@@ -135,11 +141,13 @@ costs still apply; continuous recovery need not guarantee normal fairness.
 
 Ticket cancellation before dequeue, queued typed cancellation and delivered-domain
 cancellation are different cuts. Standalone `RequestId` requires correct caller
-routing; the facade cancels by originating runtime `Sequence`. The facade's exact
+routing; the loop planner cancels by originating runtime `Sequence`. Its exact
 payload-free recovery-safe set is Cancel, TopologyCancel, NodePairCancel,
 NodePairSourceRelease and nonfuture `Timing::At` Stop. Recovery terminates during
 planning at its delivery frame before positive samples. Queries, validation,
 exports and activation remain normal work; recovery cannot activate graphs.
+Undelivered parameter, MIDI and processor actions have no planner: the generic
+`Command::Cancel` terminates them with `Cancelled`, on either lane.
 
 <a id="loop-execution-layer"></a>
 
@@ -182,8 +190,8 @@ skip }` arms at its effective frame and applies on the `(skip+1)`th source edge 
 or after it. Source must match the target's prepared sync relation. A valid idle
 source leaves work pending; stale/missing identity fails explicitly. No UI timeout,
 nominal duration or unsynchronized fallback invents a pulse. Revalidate pending
-work on topology changes. Facade Select pins validated media; raw
-`Transition::Replace`/`Program` tags are not direct owning facade APIs.
+work on topology changes. The planner's Select pins validated media; raw
+`Transition::Replace`/`Program` tags are not direct owning planner operations.
 
 External terminal results are exactly Applied, Superseded, Cancelled or Failed at
 an actual frame. Automatic edges/actions use prepared state/journals, not external
@@ -405,8 +413,9 @@ delivered unconsumed MIDI refuses Busy so old graph consumes it once; operation-
 removal precedes injection and a later missing target refuses InvalidId.
 
 Generic structural graph validation cannot establish loop playback/capture pair,
-decision binding, input-tracking and media-shape correctness. The facade enforces
-these over prepared physical templates, not arbitrary processor construction/port
+decision binding, input-tracking and media-shape correctness. The loop planner
+enforces these over prepared physical templates, for its own activations and, through
+the runtime's admission hooks, for generic commits and processor changes, not arbitrary processor construction/port
 resizing. A queued same-frame Stop has not settled and cannot satisfy an immediate
 already-stopped configuration precondition. Successful NodePairAppend consumes source
 IDs; rejection transfers none. Node pair/source, timing/program, graph retirement and
@@ -425,14 +434,17 @@ cleanup, not resumable Pause or device MIDI cleanup after callbacks have stopped
 
 ## Native service composition
 
-The service uses the current loop facade with an independent DSP in **one graph
-and render owner**. The DSP snapshots a finite prepared component-owned request
-bridge once per host callback. Its processor changes private prepared state at the
-requested frame within the supplied interval and reports actual frame/revision
-through reserved reliable returns. No magic float IDs, extra `Engine::process`
-calls, second generic scheduler or mutable access to the resolver is involved.
+The service owns **one runtime and render owner** holding the loop parts and an
+independent DSP. Its node type wraps the loop's nodes and the DSP; its one ordered
+control path forwards loop requests and DSP selections into the runtime. A DSP
+selection is the processor's own typed operation, which the runtime scheduler
+delivers immediately before its requested sample; the processor reports actual
+frame/revision in the execution's `processor_result`. No magic float IDs, private
+bridges, extra runtime calls, second scheduler or mutable access to the resolver is
+involved.
 
-Preset changes are not atomic transactions with arbitrary graph/loop changes.
+Preset changes share the runtime's ordering with loop work at the same frame, but
+are not atomic transactions with arbitrary graph/loop changes.
 Peak-since-read atomics are independent telemetry, not a coherent cross-domain
 snapshot. Loop cuts are coherent resolver observations. Live exports retain exact
 immutable audio/MIDI prefixes while capture continues; owning reads must finish
@@ -446,29 +458,35 @@ Service browser/IPC deployment and production UI/backend integration are not.
 Measurement regressions and validation limits belong in [VALIDATION.md](VALIDATION.md#integration-evidence),
 not architectural claims of performance parity.
 
-## Open composability decision
+<a id="open-composability-decision"></a>
 
-The current `runtime::Engine<P>` owns `GraphRuntime<Node<P>, LoopPlanner>`.
-Although the resolver and low-level renderers are public, the production planner
-and node pair processors lack a complete public standalone preparation/install path.
-Applications cannot simply install those production components in their own
-runtime without reproducing coordination. One planner per runtime and the facade's
-operation vocabulary constrain independently controlled/planning domains.
+## Composable loop boundary
 
-Graph ownership helps prevent bypasses but is not intrinsically required to own
-unrelated DSP/routes. Any alternative must preserve:
+The [composable loop refactor](PLAN_REFACTOR.md) resolved the earlier composability
+question in favour of application-owned runtimes. The loop library offers parts,
+not an `Engine`: `LoopPlanner::prepare` borrows the application's resource store and
+returns the planner, its playback/capture nodes and a control-side client. The
+earlier critique's guarantees remain requirements, now enforced without owning the
+runtime:
 
-1. Required playback/capture consumers, decision bindings and input tracking on every relevant graph activation.
+1. Required playback/capture consumers, decision bindings and input tracking on every
+   graph activation: the planner validates its own activations and admits generic
+   ones (`Planner::admit_graph`, `Planner::admit_processor_change`).
 2. Paired program/routing publication at the real cut after full preflight.
 3. Coherent logical-generation/media/physical node-pair reassignment and retained exports.
 4. Capture reservation/freeze and failure feedback before affected musical samples.
 5. Reliable receipts, bounded owners, cancellation and post-fault reclamation.
 
-The critique recommends a preparable coordinated subsystem in an application-owned
-runtime, explicit protected node-pair/activation contracts, and an optional turnkey
-Engine facade. **That is a proposal, not an adopted refactor or existing API.**
-It cannot relax the approved musical/media guarantees or be silently implemented
-under the loop's remaining verification tasks.
+Independent components no longer need private control bridges: processor
+operations are typed independently of the planner and scheduled by the runtime.
+A dev-only test-support crate assembles the parts for tests and test hosts; the
+loop library itself has no turnkey assembly.
+
+Still open, as future work: one runtime has one planner. A second planning domain
+(for example a transport/tempo or automation planner) needs an explicit, ordered
+composition of planners that share a boundary and a two-phase preflight/commit.
+Atomic transactions across domains (a DSP preset, a loop change and a route
+together) need that same composition.
 
 ## Compatibility and integration direction
 
@@ -478,7 +496,7 @@ are reference/reuse candidates, not dependencies to pull into the portable core.
 
 | Capability | Intended owner / reuse | Current scope and remaining gap |
 | --- | --- | --- |
-| Record/play/stop/wrap/seek/select | Existing resolver, ledger and public facade; future session mapping | Included native slice; destructive editing/full legacy modes not established |
+| Record/play/stop/wrap/seek/select | Existing resolver, ledger and loop planner parts; future session mapping | Included native slice; destructive editing/full legacy modes not established |
 | Sync/composites/countdowns | Existing resolver/programs | Implemented loop capability; M1's one-loop scenario is not inter-loop parity proof |
 | Replacing/overdub/dry-wet policy | Application/session routing plus required loop/media mechanisms | In-place modes/full policy excluded; no implied additive-overdub contract |
 | Prerecord/preplay/latency correction | Reuse checked `shoop_latency` math; explicit retained history/tail/windows needed | Probe findings identify gaps, not a completed mechanism |
