@@ -40,13 +40,13 @@ completion. Do not maintain a second editable Miri ledger or native task plan.
 | Runtime book / existing loop documentation | Completed authoring/examples/editorial work recorded in archived documentation plans | Not a fresh engine audit, platform campaign or implementation acceptance |
 | Native bus-FX fix | Completed regression/build/suite and PR #873 delivery recorded | No new live check of that PR during migration |
 | Replacement loop book / protocol | Draft or proposed only | No implementation or acceptance claim |
-| [Composable loop refactor](PLAN_REFACTOR.md) | Local stage-by-stage verification recorded [below](#composable-loop-refactor-evidence) | Remote CI and review (no PR was requested); acceptance of the open portable-loop checks |
+| [Composable loop boundary](PLAN.md#composable-loop-boundary) | Delivered; local stage-by-stage verification, a CI replay and the acceptance check recorded [below](#composable-loop-refactor-evidence) | Remote CI and review (no PR yet); acceptance of the open portable-loop checks |
 
 <a id="composable-loop-refactor-evidence"></a>
 
 ## Composable loop refactor evidence
 
-Executed under [PLAN_REFACTOR.md](PLAN_REFACTOR.md), on Linux (AMD Ryzen 9 5950X,
+Executed for the [composable loop boundary](PLAN.md#composable-loop-boundary) work, on Linux (AMD Ryzen 9 5950X,
 Ubuntu 20.04 host) in `nix develop`, with `RUSTFLAGS="-D warnings"`. The baseline is
 source `2d13b8da`. Stages 1–6 and the first Stage 8 run used the Nix shell's Node
 22.23.2 and nixpkgs Chromium/chromedriver 151 instead of the pinned Node 22.22.2 and
@@ -75,6 +75,28 @@ Five links in unchanged milestone reports under `docs/loop_layer/evidence/` poin
 pre-rename paths (`shoop_loop_engine`, `tests/loop_engine_host`). Evidence stays
 byte-for-byte as recorded; the renamed files are `src/rust/shoop_loops/` and
 `tests/loops_host/`.
+
+### Baseline
+
+Source `2d13b8da`, before the refactor, under the old names. All runs passed.
+
+| Suite | Debug | Release |
+| --- | --- | --- |
+| `rt_runtime` | 193 tests / 36 binaries | 193 / 36 |
+| `shoop_loop_engine` | 155 / 20 | 155 / 20 |
+| `shoop_example_dsp` | 15 / 3 | 15 / 3 |
+| `shoop_engine_service` | 20 / 6 | 20 / 6 |
+| `tests/loop_engine_host` crate | 60 / 3 | — |
+
+| Host / Wasm run | Result |
+| --- | --- |
+| `run_loop_engine_hosts.py --native-only --profile debug` | passed |
+| `run_rt_runtime_hosts.py --native-only --profile debug` | passed |
+| `run_loop_engine_hosts.py --profile debug --verify-failures` | passed (offline and live contexts, failure canaries) |
+| `run_rt_runtime_hosts.py --verify-failures` | passed (failure canaries) |
+| `run_wasm_tests.py --profile dev --runtime node` | `rt_runtime` 189, `shoop_loop_engine` 155, `shoop_example_dsp` 15, `shoop_engine_service` 18 |
+
+The measurement baseline is in [Measurements](#measurements).
 
 ### CI replay at `61beffad`
 
@@ -144,6 +166,10 @@ The sync model already exceeded the watchdog at `8633d0f0`
 Not run: the macOS and Windows jobs, and the Codecov upload and remote CI, which
 publish.
 
+After this replay, CI stopped running Miri and Chrome for lack of capacity (user
+decision, 2026-10-29). Both remain for manual runs; see the
+[CI scope decision](PLAN.md#remaining-stage-checks).
+
 ### Measurements
 
 Release builds on the same machine, pinned to CPU 8 (`ondemand` governor). Callback
@@ -187,6 +213,28 @@ dev-only test assembly.
 | Node-pair reassignment | `candidate_capture_preflight_failure_preserves_old_configuration_and_retries_without_revision_gaps`; `input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_capture` |
 | Capture preflight before affected samples | `capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes`; `record_to_play_and_monitored_capture_failure_use_exact_common_boundaries` |
 | Receipts, cancellation and reclamation | `recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits`; `permanent_quiescence_recovers_pending_speculative_and_committed_owners_without_advancing_time`; `stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners` |
+
+<a id="composable-loop-acceptance-check"></a>
+
+### Acceptance check
+
+The [acceptance criteria](PLAN.md#acceptance-criteria), checked on `fcbd5ea6`
+(code-complete) and again, with CI's pins, on `61beffad`.
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| A1 — parts only | Met | No `shoop_loop_engine` crate; `shoop_loops` has no type owning or wrapping `GraphRuntime`, `Control` or `ResourceStore` (only its private tests create stores); `Engine`, `Controller`, `Stopped`, `Node<P>` removed |
+| A2 — application-owned assembly | Met | The service owns `ResourceStore` and `GraphRuntime<ServiceNode, LoopPlanner, dsp::Operation>`; `LoopPlanner::prepare` borrows the store; the teaching examples do the same |
+| A3 — invariants kept | Met | `graph_guards.rs` (four tests, each failing with the hooks disabled) plus the [mapped existing tests](#loop-invariants-and-their-tests) |
+| A4 — independent processor operations | Met | `Processor<L, Q>`; `shoop_example_dsp` defines `Operation`/`Receipt`/`Refusal` and depends only on `rt_runtime` |
+| A5 — DSP through the scheduler | Met | No transport, mailbox or callback hooks; tests cover the exact sample across partitions, receipts, late/invalid/stale refusals and cancellation before delivery |
+| A6 — demonstrator unchanged in behaviour | Met | One runtime call per callback; `one_track` 42/487/378 in every partition run and `latency_probe` 18 cases in both profiles; stall, disconnect, fault and two-thread tests pass |
+| A7 — vocabulary | Met | `NodePair*`, `LoopNodes`, `PlaybackNode`/`CaptureNode`; "role" remains only in the verbatim M1-A5 criterion and unrelated application code |
+| A8 — nothing lost | Met | Counts as the [baseline](#baseline) plus new tests in every suite (native, Node, Chrome, hosts with canaries). Replaced tests: three DSP bridge tests became runtime cancellation tests; one `pending_operations` refusal case (planner given a processor operation) became a nonfinite processor operation, since the types now forbid the former |
+| A9 — dev-only assembly | Met | `shoop_loops_test_support` is only a dev-dependency in the workspace, and `tests/loops_host` compiles its source by path; `cargo tree` finds no normal or build edge to it in either |
+| A10 — boundaries and safety | Met | Boundary, tracing (closed) and test-usage checks; `forbid(unsafe_code)` in all five crates; new render paths run under heap guards |
+| A11 — documentation | Met | Architecture, plan, validation, crate READMEs, guides, runtime book and draft book updated; links resolve apart from unchanged historical evidence reports |
+| A12 — measurements recorded | Met | Paired service and loop benchmark results under [Measurements](#measurements); the preset workload is 13–17% slower, with the cause recorded |
 
 ## Loop evidence
 
@@ -334,9 +382,10 @@ wet tail and independent playback windows; latency arithmetic is not implementat
 ## Remaining verification boundary
 
 [PLAN.md](PLAN.md#remaining-stage-checks) is the sole checklist. Current loop full
-Miri recovery, relevant final merged-tree reruns, checked Linux/Windows/macOS and
-web/Miri artifacts, unmerged PR, final-head required green CI, available review
-through approval (or explicit absence) and independent final audit remain open.
+Miri recovery (a manual run; CI does not run Miri or Chrome), relevant final
+merged-tree reruns, checked Linux/Windows/macOS and web artifacts, unmerged PR,
+final-head required green CI, available review through approval (or explicit
+absence) and independent final audit remain open.
 Old parent/PR run states must be rechecked before delivery. No migration commit or
 historical green run can certify a later head merely because only docs changed.
 

@@ -462,8 +462,8 @@ not architectural claims of performance parity.
 
 ## Composable loop boundary
 
-The [composable loop refactor](PLAN_REFACTOR.md) resolved the earlier composability
-question in favour of application-owned runtimes. The loop library offers parts,
+The [composable loop boundary](PLAN.md#composable-loop-boundary) work resolved the
+earlier composability question in favour of application-owned runtimes. The loop library offers parts,
 not an `Engine`: `LoopPlanner::prepare` borrows the application's resource store and
 returns the planner, its playback/capture nodes and a control-side client. The
 earlier critique's guarantees remain requirements, now enforced without owning the
@@ -481,6 +481,25 @@ Independent components no longer need private control bridges: processor
 operations are typed independently of the planner and scheduled by the runtime.
 A dev-only test-support crate assembles the parts for tests and test hosts; the
 loop library itself has no turnkey assembly.
+
+The boundary keeps these rules:
+
+- **Coordination stays, ownership goes.** `LoopPlanner` remains the single authority
+  for loop timing, the media ledger, the capture lifecycle, node-pair reassignment and
+  loop-coupled graph publication.
+- **The runtime enforces the guards.** It asks the planner to admit every generic
+  graph publication (`prepare_with_initial_graph` and generic `Commit`) and every
+  generic `Install`/`Remove`, per node. The default admits everything, so
+  planner-free users are unaffected. A planner's own activations are checked by that
+  planner, which holds the activation permit; the runtime cannot call back into a
+  planner mid-operation.
+- **The loop library never stores the `ResourceStore`.** Preparation and cleanup
+  borrow it; stopped extraction uses `GraphRuntime::into_planner_and_resources`.
+- **`LoopClient` owns no transport.** It builds typed commands and graph descriptions,
+  including the loop's decision bindings, for the application's control endpoint, and
+  decodes loop results.
+- **The callback contract is unchanged.** Render paths do not allocate, free, lock or
+  wait, and fixed capacities stay finite and checked.
 
 Still open, as future work: one runtime has one planner. A second planning domain
 (for example a transport/tempo or automation planner) needs an explicit, ordered

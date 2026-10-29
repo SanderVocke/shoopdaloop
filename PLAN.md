@@ -5,8 +5,6 @@
 ## Authority and execution
 
 This is the single maintained planning/status document for the workstreams below.
-The one exception is the [composable loop refactor](PLAN_REFACTOR.md), which the
-user commissioned as its own plan; this document links its status.
 It consolidates the plans present at `fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a`.
 Superseded plans and their redirect pages have been retired from the root.
 [Readable historical views](docs/history/README.md) preserve the original text with
@@ -40,7 +38,7 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | [Native composition / Milestone 1](#native-composition--milestone-1) | Native DSP/service implemented; narrowed consolidation delivered | Original full final acceptance is unclaimed; further full validation is distinct from the completed merge/smoke/push request |
 | Runtime book and existing loop guides | Documentation completion recorded; accepted guides remain authoritative | Maintain only affected material with future changes; no retrospective book audit or handoff queue |
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
-| [Composable loop boundary](PLAN_REFACTOR.md) | Refactor executed and verified locally end to end under its own plan: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations | Remote CI/review not run (no PR requested); composing several planners in one runtime remains future work |
+| [Composable loop boundary](#composable-loop-boundary) | **Delivered**: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations; A1–A12 met and verified locally, including a CI replay | Remote CI/review need a PR; composing several planners in one runtime remains future work |
 | [Common transport / application integration](#proposed-next-work) | Proposed, not delivered | Scope a next milestone before implementation; no IPC/network or production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
@@ -107,6 +105,12 @@ instructions to resume the retired executor. A new continuation needs its own us
 authorization. Dependency order remains: complete Stage 7/8 verification before
 claiming Stage 10 acceptance. Some native/browser portions already pass; a row is
 not closed until its entire contract is verified.
+
+**CI scope (user decision, 2026-10-29).** CI lacks the capacity for Miri and Chrome,
+so on this branch it runs neither. The Miri inventory, the Chromium Wasm suite, the
+browser/AudioWorklet host runs and the Chrome application smokes remain for manual
+runs. Where the rows below ask for these in CI or as CI artifacts, manual runs
+recorded in [VALIDATION.md](VALIDATION.md) take their place.
 
 **Stage 7 — independent native and real AudioWorklet hosts**
 
@@ -233,7 +237,7 @@ scripts are required. `docs-previous/` is historical, not another set to synchro
 ### Delivered scope and limits
 
 The native `shoop_example_dsp` and `shoop_engine_service` are implemented, and the
-[composable loop refactor](PLAN_REFACTOR.md) rebuilt them on the loop parts and
+[composable loop boundary](#composable-loop-boundary) work rebuilt them on the loop parts and
 scheduled processor operations with unchanged scenario oracles. The later
 user request to merge, smoke test, commit and push is delivered at source merge
 `30d09bbdf4bbfd8f63b4eb58cc3e111b8e7a7a8c`. It preserved the newer runtime/loop
@@ -292,11 +296,106 @@ reading path. Existing `src/rust/shoop_loops/README.md` and `docs/` guides
 remain authoritative. There is no approved full replacement-book implementation
 plan in this migration; continuation/adoption requires a user decision.
 
+## Composable loop boundary
+
+Commissioned by the user on 2026-10-29 and delivered on this branch. It resolved the
+earlier composability question in favour of application-owned runtimes. The boundary
+and its rules are in [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary); the
+baseline, stage evidence, CI replay and acceptance check are in
+[VALIDATION.md](VALIDATION.md#composable-loop-refactor-evidence).
+
+### Problem and goals
+
+`shoop_loop_engine::runtime::Engine` owned the whole `GraphRuntime`, its
+`ResourceStore` and its lifecycle. Every other processor had to be a single type
+wrapped in the loop crate's `Node<P>`, and processor operations were typed by the
+planner's operation type, so `shoop_example_dsp` carried its own private transport,
+mailbox and `begin_callback`/`finish_callback` hooks around every engine call. The
+loop's coordination guarantees were sound; the problem was that the loop crate owned
+the runtime they ran in.
+
+1. The loop crate is renamed `shoop_loops` and offers **parts only**: `LoopPlanner`,
+   preparable on its own; `LoopNodes`, the playback/capture processors and their
+   decision bindings; and `LoopClient`, typed loop commands and results for a control
+   endpoint owned by the application.
+2. The application owns the `GraphRuntime`, the `ResourceStore`, its node type, the
+   control transport and the lifecycle.
+3. Loop invariants are enforced by runtime hooks the loop planner implements, not by
+   owning the runtime.
+4. Processor operations are typed independently of the planner, so independent DSP
+   is controlled through the runtime's own scheduler.
+5. The demonstrator (`shoop_example_dsp` + `shoop_engine_service`) is rebuilt on the
+   parts, and the DSP's private control bridge is removed.
+6. Code docs, guides, architecture, plan and validation documents describe the new
+   structure. The Milestone 1 composition spike is retired.
+
+**In scope:** `rt_runtime` changes for goals 3–4; the rename and restructuring of
+the loop crate; a dev-only test-support crate; porting every user of the loop crate
+(tests, examples, benchmarks, native/Wasm/browser test hosts, service, scripts, CI);
+and documentation.
+
+**Out of scope:** composing several planners in one runtime; atomic transactions
+across domains (for example a DSP preset change and a loop change as one
+transaction); any change to musical or media semantics; new loop features, latency
+compensation, plugin hosting, production backend or UI integration; continuing the
+replacement loop book beyond keeping its existing draft compiling; and the open
+checks of [portable loop execution](#portable-loop-execution), which remain open and
+apply to the refactored code under its new names.
+
+### Acceptance criteria
+
+All met; see the [acceptance check](VALIDATION.md#composable-loop-acceptance-check).
+These must not change without explicit user approval.
+
+| ID | Required result |
+| --- | --- |
+| A1 — parts only | The workspace has no `shoop_loop_engine` crate. `shoop_loops` exposes no type that owns or wraps `GraphRuntime`, `executor::Control` or `ResourceStore`: `Engine`, `Controller`, `Stopped` and `Node<P>` are gone. |
+| A2 — application-owned assembly | An application builds its own `GraphRuntime<AppNode, LoopPlanner>`: it creates the `ResourceStore`; `LoopPlanner` preparation borrows that store and returns `LoopNodes`; the application's own node enum holds the loop nodes next to independent processors. The service demonstrates this. |
+| A3 — invariants kept | The five guarantees listed under the [composable loop boundary](ARCHITECTURE.md#composable-loop-boundary) still hold, each with a test that fails if its guard is removed. These include: a generic `Commit` of a graph missing a loop node or decision binding is refused; a generic `Install`/`Remove` that would replace or drop a loop node is refused; paired program/graph publication; node-pair reassignment; capture preflight before affected samples; recovery, cancellation and stopped-state reclamation. |
+| A4 — independent processor operations | `Processor` typed operations and results no longer use the planner's operation type. A processor crate can define its own operation/result types while depending only on `rt_runtime`. |
+| A5 — DSP through the scheduler | `shoop_example_dsp` has no private transport, no mailbox and no `begin_callback`/`finish_callback`. Preset selection is a scheduled runtime processor operation. Its observable behaviour is kept: it applies at the exact sample; its result reports the actual frame and revision; stale revisions, unknown presets and late requests are refused; it can be cancelled before delivery. |
+| A6 — demonstrator unchanged in behaviour | `shoop_engine_service` makes exactly one runtime `process` call per nonempty callback, with no per-component hooks. Its tests and examples pass with unchanged oracles: `one_track` 42 stereo frames / 487 MIDI packets / 378 bytes in every partition run; `latency_probe` all 18 cases; stall, disconnect, fault and two-thread tests. |
+| A7 — vocabulary | "Role" no longer appears in `shoop_loops`' public API or docs. `Role*` becomes `NodePair*`, and the node factory is `LoopNodes` producing `PlaybackNode`/`CaptureNode`. |
+| A8 — nothing lost | Every existing loop, runtime, service and host test passes after porting, as do the examples, including native debug and release, Wasm builds, Node tests and browser/AudioWorklet hosts with `--verify-failures`. Oracles change only mechanically. Any removed test is replaced by one that covers the same behaviour. |
+| A9 — dev-only assembly | The only turnkey assembly lives in `shoop_loops_test_support` (`publish = false`). It is used only as a dev-dependency, which `cargo tree` confirms. Teaching examples and guides assemble from the parts. |
+| A10 — boundaries and safety | `shoop_loops` and `shoop_example_dsp` keep their dependency boundary (the boundary script passes); `forbid(unsafe_code)` is kept; all new or changed render paths are heap/free guarded in tests; the test-usage and tracing-coverage checks pass. |
+| A11 — documentation | `ARCHITECTURE.md` describes the new boundary, and the open decision is closed. `PLAN.md` describes this work and updates the affected workstreams. `VALIDATION.md` records the evidence. All current READMEs, guides and runtime book chapters use the new API, and their code samples compile and run. No current (non-historical) document or script refers to `shoop_loop_engine`, `Engine::prepare` or roles. |
+| A12 — measurements recorded | `measure_service` (idle/steady) and the loop benchmark are run before and after on the same machine, and the results are recorded in `VALIDATION.md`. Regressions are reported with an explanation; they do not block completion. |
+
+### Delivery
+
+Delivered in stages 0–8: baseline (0); spike retirement, crate rename and
+`NodePair` vocabulary (1); independent processor operations (2) and planner admission
+hooks (3) in `rt_runtime`; `shoop_loops` as parts, with the dev-only test-support
+crate (4); the test hosts (5); the rebuilt demonstrator (6); documents (7); and
+end-to-end validation (8), repeated with CI's own tool pins. Revisions made during
+execution:
+
+- A planner's own activations are checked by that planner, which holds the
+  activation permit; the runtime cannot call back into a planner mid-operation.
+  `Install`/`Remove` are admitted per node.
+- The service and the loop test host were ported together with the loop parts so
+  that the tree kept building.
+- The loop test host is a library and cannot take a dev-dependency, so it compiles
+  the support crate's assembly source by path.
+
+### Open items
+
+- Remote CI and review need a pull request. The macOS and Windows jobs were not run
+  locally.
+- CI runs neither Miri nor Chrome; both are manual (see the
+  [CI scope decision](#remaining-stage-checks)). With the unmodified runner, six
+  Miri commands exceed the 900 s per-command watchdog on the reference machine,
+  equally on the baseline.
+- Planner composition and cross-domain transactions remain
+  [future work](ARCHITECTURE.md#composable-loop-boundary).
+- The draft loop book's chapters were updated to the new API; the book stays a draft.
+
 ## Proposed next work
 
 These are design directions, not authorized implementation checkboxes:
 
-1. Resolved by the [composable loop refactor](PLAN_REFACTOR.md): see [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary). When a second planning domain is needed, compose planners explicitly rather than nesting runtimes.
+1. Resolved by the [composable loop boundary](#composable-loop-boundary) work: see [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary). When a second planning domain is needed, compose planners explicitly rather than nesting runtimes.
 2. Define a bounded next service/protocol slice: one logical scenario through typed native calls, independent-memory AudioWorklet and native IPC. No three unrelated demos or premature universal protocol.
 3. After that foundation, scope an opt-in real application backend using existing UI/modules and the old backend as a selectable fallback/reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
 4. Close parity gaps driven by real workflows, then consider broader deployment. Full dry/wet, prerecord/preplay/latency windows, production plugins/devices, persistence/undo/scripting and network operation remain future work.

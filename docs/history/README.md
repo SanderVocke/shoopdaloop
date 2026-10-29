@@ -73,7 +73,7 @@ canonical documents for current status and the paths below for detailed history.
 
 | Experiment | Last version | Superseded by |
 | --- | --- | --- |
-| Milestone 1 composition spike | [`experiments/milestone_1_composition`](https://github.com/SanderVocke/shoopdaloop/tree/1868baf881395c4682ed0519a2970518b8cc3185/experiments/milestone_1_composition) | `shoop_example_dsp` and `shoop_engine_service`, rebuilt on the composable loop library ([refactor plan](../../PLAN_REFACTOR.md)) |
+| Milestone 1 composition spike | [`experiments/milestone_1_composition`](https://github.com/SanderVocke/shoopdaloop/tree/1868baf881395c4682ed0519a2970518b8cc3185/experiments/milestone_1_composition) | `shoop_example_dsp` and `shoop_engine_service`, rebuilt on the composable loop library ([composable loop boundary](../../PLAN.md#composable-loop-boundary)) |
 
 The spike showed that independent DSP could run in the loop engine's graph by
 carrying its own control bridge beside the runtime. Once processors gained their
