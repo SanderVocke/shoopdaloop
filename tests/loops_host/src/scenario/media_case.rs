@@ -7,6 +7,7 @@ use rt_runtime::{
 use shoop_loops::media;
 #[cfg(test)]
 use shoop_loops::Mode;
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
 pub(crate) const PAGES: usize = 42;
 fn upload(
@@ -45,7 +46,7 @@ fn upload(
 }
 pub(crate) fn prepare(
     witness: Arc<AtomicU32>,
-) -> (Controller<Mix>, Engine<Mix>, LoopId, [ResourceId; 4]) {
+) -> (LoopControl<Mix>, LoopRuntime<Mix>, LoopId, [ResourceId; 4]) {
     let config = Config {
         max_frames: 128,
         max_nodes: 5,
@@ -185,7 +186,7 @@ pub(crate) fn prepare(
             packet_bytes: 0,
         },
     ];
-    let (control, engine) = Engine::prepare_with_observer(
+    let (control, engine) = LoopRuntime::prepare_with_observer(
         config,
         topology,
         store,
@@ -282,7 +283,7 @@ mod tests {
         let mut output = [MidiBuffer::new(1024, 4096).unwrap()];
         let mut samples = Vec::new();
         let mut midi = Vec::new();
-        let mut step = |engine: &mut Engine<Mix>, frames: usize| {
+        let mut step = |engine: &mut LoopRuntime<Mix>, frames: usize| {
             let start = engine.next_frame().0;
             let mut left = [0.; 128];
             let mut right = [0.; 128];

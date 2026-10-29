@@ -15,13 +15,11 @@ use shoop_loops::{
     compile,
     decision::EventKind,
     media,
-    runtime::{
-        Binding, BoundaryObserver, Controller, Cut, Engine, LoopPlanner, Operation, Reply,
-        Selection, Settings,
-    },
+    runtime::{Binding, BoundaryObserver, Cut, LoopPlanner, Operation, Reply, Selection, Settings},
     Completion, Decision, Entry, Event, Limits, LoopId, LoopKind, LoopSpec, Mode, Outcome,
     ProgramDescription, Section, State, Timing, TopologyDescription, Transition, Trigger,
 };
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
 #[path = "support/nested_lifecycle.rs"]
@@ -153,14 +151,22 @@ fn upload(store: &mut ResourceStore, format: Format, frames: u64, bytes: &[u8]) 
 fn setup(
     journal: usize,
     reversed: bool,
-) -> (Controller<Mix>, Engine<Mix>, Vec<rt_runtime::ResourceId>) {
+) -> (
+    LoopControl<Mix>,
+    LoopRuntime<Mix>,
+    Vec<rt_runtime::ResourceId>,
+) {
     setup_with_pages(journal, reversed, 137)
 }
 fn setup_with_pages(
     journal: usize,
     reversed: bool,
     pages: usize,
-) -> (Controller<Mix>, Engine<Mix>, Vec<rt_runtime::ResourceId>) {
+) -> (
+    LoopControl<Mix>,
+    LoopRuntime<Mix>,
+    Vec<rt_runtime::ResourceId>,
+) {
     let config = Config {
         max_frames: 32,
         max_nodes: 16,
@@ -364,7 +370,7 @@ fn setup_with_pages(
         bindings.reverse();
         effects.reverse();
     }
-    let (control, engine) = Engine::prepare_with_observer(
+    let (control, engine) = LoopRuntime::prepare_with_observer(
         config,
         topology,
         resources,
@@ -398,7 +404,7 @@ impl Host {
             midi_out: std::array::from_fn(|_| MidiBuffer::new(4096, 16384).unwrap()),
         }
     }
-    fn step(&mut self, engine: &mut Engine<Mix>, frames: usize) {
+    fn step(&mut self, engine: &mut LoopRuntime<Mix>, frames: usize) {
         let at = engine.next_frame();
         for port in 0..4 {
             self.midi_in[port].clear();
@@ -447,13 +453,13 @@ impl Host {
         .unwrap();
     }
 }
-fn submit(control: &mut Controller<Mix>, frame: u64, operation: Operation) -> Sequence {
+fn submit(control: &mut LoopControl<Mix>, frame: u64, operation: Operation) -> Sequence {
     assert_no_heap(|| control.submit(Lane::Normal, Frame(frame), operation))
         .unwrap_or_else(|error| panic!("{:?}", error.error))
         .sequence()
 }
 fn transition(
-    control: &mut Controller<Mix>,
+    control: &mut LoopControl<Mix>,
     frame: u64,
     target: u32,
     transition: Transition,
@@ -468,7 +474,7 @@ fn transition(
         },
     )
 }
-fn drain(control: &mut Controller<Mix>) -> Vec<rt_runtime::schedule::Execution<Operation, Reply>> {
+fn drain(control: &mut LoopControl<Mix>) -> Vec<rt_runtime::schedule::Execution<Operation, Reply>> {
     while let Some(completion) = assert_no_heap(|| control.try_completion()) {
         assert!(matches!(
             completion.outcome,
@@ -484,8 +490,8 @@ fn drain(control: &mut Controller<Mix>) -> Vec<rt_runtime::schedule::Execution<O
     replies
 }
 fn read(
-    control: &mut Controller<Mix>,
-    engine: &mut Engine<Mix>,
+    control: &mut LoopControl<Mix>,
+    engine: &mut LoopRuntime<Mix>,
     host: &mut Host,
     export: media::ExportId,
     midi: bool,

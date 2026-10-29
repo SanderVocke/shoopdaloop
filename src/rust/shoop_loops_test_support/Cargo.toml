@@ -1,0 +1,13 @@
+[package]
+name = "shoop_loops_test_support"
+version.workspace = true
+edition = "2021"
+publish = false
+description = "Dev-only assembly of the loop library into a runtime for tests, benchmarks and test hosts"
+
+[lints]
+workspace = true
+
+[dependencies]
+rt_runtime = { path = "../rt_runtime" }
+shoop_loops = { path = "../shoop_loops" }

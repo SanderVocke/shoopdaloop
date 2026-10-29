@@ -4,10 +4,11 @@ use rt_runtime::{
     midi::ResetState,
     Error, Frame,
 };
-use shoop_loops::runtime::Engine;
+use rt_runtime::{executor::GraphRuntime, resource::ResourceStore};
+use shoop_loops::runtime::LoopPlanner;
 
 pub struct Render {
-    engine: Engine<dsp::Dsp>,
+    engine: GraphRuntime<crate::ServiceNode, LoopPlanner>,
     ingress: Ingress,
     dsp: dsp::RenderControl,
     recovery: MidiBuffer,
@@ -19,7 +20,7 @@ pub struct Render {
 impl Render {
     pub(crate) fn new(
         config: Config,
-        engine: Engine<dsp::Dsp>,
+        engine: GraphRuntime<crate::ServiceNode, LoopPlanner>,
         ingress: Ingress,
         dsp: dsp::RenderControl,
     ) -> Result<Self, Error> {
@@ -173,33 +174,36 @@ impl Render {
     /// Only after the host has stopped callbacks. Undeliverable owners are then
     /// disposed off-render, never by treating a disconnected UI as a free sink.
     pub fn into_stopped(self) -> Stopped {
+        let (planner, resources) = self.engine.into_planner_and_resources();
         Stopped {
-            inner: self.engine.into_stopped(),
+            planner,
+            resources,
             reclaim_bound: self.config.resource_pages.saturating_add(128),
         }
     }
 }
 
 pub struct Stopped {
-    inner: shoop_loops::runtime::Stopped,
+    planner: LoopPlanner,
+    resources: ResourceStore,
     reclaim_bound: usize,
 }
 impl Stopped {
     pub fn resource_usage(&self) -> rt_runtime::resource::PoolUsage {
-        self.inner.resource_usage()
+        self.resources.usage()
     }
     pub fn media_usage(&self) -> shoop_loops::media::Usage {
-        self.inner.media_usage()
+        self.planner.media_usage()
     }
     pub fn midi_index_usage(&mut self) -> rt_runtime::resource::MidiIndexUsage {
-        self.inner.resources().midi_index_usage()
+        self.resources.midi_index_usage()
     }
     /// Finite off-render cleanup/reclamation; it does not settle unrendered time.
     pub fn cleanup(&mut self) -> Result<(), Error> {
-        self.inner.cleanup()?;
+        self.planner.cleanup(&mut self.resources)?;
         for _ in 0..self.reclaim_bound {
-            self.inner.resources().begin_callback();
-            self.inner.resources().reclaim();
+            self.resources.begin_callback();
+            self.resources.reclaim();
         }
         Ok(())
     }

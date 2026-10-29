@@ -10,11 +10,10 @@ use rt_runtime::{
     transport::{Completion, Lane, Outcome, Ticket},
     Epoch, Error, Frame, PreparedConfig, Sequence,
 };
-use shoop_loops::runtime::{
-    Controller, Failure, LoopPlanner, Node, Operation as DomainOperation, Reply,
-};
+use shoop_loops::runtime::{Failure, LoopPlanner, Operation as DomainOperation, Reply};
+use shoop_loops_test_support::{LoopControl, TestNode};
 
-type Returned = Completion<Command<Node<Mix>, LoopPlanner>, Retired<Node<Mix>>>;
+type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct Slot {
     request: Request,
     ticket: Option<Ticket>,
@@ -57,7 +56,7 @@ pub(crate) struct Graphs {
     last_sequence: u64,
     slots: [Option<Slot>; CREDITS],
     leases: [Option<Lease>; graph_transfer::BANKS],
-    orphan: Option<Command<Node<Mix>, LoopPlanner>>,
+    orphan: Option<Command<TestNode<Mix>, LoopPlanner>>,
     pub(crate) fatal: bool,
 }
 impl Graphs {
@@ -104,7 +103,7 @@ impl Graphs {
     }
     pub(crate) fn ingest(
         &mut self,
-        control: &mut Controller<Mix>,
+        control: &mut LoopControl<Mix>,
         bytes: &[u8],
         now: u64,
     ) -> Result<(), WireError> {

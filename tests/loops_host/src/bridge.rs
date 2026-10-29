@@ -10,11 +10,12 @@ use rt_runtime::{
     Error, Frame,
 };
 use shoop_loops::{
-    runtime::{Controller, Engine, Failure, LoopPlanner, Node, Operation, Reply, Stopped},
+    runtime::{Failure, LoopPlanner, Operation, Reply},
     LoopId, Outcome as DomainOutcome, Timing,
 };
+use shoop_loops_test_support::{LoopControl, LoopRuntime, StoppedLoops, TestNode};
 
-type Returned = Completion<Command<Node<Mix>, LoopPlanner>, Retired<Node<Mix>>>;
+type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct Slot {
     request: Request,
     ticket: Option<Ticket>,
@@ -42,8 +43,8 @@ impl Slot {
 }
 
 pub struct Bridge {
-    control: Controller<Mix>,
-    engine: Engine<Mix>,
+    control: LoopControl<Mix>,
+    engine: LoopRuntime<Mix>,
     target: LoopId,
     session: u64,
     last_sequence: u64,
@@ -584,7 +585,7 @@ impl Bridge {
 
     /// Off-render stopped extraction. Pending wire results are abandoned, not
     /// fabricated as success; explicit stopped cleanup owns the remaining media.
-    pub fn into_stopped(self) -> Stopped {
+    pub fn into_stopped(self) -> StoppedLoops {
         self.engine.into_stopped()
     }
 }

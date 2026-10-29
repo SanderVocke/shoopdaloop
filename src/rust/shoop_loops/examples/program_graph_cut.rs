@@ -1,18 +1,20 @@
 //! A pending program/route pair, with scalar FX output independent of loop media.
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
-    executor::{Command, Retired},
-    graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType},
+    executor::{Command, Control, GraphRuntime, PreparedNode, Retired},
+    graph::{Catalog, Connection, Endpoint, GraphDescription, PortCounts, PortType, PreparedPlan},
+    planner::ConsumerAccess,
     processor::{ProcessBlock, Processor},
     resource::ResourceStore,
-    transport::{Lane, Outcome as Admission},
+    transport::{Lane, Outcome as Admission, SubmitError, Ticket},
     Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId, Sequence,
 };
 use shoop_loops::{
     audio::Smoothing,
     compile,
     runtime::{
-        Binding, Controller, Engine, LoopPlanner, Operation, Reply, Settings, TopologySettings,
+        Binding, GraphStageId, LoopClient, LoopNode, LoopPlanner, Operation, Options, Prepared,
+        Reply, Settings, TopologySettings,
     },
     topology::staging::StageId,
     Entry, Limits, LoopId, LoopKind, LoopSpec, Outcome, PreparedTopology, ProgramDescription,
@@ -36,6 +38,70 @@ impl Processor<LoopPlanner> for Half {
             *output = *input * 0.5;
         }
         Ok(())
+    }
+}
+/// The application's node type: loop nodes next to its own processors.
+enum Node {
+    Loop(LoopNode),
+    Half(Half),
+}
+impl Processor<LoopPlanner> for Node {
+    fn ports(&self) -> PortCounts {
+        match self {
+            Self::Loop(node) => node.ports(),
+            Self::Half(node) => node.ports(),
+        }
+    }
+    fn planning(&self) -> ConsumerAccess {
+        match self {
+            Self::Loop(node) => node.planning(),
+            Self::Half(node) => node.planning(),
+        }
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        match self {
+            Self::Loop(node) => node.process(block),
+            Self::Half(node) => node.process(block),
+        }
+    }
+}
+type Submitted = Result<Ticket, SubmitError<Command<Node, LoopPlanner>>>;
+/// The application's control side: its runtime endpoint, the loop vocabulary and
+/// a catalog for compiling route changes.
+struct Controls {
+    runtime: Control<Node, LoopPlanner>,
+    loops: LoopClient,
+    catalog: Catalog,
+}
+impl Controls {
+    fn submit(&mut self, lane: Lane, at: Frame, operation: Operation) -> Submitted {
+        self.runtime
+            .submit_prepared(lane, self.loops.command(at, operation))
+    }
+    fn submit_payload(
+        &mut self,
+        lane: Lane,
+        at: Frame,
+        operation: Operation,
+        payload: Box<[u8]>,
+    ) -> Submitted {
+        self.runtime.submit_prepared(
+            lane,
+            self.loops.command_with_payload(at, operation, payload),
+        )
+    }
+    fn compile_graph(&self, graph: &GraphDescription) -> Result<PreparedPlan, Error> {
+        self.loops.compile_graph(&self.catalog, graph)
+    }
+    fn stage_graph(&mut self, slot: usize, expected_epoch: Epoch, plan: PreparedPlan) -> Submitted {
+        self.runtime.submit_prepared(
+            Lane::Normal,
+            Command::stage_graph(slot, expected_epoch, plan),
+        )
+    }
+    fn release_graph(&mut self, id: GraphStageId) -> Submitted {
+        self.runtime
+            .submit_prepared(Lane::Normal, Command::ReleaseGraph { id })
     }
 }
 fn id(slot: u32) -> LoopId {
@@ -112,13 +178,13 @@ fn graph(bypass: bool) -> GraphDescription {
         },
     }
 }
-fn step(engine: &mut Engine<Half>, frames: usize) -> [f32; 8] {
+fn step(runtime: &mut GraphRuntime<Node, LoopPlanner>, frames: usize) -> [f32; 8] {
     let input = [2.0; 8];
     let mut output = [-99.0; 8];
     assert_no_heap(|| {
-        engine.process(
+        runtime.process(
             AudioBlock {
-                frame: engine.next_frame(),
+                frame: runtime.next_frame(),
                 frames,
                 inputs: &[&input],
                 outputs: &mut [&mut output],
@@ -133,18 +199,15 @@ fn step(engine: &mut Engine<Half>, frames: usize) -> [f32; 8] {
     assert_eq!(&output[frames..], &[-99.0; 8][frames..]);
     output
 }
-fn collect(
-    control: &mut Controller<Half>,
-    sequences: &[Sequence],
-) -> Vec<(Reply, Option<Frame>, Frame)> {
+fn collect(control: &mut Controls, sequences: &[Sequence]) -> Vec<(Reply, Option<Frame>, Frame)> {
     for _ in sequences {
-        let completion = control.try_completion().unwrap();
+        let completion = control.runtime.try_completion().unwrap();
         assert!(sequences.contains(&completion.sequence));
         assert!(matches!(completion.outcome, Admission::Scheduled { .. }));
     }
     let mut results = vec![None; sequences.len()];
     for _ in sequences {
-        let execution = control.try_execution().unwrap();
+        let execution = control.runtime.try_execution().unwrap();
         assert_eq!(execution.result, Ok(()));
         let index = sequences
             .iter()
@@ -157,30 +220,30 @@ fn collect(
             execution.actual_frame,
         ));
     }
-    assert!(control.try_completion().is_none());
-    assert!(control.try_execution().is_none());
+    assert!(control.runtime.try_completion().is_none());
+    assert!(control.runtime.try_execution().is_none());
     results.into_iter().map(Option::unwrap).collect()
 }
 fn operation(
-    control: &mut Controller<Half>,
-    engine: &mut Engine<Half>,
+    control: &mut Controls,
+    runtime: &mut GraphRuntime<Node, LoopPlanner>,
     operation: Operation,
     bytes: Box<[u8]>,
 ) -> Reply {
     let sequence = control
-        .submit_payload(Lane::Normal, engine.next_frame(), operation, bytes)
+        .submit_payload(Lane::Normal, runtime.next_frame(), operation, bytes)
         .unwrap_or_else(|e| panic!("prepare operation: {}", e.error))
         .sequence();
-    assert_eq!(step(engine, 1)[0], 1.0);
+    assert_eq!(step(runtime, 1)[0], 1.0);
     collect(control, &[sequence])[0].0
 }
-fn ready(control: &mut Controller<Half>, engine: &mut Engine<Half>) -> StageId {
+fn ready(control: &mut Controls, runtime: &mut GraphRuntime<Node, LoopPlanner>) -> StageId {
     let candidate = topology(2);
     let mut header = [0; 64];
     candidate.encode_header(&mut header);
     let Reply::TopologyStatus { id, .. } = operation(
         control,
-        engine,
+        runtime,
         Operation::TopologyBegin { slot: 0 },
         Box::new(header),
     ) else {
@@ -191,7 +254,7 @@ fn ready(control: &mut Controller<Half>, engine: &mut Engine<Half>) -> StageId {
         candidate.encode_record(first_record, &mut record).unwrap();
         operation(
             control,
-            engine,
+            runtime,
             Operation::TopologyAppend { id, first_record },
             Box::new(record),
         );
@@ -199,7 +262,7 @@ fn ready(control: &mut Controller<Half>, engine: &mut Engine<Half>) -> StageId {
     for _ in 0..512 {
         let Reply::TopologyProgress { progress, .. } = operation(
             control,
-            engine,
+            runtime,
             Operation::TopologyValidate { id },
             Box::new([]),
         ) else {
@@ -211,7 +274,7 @@ fn ready(control: &mut Controller<Half>, engine: &mut Engine<Half>) -> StageId {
     }
     panic!("finite preparation bound")
 }
-fn send(control: &mut Controller<Half>, at: Frame, operation: Operation) -> Sequence {
+fn send(control: &mut Controls, at: Frame, operation: Operation) -> Sequence {
     control
         .submit(Lane::Normal, at, operation)
         .unwrap_or_else(|e| panic!("submit: {}", e.error))
@@ -265,10 +328,15 @@ fn run(parts: &[usize]) {
             packet_bytes: 0,
         })
         .collect();
-    let (mut control, mut engine) = Engine::prepare_with_staging(
+    let mut resources = ResourceStore::new(config).unwrap();
+    let Prepared {
+        planner,
+        nodes,
+        client,
+    } = LoopPlanner::prepare(
         config,
         topology(4),
-        ResourceStore::new(config).unwrap(),
+        &mut resources,
         Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 4,
@@ -277,24 +345,45 @@ fn run(parts: &[usize]) {
         },
         bindings,
         vec![],
-        vec![(node(4), Half)],
-        graph(false),
-        TopologySettings {
-            candidates: 1,
-            records_per_callback: 1,
-            validation_steps_per_callback: 64,
+        Options {
+            staging: TopologySettings {
+                candidates: 1,
+                records_per_callback: 1,
+                validation_steps_per_callback: 64,
+            },
+            ..Options::default()
         },
-        None,
     )
     .unwrap();
-    engine.prepare_graph_staging(1).unwrap();
-    let topology = ready(&mut control, &mut engine);
+    let initial = graph(false);
+    let nodes = nodes
+        .into_iter()
+        .map(|(id, node)| PreparedNode::new(id, Node::Loop(node)))
+        .chain([PreparedNode::new(node(4), Node::Half(Half))])
+        .collect();
+    let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        nodes,
+        planner,
+        resources,
+        &initial,
+        &client.bindings_for(&initial),
+    )
+    .unwrap();
+    let mut control = Controls {
+        catalog: runtime.catalog().clone(),
+        runtime: runtime_control,
+        loops: client,
+    };
+    control.runtime.prepare_submissions().unwrap();
+    runtime.prepare_graph_staging(1).unwrap();
+    let topology = ready(&mut control, &mut runtime);
     let candidate = control.compile_graph(&graph(true)).unwrap();
     let ticket = control
         .stage_graph(0, Epoch(1), candidate)
         .unwrap_or_else(|e| panic!("stage: {}", e.error));
-    assert_eq!(step(&mut engine, 1)[0], 1.0);
-    let completion = control.try_completion().unwrap();
+    assert_eq!(step(&mut runtime, 1)[0], 1.0);
+    let completion = control.runtime.try_completion().unwrap();
     assert_eq!(completion.sequence, ticket.sequence());
     assert_eq!(completion.outcome, Admission::Applied);
     let Command::StageGraph {
@@ -306,7 +395,7 @@ fn run(parts: &[usize]) {
         panic!("Ready graph")
     };
     drop(ticket);
-    let start = engine.next_frame();
+    let start = runtime.next_frame();
     let delivered = start.checked_add(1).unwrap();
     let cut = start.checked_add(4).unwrap();
     let stop = start.checked_add(6).unwrap();
@@ -352,14 +441,14 @@ fn run(parts: &[usize]) {
     let mut samples = [0.0; 8];
     let mut offset = 0;
     for &frames in parts {
-        if engine.next_frame() == cut {
-            let before = engine.diagnostics();
-            step(&mut engine, 0);
-            assert_eq!(engine.next_frame(), cut);
-            assert_eq!(engine.diagnostics(), before);
+        if runtime.next_frame() == cut {
+            let before = runtime.diagnostics();
+            step(&mut runtime, 0);
+            assert_eq!(runtime.next_frame(), cut);
+            assert_eq!(runtime.diagnostics(), before);
             assert_eq!(before.epoch, Epoch(1));
         }
-        samples[offset..offset + frames].copy_from_slice(&step(&mut engine, frames)[..frames]);
+        samples[offset..offset + frames].copy_from_slice(&step(&mut runtime, frames)[..frames]);
         offset += frames;
     }
     assert_eq!(offset, 8);
@@ -424,10 +513,10 @@ fn run(parts: &[usize]) {
     assert_eq!(child.state.cycles, 4);
     let recycle = send(
         &mut control,
-        engine.next_frame(),
+        runtime.next_frame(),
         Operation::TopologyRecycle { id: topology },
     );
-    step(&mut engine, 1);
+    step(&mut runtime, 1);
     assert!(matches!(
         collect(&mut control, &[recycle])[0].0,
         Reply::TopologyStatus {
@@ -438,19 +527,19 @@ fn run(parts: &[usize]) {
     let ticket = control
         .release_graph(graph)
         .unwrap_or_else(|e| panic!("release: {}", e.error));
-    assert_eq!(step(&mut engine, 1)[0], 2.0);
-    let completion = control.try_completion().unwrap();
+    assert_eq!(step(&mut runtime, 1)[0], 2.0);
+    let completion = control.runtime.try_completion().unwrap();
     assert_eq!(completion.sequence, ticket.sequence());
     assert_eq!(completion.outcome, Admission::Applied);
     assert!(matches!(completion.retired, Some(Retired::Plan(_))));
     drop((completion, ticket, control));
-    let mut stopped = engine.into_stopped();
-    stopped.cleanup().unwrap();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.media_usage().references, 0);
-    assert_eq!(stopped.resource_usage().free_pages, 8);
-    assert_eq!(stopped.resource_usage().free_versions, 8);
-    assert_eq!(stopped.resource_usage().free_snapshots, 8);
+    let (mut planner, mut resources) = runtime.into_planner_and_resources();
+    planner.cleanup(&mut resources).unwrap();
+    planner.cleanup(&mut resources).unwrap();
+    assert_eq!(planner.media_usage().references, 0);
+    assert_eq!(resources.usage().free_pages, 8);
+    assert_eq!(resources.usage().free_versions, 8);
+    assert_eq!(resources.usage().free_snapshots, 8);
 }
 fn main() {
     run(&[8]);

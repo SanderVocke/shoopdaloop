@@ -1,5 +1,8 @@
-use crate::{control, dsp, CaptureTap, Config, InitialContent, Prepared, PreparedRoute, Render};
+use crate::{
+    control, dsp, CaptureTap, Config, InitialContent, Prepared, PreparedRoute, Render, ServiceNode,
+};
 use rt_runtime::{
+    executor::{GraphRuntime, PreparedNode},
     graph::{Connection, Endpoint, GraphDescription, PortType},
     resource::{
         encode_midi_record, CaptureGroupConfig, Description, Format, MidiIndexConfig,
@@ -10,7 +13,7 @@ use rt_runtime::{
 use shoop_loops::{
     audio::Smoothing,
     compile,
-    runtime::{Binding, Engine, Failure, Settings},
+    runtime::{Binding, Failure, LoopPlanner, Options, Prepared as LoopParts, Settings},
     Limits, LoopId, LoopKind, LoopSpec, TopologyDescription,
 };
 
@@ -111,10 +114,14 @@ fn prepare_inner(
         },
     )?;
     let initial_graph = graph(config.capture, playback, effect, capture);
-    let (controller, mut engine) = Engine::prepare(
+    let LoopParts {
+        planner,
+        nodes,
+        client,
+    } = LoopPlanner::prepare(
         runtime,
         topology,
-        resources,
+        &mut resources,
         Settings {
             planner: PlannerId::from_parts(0, 1)?,
             normal_requests: 8,
@@ -134,14 +141,37 @@ fn prepare_inner(
             packet_bytes: 512,
         }],
         imports,
-        vec![(effect, prepared_dsp.processor)],
-        initial_graph,
+        Options::default(),
     )?;
+    let nodes = nodes
+        .into_iter()
+        .map(|(id, node)| PreparedNode::new(id, ServiceNode::Loop(node)))
+        .chain([PreparedNode::new(
+            effect,
+            ServiceNode::Dsp(prepared_dsp.processor),
+        )])
+        .collect();
+    let (mut control, mut engine) = GraphRuntime::prepare_with_initial_graph(
+        runtime,
+        nodes,
+        planner,
+        resources,
+        &initial_graph,
+        &client.bindings_for(&initial_graph),
+    )?;
+    control.prepare_submissions()?;
     engine.prepare_graph_staging(1)?;
-    let candidate =
-        controller.compile_graph(&graph(CaptureTap::Live, playback, effect, capture))?;
-    let (client, ingress) =
-        control::channel(controller, target, prepared_dsp.client, prepared_dsp.meters);
+    let candidate = client.compile_graph(
+        engine.catalog(),
+        &graph(CaptureTap::Live, playback, effect, capture),
+    )?;
+    let (client, ingress) = control::channel(
+        control,
+        client,
+        target,
+        prepared_dsp.client,
+        prepared_dsp.meters,
+    );
     let route = PreparedRoute {
         plan: candidate,
         identity: client.identity(),

@@ -4,7 +4,7 @@
 
 [Contents](../README.md) · [Previous: Preparing an audio loop](02-preparing-an-audio-loop.md)
 
-The engine is prepared, but nothing runs until the host supplies buffers. Before the first call, we will queue three transitions:
+The runtime is prepared, but nothing runs until the host supplies buffers. Before the first call, we will queue three transitions:
 
 | Absolute frame | Transition | Effect |
 |---|---|---|
@@ -40,22 +40,22 @@ The example retains each ticket's sequence alongside its expected execution fram
         ),
         (7, Transition::Stop),
     ] {
+        let command = client.command(
+            Frame(at),
+            Operation::Transition {
+                target,
+                timing: Timing::At,
+                transition,
+            },
+        );
         let ticket = control
-            .submit(
-                Lane::Normal,
-                Frame(at),
-                Operation::Transition {
-                    target,
-                    timing: Timing::At,
-                    transition,
-                },
-            )
+            .submit_prepared(Lane::Normal, command)
             .unwrap_or_else(|refusal| panic!("submission: {:?}", refusal.error));
         sequences.push((ticket.sequence(), Frame(at)));
     }
 ```
 
-`Frame(at)` is an absolute engine frame. `Timing::At` asks for that boundary rather than waiting for sync pulses. Queueing all three before the first callback gives them time to be admitted before they are due.
+The loop client builds the runtime command addressed to the planner; the control endpoint submits it. `Frame(at)` is an absolute runtime frame. `Timing::At` asks for that boundary rather than waiting for sync pulses. Queueing all three before the first callback gives them time to be admitted before they are due.
 
 Record's `monitor_previous: false` does not play an old take during recording. Play's position is relative to the recorded content; `retrigger: false` is sufficient for this recording-to-playback transition. It does not require a separate Stop first.
 
@@ -70,10 +70,10 @@ The first three input frames are the intended recording. Later values are delibe
     let right_in = [10.0, 20.0, 30.0, 90.0, 90.0, 90.0, 90.0, 90.0];
     let mut left_out = [0.0; 8];
     let mut right_out = [0.0; 8];
-    engine
+    runtime
         .process(
             AudioBlock {
-                frame: engine.next_frame(),
+                frame: runtime.next_frame(),
                 frames: 8,
                 inputs: &[&left_in, &right_in],
                 outputs: &mut [&mut left_out, &mut right_out],
@@ -99,20 +99,20 @@ The expected samples are:
 ```rust
     assert_eq!(left_out, [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 1.0, 0.0]);
     assert_eq!(right_out, [0.0, 0.0, 0.0, 10.0, 20.0, 30.0, 10.0, 0.0]);
-    assert_eq!(engine.next_frame(), Frame(8));
+    assert_eq!(runtime.next_frame(), Frame(8));
 ```
 
 Frames 0–2 are silent because the graph has no live-input route to the output. At frame 3, the recording ends with exactly three stereo frames. Its first sample plays at that same frame, with no extra silent block.
 
 Playback reaches positions 0, 1, and 2, then wraps at absolute frame 6. Stop at frame 7 makes the final output sample zero. The later input values never appear in playback.
 
-The engine chooses these internal intervals:
+The planner chooses these internal intervals:
 
 ```text
 [0,3) recording   [3,6) playback   [6,7) wrapped playback   [7,8) stopped
 ```
 
-These are not four host callbacks. The engine splits the one supplied block itself. A transition exactly at frame 8 would instead take effect at the next nonempty call; a zero-frame call does not settle it.
+These are not four host callbacks. The runtime splits the one supplied block itself. A transition exactly at frame 8 would instead take effect at the next nonempty call; a zero-frame call does not settle it.
 
 ## 4. Check admission and musical outcomes
 
@@ -147,27 +147,27 @@ Check both the runtime result and the typed transition outcome. Runtime delivery
 
 Immediate `unwrap()` is appropriate here because the offline example has already processed every target frame. In a live application, either poll can return `None` while work is pending. Collect both streams regularly: unread results keep finite request capacity occupied. Destroy returned owners on the control side, not in the callback.
 
-## 5. Clean up the stopped engine
+## 5. Clean up after stopping
 
-Stop has already executed at frame 7, and the example has collected all three outcomes. No callback is running when it consumes the engine:
+Stop has already executed at frame 7, and the example has collected all three outcomes. No callback is running when it consumes the runtime:
 
 ```rust
     drop(control);
-    let mut stopped = engine.into_stopped();
-    stopped.cleanup().unwrap();
-    stopped.resources().begin_callback();
-    stopped.resources().reclaim();
-    let usage = stopped.resource_usage();
+    let (mut planner, mut resources) = runtime.into_planner_and_resources();
+    planner.cleanup(&mut resources).unwrap();
+    resources.begin_callback();
+    resources.reclaim();
+    let usage = resources.usage();
     assert_eq!(usage.free_pages, 16);
     assert_eq!(usage.free_versions, 8);
     assert_eq!(usage.free_snapshots, 8);
     assert_eq!(usage.reserved_pages, 0);
-    assert_eq!(stopped.media_usage().references, 0);
+    assert_eq!(planner.media_usage().references, 0);
 ```
 
-`into_stopped` preserves the state needed for explicit cleanup. `cleanup` releases the engine's media references, capture groups, and internally created resources. It is permanent teardown, not a pause from which this engine can resume.
+`into_planner_and_resources` hands back the planner and store needed for explicit cleanup; the runtime's processors are destroyed. `cleanup` releases the planner's media references, capture groups, and internally created resources. It is permanent teardown, not a pause from which the loop can resume.
 
-Reclamation recycles retired storage under a work allowance. One final maintenance pass suffices for this small recording; larger content may need more. Here it runs on the stopped store. During rendering the engine owns callback accounting; do not reset it per operation or internal interval.
+Reclamation recycles retired storage under a work allowance. One final maintenance pass suffices for this small recording; larger content may need more. Here it runs on the stopped store. During rendering the runtime owns callback accounting; do not reset it per operation or internal interval.
 
 A device-backed host must stop and join its callbacks before this extraction. Destroying storage does not itself perform a musical Stop or send device cleanup. Our audio-only example has already stopped playback and needs no MIDI reset delivery.
 

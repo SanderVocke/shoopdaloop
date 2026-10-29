@@ -1,4 +1,5 @@
-//! Prepared loop planner/consumers and a restricted runtime/control facade.
+//! The loop planner, its playback/capture nodes and a control-side client, for
+//! installation into an application-owned runtime.
 //!
 //! One resolver settles musical state; separate physical playback/capture nodes execute borrowed
 //! decisions. Prepared timing/source/node pair banks and graph slots have distinct
@@ -8,15 +9,13 @@ use crate::{
     State, Timing, Transition,
 };
 use rt_runtime::{
-    buffer::{AudioBlock, MidiBlock},
-    executor::{self, Command, GraphRuntime, PreparedNode},
+    executor::Command,
     graph::{Catalog, GraphDescription, PreparedPlan},
     midi_state::MidiState,
     planner::*,
-    processor::Processor,
+    processor::{Processor, ProcessorOperation},
     resource::*,
     schedule::{self, ReceiptToken},
-    transport::{self, Lane},
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
 mod configuration;
@@ -29,7 +28,7 @@ pub use node_pairs::{
     NodePairInitial, NodePairSettings, NodePairSourceId, NodePairSourceStatus, NodePairStageId,
     NodePairStatus,
 };
-pub use processor::Node;
+pub use processor::{CaptureNode, LoopNode, LoopNodes, PlaybackNode};
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
 pub use topology::TopologySettings;
 
@@ -447,239 +446,112 @@ pub struct LoopPlanner {
     pending: Box<[Option<Pending>]>,
     failures: Vec<crate::Observation>,
 }
-pub struct Engine<P: Processor<LoopPlanner>> {
-    runtime: GraphRuntime<Node<P>, LoopPlanner>,
+
+/// Preparation choices beyond the loops themselves; the default enables none.
+#[derive(Default)]
+pub struct Options {
+    /// Timing candidates for staged topology and program changes.
+    pub staging: TopologySettings,
+    /// Edit banks and sources for publishing new logical owners on prepared node pairs.
+    pub node_pairs: NodePairSettings,
+    pub observer: Option<Box<dyn BoundaryObserver>>,
 }
-pub struct Controller<P: Processor<LoopPlanner>> {
-    control: executor::Control<Node<P>, LoopPlanner>,
+
+/// Prepared parts for installation into an application-owned runtime.
+pub struct Prepared {
+    /// The runtime's planner.
+    pub planner: LoopPlanner,
+    /// Processors to install under their identities.
+    pub nodes: LoopNodes,
+    pub client: LoopClient,
+}
+
+/// Control-side loop vocabulary. It owns no transport: submit its commands through
+/// the application's runtime control endpoint.
+pub struct LoopClient {
     planner: PlannerId,
     media: Box<[PreparedMedia]>,
-    graph_catalog: Catalog,
-    graph_bindings: Box<[DecisionBinding]>,
+    bindings: Box<[DecisionBinding]>,
 }
-pub struct Stopped {
-    planner: LoopPlanner,
-    resources: ResourceStore,
-}
-impl<P: Processor<LoopPlanner>> Controller<P> {
+impl LoopClient {
+    pub fn planner(&self) -> PlannerId {
+        self.planner
+    }
     /// Startup checked identities, not a live settled-state query or owning leases.
     pub fn media(&self) -> &[PreparedMedia] {
         &self.media
     }
-    /// Allocating control-side compilation for the prepared physical node pairs.
-    pub fn compile_graph(&self, graph: &GraphDescription) -> Result<PreparedPlan, Error> {
-        let bindings: Vec<_> = self
-            .graph_bindings
+    /// Decision bindings of every prepared loop node, including unassigned templates.
+    pub fn bindings(&self) -> &[DecisionBinding] {
+        &self.bindings
+    }
+    /// Decision bindings for the loop nodes present in `graph`.
+    pub fn bindings_for(&self, graph: &GraphDescription) -> Vec<DecisionBinding> {
+        self.bindings
             .iter()
             .filter(|binding| graph.nodes.contains(&binding.consumer))
             .copied()
-            .collect();
-        rt_runtime::graph::compile_planned(&self.graph_catalog, graph, &bindings)
+            .collect()
     }
-    pub fn stage_graph(
-        &mut self,
-        slot: usize,
-        expected_epoch: Epoch,
-        plan: PreparedPlan,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
-        self.control.submit_prepared(
-            Lane::Normal,
-            Command::stage_graph(slot, expected_epoch, plan),
-        )
+    /// Allocating control-side compilation of `graph` with the loop's bindings.
+    pub fn compile_graph(
+        &self,
+        catalog: &Catalog,
+        graph: &GraphDescription,
+    ) -> Result<PreparedPlan, Error> {
+        rt_runtime::graph::compile_planned(catalog, graph, &self.bindings_for(graph))
     }
-    pub fn release_graph(
-        &mut self,
-        id: GraphStageId,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
-        self.control
-            .submit_prepared(Lane::Normal, Command::ReleaseGraph { id })
-    }
-    /// Submit with prepared cancellation flags. Refusal returns the owning command;
-    /// admission completion is not the separate terminal domain execution result.
-    pub fn submit(
-        &mut self,
-        lane: Lane,
+    /// Typed loop work at `at`. Admission, delivery and the domain outcome are
+    /// reported separately by the runtime.
+    pub fn command<P, Q: ProcessorOperation>(
+        &self,
         at: Frame,
         operation: Operation,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
-        self.submit_payload(lane, at, operation, Box::new([]))
+    ) -> Command<P, LoopPlanner, Q> {
+        self.command_with_payload(at, operation, Box::new([]))
     }
-    /// Payload construction and returned-owner destruction remain off-render.
-    /// Only topology header/chunk operations accept nonempty payloads.
-    pub fn submit_payload(
-        &mut self,
-        lane: Lane,
+    /// Build payloads off-render. Only topology header/chunk operations accept them.
+    pub fn command_with_payload<P, Q: ProcessorOperation>(
+        &self,
         at: Frame,
         operation: Operation,
         payload: Box<[u8]>,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
-        self.control.submit_prepared(
-            lane,
-            Command::Schedule {
-                at,
-                action: schedule::Action::Planner {
-                    planner: self.planner,
-                    operation,
-                },
-                payload,
+    ) -> Command<P, LoopPlanner, Q> {
+        Command::Schedule {
+            at,
+            action: schedule::Action::Planner {
+                planner: self.planner,
+                operation,
             },
-        )
-    }
-    /// Submit generic resource work using prepared transport capacity. Owning
-    /// chunk buffers return in the completion on application, refusal or cancellation.
-    pub fn resource(
-        &mut self,
-        lane: Lane,
-        request: rt_runtime::resource::Request,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
-        self.control
-            .submit_prepared(lane, Command::resource(request))
-    }
-    /// Read through an existing lease into an owning return buffer. Retain its
-    /// originating export/lease until all reads complete and inspect returned EOF/cursor.
-    pub fn read(
-        &mut self,
-        cursor: Cursor,
-        bytes: Box<[u8]>,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
-        self.control.submit_prepared(
-            Lane::Normal,
-            Command::resource(rt_runtime::resource::Request::Read { cursor, bytes }),
-        )
-    }
-    pub fn parameter(
-        &mut self,
-        at: Frame,
-        node: NodeId,
-        parameter: u32,
-        value: f32,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<Node<P>, LoopPlanner>>> {
-        self.control.submit_prepared(
-            Lane::Normal,
-            Command::Schedule {
-                at,
-                action: schedule::Action::Parameter {
-                    node,
-                    parameter,
-                    value,
-                },
-                payload: Box::new([]),
-            },
-        )
-    }
-    pub fn try_completion(
-        &mut self,
-    ) -> Option<transport::Completion<Command<Node<P>, LoopPlanner>, executor::Retired<Node<P>>>>
-    {
-        self.control.try_completion()
-    }
-    pub fn try_execution(&mut self) -> Option<schedule::Execution<Operation, Reply>> {
-        self.control.try_execution()
-    }
-    pub fn connected(&self) -> bool {
-        self.control.connected()
+            payload,
+        }
     }
 }
-impl<P: Processor<LoopPlanner>> Engine<P> {
-    /// Allocating preparation. Every primitive requires both playback and capture consumers;
-    /// effects must declare no planning access. Graph staging is separately opt-in.
+
+impl LoopPlanner {
+    /// Allocating preparation of the planner, its playback/capture nodes and the
+    /// control-side client. Capture resources and imported media are created in
+    /// `resources`, which the application then gives to its runtime together with
+    /// the planner and nodes. Every primitive requires a binding; unassigned
+    /// templates need node-pair edit banks and stay outside the initial graph.
     pub fn prepare(
         config: PreparedConfig,
         topology: PreparedTopology,
-        resources: ResourceStore,
+        resources: &mut ResourceStore,
         settings: Settings,
         bindings: Vec<Binding>,
         imports: Vec<media::Input>,
-        effects: Vec<(NodeId, P)>,
-        graph: GraphDescription,
-    ) -> Result<(Controller<P>, Self), Failure> {
-        Self::prepare_with_observer(
-            config,
-            topology,
-            resources,
-            settings,
-            bindings,
-            imports,
-            effects,
-            graph,
-            Box::new(NoObserver),
-        )
-    }
-    pub fn prepare_with_observer(
-        config: PreparedConfig,
-        topology: PreparedTopology,
-        resources: ResourceStore,
-        settings: Settings,
-        bindings: Vec<Binding>,
-        imports: Vec<media::Input>,
-        effects: Vec<(NodeId, P)>,
-        graph: GraphDescription,
-        observer: Box<dyn BoundaryObserver>,
-    ) -> Result<(Controller<P>, Self), Failure> {
-        Self::prepare_with_staging(
-            config,
-            topology,
-            resources,
-            settings,
-            bindings,
-            imports,
-            effects,
-            graph,
-            TopologySettings::default(),
-            Some(observer),
-        )
-    }
-    /// Prepare timing candidates; node-pair generation staging remains disabled.
-    pub fn prepare_with_staging(
-        config: PreparedConfig,
-        topology: PreparedTopology,
-        resources: ResourceStore,
-        settings: Settings,
-        bindings: Vec<Binding>,
-        imports: Vec<media::Input>,
-        effects: Vec<(NodeId, P)>,
-        graph: GraphDescription,
-        staging: TopologySettings,
-        observer: Option<Box<dyn BoundaryObserver>>,
-    ) -> Result<(Controller<P>, Self), Failure> {
-        Self::prepare_with_configuration_staging(
-            config,
-            topology,
-            resources,
-            settings,
-            bindings,
-            imports,
-            effects,
-            graph,
-            staging,
-            NodePairSettings::default(),
-            observer,
-        )
-    }
-    /// Prepare bounded configuration candidates and physical node pair templates.
-    /// Unassigned templates remain outside the initial signal graph.
-    pub fn prepare_with_configuration_staging(
-        config: PreparedConfig,
-        topology: PreparedTopology,
-        mut resources: ResourceStore,
-        settings: Settings,
-        bindings: Vec<Binding>,
-        imports: Vec<media::Input>,
-        effects: Vec<(NodeId, P)>,
-        graph: GraphDescription,
-        staging: TopologySettings,
-        node_pair_settings: NodePairSettings,
-        observer: Option<Box<dyn BoundaryObserver>>,
-    ) -> Result<(Controller<P>, Self), Failure> {
-        let (topologies, topology) = topology::Topologies::prepare(topology, staging)?;
-        let observer = observer.unwrap_or_else(|| Box::new(NoObserver));
+        options: Options,
+    ) -> Result<Prepared, Failure> {
+        let (topologies, topology) = topology::Topologies::prepare(topology, options.staging)?;
+        let observer = options.observer.unwrap_or_else(|| Box::new(NoObserver));
         let limits = topology.limits();
         let cfg = config.limits();
         if settings.normal_requests == 0 || settings.normal_requests >= limits.pending_requests {
             return Err(Error::InvalidConfig.into());
         }
         let slots = limits.loop_slots;
-        let node_pairs = node_pairs::NodePairs::prepare(slots, node_pair_settings)?;
+        let node_pairs = node_pairs::NodePairs::prepare(slots, options.node_pairs)?;
         let bytes = slots
             .checked_mul(
                 size_of::<Row>()
@@ -712,7 +584,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             let spec = resolver.topology().node(binding.target).ok();
             let assigned = spec.is_some();
             let slot = binding.target.slot() as usize;
-            if slot >= slots || (!assigned && node_pair_settings.candidates == 0) {
+            if slot >= slots || (!assigned && options.node_pairs.candidates == 0) {
                 return Err(Error::InvalidId.into());
             }
             if spec.is_some_and(|spec| spec.kind != LoopKind::Primitive)
@@ -722,10 +594,7 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             {
                 return Err(Error::InvalidShape.into());
             }
-            if graph.nodes.contains(&binding.playback) != assigned
-                || graph.nodes.contains(&binding.capture) != assigned
-                || binding.playback == binding.capture
-            {
+            if binding.playback == binding.capture {
                 return Err(Error::InvalidId.into());
             }
             if binding.midi && resources.midi_index_usage().versions == 0 {
@@ -783,13 +652,13 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
                     row.groups[bank] = Some(resources.bind_capture_group(&members)?);
                 }
             }
-            nodes.push(PreparedNode::new(
+            nodes.push((
                 binding.playback,
-                Node::playback(binding, cfg.max_frames)?,
+                LoopNode::Playback(PlaybackNode::prepare(binding, cfg.max_frames)?),
             ));
-            nodes.push(PreparedNode::new(
+            nodes.push((
                 binding.capture,
-                Node::capture(binding, cfg.max_frames)?,
+                LoopNode::Capture(CaptureNode::prepare(binding, cfg.max_frames)?),
             ));
             for consumer in [binding.playback, binding.capture] {
                 decision_bindings.push(DecisionBinding {
@@ -879,15 +748,6 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
                 });
             }
         }
-        for (id, effect) in effects {
-            if effect.planning() != ConsumerAccess::default() || !graph.nodes.contains(&id) {
-                return Err(Error::InvalidShape.into());
-            }
-            nodes.push(PreparedNode::new(id, Node::Effect(effect)));
-        }
-        if node_pair_settings.candidates == 0 && graph.nodes.len() != nodes.len() {
-            return Err(Error::InvalidShape.into());
-        }
         catalog.sort_by_key(|m| (m.target, m.revision));
         let dummy = LoopId::from_parts(0, 1)?;
         let initial = View {
@@ -933,97 +793,20 @@ impl<P: Processor<LoopPlanner>> Engine<P> {
             pending: vec![None; settings.normal_requests + 1].into_boxed_slice(),
             failures,
         };
-        let graph_nodes: Vec<_> = nodes.iter().map(|node| node.spec()).collect();
-        let initial_bindings: Vec<_> = decision_bindings
-            .iter()
-            .filter(|binding| graph.nodes.contains(&binding.consumer))
-            .copied()
-            .collect();
-        let (mut control, runtime) = GraphRuntime::prepare_with_initial_graph(
-            config,
-            nodes,
+        Ok(Prepared {
             planner,
-            resources,
-            &graph,
-            &initial_bindings,
-        )?;
-        control.prepare_submissions()?;
-        let graph_consumers = graph_nodes
-            .iter()
-            .map(|spec| {
-                Ok(ConsumerSpec {
-                    node: spec.id,
-                    access: runtime.catalog().consumer(spec.id)?,
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        let graph_catalog = Catalog::with_planner(
-            config,
-            &graph_nodes,
-            runtime.catalog().planner().expect("loop planner"),
-            &graph_consumers,
-        )?;
-        Ok((
-            Controller {
-                control,
+            nodes: LoopNodes(nodes),
+            client: LoopClient {
                 planner: settings.planner,
                 media: catalog.into_boxed_slice(),
-                graph_catalog,
-                graph_bindings: decision_bindings.into_boxed_slice(),
+                bindings: decision_bindings.into_boxed_slice(),
             },
-            Self { runtime },
-        ))
+        })
     }
-    /// Allocating preparation before the first nonempty callback; physical node pairs stay fixed.
-    pub fn prepare_graph_staging(&mut self, candidates: usize) -> Result<(), Error> {
-        self.runtime.prepare_graph_staging(candidates)
-    }
-    /// Process one contiguous host block. Zero frames are inert. Errors may follow
-    /// irreversible domain/graph publication or time advancement; never replay a callback.
-    pub fn process(&mut self, audio: AudioBlock<'_, '_>, midi: MidiBlock<'_>) -> Result<(), Error> {
-        self.runtime.process(audio, midi)
-    }
-    pub fn next_frame(&self) -> Frame {
-        self.runtime.next_frame()
-    }
-    pub fn resource_usage(&self) -> PoolUsage {
-        self.runtime.resource_usage()
-    }
-    pub fn diagnostics(&self) -> executor::Diagnostics {
-        self.runtime.diagnostics()
-    }
-    pub fn drain_midi_recovery(
-        &mut self,
-        port: usize,
-        sink: &mut rt_runtime::buffer::MidiBuffer,
-        frames: usize,
-    ) -> Result<usize, Error> {
-        self.runtime.drain_midi_recovery(port, sink, frames)
-    }
-    /// Consume off-render after callbacks stop, preserving the cleanup ledger/store.
-    /// Does not settle future work, send device cleanup or undo published state.
-    pub fn into_stopped(self) -> Stopped {
-        let (planner, resources) = self.runtime.into_planner_and_resources();
-        Stopped { planner, resources }
-    }
-}
-impl Stopped {
     pub fn observer(&self) -> &dyn BoundaryObserver {
-        &*self.planner.observer
-    }
-    pub fn resource_usage(&self) -> PoolUsage {
-        self.resources.usage()
+        &*self.observer
     }
     pub fn media_usage(&self) -> media::Usage {
-        self.planner.ledger.usage()
-    }
-    pub fn resources(&mut self) -> &mut ResourceStore {
-        &mut self.resources
-    }
-    /// Permanently quiesce and explicitly release domain owners; repeatable after
-    /// success or partial cleanup. Does not advance/finish unrendered time or resume
-    /// execution. Imported resource identities remain the caller's responsibility.
-    pub fn cleanup(&mut self) -> Result<(), Error> {
-        self.planner.cleanup(&mut self.resources)
+        self.ledger.usage()
     }
 }

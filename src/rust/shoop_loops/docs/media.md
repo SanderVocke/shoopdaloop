@@ -1,6 +1,6 @@
 # Fixed media ownership ledger
 
-`media::Ledger` supplies ownership for the [coordinated facade](runtime.md). The ledger alone does **not** execute resolver transitions, freeze capture groups, acquire an atomic live prefix or certify a settled musical cut. The facade coordinates those responsibilities; its public [lifecycle](../examples/coordinated_loop.rs) and [configuration](../examples/configuration_cut.rs) examples retain readable old exports.
+`media::Ledger` supplies ownership for the [loop planner](runtime.md). The ledger alone does **not** execute resolver transitions, freeze capture groups, acquire an atomic live prefix or certify a settled musical cut. The planner coordinates those responsibilities; its public [lifecycle](../examples/coordinated_loop.rs) and [configuration](../examples/configuration_cut.rs) examples retain readable old exports.
 
 ## Preparation and identities
 
@@ -24,7 +24,7 @@ Validation checks:
 - No duplicate ownership of a lease already held by another slot in this ledger.
 - Compatibility with the store containing all existing ledger-owned sources.
 
-An empty description may omit sources; timing-only media can have nonzero duration without audio or MIDI. Domain revision assignment remains the resolver/facade's responsibility. The ledger neither advances a musical revision counter nor infers whether two inputs describe the same logical take.
+An empty description may omit sources; timing-only media can have nonzero duration without audio or MIDI. Domain revision assignment remains the resolver/planner's responsibility. The ledger neither advances a musical revision counter nor infers whether two inputs describe the same logical take.
 
 `reserve` creates an unreadable metadata slot before capture admission; its declared duration must be zero. `publish` validates the complete input before making that slot ready. Owner, logical revision and media shape must match the reservation; only duration is finalized. It publishes once. `retire` cancels an unpublished reservation without touching any snapshot.
 
@@ -44,7 +44,7 @@ Each ready slot owns each underlying snapshot **once**, regardless of reference 
 
 Repeated assignment of the same reference is idempotent. A reference cannot select another loop generation's content. Pending pins preserve an admitted replacement after resident retirement or reference changes. Pins and exports have distinct tokens, so double/stale release cannot decrement another owner's reference.
 
-External export saturation does not consume pending-pin capacity or the fixed playback/latest references. Pin saturation does not consume export capacity. Neither pool is needed to reserve a capture metadata slot or change internal references. All pools are finite: retained media can legitimately exhaust metadata or underlying resource storage. The facade sizes pending pins for admitted request ownership and refuses insufficient admission before promising an operation.
+External export saturation does not consume pending-pin capacity or the fixed playback/latest references. Pin saturation does not consume export capacity. Neither pool is needed to reserve a capture metadata slot or change internal references. All pools are finite: retained media can legitimately exhaust metadata or underlying resource storage. The planner sizes pending pins for admitted request ownership and refuses insufficient admission before promising an operation.
 
 Exports retain media metadata and leases without acquiring another snapshot, copying content or rebuilding indexes. `exported` returns the immutable media view and the caller-supplied `requested_cut`. That frame is **not independently certified as a settled musical-state boundary**; snapshot capture/cut metadata retain their own meaning. The coordinated planner must provide the authoritative cut. Existing generic resource cursors/owning read buffers can read exported snapshots.
 
@@ -58,7 +58,7 @@ Pass the entire mutable edit slice to `ledger.prepare_owner_activation(&mut io, 
 
 The returned `OwnerActivation` exclusively borrows ledger, resource access and edits. Dropping it unused changes neither ownership nor generation watermarks; retained input leases still belong to the caller. `commit(self)` is the preflighted infallible publication step. It clears old playback/latest references, binds the new generations and publishes each new initial input with resident plus playback references, no latest take. Old residency, pins and exports remain independent owners and readable through their original identities.
 
-After commit, inspect `is_applied()` and `published()` on each change. Before application, `input()`/`into_input()` expose or recover the unapplied input; explicitly release its leases if abandoning it. Neither dropping an OwnerChange nor copying its raw handles releases a lease. Reapplying a consumed edit is InvalidState. This API does not stop music, reconcile MIDI, freeze capture, update the resolver/graph or acquire capture groups. The facade's ConfigurationActivate holds this permit with a graph permit across final fallible timing publication after checking stopped owners and clean rows; use that integrated transaction for musical configuration cuts.
+After commit, inspect `is_applied()` and `published()` on each change. Before application, `input()`/`into_input()` expose or recover the unapplied input; explicitly release its leases if abandoning it. Neither dropping an OwnerChange nor copying its raw handles releases a lease. Reapplying a consumed edit is InvalidState. This API does not stop music, reconcile MIDI, freeze capture, update the resolver/graph or acquire capture groups. The planner's ConfigurationActivate holds this permit with a graph permit across final fallible timing publication after checking stopped owners and clean rows; use that integrated transaction for musical configuration cuts.
 
 ## Teardown and costs
 

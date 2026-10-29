@@ -9,10 +9,11 @@ use rt_runtime::{
 use shoop_loops::{
     audio::Smoothing,
     compile,
-    runtime::{Binding, Controller, Engine, LoopPlanner, Operation, Reply, Settings},
+    runtime::{Binding, LoopPlanner, Operation, Reply, Settings},
     Entry, Limits, LoopId, LoopKind, LoopSpec, Outcome, ProgramDescription, Section, Timing,
     TopologyDescription, Transition,
 };
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
 use std::sync::{
     atomic::{AtomicU32, Ordering},
@@ -82,7 +83,7 @@ impl Processor<LoopPlanner> for Mix {
 pub(crate) fn prepare_with_fault(
     fault: u8,
     witness: Arc<AtomicU32>,
-) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+) -> (LoopControl<Mix>, LoopRuntime<Mix>, LoopId) {
     prepare_observed(fault, witness, crate::journal::RECORDS, 1024)
 }
 
@@ -91,11 +92,13 @@ pub(crate) fn prepare_observed(
     witness: Arc<AtomicU32>,
     journal_records: usize,
     resolver_events: usize,
-) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+) -> (LoopControl<Mix>, LoopRuntime<Mix>, LoopId) {
     prepare_mode(fault, witness, journal_records, resolver_events, false)
 }
 
-pub(crate) fn prepare_staged(witness: Arc<AtomicU32>) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+pub(crate) fn prepare_staged(
+    witness: Arc<AtomicU32>,
+) -> (LoopControl<Mix>, LoopRuntime<Mix>, LoopId) {
     prepare_mode(0, witness, crate::journal::RECORDS, 1024, true)
 }
 
@@ -105,7 +108,7 @@ fn prepare_mode(
     journal_records: usize,
     resolver_events: usize,
     staged: bool,
-) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+) -> (LoopControl<Mix>, LoopRuntime<Mix>, LoopId) {
     let config = Config {
         max_frames: 128,
         max_nodes: 4,
@@ -174,7 +177,7 @@ fn prepare_mode(
         )
         .expect("fixture topology")
     };
-    let (control, engine) = Engine::prepare_with_configuration_staging(
+    let (control, engine) = LoopRuntime::prepare_with_configuration_staging(
         config,
         topology,
         resources,

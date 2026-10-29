@@ -2,7 +2,7 @@
 
 [Book](../README.md) · [Reference](README.md)
 
-Generic resources provide immutable/prefix storage and checked access. They do not choose loop roles, musical take identity, playback restoration or device state.
+Generic resources provide immutable/prefix storage and checked access. They do not choose loop node pairs, musical take identity, playback restoration or device state.
 
 ## Formats and publication
 

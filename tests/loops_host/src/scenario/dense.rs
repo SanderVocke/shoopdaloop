@@ -1,11 +1,12 @@
 use super::*;
 use shoop_loops::{Mode, Trigger};
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
 pub(crate) const RECORDS: usize = 4096;
 pub(crate) const MIDI_EVENTS: usize = 16384;
 pub(crate) const MIDI_BYTES: usize = 65536;
 
-pub(crate) fn prepare(witness: Arc<AtomicU32>) -> (Controller<Mix>, Engine<Mix>, LoopId) {
+pub(crate) fn prepare(witness: Arc<AtomicU32>) -> (LoopControl<Mix>, LoopRuntime<Mix>, LoopId) {
     let config = Config {
         max_frames: 128,
         max_nodes: 7,
@@ -150,7 +151,7 @@ pub(crate) fn prepare(witness: Arc<AtomicU32>) -> (Controller<Mix>, Engine<Mix>,
             packet_bytes: 0,
         });
     }
-    let (control, engine) = Engine::prepare_with_observer(
+    let (control, engine) = LoopRuntime::prepare_with_observer(
         config,
         topology,
         resources,

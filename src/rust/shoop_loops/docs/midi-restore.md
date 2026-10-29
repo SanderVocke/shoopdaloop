@@ -1,6 +1,6 @@
 # MIDI cleanup and projected-state restoration
 
-`midi_restore::{cleanup, restore}` emit complete MIDI 1.0 packets through a bounded sink callback. They borrow a prepared `MidiState`; they do not allocate, mutate it, advance time, read media, acquire leases, or own a device. The caller supplies the exact event offset, performs cleanup before restoration, and delivers original events at that offset afterwards. Indexed playback/capture is provided separately by [MIDI operations](midi.md); the [runtime facade](runtime.md) supplies coordinated planner/consumer integration.
+`midi_restore::{cleanup, restore}` emit complete MIDI 1.0 packets through a bounded sink callback. They borrow a prepared `MidiState`; they do not allocate, mutate it, advance time, read media, acquire leases, or own a device. The caller supplies the exact event offset, performs cleanup before restoration, and delivers original events at that offset afterwards. Indexed playback/capture is provided separately by [MIDI operations](midi.md); the [loop planner](runtime.md) supplies coordinated planner/consumer integration.
 
 ## Ordering and projection
 

@@ -563,7 +563,12 @@ impl LoopPlanner {
         }
         Ok(())
     }
-    pub(super) fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+    /// Permanently quiesce and explicitly release domain owners off-render, after
+    /// callbacks stopped and the runtime handed back its planner and store.
+    /// Repeatable after success or partial cleanup. Does not advance/finish
+    /// unrendered time or resume execution. Imported resource identities remain
+    /// the caller's responsibility.
+    pub fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
         self.resolver.quiesce();
         self.node_pairs.cleanup(&mut resources.io())?;
         self.topologies
@@ -642,6 +647,18 @@ impl Planner for LoopPlanner {
     }
     fn decisions(&self) -> &[View] {
         &self.views
+    }
+    fn admit_graph(&self, candidate: &PreparedPlan) -> Result<(), Error> {
+        self.validate_graph(candidate)
+    }
+    fn admit_processor_change(&self, node: NodeId) -> Result<(), Error> {
+        if self.rows.iter().flatten().any(|row| {
+            row.binding.playback.slot() == node.slot() || row.binding.capture.slot() == node.slot()
+        }) {
+            Err(Error::Busy)
+        } else {
+            Ok(())
+        }
     }
     fn recovery_safe(operation: Operation) -> bool {
         matches!(

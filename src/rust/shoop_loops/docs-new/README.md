@@ -4,7 +4,7 @@ Draft opening of the replacement book. The existing documentation remains unchan
 
 ## Part I — Record and play audio
 
-- [1. The loop engine and the host](part-1-record-and-play-audio/01-the-loop-engine-and-the-host.md)
+- [1. The loop library and the host](part-1-record-and-play-audio/01-the-loop-library-and-the-host.md)
 - [2. Preparing an audio loop](part-1-record-and-play-audio/02-preparing-an-audio-loop.md)
 - [3. Recording, playing, and stopping](part-1-record-and-play-audio/03-recording-playing-and-stopping.md)
 

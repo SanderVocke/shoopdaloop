@@ -12,14 +12,12 @@ use rt_runtime::{
     Error, Frame, ResourceId, Revision, Sequence,
 };
 use shoop_loops::{
-    runtime::{
-        Controller, Failure, LoopPlanner, Node, NodePairSourceId, NodePairSourceStatus, Operation,
-        Reply,
-    },
+    runtime::{Failure, LoopPlanner, NodePairSourceId, NodePairSourceStatus, Operation, Reply},
     topology::staging::{StageId, Status as ProgramStatus},
     LoopId, Timing, Transition,
 };
-type Returned = Completion<Command<Node<Mix>, LoopPlanner>, Retired<Node<Mix>>>;
+use shoop_loops_test_support::{LoopControl, TestNode};
+type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct ResourceBank {
     generation: u32,
     resource: Option<ResourceId>,
@@ -286,7 +284,7 @@ impl Staging {
     }
     pub(crate) fn ingest(
         &mut self,
-        control: &mut Controller<Mix>,
+        control: &mut LoopControl<Mix>,
         bytes: &[u8],
         now: u64,
     ) -> Result<(), wire::Error> {

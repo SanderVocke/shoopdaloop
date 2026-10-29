@@ -90,7 +90,7 @@ An indexed version with `C` checkpoints and replay span `K` supports `C×K−1` 
 
 Group staging is the sum of `max_frames × channels × 4` per audio member and `12 × midi_events + midi_bytes` per MIDI member. Member regions/bounds cannot be borrowed. Take versions, initial index rows, promised final leases and interval worst-case data pages are additional. MIDI interval preflight uses the full producer bound even for a short/silent interval; commit/cancel returns unused conservative page promises. Required group work counts three media copies and separate checkpoint-state copies.
 
-Loop topology/role/media/program banks have additional facade-specific storage; none is secretly included in the generic runtime formulas.
+Loop topology/node-pair/media/program banks have additional planner-specific storage; none is secretly included in the generic runtime formulas.
 
 ## Error meanings
 

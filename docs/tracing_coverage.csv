@@ -41,13 +41,14 @@ src/rust/shoop_loops/src/program.rs,portable_loop_library,excluded,Control-side 
 src/rust/shoop_loops/src/resolver.rs,portable_loop_library,excluded,Independent fixed-storage resolver; guarded execution exposes frame-tagged semantic events and saturating diagnostic loss without application tracing.
 src/rust/shoop_loops/src/resolver_tests.rs,portable_loop_library,excluded,Private guarded resolver probe assertions run under traced test boundaries rather than application spans.
 src/rust/shoop_loops/src/resolver/program_change.rs,portable_loop_library,excluded,Owning program transactions expose reliable receipts and exact semantic activation events without host tracing.
-src/rust/shoop_loops/src/runtime/mod.rs,portable_loop_library,excluded,Portable prepared facade and typed control; bounded state and receipts expose outcomes without application tracing dependencies.
+src/rust/shoop_loops/src/runtime/mod.rs,portable_loop_library,excluded,Portable prepared planner parts and control-side client; bounded state and receipts expose outcomes without application tracing dependencies.
 src/rust/shoop_loops/src/runtime/planner.rs,portable_loop_library,excluded,Guarded coordinated boundary execution; semantic journals and optional prepared observers expose diagnostics without application tracing.
 src/rust/shoop_loops/src/runtime/processor.rs,portable_loop_library,excluded,Guarded playback and capture consumers; generic runtime work and explicit MIDI overflow observations remain accounted.
 src/rust/shoop_loops/src/runtime/topology.rs,portable_loop_library,excluded,Prepared topology ingestion and owning activation/recycling; typed receipts and coherent epochs expose outcomes without callback tracing.
 src/rust/shoop_loops/src/runtime/configuration.rs,portable_loop_library,excluded,Coordinated prepared node pair and graph and media publication; typed results expose preflight refusals and resulting epochs without callback tracing.
 src/rust/shoop_loops/src/runtime/node_pairs.rs,portable_loop_library,excluded,Fixed source receivers and node pair edit banks; bounded validation and owning cleanup use typed results without application tracing.
 src/rust/shoop_loops/src/runtime/node_pairs_tests.rs,portable_loop_library_tests,excluded,Guarded private identity exhaustion and source ownership tests.
+src/rust/shoop_loops_test_support/src/lib.rs,test_infrastructure,excluded,Dev-only assembly of loop parts into a runtime for tests and test hosts; not a production execution boundary.
 src/rust/shoop_loops/src/state.rs,portable_loop_library,excluded,Plain-data authoritative state; no execution boundary to instrument.
 src/rust/shoop_loops/src/topology.rs,portable_loop_library,excluded,Prepared timing metadata and borrowed views expose checked results without a host tracing dependency.
 src/rust/shoop_loops/src/topology/staging.rs,portable_loop_library,excluded,Guarded metadata ingestion and owning recycling expose scoped status and progress without application tracing.

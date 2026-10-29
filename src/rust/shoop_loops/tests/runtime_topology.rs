@@ -18,6 +18,7 @@ use shoop_loops::{
     topology::staging::{StageId, Status},
     *,
 };
+use shoop_loops_test_support::{LoopControl, LoopRuntime, TestNode};
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
 #[path = "support/configuration_scenarios.rs"]
@@ -223,8 +224,8 @@ fn upload(store: &mut ResourceStore, format: Format, bytes: &[u8]) -> media::Sou
     }
 }
 struct Harness {
-    control: Controller<Fx>,
-    engine: Engine<Fx>,
+    control: LoopControl<Fx>,
+    engine: LoopRuntime<Fx>,
     media: bool,
     output: [[f32; 32]; 2],
     midi: [MidiBuffer; 1],
@@ -234,8 +235,8 @@ struct Harness {
     returned: Vec<(Sequence, Box<[u8]>)>,
     graphs: Vec<
         rt_runtime::transport::Completion<
-            Command<Node<Fx>, LoopPlanner>,
-            rt_runtime::executor::Retired<Node<Fx>>,
+            Command<TestNode<Fx>, LoopPlanner>,
+            rt_runtime::executor::Retired<TestNode<Fx>>,
         >,
     >,
     imports: Vec<rt_runtime::ResourceId>,
@@ -395,7 +396,7 @@ impl Harness {
             graph.nodes.reverse();
             graph.connections.reverse();
         }
-        let (control, engine) = Engine::prepare_with_configuration_staging(
+        let (control, engine) = LoopRuntime::prepare_with_configuration_staging(
             config,
             compile(limits(journal), &description(false, reverse)).unwrap(),
             resources,

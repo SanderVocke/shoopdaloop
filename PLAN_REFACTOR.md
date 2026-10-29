@@ -144,10 +144,16 @@ These must not change without explicit user approval.
   reassignment and loop-coupled graph publication.
 - **Guards are enforced by the runtime, not by convention.** `rt_runtime` asks
   the planner to admit:
-  - every graph publication: generic `Commit` and permit-based activation;
-  - every `Install`/`Remove` of a decision consumer.
+  - every generic graph publication: `prepare_with_initial_graph` and generic
+    `Commit`;
+  - every generic `Install`/`Remove` of a processor.
 
   The default is to admit everything, so planner-free users are unaffected.
+  *Revised during Stage 3:* publication through a planner's own activation
+  permit is checked by that planner, which holds the permit (the runtime cannot
+  call back into a planner that is mid-operation). The loop planner already
+  validates its own permits. Install/Remove are admitted per node, so the loop
+  planner protects every loop node slot rather than only decision consumers.
 - **The loop crate never stores the `ResourceStore`.** Preparation and cleanup
   borrow it. Stopped extraction uses
   `GraphRuntime::into_planner_and_resources`.
@@ -200,13 +206,13 @@ counts. The boundary, tracing and test-usage scripts pass.
 
 ### Stage 2 — Independent processor operations (`rt_runtime`)
 
-- [ ] Give processor operations and results their own types, separate from
+- [x] Give processor operations and results their own types, separate from
       `Planner::Operation`/`Result`. Update scheduling (`Action::Processor`),
       executions and completions.
-- [ ] Make sure a scheduled processor operation that hasn't been delivered yet
+- [x] Make sure a scheduled processor operation that hasn't been delivered yet
       can be cancelled through the generic control path. Add this if it is
       missing.
-- [ ] Port the existing processors, tests and examples in `rt_runtime`. Update
+- [x] Port the existing processors, tests and examples in `rt_runtime`. Update
       the book's chapters 3, 13 and 14 and the reference pages that are
       affected.
 
@@ -217,35 +223,40 @@ operation type under `NoPlanner` and under a planner.
 
 ### Stage 3 — Planner graph-admission hook (`rt_runtime`)
 
-- [ ] Add a planner hook, allowing everything by default. It is consulted
+- [x] Add a planner hook, allowing everything by default. It is consulted
       before every graph publication and every install/remove of a decision
       consumer.
-- [ ] Add tests with a test planner covering refusal of each path, including
+- [x] Add tests with a test planner covering refusal of each path, including
       that a refusal leaves the epoch, the active plan and the slots unchanged.
-- [ ] Update the book's chapter 15 and the execution-rules reference.
+- [x] Update the book's chapter 15 and the execution-rules reference.
 
 **Verify:** the same gates as in Stage 2.
 
 ### Stage 4 — `shoop_loops` as parts
 
-- [ ] Make `LoopPlanner` preparable on its own. It borrows the
+- [x] Make `LoopPlanner` preparable on its own. It borrows the
       `ResourceStore` and returns the planner, `LoopNodes` (processors,
       decision bindings, prepared node-pair templates) and the prepared media
       catalogue.
-- [ ] Make `PlaybackNode`/`CaptureNode` public processors that application node
+- [x] Make `PlaybackNode`/`CaptureNode` public processors that application node
       enums can wrap.
-- [ ] Implement the Stage 3 hook with the loop's graph validation, extended to
+- [x] Implement the Stage 3 hook with the loop's graph validation, extended to
       `Install`/`Remove` of loop nodes.
-- [ ] Add `LoopClient`: command builders for every current operation, graph
+- [x] Add `LoopClient`: command builders for every current operation, graph
       compile/stage helpers that add the loop's bindings, and result decoding.
-- [ ] Make cleanup public, taking `&mut ResourceStore`.
-- [ ] Create `shoop_loops_test_support` with an assembly that matches the old
+- [x] Make cleanup public, taking `&mut ResourceStore`.
+- [x] Create `shoop_loops_test_support` with an assembly that matches the old
       `Engine::prepare*` variants. Point the loop tests and benchmarks at it.
-- [ ] Remove `Engine`, `Controller`, `Stopped` and `Node<P>`.
-- [ ] Port the teaching examples (`coordinated_loop` and the docs/docs-new
+- [x] Remove `Engine`, `Controller`, `Stopped` and `Node<P>`.
+- [x] *Added:* port `shoop_engine_service` (own runtime and node type) and
+      `tests/loops_host` (support crate) far enough that the tree builds;
+      Stages 5 and 6 complete them.
+- [x] Port the teaching examples (`coordinated_loop` and the docs/docs-new
       examples) to explicit assembly from the parts.
-- [ ] Add one A3 guard test per invariant.
-- [ ] Update the crate README and `docs/` guides (runtime, topology activation,
+- [x] Add one A3 guard test per invariant. The generic-path guards are new
+      (`tests/graph_guards.rs`, each failing with the hooks disabled); the other
+      invariants keep their existing tests, mapped in `VALIDATION.md`.
+- [x] Update the crate README and `docs/` guides (runtime, topology activation,
       program changes, …), and keep the docs-new draft compiling.
 
 **Verify:** all loop tests and examples in debug/release with the Stage 0
@@ -356,6 +367,17 @@ Loop benchmark: `benchmark_loop_engine.py --iterations 1024 --trials 3 --cpu 8`,
 median of per-trial p50 in ns: loop-idle 360, no-planner-idle 90, fx-capture 4779,
 seek-replace 4428, upload-export 4940, audio-4-257 13095, nested-regular 225296,
 midi-4-4 859236.
+
+## Notes for review
+
+Interpretations made during execution that the user should confirm. They do not
+change the acceptance criteria.
+
+- **A9 and the loop test host.** `tests/loops_host` is a separate, test-only
+  workspace whose library is the fixture itself (native replay, wire and
+  AudioWorklet builds). It can only use `shoop_loops_test_support` as a normal
+  dependency. A9's dev-dependency check is applied to the production workspace
+  crates; the fixture is treated as test code.
 
 ## Execution contract
 

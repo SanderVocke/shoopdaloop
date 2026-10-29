@@ -9,7 +9,7 @@ collections; compilation is not a callback operation.
 
 [Topology staging](topology-staging.md) now adds a canonical native/Wasm encoding,
 reusable maximum-capacity receiver storage, incremental validation and owning
-extraction/recycling. The facade's separate [publication paths](topology-activation.md) add identity,
+extraction/recycling. The planner's separate [publication paths](topology-activation.md) add identity,
 node pair/media compatibility and epoch checks. Timing Ready alone grants no graph or
 logical-owner authority.
 
@@ -107,7 +107,7 @@ An unrelated table relocation preserves an unchanged running program; a genuinel
 changed running program is still safely refused. Stopped replacement resets its
 cursor and nominal duration under the existing rules.
 
-The runtime facade does not expose unrestricted mutation through this standalone
+The loop planner does not expose unrestricted mutation through this standalone
 API. Fixed-graph timing/program changes, fixed node-pair live routes, stopped-owner
 configuration and paired running-program/graph changes have distinct preconditions
 and owning returns. The latter still preserves logical IDs and physical node pairs;

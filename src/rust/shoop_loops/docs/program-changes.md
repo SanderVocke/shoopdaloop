@@ -2,7 +2,7 @@
 
 `Resolver::stage_program(expected_epoch, target, sequence, at, candidate)` retains
 a prepared topology until a program change can be selected and committed. It
-returns a normal `RequestId`; admission is not activation. The coordinated facade
+returns a normal `RequestId`; admission is not activation. The loop planner
 exposes it through staged-bank ProgramActivate (fixed graph), or ProgramGraphActivate
 (coordinated prepared routes); see [publication paths](topology-activation.md).
 Immediate TopologyActivate still requires changed programs already stopped.
@@ -60,7 +60,7 @@ interval. Already-published state, epoch and results remain unchanged; no time i
 advanced and no unrendered interval is declared finished. This is not pause/resume,
 rollback, musical Stop or resource cleanup. `is_quiescent()` reports the terminal
 lifecycle state. The caller must separately recover resources and destroy owners
-off-render; the facade's stopped cleanup coordinates that work.
+off-render; the planner's stopped cleanup coordinates that work.
 
 `Transition::Program` is the receipt/journal tag for this transaction, not a raw
 musical command. Direct `submit` of that tag is rejected without a candidate.
@@ -123,7 +123,7 @@ external-producer retry or arbitrary musical-work limit. These costs are not a
 constant-time operation or a callback deadline guarantee.
 
 This standalone API does not update a runtime signal graph, physical node pair bindings,
-resource claims or logical generations. The facade connects staged receiver owners, reliable execution tokens, current
+resource claims or logical generations. The planner connects staged receiver owners, reliable execution tokens, current
 epoch checks, capture-family preflight and stopped cleanup to it. ProgramGraphActivate
 holds only a reference to an unlocked Ready graph while waiting, then rechecks it
 and borrows publication authority at the real cut. Logical IDs/kinds, sync/triggers,
@@ -159,11 +159,11 @@ expected a caller-supplied length of42; compilation derives the empty program's
 nominal length as0. That failed log is retained, and nonempty length publication
 is checked separately. No workload or guard was reduced.
 
-The subsequent facade milestone adds a tenth standalone case covering quiescence
+The subsequent planner-integration milestone adds a tenth standalone case covering quiescence
 before preview, during speculation, during an applied or still-pending committed
 interval, and after finish. It checks unchanged state/time, permanent execution
 refusal and correct candidate/displaced owner return. An additional E0502 proof
-rejects quiescence across a retained decision borrow. These and the five new facade
+rejects quiescence across a retained decision borrow. These and the five new planner-integration
 cases are covered by [facade-program-stage6.json](../../../../docs/loop_layer/evidence/facade-program-stage6.json);
 that milestone claimed no new Miri invocation. Consolidated evidence is recorded
 separately; the public example runs above are native debug/release evidence only.

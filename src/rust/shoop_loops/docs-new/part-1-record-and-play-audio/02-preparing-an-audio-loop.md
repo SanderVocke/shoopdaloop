@@ -2,7 +2,7 @@
 
 <!-- rust-source: ../examples/first_loop.rs -->
 
-[Contents](../README.md) · [Previous: The loop engine and the host](01-the-loop-engine-and-the-host.md) · [Next: Recording, playing, and stopping](03-recording-playing-and-stopping.md)
+[Contents](../README.md) · [Previous: The loop library and the host](01-the-loop-library-and-the-host.md) · [Next: Recording, playing, and stopping](03-recording-playing-and-stopping.md)
 
 Our loop has two stereo routes:
 
@@ -11,7 +11,7 @@ host input 0 ──► capture input 0       playback output 0 ──► host ou
 host input 1 ──► capture input 1       playback output 1 ──► host output 1
 ```
 
-Capture and playback belong to the same loop, but there is no signal connection between them. The engine makes the recorded content available when recording ends.
+Capture and playback belong to the same loop, but there is no signal connection between them. The planner makes the recorded content available when recording ends.
 
 The complete [first loop example](../examples/first_loop.rs) includes preparation, processing, result checks, and cleanup. Run it from the repository root:
 
@@ -19,7 +19,7 @@ The complete [first loop example](../examples/first_loop.rs) includes preparatio
 cargo run --locked --manifest-path src/rust/shoop_loops/docs-new/examples/Cargo.toml --bin first_loop
 ```
 
-This chapter prepares the engine. The next chapter submits Record, Play, and Stop and checks the output.
+This chapter prepares the loop and its runtime. The next chapter submits Record, Play, and Stop and checks the output.
 
 ## 1. Reserve runtime storage
 
@@ -53,7 +53,7 @@ The data pool has sixteen 64-byte pages. Resource identities, versions, and snap
 Prepare capture storage alongside the data pool:
 
 ```rust
-    let resources = ResourceStore::with_capture_groups(
+    let mut resources = ResourceStore::with_capture_groups(
         config,
         None,
         CaptureGroupConfig {
@@ -65,7 +65,7 @@ Prepare capture storage alongside the data pool:
     .unwrap();
 ```
 
-The engine uses two capture banks per media-bearing loop so a new take can be prepared before an old one ends. Each group here has one member: a stereo audio resource, not one resource per channel. Its staging area holds `8 frames × 2 channels × 4 bytes = 64 bytes`. The `None` disables MIDI indexing, which this audio-only loop does not need.
+The planner uses two capture banks per media-bearing loop so a new take can be prepared before an old one ends. Each group here has one member: a stereo audio resource, not one resource per channel. Its staging area holds `8 frames × 2 channels × 4 bytes = 64 bytes`. The `None` disables MIDI indexing, which this audio-only loop does not need.
 
 All construction in this chapter happens outside rendering.
 
@@ -121,7 +121,7 @@ Give the two signal nodes distinct runtime node identities and bind them to the 
 
 `NodeId` addresses a physical signal node; `LoopId` addresses the musical loop. They are different types even when their slot numbers happen to match.
 
-Playback has two outputs and capture has two inputs. The engine constructs both processors and connects them to its timing decisions. We need no custom DSP. Unity gain and no boundary smoothing keep the expected samples exact; abrupt starts and wraps may click with real audio. The three MIDI capacity fields are unused because `midi` is false.
+Playback has two outputs and capture has two inputs. The library constructs both processors and connects them to its timing decisions. We need no custom DSP. Unity gain and no boundary smoothing keep the expected samples exact; abrupt starts and wraps may click with real audio. The three MIDI capacity fields are unused because `midi` is false.
 
 ## 4. Connect the signal graph
 
@@ -150,15 +150,19 @@ A host source is an input to the graph; a host destination is an output. Node so
 
 Input goes only to capture. Output comes only from playback, so stopping the loop will silence both host outputs even if host input remains nonzero.
 
-## 5. Create the controller and engine
+## 5. Prepare the loop parts
 
-Transfer the prepared pieces into `Engine::prepare`:
+`LoopPlanner::prepare` validates the loop definitions and creates its capture resources in our store:
 
 ```rust
-    let (mut control, mut engine) = Engine::prepare(
+    let Prepared {
+        planner,
+        nodes,
+        client,
+    } = LoopPlanner::prepare(
         config,
         topology,
-        resources,
+        &mut resources,
         Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 3,
@@ -167,17 +171,35 @@ Transfer the prepared pieces into `Engine::prepare`:
         },
         vec![binding],
         vec![],
-        Vec::<(NodeId, Box<dyn Processor<LoopPlanner>>)>::new(),
-        graph,
+        Options::default(),
     )
     .unwrap();
-    assert_eq!(engine.next_frame(), Frame(0));
 ```
 
-The planner identity names the engine's timing authority inside the runtime. Three normal request slots cover our three transitions; the topology's fourth pending slot is reserved for recovery. Media slots hold content metadata separately from sample pages. We reserve no external exports in this example.
+The planner identity names the loop's timing authority inside the runtime. Three normal request slots cover our three transitions; the topology's fourth pending slot is reserved for recovery. Media slots hold content metadata separately from sample pages. We reserve no external exports in this example. The empty list supplies no imported media, and the default options enable no staged changes.
 
-The two empty lists supply no imported media and no effect processors. The effect list's explicit type selects boxed processor dispatch for the generic `Engine` type; the engine creates no effect boxes here.
+## 6. Install the parts in a runtime
 
-Preparation validates and installs the graph without a warm-up callback. The loop is stopped at frame zero, and all required playback/capture processors and storage are owned by the engine. Next, we will ask it to record.
+The runtime owns the processors. Its node type here is the loop's own `LoopNode`, because we have no processors of our own; an application with other processors wraps both in its own enum. The initial graph needs the loop's decision bindings for the nodes it contains:
+
+```rust
+    let nodes = nodes
+        .into_iter()
+        .map(|(id, node)| PreparedNode::new(id, node))
+        .collect();
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        nodes,
+        planner,
+        resources,
+        &graph,
+        &client.bindings_for(&graph),
+    )
+    .unwrap();
+    control.prepare_submissions().unwrap();
+    assert_eq!(runtime.next_frame(), Frame(0));
+```
+
+Preparation validates and installs the graph without a warm-up callback. The planner refuses a graph that lacks the loop's nodes or bindings. The loop is stopped at frame zero, and the runtime owns the planner, the processors and the storage. Preparing submissions reserves the control endpoint's cancellation flags so that later submissions do not allocate them. Next, we will ask the loop to record.
 
 [Next: Recording, playing, and stopping](03-recording-playing-and-stopping.md)

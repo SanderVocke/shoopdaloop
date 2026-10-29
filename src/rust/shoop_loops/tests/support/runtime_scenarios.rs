@@ -4,6 +4,7 @@ use rt_runtime::{
     resource::{self, Format},
 };
 use shoop_loops::media;
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
 fn upload(
     store: &mut ResourceStore,
@@ -87,8 +88,8 @@ pub(super) fn make_imports(store: &mut ResourceStore, one_sample: bool) -> Vec<m
     result
 }
 fn initial(
-    control: &mut Controller<Fx>,
-    engine: &mut Engine<Fx>,
+    control: &mut LoopControl<Fx>,
+    engine: &mut LoopRuntime<Fx>,
     host: &mut Host,
     export: media::ExportId,
 ) -> MidiState {
@@ -127,8 +128,8 @@ fn initial(
     MidiState::from_channels(channels, reset.unwrap())
 }
 fn finish(
-    control: Controller<Fx>,
-    engine: Engine<Fx>,
+    control: LoopControl<Fx>,
+    engine: LoopRuntime<Fx>,
     imports: &[rt_runtime::ResourceId],
     pages: usize,
 ) {
@@ -1101,7 +1102,7 @@ fn dense_one_sample_media_keeps_all_128_boundaries_with_unread_external_results(
 
 fn lightweight(
     change: impl FnOnce(&mut Vec<Binding>, &mut Settings, &mut Vec<media::Input>, &mut GraphDescription),
-) -> Result<(Controller<Fx>, Engine<Fx>), Failure> {
+) -> Result<(LoopControl<Fx>, LoopRuntime<Fx>), Failure> {
     let mut cfg = config().limits();
     cfg.audio_inputs = 0;
     cfg.audio_outputs = 0;
@@ -1151,7 +1152,7 @@ fn lightweight(
         connections: Vec::new(),
     };
     change(&mut bindings, &mut settings, &mut imports, &mut graph);
-    Engine::prepare(
+    LoopRuntime::prepare(
         cfg,
         topology,
         ResourceStore::new(cfg).unwrap(),

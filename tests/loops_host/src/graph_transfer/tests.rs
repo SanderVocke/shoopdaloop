@@ -523,8 +523,8 @@ fn generation_and_sequence_exhaustion_never_wrap_and_recycled_capacities_are_tru
 }
 
 struct Host {
-    control: shoop_loops::runtime::Controller<scenario::Mix>,
-    engine: shoop_loops::runtime::Engine<scenario::Mix>,
+    control: shoop_loops_test_support::LoopControl<scenario::Mix>,
+    engine: shoop_loops_test_support::LoopRuntime<scenario::Mix>,
     input: [MidiBuffer; 1],
     output: [MidiBuffer; 1],
     samples: Vec<[f32; 2]>,

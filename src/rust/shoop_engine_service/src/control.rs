@@ -3,13 +3,14 @@ use crate::{
     Request, RequestId, Work, BULK_SLOTS, DOMAIN_SLOTS, INTERNAL_SLOT, NORMAL_SLOTS, USER_SLOTS,
 };
 use rt_runtime::{
-    resource::Cursor,
+    executor::{self, Command},
+    resource::{self, Cursor},
     transport::{self, Lane, Outcome, SubmitError},
     Epoch, Error, Frame, Sequence,
 };
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 use shoop_loops::{
-    runtime::{Controller, Operation},
+    runtime::{LoopClient, LoopPlanner, Operation},
     LoopId, Timing, Transition,
 };
 use std::sync::{
@@ -279,7 +280,8 @@ struct Pending {
 }
 
 pub(crate) struct Ingress {
-    control: Controller<dsp::Dsp>,
+    control: executor::Control<crate::ServiceNode, LoopPlanner>,
+    loops: LoopClient,
     normal: Consumer<Packet>,
     recovery: Consumer<Packet>,
     returns: Producer<Returned>,
@@ -297,7 +299,8 @@ pub(crate) struct Ingress {
 }
 
 pub(crate) fn channel(
-    control: Controller<dsp::Dsp>,
+    control: executor::Control<crate::ServiceNode, LoopPlanner>,
+    loops: LoopClient,
     target: LoopId,
     dsp: dsp::Client,
     meters: dsp::Meters,
@@ -330,6 +333,7 @@ pub(crate) fn channel(
         },
         Ingress {
             control,
+            loops,
             normal: normal_rx,
             recovery: recovery_rx,
             returns: returns_tx,
@@ -427,8 +431,11 @@ impl Ingress {
             Request::Loop { .. } | Request::Cancel { .. } | Request::Stop
         );
         let result = match request {
-            Request::Loop { at, operation } => self.control.submit(lane, at, operation),
-            Request::Read { cursor, bytes } => self.control.read(cursor, bytes),
+            Request::Loop { at, operation } => self.submit_loop(lane, at, operation),
+            Request::Read { cursor, bytes } => self.control.submit_prepared(
+                Lane::Normal,
+                Command::resource(resource::Request::Read { cursor, bytes }),
+            ),
             Request::StageRoute {
                 route,
                 expected_epoch,
@@ -450,10 +457,15 @@ impl Ingress {
                         Outcome::Rejected(Error::InvalidId),
                     );
                 }
-                self.control.stage_graph(0, expected_epoch, route.plan)
+                self.control.submit_prepared(
+                    Lane::Normal,
+                    Command::stage_graph(0, expected_epoch, route.plan),
+                )
             }
-            Request::ReleaseRoute { id } => self.control.release_graph(id),
-            Request::Stop => self.control.submit(
+            Request::ReleaseRoute { id } => self
+                .control
+                .submit_prepared(Lane::Normal, Command::ReleaseGraph { id }),
+            Request::Stop => self.submit_loop(
                 Lane::Recovery,
                 frame,
                 Operation::Transition {
@@ -483,8 +495,7 @@ impl Ingress {
                         Outcome::Applied,
                     );
                 };
-                self.control
-                    .submit(Lane::Recovery, frame, Operation::Cancel { sequence })
+                self.submit_loop(Lane::Recovery, frame, Operation::Cancel { sequence })
             }
         };
         match result {
@@ -523,11 +534,20 @@ impl Ingress {
             }),
         }
     }
+    fn submit_loop(
+        &mut self,
+        lane: Lane,
+        at: Frame,
+        operation: Operation,
+    ) -> Result<transport::Ticket, SubmitError<crate::EngineCommand>> {
+        self.control
+            .submit_prepared(lane, self.loops.command(at, operation))
+    }
     fn disconnect_stop(&mut self, frame: Frame) -> Result<(), Error> {
         if self.pending[INTERNAL_SLOT].is_some() || self.stop_applied || self.stop_failed {
             return Ok(());
         }
-        match self.control.submit(
+        match self.submit_loop(
             Lane::Recovery,
             frame,
             Operation::Transition {

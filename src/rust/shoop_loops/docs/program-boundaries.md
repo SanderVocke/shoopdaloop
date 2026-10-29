@@ -67,7 +67,7 @@ milestone deferred interpreter execution; consolidated Stage 6 evidence is recor
 separately in repository [Miri evidence](../../../../VALIDATION.md#miri-evidence), not
 rerun for these prose corrections.
 
-The standalone [owning program transaction](program-changes.md) and facade
+The standalone [owning program transaction](program-changes.md) and the planner's
 ProgramActivate/ProgramGraphActivate use actual zero/stopped cuts for running
 changes. Immediate replace_topology/TopologyActivate still require changed programs
 already stopped. See [publication paths](topology-activation.md) and the runnable

@@ -1,7 +1,7 @@
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
+    executor::{GraphRuntime, PreparedNode},
     graph::{Connection, Endpoint, GraphDescription, PortType},
-    processor::Processor,
     resource::{CaptureGroupConfig, ResourceStore},
     transport::{Lane, Outcome as Admission},
     Config, Frame, NodeId, PlannerId,
@@ -9,7 +9,7 @@ use rt_runtime::{
 use shoop_loops::{
     audio::Smoothing,
     compile,
-    runtime::{Binding, Engine, LoopPlanner, Operation, Reply, Settings},
+    runtime::{Binding, LoopPlanner, Operation, Options, Prepared, Reply, Settings},
     Limits, LoopId, LoopKind, LoopSpec, Outcome, Timing, TopologyDescription, Transition,
 };
 
@@ -32,7 +32,7 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let resources = ResourceStore::with_capture_groups(
+    let mut resources = ResourceStore::with_capture_groups(
         config,
         None,
         CaptureGroupConfig {
@@ -93,10 +93,14 @@ fn main() {
         ]);
     }
 
-    let (mut control, mut engine) = Engine::prepare(
+    let Prepared {
+        planner,
+        nodes,
+        client,
+    } = LoopPlanner::prepare(
         config,
         topology,
-        resources,
+        &mut resources,
         Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 3,
@@ -105,11 +109,24 @@ fn main() {
         },
         vec![binding],
         vec![],
-        Vec::<(NodeId, Box<dyn Processor<LoopPlanner>>)>::new(),
-        graph,
+        Options::default(),
     )
     .unwrap();
-    assert_eq!(engine.next_frame(), Frame(0));
+    let nodes = nodes
+        .into_iter()
+        .map(|(id, node)| PreparedNode::new(id, node))
+        .collect();
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        nodes,
+        planner,
+        resources,
+        &graph,
+        &client.bindings_for(&graph),
+    )
+    .unwrap();
+    control.prepare_submissions().unwrap();
+    assert_eq!(runtime.next_frame(), Frame(0));
 
     let mut sequences = Vec::new();
     for (at, transition) in [
@@ -128,16 +145,16 @@ fn main() {
         ),
         (7, Transition::Stop),
     ] {
+        let command = client.command(
+            Frame(at),
+            Operation::Transition {
+                target,
+                timing: Timing::At,
+                transition,
+            },
+        );
         let ticket = control
-            .submit(
-                Lane::Normal,
-                Frame(at),
-                Operation::Transition {
-                    target,
-                    timing: Timing::At,
-                    transition,
-                },
-            )
+            .submit_prepared(Lane::Normal, command)
             .unwrap_or_else(|refusal| panic!("submission: {:?}", refusal.error));
         sequences.push((ticket.sequence(), Frame(at)));
     }
@@ -146,10 +163,10 @@ fn main() {
     let right_in = [10.0, 20.0, 30.0, 90.0, 90.0, 90.0, 90.0, 90.0];
     let mut left_out = [0.0; 8];
     let mut right_out = [0.0; 8];
-    engine
+    runtime
         .process(
             AudioBlock {
-                frame: engine.next_frame(),
+                frame: runtime.next_frame(),
                 frames: 8,
                 inputs: &[&left_in, &right_in],
                 outputs: &mut [&mut left_out, &mut right_out],
@@ -162,7 +179,7 @@ fn main() {
         .unwrap();
     assert_eq!(left_out, [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 1.0, 0.0]);
     assert_eq!(right_out, [0.0, 0.0, 0.0, 10.0, 20.0, 30.0, 10.0, 0.0]);
-    assert_eq!(engine.next_frame(), Frame(8));
+    assert_eq!(runtime.next_frame(), Frame(8));
 
     for &(sequence, _) in &sequences {
         let completion = control.try_completion().unwrap();
@@ -183,16 +200,16 @@ fn main() {
     assert!(control.try_execution().is_none());
 
     drop(control);
-    let mut stopped = engine.into_stopped();
-    stopped.cleanup().unwrap();
-    stopped.resources().begin_callback();
-    stopped.resources().reclaim();
-    let usage = stopped.resource_usage();
+    let (mut planner, mut resources) = runtime.into_planner_and_resources();
+    planner.cleanup(&mut resources).unwrap();
+    resources.begin_callback();
+    resources.reclaim();
+    let usage = resources.usage();
     assert_eq!(usage.free_pages, 16);
     assert_eq!(usage.free_versions, 8);
     assert_eq!(usage.free_snapshots, 8);
     assert_eq!(usage.reserved_pages, 0);
-    assert_eq!(stopped.media_usage().references, 0);
+    assert_eq!(planner.media_usage().references, 0);
 
     println!("Recorded three stereo frames; immediate playback, wrap, stop and cleanup verified.");
 }

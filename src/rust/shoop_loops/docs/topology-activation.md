@@ -2,7 +2,7 @@
 
 <!-- rust-source: ../examples/configuration_cut.rs -->
 
-Choose the transaction that matches the change. Timing topology, signal routing, logical owner generations and physical processor templates are different things. The facade can coordinate prepared changes; it cannot construct arbitrary processors or resize their ports in a callback.
+Choose the transaction that matches the change. Timing topology, signal routing, logical owner generations and physical processor templates are different things. The planner can coordinate prepared changes; it cannot construct arbitrary processors or resize their ports in a callback.
 
 ## Run a stopped-owner configuration cut
 
@@ -32,11 +32,11 @@ All require empty payloads and normal-lane admission. Topology header/chunk oper
 
 ## 1. Prepare independent banks and physical templates
 
-`Engine::prepare_with_staging` adds timing receiver banks through `TopologySettings { candidates, records_per_callback, validation_steps_per_callback }`, followed by an optional observer. All zero disables them; enabled settings are positive. Existing constructors leave them disabled.
+`Options::staging` adds timing receiver banks to `LoopPlanner::prepare` through `TopologySettings { candidates, records_per_callback, validation_steps_per_callback }`. All zero disables them; enabled settings are positive. `Options::default()` leaves them disabled.
 
-For logical owner edits, use `prepare_with_configuration_staging`, passing the same ordinary arguments, TopologySettings, NodePairSettings and optional observer. NodePairSettings reserves candidate banks/source slots. All zero disables it; source count/packet allowance must both be zero or both positive, and sources require candidate banks. Timing-only edits can use zero sources.
+For logical owner edits, also set `Options::node_pairs`. NodePairSettings reserves candidate banks/source slots. All zero disables it; source count/packet allowance must both be zero or both positive, and sources require candidate banks. Timing-only edits can use zero sources.
 
-Supply physical Binding templates off-render. Each active primitive needs its own playback/capture pair. Additional unassigned node pair templates may occupy unused logical slots but stay outside the initial graph. IDs, signatures, channel/MIDI shapes, smoothing and group storage remain prepared/fixed. Effects are also prepared and included in the initial graph, even if initially unrouted. Changing a logical LoopId generation does not replace physical NodeId generations.
+Supply physical Binding templates off-render. Each active primitive needs its own playback/capture pair. Additional unassigned node pair templates may occupy unused logical slots but stay outside the initial graph. IDs, signatures, channel/MIDI shapes, smoothing and group storage remain prepared/fixed. The application's other processors are also prepared and installed in the runtime, even if initially unrouted. Changing a logical LoopId generation does not replace physical NodeId generations.
 
 Enable graph-owner slots separately with `engine.prepare_graph_staging(count)`, once before the first nonempty callback. Timing staging does not implicitly enable them. Preparation checks retained metadata/scratch/storage products; allocator overhead, compiler temporaries, payloads and other owners are separate costs, not an exact RSS or deadline bound.
 
@@ -129,7 +129,7 @@ At the selected cut, recheck graph scope/generation/readiness/epoch and borrow i
 
 After successful media/resolver settlement, consume the graph permit before replies/queries/rendering. Sample/event F uses both new configurations. Callback-end F waits for the next nonempty callback; zero calls publish nothing. A pending pair invalidated by independent graph release/reuse/activation fails with program InvalidState; it does not retarget a reused slot or undo that independent publication.
 
-Read ProgramChanged/ProgramGraphChanged as terminal domain results, including their completion and actual working epochs on refusal/cancellation. Requested/effective/delivered/terminal frames differ. The standalone [program transaction](program-changes.md) has no graph authority; raw Transition::Program is not the facade integration API.
+Read ProgramChanged/ProgramGraphChanged as terminal domain results, including their completion and actual working epochs on refusal/cancellation. Requested/effective/delivered/terminal frames differ. The standalone [program transaction](program-changes.md) has no graph authority; raw Transition::Program is not the planner integration API.
 
 ## Recycle each owner independently
 
@@ -141,6 +141,6 @@ Normal sequence Cancel cancels pending work without silently releasing the graph
 
 ## Fault and evidence boundaries
 
-A fault after publication preserves actual epochs/state/time. Do not replay the callback or invent finish/Stop. Consume the engine after callbacks stop; permanent/idempotent Stopped cleanup recovers source/edit/timing/media/capture owners, while generic graph owners are destroyed off-render. Imported resource identities remain caller-owned.
+A fault after publication preserves actual epochs/state/time. Do not replay the callback or invent finish/Stop. Extract the planner and store after callbacks stop; permanent/idempotent `LoopPlanner::cleanup` recovers source/edit/timing/media/capture owners, while generic graph owners are destroyed off-render. Imported resource identities remain caller-owned.
 
 Regression scenarios in [`tests/runtime_topology.rs`](../tests/runtime_topology.rs) and its support modules cover MIDI, program/capture families, cancellation, stale/reused owners, saturated results and post-publication faults beyond this small example. Historical implementation reports and consolidated interpreter evidence live under repository `docs/loop_layer/`; they retain their original source/platform scope. Native example runs are not new Wasm/AudioWorklet, benchmark or deadline evidence. No independent loop host/benchmark is supplied in this snapshot.

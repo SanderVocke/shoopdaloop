@@ -2,19 +2,53 @@
 //! No device, application backend or warm-up callback is involved.
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
-    executor::Command,
+    executor::{Command, Control, GraphRuntime, PreparedNode},
     graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType},
+    planner::ConsumerAccess,
     processor::{ProcessBlock, Processor},
-    resource::{CaptureGroupConfig, MidiIndexConfig, ResourceStore},
+    resource::{CaptureGroupConfig, MidiIndexConfig, Request, ResourceStore},
     transport::Lane,
     Budgets, Config, Error, Frame, NodeId, PlannerId,
 };
 use shoop_loops::{
     audio::Smoothing,
     compile,
-    runtime::{Binding, Controller, Engine, LoopPlanner, Operation, Reply, Selection, Settings},
+    runtime::{
+        Binding, LoopClient, LoopNode, LoopPlanner, Operation, Options, Prepared, Reply, Selection,
+        Settings,
+    },
     Limits, LoopId, LoopKind, LoopSpec, Mode, Timing, TopologyDescription, Transition,
 };
+/// The application's node type: loop nodes next to its own processors.
+enum Node {
+    Loop(LoopNode),
+    Mix(Mix),
+}
+impl Processor<LoopPlanner> for Node {
+    fn ports(&self) -> PortCounts {
+        match self {
+            Self::Loop(node) => node.ports(),
+            Self::Mix(node) => node.ports(),
+        }
+    }
+    fn planning(&self) -> ConsumerAccess {
+        match self {
+            Self::Loop(node) => node.planning(),
+            Self::Mix(node) => node.planning(),
+        }
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        match self {
+            Self::Loop(node) => node.process(block),
+            Self::Mix(node) => node.process(block),
+        }
+    }
+}
+/// The application's control side: its runtime endpoint and the loop vocabulary.
+struct Controls {
+    runtime: Control<Node, LoopPlanner>,
+    loops: LoopClient,
+}
 struct Mix;
 impl Processor<LoopPlanner> for Mix {
     fn ports(&self) -> PortCounts {
@@ -52,19 +86,24 @@ impl Processor<LoopPlanner> for Mix {
         Ok(())
     }
 }
-fn send(control: &mut Controller<Mix>, at: u64, operation: Operation) {
+fn send(control: &mut Controls, at: u64, operation: Operation) {
     control
-        .submit(Lane::Normal, Frame(at), operation)
+        .runtime
+        .submit_prepared(Lane::Normal, control.loops.command(Frame(at), operation))
         .unwrap_or_else(|e| panic!("submission: {:?}", e.error));
 }
-fn silence(engine: &mut Engine<Mix>, input: &[MidiBuffer; 1], midi: &mut [MidiBuffer; 1]) {
+fn silence(
+    runtime: &mut GraphRuntime<Node, LoopPlanner>,
+    input: &[MidiBuffer; 1],
+    midi: &mut [MidiBuffer; 1],
+) {
     midi[0].clear();
     let mut left = [0.];
     let mut right = [0.];
-    engine
+    runtime
         .process(
             AudioBlock {
-                frame: engine.next_frame(),
+                frame: runtime.next_frame(),
                 frames: 1,
                 inputs: &[&[0.], &[0.]],
                 outputs: &mut [&mut left, &mut right],
@@ -107,7 +146,7 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let resources = ResourceStore::with_capture_groups(
+    let mut resources = ResourceStore::with_capture_groups(
         config,
         Some(MidiIndexConfig {
             versions: 4,
@@ -184,10 +223,16 @@ fn main() {
             destination: Endpoint::host(PortType::Midi, 0),
         },
     ]);
-    let (mut control, mut engine) = Engine::prepare(
+    // The loop library prepares its planner, nodes and capture resources; the
+    // application owns the store, the node type and the runtime.
+    let Prepared {
+        planner,
+        nodes,
+        client,
+    } = LoopPlanner::prepare(
         config,
         topology,
-        resources,
+        &mut resources,
         Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 4,
@@ -207,10 +252,28 @@ fn main() {
             packet_bytes: 512,
         }],
         vec![],
-        vec![(effect, Mix)],
-        graph,
+        Options::default(),
     )
     .unwrap();
+    let nodes = nodes
+        .into_iter()
+        .map(|(id, node)| PreparedNode::new(id, Node::Loop(node)))
+        .chain([PreparedNode::new(effect, Node::Mix(Mix))])
+        .collect();
+    let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        nodes,
+        planner,
+        resources,
+        &graph,
+        &client.bindings_for(&graph),
+    )
+    .unwrap();
+    let mut control = Controls {
+        runtime: runtime_control,
+        loops: client,
+    };
+    control.runtime.prepare_submissions().unwrap();
     // The held note at frame zero is observed while stopped, not prerecord audio.
     send(
         &mut control,
@@ -258,7 +321,7 @@ fn main() {
     let mut output = [MidiBuffer::new(256, 1024).unwrap()];
     let mut left = [0.; 8];
     let mut right = [0.; 8];
-    engine
+    runtime
         .process(
             AudioBlock {
                 frame: Frame(0),
@@ -277,9 +340,9 @@ fn main() {
         .unwrap();
     assert_eq!(left, [1., 2., 3., 4., 1., 1.5, 2., 1.]);
     assert_eq!(right, left.map(|sample| sample * 10.));
-    while control.try_completion().is_some() {}
+    while control.runtime.try_completion().is_some() {}
     let mut export = None;
-    while let Some(execution) = control.try_execution() {
+    while let Some(execution) = control.runtime.try_execution() {
         assert_eq!(execution.result, Ok(()));
         if let Some(Reply::Export { id, cut, media }) = execution.operation_result {
             assert_eq!(cut.frame, Frame(4));
@@ -291,10 +354,10 @@ fn main() {
     let (export, original) = export.unwrap();
     input[0].clear();
     // Callback-end stop belongs to the next nonempty callback.
-    silence(&mut engine, &input, &mut output);
+    silence(&mut runtime, &input, &mut output);
     assert_eq!(output[0].len(), 1);
     assert_eq!(output[0].get(0).unwrap(), (0, &[0x80, 60, 0][..]));
-    while control.try_execution().is_some() {}
+    while control.runtime.try_execution().is_some() {}
     // Record a distinct silent revision, play/seek it, then replace it with the
     // original immutable media kept alive by the export.
     for (at, transition) in [
@@ -341,10 +404,10 @@ fn main() {
         },
     );
     for expected in [[0.; 8], [0., 1., 1.5, 2., 1., 1.5, 2., 0.]] {
-        engine
+        runtime
             .process(
                 AudioBlock {
-                    frame: engine.next_frame(),
+                    frame: runtime.next_frame(),
                     frames: 8,
                     inputs: &[&[0.; 8], &[0.; 8]],
                     outputs: &mut [&mut left, &mut right],
@@ -358,9 +421,9 @@ fn main() {
         assert_eq!(left, expected);
         assert_eq!(right, expected.map(|sample| sample * 10.));
     }
-    while control.try_completion().is_some() {}
+    while control.runtime.try_completion().is_some() {}
     let mut transitions = 0;
-    while let Some(execution) = control.try_execution() {
+    while let Some(execution) = control.runtime.try_execution() {
         let Some(Reply::Transition(completion)) = execution.operation_result else {
             panic!("transition outcome")
         };
@@ -373,12 +436,13 @@ fn main() {
     assert_eq!(transitions, 5);
     send(
         &mut control,
-        engine.next_frame().0,
+        runtime.next_frame().0,
         Operation::MidiInitial { export, channel: 0 },
     );
-    silence(&mut engine, &input, &mut output);
-    while control.try_completion().is_some() {}
-    let Some(Reply::MidiInitial { state, .. }) = control.try_execution().unwrap().operation_result
+    silence(&mut runtime, &input, &mut output);
+    while control.runtime.try_completion().is_some() {}
+    let Some(Reply::MidiInitial { state, .. }) =
+        control.runtime.try_execution().unwrap().operation_result
     else {
         panic!("initial state")
     };
@@ -387,19 +451,27 @@ fn main() {
     for midi in [false, true] {
         send(
             &mut control,
-            engine.next_frame().0,
+            runtime.next_frame().0,
             Operation::Cursor { export, midi },
         );
-        silence(&mut engine, &input, &mut output);
-        while control.try_completion().is_some() {}
-        let Some(Reply::Cursor(cursor)) = control.try_execution().unwrap().operation_result else {
+        silence(&mut runtime, &input, &mut output);
+        while control.runtime.try_completion().is_some() {}
+        let Some(Reply::Cursor(cursor)) = control.runtime.try_execution().unwrap().operation_result
+        else {
             panic!("cursor")
         };
         control
-            .read(cursor, vec![0; 64].into_boxed_slice())
+            .runtime
+            .submit_prepared(
+                Lane::Normal,
+                Command::resource(Request::Read {
+                    cursor,
+                    bytes: vec![0; 64].into_boxed_slice(),
+                }),
+            )
             .unwrap_or_else(|e| panic!("read: {:?}", e.error));
-        silence(&mut engine, &input, &mut output);
-        let Command::Resource(command) = control.try_completion().unwrap().request else {
+        silence(&mut runtime, &input, &mut output);
+        let Command::Resource(command) = control.runtime.try_completion().unwrap().request else {
             panic!("resource return")
         };
         let Some(rt_runtime::resource::Reply::Read { written, eof: true }) = command.reply() else {
@@ -425,25 +497,26 @@ fn main() {
     }
     send(
         &mut control,
-        engine.next_frame().0,
+        runtime.next_frame().0,
         Operation::Release { export },
     );
-    silence(&mut engine, &input, &mut output);
-    while control.try_completion().is_some() {}
+    silence(&mut runtime, &input, &mut output);
+    while control.runtime.try_completion().is_some() {}
     assert_eq!(
-        control.try_execution().unwrap().operation_result,
+        control.runtime.try_execution().unwrap().operation_result,
         Some(Reply::Done)
     );
     drop(control);
-    let mut stopped = engine.into_stopped();
-    stopped.cleanup().unwrap();
+    // After callbacks stop, the planner's ledger returns its owners to the store.
+    let (mut planner, mut resources) = runtime.into_planner_and_resources();
+    planner.cleanup(&mut resources).unwrap();
     for _ in 0..512 {
-        stopped.resources().begin_callback();
-        stopped.resources().reclaim();
+        resources.begin_callback();
+        resources.reclaim();
     }
-    assert_eq!(stopped.resource_usage().free_pages, 256);
-    assert_eq!(stopped.resource_usage().free_versions, 16);
-    assert_eq!(stopped.resource_usage().free_snapshots, 16);
-    assert_eq!(stopped.media_usage().references, 0);
+    assert_eq!(resources.usage().free_pages, 256);
+    assert_eq!(resources.usage().free_versions, 16);
+    assert_eq!(resources.usage().free_snapshots, 16);
+    assert_eq!(planner.media_usage().references, 0);
     println!("Stereo/MIDI record→play/FX/export verified; initial held note preserved; all owners recovered.");
 }

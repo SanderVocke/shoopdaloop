@@ -1,9 +1,12 @@
-# Coordinated runtime facade
+# Installing the loop parts in a runtime
 
-`runtime::{Engine, Controller, Stopped}` joins the resolver, media ledger,
-prepared playback/input consumers and the generic signal graph. It does not use
-the old engine, devices, UI or browser APIs. The resolver remains the only
-musical clock; the generic runtime owns absolute frames.
+`runtime::LoopPlanner::prepare` returns the loop library's parts: the planner, which
+joins the resolver, media ledger and capture lifecycle; its playback/capture
+`LoopNodes`; and a control-side `LoopClient`. The application installs them in its
+own `rt_runtime::GraphRuntime`, next to its other processors. It owns the runtime,
+the `ResourceStore`, its node type, the control endpoint and the lifecycle. The
+library does not use the old engine, devices, UI or browser APIs. The resolver
+remains the only musical clock; the generic runtime owns absolute frames.
 
 Run the standalone public example from the workspace:
 
@@ -19,32 +22,47 @@ and recovers the resource pools. Playback → mixing/gain → capture are distin
 signal nodes, even when playback and capture belong to the same logical loop.
 Its callbacks have no allocator guard of their own; guarded integration tests provide separate allocation evidence. It is not a device or AudioWorklet demonstration. The [configuration example](../examples/configuration_cut.rs) separately exercises guarded stopped-owner/media/route publication and retained exports.
 
-## Preparation and ownership
+## Preparation and installation
 
-`Engine::<Effect>::prepare` consumes:
+`LoopPlanner::prepare` takes:
 
-- A `PreparedConfig`, compiled `PreparedTopology` and `ResourceStore`.
+- A `PreparedConfig`, compiled `PreparedTopology` and `&mut ResourceStore`.
 - `Settings { planner, normal_requests, media_slots, export_slots }`.
-- One `Binding` per primitive, imported `media::Input` values, prepared effects
-  and a complete `GraphDescription`.
+- One `Binding` per primitive, imported `media::Input` values and `Options`:
+  timing staging, node-pair edit banks and an optional boundary observer.
 
-Preparation allocates/pre-touches storage and validates all inputs off-render.
-It returns `(Controller<Effect>, Engine<Effect>)` at frame zero, graph epoch one,
-without a hidden warm-up callback. Failed preparation consumes/destroys supplied
-owners off-render; it does not return a live partial engine.
+Preparation allocates/pre-touches storage and validates all inputs off-render. It
+creates the capture resources in the supplied store, which the application then
+gives to its runtime. It returns `Prepared { planner, nodes, client }`; failed
+preparation destroys its partial owners off-render. To install the parts:
+
+1. Wrap each `(NodeId, LoopNode)` from `nodes` in the application's node type.
+   `LoopNode` implements `Processor<LoopPlanner>`; the wrapper delegates `ports`,
+   `planning` and `process` to it.
+2. Call `GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources,
+   &graph, &client.bindings_for(&graph))`. The runtime starts at frame zero, graph
+   epoch one, without a hidden warm-up callback.
+3. Keep a control-side clone of `runtime.catalog()` for compiling later routes with
+   `client.compile_graph`, and call `prepare_submissions` on the control endpoint.
 
 Each primitive requires distinct playback and capture node identities in the
 signal graph. Both receive its immutable decision. `Binding.channels` is the
 number of audio ports on each node; `midi` adds one MIDI port. Playback has outputs,
 capture has inputs. Capture tracks connected MIDI even while not recording.
 Zero-channel/no-MIDI primitives are valid timing-only loops. Composites do not
-have media bindings. Effects implement `Processor<LoopPlanner>` and must declare
-no planner access; they receive ordinary signal ports and may implement
-`set_parameter`. Node identity, port and signal-cycle validation still applies.
+have media bindings. The application's other processors must declare no planner
+access; they receive ordinary signal ports, may implement `set_parameter` and may
+accept their own typed operations. Node identity, port and signal-cycle validation
+still applies.
+
+The planner guards the runtime's generic paths as well as its own operations.
+The initial graph and every generic `Command::Commit` must contain both nodes of
+each assigned primitive with exactly the loop's decision bindings; generic
+`Remove`/`Install` cannot replace a loop node. Refusals change nothing.
 The opt-in [publication paths](topology-activation.md) separately support timing/program changes, fixed node-pair live routing, stopped-owner configuration and paired running-program/graph changes. They operate over prepared physical templates, not unrestricted processor construction or port resizing. Configuration staging also permits unassigned templates whose pairs are absent from the initial graph. Prepare timing/source/node pair banks off-render, and opt into generic graph staging separately before the first nonempty callback.
 
 Provision two capture groups per media-bearing primitive, with separate resource
-identities for their audio and MIDI members. The facade creates these resources
+identities for their audio and MIDI members. The planner creates these resources
 and binds the groups; the supplied store must have enough free capacity. Two
 banks allow a repeated Record to reserve a replacement before freezing the old
 take. Group staging must fit maximum audio interval bytes plus the conservative
@@ -78,7 +96,7 @@ watermark, including imports not selected initially: later recording cannot
 reuse their identities. Logical revisions differ from generic resource revisions,
 which advance as capture intervals commit.
 
-`Controller::media()` lists prepared checked identities, not ownership tokens.
+`LoopClient::media()` lists prepared checked identities, not ownership tokens.
 An import has a resident reference until `Operation::Retire`; playback/latest,
 exports and pending selections retain their own references. Retiring residency
 does not invalidate such retained references. A borrowed `MediaId` alone does not
@@ -86,7 +104,7 @@ keep anything alive. IDs are instance-scoped and generation checked.
 
 ## Commands, receipts and cancellation
 
-`Controller::submit(lane, at, operation)` uses preallocated generic submission flags, unlike allocating `rt_runtime::executor::Control::submit`. Preparing flags does not prepare payloads or make arbitrary owning destruction safe. Build payload Boxes off-render and dispose returned payloads/retired owners there. Full admission and Busy retained ticket/completion flags are separate finite limits; unread terminal results have another limit.
+Build loop work with `LoopClient::command(at, operation)` and submit it through the application's control endpoint. `Control::submit_prepared` uses preallocated submission flags, unlike allocating `Control::submit`. Preparing flags does not prepare payloads or make arbitrary owning destruction safe. Build payload Boxes off-render and dispose returned payloads/retired owners there. Full admission and Busy retained ticket/completion flags are separate finite limits; unread terminal results have another limit.
 
 Submission returns a ticket or returns the unchanged owning command on refusal.
 Drain both channels:
@@ -128,10 +146,10 @@ The exact recovery-safe set is `Cancel`, `TopologyCancel`, `NodePairCancel`, `No
 slot and extra domain slot permit recovery with normal requests/results saturated.
 Recovery is not an unlimited queue: its own reserved result must be recycled before
 reuse. Stalled results prevent further admission, not admitted automatic wraps.
-Controller disconnection alone does not invent a musical Stop.
+Dropping the control endpoint alone does not invent a musical Stop.
 
 `Operation::Gain` changes the primitive's finite (including negative) gain.
-`Controller::parameter` sends ordinary parameters to effect nodes. Neither creates
+Generic `Action::Parameter` commands change the application's own processors. Neither creates
 a new musical clock. Smoothing follows the resolver's discontinuity flag, not
 journal events, host cuts, or a gain change by itself.
 
@@ -145,7 +163,7 @@ Composite entries may run nested composites. Regular programs repeat; explicit-m
 
 PlayIteration/SeekIteration choose an authoritative iteration without replaying preceding events. Non-retriggering seek repositions continuing playback; newly started playback/recording has its normal start edge. Direct child controls retain precedence over inherited program actions. A direct Stop defeating a nested Record does not queue that losing Record for the next frame. Use immutable resolver decisions for smoothing, restoration and capture; journal loss cannot change these rules.
 
-LoopId identifies a logical slot/generation, not a host endpoint. Standalone RequestId is validated by its owning resolver's slot/generation state, not a global routing registry. Route each to the correct resolver/engine; reconstructing parts adds no authority. Facade cancellation instead uses the originating runtime Sequence. Do not mix standalone resolver mutation with a running facade or treat a physical NodeId as a musical LoopId. Independent Wasm instances require serialized plain data and local endpoint routing: a Rust pointer, Vec, Box or trait-object address is not a transport protocol.
+LoopId identifies a logical slot/generation, not a host endpoint. Standalone RequestId is validated by its owning resolver's slot/generation state, not a global routing registry. Route each to the correct resolver/runtime; reconstructing parts adds no authority. `Operation::Cancel` instead uses the originating runtime Sequence. Do not mix standalone resolver mutation with a running planner or treat a physical NodeId as a musical LoopId. Independent Wasm instances require serialized plain data and local endpoint routing: a Rust pointer, Vec, Box or trait-object address is not a transport protocol.
 
 ## Boundary transaction and render contract
 
@@ -190,14 +208,13 @@ The MIDI renderer continues logical packet/state progress after output overflow,
 reports it, and returns `Full` for the generic reserved reset protocol. Unrelated
 audio still runs. `Cut::midi_overflows` counts playback-renderer overflow intervals;
 it is not a count of every downstream effect or host-output fault. The host must
-also use `Engine::drain_midi_recovery` when its output recovery remains pending.
+also use `GraphRuntime::drain_midi_recovery` when its output recovery remains pending.
 No lossless delivery under insufficient event/byte storage is promised.
 
-## Load resources through the restricted controller
+## Load resources through the control endpoint
 
-`Controller::resource(lane, rt_runtime::resource::Request)` forwards a prepared
-owning resource command through the same finite control capacity as `read` and
-scheduled operations. It does not construct a payload or bypass runtime admission.
+A generic `Command::resource(request)` forwards a prepared owning resource command
+through the same finite control capacity as reads and scheduled operations. It does not construct a payload or bypass runtime admission.
 Use the generic [loading/read lifecycle](../../rt_runtime/docs/part-3-work-with-stored-media/09-loading-and-reading-resources.md):
 Create, BeginUpload with expected revision/description, bounded owning Write chunks,
 Finish, Commit, Snapshot/Cursor/Read, ReleaseSnapshot, then Remove. Inspect each
@@ -262,7 +279,7 @@ is not a capture failure. Snapshot cuts and capture metadata remain those of the
 retained content; the export request cut does not relabel when old content was
 recorded or frozen.
 
-Use `Operation::Cursor { export, midi }`, then `Controller::read(cursor, bytes)`
+Use `Operation::Cursor { export, midi }`, then `Command::resource(Request::Read { cursor, bytes })`
 for bounded reads into an owning boxed return buffer. Inspect the resource reply's
 written/eof fields and updated returned request cursor. Keep the export until all
 reads complete. Audio bytes are interleaved little-endian f32. MIDI bytes retain
@@ -281,11 +298,11 @@ The projection's device/parameter-history limitations still apply. Finish with
 ## Shutdown and evidence scope
 
 Before stopping callbacks, execute a musical Stop and drain MIDI recovery/device
-cleanup as appropriate. `Engine::into_stopped` is quiescent/off-render: it destroys
-processors/runtime owners and preserves planner plus resource store. It does not
+cleanup as appropriate. `GraphRuntime::into_planner_and_resources` is quiescent/off-render:
+it destroys processors/runtime owners and returns the planner plus resource store. It does not
 send MIDI or settle pending requests after the device stops.
 
-`Stopped::cleanup` permanently quiesces the resolver, cancelling nonterminal
+`LoopPlanner::cleanup(&mut resources)` permanently quiesces the resolver, cancelling nonterminal
 requests without advancing time or undoing published state. It recovers pending
 or displaced program owners even if rendering faulted after publication and before
 interval finish. This is not resumable execution or an implicit musical Stop.
@@ -300,4 +317,4 @@ The guarded integration tests compare independent complete samples, MIDI packets
 semantic journals, initial states and exported content across whole/single/irregular
 partitions and declaration orders, including journal saturation, stalled results,
 refusal/recovery and explicit full pool recovery. Their package-Wasm execution is
-not an actual loop AudioWorklet. Distinct [publication paths](topology-activation.md) have guarded regression coverage including prepared source/node pair banks, running zero cuts, stale/reused graph ownership and non-rollback cleanup. Historical reports retain their original source/platform scope. The [independent loop fixture](../../../../tests/loops_host/README.md) exercises a small record/play/FX scenario through direct, bounded-wire and two-thread drivers and actual non-isolated offline/live AudioWorklets. Its primitive-command bridge keeps admission, runtime delivery and domain outcomes distinct across independent ordinary Wasm memories. The browser checks actual downstream samples, complete MIDI/receipts and canonical semantic boundary/decision/event records, fixed memory, real processor/heap failure witnesses and successful stopped recovery. Live commands are staged before acknowledged engine-clock start; this is not yet broad dynamic live-ingress coverage. A separate prepared graph payload receiver has guarded native facade and public-Wasm binding coverage. An opt-in native graph command bridge and public Node/Chromium bindings stage/activate/release and recycle owners through bounded results, with complete sample/MIDI/semantic and receipt checks. Additional actual offline/live graph worklets now transfer descriptors/commands/owning returns through MessagePort and compare downstream samples, MIDI, semantic bytes and exact activation with native replay. They use one audible engine sample for Ready, then an explicitly acknowledged engine pause/resume; this is not continuous wall-clock live-edit/deadline evidence. Native capacity-one actor transport now also matches complete direct graph replay, including byte envelopes, five zero ownership counts and resource recovery; waits/joins remain outside callbacks. Immutable export/cursor/read/initial-state/release now also passes native direct/two-thread, Node/Chromium and actual offline/live hosts, retaining both capture revisions and checking complete stereo/MIDI plus all16 initial channels with full recovery. Export sessions use explicitly acknowledged128-frame steps, not continuous live-edit/deadline evidence. Resource uploads/immutable reads and prepared nested-program activation now also pass all hosts, with complete byte/media/semantic comparisons and owning cleanup. The nested programs have no sync source: explicit iteration seek and stop are admitted before their timestamps, with real1/4/4-frame calls and deliberately paused engine time between steps. Raw uploaded MIDI is read exactly but correctly refuses playable-source validation without checkpoint indexes. Binding-level execution remains distinct from downstream Web Audio. Separate dense/stall sessions now verify clocked cascades/composites and newly acknowledged playback while all transferred result buffers are withheld. Prepared-media sessions now also replace indexed stereo/MIDI imports, deliver Record at7 but apply it at9 after declared-source ticks, then expose a common40-frame incomplete capture before sample49 without interrupting live audio. Coherent state and immutable export/read/all16 MIDI initial channels/Release match full native media/semantic/receipt tables, with full recovery. Actual1/6/57 then one-frame calls and engine pauses are deliberate driver instrumentation, not a runtime quantum or continuous message-deadline proof. See the [media commands and capacity model](../../../../tests/loops_host/README.md#replace-playable-media-and-export-an-exhausted-capture). A separate real-Resolver/test-only generic Planner control now compares complete stereo/semantic output and128 plan/finish calls in actual offline/live contexts, with full8page/4version/4snapshot recovery. Error and heap canaries execute inside Planner::plan and require exact Rust origins/phase counters, fixed worklet memory and nonzero specific failures; the callback cursor advancing before a failed plan is not rendered or committed musical work. This does not expose production LoopPlanner injection APIs or replace facade proof. See the [planner commands and limits](../../../../tests/loops_host/README.md#planner-lifecycle-controls-and-deliberate-failures). No loop benchmark is supplied. Native replay, package-Wasm tests and the generic NoPlanner fixture remain distinct evidence, not substitutes for actual loop-worklet/newer performance campaigns or hard-deadline certification.
+not an actual loop AudioWorklet. Distinct [publication paths](topology-activation.md) have guarded regression coverage including prepared source/node pair banks, running zero cuts, stale/reused graph ownership and non-rollback cleanup. Historical reports retain their original source/platform scope. The [independent loop fixture](../../../../tests/loops_host/README.md) exercises a small record/play/FX scenario through direct, bounded-wire and two-thread drivers and actual non-isolated offline/live AudioWorklets. Its primitive-command bridge keeps admission, runtime delivery and domain outcomes distinct across independent ordinary Wasm memories. The browser checks actual downstream samples, complete MIDI/receipts and canonical semantic boundary/decision/event records, fixed memory, real processor/heap failure witnesses and successful stopped recovery. Live commands are staged before acknowledged engine-clock start; this is not yet broad dynamic live-ingress coverage. A separate prepared graph payload receiver has guarded native and public-Wasm binding coverage. An opt-in native graph command bridge and public Node/Chromium bindings stage/activate/release and recycle owners through bounded results, with complete sample/MIDI/semantic and receipt checks. Additional actual offline/live graph worklets now transfer descriptors/commands/owning returns through MessagePort and compare downstream samples, MIDI, semantic bytes and exact activation with native replay. They use one audible engine sample for Ready, then an explicitly acknowledged engine pause/resume; this is not continuous wall-clock live-edit/deadline evidence. Native capacity-one actor transport now also matches complete direct graph replay, including byte envelopes, five zero ownership counts and resource recovery; waits/joins remain outside callbacks. Immutable export/cursor/read/initial-state/release now also passes native direct/two-thread, Node/Chromium and actual offline/live hosts, retaining both capture revisions and checking complete stereo/MIDI plus all16 initial channels with full recovery. Export sessions use explicitly acknowledged128-frame steps, not continuous live-edit/deadline evidence. Resource uploads/immutable reads and prepared nested-program activation now also pass all hosts, with complete byte/media/semantic comparisons and owning cleanup. The nested programs have no sync source: explicit iteration seek and stop are admitted before their timestamps, with real1/4/4-frame calls and deliberately paused engine time between steps. Raw uploaded MIDI is read exactly but correctly refuses playable-source validation without checkpoint indexes. Binding-level execution remains distinct from downstream Web Audio. Separate dense/stall sessions now verify clocked cascades/composites and newly acknowledged playback while all transferred result buffers are withheld. Prepared-media sessions now also replace indexed stereo/MIDI imports, deliver Record at7 but apply it at9 after declared-source ticks, then expose a common40-frame incomplete capture before sample49 without interrupting live audio. Coherent state and immutable export/read/all16 MIDI initial channels/Release match full native media/semantic/receipt tables, with full recovery. Actual1/6/57 then one-frame calls and engine pauses are deliberate driver instrumentation, not a runtime quantum or continuous message-deadline proof. See the [media commands and capacity model](../../../../tests/loops_host/README.md#replace-playable-media-and-export-an-exhausted-capture). A separate real-Resolver/test-only generic Planner control now compares complete stereo/semantic output and128 plan/finish calls in actual offline/live contexts, with full8page/4version/4snapshot recovery. Error and heap canaries execute inside Planner::plan and require exact Rust origins/phase counters, fixed worklet memory and nonzero specific failures; the callback cursor advancing before a failed plan is not rendered or committed musical work. This test-only planner does not replace the loop planner's own proof. See the [planner commands and limits](../../../../tests/loops_host/README.md#planner-lifecycle-controls-and-deliberate-failures). No loop benchmark is supplied. Native replay, package-Wasm tests and the generic NoPlanner fixture remain distinct evidence, not substitutes for actual loop-worklet/newer performance campaigns or hard-deadline certification.

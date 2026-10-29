@@ -1,10 +1,11 @@
 use super::*;
 use crate::{graph_transfer::tests::transfer, graph_wire::Client, guarded, scenario};
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
-use shoop_loops::{runtime::Engine, Timing, Transition};
+use shoop_loops::{Timing, Transition};
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 use std::sync::{atomic::AtomicU32, Arc};
 
-fn tick(engine: &mut Engine<Mix>) {
+fn tick(engine: &mut LoopRuntime<Mix>) {
     let mut left = [0.; 1];
     let mut right = [0.; 1];
     let input = [MidiBuffer::new(2, 6).unwrap()];
@@ -25,7 +26,7 @@ fn tick(engine: &mut Engine<Mix>) {
     })
     .unwrap();
 }
-fn dispose(control: Controller<Mix>, engine: Engine<Mix>) {
+fn dispose(control: LoopControl<Mix>, engine: LoopRuntime<Mix>) {
     drop(control);
     let mut stopped = engine.into_stopped();
     stopped.cleanup().unwrap();

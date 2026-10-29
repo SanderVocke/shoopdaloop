@@ -6,7 +6,7 @@ on the callback. It is portable native/Wasm code with no browser dependency.
 
 **Ready means timing metadata is validated.** It does not certify runtime graph
 bindings, media/resource compatibility, current activation epochs or historical
-loop-generation watermarks. The facade adds distinct
+loop-generation watermarks. The planner adds distinct
 [publication paths](topology-activation.md) with their own identity, physical node-pair,
 media and epoch checks. Do not bypass those checks with unrestricted live mutation.
 
@@ -155,7 +155,7 @@ Append performs two bounded syntax/canonicalization passes; the second appends
 typed records into prepared vectors. It is not a zero-copy path. Its budget counts
 records, not actual machine instructions or all transport copies. Preparation,
 encoding, ingress, validation, extraction and recycling have different ownership
-and accounting responsibilities. The facade shares allowances across an entire
+and accounting responsibilities. The planner shares allowances across an entire
 callback. Any external host must preserve those distinctions; this codec is not
 an implementation of an independent loop worklet.
 
@@ -168,7 +168,7 @@ transitive reachability, 128 nested regular/explicit images against raw entries,
 progress while another candidate is incomplete/failed. Scope/generation exhaustion
 and production-type borrow/move refusals are also checked.
 
-The facade adds reliable receipts, scoped cancellation, retained owners and
+The planner adds reliable receipts, scoped cancellation, retained owners and
 callback-shared work. Its timing-only, fixed node-pair graph, stopped-owner configuration
 and pending program/graph operations are implemented, with different compatibility
 and cut rules. Immediate standalone replace_topology still refuses changed running

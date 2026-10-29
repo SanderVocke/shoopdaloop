@@ -1,29 +1,38 @@
-//! Nested musical control over a real facade with timing-only physical node pairs.
+//! Nested musical control in an application-owned runtime with timing-only node pairs.
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
-    graph::{GraphDescription, PortCounts},
-    processor::{ProcessBlock, Processor},
+    executor::{Command, Control, GraphRuntime, PreparedNode},
+    graph::GraphDescription,
     resource::ResourceStore,
-    transport::{Lane, Outcome as Admission},
-    Budgets, Config, Error, Frame, NodeId, PlannerId, Revision, Sequence,
+    transport::{Lane, Outcome as Admission, SubmitError, Ticket},
+    Budgets, Config, Frame, NodeId, PlannerId, Revision, Sequence,
 };
 use shoop_loops::{
     audio::Smoothing,
     compile,
-    runtime::{Binding, Controller, Engine, LoopPlanner, Operation, Reply, Settings},
+    runtime::{
+        Binding, LoopClient, LoopNode, LoopPlanner, Operation, Options, Prepared, Reply, Settings,
+    },
     Entry, Limits, LoopId, LoopKind, LoopSpec, Mode, Outcome, ProgramDescription, Section, Timing,
     TopologyDescription, Transition,
 };
 use shoop_wasm_test_support::heap::{assert_no_heap, TrackingAllocator};
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
-struct NoEffects;
-impl Processor<LoopPlanner> for NoEffects {
-    fn ports(&self) -> PortCounts {
-        PortCounts::default()
-    }
-    fn process(&mut self, _: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        Ok(())
+/// With no other processors, loop nodes are the runtime's node type.
+struct Controls {
+    runtime: Control<LoopNode, LoopPlanner>,
+    loops: LoopClient,
+}
+impl Controls {
+    fn submit(
+        &mut self,
+        lane: Lane,
+        at: Frame,
+        operation: Operation,
+    ) -> Result<Ticket, SubmitError<Command<LoopNode, LoopPlanner>>> {
+        self.runtime
+            .submit_prepared(lane, self.loops.command(at, operation))
     }
 }
 fn id(slot: u32) -> LoopId {
@@ -44,7 +53,7 @@ fn entry(target: u32, delay: u64, duration: u64, mode: Option<Mode>) -> Section 
     }
 }
 fn send(
-    control: &mut Controller<NoEffects>,
+    control: &mut Controls,
     frame: u64,
     target: u32,
     timing: Timing,
@@ -150,10 +159,15 @@ fn run(parts: &[usize]) {
             packet_bytes: 0,
         })
         .collect();
-    let (mut control, mut engine) = Engine::<NoEffects>::prepare(
+    let mut resources = ResourceStore::new(config).unwrap();
+    let Prepared {
+        planner,
+        nodes,
+        client,
+    } = LoopPlanner::prepare(
         config,
         topology,
-        ResourceStore::new(config).unwrap(),
+        &mut resources,
         Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 4,
@@ -162,13 +176,30 @@ fn run(parts: &[usize]) {
         },
         bindings,
         vec![],
-        vec![],
-        GraphDescription {
-            nodes: (0..4).map(node).collect(),
-            connections: vec![],
-        },
+        Options::default(),
     )
     .unwrap();
+    let graph = GraphDescription {
+        nodes: (0..4).map(node).collect(),
+        connections: vec![],
+    };
+    let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        nodes
+            .into_iter()
+            .map(|(id, node)| PreparedNode::new(id, node))
+            .collect(),
+        planner,
+        resources,
+        &graph,
+        &client.bindings_for(&graph),
+    )
+    .unwrap();
+    let mut control = Controls {
+        runtime: runtime_control,
+        loops: client,
+    };
+    control.runtime.prepare_submissions().unwrap();
     send(
         &mut control,
         0,
@@ -230,10 +261,10 @@ fn run(parts: &[usize]) {
         })
         .collect();
     for &frames in parts {
-        if engine.next_frame() == Frame(8) {
-            let before = engine.diagnostics();
+        if runtime.next_frame() == Frame(8) {
+            let before = runtime.diagnostics();
             assert_no_heap(|| {
-                engine.process(
+                runtime.process(
                     AudioBlock {
                         frame: Frame(8),
                         frames: 0,
@@ -247,13 +278,13 @@ fn run(parts: &[usize]) {
                 )
             })
             .unwrap();
-            assert_eq!(engine.next_frame(), Frame(8));
-            assert_eq!(engine.diagnostics(), before);
+            assert_eq!(runtime.next_frame(), Frame(8));
+            assert_eq!(runtime.diagnostics(), before);
         }
         assert_no_heap(|| {
-            engine.process(
+            runtime.process(
                 AudioBlock {
-                    frame: engine.next_frame(),
+                    frame: runtime.next_frame(),
                     frames,
                     inputs: &[],
                     outputs: &mut [],
@@ -266,9 +297,9 @@ fn run(parts: &[usize]) {
         })
         .unwrap();
     }
-    assert_eq!(engine.next_frame(), Frame(11));
+    assert_eq!(runtime.next_frame(), Frame(11));
     let mut admitted = 0;
-    while let Some(completion) = control.try_completion() {
+    while let Some(completion) = control.runtime.try_completion() {
         assert!(matches!(completion.outcome, Admission::Scheduled { .. }));
         admitted += 1;
     }
@@ -289,7 +320,7 @@ fn run(parts: &[usize]) {
     let mut states = [None; 11];
     let mut cancelled = false;
     let mut terminal = 0;
-    while let Some(execution) = control.try_execution() {
+    while let Some(execution) = control.runtime.try_execution() {
         terminal += 1;
         assert_eq!(execution.result, Ok(()));
         if execution.sequence == pending {
@@ -340,13 +371,13 @@ fn run(parts: &[usize]) {
     assert_eq!(states[6].unwrap().position, 0);
     assert_eq!(states[7].unwrap().position, 1);
     drop(control);
-    let mut stopped = engine.into_stopped();
-    stopped.cleanup().unwrap();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.media_usage().references, 0);
-    assert_eq!(stopped.resource_usage().free_pages, 8);
-    assert_eq!(stopped.resource_usage().free_versions, 8);
-    assert_eq!(stopped.resource_usage().free_snapshots, 8);
+    let (mut planner, mut resources) = runtime.into_planner_and_resources();
+    planner.cleanup(&mut resources).unwrap();
+    planner.cleanup(&mut resources).unwrap();
+    assert_eq!(planner.media_usage().references, 0);
+    assert_eq!(resources.usage().free_pages, 8);
+    assert_eq!(resources.usage().free_versions, 8);
+    assert_eq!(resources.usage().free_snapshots, 8);
 }
 fn main() {
     run(&[11]);

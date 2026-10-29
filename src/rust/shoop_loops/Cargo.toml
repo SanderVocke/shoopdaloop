@@ -18,6 +18,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 rt_runtime = { path = "../rt_runtime" }
 
 [dev-dependencies]
+shoop_loops_test_support = { path = "../shoop_loops_test_support" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

@@ -2,8 +2,14 @@
 
 Portable loop timing and audio/MIDI execution on `rt_runtime`. A single render-owned
 resolver supplies musical decisions; prepared playback/capture consumers execute
-those decisions in the signal graph. The runtime facade coordinates media ownership,
+those decisions in the signal graph. The loop planner coordinates media ownership,
 capture preflight, typed outcomes, settled state/export and explicit stopped cleanup.
+
+The library supplies parts, not a runtime: `LoopPlanner::prepare` returns the planner,
+its playback/capture nodes and a control-side `LoopClient`. The application installs
+them in its own `GraphRuntime` next to its other processors and owns the resource
+store, control endpoint and lifecycle. The planner refuses generic graph changes
+that would drop or replace its nodes.
 
 Start with the [runtime guide](docs/runtime.md). For generic graph/processors,
 transport and resources, use the [runtime book](../rt_runtime/docs/README.md).
@@ -14,7 +20,7 @@ processor construction or hard-deadline certification.
 
 | Task | Guide |
 |---|---|
-| Prepare/run a facade, submit/cancel work, export and stop | [Runtime](docs/runtime.md) |
+| Prepare and install the parts, submit/cancel work, export and stop | [Runtime](docs/runtime.md) |
 | Execute audio conversion, gain and discontinuity smoothing | [Audio](docs/audio.md) |
 | Render/index/track/capture original packets | [MIDI](docs/midi.md) |
 | Emit cleanup → projected restoration → original events | [MIDI restoration](docs/midi-restore.md) |
@@ -33,6 +39,9 @@ cargo run --locked -p shoop_loops --example nested_timing
 cargo run --locked -p shoop_loops --example configuration_cut
 cargo run --locked -p shoop_loops --example program_graph_cut
 ```
+
+Each example assembles its own runtime from the parts. Tests and the benchmark use
+the dev-only `shoop_loops_test_support` crate instead, which is not part of the API.
 
 Add `--release` for the optimized profile. `coordinated_loop` asserts stereo/MIDI
 record → playback → FX → capture, wraps, seek, replacement, immutable export and
@@ -56,7 +65,7 @@ AudioWorklets. Its primitive-command bridge retains separate admission/domain
 outcomes across independent ordinary Wasm memories. Downstream Web Audio samples,
 canonical semantic boundary/decision/event journals, fixed memory, failure canaries
 and complete stopped recovery are checked in both profiles. A separate prepared
-graph payload receiver has native facade and Node/Chromium binding coverage.
+graph payload receiver has native and Node/Chromium binding coverage.
 An opt-in native graph command bridge and public Node/Chromium bindings now
 stage/activate/release and recycle owners through bounded results. Actual offline/live
 graph worklets now transfer descriptors/commands/returns and check downstream output
@@ -92,7 +101,7 @@ must already be stopped. Changed running programs are safely refused by that
 immediate replacement API. The standalone [`stage_program`](docs/program-changes.md)
 path retains one prepared program candidate, selects a zero/stopped cut, preflights
 without publication, and swaps owners only on commit. It preserves logical
-identities, sync/trigger metadata and other programs. The facade's `ProgramActivate`
+identities, sync/trigger metadata and other programs. The planner's `ProgramActivate`
 connects it to receiver banks, reliable runtime receipts and capture preflight;
 ProgramGraphActivate pairs it with prepared routing. Fixed node-pair GraphActivate,
 immediate TopologyGraphActivate and already-stopped ConfigurationActivate are
@@ -130,9 +139,9 @@ has precedence regardless of observation order. Target-only refusal does not
 reject a parent composite or its other children.
 
 The standalone resolver models logical capture positions and boundary failures;
-it does not own captured samples. The runtime facade supplies the media ledger,
+it does not own captured samples. The loop planner supplies the media ledger,
 prepared group lifecycle, runtime receipts and independent recovery-lane admission.
-Do not mix standalone resolver mutation with a running facade.
+Do not mix standalone resolver mutation with a running planner.
 
 The resolver owns authoritative timing; separate render operations execute
 supplied interval decisions without their own playback clock. Native and browser hosts use the same semantics;

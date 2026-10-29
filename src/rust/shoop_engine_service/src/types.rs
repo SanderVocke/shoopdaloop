@@ -1,12 +1,14 @@
 use crate::{dsp, Client, Render};
 use rt_runtime::{
     executor,
-    graph::PreparedPlan,
+    graph::{PortCounts, PreparedPlan},
+    planner::ConsumerAccess,
+    processor::{ProcessBlock, Processor},
     transport::{Lane, Outcome},
     Epoch, Error, Frame,
 };
 use shoop_loops::{
-    runtime::{LoopPlanner, Node, Operation, Reply},
+    runtime::{LoopNode, LoopPlanner, Operation, Reply},
     LoopId,
 };
 use std::sync::Arc;
@@ -113,8 +115,33 @@ impl std::fmt::Debug for Request {
     }
 }
 
-pub type EngineCommand = executor::Command<Node<dsp::Dsp>, LoopPlanner>;
-pub type Retired = executor::Retired<Node<dsp::Dsp>>;
+/// The service's runtime node type: the loop's nodes and the independent DSP.
+pub enum ServiceNode {
+    Loop(LoopNode),
+    Dsp(dsp::Dsp),
+}
+impl Processor<LoopPlanner> for ServiceNode {
+    fn ports(&self) -> PortCounts {
+        match self {
+            Self::Loop(node) => node.ports(),
+            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner>>::ports(node),
+        }
+    }
+    fn planning(&self) -> ConsumerAccess {
+        match self {
+            Self::Loop(node) => node.planning(),
+            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner>>::planning(node),
+        }
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        match self {
+            Self::Loop(node) => node.process(block),
+            Self::Dsp(node) => node.process(block),
+        }
+    }
+}
+pub type EngineCommand = executor::Command<ServiceNode, LoopPlanner>;
+pub type Retired = executor::Retired<ServiceNode>;
 pub type LoopExecution = rt_runtime::schedule::Execution<Operation, Reply>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

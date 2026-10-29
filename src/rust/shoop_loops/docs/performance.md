@@ -65,7 +65,7 @@ Every measured callback is 128 frames at 48 kHz. The fourteen cases include:
   precedence does not suppress the intended edit.
 - Alternating 128-frame recording/playback through the separate half-gain FX and
   capture consumers, with exact expected live/captured/playback samples. The
-  facade retires completed capture metadata; callers do not retire borrowed IDs.
+  planner retires completed capture metadata; callers do not retire borrowed IDs.
 - Independent 64-byte uploads and immutable loop-export reads alongside playback.
   Uploads use their own raw resource, not an unvalidated live media replacement.
 

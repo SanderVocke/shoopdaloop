@@ -13,10 +13,11 @@ use rt_runtime::{
 use shoop_loops::{
     audio::Smoothing,
     compile, media,
-    runtime::{Binding, BoundaryObserver, Controller, Engine, Operation, Reply, Settings},
+    runtime::{Binding, BoundaryObserver, Operation, Reply, Settings},
     Decision, Entry, Event, EventKind, Limits, LoopId, LoopKind, LoopSpec, Mode,
     ProgramDescription, Section, Timing, TopologyDescription, Transition, Trigger,
 };
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 use shoop_wasm_test_support::heap::{assert_no_heap, TrackingAllocator};
 use std::{
     io::Write,
@@ -242,7 +243,7 @@ fn source(
 }
 enum Driver {
     Bare(GraphRuntime<Fx>),
-    Loops(Engine<Fx>),
+    Loops(LoopRuntime<Fx>),
 }
 impl Driver {
     fn frame(&self) -> Frame {
@@ -273,7 +274,7 @@ impl Driver {
 struct Bench {
     case: Case,
     driver: Driver,
-    control: Option<Controller<Fx>>,
+    control: Option<LoopControl<Fx>>,
     bare_control: Option<Control<Fx>>,
     input: [[f32; FRAMES]; 2],
     output: [[f32; FRAMES]; 2],
@@ -553,7 +554,7 @@ impl Bench {
                     }
                 }
             }
-            let (c, r) = Engine::prepare_with_observer(
+            let (c, r) = LoopRuntime::prepare_with_observer(
                 cfg,
                 topology,
                 resources,

@@ -81,13 +81,13 @@ It cancels that incomplete upload, releases the acquired snapshot, removes activ
 | Ready candidates / Taken retired graphs | Normal-lane ReleaseGraph returns the appropriate owner; Taken can have none after first activation into an empty graph. Views/pending StageIds do not own or lock candidates. See [chapter 15](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md). |
 | Active/retired resource content | Remove/reclaim for reuse, or intentionally destroy the whole stopped store. Release does not instantly recover all pages. |
 
-Graph retirement does not clean processors, resource claims or held notes. Loop topology/role/source/media owners have additional facade-specific release paths, not generic graph metadata semantics.
+Graph retirement does not clean processors, resource claims or held notes. Loop topology/node-pair/source/media owners have additional planner-specific release paths, not generic graph metadata semantics.
 
 ## A fault is not a final successful interval
 
 A processing error may follow time advance, graph/domain publication or partial staging. Inspect the actual stopped state; never replay frames, call a fake `finish`, backdate a receipt or invent a successful Stop. Continuation in the [callback adapter](../part-1-process-audio/04-connecting-an-audio-callback.md) is specific to its FailOnce/NoPlanner policy, not a generic domain guarantee.
 
-The separate loop facade supplies `Engine::into_stopped()` and `Stopped::cleanup()` to retain its planner/store and permanently quiesce its resolver. That policy handles unpublished reservations, actual captured prefixes, leases and claims without rollback/replay; repeating successful cleanup is safe. It is not an API on generic GraphRuntime, permission to resume the consumed engine, or reconciliation of arbitrary downstream synthesizer/device state.
+The separate loop library's planner supplies `LoopPlanner::cleanup`, applied to the planner and store returned by `into_planner_and_resources()`, to permanently quiesce its resolver. That policy handles unpublished reservations, actual captured prefixes, leases and claims without rollback/replay; repeating successful cleanup is safe. It is not an API on generic GraphRuntime, permission to resume the consumed runtime, or reconciliation of arbitrary downstream synthesizer/device state.
 
 Once a device is stopped, destroying Rust owners cannot send it reset messages. Keep live musical cleanup, stopped storage recovery and host device disposal as separate responsibilities.
 

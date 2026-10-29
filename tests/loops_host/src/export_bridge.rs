@@ -8,10 +8,11 @@ use rt_runtime::{
 };
 use shoop_loops::{
     media::ExportId,
-    runtime::{Controller, Failure, LoopPlanner, Node, Operation, Reply, Selection},
+    runtime::{Failure, LoopPlanner, Operation, Reply, Selection},
 };
+use shoop_loops_test_support::{LoopControl, TestNode};
 
-type Returned = Completion<Command<Node<Mix>, LoopPlanner>, Retired<Node<Mix>>>;
+type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct Lease {
     id: ExportId,
     cursors: [Option<Cursor>; 2],
@@ -71,7 +72,7 @@ impl Exports {
     }
     pub(crate) fn ingest(
         &mut self,
-        control: &mut Controller<Mix>,
+        control: &mut LoopControl<Mix>,
         bytes: &[u8],
         now: u64,
     ) -> Result<(), wire::Error> {

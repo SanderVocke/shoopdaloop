@@ -14,4 +14,4 @@ Task chapters teach independent runnable examples. These pages consolidate contr
 
 The [current verification index](../../../../../VALIDATION.md) distinguishes results from remaining debt. The [initial-runtime validation history](../../../../../docs/history/pre-consolidation-fffc1faa/docs/rt_runtime/VALIDATION.md), [historical performance evidence](../../../../../docs/history/pre-consolidation-fffc1faa/docs/rt_runtime/PERFORMANCE.md) and [generic host fixture](../../../../../tests/rt_runtime_host/README.md) retain their own source scope. They are not additional tutorial prerequisites or proof of new loop-host/deadline claims.
 
-The [separate loop library](../../../shoop_loops/README.md) supplies loop policy and prepared-domain integration. Generic runtime permits do not silently supply its source/role/media/configuration transactions.
+The [separate loop library](../../../shoop_loops/README.md) supplies loop policy and prepared-domain integration. Generic runtime permits do not silently supply its source/node-pair/media/configuration transactions.

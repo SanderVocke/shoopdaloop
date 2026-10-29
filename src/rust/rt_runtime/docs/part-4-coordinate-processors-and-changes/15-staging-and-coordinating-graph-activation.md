@@ -137,6 +137,6 @@ A refusal fails preparation, or rejects the command with the planner's error whi
 
 This audio-only example does not exercise pending injection. The runtime nevertheless refuses a candidate that would remove a node whose already-injected MIDI still needs consumption: preflight returns Busy and the old graph consumes the packet once. At operation delivery, planner actions run before processor/MIDI actions; removing the node first instead makes its later injection fail InvalidId. Reversing submission order cannot reverse those categories.
 
-Neither path synthesizes note/pedal cleanup or transfers arbitrary media/role ownership. The application must preflight those responsibilities separately. Generic permits also cannot construct new processors or resize prepared port shapes. The loop library's constrained graph/media/configuration transactions build on this machinery; they are not guarantees supplied by the permit alone.
+Neither path synthesizes note/pedal cleanup or transfers arbitrary media/node-pair ownership. The application must preflight those responsibilities separately. Generic permits also cannot construct new processors or resize prepared port shapes. The loop library's constrained graph/media/configuration transactions build on this machinery; they are not guarantees supplied by the permit alone.
 
 [Next: Recording resources together](16-recording-resources-together.md)

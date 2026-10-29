@@ -2,7 +2,7 @@
 
 [Book](../README.md) · [Reference](README.md)
 
-These rules describe generic GraphRuntime. Musical precedence, source/role/media ownership and loop cleanup belong to the separate loop facade.
+These rules describe generic GraphRuntime. Musical precedence, source/node-pair/media ownership and loop cleanup belong to the separate loop library's planner.
 
 ## Callback envelope and half-open time
 

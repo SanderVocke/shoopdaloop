@@ -9,6 +9,7 @@ use rt_runtime::{
     Budgets, Config, Error, Frame, NodeId, PlannerId, PreparedConfig, Sequence,
 };
 use shoop_loops::{audio::Smoothing, runtime::*, *};
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
 #[path = "support/runtime_scenarios.rs"]
@@ -163,7 +164,7 @@ impl Default for Options {
         }
     }
 }
-fn setup(journal: usize, reversed: bool) -> (Controller<Fx>, Engine<Fx>) {
+fn setup(journal: usize, reversed: bool) -> (LoopControl<Fx>, LoopRuntime<Fx>) {
     let (control, engine, _) = setup_with(journal, reversed, Options::default());
     (control, engine)
 }
@@ -171,7 +172,11 @@ fn setup_with(
     journal: usize,
     reversed: bool,
     options: Options,
-) -> (Controller<Fx>, Engine<Fx>, Vec<rt_runtime::ResourceId>) {
+) -> (
+    LoopControl<Fx>,
+    LoopRuntime<Fx>,
+    Vec<rt_runtime::ResourceId>,
+) {
     let mut cfg = config().limits();
     cfg.resource_pages = options.pages;
     if options.one_sample {
@@ -291,7 +296,7 @@ fn setup_with(
                 .map(|source| source.snapshot.resource)
         })
         .collect();
-    let (control, engine) = Engine::prepare_with_observer(
+    let (control, engine) = LoopRuntime::prepare_with_observer(
         config,
         topology,
         resources,
@@ -329,7 +334,7 @@ impl Host {
             midi_out: [MidiBuffer::new(4096, 16384).unwrap()],
         }
     }
-    fn step(&mut self, engine: &mut Engine<Fx>, frames: usize) {
+    fn step(&mut self, engine: &mut LoopRuntime<Fx>, frames: usize) {
         let at = engine.next_frame().0;
         self.midi_in[0].clear();
         self.midi_out[0].clear();
@@ -368,12 +373,12 @@ impl Host {
         .unwrap();
     }
 }
-fn submit(control: &mut Controller<Fx>, at: u64, operation: Operation) -> Sequence {
+fn submit(control: &mut LoopControl<Fx>, at: u64, operation: Operation) -> Sequence {
     assert_no_heap(|| control.submit(Lane::Normal, Frame(at), operation))
         .unwrap_or_else(|e| panic!("{:?}", e.error))
         .sequence()
 }
-fn transition(control: &mut Controller<Fx>, at: u64, transition: Transition) -> Sequence {
+fn transition(control: &mut LoopControl<Fx>, at: u64, transition: Transition) -> Sequence {
     submit(
         control,
         at,
@@ -384,7 +389,7 @@ fn transition(control: &mut Controller<Fx>, at: u64, transition: Transition) -> 
         },
     )
 }
-fn drain(control: &mut Controller<Fx>, replies: &mut Vec<(Sequence, Reply)>) {
+fn drain(control: &mut LoopControl<Fx>, replies: &mut Vec<(Sequence, Reply)>) {
     while let Some(completion) = control.try_completion() {
         assert!(matches!(
             completion.outcome,
@@ -431,8 +436,8 @@ fn midi_oracle() -> Vec<(u64, Vec<u8>)> {
     result
 }
 fn read_export(
-    control: &mut Controller<Fx>,
-    engine: &mut Engine<Fx>,
+    control: &mut LoopControl<Fx>,
+    engine: &mut LoopRuntime<Fx>,
     host: &mut Host,
     export: shoop_loops::media::ExportId,
     midi: bool,

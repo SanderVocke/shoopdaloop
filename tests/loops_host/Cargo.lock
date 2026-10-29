@@ -20,6 +20,7 @@ version = "0.1.0"
 dependencies = [
  "rt_runtime",
  "shoop_loops",
+ "shoop_loops_test_support",
  "wasm-bindgen",
 ]
 
@@ -71,6 +72,14 @@ name = "shoop_loops"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+]
+
+[[package]]
+name = "shoop_loops_test_support"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_loops",
 ]
 
 [[package]]

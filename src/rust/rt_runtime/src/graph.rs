@@ -90,6 +90,8 @@ pub struct Connection {
 
 /// Stable processor signatures; constructed outside rendering. A plan need not use
 /// every registered processor. The runtime owns the corresponding processor state.
+/// Clone a runtime's catalog off-render to compile later edits on the control side.
+#[derive(Clone)]
 pub struct Catalog {
     config: PreparedConfig,
     slots: Vec<Option<NodeSpec>>,
