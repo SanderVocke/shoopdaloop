@@ -152,7 +152,7 @@ See [program-change-stage6.json](../../../../docs/loop_layer/evidence/program-ch
 and its provenance report for125 loop tests per native/Wasm profile,2104 workspace
 passes/four existing skips,19 scoped gates and production borrowing proofs.
 That original report deferred Miri and registered nine cases; the later
-consolidated [Stage 6 interpreter evidence](../../../../docs/loop_layer/MIRI_JOBS.md)
+consolidated [Stage 6 interpreter evidence](../../../../VALIDATION.md#miri-evidence)
 has its own immutable implementation/source scope. No new interpreter run follows
 from documentation edits. The initial empty-program fixture wrongly
 expected a caller-supplied length of42; compilation derives the empty program's

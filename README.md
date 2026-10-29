@@ -59,7 +59,7 @@ The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssem
 - [PLAN.md](PLAN.md): workstreams, approved scope, acceptance criteria and remaining work.
 - [ARCHITECTURE.md](ARCHITECTURE.md): implemented stack, governing contracts and clearly labelled proposals.
 - [VALIDATION.md](VALIDATION.md): actual source-scoped results, retained failures and verification debt.
-- [Historical documents](docs/history/README.md): original plans/designs and old-path compatibility links.
+- [Historical documents](docs/history/README.md): retired plans/designs, readable snapshots and the exact-original archive.
 
 These describe development work, not a claim that the production application has
 migrated to the portable runtime/loop/service stack. Public library guides and

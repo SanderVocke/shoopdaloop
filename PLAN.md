@@ -6,9 +6,11 @@
 
 This is the single maintained planning/status document for the workstreams below.
 It consolidates the plans present at `fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a`.
-Existing plan paths remain compatibility redirects. Original plans, criteria,
-checklists and scope-change records are preserved byte-for-byte in the
-[historical snapshot](docs/history/README.md); they are not parallel live queues.
+Superseded plans and their redirect pages have been retired from the root.
+[Readable historical views](docs/history/README.md) preserve the original text with
+snapshot-aware navigation; the original criteria, checklists and scope-change
+records remain byte-for-byte in the archived bundle. They are not parallel live
+queues.
 
 This migration changes document organization, not approved outcomes. In particular,
 it does not complete the loop goal, resume paused implementation, adopt a proposed
@@ -21,15 +23,18 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
   affected ordinary guides/examples in the same change. Preserve unrelated work.
 - Follow `AGENTS.md` and `.agents/`. On this Nix host run Cargo/Python/Trunk/test
   payloads through `nix develop --command ...`; CI uses its provisioned environment.
-- Keep execution lifecycle in native controls. A document status is not a native
-  pause/resume/complete operation. No goal is resumed by this migration.
+- The user retired the old loop execution context and will continue elsewhere;
+  it will not be resumed as-is. This plan preserves unfinished requirements for a
+  separately authorized continuation, not an instruction to restart that goal.
+- Keep native lifecycle in normal user/native controls. A document status is not
+  a native pause/resume/complete operation; native records remain historical.
 
 ## Workstreams
 
 | Workstream | Recorded state | Remaining work / next decision |
 | --- | --- | --- |
 | Initial generic runtime | Delivered at its historical accepted source | Maintain through applicable regressions; do not reopen its completed initial checklist |
-| [Portable loop execution](#portable-loop-execution) | **Paused; acceptance incomplete**. Stages 0–6 and 9 verified, Stage 7 **7/8**, Stage 8 **6/8**, Stage 10 open | On explicit resume: recover full current Miri coverage, verify remote artifacts and final integrated gates, then PR/CI/review/auditor |
+| [Portable loop execution](#portable-loop-execution) | **Unfinished handoff; old execution context retired by user**. Stages 0–6 and 9 verified, Stage 7 **7/8**, Stage 8 **6/8**, Stage 10 open | A separately scoped continuation must recover full current Miri coverage, verify remote artifacts and final integrated gates, then PR/CI/review/auditor; do not resume the old goal |
 | [Native composition / Milestone 1](#native-composition--milestone-1) | Native DSP/service implemented; narrowed consolidation delivered | Original full final acceptance is unclaimed; further full validation is distinct from the completed merge/smoke/push request |
 | Runtime book and existing loop guides | Documentation completion recorded; accepted guides remain authoritative | Maintain only affected material with future changes; no retrospective book audit or handoff queue |
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
@@ -94,10 +99,12 @@ archived original plan. Evidence references and exact source boundaries are in
 
 ### Remaining stage checks
 
-These are the original unchecked rows, with stable references added. Their
-wording and unchecked state are preserved. Dependency order remains: complete
-Stage 7/8 verification before claiming Stage 10 acceptance. Some native/browser
-portions already pass; a row is not closed until its entire contract is verified.
+These are the original unchecked rows, retained as an **unfinished handoff** with
+stable references. Their wording and unchecked state are preserved, not issued as
+instructions to resume the retired executor. A new continuation needs its own user
+authorization. Dependency order remains: complete Stage 7/8 verification before
+claiming Stage 10 acceptance. Some native/browser portions already pass; a row is
+not closed until its entire contract is verified.
 
 **Stage 7 — independent native and real AudioWorklet hosts**
 
@@ -119,8 +126,9 @@ Preserve all **151 commands / 304 executions**, prior filters/seeds/order and th
 **900-second per-command watchdog**; additional cases are additive, not replacements.
 The final sync-component model timed out after 303 verified partial executions.
 A proposed full-identity-checked topology lookup fast path has not been implemented
-or accepted by this document. On resume, test an evidence-based cost fix without
-shortening any model, then obtain supported complete recovery and collection.
+or accepted by this document. Any separately authorized recovery must test an
+evidence-based cost fix without shortening a model, then obtain supported complete
+recovery and collection.
 
 **Stage 10 — final end-to-end validation and delivery**
 
@@ -292,19 +300,8 @@ These are design directions, not authorized implementation checkboxes:
 
 ## Native execution records
 
-The `.pi/` files remain native-managed and unchanged by this migration. References
-to `PLAN_LOOP_LAYER.md` and `PLAN_MILESTONE_1.md` now resolve through redirects to
-this plan. Stored lifecycle state and approved work scope are different facts:
-
-| Stored goal | Native state at consolidation | Interpretation |
-| --- | --- | --- |
-| `mvqjv1pa-kwtmu3` — current loop goal | Paused by user | Loop work is incomplete; only explicit resume authorizes autonomous continuation |
-| `mvo6lnim-1xzkd7` — earlier loop goal | Paused | Historical predecessor, not another active stage checklist |
-| `mvps85i2-uuvn9n` — old documentation goal | Paused | Contains superseded archive/tooling/Git-delivery contracts; do not resume those old instructions as current work |
-| `mvrpaoj0-u4f0gj` — original M1 goal | Stored as blocked | Its old dependency-wait reason predates the delivered narrow consolidation; it is not a new service failure or a reason to repeat that merge |
-
-Use normal native goal controls to reconcile stale objectives/lifecycle if those
-records are to be reused or retired. Do not edit raw JSON/event/checkpoint files,
-focus another goal automatically, declare the old full objectives complete, or
-clear a goal on the user's behalf. This plan is the work authority; native records
-supply execution state, not a second independently maintained plan.
+The former goals are [historical execution context](docs/history/README.md#retired-execution-context),
+not another current checklist or a dependency on resuming the old executor.
+Their root plan paths are intentionally removed. Native `.pi/` storage and
+lifecycle remain managed by normal user/native controls; no raw records are
+manually edited or declared complete by this documentation cleanup.

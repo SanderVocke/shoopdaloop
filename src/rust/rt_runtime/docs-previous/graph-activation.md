@@ -175,7 +175,7 @@ and its provenance for native188runtime/131loop, Node/Chromium184runtime/131loop
 workspace2119/four existing skips,25 broad gates, lifetime/authority proofs and
 unchanged generic native/actual-worklet regressions/canaries. Nine new selected
 Miri executions were registered but not yet interpreted at that milestone. The
-[collected Stage 6 verification](../../../../docs/loop_layer/MIRI_JOBS.md#collected-stage-6-pass)
+[collected Stage 6 verification](../../../../docs/history/pre-consolidation-fffc1faa/docs/loop_layer/MIRI_JOBS.md#collected-stage-6-pass)
 records completed consolidated Stage 6 Miri verification for the later implementation;
 the counts above retain their original scope. Supported prepared-template loop
 transactions are now implemented, but independent loop-host execution, later

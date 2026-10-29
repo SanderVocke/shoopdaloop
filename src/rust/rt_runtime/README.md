@@ -55,7 +55,7 @@ cargo run -p rt_runtime --release --example gain_graph
 cargo test -p rt_runtime
 ```
 
-The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal. The [bounded runtime example](examples/bounded_runtime.rs) measures seven synthetic offline workloads with legacy quota-based capture, not required/group/loop throughput. See [capacity and measurement limits](docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) and [repository performance evidence](../../../docs/rt_runtime/PERFORMANCE.md).
+The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal. The [bounded runtime example](examples/bounded_runtime.rs) measures seven synthetic offline workloads with legacy quota-based capture, not required/group/loop throughput. See [capacity and measurement limits](docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) and [repository performance evidence](../../../VALIDATION.md#performance-observations).
 
 ## Current boundaries
 

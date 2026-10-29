@@ -64,7 +64,7 @@ Three guarded integration cases plus one private scratch-state case verify:
 See [program-probe-stage6.json](../../../../docs/loop_layer/evidence/program-probe-stage6.json)
 for the original native/release, Node/Chromium and workspace evidence. That
 milestone deferred interpreter execution; consolidated Stage 6 evidence is recorded
-separately in repository [Miri jobs](../../../../docs/loop_layer/MIRI_JOBS.md), not
+separately in repository [Miri evidence](../../../../VALIDATION.md#miri-evidence), not
 rerun for these prose corrections.
 
 The standalone [owning program transaction](program-changes.md) and facade

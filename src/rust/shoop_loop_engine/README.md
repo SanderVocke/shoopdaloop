@@ -159,10 +159,13 @@ check typed payload/receipt ownership and retained capture/index content across
 partitions, refusals, stale/reused identities and exhausted maintenance credits.
 Actual mutations are heap-guarded; allocating references and destruction stay
 off-render. These are regression models, not fresh worklet, deadline or interpreter
-certification. The [validation record](../../../docs/loop_layer/VALIDATION.md)
+certification. The [validation record](../../../VALIDATION.md#loop-evidence)
 identifies actual native/Wasm results and outstanding source-scoped interpreter
 coverage.
 
-The implementation contract and progress are tracked in the repository's
-`PLAN_LOOP_LAYER.md` and `docs/loop_layer/`. No full legacy backend compatibility,
-unlimited recording, or hard-real-time deadline guarantee is promised.
+The implementation contract and remaining work are tracked in
+[PLAN.md](../../../PLAN.md#portable-loop-execution) and
+[ARCHITECTURE.md](../../../ARCHITECTURE.md#loop-semantics).
+[Earlier plans and evidence narratives](../../../docs/history/README.md) are
+historical. No full legacy backend compatibility, unlimited recording, or
+hard-real-time deadline guarantee is promised.

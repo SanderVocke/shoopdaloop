@@ -12,6 +12,6 @@ Task chapters teach independent runnable examples. These pages consolidate contr
 
 ## Maintainer evidence is separate
 
-The [repository runtime references](../../../../../docs/rt_runtime/GUIDE.md), [validation history](../../../../../docs/rt_runtime/VALIDATION.md), [performance evidence](../../../../../docs/rt_runtime/PERFORMANCE.md) and [generic host fixture](../../../../../tests/rt_runtime_host/README.md) retain their own historical scope. They are not additional tutorial prerequisites or proof of new loop-host/deadline claims.
+The [current verification index](../../../../../VALIDATION.md) distinguishes results from remaining debt. The [initial-runtime validation history](../../../../../docs/history/pre-consolidation-fffc1faa/docs/rt_runtime/VALIDATION.md), [historical performance evidence](../../../../../docs/history/pre-consolidation-fffc1faa/docs/rt_runtime/PERFORMANCE.md) and [generic host fixture](../../../../../tests/rt_runtime_host/README.md) retain their own source scope. They are not additional tutorial prerequisites or proof of new loop-host/deadline claims.
 
 The [separate loop library](../../../shoop_loop_engine/README.md) supplies loop policy and prepared-domain integration. Generic runtime permits do not silently supply its source/role/media/configuration transactions.

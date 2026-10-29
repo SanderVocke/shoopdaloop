@@ -725,7 +725,7 @@ work and collect its terminal result using the returned job directory; launch,
 native dispatch checks and partial output are not passes. The900-second per-command
 watchdog is unchanged. See the [operational guide](../../docs/loop_layer/MIRI_BACKGROUND.md)
 for source isolation, cancellation, collection and failure handling, and the
-[job history](../../docs/loop_layer/MIRI_JOBS.md) for actual status. A concrete
+[Miri evidence](../../VALIDATION.md#miri-evidence) for actual status. A concrete
 failure may justify a declared one-command shard; adding `--measureme` profiles
 that same full command without reducing its workload or raising the watchdog.
 Diagnostic-profile artifacts are not a complete stage run or native performance

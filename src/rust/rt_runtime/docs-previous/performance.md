@@ -1,6 +1,6 @@
 # Capacity and performance
 
-Previous guide. Current [sizing](../docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) and [configuration/error reference](../docs/reference/configuration-and-errors.md) separate storage, callback allowances and required work. Historical measurements remain [repository evidence](../../../../docs/rt_runtime/PERFORMANCE.md), not new loop throughput/deadline claims.
+Previous guide. Current [sizing](../docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) and [configuration/error reference](../docs/reference/configuration-and-errors.md) separate storage, callback allowances and required work. Historical measurements remain [repository evidence](../../../../docs/history/pre-consolidation-fffc1faa/docs/rt_runtime/PERFORMANCE.md), not new loop throughput/deadline claims.
 
 [Overview](../README.md) · [Host integration](integration.md) · [Scheduling and MIDI](scheduling-midi.md) · [Resources](resources.md)
 

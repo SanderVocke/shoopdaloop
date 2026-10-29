@@ -160,7 +160,7 @@ prerecord/postroll and independent channel alignment, then plays/wraps the selec
 eight-frame windows. It consumes the same observed wet stream, not an old plugin
 or session graph. Neither that comparison nor checked `shoop_latency` arithmetic
 adds history, postroll, render advance or playback-window support to this service.
-See [findings and raw evidence](../../../docs/integration/MILESTONE_1.md#stage-5-fixed-delay-physical-evidence-and-compatibility-findings).
+See [findings and raw evidence](../../../docs/history/pre-consolidation-fffc1faa/docs/integration/MILESTONE_1.md#stage-5-fixed-delay-physical-evidence-and-compatibility-findings).
 
 ## Native measurement host and release observations
 
@@ -201,7 +201,7 @@ recomputes all statistics from raw artifacts. `--allow-dirty` is explicitly vali
 audit. The 60-second child timeout is a test-host safeguard, not an audio deadline.
 
 Seven debug/release host cases and nine parser/statistics/auditor unit cases pass.
-The [initial-pin release report](../../../docs/integration/MILESTONE_1.md#stage-6-release-measurements-on-the-initial-dependency-pin)
+The [initial-pin release report](../../../docs/history/pre-consolidation-fffc1faa/docs/integration/MILESTONE_1.md#stage-6-release-measurements-on-the-initial-dependency-pin)
 retains **43,008 observations**, source/binary/environment provenance and per-run/
 pooled statistics. Observed service idle/steady medians were **4.048/4.278 µs**,
 versus the matched current-engine **2.185/2.385 µs**. Higher costs, MIDI restoration

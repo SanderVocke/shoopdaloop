@@ -2,7 +2,7 @@
 
 This directory was moved from `src/rust/rt_runtime/docs-changes-loop-layer/` after the correctness merge. It preserves the original notes and JSON evidence as historical source material, not an active handoff queue. The user's final-input instruction supersedes the old worker, future-stage and validation-workflow directions below.
 
-Use the [documentation completion reference](../remaining-documentation.md) for the consolidated authoring requirements and [DOCS_REWRITE_PLAN.md](../../../../../DOCS_REWRITE_PLAN.md) for the execution and completion record. No further handoff notes or implementation changes are expected. Do not refresh baselines, rerun documentation accounting, wait for missing hosts/benchmarks or infer that an old pending statement is current. Original destination paths/hashes and verification records describe their historical snapshots; they are not current integrity requirements.
+Use the [documentation completion reference](../remaining-documentation.md) for the consolidated authoring requirements and [historical documentation completion record](../../../../../docs/history/pre-consolidation-fffc1faa/DOCS_REWRITE_PLAN.md) for the execution and completion record. No further handoff notes or implementation changes are expected. Do not refresh baselines, rerun documentation accounting, wait for missing hosts/benchmarks or infer that an old pending statement is current. Original destination paths/hashes and verification records describe their historical snapshots; they are not current integrity requirements.
 
 The original review follows, including its chronological index and source links.
 

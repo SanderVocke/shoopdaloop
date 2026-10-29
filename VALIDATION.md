@@ -16,11 +16,14 @@ Milestone 1 source consolidation `30d09bbd`. Raw evidence and milestone reports
 remain unchanged under `docs/{rt_runtime,loop_layer,integration}/evidence/`.
 The 34 superseded narrative documents are preserved byte-for-byte in the
 [offline snapshot](docs/history/pre-consolidation-fffc1faa.tar.gz); the
-[history index](docs/history/README.md) also links to their complete immutable Git
-versions. Old source hashes/counts/failures are not rewritten or relabelled.
+[history index](docs/history/README.md) provides readable archived views and their
+complete immutable Git versions. Retired redirect pages are removed, not kept as
+parallel ledgers. Old source hashes/counts/failures are not rewritten or relabelled.
 
-Current debt belongs here; execution checkboxes belong only in [PLAN.md](PLAN.md).
-Do not maintain a second editable Miri ledger or native goal task plan.
+Current debt belongs here; retained unfinished checkboxes belong only in
+[PLAN.md](PLAN.md). The user retired the old executor and will continue elsewhere;
+these gaps remain unsatisfied, not a reason to resume that native goal or claim
+completion. Do not maintain a second editable Miri ledger or native task plan.
 
 ## Recorded verification by workstream
 

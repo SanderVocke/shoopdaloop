@@ -225,7 +225,7 @@ The first actual consolidated interpreter job was subsequently launched for Stag
 from committed readiness snapshot `faec78df`, after the nested lifecycle gates and
 coverage audit. It uses81 commands/228 executions and the unchanged900-second
 per-command watchdog. Job identity/progress are recorded in
-[MIRI_JOBS.md](MIRI_JOBS.md). Launch and partial progress are not a passing result;
+the [historical ledger](../history/pre-consolidation-fffc1faa/docs/loop_layer/MIRI_JOBS.md#collected-stage-6-pass). Launch and partial progress are not a passing result;
 terminal collection and input/inventory/hash verification were required. Those checks
 have now passed for the complete81-command/228-execution run. See the job ledger and
 `evidence/miri-stage6{,-collected,-provenance}.json`; the raw report/log bundle is

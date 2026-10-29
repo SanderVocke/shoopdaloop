@@ -1,6 +1,6 @@
 # Documentation completion reference
 
-[Execution and completion record](../../../../DOCS_REWRITE_PLAN.md) · [Archived implementation review](implementation-review/README.md)
+[Historical execution and completion record](../../../../docs/history/pre-consolidation-fffc1faa/DOCS_REWRITE_PLAN.md) · [Archived implementation review](implementation-review/README.md)
 
 `DOCS_REWRITE_PLAN.md` records completion of the book, reference and related documentation. This page preserves the substantive requirements that were unfinished when the former implementation handoff was consolidated, now archived under `implementation-review/`. Its requirement wording is supporting history, not an active task ledger or a request for more handoffs.
 
