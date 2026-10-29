@@ -184,7 +184,7 @@ Stages 5 and 6 both depend on 4 but not on each other.
 
 ### Stage 1 — Retire spike, rename crate and vocabulary
 
-- [ ] Delete `experiments/milestone_1_composition`. Link its last commit from
+- [x] Delete `experiments/milestone_1_composition`. Link its last commit from
       `docs/history/README.md`.
 - [ ] Rename `src/rust/shoop_loop_engine` → `src/rust/shoop_loops`, along with
       every dependent manifest and import, `tracing_coverage.csv`, Miri job
