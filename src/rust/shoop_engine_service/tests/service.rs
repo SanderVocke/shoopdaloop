@@ -7,7 +7,7 @@ use shoop_engine_service::{
     dsp, prepare, Client, Config, DeliveryPhase, ExecutionStatus, LoopOperation, LoopReply, Phase,
     Prepared, PreparedRoute, Render, Report,
 };
-use shoop_loop_engine::{LoopId, Mode, Timing, Transition};
+use shoop_loops::{LoopId, Mode, Timing, Transition};
 use shoop_wasm_test_support::{heap, shoop_test};
 
 #[global_allocator]
@@ -265,10 +265,7 @@ fn actual_loop_and_component_control_match_full_partition_oracles_without_warmup
             }
             if let Some(LoopReply::Transition(completion)) = raw.operation_result {
                 assert!(
-                    matches!(
-                        completion.outcome,
-                        shoop_loop_engine::Outcome::Applied { .. }
-                    ),
+                    matches!(completion.outcome, shoop_loops::Outcome::Applied { .. }),
                     "{completion:?}"
                 );
             }
@@ -464,7 +461,7 @@ fn processor_fault_keeps_actual_component_and_loop_receipts_without_replay() {
             assert!(executions.iter().any(|e| matches!(e.status,
                 ExecutionStatus::Executed(raw) if matches!(raw.operation_result,
                     Some(LoopReply::Transition(completion)) if matches!(completion.outcome,
-                        shoop_loop_engine::Outcome::Applied { frame: Frame(1), .. })))));
+                        shoop_loops::Outcome::Applied { frame: Frame(1), .. })))));
             assert!(executions.iter().any(|e| e.id == Some(state.id())
                 && matches!(
                     e.status,
@@ -576,7 +573,7 @@ fn prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes() {
             Frame(export_at),
             LoopOperation::Export {
                 target,
-                selection: shoop_loop_engine::runtime::Selection::Recording,
+                selection: shoop_loops::runtime::Selection::Recording,
             },
         )
         .unwrap();
@@ -741,9 +738,9 @@ fn refusals_cancellation_and_late_delivery_preserve_requested_and_actual_phases(
     };
     assert_eq!(
         raw.operation_result,
-        Some(LoopReply::Failed(
-            shoop_loop_engine::runtime::Failure::Timeline(shoop_loop_engine::Error::InvalidId)
-        ))
+        Some(LoopReply::Failed(shoop_loops::runtime::Failure::Timeline(
+            shoop_loops::Error::InvalidId
+        )))
     );
     assert!(client.try_execution().is_none());
     assert_eq!(client.outstanding(), 0);
@@ -949,7 +946,7 @@ fn playing_cursor() -> (Client, Host, rt_runtime::resource::Cursor) {
             Frame(3),
             LoopOperation::Export {
                 target,
-                selection: shoop_loop_engine::runtime::Selection::Playback,
+                selection: shoop_loops::runtime::Selection::Playback,
             },
         )
         .unwrap();
@@ -1097,7 +1094,7 @@ fn all_normal_credits_and_both_return_streams_can_stall_while_wraps_and_stop_pro
                 }
                 LoopReply::Transition(completion) => {
                     assert!(
-                        matches!(completion.outcome, shoop_loop_engine::Outcome::Applied { frame, .. } if frame == stop_at)
+                        matches!(completion.outcome, shoop_loops::Outcome::Applied { frame, .. } if frame == stop_at)
                     );
                     stopped = true;
                 }
@@ -1197,7 +1194,7 @@ fn saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across
                 Frame(2),
                 LoopOperation::Export {
                     target,
-                    selection: shoop_loop_engine::runtime::Selection::Recording,
+                    selection: shoop_loops::runtime::Selection::Recording,
                 },
             )
             .unwrap();
@@ -1206,7 +1203,7 @@ fn saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across
                 Frame(3),
                 LoopOperation::Export {
                     target,
-                    selection: shoop_loop_engine::runtime::Selection::Recording,
+                    selection: shoop_loops::runtime::Selection::Recording,
                 },
             )
             .unwrap();
@@ -1255,9 +1252,9 @@ fn saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across
             } else if execution.id == Some(refused.id()) {
                 assert_eq!(
                     raw.operation_result,
-                    Some(LoopReply::Failed(
-                        shoop_loop_engine::runtime::Failure::Runtime(Error::Capacity)
-                    ))
+                    Some(LoopReply::Failed(shoop_loops::runtime::Failure::Runtime(
+                        Error::Capacity
+                    )))
                 );
                 full = true;
             } else if execution.id == Some(state.id()) {
@@ -1482,7 +1479,7 @@ fn disconnect_during_recording_retains_full_returns_and_pending_preset_until_sto
             Frame(2),
             LoopOperation::Export {
                 target,
-                selection: shoop_loop_engine::runtime::Selection::Recording,
+                selection: shoop_loops::runtime::Selection::Recording,
             },
         )
         .unwrap();

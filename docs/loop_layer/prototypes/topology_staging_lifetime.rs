@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-use shoop_loop_engine::{
+use shoop_loops::{
     topology::staging::{Stager, RECORD_BYTES},
     *,
 };
@@ -53,6 +53,6 @@ fn main() {
     assert_eq!(held[0].length, 4);
     assert_eq!(
         stager.status(),
-        shoop_loop_engine::topology::staging::Status::Idle
+        shoop_loops::topology::staging::Status::Idle
     );
 }

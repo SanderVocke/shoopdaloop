@@ -5,7 +5,7 @@ use rt_runtime::{
     transport::{Lane, Outcome},
     Epoch, Error, Frame,
 };
-use shoop_loop_engine::{
+use shoop_loops::{
     runtime::{LoopPlanner, Node, Operation, Reply},
     LoopId,
 };

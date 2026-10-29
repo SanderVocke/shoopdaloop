@@ -284,7 +284,7 @@ def main():
     start = commands.add_parser("start")
     start.add_argument("--stage", required=True)
     start.add_argument("--commit", required=True, help="Explicit committed snapshot; uncommitted edits are never included")
-    start.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine", "loop_engine_host_fixture"))
+    start.add_argument("--package", choices=("rt_runtime", "shoop_loops", "loops_host_fixture"))
     start.add_argument("--shard", help="Declared INDEX/TOTAL selection; focused failure recovery or CI, not a coverage waiver")
     start.add_argument("--measureme", action="store_true", help="Profile one justified failure command without weakening its interpreter gate")
     start.add_argument("--jobs-dir", type=Path, default=ROOT / "target/loop-layer-miri-jobs")

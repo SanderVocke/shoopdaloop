@@ -9,7 +9,7 @@ use shoop_engine_service::{
     dsp, prepare_with_content, Client, Config, EngineCommand, ExecutionStatus, InitialContent,
     InitialMidi, LoopOperation as Op, LoopReply as Reply, Render, RequestId,
 };
-use shoop_loop_engine::{
+use shoop_loops::{
     media::{ExportId, MediaId},
     runtime::{Failure, Selection},
     Mode, Timing, Transition,
@@ -39,7 +39,7 @@ struct Read {
 struct Host {
     client: Client,
     render: Render,
-    target: shoop_loop_engine::LoopId,
+    target: shoop_loops::LoopId,
     input: [MidiBuffer; 1],
     output: [MidiBuffer; 1],
     events: Vec<Packet>,
@@ -231,10 +231,7 @@ impl Host {
             let reply = raw.operation_result.unwrap();
             if let Reply::Transition(completion) = reply {
                 assert!(
-                    matches!(
-                        completion.outcome,
-                        shoop_loop_engine::Outcome::Applied { .. }
-                    ),
+                    matches!(completion.outcome, shoop_loops::Outcome::Applied { .. }),
                     "{completion:?}"
                 );
             } else {
@@ -383,7 +380,7 @@ impl Host {
         frame: u64,
         mode: Mode,
         media: Option<MediaId>,
-    ) -> shoop_loop_engine::runtime::Cut {
+    ) -> shoop_loops::runtime::Cut {
         let Reply::State(cut) = self.reply(id) else {
             panic!("state");
         };
@@ -624,10 +621,9 @@ pub fn verify_stopped_input() {
                 stopped_seen = true;
             }
             Some(Reply::Export { id, .. }) => export = Some(id),
-            Some(Reply::Transition(c)) => assert!(matches!(
-                c.outcome,
-                shoop_loop_engine::Outcome::Applied { .. }
-            )),
+            Some(Reply::Transition(c)) => {
+                assert!(matches!(c.outcome, shoop_loops::Outcome::Applied { .. }))
+            }
             reply => panic!("unexpected stopped-input result: {reply:?}"),
         }
     }

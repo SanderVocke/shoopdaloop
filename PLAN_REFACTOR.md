@@ -186,7 +186,7 @@ Stages 5 and 6 both depend on 4 but not on each other.
 
 - [x] Delete `experiments/milestone_1_composition`. Link its last commit from
       `docs/history/README.md`.
-- [ ] Rename `src/rust/shoop_loop_engine` → `src/rust/shoop_loops`, along with
+- [x] Rename `src/rust/shoop_loop_engine` → `src/rust/shoop_loops`, along with
       every dependent manifest and import, `tracing_coverage.csv`, Miri job
       lists and CI paths. Rename the matching scripts and test hosts:
       `check_loops_boundary.py`, `run_loops_hosts.py`, `benchmark_loops.py` and

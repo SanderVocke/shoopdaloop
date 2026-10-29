@@ -1,6 +1,6 @@
 # Prepared native engine service
 
-A bounded headless composition of the public `shoop_loop_engine` facade and the
+A bounded headless composition of the public `shoop_loops` facade and the
 independent `shoop_example_dsp`. One graph/render owner runs stereo live input and
 loop playback through the DSP to output and capture. This is a narrow native
 integration slice, **not** the application backend, a plugin host, feature parity,

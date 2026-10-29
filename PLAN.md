@@ -48,7 +48,7 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 ### Goals and scope
 
 1. Evolve `rt_runtime` to support generic planner-led interval execution, typed domain-operation delivery, prepared decision/observation storage, and resource access suitable for sample-exact looping.
-2. Implement `src/rust/shoop_loop_engine` as a portable library containing one authoritative loop/composite timeline resolver and separate audio/MIDI render operations.
+2. Implement `src/rust/shoop_loops` as a portable library containing one authoritative loop/composite timeline resolver and separate audio/MIDI render operations.
 3. Prove coordinated recording, playback, inter-loop triggering, and prepared composite execution in native and actual non-shared-memory AudioWorklet hosts.
 4. Keep the existing authoritative documentation and examples up to date as implementation changes. Extend explanations or add chapters when new features need them, following the current documentation style. Keep implementation audits and validation evidence accurate.
 
@@ -64,7 +64,7 @@ The LL-A1–LL-A12 wording below is retained from the approved plan, not revised
 
 | ID | Required result |
 | --- | --- |
-| LL-A1 — boundaries | `rt_runtime` remains generic, with no production/build dependency on `shoop_*`, UI, device, or browser crates. `shoop_loop_engine` depends on the runtime, not the old engine/backend/application or browser/device facilities. Both libraries build and execute on native and `wasm32-unknown-unknown`; host bindings remain in fixtures. |
+| LL-A1 — boundaries | `rt_runtime` remains generic, with no production/build dependency on `shoop_*`, UI, device, or browser crates. `shoop_loops` depends on the runtime, not the old engine/backend/application or browser/device facilities. Both libraries build and execute on native and `wasm32-unknown-unknown`; host bindings remain in fixtures. |
 | LL-A2 — timing authority | One render-owned resolver owns authoritative primitive/composite timing. Renderers consume coherent decisions and return observations; they do not discover sync by reading partially updated peer states. Explicit planner-to-consumer dependencies are validated independently of audio/MIDI routes. |
 | LL-A3 — musical execution | Every required finite transition of an admitted supported program executes at its intended sample, including A → B → C at the same frame and one-sample-loop wraps. No fixed interaction quantum, mandatory block/per-hop delay, or arbitrary per-callback wrap, propagation-round, or subdivision cap may alter musical results. |
 | LL-A4 — termination | The supported trigger/program model has documented termination semantics and a progress argument. Same-frame infinite behavior is rejected/reported through that model, not a work counter. Valid cyclic sync relationships remain possible; they are not confused with instantaneous causal recursion or signal feedback. |
@@ -183,26 +183,26 @@ Keep `RUSTFLAGS` and `RUSTDOCFLAGS` at `-D warnings`.
 ```sh
 cargo fmt --all -- --check
 cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
-cargo fmt --manifest-path tests/loop_engine_host/Cargo.toml -- --check
+cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
 RUSTFLAGS="-D warnings" cargo build --locked --workspace
-RUSTFLAGS="-D warnings" cargo test --locked -p rt_runtime -p shoop_loop_engine
-RUSTFLAGS="-D warnings" cargo test --locked -p rt_runtime -p shoop_loop_engine --release
-RUSTDOCFLAGS="-D warnings" cargo doc --locked -p rt_runtime -p shoop_loop_engine --no-deps
+RUSTFLAGS="-D warnings" cargo test --locked -p rt_runtime -p shoop_loops
+RUSTFLAGS="-D warnings" cargo test --locked -p rt_runtime -p shoop_loops --release
+RUSTDOCFLAGS="-D warnings" cargo doc --locked -p rt_runtime -p shoop_loops --no-deps
 SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 python3 scripts/check_shoop_test_usage.py
 python3 scripts/check_rt_runtime_boundary.py
-python3 scripts/check_loop_engine_boundary.py
-python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loop_engine_boundary
-python3 scripts/check_wasm_test_dependencies.py --package rt_runtime --package shoop_loop_engine
+python3 scripts/check_loops_boundary.py
+python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary
+python3 scripts/check_wasm_test_dependencies.py --package rt_runtime --package shoop_loops
 python3 scripts/check_tracing_coverage.py --require-closed
-python3 scripts/run_wasm_tests.py --runtime node --package rt_runtime --package shoop_loop_engine
-python3 scripts/run_wasm_tests.py --runtime chrome --package rt_runtime --package shoop_loop_engine
+python3 scripts/run_wasm_tests.py --runtime node --package rt_runtime --package shoop_loops
+python3 scripts/run_wasm_tests.py --runtime chrome --package rt_runtime --package shoop_loops
 python3 scripts/run_rt_runtime_hosts.py --verify-failures
-python3 scripts/run_loop_engine_hosts.py --verify-failures
+python3 scripts/run_loops_hosts.py --verify-failures
 # In an authorized supervised immutable background snapshot, then collect/verify:
 python3 scripts/run_rt_runtime_miri.py
 python3 scripts/benchmark_rt_runtime.py
-python3 scripts/benchmark_loop_engine.py
+python3 scripts/benchmark_loops.py
 ```
 
 Additionally execute applicable public examples and doctests, both native-only
@@ -282,9 +282,9 @@ before using the already consolidated source.
 
 ## Replacement loop book
 
-`src/rust/shoop_loop_engine/docs-new/` has a draft index, three opening chapters
+`src/rust/shoop_loops/docs-new/` has a draft index, three opening chapters
 and a separately manifested `first_loop` example. It is not the adopted public
-reading path. Existing `src/rust/shoop_loop_engine/README.md` and `docs/` guides
+reading path. Existing `src/rust/shoop_loops/README.md` and `docs/` guides
 remain authoritative. There is no approved full replacement-book implementation
 plan in this migration; continuation/adoption requires a user decision.
 

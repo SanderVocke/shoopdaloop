@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts import run_loop_engine_hosts as runner
+from scripts import run_loops_hosts as runner
 
 
 class NativeLoopRunnerTests(unittest.TestCase):

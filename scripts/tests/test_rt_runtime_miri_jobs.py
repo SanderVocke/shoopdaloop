@@ -134,15 +134,15 @@ class MiriJobTests(unittest.TestCase):
 
     def test_tracked_goal_state_is_excluded_without_losing_standalone_inputs(self):
         inputs = {
-            "tests/loop_engine_host/Cargo.toml": "standalone manifest fixture\n",
-            "tests/loop_engine_host/Cargo.lock": "standalone lockfile fixture\n",
-            "tests/loop_engine_host/src/lib.rs": "standalone source fixture\n",
+            "tests/loops_host/Cargo.toml": "standalone manifest fixture\n",
+            "tests/loops_host/Cargo.lock": "standalone lockfile fixture\n",
+            "tests/loops_host/src/lib.rs": "standalone source fixture\n",
         }
         for name, content in inputs.items():
             path = self.repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
-        self.git("add", ".pi/private", "tests/loop_engine_host")
+        self.git("add", ".pi/private", "tests/loops_host")
         self.git("commit", "-qm", "tracked state and standalone fixture")
         self.assertEqual(self.git("ls-tree", "--name-only", "HEAD", ".pi"), ".pi")
         job = self.prepare()

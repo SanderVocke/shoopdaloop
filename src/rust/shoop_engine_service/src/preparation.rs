@@ -7,7 +7,7 @@ use rt_runtime::{
     },
     Budgets, Error, Frame, NodeId, PlannerId, Revision,
 };
-use shoop_loop_engine::{
+use shoop_loops::{
     audio::Smoothing,
     compile,
     runtime::{Binding, Engine, Failure, Settings},
@@ -159,8 +159,8 @@ fn import(
     resources: &mut ResourceStore,
     target: LoopId,
     content: InitialContent,
-) -> Result<shoop_loop_engine::media::Input, Error> {
-    use shoop_loop_engine::media;
+) -> Result<shoop_loops::media::Input, Error> {
+    use shoop_loops::media;
     let frames = content.audio[0].len();
     if frames == 0 || content.audio[1].len() != frames {
         return Err(Error::InvalidShape);

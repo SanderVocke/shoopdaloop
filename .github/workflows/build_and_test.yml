@@ -59,7 +59,7 @@ jobs:
           prefix-key: rt-runtime-miri-batches-v2
           workspaces: |
             . -> target
-            tests/loop_engine_host -> target
+            tests/loops_host -> target
       - name: Record selected batch inventory
         run: |
           mkdir -p target/rt-runtime-miri
@@ -298,12 +298,12 @@ jobs:
               - 'scripts/check_shoop_test_usage.py'
               - 'scripts/run_rt_runtime_hosts.py'
               - 'scripts/check_rt_runtime_boundary.py'
-              - 'scripts/run_loop_engine_hosts.py'
-              - 'scripts/check_loop_engine_boundary.py'
+              - 'scripts/run_loops_hosts.py'
+              - 'scripts/check_loops_boundary.py'
               - 'src/rust/rt_runtime/**'
-              - 'src/rust/shoop_loop_engine/**'
+              - 'src/rust/shoop_loops/**'
               - 'tests/rt_runtime_host/**'
-              - 'tests/loop_engine_host/**'
+              - 'tests/loops_host/**'
               - 'src/rust/shoop_test_macros/**'
               - 'src/rust/shoop_wasm_test_support/**'
               - 'src/rust/shoop_wasm_runtime_tests/**'
@@ -331,7 +331,7 @@ jobs:
           workspaces: |
             . -> target
             tests/rt_runtime_host -> target
-            tests/loop_engine_host -> target
+            tests/loops_host -> target
 
       - name: Check local act prerequisites
         if: env.ACT == 'true'
@@ -764,18 +764,18 @@ jobs:
           RUSTFLAGS: -D warnings
         shell: bash
         run: |
-          cargo test --locked -p rt_runtime -p shoop_loop_engine ${{ matrix.cargo_args }}
-          cargo test --locked --manifest-path tests/loop_engine_host/Cargo.toml ${{ matrix.cargo_args }}
-          cargo fmt --manifest-path tests/loop_engine_host/Cargo.toml -- --check
+          cargo test --locked -p rt_runtime -p shoop_loops ${{ matrix.cargo_args }}
+          cargo test --locked --manifest-path tests/loops_host/Cargo.toml ${{ matrix.cargo_args }}
+          cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
           cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example gain_graph
           cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example planned_pair
           cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example pending_operations
-          cargo run --locked -p shoop_loop_engine ${{ matrix.cargo_args }} --example coordinated_loop
+          cargo run --locked -p shoop_loops ${{ matrix.cargo_args }} --example coordinated_loop
           python3 scripts/run_rt_runtime_hosts.py --native-only --profile '${{ matrix.profile }}'
-          python3 scripts/run_loop_engine_hosts.py --native-only --profile '${{ matrix.profile }}'
+          python3 scripts/run_loops_hosts.py --native-only --profile '${{ matrix.profile }}'
           python3 scripts/check_rt_runtime_boundary.py
-          python3 scripts/check_loop_engine_boundary.py
-          python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loop_engine_boundary
+          python3 scripts/check_loops_boundary.py
+          python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary
 
       - name: Measure guarded rt_runtime release workloads
         if: matrix.target == 'linux' && matrix.profile == 'release'
@@ -789,15 +789,15 @@ jobs:
           RUSTFLAGS: -D warnings
           RUSTDOCFLAGS: -D warnings
         run: |
-          python3 scripts/benchmark_loop_engine.py --iterations 1024 --trials 3 \
-            --report-dir '${{ runner.temp }}/loop-engine-bench-${{ github.run_id }}-${{ github.run_attempt }}'
+          python3 scripts/benchmark_loops.py --iterations 1024 --trials 3 \
+            --report-dir '${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}'
 
       - name: Upload guarded loop measurement evidence
         if: always() && matrix.target == 'linux' && matrix.profile == 'release'
         uses: actions/upload-artifact@v7
         with:
-          name: loop-engine-bench-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/loop-engine-bench-${{ github.run_id }}-${{ github.run_attempt }}
+          name: loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: error
           retention-days: 14
 
@@ -817,7 +817,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: loop-host-native-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
-          path: target/loop-engine-host/reports/native-${{ matrix.profile }}
+          path: target/loops-host/reports/native-${{ matrix.profile }}
           if-no-files-found: error
           retention-days: 14
 
@@ -934,7 +934,7 @@ jobs:
           cargo fmt --all -- --check
           python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
-          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loop_engine_hosts scripts.tests.test_loop_host_native_runner scripts.tests.test_loop_benchmark
+          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loops_hosts scripts.tests.test_loop_host_native_runner scripts.tests.test_loop_benchmark
 
       - name: Validate native and multirealm Perfetto traces
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -975,7 +975,7 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package rt_runtime --package shoop_loop_engine --package shoop_app --package shoop_app_api \
+            --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_api \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
             --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
@@ -1079,16 +1079,16 @@ jobs:
           RUSTFLAGS: -D warnings
           RUSTDOCFLAGS: -D warnings
         run: |
-          cargo fmt --manifest-path tests/loop_engine_host/Cargo.toml -- --check
-          python3 scripts/check_loop_engine_boundary.py
-          python3 scripts/run_loop_engine_hosts.py --profile '${{ matrix.profile }}' --verify-failures
+          cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
+          python3 scripts/check_loops_boundary.py
+          python3 scripts/run_loops_hosts.py --profile '${{ matrix.profile }}' --verify-failures
 
       - name: Upload independent loop AudioWorklet evidence
         if: always() && matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: loop-host-worklet-${{ matrix.profile }}-${{ github.run_id }}
-          path: target/loop-engine-host/reports/${{ matrix.profile }}
+          path: target/loops-host/reports/${{ matrix.profile }}
           if-no-files-found: error
           retention-days: 14
 

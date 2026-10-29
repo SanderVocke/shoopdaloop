@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-SPEC = importlib.util.spec_from_file_location("loop_benchmark", Path(__file__).parents[1] / "benchmark_loop_engine.py")
+SPEC = importlib.util.spec_from_file_location("loop_benchmark", Path(__file__).parents[1] / "benchmark_loops.py")
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 

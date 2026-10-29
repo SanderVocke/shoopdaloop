@@ -58,7 +58,7 @@ class MiriBatchCollectionTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.cases = [
             ("rt_runtime", "first", [], 2, 0),
-            ("shoop_loop_engine", "second", ["only", "--", "--exact"], 1, 1),
+            ("shoop_loops", "second", ["only", "--", "--exact"], 1, 1),
             (runner.HOST_PACKAGE, "lib", ["host", "--", "--exact"], 1, 2),
             ("rt_runtime", "last", [], 1, 0),
         ]

@@ -8,7 +8,7 @@ use rt_runtime::{
     Epoch, Error, Frame, Sequence,
 };
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
-use shoop_loop_engine::{
+use shoop_loops::{
     runtime::{Controller, Operation},
     LoopId, Timing, Transition,
 };
@@ -659,7 +659,7 @@ impl Ingress {
         let flag = pending.flag.take();
         if id.is_none() {
             self.stop_applied = matches!(execution.operation_result,
-                Some(shoop_loop_engine::runtime::Reply::Transition(c)) if matches!(c.outcome, shoop_loop_engine::Outcome::Applied {..}));
+                Some(shoop_loops::runtime::Reply::Transition(c)) if matches!(c.outcome, shoop_loops::Outcome::Applied {..}));
             self.stop_failed = !self.stop_applied;
         }
         self.publish_execution(Executed {

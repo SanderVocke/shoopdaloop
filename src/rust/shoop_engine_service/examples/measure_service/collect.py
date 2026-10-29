@@ -22,8 +22,8 @@ COLUMNS = (
     "engine,workload,index,frame,callback_ns,control_ns,meter_ns,control_attempts,"
     "refusals,meter_reads,midi_packets,copied_bytes,forwarded,owning_returns,executions"
 ).split(",")
-PROTECTED = ["src/rust/rt_runtime", "src/rust/shoop_loop_engine", "tests/loop_engine_host",
-             "PLAN_LOOP_LAYER.md", "docs/loop_layer", "scripts/run_loop_engine_host*"]
+PROTECTED = ["src/rust/rt_runtime", "src/rust/shoop_loops", "tests/loops_host",
+             "PLAN_LOOP_LAYER.md", "docs/loop_layer", "scripts/run_loops_host*"]
 
 
 def require(condition, message):

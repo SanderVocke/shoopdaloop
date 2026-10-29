@@ -4408,7 +4408,7 @@ dependencies = [
  "shoop_engine",
  "shoop_example_dsp",
  "shoop_latency",
- "shoop_loop_engine",
+ "shoop_loops",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4432,7 +4432,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "shoop_loop_engine"
+name = "shoop_loops"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",

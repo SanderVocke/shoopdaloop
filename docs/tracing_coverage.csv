@@ -26,33 +26,33 @@ src/rust/rt_runtime/src/resource/request.rs,generic_realtime_library,excluded,Ty
 src/rust/rt_runtime/src/resource/tests.rs,test_support,excluded,Private resource generation-exhaustion tests; not a production execution boundary.
 src/rust/rt_runtime/src/schedule.rs,generic_realtime_library,excluded,Independent bounded scheduler; execution outcomes and work diagnostics are exposed to hosts.
 src/rust/rt_runtime/src/transport.rs,generic_realtime_library,excluded,Independent bounded ownership transport; completion and telemetry publication must not depend on application tracing.
-src/rust/shoop_loop_engine/src/audio.rs,portable_loop_library,excluded,Prepared domain audio rendering; host instrumentation remains outside the portable library and required I/O work is counted by the runtime.
-src/rust/shoop_loop_engine/src/command.rs,portable_loop_library,excluded,Plain-data musical requests and results; no host execution or tracing dependency.
-src/rust/shoop_loop_engine/src/config.rs,portable_loop_library,excluded,Independent storage validation; no host tracing dependency or render execution boundary.
-src/rust/shoop_loop_engine/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.
-src/rust/shoop_loop_engine/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
-src/rust/shoop_loop_engine/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
-src/rust/shoop_loop_engine/src/media.rs,portable_loop_library,excluded,Fixed media ownership and checked exports; host tracing stays outside the portable library and generic resource work remains accounted.
-src/rust/shoop_loop_engine/src/media/activation.rs,portable_loop_library,excluded,Prepared atomic owner/media publication; no musical clock or application tracing dependency and resource reclamation remains accounted.
-src/rust/shoop_loop_engine/src/media_tests.rs,test_support,excluded,Private generation-exhaustion tests under the shared allocator guard; not a production execution boundary.
-src/rust/shoop_loop_engine/src/midi.rs,portable_loop_library,excluded,Prepared indexed MIDI operations; explicit output reports and generic runtime diagnostics replace application tracing dependencies.
-src/rust/shoop_loop_engine/src/midi_restore.rs,portable_loop_library,excluded,Fixed-protocol MIDI state emission; bounded sink reports expose failures without application tracing dependencies.
-src/rust/shoop_loop_engine/src/program.rs,portable_loop_library,excluded,Control-side sparse program compiler and immutable lookup; checked results are exposed through the API.
-src/rust/shoop_loop_engine/src/resolver.rs,portable_loop_library,excluded,Independent fixed-storage resolver; guarded execution exposes frame-tagged semantic events and saturating diagnostic loss without application tracing.
-src/rust/shoop_loop_engine/src/resolver_tests.rs,portable_loop_library,excluded,Private guarded resolver probe assertions run under traced test boundaries rather than application spans.
-src/rust/shoop_loop_engine/src/resolver/program_change.rs,portable_loop_library,excluded,Owning program transactions expose reliable receipts and exact semantic activation events without host tracing.
-src/rust/shoop_loop_engine/src/runtime/mod.rs,portable_loop_library,excluded,Portable prepared facade and typed control; bounded state and receipts expose outcomes without application tracing dependencies.
-src/rust/shoop_loop_engine/src/runtime/planner.rs,portable_loop_library,excluded,Guarded coordinated boundary execution; semantic journals and optional prepared observers expose diagnostics without application tracing.
-src/rust/shoop_loop_engine/src/runtime/processor.rs,portable_loop_library,excluded,Guarded playback and capture consumers; generic runtime work and explicit MIDI overflow observations remain accounted.
-src/rust/shoop_loop_engine/src/runtime/topology.rs,portable_loop_library,excluded,Prepared topology ingestion and owning activation/recycling; typed receipts and coherent epochs expose outcomes without callback tracing.
-src/rust/shoop_loop_engine/src/runtime/configuration.rs,portable_loop_library,excluded,Coordinated prepared role and graph and media publication; typed results expose preflight refusals and resulting epochs without callback tracing.
-src/rust/shoop_loop_engine/src/runtime/roles.rs,portable_loop_library,excluded,Fixed source receivers and role edit banks; bounded validation and owning cleanup use typed results without application tracing.
-src/rust/shoop_loop_engine/src/runtime/roles_tests.rs,portable_loop_library_tests,excluded,Guarded private identity exhaustion and source ownership tests.
-src/rust/shoop_loop_engine/src/state.rs,portable_loop_library,excluded,Plain-data authoritative state; no execution boundary to instrument.
-src/rust/shoop_loop_engine/src/topology.rs,portable_loop_library,excluded,Prepared timing metadata and borrowed views expose checked results without a host tracing dependency.
-src/rust/shoop_loop_engine/src/topology/staging.rs,portable_loop_library,excluded,Guarded metadata ingestion and owning recycling expose scoped status and progress without application tracing.
-src/rust/shoop_loop_engine/src/topology/staging/codec.rs,portable_loop_library,excluded,Bounded canonical metadata encoding and decoding use explicit results without application tracing.
-src/rust/shoop_loop_engine/src/topology/staging/validate.rs,portable_loop_library,excluded,Incremental fixed-storage validation exposes bounded step progress and explicit semantic refusals.
+src/rust/shoop_loops/src/audio.rs,portable_loop_library,excluded,Prepared domain audio rendering; host instrumentation remains outside the portable library and required I/O work is counted by the runtime.
+src/rust/shoop_loops/src/command.rs,portable_loop_library,excluded,Plain-data musical requests and results; no host execution or tracing dependency.
+src/rust/shoop_loops/src/config.rs,portable_loop_library,excluded,Independent storage validation; no host tracing dependency or render execution boundary.
+src/rust/shoop_loops/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.
+src/rust/shoop_loops/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
+src/rust/shoop_loops/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
+src/rust/shoop_loops/src/media.rs,portable_loop_library,excluded,Fixed media ownership and checked exports; host tracing stays outside the portable library and generic resource work remains accounted.
+src/rust/shoop_loops/src/media/activation.rs,portable_loop_library,excluded,Prepared atomic owner/media publication; no musical clock or application tracing dependency and resource reclamation remains accounted.
+src/rust/shoop_loops/src/media_tests.rs,test_support,excluded,Private generation-exhaustion tests under the shared allocator guard; not a production execution boundary.
+src/rust/shoop_loops/src/midi.rs,portable_loop_library,excluded,Prepared indexed MIDI operations; explicit output reports and generic runtime diagnostics replace application tracing dependencies.
+src/rust/shoop_loops/src/midi_restore.rs,portable_loop_library,excluded,Fixed-protocol MIDI state emission; bounded sink reports expose failures without application tracing dependencies.
+src/rust/shoop_loops/src/program.rs,portable_loop_library,excluded,Control-side sparse program compiler and immutable lookup; checked results are exposed through the API.
+src/rust/shoop_loops/src/resolver.rs,portable_loop_library,excluded,Independent fixed-storage resolver; guarded execution exposes frame-tagged semantic events and saturating diagnostic loss without application tracing.
+src/rust/shoop_loops/src/resolver_tests.rs,portable_loop_library,excluded,Private guarded resolver probe assertions run under traced test boundaries rather than application spans.
+src/rust/shoop_loops/src/resolver/program_change.rs,portable_loop_library,excluded,Owning program transactions expose reliable receipts and exact semantic activation events without host tracing.
+src/rust/shoop_loops/src/runtime/mod.rs,portable_loop_library,excluded,Portable prepared facade and typed control; bounded state and receipts expose outcomes without application tracing dependencies.
+src/rust/shoop_loops/src/runtime/planner.rs,portable_loop_library,excluded,Guarded coordinated boundary execution; semantic journals and optional prepared observers expose diagnostics without application tracing.
+src/rust/shoop_loops/src/runtime/processor.rs,portable_loop_library,excluded,Guarded playback and capture consumers; generic runtime work and explicit MIDI overflow observations remain accounted.
+src/rust/shoop_loops/src/runtime/topology.rs,portable_loop_library,excluded,Prepared topology ingestion and owning activation/recycling; typed receipts and coherent epochs expose outcomes without callback tracing.
+src/rust/shoop_loops/src/runtime/configuration.rs,portable_loop_library,excluded,Coordinated prepared role and graph and media publication; typed results expose preflight refusals and resulting epochs without callback tracing.
+src/rust/shoop_loops/src/runtime/roles.rs,portable_loop_library,excluded,Fixed source receivers and role edit banks; bounded validation and owning cleanup use typed results without application tracing.
+src/rust/shoop_loops/src/runtime/roles_tests.rs,portable_loop_library_tests,excluded,Guarded private identity exhaustion and source ownership tests.
+src/rust/shoop_loops/src/state.rs,portable_loop_library,excluded,Plain-data authoritative state; no execution boundary to instrument.
+src/rust/shoop_loops/src/topology.rs,portable_loop_library,excluded,Prepared timing metadata and borrowed views expose checked results without a host tracing dependency.
+src/rust/shoop_loops/src/topology/staging.rs,portable_loop_library,excluded,Guarded metadata ingestion and owning recycling expose scoped status and progress without application tracing.
+src/rust/shoop_loops/src/topology/staging/codec.rs,portable_loop_library,excluded,Bounded canonical metadata encoding and decoding use explicit results without application tracing.
+src/rust/shoop_loops/src/topology/staging/validate.rs,portable_loop_library,excluded,Incremental fixed-storage validation exposes bounded step progress and explicit semantic refusals.
 src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

@@ -129,7 +129,7 @@ therefore to the prepared checkpoint storage arithmetic above.
 
 ## State lookup is not restoration
 
-A renderer still needs cleanup → pre-target restoration → original equal-time events, with bounded sink capacity and an explicit failure policy. The separate loop library implements [projection/restoration helpers](../../../shoop_loop_engine/docs/midi-restore.md) and [indexed MIDI rendering](../../../shoop_loop_engine/docs/midi.md), including unsupported parameter-history reporting and runtime recovery integration.
+A renderer still needs cleanup → pre-target restoration → original equal-time events, with bounded sink capacity and an explicit failure policy. The separate loop library implements [projection/restoration helpers](../../../shoop_loops/docs/midi-restore.md) and [indexed MIDI rendering](../../../shoop_loops/docs/midi.md), including unsupported parameter-history reporting and runtime recovery integration.
 
 Do not treat the generic state/index API as that renderer, or protocol restoration as a snapshot of an external synth. Keep the export lease until all state/packet reads are complete and release it once; copying state does not acquire media ownership.
 

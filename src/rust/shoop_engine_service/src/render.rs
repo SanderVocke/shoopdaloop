@@ -4,7 +4,7 @@ use rt_runtime::{
     midi::ResetState,
     Error, Frame,
 };
-use shoop_loop_engine::runtime::Engine;
+use shoop_loops::runtime::Engine;
 
 pub struct Render {
     engine: Engine<dsp::Dsp>,
@@ -181,14 +181,14 @@ impl Render {
 }
 
 pub struct Stopped {
-    inner: shoop_loop_engine::runtime::Stopped,
+    inner: shoop_loops::runtime::Stopped,
     reclaim_bound: usize,
 }
 impl Stopped {
     pub fn resource_usage(&self) -> rt_runtime::resource::PoolUsage {
         self.inner.resource_usage()
     }
-    pub fn media_usage(&self) -> shoop_loop_engine::media::Usage {
+    pub fn media_usage(&self) -> shoop_loops::media::Usage {
         self.inner.media_usage()
     }
     pub fn midi_index_usage(&mut self) -> rt_runtime::resource::MidiIndexUsage {

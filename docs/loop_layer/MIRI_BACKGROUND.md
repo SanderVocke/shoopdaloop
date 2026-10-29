@@ -35,12 +35,12 @@ Launch returns after creating the snapshot and detached supervisor, not after
 Miri finishes. The supervisor survives the launcher's ordinary exit and streams
 output into files rather than into an interactive tool's pipe. One active job is
 allowed per jobs directory; an atomic launch lock prevents concurrent starts.
-`--package rt_runtime|shoop_loop_engine|loop_engine_host_fixture` is available for
+`--package rt_runtime|shoop_loops|loops_host_fixture` is available for
 a justified affected selection, not a substitute for complete required stage/final
 coverage. Inspect the standalone fixture without interpreting tests:
 
 ```sh
-python3 scripts/run_rt_runtime_miri.py --list --package loop_engine_host_fixture
+python3 scripts/run_rt_runtime_miri.py --list --package loops_host_fixture
 ```
 
 Discover inventory from the **intended frozen source**, rather than copying old

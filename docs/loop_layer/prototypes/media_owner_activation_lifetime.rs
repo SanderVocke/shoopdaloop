@@ -1,5 +1,5 @@
 use rt_runtime::{resource::ResourceStore, Config, Revision};
-use shoop_loop_engine::{
+use shoop_loops::{
     media::{Description, Input, Ledger, OwnerChange},
     LoopId,
 };
@@ -37,7 +37,7 @@ fn main() {
         .prepare_owner_activation(&mut io, &mut changes)
         .unwrap();
     #[cfg(forge)]
-    let permit = shoop_loop_engine::media::OwnerActivation {
+    let permit = shoop_loops::media::OwnerActivation {
         ledger: &mut ledger,
         io: &mut io,
         changes: &mut changes,

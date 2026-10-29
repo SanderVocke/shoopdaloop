@@ -111,7 +111,7 @@ final-input rules are in [PLAN.md](PLAN.md#miri-execution-contract).
 Failing exact test:
 
 ```text
-shoop_loop_engine / adversarial_timeline
+shoop_loops / adversarial_timeline
 seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals
 -- --exact
 ```

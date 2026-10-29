@@ -21,7 +21,7 @@ snapshot-status paragraphs there do not describe the current tree.
 | Layer | Implemented responsibility | Boundary |
 | --- | --- | --- |
 | `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, typed scheduling/results, resource/index/capture pools, staged graph permits, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
-| `shoop_loop_engine` | One resolver for primitive/composite timing, playback/capture consumers, media ledger and coordinated control/publication | Depends on runtime, not legacy backend; current complete integration is graph-owning facade-first |
+| `shoop_loops` | One resolver for primitive/composite timing, playback/capture consumers, media ledger and coordinated control/publication | Depends on runtime, not legacy backend; current complete integration is graph-owning facade-first |
 | `shoop_example_dsp` | Independent prepared stereo/MIDI processor, typed preset bridge and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
 | `shoop_engine_service` | Native composition of the real loop facade and independent DSP in one graph/render owner; typed controls, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
 | Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
@@ -29,10 +29,10 @@ snapshot-status paragraphs there do not describe the current tree.
 | Common modular protocol, service browser/IPC/network deployment | Proposed | Not implemented merely because test-host codecs or Wasm libraries exist |
 
 The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop
-[task guides](src/rust/shoop_loop_engine/README.md), DSP
+[task guides](src/rust/shoop_loops/README.md), DSP
 [README](src/rust/shoop_example_dsp/README.md), service
 [README](src/rust/shoop_engine_service/README.md), and host
-[READMEs](tests/loop_engine_host/README.md) are the public usage paths. They remain
+[READMEs](tests/loops_host/README.md) are the public usage paths. They remain
 separate from planning and evidence, and are not rewritten by consolidation.
 
 <a id="generic-rt-runtime"></a>

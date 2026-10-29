@@ -1,4 +1,4 @@
-use shoop_loop_engine::*;
+use shoop_loops::*;
 
 fn main() {
     let target = LoopId::from_parts(0, 1).unwrap();

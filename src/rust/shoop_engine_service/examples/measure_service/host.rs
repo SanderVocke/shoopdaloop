@@ -8,7 +8,7 @@ use shoop_engine_service::{
     dsp, media::ExportId, Client, Config, EngineCommand, ExecutionStatus, InitialContent,
     LoopOperation as Op, LoopReply as Reply, Render,
 };
-use shoop_loop_engine::{runtime::Selection, Mode as LoopMode, Timing, Transition};
+use shoop_loops::{runtime::Selection, Mode as LoopMode, Timing, Transition};
 use shoop_wasm_test_support::heap;
 use std::{hint::black_box, time::Instant};
 
@@ -210,7 +210,7 @@ enum Bulk {
 struct Service {
     client: Client,
     render: Render,
-    target: shoop_loop_engine::LoopId,
+    target: shoop_loops::LoopId,
     mode: Mode,
     input: [MidiBuffer; 1],
     output: [MidiBuffer; 1],
@@ -417,7 +417,7 @@ impl Bench for Service {
             match raw.operation_result.unwrap() {
                 Reply::Transition(completion) => assert!(matches!(
                     completion.outcome,
-                    shoop_loop_engine::Outcome::Applied { .. }
+                    shoop_loops::Outcome::Applied { .. }
                 )),
                 Reply::State(cut) => {
                     assert_eq!(cut.state.mode, LoopMode::Playing);

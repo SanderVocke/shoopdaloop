@@ -8,7 +8,7 @@ use shoop_engine_service::{
     dsp, prepare_with_content, Config, ExecutionStatus, InitialContent, InitialMidi, LoopOperation,
     LoopReply,
 };
-use shoop_loop_engine::{runtime::Failure, Mode, Timing, Transition};
+use shoop_loops::{runtime::Failure, Mode, Timing, Transition};
 use shoop_wasm_test_support::{heap, shoop_test};
 
 #[global_allocator]

@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-use shoop_loop_engine::*;
+use shoop_loops::*;
 
 fn id(slot: u32) -> LoopId {
     LoopId::from_parts(slot, 1).unwrap()
@@ -57,13 +57,13 @@ fn main() {
     let held = resolver.topology().components().get(0).unwrap();
     #[cfg(not(any(compile_fail_program, compile_fail_target, compile_fail_component)))]
     {
-        let program: shoop_loop_engine::program::CompiledProgram<'_> =
+        let program: shoop_loops::program::CompiledProgram<'_> =
             resolver.topology().program(id(1)).unwrap();
-        let targets: shoop_loop_engine::program::TargetTimelines<'_> = program.targets();
-        let target: shoop_loop_engine::program::TargetTimeline<'_> = targets.get(0).unwrap();
+        let targets: shoop_loops::program::TargetTimelines<'_> = program.targets();
+        let target: shoop_loops::program::TargetTimeline<'_> = targets.get(0).unwrap();
         assert_eq!(target.target, id(0));
         assert_eq!(target.at(2).unwrap().end, 6);
-        let components: shoop_loop_engine::topology::Components<'_> =
+        let components: shoop_loops::topology::Components<'_> =
             resolver.topology().components();
         assert_eq!(components.get(0).unwrap(), &[id(1)]);
     }

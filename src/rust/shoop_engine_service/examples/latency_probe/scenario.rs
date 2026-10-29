@@ -13,7 +13,7 @@ use shoop_latency::{
     wet_recording_offset, CaptureFrameMapping, ProcessorRenderAdvance, RecordingOffset,
     RetentionWindow,
 };
-use shoop_loop_engine::{runtime::Selection, Mode, Timing, Transition};
+use shoop_loops::{runtime::Selection, Mode, Timing, Transition};
 use shoop_wasm_test_support::heap;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -160,7 +160,7 @@ impl Evidence {
 struct Host {
     client: Client,
     render: Render,
-    target: shoop_loop_engine::LoopId,
+    target: shoop_loops::LoopId,
     input: [MidiBuffer; 1],
     output: [MidiBuffer; 1],
     signal: Signal,
@@ -202,7 +202,7 @@ impl Host {
             if let Reply::Transition(completion) = reply {
                 assert!(matches!(
                     completion.outcome,
-                    shoop_loop_engine::Outcome::Applied { .. }
+                    shoop_loops::Outcome::Applied { .. }
                 ));
             } else {
                 self.replies.push((execution.id.unwrap(), reply));

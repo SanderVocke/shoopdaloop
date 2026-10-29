@@ -51,13 +51,13 @@ CASES = [
 STAGE8_MODELS = (
     ("rt_runtime", "adversarial_delivery", "seeded_typed_payloads_receipts_and_recycled_tokens_match_a_full_length_independent_model"),
     ("rt_runtime", "adversarial_capture", "seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_exhausted_maintenance"),
-    ("shoop_loop_engine", "adversarial_timeline", "seeded_programs_preserve_scalar_timing_through_full_receipts_journal_loss_and_rejected_owners"),
-    ("shoop_loop_engine", "adversarial_timeline", "seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals"),
+    ("shoop_loops", "adversarial_timeline", "seeded_programs_preserve_scalar_timing_through_full_receipts_journal_loss_and_rejected_owners"),
+    ("shoop_loops", "adversarial_timeline", "seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals"),
 )
 
 
-HOST_PACKAGE = "loop_engine_host_fixture"
-HOST_MANIFEST = "tests/loop_engine_host/Cargo.toml"
+HOST_PACKAGE = "loops_host_fixture"
+HOST_MANIFEST = "tests/loops_host/Cargo.toml"
 HOST_CASES = (
     "bridge_tests::callback_fault_is_permanent_and_pending_wire_ownership_is_reclaimed_off_render",
     "bridge_tests::client_rejects_duplicate_foreign_and_reordered_receipts_without_releasing_credit",
@@ -284,12 +284,12 @@ def _run_case(command, env, stdout, log):
 def selected_cases(package=None):
     cases = [("rt_runtime", target, arguments, minimum, 0) for target, arguments, minimum in CASES]
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
-    cases.append(("shoop_loop_engine", "audio", [], 6, 0))
-    cases.append(("shoop_loop_engine", "audio_ports", [], 2, 0))
-    cases.append(("shoop_loop_engine", "lib", [], 4, 0))
-    cases.append(("shoop_loop_engine", "program_boundaries", [], 3, 0))
-    cases.append(("shoop_loop_engine", "program_changes", [], 10, 0))
-    cases.append(("shoop_loop_engine", "topology_staging", [], 7, 0))
+    cases.append(("shoop_loops", "audio", [], 6, 0))
+    cases.append(("shoop_loops", "audio_ports", [], 2, 0))
+    cases.append(("shoop_loops", "lib", [], 4, 0))
+    cases.append(("shoop_loops", "program_boundaries", [], 3, 0))
+    cases.append(("shoop_loops", "program_changes", [], 10, 0))
+    cases.append(("shoop_loops", "topology_staging", [], 7, 0))
     for name in (
         "configuration_scenarios::generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_reference",
         "configuration_scenarios::inactive_prepared_consumers_support_kind_change_removal_and_readd_without_retargeting_old_requests",
@@ -320,12 +320,12 @@ def selected_cases(package=None):
         "timing_activation_during_capture_keeps_the_take_prefix_and_recorded_fx_media_coherent",
         "topology_revalidation_completes_countdown_receipts_and_cancelled_delivery_keeps_the_candidate",
     ):
-        cases.append(("shoop_loop_engine", "runtime_topology", [name, "--", "--exact"], 1, 0))
-    cases.append(("shoop_loop_engine", "media", [], 7, 0))
-    cases.append(("shoop_loop_engine", "media_decisions", [], 4, 0))
-    cases.append(("shoop_loop_engine", "capture_decisions", [], 4, 0))
-    cases.append(("shoop_loop_engine", "midi_restore", [], 4, 0))
-    cases.append(("shoop_loop_engine", "midi", [], 6, 0))
+        cases.append(("shoop_loops", "runtime_topology", [name, "--", "--exact"], 1, 0))
+    cases.append(("shoop_loops", "media", [], 7, 0))
+    cases.append(("shoop_loops", "media_decisions", [], 4, 0))
+    cases.append(("shoop_loops", "capture_decisions", [], 4, 0))
+    cases.append(("shoop_loops", "midi_restore", [], 4, 0))
+    cases.append(("shoop_loops", "midi", [], 6, 0))
     for name in (
         "coordinated_stereo_midi_record_play_seek_export_and_repeated_capture_match_independent_oracles",
         "scenarios::prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_coherent",
@@ -338,13 +338,13 @@ def selected_cases(package=None):
         "scenarios::facade_role_validation_invalid_operations_and_imported_revision_exhaustion_are_checked",
         "scenarios::integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts",
     ):
-        cases.append(("shoop_loop_engine", "runtime", [name, "--", "--exact"], 1, 0))
-    cases.append(("shoop_loop_engine", "topology_views", [], 3, 0))
+        cases.append(("shoop_loops", "runtime", [name, "--", "--exact"], 1, 0))
+    cases.append(("shoop_loops", "topology_views", [], 3, 0))
     for name in (
         "cascades_nested_clocked_program_and_capture_outcomes_match_independent_media_and_journals",
         "nested_lifecycle::nested_seek_stop_restart_and_direct_priority_preserve_media_cuts_and_pending_outcomes",
     ):
-        cases.append(("shoop_loop_engine", "interloop", [name, "--", "--exact"], 1, 0))
+        cases.append(("shoop_loops", "interloop", [name, "--", "--exact"], 1, 0))
     host = [(HOST_PACKAGE, "lib", [name, "--", "--exact"], 1, 0) for name in HOST_CASES]
     host.extend((HOST_PACKAGE, "lib", [name, "--", "--exact"], 1, seed)
                 for name in HOST_CONCURRENCY for seed in (1, 2))
@@ -368,7 +368,7 @@ def interrupted(signum, _frame):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", choices=("rt_runtime", "shoop_loop_engine", HOST_PACKAGE), help="Run one package's selected cases")
+    parser.add_argument("--package", choices=("rt_runtime", "shoop_loops", HOST_PACKAGE), help="Run one package's selected cases")
     parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
     parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
     parser.add_argument("--shard", type=shard_spec, help="Disjoint CI batch INDEX/TOTAL; keeps whole commands and workloads")

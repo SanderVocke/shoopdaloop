@@ -16,7 +16,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 rt_runtime = { path = "../rt_runtime" }
-shoop_loop_engine = { path = "../shoop_loop_engine" }
+shoop_loops = { path = "../shoop_loops" }
 shoop_example_dsp = { path = "../shoop_example_dsp" }
 rtrb = "0.4.0"
 
