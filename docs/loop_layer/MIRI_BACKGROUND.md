@@ -1,14 +1,15 @@
 # Background stage-level Miri jobs
 
 This is the implementation runner's operational reference, not documentation
-acceptance or an instruction to commit the current checkout. [MIRI_JOBS.md](MIRI_JOBS.md)
-records collected results and pending implementation coverage. Launch only at an
-applicable authorized implementation gate; prose maintenance alone needs no job.
+acceptance or an instruction to commit the current checkout.
+[VALIDATION.md](../../VALIDATION.md#miri-evidence) is the single current result/debt
+index. Launch only at an applicable authorized implementation gate; prose
+maintenance alone needs no job. A paused goal remains paused.
 
 Use one consolidated background run per applicable numbered-stage milestone, not
-one per smaller edit/commit. Continue development while it runs. The final required
-selection and source-matched result verification remain mandatory; see
-[MIRI_JOBS.md](MIRI_JOBS.md) and the [plan](../../PLAN_LOOP_LAYER.md).
+one per smaller edit/commit. Continue authorized development while it runs. The
+final required selection and source-matched result verification remain mandatory;
+see the [plan](../../PLAN.md#miri-execution-contract).
 
 ## Launch, inspect, collect
 
@@ -42,15 +43,17 @@ coverage. Inspect the standalone fixture without interpreting tests:
 python3 scripts/run_rt_runtime_miri.py --list --package loop_engine_host_fixture
 ```
 
-The current selection registers145 commands/298 executions:135 runtime,100 loop
-and63 standalone-host executions. The Stage8 sparse-projection/ordered-insert
-models add seven runtime executions to the historical144-command/291-execution
-Stage7 selection; no prior cases, seeds or workloads are removed. Host coverage is
-all59 native library tests at seed0, plus primitive-wire and graph-actor tests at
-seeds1/2. Every host filter is exact and expects one passing test. New host cases
-run before retained regressions. Every prior filter/seed and relative order remain;
-the grouped runtime `midi_state` count grows6→7 and the full runtime `midi` target
-adds six executions. No standalone-host workload or guard is reduced for Miri.
+Discover inventory from the **intended frozen source**, rather than copying old
+counts or shard positions from a historical example:
+
+```sh
+python3 scripts/run_rt_runtime_miri.py --list
+```
+
+The current recorded inventory/results live in [VALIDATION.md](../../VALIDATION.md#miri-evidence).
+Retain every required exact filter, minimum count, seed, workload, guard and relative
+order. New coverage is additive, not a replacement for old cases. A list/discovery
+command is not interpreter execution or passing evidence.
 
 This local background wrapper currently requires **Linux `/proc` process
 identities and POSIX process groups**. The existing foreground runner remains
@@ -61,9 +64,9 @@ watchdog increases or acceptance exemptions are introduced.
 
 CI uses16 disjoint round-robin batches rather than putting the entire stage
 selection into one40-minute job. Each batch keeps complete commands, exact filters,
-counts, seeds and the900s per-command watchdog. With the current inventory, one
-batch has ten commands and the other fifteen have nine; this is not a guaranteed
-wall-time margin on CI hardware.
+counts, seeds and the900s per-command watchdog. Batch sizes depend on the frozen
+inventory; use `--list` to inspect them. Neither command counts nor historical local
+wall times guarantee a margin on CI hardware.
 An individual command exceeding900s still fails and needs investigation.
 
 ```sh
@@ -88,16 +91,20 @@ authorize routine extra interpreter runs.
 A concrete interpreter failure may justify a declared smaller selection. The
 supervisor forwards `--shard INDEX/TOTAL` to both inventory discovery and execution
 and validates batch/full-selection identity and source commit during collection.
-This does not shrink an individual test or waive remaining coverage. For the
-Stage7 dense timeout, host batch10/63 selects exactly the failed seed0 test:
+This does not shrink an individual test or waive remaining coverage. First list
+that frozen source/package and choose a shard containing exactly the affected
+whole command. Old `10/63` dense-host or `151/151` sync-model shard identities belong
+to their recorded inventories, not an unqualified current `HEAD`.
+
+For example, set `COMMIT`, `PACKAGE` and `SHARD` to the verified source/selection:
 
 ```sh
-python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7-recovery-dense \
-  --commit HEAD --package loop_engine_host_fixture --shard 10/63
+python3 scripts/run_rt_runtime_miri_jobs.py start --stage failure-recovery \
+  --commit "$COMMIT" --package "$PACKAGE" --shard "$SHARD"
 ```
 
-Check `--list` before launch and record the exact test, failure rationale and
-pending remainder. A focused recovery pass is not a complete stage pass.
+Record the exact test, failure rationale and pending remainder. A focused recovery
+pass is not a complete stage pass.
 
 For a concrete unresolved timeout, `--measureme` adds only the pinned interpreter's
 function-profiler flag. It requires exactly one selected whole command and keeps
@@ -105,8 +112,8 @@ its seed, assertions, guards and900s watchdog. The option is forwarded by the
 supervisor and recorded with exact interpreter flags in current/completed records:
 
 ```sh
-python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7-dense-diagnosis \
-  --commit HEAD --package loop_engine_host_fixture --shard 10/63 --measureme
+python3 scripts/run_rt_runtime_miri_jobs.py start --stage failure-diagnosis \
+  --commit "$COMMIT" --package "$PACKAGE" --shard "$SHARD" --measureme
 ```
 
 Profiles go under the isolated job's `reports/measureme/`. Collection checks mode,
@@ -184,7 +191,7 @@ Monotonic per-case durations are included in runner records, and whole-job wall
 time in supervisor state. Neither is Miri's simulated Rust test-harness clock.
 Record contention/cache conditions; timings are not deadline guarantees.
 
-## Tests and current use
+## Helper tests and historical setup evidence
 
 ```sh
 nix develop --command python3 -m unittest \
@@ -192,7 +199,7 @@ nix develop --command python3 -m unittest \
   scripts.tests.test_rt_runtime_miri_batches
 ```
 
-Thirty-two tests cover the selected inventory, exact standalone manifest dispatch,
+At the original tooling milestone, thirty-two tests covered the selected inventory, exact standalone manifest dispatch,
 seed/report metadata, zero-test refusal, tracked-private-state exclusion without
 losing standalone source/lockfiles, manifest-scope tampering, complete disjoint CI partition/collection and CLI paths,
 durable file output, isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
@@ -224,4 +231,8 @@ have now passed for the complete81-command/228-execution run. See the job ledger
 `evidence/miri-stage6{,-collected,-provenance}.json`; the raw report/log bundle is
 `evidence/miri-stage6-logs.tar.gz`. This closes Stage6's interpreter gate, not later
 host/final acceptance. The user-required pause before Stage7 applied to that
-implementation checkpoint, not to the current documentation completion workflow.
+implementation checkpoint. Later complete results and remaining failures belong
+in [VALIDATION.md](../../VALIDATION.md#miri-evidence), not a second progress ledger
+here. These historical tooling details authorize no implementation or interpreter
+run. The [original operational reference](https://github.com/SanderVocke/shoopdaloop/blob/fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a/docs/loop_layer/MIRI_BACKGROUND.md)
+retains the earlier inventory-specific recipes.

@@ -54,6 +54,17 @@ See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The applica
 
 The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a complete hosted bundle and a core-only single HTML file that explicitly omits the external built-ins tree. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
 
+## Development planning and architecture
+
+- [PLAN.md](PLAN.md): workstreams, approved scope, acceptance criteria and remaining work.
+- [ARCHITECTURE.md](ARCHITECTURE.md): implemented stack, governing contracts and clearly labelled proposals.
+- [VALIDATION.md](VALIDATION.md): actual source-scoped results, retained failures and verification debt.
+- [Historical documents](docs/history/README.md): original plans/designs and old-path compatibility links.
+
+These describe development work, not a claim that the production application has
+migrated to the portable runtime/loop/service stack. Public library guides and
+application operating instructions remain separate.
+
 ## License and credits
 
 Copyright © Sander Vocke (2023–present) and other credited contributors. See [LICENSE](LICENSE).
