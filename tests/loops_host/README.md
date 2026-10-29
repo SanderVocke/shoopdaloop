@@ -729,21 +729,21 @@ for source isolation, cancellation, collection and failure handling, and the
 failure may justify a declared one-command shard; adding `--measureme` profiles
 that same full command without reducing its workload or raising the watchdog.
 Diagnostic-profile artifacts are not a complete stage run or native performance
-results; the CI complete-set collector rejects them.
+results; the complete-set collector rejects them.
 
 ## CI evidence
 
 The build workflow runs both libraries, this fixture's native tests/replays and
-public coordination examples in Linux/Windows/macOS debug/release cells. Both web
-profiles run the complete Node/Chromium bindings, actual offline/live profiles and
-six specific Rust-origin failure gates. Loop source/fixture changes trigger the
-repository Chromium policy suite, and loop Wasm dependencies are checked explicitly.
-Native and worklet reports have separate required artifact uploads.
+public coordination examples in Linux/Windows/macOS debug/release cells, with a
+required upload of the native reports. Both web profiles check this fixture's
+formatting and the loop library's dependency boundary.
 
-Miri CI uses16 disjoint batches with a source/selection-matched complete-set verifier;
-missing batches/logs/tests and wrong counts/seeds cannot pass. This scheduling does
-not raise the900s command watchdog or certify expensive commands. See the
-[operational reference](../../docs/loop_layer/MIRI_BACKGROUND.md#ci-batches).
+CI lacks the capacity for the browser run and Miri, so both are manual. The browser
+run covers the Node and Chromium bindings, the actual offline/live profiles and the
+six specific Rust-origin failure gates
+(`python3 scripts/run_loops_hosts.py --verify-failures`). Miri can be split into
+disjoint batches with a source/selection-matched complete-set verifier; see the
+[operational reference](../../docs/loop_layer/MIRI_BACKGROUND.md#batches).
 Workflow configuration/local tests are not remote platform results; final-head green
 required CI and review remain separate delivery obligations.
 

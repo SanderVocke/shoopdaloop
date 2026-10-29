@@ -160,7 +160,7 @@ Generated `dist`, worklet, staging, and artifact files are not committed.
 
 ## Cross-target CI
 
-`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives, both web cells upload a complete hosted bundle archive, and web release additionally uploads a core-only single-file HTML artifact. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
+`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives, both web cells upload a complete hosted bundle archive, and web release additionally uploads a core-only single-file HTML artifact. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR, and scheduled and manual workflows also execute the optimized Node suite. CI lacks the capacity for Chromium, so the Chromium suite and the Chrome smokes below are run manually. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
 
 For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
 
@@ -174,7 +174,7 @@ act pull_request -W .github/workflows/build_and_test.yml \
   -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
 ```
 
-The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Chrome/Firefox, Windows, and macOS.
+The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Firefox, Windows, and macOS.
 
 ## Cross-target test workflow
 
@@ -206,7 +206,7 @@ The orchestrator discovers package opt-in metadata, builds one profile-specific 
 
 ## Browser verification
 
-Domain, Worker, settings, Web MIDI, lifecycle, and stress behavior belongs in the shared Wasm suite. Packaged-browser CI retains only these irreducible physical AudioWorklet smokes after building artifacts:
+Domain, Worker, settings, Web MIDI, lifecycle, and stress behavior belongs in the shared Wasm suite. These irreducible physical AudioWorklet smokes run against the built artifacts. CI runs only the Firefox smoke; the two Chrome smokes are run manually:
 
 ```sh
 cd src/rust/shoopdaloop

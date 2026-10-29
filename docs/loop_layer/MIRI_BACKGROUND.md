@@ -60,20 +60,21 @@ identities and POSIX process groups**. The existing foreground runner remains
 portable for CI/other supported environments. No new test workload reductions,
 watchdog increases or acceptance exemptions are introduced.
 
-## CI batches
+## Batches
 
-CI uses16 disjoint round-robin batches rather than putting the entire stage
-selection into one40-minute job. Each batch keeps complete commands, exact filters,
+CI does not run Miri; it lacks the capacity. Runs are manual. The runner can split
+the inventory into disjoint round-robin batches, for example to spread one run over
+several workers or machines. Each batch keeps complete commands, exact filters,
 counts, seeds and the900s per-command watchdog. Batch sizes depend on the frozen
 inventory; use `--list` to inspect them. Neither command counts nor historical local
-wall times guarantee a margin on CI hardware.
+wall times guarantee a margin on other hardware.
 An individual command exceeding900s still fails and needs investigation.
 
 ```sh
 python3 scripts/run_rt_runtime_miri.py --shard 1/16 --list
-python3 scripts/run_rt_runtime_miri.py --shard 1/16
-# After downloading all batch artifacts into separate subdirectories:
-python3 scripts/run_rt_runtime_miri.py --verify-batches target/miri-ci-batches
+python3 scripts/run_rt_runtime_miri.py --shard 1/16 --report-dir target/miri-batches/shard-1
+# After collecting every batch's report directory under one parent:
+python3 scripts/run_rt_runtime_miri.py --verify-batches target/miri-batches
 ```
 
 Reports record the source commit, full-selection fingerprint, batch identity,
@@ -82,7 +83,7 @@ once, the current source/full selection, consistent pinned toolchain/version, ex
 case/filter/count/seed records and every passing raw log. Missing/duplicate/mixed
 batches, missing tests, scope substitution and failed summaries cannot pass.
 `verified.json` contains aggregate counts and hashes only after complete validation.
-These are **separate CI batches**, not one uninterrupted invocation. Local stage
+These are **separate batches**, not one uninterrupted invocation. Local stage
 jobs still use the supervised immutable-snapshot workflow; batch support does not
 authorize routine extra interpreter runs.
 
@@ -118,7 +119,7 @@ python3 scripts/run_rt_runtime_miri_jobs.py start --stage failure-diagnosis \
 
 Profiles go under the isolated job's `reports/measureme/`. Collection checks mode,
 flags and profile hashes; missing/modified profiles cannot become passing evidence.
-The CI complete-set verifier rejects diagnostic-profile reports. Profiling overhead
+The complete-set verifier rejects diagnostic-profile reports. Profiling overhead
 can itself time out; preserve partial profiles/logs and never call that a pass or
 native callback performance evidence. Analyze a retained `.mm_profdata` file with
 measureme's `summarize summarize FILE.mm_profdata` (or `--json`). Collect successful
@@ -201,7 +202,7 @@ nix develop --command python3 -m unittest \
 
 At the original tooling milestone, thirty-two tests covered the selected inventory, exact standalone manifest dispatch,
 seed/report metadata, zero-test refusal, tracked-private-state exclusion without
-losing standalone source/lockfiles, manifest-scope tampering, complete disjoint CI partition/collection and CLI paths,
+losing standalone source/lockfiles, manifest-scope tampering, complete disjoint partition/collection and CLI paths,
 durable file output, isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
 while development changes, collection, missing results, count/log/source tampering,
 missing supervisor identity, cancellation with descendant cleanup, recovery of a

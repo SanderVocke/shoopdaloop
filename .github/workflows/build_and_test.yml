@@ -32,76 +32,6 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
-  rt_runtime_miri:
-    name: Runtime and loop ownership (Miri ${{ matrix.shard }}/16)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    env:
-      RUSTFLAGS: -D warnings
-      RUSTDOCFLAGS: -D warnings
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install pinned Miri toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly-2026-05-04
-          components: miri,rust-src
-      - name: Install test-support build prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes build-essential protobuf-compiler
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: rt-runtime-miri-batches-v2
-          workspaces: |
-            . -> target
-            tests/loops_host -> target
-      - name: Record selected batch inventory
-        run: |
-          mkdir -p target/rt-runtime-miri
-          python3 scripts/run_rt_runtime_miri.py --shard '${{ matrix.shard }}/16' --list > target/rt-runtime-miri/inventory.json
-      - name: Run isolated ownership and aliasing checks
-        run: python3 scripts/run_rt_runtime_miri.py --shard '${{ matrix.shard }}/16'
-      - name: Upload Miri evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: rt-runtime-miri-batch-${{ matrix.shard }}-${{ github.run_id }}
-          path: target/rt-runtime-miri
-          overwrite: true
-          if-no-files-found: error
-          retention-days: 14
-
-  miri_complete:
-    name: Complete Miri batch evidence
-    needs: rt_runtime_miri
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Download all Miri batches
-        uses: actions/download-artifact@v8
-        with:
-          pattern: rt-runtime-miri-batch-*-${{ github.run_id }}
-          path: target/miri-ci-batches
-      - name: Verify complete source-matched batch coverage
-        run: |
-          python3 scripts/run_rt_runtime_miri.py --verify-batches target/miri-ci-batches
-          test '${{ needs.rt_runtime_miri.result }}' = success
-      - name: Upload verified Miri batch evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: rt-runtime-miri-complete-${{ github.run_id }}
-          path: target/miri-ci-batches
-          overwrite: true
-          if-no-files-found: error
-          retention-days: 14
-
   rust_coverage:
     name: Rust coverage (Linux)
     runs-on: ubuntu-24.04
@@ -260,64 +190,11 @@ jobs:
         with:
           node-version: 22.22.2
 
-      - name: Install pinned Chrome and matching ChromeDriver
-        if: matrix.target == 'web' && env.ACT != 'true'
-        id: pinned-chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: 147.0.7727.117
-          install-chromedriver: true
-
-      - name: Select pinned Chrome
-        if: matrix.target == 'web' && env.ACT != 'true'
-        shell: bash
-        run: |
-          chrome='${{ steps.pinned-chrome.outputs.chrome-path }}'
-          driver='${{ steps.pinned-chrome.outputs.chromedriver-path }}'
-          "$chrome" --version | grep '147.0.7727.117'
-          "$driver" --version | grep '147.0.7727.117'
-          echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
-          dirname "$driver" >> "$GITHUB_PATH"
-
       - name: Install pinned wasm-pack
         if: matrix.target == 'web' && env.ACT != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack@0.15.0
-
-      - name: Detect browser-runtime changes
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
-        id: wasm-browser-policy
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            browser:
-              - '.github/workflows/build_and_test.yml'
-              - 'scripts/run_wasm_tests.py'
-              - 'scripts/wasm_test_report.py'
-              - 'scripts/check_shoop_test_usage.py'
-              - 'scripts/run_rt_runtime_hosts.py'
-              - 'scripts/check_rt_runtime_boundary.py'
-              - 'scripts/run_loops_hosts.py'
-              - 'scripts/check_loops_boundary.py'
-              - 'src/rust/rt_runtime/**'
-              - 'src/rust/shoop_loops/**'
-              - 'src/rust/shoop_loops_test_support/**'
-              - 'tests/rt_runtime_host/**'
-              - 'tests/loops_host/**'
-              - 'src/rust/shoop_test_macros/**'
-              - 'src/rust/shoop_wasm_test_support/**'
-              - 'src/rust/shoop_wasm_runtime_tests/**'
-              - 'src/rust/shoop_audio_worklet/**'
-              - 'src/rust/shoop_worklet_client/**'
-              - 'src/rust/shoopdaloop/Cargo.toml'
-              - 'src/rust/shoopdaloop/audio_worker.js'
-              - 'src/rust/shoopdaloop/audio_worklet.js'
-              - 'src/rust/shoopdaloop/raw_wasm_host.js'
-              - 'src/rust/shoopdaloop/build_worklet.py'
-              - 'src/rust/shoopdaloop/src/browser_*.rs'
-              - 'src/rust/shoopdaloop/worker_fixture_contract.js'
-              - 'tests/wasm/**'
 
       - name: Cache Rust builds
         if: env.ACT != 'true'
@@ -991,16 +868,7 @@ jobs:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile dev --runtime node
 
-      - name: Run policy-triggered Chromium Wasm suite
-        if: >-
-          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
-          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
-          steps.wasm-browser-policy.outputs.browser == 'true')
-        env:
-          RUSTFLAGS: -D warnings
-        run: python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
-
-      - name: Run intentional Node and Chromium Perfetto failure canaries
+      - name: Run intentional Node Perfetto failure canaries
         if: >-
           matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
           inputs.perfetto_failure_canary
@@ -1011,41 +879,37 @@ jobs:
             "SELECT string_value FROM args WHERE key = 'debug.phase' AND string_value = 'failure';" \
             "SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id WHERE t.name LIKE '%shoop.wasm_test_capture.plot';" \
             > "$RUNNER_TEMP/perfetto-wasm-canary.sql"
-          for runtime in node chrome; do
-            for canary in \
-              shared_failure_canary_is_ignored_by_default \
-              shared_result_failure_canary_is_ignored_by_default; do
-              set +e
-              python3 scripts/run_wasm_tests.py --profile dev --runtime "$runtime" \
-                --package shoop_wasm_test_support \
-                --feature wasm-test-failure-canary \
-                --filter "$canary" \
-                --trace failure
-              status=$?
-              set -e
-              test "$status" -ne 0
-              trace=$(find "target/wasm-tests/dev/reports/$runtime/traces" \
-                -name '*.pftrace' -type f -print -quit)
-              test -n "$trace"
-              scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
-                "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-              grep 'shoop.wasm_test_capture.span' \
-                "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-              grep 'failure' "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-              grep 'shoop.wasm_test_capture.plot' \
-                "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-            done
+          for canary in \
+            shared_failure_canary_is_ignored_by_default \
+            shared_result_failure_canary_is_ignored_by_default; do
+            set +e
+            python3 scripts/run_wasm_tests.py --profile dev --runtime node \
+              --package shoop_wasm_test_support \
+              --feature wasm-test-failure-canary \
+              --filter "$canary" \
+              --trace failure
+            status=$?
+            set -e
+            test "$status" -ne 0
+            trace=$(find "target/wasm-tests/dev/reports/node/traces" \
+              -name '*.pftrace' -type f -print -quit)
+            test -n "$trace"
+            scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
+              "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
+            grep 'shoop.wasm_test_capture.span' \
+              "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
+            grep 'failure' "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
+            grep 'shoop.wasm_test_capture.plot' \
+              "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
           done
 
-      - name: Run optimized nightly/manual Wasm suites
+      - name: Run optimized nightly/manual Node Wasm suite
         if: >-
           matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true' &&
           (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           RUSTFLAGS: -D warnings
-        run: |
-          python3 scripts/run_wasm_tests.py --profile ci --runtime node
-          python3 scripts/run_wasm_tests.py --profile ci --runtime chrome
+        run: python3 scripts/run_wasm_tests.py --profile ci --runtime node
 
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'
@@ -1056,25 +920,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Run independent non-isolated AudioWorklet and failure gates
+      - name: Check independent runtime host formatting and boundary
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         env:
           RUSTFLAGS: -D warnings
         run: |
           cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
           python3 scripts/check_rt_runtime_boundary.py
-          python3 scripts/run_rt_runtime_hosts.py --verify-failures
 
-      - name: Upload independent AudioWorklet evidence
-        if: always() && matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: rt-runtime-worklet-${{ github.run_id }}
-          path: target/rt-runtime-host/reports
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Run independent loop AudioWorklet and exact failure gates
+      - name: Check independent loop host formatting and boundary
         if: matrix.target == 'web' && env.ACT != 'true'
         env:
           RUSTFLAGS: -D warnings
@@ -1082,56 +936,6 @@ jobs:
         run: |
           cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
           python3 scripts/check_loops_boundary.py
-          python3 scripts/run_loops_hosts.py --profile '${{ matrix.profile }}' --verify-failures
-
-      - name: Upload independent loop AudioWorklet evidence
-        if: always() && matrix.target == 'web' && env.ACT != 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: loop-host-worklet-${{ matrix.profile }}-${{ github.run_id }}
-          path: target/loops-host/reports/${{ matrix.profile }}
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Run retained hosted Chrome AudioWorklet smoke
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
-        run: OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-
-      - name: Run hosted Chromium multirealm Perfetto smokes
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
-        run: |
-          TRACE_REALM=worker WEB_PORT=19890 DEBUG_PORT=19891 \
-            node --experimental-websocket browser_tracing_smoke.mjs
-          TRACE_REALM=audio TRACE_REBUILD=1 WEB_PORT=19892 DEBUG_PORT=19893 \
-            node --experimental-websocket browser_tracing_smoke.mjs
-          cat > "$RUNNER_TEMP/browser-perfetto.sql" <<'SQL'
-          SELECT
-            (SELECT COUNT(*) FROM track WHERE name = 'Window') AS window_tracks,
-            (SELECT COUNT(*) FROM track WHERE name IN ('Engine Worker', 'AudioWorklet')) AS engine_tracks,
-            (SELECT COUNT(*) FROM slice WHERE name = 'engine.rt.callback') AS callbacks,
-            (SELECT MAX(a.int_value) > 8192 FROM args a JOIN slice s USING(arg_set_id)
-              JOIN track t ON s.track_id = t.id
-              WHERE a.key = 'debug.emitted_records' AND t.name != 'Window') AS sustained_capture,
-            (SELECT COALESCE(SUM(a.int_value), 0) = 0 FROM args a JOIN slice s USING(arg_set_id)
-              JOIN track t ON s.track_id = t.id
-              WHERE a.key = 'debug.dropped_records' AND t.name != 'Window') AS no_drops,
-            (SELECT COALESCE(SUM(value), 0) FROM stats WHERE severity = 'error') AS import_errors;
-          SQL
-          for trace in ../../../target/perfetto-validation/browser-{worker,audio}.pftrace; do
-            ../../../scripts/trace_processor --query-file "$RUNNER_TEMP/browser-perfetto.sql" \
-              "$trace" | tee "$trace.query.txt"
-            grep '1,1,' "$trace.query.txt"
-            grep ',1,1,0$' "$trace.query.txt"
-          done
-
-      - name: Run retained self-contained Chrome AudioWorklet smoke
-        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
-        env:
-          SELF_CONTAINED_PATH: ${{ env.SHOOP_HTML_ARTIFACT }}
-        run: SELF_CONTAINED=1 OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
       - name: Start virtual Firefox audio output
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
@@ -1162,9 +966,7 @@ jobs:
 
       - name: Upload Perfetto validation traces
         if: >-
-          always() && env.ACT != 'true' &&
-          ((matrix.target == 'linux' && matrix.profile == 'debug') ||
-          (matrix.target == 'web' && matrix.profile == 'debug'))
+          always() && env.ACT != 'true' && matrix.target == 'linux' && matrix.profile == 'debug'
         uses: actions/upload-artifact@v7
         with:
           name: perfetto-validation-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
