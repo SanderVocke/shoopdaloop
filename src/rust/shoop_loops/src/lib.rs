@@ -5,9 +5,10 @@
 //! supplied positions/discontinuities without advancing another clock.
 //!
 //! [`runtime::LoopPlanner`] coordinates prepared signal consumers, capture preflight,
-//! typed requests and settled state/export inside an application-owned runtime. Timing-only, fixed node-pair routing,
-//! stopped-owner configuration and pending program/graph publication are distinct
-//! transactions over prepared physical templates, not arbitrary live construction.
+//! typed requests and settled state/export inside an application-owned runtime.
+//! Timing-only, fixed node-pair routing, stopped-owner configuration and pending
+//! program/graph publication are distinct transactions over prepared physical
+//! templates, not arbitrary live construction.
 //! [`media::Ledger`] manages explicit leases/references but cannot certify a musical
 //! cut by itself. Copied handles do not acquire ownership; caller-routed LoopId and
 //! RequestId values are not globally scoped endpoint capabilities.

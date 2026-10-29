@@ -301,7 +301,7 @@ boundary checks; release `measure_service` against the Stage 0 baseline.
       link to this plan and its status); "Proposed next work" item 1; new names
       in the loop workstream and Milestone 1 sections, with their criteria
       unchanged.
-- [ ] `VALIDATION.md`: refactor evidence and the A12 measurements.
+- [x] `VALIDATION.md`: refactor evidence and the A12 measurements.
 - [x] Sweep the current docs, scripts and CI for old names (A11).
 
 **Verify:** a grep for `shoop_loop_engine`, `Engine::prepare`,
@@ -310,7 +310,7 @@ document links resolve.
 
 ### Stage 8 — End-to-end validation
 
-- [ ] Run the CI workflow's Linux command set locally:
+- [x] Run the CI workflow's Linux command set locally:
   - workspace build with warnings denied;
   - fmt;
   - workspace nextest;
@@ -319,7 +319,7 @@ document links resolve.
   - loop and runtime hosts, including browser with `--verify-failures`;
   - boundary, tracing, test-usage and docs checks;
   - the CI Miri jobs for the changed crates.
-- [ ] Check every acceptance criterion against the evidence, and record the
+- [x] Check every acceptance criterion against the evidence, and record the
       result and counts in `VALIDATION.md` and here.
 
 **Verify:** all A1–A12 are satisfied, with evidence linked.
@@ -368,6 +368,25 @@ median of per-trial p50 in ns: loop-idle 360, no-planner-idle 90, fx-capture 477
 seek-replace 4428, upload-export 4940, audio-4-257 13095, nested-regular 225296,
 midi-4-4 859236.
 
+## Acceptance check
+
+Checked on `fcbd5ea6` (code-complete). Evidence is in [VALIDATION.md](VALIDATION.md#composable-loop-refactor-evidence).
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| A1 — parts only | Met | No `shoop_loop_engine` crate; `shoop_loops` has no type owning or wrapping `GraphRuntime`, `Control` or `ResourceStore` (only its private tests create stores); `Engine`, `Controller`, `Stopped`, `Node<P>` removed |
+| A2 — application-owned assembly | Met | The service owns `ResourceStore` and `GraphRuntime<ServiceNode, LoopPlanner, dsp::Operation>`; `LoopPlanner::prepare` borrows the store; the teaching examples do the same |
+| A3 — invariants kept | Met | `graph_guards.rs` (four tests, each failing with the hooks disabled) plus the mapped existing tests |
+| A4 — independent processor operations | Met | `Processor<L, Q>`; `shoop_example_dsp` defines `Operation`/`Receipt`/`Refusal` and depends only on `rt_runtime` |
+| A5 — DSP through the scheduler | Met | No transport, mailbox or callback hooks; tests cover the exact sample across partitions, receipts, late/invalid/stale refusals and cancellation before delivery |
+| A6 — demonstrator unchanged in behaviour | Met | One runtime call per callback; `one_track` 42/487/378 in every partition run and `latency_probe` 18 cases in both profiles; stall, disconnect, fault and two-thread tests pass |
+| A7 — vocabulary | Met | `NodePair*`, `LoopNodes`, `PlaybackNode`/`CaptureNode`; "role" remains only in the verbatim M1-A5 criterion and unrelated application code |
+| A8 — nothing lost | Met | Counts as baseline plus new tests in every suite (native, Node, Chrome, hosts with canaries). Replaced tests: three DSP bridge tests became runtime cancellation tests; one `pending_operations` refusal case (planner given a processor operation) became a nonfinite processor operation, since the types now forbid the former |
+| A9 — dev-only assembly | Met, see note | No workspace crate depends on `shoop_loops_test_support` through normal or build edges |
+| A10 — boundaries and safety | Met | Boundary, tracing (closed) and test-usage checks; `forbid(unsafe_code)` in all five crates; new render paths run under heap guards |
+| A11 — documentation | Met | Architecture, plan, validation, crate READMEs, guides, runtime book and draft book updated; links resolve apart from unchanged historical evidence reports |
+| A12 — measurements recorded | Met | Paired service and loop benchmark results in `VALIDATION.md`; the preset workload is 13–17% slower, with the cause recorded |
+
 ## Notes for review
 
 Interpretations made during execution that the user should confirm. They do not
@@ -378,6 +397,17 @@ change the acceptance criteria.
   AudioWorklet builds). It can only use `shoop_loops_test_support` as a normal
   dependency. A9's dev-dependency check is applied to the production workspace
   crates; the fixture is treated as test code.
+
+- **Local tool deviations.** The Nix shell's Node 22.23.2 and nixpkgs Chromium 151
+  replace the scripts' pinned Node 22.22.2 and Chrome 147 for local runs, and the
+  Miri runner's 900 s per-command watchdog was relaxed to 3,600 s because this
+  machine interprets the longest seeded models in about 1,100–1,220 s on the
+  baseline too. CI keeps all pins and limits.
+- **Not verified here.** Remote CI (no pull request was requested), macOS and
+  Windows jobs, the real Carla plugin suites, application packaging and the
+  hosted browser application smokes.
+- **Draft loop book.** Its chapters were updated to the new API and its example
+  runs; the book otherwise stays a draft, as before.
 
 ## Execution contract
 

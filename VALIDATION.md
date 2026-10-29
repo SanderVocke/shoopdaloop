@@ -59,15 +59,62 @@ host proc-macro builds of `ctor`'s `linktime-proc-macro` fail.
 | 2/3 — runtime | `b96f5165`, `b7ec7886`, `fad7f7a0` | `rt_runtime` 197 (four new: generic cancellation, three admission paths) in debug/release and 193 on Node; all 18 runtime examples; native and browser hosts; Miri (seed 0) on `typed_schedule`, `typed_execution`, `planner_admission`, `planner_execution`, `graph_activation`, `initial_graph`, `contracts`, `lifecycle` and the delivery model |
 | 4/5 — loop parts, hosts | `4929d185` | `shoop_loops` 159 (four new graph guards) in debug/release and on Node; all loop examples in both profiles and the draft-book example; host crate 60; native and browser loop hosts with failure canaries |
 | 6 — demonstrator | `87fc3c85` | DSP 15 and service 20 in debug/release, 15/18 on Node; `one_track` 42 frames / 487 packets / 378 bytes and `latency_probe` 18 cases in both profiles; Wasm build; dependency and boundary checks |
+| 8 — end to end | `fcbd5ea6` | CI Linux command set: fmt (workspace and both hosts); workspace build; `rt_runtime` 197, `shoop_loops` 159, DSP 15, service 20 in debug/release; host crate 60 per profile; every runtime, loop and service example in both profiles plus the draft-book example; boundary, tracing (217 modules, closed), test-usage, script and collector unit tests; workspace nextest with `shoop_engine/app_backend` and `SHOOP_ALLOW_MISSING_BACKENDS=1`: 2191 passed, 4 skipped; `shoopdaloop` Wasm check, worklet build and browser dependency isolation; Wasm test policy; runtime benchmark; native runtime/loop hosts in both profiles; browser runtime host and loop hosts (debug and release) with failure canaries; Node and Chrome Wasm suites for all 21 packages; the complete CI Miri inventory, 16 batches with 152 commands and 308 interpreted test executions, confirmed by `run_rt_runtime_miri.py --verify-batches` |
 
 The `rt_runtime` docs checker (`check_rt_runtime_docs.py`) reports the same stale
 pending-chapter and example-inventory lists on the unchanged baseline as after the
 refactor; it is not run in CI.
 
+Two Stage 8 runs needed a local deviation or a repeat, recorded here:
+
+- **Miri watchdog.** The runner limits each command to 900 s, including its build.
+  On this machine the seeded capture and timeline models take 1092–1222 s under
+  Miri, equally on the baseline and the refactor (capture 1096 → 1092 s, timeline
+  1222 → 1215 s, run side by side without the watchdog). The final inventory ran
+  outside the Nix shell with warmed builds and the per-command limit relaxed to
+  3,600 s; nothing else changed.
+- **Browser tab crash.** One loop-host browser run crashed its tab while the full
+  Wasm suites and four Miri workers held the load near 200; the debug and release
+  loop-host browser runs, with their failure canaries, passed on rerun.
+
+Not run locally: the real Carla plugin suites, application packaging and the hosted
+Chrome/Firefox application smokes, Perfetto trace validation, macOS and Windows jobs,
+and remote CI (no pull request was requested).
+
 Five links in unchanged milestone reports under `docs/loop_layer/evidence/` point at
 pre-rename paths (`shoop_loop_engine`, `tests/loop_engine_host`). Evidence stays
 byte-for-byte as recorded; the renamed files are `src/rust/shoop_loops/` and
 `tests/loops_host/`.
+
+### Measurements
+
+Release builds on the same machine, pinned to CPU 8 (`ondemand` governor). Callback
+median / p99 in ns from `measure_service` (`collect.py --cpu 8` defaults: three runs
+of 2,048 samples after 128 warm-up callbacks), with the baseline (`2d13b8da`) and the
+refactor (`87fc3c85`) measured alternately in one session:
+
+| Workload | Baseline 1 | Refactor 1 | Baseline 2 | Refactor 2 |
+| --- | --- | --- | --- | --- |
+| current/idle | 2014 / 2074 | 1994 / 3486 | 2014 / 2084 | 1954 / 3637 |
+| current/steady | 2174 / 3516 | 2104 / 4138 | 2175 / 3526 | 2124 / 3486 |
+| service/idle | 3717 / 3887 | 3637 / 3827 | 3708 / 3807 | 3667 / 3777 |
+| service/steady | 3256 / 7575 | 3336 / 7835 | 3246 / 7624 | 3326 / 7834 |
+| service/poll | 3948 / 8536 | 3987 / 8716 | 3967 / 8556 | 3947 / 8616 |
+| service/export | 5280 / 6171 | 5280 / 5761 | 5300 / 8576 | 5300 / 5831 |
+| service/preset | 3296 / 7815 | 3847 / 8466 | 3417 / 7824 | 3867 / 8496 |
+
+Idle, poll and export are unchanged and steady is about 2.5% slower. The preset
+workload, which selects a preset on every 64-frame callback, is 13–17% slower: the
+selection now passes through the runtime's command admission, scheduler and execution
+records, and the service's ingress and execution forwarding, instead of the DSP's
+private atomic mailbox. An earlier pair of separate sessions showed steady at +13%,
+which this alternating run attributes to session variation. The current-engine
+reference is unchanged throughout.
+
+The loop benchmark (`benchmark_loops.py --iterations 1024 --trials 3 --cpu 8`, median of
+per-trial p50 ns) is within run-to-run variation; for example loop-idle 360 → 341,
+fx-capture 4779 → 4809, nested-regular 225296 → 225246, audio-4-257 13095 → 14377,
+midi-4-4 859236 → 815742.
 
 ### Loop invariants and their tests
 
