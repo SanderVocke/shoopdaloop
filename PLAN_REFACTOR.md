@@ -266,7 +266,10 @@ counts plus the new tests; Wasm build and Node tests; boundary script; and
 ### Stage 5 — Test hosts
 
 - [x] Port `tests/loops_host` (native, wire, two-thread, browser/AudioWorklet)
-      to the support crate and `LoopClient`.
+      to the support crate and `LoopClient`. The host is a library, so it
+      cannot take the support crate as a dev-dependency; it compiles the
+      support crate's source by path, as it already does for the allocation
+      guard.
 
 **Verify:** `run_loops_hosts.py` native and browser with `--verify-failures`,
 as in CI, with the Stage 0 counts.
@@ -321,6 +324,9 @@ document links resolve.
   - the CI Miri jobs for the changed crates.
 - [x] Check every acceptance criterion against the evidence, and record the
       result and counts in `VALIDATION.md` and here.
+- [x] Repeat the run with CI's own tool pins and the unmodified Miri runner,
+      including the application, Carla and browser steps
+      ([CI replay](VALIDATION.md#ci-replay-at-61beffad)).
 
 **Verify:** all A1–A12 are satisfied, with evidence linked.
 
@@ -370,7 +376,8 @@ midi-4-4 859236.
 
 ## Acceptance check
 
-Checked on `fcbd5ea6` (code-complete). Evidence is in [VALIDATION.md](VALIDATION.md#composable-loop-refactor-evidence).
+Checked on `fcbd5ea6` (code-complete) and again, with CI's pins, on `61beffad`.
+Evidence is in [VALIDATION.md](VALIDATION.md#composable-loop-refactor-evidence).
 
 | Criterion | Result | Evidence |
 | --- | --- | --- |
@@ -382,7 +389,7 @@ Checked on `fcbd5ea6` (code-complete). Evidence is in [VALIDATION.md](VALIDATION
 | A6 — demonstrator unchanged in behaviour | Met | One runtime call per callback; `one_track` 42/487/378 in every partition run and `latency_probe` 18 cases in both profiles; stall, disconnect, fault and two-thread tests pass |
 | A7 — vocabulary | Met | `NodePair*`, `LoopNodes`, `PlaybackNode`/`CaptureNode`; "role" remains only in the verbatim M1-A5 criterion and unrelated application code |
 | A8 — nothing lost | Met | Counts as baseline plus new tests in every suite (native, Node, Chrome, hosts with canaries). Replaced tests: three DSP bridge tests became runtime cancellation tests; one `pending_operations` refusal case (planner given a processor operation) became a nonfinite processor operation, since the types now forbid the former |
-| A9 — dev-only assembly | Met, see note | No workspace crate depends on `shoop_loops_test_support` through normal or build edges |
+| A9 — dev-only assembly | Met | `shoop_loops_test_support` is only a dev-dependency in the workspace, and `tests/loops_host` compiles its source by path; `cargo tree` finds no normal or build edge to it in either |
 | A10 — boundaries and safety | Met | Boundary, tracing (closed) and test-usage checks; `forbid(unsafe_code)` in all five crates; new render paths run under heap guards |
 | A11 — documentation | Met | Architecture, plan, validation, crate READMEs, guides, runtime book and draft book updated; links resolve apart from unchanged historical evidence reports |
 | A12 — measurements recorded | Met | Paired service and loop benchmark results in `VALIDATION.md`; the preset workload is 13–17% slower, with the cause recorded |
@@ -392,20 +399,18 @@ Checked on `fcbd5ea6` (code-complete). Evidence is in [VALIDATION.md](VALIDATION
 Interpretations made during execution that the user should confirm. They do not
 change the acceptance criteria.
 
-- **A9 and the loop test host.** `tests/loops_host` is a separate, test-only
-  workspace whose library is the fixture itself (native replay, wire and
-  AudioWorklet builds). It can only use `shoop_loops_test_support` as a normal
-  dependency. A9's dev-dependency check is applied to the production workspace
-  crates; the fixture is treated as test code.
-
-- **Local tool deviations.** The Nix shell's Node 22.23.2 and nixpkgs Chromium 151
-  replace the scripts' pinned Node 22.22.2 and Chrome 147 for local runs, and the
-  Miri runner's 900 s per-command watchdog was relaxed to 3,600 s because this
-  machine interprets the longest seeded models in about 1,100–1,220 s on the
-  baseline too. CI keeps all pins and limits.
-- **Not verified here.** Remote CI (no pull request was requested), macOS and
-  Windows jobs, the real Carla plugin suites, application packaging and the
-  hosted browser application smokes.
+- **Miri watchdog.** With the unmodified runner, 146 of 152 commands pass. Six
+  slow commands (three seeded models, `midi_state` and two loop-host cases) exceed
+  the 900 s per-command limit on this machine, by the same margin on the baseline;
+  the sync model already did at `8633d0f0`. The CI Miri jobs have not run on
+  GitHub yet; unless its runners are faster, the shards holding these commands will
+  fail with or without this refactor. Changing the limit or the workloads is
+  outside this plan.
+- **Local environment.** The replay uses CI's tool pins but the dev shell's Rust
+  1.97.1, and adapts the host environment as listed in `VALIDATION.md`; no test,
+  check or limit changed.
+- **Not verified here.** Remote CI (it needs a push) and the macOS and Windows
+  jobs.
 - **Draft loop book.** Its chapters were updated to the new API and its example
   runs; the book otherwise stays a draft, as before.
 

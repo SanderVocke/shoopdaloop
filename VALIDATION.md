@@ -46,12 +46,14 @@ completion. Do not maintain a second editable Miri ledger or native task plan.
 
 ## Composable loop refactor evidence
 
-Executed under [PLAN_REFACTOR.md](PLAN_REFACTOR.md), on Linux (AMD Ryzen 9 5950X)
-in `nix develop`, with `RUSTFLAGS="-D warnings"`. The baseline is source
-`2d13b8da`. Local runs relax only two tool pins: the Nix shell provides Node 22.23.2
-(pinned 22.22.2), and Chromium/chromedriver 151 come from nixpkgs (pinned 147).
-Miri ran outside the Nix shell with the pinned `nightly-2026-05-04`; inside it,
-host proc-macro builds of `ctor`'s `linktime-proc-macro` fail.
+Executed under [PLAN_REFACTOR.md](PLAN_REFACTOR.md), on Linux (AMD Ryzen 9 5950X,
+Ubuntu 20.04 host) in `nix develop`, with `RUSTFLAGS="-D warnings"`. The baseline is
+source `2d13b8da`. Stages 1–6 and the first Stage 8 run used the Nix shell's Node
+22.23.2 and nixpkgs Chromium/chromedriver 151 instead of the pinned Node 22.22.2 and
+Chrome 147; the [CI replay](#ci-replay-at-61beffad) repeats Stage 8 with CI's own
+pins and limits. Miri runs outside the Nix shell with the pinned
+`nightly-2026-05-04`; inside it, host proc-macro builds of `ctor`'s
+`linktime-proc-macro` fail.
 
 | Stage | Source | Verified |
 | --- | --- | --- |
@@ -59,32 +61,88 @@ host proc-macro builds of `ctor`'s `linktime-proc-macro` fail.
 | 2/3 — runtime | `b96f5165`, `b7ec7886`, `fad7f7a0` | `rt_runtime` 197 (four new: generic cancellation, three admission paths) in debug/release and 193 on Node; all 18 runtime examples; native and browser hosts; Miri (seed 0) on `typed_schedule`, `typed_execution`, `planner_admission`, `planner_execution`, `graph_activation`, `initial_graph`, `contracts`, `lifecycle` and the delivery model |
 | 4/5 — loop parts, hosts | `4929d185` | `shoop_loops` 159 (four new graph guards) in debug/release and on Node; all loop examples in both profiles and the draft-book example; host crate 60; native and browser loop hosts with failure canaries |
 | 6 — demonstrator | `87fc3c85` | DSP 15 and service 20 in debug/release, 15/18 on Node; `one_track` 42 frames / 487 packets / 378 bytes and `latency_probe` 18 cases in both profiles; Wasm build; dependency and boundary checks |
-| 8 — end to end | `fcbd5ea6` | CI Linux command set: fmt (workspace and both hosts); workspace build; `rt_runtime` 197, `shoop_loops` 159, DSP 15, service 20 in debug/release; host crate 60 per profile; every runtime, loop and service example in both profiles plus the draft-book example; boundary, tracing (217 modules, closed), test-usage, script and collector unit tests; workspace nextest with `shoop_engine/app_backend` and `SHOOP_ALLOW_MISSING_BACKENDS=1`: 2191 passed, 4 skipped; `shoopdaloop` Wasm check, worklet build and browser dependency isolation; Wasm test policy; runtime benchmark; native runtime/loop hosts in both profiles; browser runtime host and loop hosts (debug and release) with failure canaries; Node and Chrome Wasm suites for all 21 packages; the complete CI Miri inventory, 16 batches with 152 commands and 308 interpreted test executions, confirmed by `run_rt_runtime_miri.py --verify-batches` |
+| 8 — end to end, first run | `fcbd5ea6` | CI Linux command set: fmt (workspace and both hosts); workspace build; `rt_runtime` 197, `shoop_loops` 159, DSP 15, service 20 in debug/release; host crate 60 per profile; every runtime, loop and service example in both profiles plus the draft-book example; boundary, tracing (217 modules, closed), test-usage, script and collector unit tests; workspace nextest with `shoop_engine/app_backend` and `SHOOP_ALLOW_MISSING_BACKENDS=1`: 2191 passed, 4 skipped; `shoopdaloop` Wasm check, worklet build and browser dependency isolation; Wasm test policy; runtime benchmark; native runtime/loop hosts in both profiles; browser runtime host and loop hosts (debug and release) with failure canaries; Node and Chrome Wasm suites for all 21 packages; the complete CI Miri inventory, 16 batches with 152 commands and 308 interpreted test executions, confirmed by `run_rt_runtime_miri.py --verify-batches` |
 
 The `rt_runtime` docs checker (`check_rt_runtime_docs.py`) reports the same stale
 pending-chapter and example-inventory lists on the unchanged baseline as after the
 refactor; it is not run in CI.
 
-Two Stage 8 runs needed a local deviation or a repeat, recorded here:
-
-- **Miri watchdog.** The runner limits each command to 900 s, including its build.
-  On this machine the seeded capture and timeline models take 1092–1222 s under
-  Miri, equally on the baseline and the refactor (capture 1096 → 1092 s, timeline
-  1222 → 1215 s, run side by side without the watchdog). The final inventory ran
-  outside the Nix shell with warmed builds and the per-command limit relaxed to
-  3,600 s; nothing else changed.
-- **Browser tab crash.** One loop-host browser run crashed its tab while the full
-  Wasm suites and four Miri workers held the load near 200; the debug and release
-  loop-host browser runs, with their failure canaries, passed on rerun.
-
-Not run locally: the real Carla plugin suites, application packaging and the hosted
-Chrome/Firefox application smokes, Perfetto trace validation, macOS and Windows jobs,
-and remote CI (no pull request was requested).
+The first Stage 8 run relaxed the Miri runner's 900 s per-command watchdog to
+3,600 s, and one loop-host browser run crashed its tab under a load near 200 and
+passed on rerun. The CI replay below supersedes it.
 
 Five links in unchanged milestone reports under `docs/loop_layer/evidence/` point at
 pre-rename paths (`shoop_loop_engine`, `tests/loop_engine_host`). Evidence stays
 byte-for-byte as recorded; the renamed files are `src/rust/shoop_loops/` and
 `tests/loops_host/`.
+
+### CI replay at `61beffad`
+
+Every Linux and web step of `build_and_test.yml`, in CI's order, from clean
+checkouts, plus the Rust coverage and Miri jobs. This includes the scheduled-only
+optimized Node and Chrome Wasm suites and the dispatch-only Perfetto failure canaries
+(native, Node and Chrome), which all pass; the optimized suites cover all 21
+packages.
+Tools are CI's pins: Node 22.22.2 (official build), Chrome for Testing and
+ChromeDriver 147.0.7727.117, nextest 0.9.116, wasm-pack 0.15.0, trunk 0.21.14,
+cargo-llvm-cov 0.8.7, and Carla 2.5.10 built from the pinned source with cx-Freeze
+7.2.7 and PyQt5 5.15.11; the Firefox step uses the then-latest Firefox 159.0,
+geckodriver 0.37.1 and Selenium. Rust is the dev shell's 1.97.1: CI installs the
+current stable (1.99.1), but rustup's compiler cannot load proc macros linked against
+the Nix glibc on this host.
+
+| Job | Result |
+| --- | --- |
+| Linux debug | All steps pass: application build; fake-Carla rejection; Carla probe; packaging, archive verification and extracted-archive probe (bundled Carla runtime and UI from a `Shoop Δ` path); complete workspace nextest with `SHOOP_REQUIRE_CARLA_TESTS=1`, 2191 passed and the 4 intentional skips; runtime, loop library and native-host block (tests, host crate 60, examples, host runners, boundary checks); feature and dependency isolation; Carla external UI smoke; formatting, tracing (closed) and test attributes; Perfetto trace validation |
+| Linux release | All steps pass: application build, packaging and archive probes; application-path nextest; runtime, loop library and native-host block; guarded runtime and loop benchmarks; Carla benchmark smokes; Carla external UI smoke |
+| Web debug | All steps pass: trunk build, packaging and artifact verification; Wasm package check and browser dependency isolation; Wasm test policy; Node suite for all 21 packages (`rt_runtime` 193, `shoop_loops` 159, DSP 15, service 18, `shoop_engine` 870); Chrome suite for all 21 packages; runtime and loop AudioWorklet hosts with failure canaries; hosted Chrome application smoke; worker and AudioWorklet Perfetto smokes with their trace queries |
+| Web release | All steps pass: optimized trunk build, packaging with the single-file HTML and artifact verification; Wasm package check and browser dependency isolation; loop AudioWorklet host with failure canaries; self-contained Chrome smoke; Firefox Web Audio workflow |
+| Rust coverage | Instrumented workspace nextest with `shoop_engine/app_backend`: 2191 passed and the 4 intentional skips; lcov report written |
+| Miri | 146 of 152 commands (296 of 308 executions) pass within the unchanged 900 s watchdog; six commands exceed it, equally on the baseline (below) |
+
+Host adaptations, all environmental; no test, check, limit or repository file changed:
+
+- Chrome, ChromeDriver and Node run without the Nix shell's library path, and Chrome
+  without the inherited X display (SSH forwarding), the host session's D-Bus (its
+  calls stall for 25 s from inside the sandbox) and its PulseAudio server. GitHub
+  runners have none of these. `LANG=C.UTF-8`, as on GitHub runners.
+- The Carla UI is frozen with the Nix Python 3.11, copied out of the store because
+  ZIP rejects the store's 1970 timestamps. pip's PyQt5 wheels get store copies of
+  their system libraries, and the two frozen launchers use the Nix glibc loader that
+  matches the libraries they bundle (the host has glibc 2.31).
+- Perfetto's checksum-verified `trace_processor_shell` needs glibc 2.34 and runs
+  through the Nix glibc loader; for `validate_perfetto_traces.py` a wrapper places it
+  in the script's private home before each query.
+- The Firefox step runs outside the Nix shell with a private PulseAudio null sink.
+
+Before those adaptations were complete, the hosted Chrome smoke and the Perfetto
+smokes failed for the environmental reasons above, and `shoop_engine` on Chrome hit
+ChromeDriver's 30 s renderer timeout three times while loading its 166 MB debug test
+module on a busy machine. Both web jobs were then run again, every step once and in
+order, with the results shown; `shoop_engine` passed its 870 tests there and in one
+separate rerun. Master's nightly runs fail this step intermittently too: `bcf928e1`
+passed it on push and failed it in its nightly run. The application crates are
+identical to the baseline.
+
+The six slow commands, run side by side without the watchdog. Each pair shares one
+physical core (baseline on one SMT thread, refactor on its sibling), so both take
+2–2.5 times as long as on a core of their own:
+
+| Command | Baseline | Refactor |
+| --- | --- | --- |
+| `rt_runtime` `adversarial_capture`, seeded capture model | 2180 s | 2167 s |
+| `rt_runtime` `midi_state` (7 tests) | 2636 s | 2629 s |
+| `shoop_loops` `adversarial_timeline`, seeded programs model | 2841 s | 2844 s |
+| `shoop_loops` `adversarial_timeline`, seeded sync model | 5134 s | 5128 s |
+| Loop host, dense wire with capacity-one actors | 2441 s | 2420 s |
+| Loop host, acknowledged restart | 2547 s | 2529 s |
+
+The sync model already exceeded the watchdog at `8633d0f0`
+([Miri evidence](#miri-evidence)). The commands queued after the timeout in shards
+9–11 ran with the unchanged runner, which skipped only the timed-out command.
+
+Not run: the macOS and Windows jobs, and the Codecov upload and remote CI, which
+publish.
 
 ### Measurements
 
