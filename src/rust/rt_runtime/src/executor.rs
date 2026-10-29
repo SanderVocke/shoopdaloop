@@ -306,6 +306,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         let (control, mut runtime) =
             Self::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
         let plan = compile_planned(&runtime.catalog, graph, bindings)?;
+        runtime.planner.admit_graph(&plan)?;
         runtime.epoch = runtime.epoch.checked_next()?;
         runtime.active = Some(plan);
         Ok((control, runtime))
@@ -726,7 +727,11 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                             Ok(()) => match progress.status {
                                 ValidationStatus::Pending => break,
                                 ValidationStatus::Invalid(error) => Err(error),
-                                ValidationStatus::Valid => match self.epoch.checked_next() {
+                                ValidationStatus::Valid => match self
+                                    .planner
+                                    .admit_graph(candidate)
+                                    .and_then(|()| self.epoch.checked_next())
+                                {
                                     Err(error) => Err(error),
                                     Ok(epoch) => {
                                         if let Some(candidate) = plan.take() {
@@ -754,6 +759,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                         .is_some_and(|plan| plan.contains(*node))
                     {
                         Err(Error::Busy)
+                    } else if let Err(error) = self.planner.admit_processor_change(*node) {
+                        Err(error)
                     } else {
                         remove_processor(&mut self.slots, &mut self.catalog, &mut self.epoch, *node)
                             .map(|processor| retired = Some(Retired::Processor(processor)))
@@ -762,6 +769,11 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 Command::Install { prepared } => {
                     if operation.lane != Lane::Normal {
                         Err(Error::InvalidState)
+                    } else if let Some(Err(error)) = prepared
+                        .as_ref()
+                        .map(|node| self.planner.admit_processor_change(node.id))
+                    {
+                        Err(error)
                     } else {
                         install_processor(
                             &mut self.slots,

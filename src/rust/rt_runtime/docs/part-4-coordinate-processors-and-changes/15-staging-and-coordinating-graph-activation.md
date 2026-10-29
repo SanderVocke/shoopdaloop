@@ -124,10 +124,19 @@ The separate initially-empty case legitimately releases a Taken slot with no ret
 
 Release does not undo the new active graph. Nor does disconnect release hidden application references, perform note cleanup or settle pending work. The example drains results and checks its pending ledger before stopped extraction.
 
+## The planner admits generic changes
+
+A planner's permit is not the only way to change the graph. `prepare_with_initial_graph` and normal `Command::Commit` publish graphs, and `Command::Remove`/`Install` change processors, without involving the planner's operations. A planner that depends on particular consumers protects them through two hooks, which run before anything changes:
+
+- `Planner::admit_graph(candidate)` refuses a published graph that lacks a required consumer or binding;
+- `Planner::admit_processor_change(node)` refuses removing that node's processor, or installing into its slot.
+
+A refusal fails preparation, or rejects the command with the planner's error while the active graph, epoch and slots stay unchanged. Both hooks default to admitting everything. They run during callback ingress, so they obey the same no-heap, nonblocking contract as the rest of the planner.
+
 ## MIDI compatibility is not musical cleanup
 
 This audio-only example does not exercise pending injection. The runtime nevertheless refuses a candidate that would remove a node whose already-injected MIDI still needs consumption: preflight returns Busy and the old graph consumes the packet once. At operation delivery, planner actions run before processor/MIDI actions; removing the node first instead makes its later injection fail InvalidId. Reversing submission order cannot reverse those categories.
 
-Neither path synthesizes note/pedal cleanup or transfers arbitrary media/role ownership. The application must preflight those responsibilities separately. Generic permits also cannot construct new processors or resize prepared port shapes. The separate loop facade's constrained graph/media/configuration transactions build on this machinery; they are not guarantees supplied by the permit alone.
+Neither path synthesizes note/pedal cleanup or transfers arbitrary media/role ownership. The application must preflight those responsibilities separately. Generic permits also cannot construct new processors or resize prepared port shapes. The loop library's constrained graph/media/configuration transactions build on this machinery; they are not guarantees supplied by the permit alone.
 
 [Next: Recording resources together](16-recording-resources-together.md)

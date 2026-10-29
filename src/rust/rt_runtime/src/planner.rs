@@ -150,6 +150,16 @@ pub trait Planner: Send {
     ) -> Result<Disposition<Self::Result>, Error> {
         Err(Error::InvalidEvent)
     }
+    /// Admit a graph published by generic preparation or a generic commit. A
+    /// planner refuses candidates lacking the consumers or bindings it requires.
+    /// Activations through the planner's own permits are its own responsibility.
+    fn admit_graph(&self, _candidate: &crate::graph::PreparedPlan) -> Result<(), Error> {
+        Ok(())
+    }
+    /// Admit a generic removal of `node`'s processor, or installation into its slot.
+    fn admit_processor_change(&self, _node: NodeId) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]

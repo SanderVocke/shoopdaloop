@@ -52,7 +52,7 @@ An owning Schedule completion reports admission and effective frame; it is not t
 
 Immediate typed completion and retained Pending tokens have separate lifetimes. Receipt writers validate scope, sequence and terminal state and stamp the current context frame; they do not permit arbitrary backdating. Runtime `Ok(())` can carry a domain Refused result.
 
-Cancellation cuts are distinct: ticket before dequeue; `cancel_queued` for undelivered normal typed actions; explicit receipt completion for delivered Pending domain work. Dropping a token, copied payload or StageId settles nothing. A trusted recovery-safe classification must be payload-free, nonfuture and finitely bounded. A recovery token returned Pending must resolve during planning at its delivery frame before positive samples. Recovery operation contexts cannot activate graphs.
+Cancellation cuts are distinct: ticket before dequeue; `cancel_queued` for undelivered normal typed planner actions; `Command::Cancel` for undelivered normal parameter, MIDI and processor actions; explicit receipt completion for delivered Pending domain work. Dropping a token, copied payload or StageId settles nothing. A trusted recovery-safe classification must be payload-free, nonfuture and finitely bounded. A recovery token returned Pending must resolve during planning at its delivery frame before positive samples. Recovery operation contexts cannot activate graphs.
 
 ## Three graph publication paths
 
@@ -61,6 +61,8 @@ Cancellation cuts are distinct: ticket before dequeue; `cancel_queued` for undel
 | `prepare_with_initial_graph` | Startup epoch 1/frame 0, no warm-up callback or queued owner. |
 | Normal `Command::Commit` | Incremental validation; old graph continues until callback-ingress publication. Completion returns displaced plan. |
 | Normal `StageGraph` then planner permit | Owning completion means Ready only; later actual-boundary preflight/commit coordinates domain and graph. |
+
+The planner admits the first two paths through `Planner::admit_graph`, and generic `Remove`/`Install` through `Planner::admit_processor_change`, before anything changes. A refusal fails preparation or rejects the command with the planner's error; the active graph, epoch and slots stay as they were. Both hooks default to admitting everything. Permit-based publication is checked by the planner that holds the permit.
 
 Stage identities check runtime scope/slot/generation. Ready is neither active nor locked by copied/pending references. Preflight checks current/validation epochs, actual retained/displaced capacities, next epoch and pending MIDI compatibility. All fallible application preflight must precede domain mutation. An unused permit changes no graph state; it cannot undo arbitrary application mutations.
 
