@@ -228,6 +228,21 @@ impl Host {
             };
             assert_eq!(raw.result, Ok(()));
             assert_eq!(raw.late_by(), 0);
+            if let Some(selection) = raw.processor_result {
+                assert_eq!(
+                    selection,
+                    Ok(dsp::Receipt {
+                        requested_frame: Frame(5),
+                        frame: Frame(5),
+                        previous_revision: 1,
+                        revision: 2,
+                        preset: preset(1)
+                    })
+                );
+                assert!(!self.dsp_applied);
+                self.dsp_applied = true;
+                continue;
+            }
             let reply = raw.operation_result.unwrap();
             if let Reply::Transition(completion) = reply {
                 assert!(
@@ -237,20 +252,6 @@ impl Host {
             } else {
                 self.replies.push((execution.id.unwrap(), reply));
             }
-        }
-        while let Some(completion) = self.client.dsp().try_completion() {
-            assert_eq!(
-                completion.request.result,
-                Some(Ok(dsp::Receipt::Applied {
-                    requested_frame: Frame(5),
-                    frame: Frame(5),
-                    previous_revision: 1,
-                    revision: 2,
-                    preset: preset(1)
-                }))
-            );
-            assert!(!self.dsp_applied);
-            self.dsp_applied = true;
         }
     }
     fn step(&mut self, frames: usize) {
@@ -707,7 +708,15 @@ pub fn run(mode: Partition, alternate: bool, inject: Option<&str>) -> Summary {
         },
     );
     let query4 = query4.unwrap_or_else(|| h.ask(4, Op::State { target: h.target }));
-    h.client.dsp().select(Frame(5), preset(1), 1).unwrap();
+    h.client
+        .dsp_at(
+            Frame(5),
+            dsp::Operation::SelectPreparedPreset {
+                preset: preset(1),
+                expected_revision: 1,
+            },
+        )
+        .unwrap();
     h.advance(5, mode);
     assert_eq!(h.reply(retired), Reply::Done);
     assert!(matches!(

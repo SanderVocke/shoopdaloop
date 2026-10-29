@@ -1,12 +1,14 @@
 use crate::{
-    dsp, Delivery, DeliveryPhase, Execution, ExecutionStatus, LoopExecution, PreparedRoute,
-    Request, RequestId, Work, BULK_SLOTS, DOMAIN_SLOTS, INTERNAL_SLOT, NORMAL_SLOTS, USER_SLOTS,
+    dsp, Delivery, DeliveryPhase, Execution, ExecutionStatus, PreparedRoute, Request, RequestId,
+    RuntimeExecution, Work, BULK_SLOTS, DOMAIN_SLOTS, DSP_SLOTS, INTERNAL_SLOT, NORMAL_SLOTS,
+    USER_SLOTS,
 };
 use rt_runtime::{
     executor::{self, Command},
     resource::{self, Cursor},
+    schedule::Action,
     transport::{self, Lane, Outcome, SubmitError},
-    Epoch, Error, Frame, Sequence,
+    Epoch, Error, Frame, NodeId, Sequence,
 };
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 use shoop_loops::{
@@ -36,6 +38,7 @@ impl Ticket {
 #[derive(Clone, Copy, PartialEq)]
 enum Class {
     Domain,
+    Dsp,
     Bulk,
     Recovery,
 }
@@ -70,7 +73,6 @@ pub struct Client {
     flags: Box<[Arc<AtomicBool>]>,
     identity: Arc<()>,
     next: u64,
-    dsp: dsp::Client,
     meters: dsp::Meters,
 }
 
@@ -84,9 +86,6 @@ impl Client {
     pub fn meters(&self) -> &dsp::Meters {
         &self.meters
     }
-    pub fn dsp(&mut self) -> &mut dsp::Client {
-        &mut self.dsp
-    }
     pub(crate) fn identity(&self) -> Arc<()> {
         Arc::clone(&self.identity)
     }
@@ -95,6 +94,8 @@ impl Client {
             Class::Recovery
         } else if matches!(request, Request::Loop { .. }) {
             Class::Domain
+        } else if matches!(request, Request::Dsp { .. }) {
+            Class::Dsp
         } else {
             Class::Bulk
         };
@@ -104,6 +105,7 @@ impl Client {
         }
         let limit = match class {
             Class::Domain => DOMAIN_SLOTS,
+            Class::Dsp => DSP_SLOTS,
             Class::Bulk => BULK_SLOTS,
             Class::Recovery => 1,
         };
@@ -186,6 +188,15 @@ impl Client {
             });
         }
         self.submit(Lane::Normal, request)
+    }
+    /// DSP control, scheduled by the runtime at `at`. The DSP refuses a late
+    /// selection rather than clamping it to a later sample.
+    pub fn dsp_at(
+        &mut self,
+        at: Frame,
+        operation: dsp::Operation,
+    ) -> Result<Ticket, SubmitError<Request>> {
+        self.submit(Lane::Normal, Request::Dsp { at, operation })
     }
     /// Recovery is stamped at the next service callback, never at a future frame.
     pub fn stop(&mut self) -> Result<Ticket, SubmitError<Request>> {
@@ -275,13 +286,16 @@ struct Pending {
     ticket: Option<transport::Ticket>,
     flag: Option<Arc<AtomicBool>>,
     domain: bool,
+    /// Scheduled DSP work, cancelled generically rather than by the loop.
+    processor: bool,
     delivered: bool,
     executed: bool,
 }
 
 pub(crate) struct Ingress {
-    control: executor::Control<crate::ServiceNode, LoopPlanner>,
+    control: executor::Control<crate::ServiceNode, LoopPlanner, dsp::Operation>,
     loops: LoopClient,
+    dsp: NodeId,
     normal: Consumer<Packet>,
     recovery: Consumer<Packet>,
     returns: Producer<Returned>,
@@ -299,16 +313,16 @@ pub(crate) struct Ingress {
 }
 
 pub(crate) fn channel(
-    control: executor::Control<crate::ServiceNode, LoopPlanner>,
+    control: executor::Control<crate::ServiceNode, LoopPlanner, dsp::Operation>,
     loops: LoopClient,
     target: LoopId,
-    dsp: dsp::Client,
+    dsp: NodeId,
     meters: dsp::Meters,
 ) -> (Client, Ingress) {
     let (normal_tx, normal_rx) = RingBuffer::new(NORMAL_SLOTS);
     let (recovery_tx, recovery_rx) = RingBuffer::new(1);
     let (returns_tx, returns_rx) = RingBuffer::new(USER_SLOTS);
-    let (executions_tx, executions_rx) = RingBuffer::new(DOMAIN_SLOTS + 2);
+    let (executions_tx, executions_rx) = RingBuffer::new(DOMAIN_SLOTS + DSP_SLOTS + 2);
     let identity = Arc::new(());
     let flags = (0..USER_SLOTS)
         .map(|_| Arc::new(AtomicBool::new(false)))
@@ -328,12 +342,12 @@ pub(crate) fn channel(
             flags,
             identity: Arc::clone(&identity),
             next: 1,
-            dsp,
             meters,
         },
         Ingress {
             control,
             loops,
+            dsp,
             normal: normal_rx,
             recovery: recovery_rx,
             returns: returns_tx,
@@ -426,12 +440,24 @@ impl Ingress {
             request,
             flag,
         } = packet;
-        let domain = matches!(
+        let processor = matches!(request, Request::Dsp { .. });
+        let mut domain = matches!(
             request,
-            Request::Loop { .. } | Request::Cancel { .. } | Request::Stop
+            Request::Loop { .. } | Request::Dsp { .. } | Request::Cancel { .. } | Request::Stop
         );
         let result = match request {
             Request::Loop { at, operation } => self.submit_loop(lane, at, operation),
+            Request::Dsp { at, operation } => self.control.submit_prepared(
+                lane,
+                Command::Schedule {
+                    at,
+                    action: Action::Processor {
+                        node: self.dsp,
+                        operation,
+                    },
+                    payload: Box::new([]),
+                },
+            ),
             Request::Read { cursor, bytes } => self.control.submit_prepared(
                 Lane::Normal,
                 Command::resource(resource::Request::Read { cursor, bytes }),
@@ -475,13 +501,13 @@ impl Ingress {
                 },
             ),
             Request::Cancel { target } => {
-                let sequence = self
+                let found = self
                     .pending
                     .iter()
                     .flatten()
                     .find(|p| p.id == Some(target))
-                    .map(|p| p.sequence);
-                let Some(sequence) = sequence else {
+                    .map(|p| (p.sequence, p.processor));
+                let Some((sequence, processor)) = found else {
                     return self.native_return(
                         Packet {
                             id,
@@ -495,7 +521,14 @@ impl Ingress {
                         Outcome::Applied,
                     );
                 };
-                self.submit_loop(Lane::Recovery, frame, Operation::Cancel { sequence })
+                if processor {
+                    // A generic cancellation has no execution of its own.
+                    domain = false;
+                    self.control
+                        .submit_prepared(Lane::Recovery, Command::Cancel { sequence })
+                } else {
+                    self.submit_loop(Lane::Recovery, frame, Operation::Cancel { sequence })
+                }
             }
         };
         match result {
@@ -511,6 +544,7 @@ impl Ingress {
                     ticket: Some(ticket),
                     flag: Some(flag),
                     domain,
+                    processor,
                     delivered: false,
                     executed: false,
                 });
@@ -564,6 +598,7 @@ impl Ingress {
                     ticket: Some(ticket),
                     flag: None,
                     domain: true,
+                    processor: false,
                     delivered: false,
                     executed: false,
                 });
@@ -659,7 +694,7 @@ impl Ingress {
             }
             self.reap(slot);
         }
-        for _ in 0..DOMAIN_SLOTS + 2 {
+        for _ in 0..DOMAIN_SLOTS + DSP_SLOTS + 2 {
             let Some(execution) = self.control.try_execution() else {
                 break;
             };
@@ -667,7 +702,7 @@ impl Ingress {
         }
         Ok(())
     }
-    fn executed(&mut self, execution: LoopExecution) -> Result<(), Error> {
+    fn executed(&mut self, execution: RuntimeExecution) -> Result<(), Error> {
         let slot = self
             .pending
             .iter()

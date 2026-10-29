@@ -1,4 +1,4 @@
-use rt_runtime::{Error, Frame, Sequence};
+use rt_runtime::{processor::ProcessorOperation, Error, Frame};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PresetId {
@@ -101,35 +101,33 @@ impl Config {
     }
 }
 
+/// Typed control of a [`crate::Dsp`]. Schedule it as a processor action at the
+/// frame where the selection must apply.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Operation {
     SelectPreparedPreset {
-        at: Frame,
         preset: PresetId,
         expected_revision: u32,
     },
-    CancelPending {
-        target: Sequence,
-    },
+}
+impl ProcessorOperation for Operation {
+    type Result = Result<Receipt, Refusal>;
 }
 
+/// A selection applied at its requested sample.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Receipt {
-    Applied {
-        requested_frame: Frame,
-        frame: Frame,
-        previous_revision: u32,
-        revision: u32,
-        preset: PresetId,
-    },
-    CancelRegistered {
-        frame: Frame,
-        target: Sequence,
-    },
+pub struct Receipt {
+    pub requested_frame: Frame,
+    pub frame: Frame,
+    pub previous_revision: u32,
+    pub revision: u32,
+    pub preset: PresetId,
 }
 
+/// A selection that changed nothing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Refusal {
+    /// Delivered after its requested frame; never clamped to a later sample.
     Late {
         requested: Frame,
         decision_frame: Frame,
@@ -141,29 +139,7 @@ pub enum Refusal {
         expected: u32,
         actual: u32,
     },
-    Cancelled {
-        frame: Frame,
-    },
-    Disconnected {
-        frame: Frame,
-    },
     RevisionExhausted {
         frame: Frame,
     },
-    InvalidRecoveryTarget {
-        target: Sequence,
-    },
-    InvalidOperation {
-        frame: Frame,
-    },
-    Fault {
-        decision_frame: Frame,
-        error: Error,
-    },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Request {
-    pub operation: Operation,
-    pub result: Option<Result<Receipt, Refusal>>,
 }

@@ -3,7 +3,7 @@ use rt_runtime::{
     executor,
     graph::{PortCounts, PreparedPlan},
     planner::ConsumerAccess,
-    processor::{ProcessBlock, Processor},
+    processor::{OperationContext, ProcessBlock, Processor},
     transport::{Lane, Outcome},
     Epoch, Error, Frame,
 };
@@ -13,9 +13,10 @@ use shoop_loops::{
 };
 use std::sync::Arc;
 
-pub const NORMAL_SLOTS: usize = 16;
+pub const NORMAL_SLOTS: usize = DOMAIN_SLOTS + BULK_SLOTS + DSP_SLOTS;
 pub const DOMAIN_SLOTS: usize = 8;
 pub const BULK_SLOTS: usize = 8;
+pub const DSP_SLOTS: usize = 1;
 pub const RECOVERY_SLOTS: usize = 1;
 pub(crate) const USER_SLOTS: usize = NORMAL_SLOTS + RECOVERY_SLOTS;
 pub(crate) const INTERNAL_SLOT: usize = USER_SLOTS;
@@ -86,6 +87,10 @@ pub enum Request {
         at: Frame,
         operation: Operation,
     },
+    Dsp {
+        at: Frame,
+        operation: dsp::Operation,
+    },
     Read {
         cursor: rt_runtime::resource::Cursor,
         bytes: Box<[u8]>,
@@ -106,6 +111,7 @@ impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Loop { .. } => "Loop",
+            Self::Dsp { .. } => "Dsp",
             Self::Read { .. } => "Read",
             Self::StageRoute { .. } => "StageRoute",
             Self::ReleaseRoute { .. } => "ReleaseRoute",
@@ -120,17 +126,29 @@ pub enum ServiceNode {
     Loop(LoopNode),
     Dsp(dsp::Dsp),
 }
-impl Processor<LoopPlanner> for ServiceNode {
+impl Processor<LoopPlanner, dsp::Operation> for ServiceNode {
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
-            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner>>::ports(node),
+            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner, dsp::Operation>>::ports(node),
         }
     }
     fn planning(&self) -> ConsumerAccess {
         match self {
             Self::Loop(node) => node.planning(),
-            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner>>::planning(node),
+            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner, dsp::Operation>>::planning(node),
+        }
+    }
+    fn operation(
+        &mut self,
+        operation: dsp::Operation,
+        context: OperationContext<'_>,
+    ) -> Result<DspResult, Error> {
+        match self {
+            Self::Loop(_) => Err(Error::InvalidEvent),
+            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner, dsp::Operation>>::operation(
+                node, operation, context,
+            ),
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -140,9 +158,14 @@ impl Processor<LoopPlanner> for ServiceNode {
         }
     }
 }
-pub type EngineCommand = executor::Command<ServiceNode, LoopPlanner>;
+/// A DSP operation's typed outcome.
+pub type DspResult = Result<dsp::Receipt, dsp::Refusal>;
+pub type EngineCommand = executor::Command<ServiceNode, LoopPlanner, dsp::Operation>;
 pub type Retired = executor::Retired<ServiceNode>;
-pub type LoopExecution = rt_runtime::schedule::Execution<Operation, Reply>;
+/// A loop or DSP request's runtime execution. Loop outcomes are in
+/// `operation_result`, DSP outcomes in `processor_result`.
+pub type RuntimeExecution =
+    rt_runtime::schedule::Execution<Operation, Reply, dsp::Operation, DspResult>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DeliveryPhase {
@@ -168,7 +191,7 @@ pub struct Delivery {
 }
 
 pub enum ExecutionStatus {
-    Executed(LoopExecution),
+    Executed(RuntimeExecution),
     /// Explicit service teardown/fault; never manufactured as a loop execution.
     Aborted {
         decision_frame: Frame,

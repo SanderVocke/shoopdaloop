@@ -301,15 +301,17 @@ impl Bench for Service {
         match self.mode {
             Mode::Preset => {
                 let at = self.render.next_frame();
-                heap::assert_no_heap(|| {
+                let select = |preset, expected_revision| dsp::Operation::SelectPreparedPreset {
+                    preset,
+                    expected_revision,
+                };
+                let next = select(preset((at.0 / FRAMES as u64 % 2) as u32), self.revision);
+                heap::assert_no_heap(|| self.client.dsp_at(at, next).unwrap());
+                let error = heap::assert_no_heap(|| {
                     self.client
-                        .dsp()
-                        .select(at, preset((at.0 / FRAMES as u64 % 2) as u32), self.revision)
-                        .unwrap()
+                        .dsp_at(at, select(preset(0), self.revision))
+                        .unwrap_err()
                 });
-                let error =
-                    heap::assert_no_heap(|| self.client.dsp().select(at, preset(0), self.revision))
-                        .unwrap_err();
                 assert_eq!(error.error, rt_runtime::Error::Full);
                 admission.attempts = 2;
                 admission.refused = 1;
@@ -414,6 +416,16 @@ impl Bench for Service {
             };
             assert_eq!(raw.result, Ok(()));
             assert_eq!(raw.late_by(), 0);
+            if let Some(selection) = raw.processor_result {
+                let Ok(receipt) = selection else {
+                    panic!("DSP receipt");
+                };
+                assert_eq!(receipt.previous_revision, self.revision);
+                assert_eq!(receipt.revision, self.revision + 1);
+                assert_eq!(receipt.frame, receipt.requested_frame);
+                self.revision = receipt.revision;
+                continue;
+            }
             match raw.operation_result.unwrap() {
                 Reply::Transition(completion) => assert!(matches!(
                     completion.outcome,
@@ -440,22 +452,6 @@ impl Bench for Service {
                 }
                 reply => panic!("unexpected {reply:?}"),
             }
-        }
-        while let Some(completion) = self.client.dsp().try_completion() {
-            let Some(Ok(dsp::Receipt::Applied {
-                previous_revision,
-                revision,
-                frame,
-                requested_frame,
-                ..
-            })) = completion.request.result
-            else {
-                panic!("DSP receipt");
-            };
-            assert_eq!(previous_revision, self.revision);
-            assert_eq!(revision, self.revision + 1);
-            assert_eq!(frame, requested_frame);
-            self.revision = revision;
         }
         assert_eq!(self.client.outstanding(), 0);
     }

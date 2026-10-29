@@ -273,14 +273,14 @@ as in CI, with the Stage 0 counts.
 
 ### Stage 6 — Demonstrator
 
-- [ ] `shoop_example_dsp`:
+- [x] `shoop_example_dsp`:
   - remove `Client`/`RenderControl`/the mailbox;
   - implement preset selection (and anything else the bridge offered) as
     processor operations with typed results;
   - keep meters;
   - port its tests to a minimal `rt_runtime` host;
   - update its README.
-- [ ] `shoop_engine_service`:
+- [x] `shoop_engine_service`:
   - own `ResourceStore` and `GraphRuntime<ServiceNode, LoopPlanner>`, with
     `ServiceNode` wrapping the loop nodes and the DSP;
   - send loop and DSP requests through the single control endpoint;

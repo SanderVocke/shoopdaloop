@@ -176,6 +176,47 @@ fn transition(
         )
         .unwrap()
 }
+fn select(
+    client: &mut Client,
+    at: u64,
+    preset: dsp::PresetId,
+    expected_revision: u32,
+) -> shoop_engine_service::Ticket {
+    client
+        .dsp_at(
+            Frame(at),
+            dsp::Operation::SelectPreparedPreset {
+                preset,
+                expected_revision,
+            },
+        )
+        .unwrap()
+}
+/// The DSP outcome of the selection submitted with `ticket`.
+fn selection(
+    executions: &[shoop_engine_service::Execution],
+    ticket: &shoop_engine_service::Ticket,
+) -> (Option<Frame>, shoop_engine_service::DspResult) {
+    let execution = executions
+        .iter()
+        .find(|execution| execution.id == Some(ticket.id()))
+        .expect("selection execution");
+    let ExecutionStatus::Executed(raw) = &execution.status else {
+        panic!("actual selection");
+    };
+    assert_eq!(raw.result, Ok(()));
+    assert_eq!(raw.operation_result, None);
+    (raw.delivered_frame, raw.processor_result.unwrap())
+}
+fn applied(frame: u64) -> shoop_engine_service::DspResult {
+    Ok(dsp::Receipt {
+        requested_frame: Frame(frame),
+        frame: Frame(frame),
+        previous_revision: 1,
+        revision: 2,
+        preset: id(1),
+    })
+}
 fn drain(client: &mut Client) -> Vec<shoop_engine_service::Execution> {
     while let Some(delivery) = client.try_delivery() {
         assert_eq!(delivery.phase, DeliveryPhase::Runtime);
@@ -235,17 +276,11 @@ fn actual_loop_and_component_control_match_full_partition_oracles_without_warmup
                 retrigger: false,
             },
         );
-        let _preset = client.dsp().select(Frame(5), id(1), 1).unwrap();
+        let preset = select(&mut client, 5, id(1), 1);
         let mut left = Vec::new();
         let mut right = Vec::new();
         let mut packets = Vec::new();
-        let mut at = 0;
-        let mut preset_callback = 0;
         for frames in parts {
-            if at <= 5 && 5 < at + frames {
-                preset_callback = at;
-            }
-            at += frames;
             let out = host.step(frames, &[(0, &[0x90, 60, 100]), (2, &[0x80, 60, 45])]);
             out.result.unwrap();
             assert!(out.recovery.is_empty());
@@ -254,7 +289,11 @@ fn actual_loop_and_component_control_match_full_partition_oracles_without_warmup
             packets.extend(out.midi);
         }
         let executions = drain(&mut client);
-        assert_eq!(executions.len(), 3);
+        assert_eq!(executions.len(), 4);
+        assert_eq!(
+            selection(&executions, &preset),
+            (Some(Frame(5)), applied(5))
+        );
         for execution in &executions {
             let ExecutionStatus::Executed(raw) = &execution.status else {
                 panic!("actual execution");
@@ -277,18 +316,6 @@ fn actual_loop_and_component_control_match_full_partition_oracles_without_warmup
         expected_packets.push((5, vec![0x80, 60, 45]));
         expected_packets.extend(initial_restore(7));
         assert_eq!(packets, expected_packets);
-        let preset = client.dsp().try_completion().unwrap();
-        assert_eq!(preset.frame, Frame(preset_callback as u64));
-        assert_eq!(
-            preset.request.result,
-            Some(Ok(dsp::Receipt::Applied {
-                requested_frame: Frame(5),
-                frame: Frame(5),
-                previous_revision: 1,
-                revision: 2,
-                preset: id(1)
-            }))
-        );
         let state = executions
             .into_iter()
             .find(|e| e.id == Some(state.id()))
@@ -406,7 +433,7 @@ fn processor_fault_keeps_actual_component_and_loop_receipts_without_replay() {
         let future = client
             .loop_at(Frame(100), LoopOperation::State { target })
             .unwrap();
-        let _preset = client.dsp().select(Frame(5), id(1), 1).unwrap();
+        let preset = select(&mut client, 5, id(1), 1);
         let mut sysex = vec![1; 600];
         sysex[0] = 0xF0;
         sysex[599] = 0xF7;
@@ -417,32 +444,24 @@ fn processor_fault_keeps_actual_component_and_loop_receipts_without_replay() {
         assert!(out.midi.is_empty());
         assert_eq!(out.recovery, reset_packets());
         assert_eq!(host.render.next_frame(), Frame(8));
-        let preset = client
-            .dsp()
-            .try_completion()
-            .unwrap()
-            .request
-            .result
-            .unwrap();
-        if fault_at == 6 {
-            assert!(matches!(
-                preset,
-                Ok(dsp::Receipt::Applied {
-                    frame: Frame(5),
-                    revision: 2,
-                    ..
-                })
-            ));
-        } else {
-            assert!(matches!(
-                preset,
-                Err(dsp::Refusal::Fault {
-                    error: Error::Capacity,
-                    ..
-                })
-            ));
-        }
         let executions = drain(&mut client);
+        // A selection delivered before the fault keeps its receipt; otherwise the
+        // service aborts it without fabricating a DSP outcome.
+        if fault_at == 6 {
+            assert_eq!(
+                selection(&executions, &preset),
+                (Some(Frame(5)), applied(5))
+            );
+        } else {
+            assert!(executions.iter().any(|e| e.id == Some(preset.id())
+                && matches!(
+                    e.status,
+                    ExecutionStatus::Aborted {
+                        error: Error::Capacity,
+                        ..
+                    }
+                )));
+        }
         assert!(executions.iter().any(|e| e.id == Some(future.id())
             && matches!(
                 e.status,
@@ -486,10 +505,9 @@ fn zero_and_callback_end_requests_wait_for_a_real_callback() {
             .loop_at(Frame(8), LoopOperation::State { target })
             .unwrap()
     });
-    let _preset = heap::assert_no_heap(|| client.dsp().select(Frame(8), id(1), 1).unwrap());
+    let preset = heap::assert_no_heap(|| select(&mut client, 8, id(1), 1));
     assert_eq!(host.step(0, &[]).result.unwrap().next_frame, Frame(0));
     assert!(client.try_delivery().is_none());
-    assert!(client.dsp().try_completion().is_none());
     let out = host.step(8, &[]);
     out.result.unwrap();
     assert_eq!(out.left, [1., 2., 3., 4., 5., 6., 7., 8.]);
@@ -500,22 +518,25 @@ fn zero_and_callback_end_requests_wait_for_a_real_callback() {
         shoop_engine_service::Work::default()
     );
     assert!(client.try_execution().is_none());
-    assert!(client.dsp().try_completion().is_none());
     let out = host.step(1, &[]);
     out.result.unwrap();
     assert_eq!(out.left, [180.]);
     assert_eq!(out.right, [-9.]);
-    let ExecutionStatus::Executed(state) = client.try_execution().unwrap().status else {
+    let executions = drain(&mut client);
+    assert_eq!(executions.len(), 2);
+    let ExecutionStatus::Executed(state) = &executions
+        .iter()
+        .find(|e| e.id != Some(preset.id()))
+        .unwrap()
+        .status
+    else {
         panic!("state");
     };
     assert_eq!(state.actual_frame, Frame(8));
-    assert!(matches!(
-        client.dsp().try_completion().unwrap().request.result,
-        Some(Ok(dsp::Receipt::Applied {
-            frame: Frame(8),
-            ..
-        }))
-    ));
+    assert_eq!(
+        selection(&executions, &preset),
+        (Some(Frame(8)), applied(8))
+    );
     cleanup(client, host);
 }
 
@@ -567,7 +588,7 @@ fn prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes() {
             },
         )
         .unwrap();
-    let _preset = client.dsp().select(Frame(cut_at), id(1), 1).unwrap();
+    let preset = select(&mut client, cut_at, id(1), 1);
     let _export = client
         .loop_at(
             Frame(export_at),
@@ -601,7 +622,15 @@ fn prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes() {
     assert_eq!(out.right, expected_right);
     let mut export = None;
     let mut state_seen = false;
-    for execution in drain(&mut client) {
+    let executions = drain(&mut client);
+    assert_eq!(
+        selection(&executions, &preset),
+        (Some(Frame(cut_at)), applied(cut_at))
+    );
+    for execution in executions {
+        if execution.id == Some(preset.id()) {
+            continue;
+        }
         let ExecutionStatus::Executed(raw) = execution.status else {
             panic!("real route/export outcome");
         };
@@ -634,10 +663,6 @@ fn prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes() {
         }
     }
     assert!(state_seen);
-    assert!(
-        matches!(client.dsp().try_completion().unwrap().request.result,
-        Some(Ok(dsp::Receipt::Applied { frame, revision: 2, .. })) if frame == Frame(cut_at))
-    );
     let export = export.unwrap();
     let _cursor = client
         .loop_at(
@@ -839,7 +864,7 @@ fn state_queries_and_meter_read_frequency_leave_complete_streams_unchanged() {
                 retrigger: false,
             },
         );
-        let _preset = client.dsp().select(Frame(5), id(1), 1).unwrap();
+        let _preset = select(&mut client, 5, id(1), 1);
         let mut left = Vec::new();
         let mut right = Vec::new();
         let mut midi = Vec::new();
@@ -1212,7 +1237,7 @@ fn saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across
             .unwrap();
         let stage = client.stage_route(route, rt_runtime::Epoch(2)).unwrap();
         let invalid = dsp::PresetId::from_parts(0, 2).unwrap();
-        client.dsp().select(Frame(1), invalid, 1).unwrap();
+        let refused_preset = select(&mut client, 1, invalid, 1);
         let out = host.step(5, &[]);
         out.result.unwrap();
         assert_eq!(out.left, [1., 2., 3., 4., 5.]);
@@ -1232,18 +1257,21 @@ fn saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across
             }
         }
         assert!(route_refused);
-        assert_eq!(
-            client.dsp().try_completion().unwrap().request.result,
-            Some(Err(dsp::Refusal::InvalidPreset { preset: invalid }))
-        );
         let mut export = None;
         let mut full = false;
         let mut recording = false;
+        let mut invalid_refused = false;
         while let Some(execution) = client.try_execution() {
             let ExecutionStatus::Executed(raw) = execution.status else {
                 panic!("export execution");
             };
-            if execution.id == Some(first.id()) {
+            if execution.id == Some(refused_preset.id()) {
+                assert_eq!(
+                    raw.processor_result,
+                    Some(Err(dsp::Refusal::InvalidPreset { preset: invalid }))
+                );
+                invalid_refused = true;
+            } else if execution.id == Some(first.id()) {
                 let Some(LoopReply::Export { id, media, .. }) = raw.operation_result else {
                     panic!("prefix");
                 };
@@ -1267,7 +1295,7 @@ fn saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across
                 recording = true;
             }
         }
-        assert!(full && recording);
+        assert!(full && recording && invalid_refused);
         let export = export.unwrap();
         let cursor = client
             .loop_at(
@@ -1373,11 +1401,10 @@ fn separate_control_thread_observes_exact_execution_while_render_never_waits() {
     let control_ready = Arc::clone(&ready);
     let control_done = Arc::clone(&done);
     let control = std::thread::spawn(move || {
-        let _preset = heap::assert_no_heap(|| client.dsp().select(Frame(137), id(1), 1).unwrap());
+        let preset = heap::assert_no_heap(|| select(&mut client, 137, id(1), 1));
         control_ready.store(true, Ordering::Release);
         let deadline = Instant::now() + Duration::from_secs(15);
-        let mut receipts = Vec::with_capacity(4);
-        let mut applied = false;
+        let mut receipts = Vec::with_capacity(5);
         let mut reads = 0;
         loop {
             while let Some(delivery) = client.try_delivery() {
@@ -1389,28 +1416,19 @@ fn separate_control_thread_observes_exact_execution_while_render_never_waits() {
             while let Some(execution) = client.try_execution() {
                 receipts.push(execution);
             }
-            while let Some(completion) = client.dsp().try_completion() {
-                assert_eq!(
-                    completion.request.result,
-                    Some(Ok(dsp::Receipt::Applied {
-                        requested_frame: Frame(137),
-                        frame: Frame(137),
-                        previous_revision: 1,
-                        revision: 2,
-                        preset: id(1),
-                    }))
-                );
-                applied = true;
-            }
             heap::assert_no_heap(|| client.meters().read_peaks());
             reads += 1;
-            if control_done.load(Ordering::Acquire) && client.outstanding() == 0 && applied {
+            if control_done.load(Ordering::Acquire) && client.outstanding() == 0 {
                 break;
             }
             assert!(Instant::now() < deadline, "bounded control-side completion");
             std::thread::yield_now();
         }
-        assert_eq!(receipts.len(), 4);
+        assert_eq!(receipts.len(), 5);
+        assert_eq!(
+            selection(&receipts, &preset),
+            (Some(Frame(137)), applied(137))
+        );
         for execution in receipts {
             let ExecutionStatus::Executed(raw) = execution.status else {
                 panic!("actual receipt");
@@ -1535,7 +1553,7 @@ fn disconnect_during_recording_retains_full_returns_and_pending_preset_until_sto
     }
     assert!(recording);
     drop((exported, cursor, query));
-    let mut pending = Vec::with_capacity(16);
+    let mut pending = Vec::with_capacity(17);
     for at in 1000..1008 {
         pending.push(
             client
@@ -1547,12 +1565,12 @@ fn disconnect_during_recording_retains_full_returns_and_pending_preset_until_sto
         let bytes = vec![0; 256].into_boxed_slice();
         pending.push(client.read(read_cursor.unwrap(), bytes).unwrap());
     }
-    let preset = client.dsp().select(Frame(1000), id(1), 1).unwrap();
+    pending.push(select(&mut client, 1000, id(1), 1));
     let out = host.step(1, &[]);
     out.result.unwrap();
     assert_eq!(out.left, [6.]);
     assert_eq!(out.right, [60.]);
-    assert_eq!(client.outstanding(), 16);
+    assert_eq!(client.outstanding(), 17);
     // Full owning returns and active capture are left undrained at disconnect.
     drop(client);
     let out = host.step(1, &[]);
@@ -1592,5 +1610,5 @@ fn disconnect_during_recording_retains_full_returns_and_pending_preset_until_sto
         ),
         (8, 4, 8, 0)
     );
-    drop((pending, preset));
+    drop(pending);
 }

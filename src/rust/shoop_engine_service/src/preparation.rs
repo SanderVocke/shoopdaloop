@@ -56,7 +56,7 @@ fn prepare_inner(
         max_nodes: 4,
         max_ports: 24,
         max_edges: 16,
-        command_slots: 16,
+        command_slots: crate::NORMAL_SLOTS,
         scheduled_events: 32,
         midi_events_per_port: 2048,
         midi_bytes_per_port: 8192,
@@ -64,7 +64,7 @@ fn prepare_inner(
         resource_pages: config.resource_pages,
         page_bytes: 256,
         budgets: Budgets {
-            commands: 16,
+            commands: crate::NORMAL_SLOTS,
             events: 32,
             subranges: 0,
             validation_steps: 128,
@@ -165,18 +165,12 @@ fn prepare_inner(
         engine.catalog(),
         &graph(CaptureTap::Live, playback, effect, capture),
     )?;
-    let (client, ingress) = control::channel(
-        control,
-        client,
-        target,
-        prepared_dsp.client,
-        prepared_dsp.meters,
-    );
+    let (client, ingress) = control::channel(control, client, target, effect, prepared_dsp.meters);
     let route = PreparedRoute {
         plan: candidate,
         identity: client.identity(),
     };
-    let render = Render::new(config, engine, ingress, prepared_dsp.render)?;
+    let render = Render::new(config, engine, ingress)?;
     Ok(Prepared {
         client,
         render,

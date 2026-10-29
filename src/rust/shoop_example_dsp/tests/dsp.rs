@@ -2,16 +2,17 @@
 
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
-    executor::{Control, GraphRuntime, PreparedNode},
+    executor::{Command, Control, GraphRuntime, PreparedNode},
     graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType},
     planner::NoPlanner,
-    processor::{ProcessBlock, Processor},
+    processor::{OperationContext, ProcessBlock, Processor},
     resource::ResourceStore,
-    Error, Frame, NodeId,
+    schedule::{Action, Execution},
+    transport::{Lane, Outcome, Ticket},
+    Error, Frame, NodeId, Sequence,
 };
 use shoop_example_dsp::{
-    prepare, Client, Config, Dsp, Meters, Prepared, Preset, PresetId, Receipt, Refusal,
-    RenderControl,
+    prepare, Config, Dsp, Meters, Operation, Prepared, Preset, PresetId, Receipt, Refusal,
 };
 use shoop_wasm_test_support::{heap, shoop_test};
 
@@ -79,11 +80,11 @@ fn bank() -> Vec<Preset> {
     ]
 }
 
+/// Fails every processing interval that starts at or after the given frame.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Fault {
     None,
-    Before,
-    After,
+    From(u64),
 }
 struct Checked {
     dsp: Dsp,
@@ -94,25 +95,28 @@ impl Drop for Checked {
         assert!(!heap::is_rendering());
     }
 }
-impl Processor for Checked {
+impl Processor<NoPlanner, Operation> for Checked {
     fn ports(&self) -> PortCounts {
-        <Dsp as Processor>::ports(&self.dsp)
+        <Dsp as Processor<NoPlanner, Operation>>::ports(&self.dsp)
+    }
+    fn operation(
+        &mut self,
+        operation: Operation,
+        context: OperationContext<'_>,
+    ) -> Result<Result<Receipt, Refusal>, Error> {
+        <Dsp as Processor<NoPlanner, Operation>>::operation(&mut self.dsp, operation, context)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
-        if self.fault == Fault::Before {
+        if matches!(self.fault, Fault::From(frame) if block.frame.0 >= frame) {
             return Err(Error::InvalidState);
         }
-        self.dsp.process(block)?;
-        if self.fault == Fault::After {
-            return Err(Error::InvalidState);
-        }
-        Ok(())
+        self.dsp.process(block)
     }
 }
+type Selection = Execution<(), (), Operation, Result<Receipt, Refusal>>;
 struct Fixture {
-    _control: Control<Checked>,
-    runtime: GraphRuntime<Checked>,
-    render: RenderControl,
+    control: Control<Checked, NoPlanner, Operation>,
+    runtime: GraphRuntime<Checked, NoPlanner, Operation>,
     meters: Meters,
     input: [MidiBuffer; 2],
     output: [MidiBuffer; 1],
@@ -125,13 +129,11 @@ struct Output {
     recovery: Vec<(u64, Vec<u8>)>,
     result: Result<(), Error>,
 }
-fn setup(initial: u32, fault: Fault, events: usize) -> (Client, Fixture) {
-    let Prepared {
-        client,
-        render,
-        processor,
-        meters,
-    } = prepare(config(), bank(), id(initial)).unwrap();
+fn node() -> NodeId {
+    NodeId::from_parts(0, 1).unwrap()
+}
+fn setup(initial: u32, fault: Fault, events: usize) -> Fixture {
+    let Prepared { processor, meters } = prepare(config(), bank(), id(initial)).unwrap();
     let cfg = rt_runtime::Config {
         max_frames: 8,
         audio_inputs: 4,
@@ -150,9 +152,8 @@ fn setup(initial: u32, fault: Fault, events: usize) -> (Client, Fixture) {
     }
     .prepare()
     .unwrap();
-    let node = NodeId::from_parts(0, 1).unwrap();
     let mut graph = GraphDescription {
-        nodes: vec![node],
+        nodes: vec![node()],
         connections: Vec::new(),
     };
     for (kind, count, output) in [
@@ -163,7 +164,7 @@ fn setup(initial: u32, fault: Fault, events: usize) -> (Client, Fixture) {
     ] {
         for port in 0..count {
             let host = Endpoint::host(kind, port);
-            let effect = Endpoint::node(node, kind, port);
+            let effect = Endpoint::node(node(), kind, port);
             graph.connections.push(if output {
                 Connection {
                     source: effect,
@@ -177,10 +178,10 @@ fn setup(initial: u32, fault: Fault, events: usize) -> (Client, Fixture) {
             });
         }
     }
-    let (control, runtime) = GraphRuntime::prepare_with_initial_graph(
+    let (mut control, runtime) = GraphRuntime::prepare_with_initial_graph(
         cfg,
         vec![PreparedNode::new(
-            node,
+            node(),
             Checked {
                 dsp: processor,
                 fault,
@@ -192,20 +193,17 @@ fn setup(initial: u32, fault: Fault, events: usize) -> (Client, Fixture) {
         &[],
     )
     .unwrap();
+    control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
     assert_eq!(runtime.resource_usage().free_pages, 8);
-    (
-        client,
-        Fixture {
-            _control: control,
-            runtime,
-            render,
-            meters,
-            input: std::array::from_fn(|_| MidiBuffer::new(32, 1024).unwrap()),
-            output: [MidiBuffer::new(64, 2048).unwrap()],
-            recovery: MidiBuffer::new(64, 2048).unwrap(),
-        },
-    )
+    Fixture {
+        control,
+        runtime,
+        meters,
+        input: std::array::from_fn(|_| MidiBuffer::new(32, 1024).unwrap()),
+        output: [MidiBuffer::new(64, 2048).unwrap()],
+        recovery: MidiBuffer::new(64, 2048).unwrap(),
+    }
 }
 fn inputs(start: u64) -> [[f32; 8]; 4] {
     std::array::from_fn(|channel| {
@@ -221,6 +219,34 @@ fn inputs(start: u64) -> [[f32; 8]; 4] {
     })
 }
 impl Fixture {
+    fn select(&mut self, at: u64, preset: PresetId, expected_revision: u32) -> Ticket {
+        self.submit(
+            Lane::Normal,
+            Command::Schedule {
+                at: Frame(at),
+                action: Action::Processor {
+                    node: node(),
+                    operation: Operation::SelectPreparedPreset {
+                        preset,
+                        expected_revision,
+                    },
+                },
+                payload: Box::new([]),
+            },
+        )
+    }
+    fn submit(&mut self, lane: Lane, command: Command<Checked, NoPlanner, Operation>) -> Ticket {
+        heap::assert_no_heap(|| self.control.submit_prepared(lane, command))
+            .unwrap_or_else(|refusal| panic!("submit: {:?}", refusal.error))
+    }
+    fn admissions(&mut self) -> Vec<Outcome> {
+        std::iter::from_fn(|| self.control.try_completion())
+            .map(|completion| completion.outcome)
+            .collect()
+    }
+    fn selections(&mut self) -> Vec<Selection> {
+        std::iter::from_fn(|| self.control.try_execution()).collect()
+    }
     fn step(&mut self, frames: usize, events: &[Event<'_>]) -> Output {
         self.with_inputs(frames, &inputs(self.runtime.next_frame().0), events)
     }
@@ -246,7 +272,6 @@ impl Fixture {
         let mut left = [0.; 8];
         let mut right = [0.; 8];
         let result = heap::assert_no_heap(|| {
-            self.render.begin_callback(frame, frames)?;
             let result = self.runtime.process(
                 AudioBlock {
                     frame,
@@ -264,7 +289,6 @@ impl Fixture {
                     outputs: &mut self.output,
                 },
             );
-            let completion = self.render.finish_callback(result);
             let recovery = if frames == 0 {
                 Ok(())
             } else {
@@ -272,7 +296,7 @@ impl Fixture {
                     .drain_midi_recovery(0, &mut self.recovery, frames)
                     .map(|_| ())
             };
-            result.and(completion).and(recovery)
+            result.and(recovery)
         });
         let midi = (0..self.output[0].len())
             .map(|i| {
@@ -307,21 +331,30 @@ fn oracle(t: u64, alternate: bool) -> (f32, f32) {
         (live + playback, 100. + 2. * t as f32 - live * 10.)
     }
 }
-fn applied(frame: u64, previous_revision: u32, slot: u32) -> Receipt {
-    Receipt::Applied {
+fn applied(frame: u64, previous_revision: u32, slot: u32) -> Option<Result<Receipt, Refusal>> {
+    Some(Ok(Receipt {
         requested_frame: Frame(frame),
         frame: Frame(frame),
         previous_revision,
         revision: previous_revision + 1,
         preset: id(slot),
-    }
+    }))
+}
+/// The single terminal selection result, with the frame it was delivered at.
+fn only(host: &mut Fixture, sequence: Sequence) -> Selection {
+    let mut selections = host.selections();
+    assert_eq!(selections.len(), 1);
+    let selection = selections.remove(0);
+    assert_eq!(selection.sequence, sequence);
+    assert_eq!(selection.operation_result, None);
+    selection
 }
 
 #[shoop_test]
 fn complete_scalar_and_packet_oracles_match_across_callback_partitions() {
     for parts in [vec![8, 8], vec![1; 16], vec![3, 2, 3, 8], vec![5, 0, 3, 8]] {
-        let (mut client, mut host) = setup(0, Fault::None, 32);
-        let ticket = heap::assert_no_heap(|| client.select(Frame(5), id(1), 1)).unwrap();
+        let mut host = setup(0, Fault::None, 32);
+        let ticket = host.select(5, id(1), 1);
         let mut t = 0;
         let mut packets = Vec::new();
         for frames in parts {
@@ -344,34 +377,35 @@ fn complete_scalar_and_packet_oracles_match_across_callback_partitions() {
                 .map(|&(at, _, bytes)| (at, bytes.to_vec()))
                 .collect::<Vec<_>>()
         );
-        assert_eq!(
-            client.select(Frame(16), id(0), 2).unwrap_err().error,
-            Error::Full
-        );
-        let completion = heap::assert_no_heap(|| client.try_completion()).unwrap();
-        assert_eq!(completion.sequence, ticket.sequence());
-        assert_eq!(completion.request.result, Some(Ok(applied(5, 1, 1))));
-        assert_eq!(host.render.revision(), 2);
-        assert_eq!(client.outstanding(), 0);
+        assert!(matches!(host.admissions()[..], [Outcome::Scheduled { .. }]));
+        let selection = only(&mut host, ticket.sequence());
+        assert_eq!(selection.result, Ok(()));
+        assert_eq!(selection.delivered_frame, Some(Frame(5)));
+        assert_eq!(selection.actual_frame, Frame(5));
+        assert_eq!(selection.processor_result, applied(5, 1, 1));
+        assert_eq!(host.control.outstanding(), 0);
     }
 }
 
 #[shoop_test]
 fn first_callback_has_real_audio_and_interior_configuration_changes() {
-    let (mut client, mut host) = setup(0, Fault::None, 32);
-    let _ticket = client.select(Frame(5), id(1), 1).unwrap();
+    let mut host = setup(0, Fault::None, 32);
+    let ticket = host.select(5, id(1), 1);
     let out = host.step(8, &[]);
     out.result.unwrap();
     assert_eq!(out.left, [2., 4., 6., 8., 6., -65., -84., -103.]);
     assert_eq!(out.right, [90., 82., 74., 66., 58., -5.5, -6.25, -7.]);
-    assert_eq!(client.try_completion().unwrap().frame, Frame(0));
+    assert_eq!(
+        only(&mut host, ticket.sequence()).processor_result,
+        applied(5, 1, 1)
+    );
 }
 
 #[shoop_test]
 fn prepared_delay_is_physical_and_same_preset_activation_resets_history() {
     for parts in [vec![8, 8], vec![1; 16], vec![2, 3, 3, 5, 3]] {
-        let (mut client, mut host) = setup(2, Fault::None, 32);
-        let _ticket = client.select(Frame(5), id(2), 1).unwrap();
+        let mut host = setup(2, Fault::None, 32);
+        let ticket = host.select(5, id(2), 1);
         let mut t = 0;
         let mut packets = Vec::new();
         for frames in parts {
@@ -398,8 +432,8 @@ fn prepared_delay_is_physical_and_same_preset_activation_resets_history() {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            client.try_completion().unwrap().request.result,
-            Some(Ok(applied(5, 1, 2)))
+            only(&mut host, ticket.sequence()).processor_result,
+            applied(5, 1, 2)
         );
     }
 }
@@ -407,20 +441,19 @@ fn prepared_delay_is_physical_and_same_preset_activation_resets_history() {
 #[shoop_test]
 fn frame_zero_and_callback_end_activation_have_exact_nonempty_semantics() {
     for at in [0, 8] {
-        let (mut client, mut host) = setup(0, Fault::None, 32);
-        let _ticket = client.select(Frame(at), id(1), 1).unwrap();
+        let mut host = setup(0, Fault::None, 32);
+        let ticket = host.select(at, id(1), 1);
         host.step(0, &[]).result.unwrap();
-        assert_eq!(host.render.callbacks(), 0);
-        assert!(client.try_completion().is_none());
+        assert!(host.selections().is_empty());
         let first = host.step(8, &[]);
         first.result.unwrap();
         for i in 0..8 {
             assert_eq!((first.left[i], first.right[i]), oracle(i as u64, at == 0));
         }
         if at == 8 {
-            assert!(client.try_completion().is_none());
+            assert!(host.selections().is_empty());
             host.step(0, &[]).result.unwrap();
-            assert_eq!(host.render.callbacks(), 1);
+            assert!(host.selections().is_empty());
             let next = host.step(8, &[]);
             next.result.unwrap();
             for i in 0..8 {
@@ -428,8 +461,8 @@ fn frame_zero_and_callback_end_activation_have_exact_nonempty_semantics() {
             }
         }
         assert_eq!(
-            client.try_completion().unwrap().request.result,
-            Some(Ok(applied(at, 1, 1)))
+            only(&mut host, ticket.sequence()).processor_result,
+            applied(at, 1, 1)
         );
     }
 }
@@ -466,100 +499,108 @@ fn refusal_details_preserve_requested_frames_and_do_not_change_state() {
             },
         ),
     ] {
-        let (mut client, mut host) = setup(0, Fault::None, 32);
+        let mut host = setup(0, Fault::None, 32);
         host.step(8, &[]).result.unwrap();
-        let _ticket = client.select(Frame(at), preset, revision).unwrap();
+        let ticket = host.select(at, preset, revision);
         let out = host.step(8, &[]);
         out.result.unwrap();
         for i in 0..8 {
             assert_eq!((out.left[i], out.right[i]), oracle(i as u64 + 8, false));
         }
+        let selection = only(&mut host, ticket.sequence());
+        assert_eq!(selection.result, Ok(()));
+        assert_eq!(selection.processor_result, Some(Err(refusal)));
+        // The refused selection left revision one in place.
+        let ticket = host.select(16, id(1), 1);
+        host.step(8, &[]).result.unwrap();
+        host.admissions();
         assert_eq!(
-            client.try_completion().unwrap().request.result,
-            Some(Err(refusal))
+            only(&mut host, ticket.sequence()).processor_result,
+            applied(16, 1, 1)
         );
-        assert_eq!(host.render.revision(), 1);
     }
 }
 
 #[shoop_test]
-fn explicit_recovery_cancels_dequeued_work_with_normal_credit_full() {
-    let (mut client, mut host) = setup(0, Fault::None, 32);
-    let ticket = client.select(Frame(100), id(1), 1).unwrap();
+fn recovery_cancels_a_future_selection_before_delivery() {
+    let mut host = setup(0, Fault::None, 32);
+    let ticket = host.select(100, id(1), 1);
     host.step(8, &[]).result.unwrap();
+    assert!(matches!(host.admissions()[..], [Outcome::Scheduled { .. }]));
+    // Ticket cancellation is only observed before dequeue.
     ticket.cancel();
-    assert!(client.try_completion().is_none());
-    assert_eq!(
-        client.select(Frame(16), id(1), 1).unwrap_err().error,
-        Error::Full
+    host.submit(
+        Lane::Recovery,
+        Command::Cancel {
+            sequence: ticket.sequence(),
+        },
     );
-    let recovery = heap::assert_no_heap(|| client.cancel_pending(&ticket)).unwrap();
     let out = host.step(8, &[]);
     out.result.unwrap();
     for i in 0..8 {
         assert_eq!((out.left[i], out.right[i]), oracle(i as u64 + 8, false));
     }
-    let cancel = client.try_completion().unwrap();
-    assert_eq!(cancel.sequence, recovery.sequence());
+    assert_eq!(host.admissions(), [Outcome::Applied]);
+    let selection = only(&mut host, ticket.sequence());
+    assert_eq!(selection.result, Err(Error::Cancelled));
+    assert_eq!(selection.delivered_frame, None);
+    assert_eq!(selection.actual_frame, Frame(8));
+    assert_eq!(selection.processor_result, None);
+    let next = host.select(16, id(1), 1);
+    host.step(8, &[]).result.unwrap();
+    host.admissions();
     assert_eq!(
-        cancel.request.result,
-        Some(Ok(Receipt::CancelRegistered {
-            frame: Frame(8),
-            target: ticket.sequence()
-        }))
+        only(&mut host, next.sequence()).processor_result,
+        applied(16, 1, 1)
     );
-    assert_eq!(
-        client.try_completion().unwrap().request.result,
-        Some(Err(Refusal::Cancelled { frame: Frame(8) }))
-    );
-    assert_eq!(host.render.work_counters().completions, 2);
 }
 
 #[shoop_test]
-fn cancelled_dequeue_and_retained_handles_never_reallocate_submission_flags() {
-    let (mut client, mut host) = setup(0, Fault::None, 32);
-    let ticket = client.select(Frame(5), id(1), 1).unwrap();
+fn ticket_cancellation_before_dequeue_has_no_selection() {
+    let mut host = setup(0, Fault::None, 32);
+    let ticket = host.select(5, id(1), 1);
     ticket.cancel();
-    host.step(8, &[]).result.unwrap();
-    let completion = client.try_completion().unwrap();
-    assert_eq!(
-        completion.request.result,
-        Some(Err(Refusal::Cancelled { frame: Frame(0) }))
-    );
-    assert_eq!(client.outstanding(), 0);
-    assert_eq!(
-        heap::assert_no_heap(|| client.select(Frame(8), id(1), 1))
-            .unwrap_err()
-            .error,
-        Error::Busy
-    );
+    let out = host.step(8, &[]);
+    out.result.unwrap();
+    for i in 0..8 {
+        assert_eq!((out.left[i], out.right[i]), oracle(i as u64, false));
+    }
+    assert_eq!(host.admissions(), [Outcome::Cancelled]);
+    assert!(host.selections().is_empty());
+    assert_eq!(host.control.outstanding(), 0);
     drop(ticket);
-    drop(completion);
-    let _next = heap::assert_no_heap(|| client.select(Frame(8), id(1), 1)).unwrap();
+    let next = host.select(8, id(1), 1);
     host.step(8, &[]).result.unwrap();
+    host.admissions();
     assert_eq!(
-        client.try_completion().unwrap().request.result,
-        Some(Ok(applied(8, 1, 1)))
+        only(&mut host, next.sequence()).processor_result,
+        applied(8, 1, 1)
     );
 }
 
 #[shoop_test]
-fn foreign_component_tickets_are_refused_before_recovery_admission() {
-    let (mut client, mut host) = setup(0, Fault::None, 32);
-    let (mut other, _other_host) = setup(0, Fault::None, 32);
-    let ticket = other.select(Frame(5), id(1), 1).unwrap();
-    assert_eq!(
-        client.cancel_pending(&ticket).unwrap_err().error,
-        Error::InvalidId
-    );
-    assert_eq!(client.outstanding(), 0);
+fn delivered_selections_cannot_be_cancelled() {
+    let mut host = setup(0, Fault::None, 32);
+    let ticket = host.select(5, id(1), 1);
     host.step(8, &[]).result.unwrap();
-    assert!(client.try_completion().is_none());
+    host.admissions();
+    host.submit(
+        Lane::Normal,
+        Command::Cancel {
+            sequence: ticket.sequence(),
+        },
+    );
+    host.step(8, &[]).result.unwrap();
+    assert_eq!(host.admissions(), [Outcome::Rejected(Error::InvalidState)]);
+    assert_eq!(
+        only(&mut host, ticket.sequence()).processor_result,
+        applied(5, 1, 1)
+    );
 }
 
 #[shoop_test]
 fn peaks_accumulate_since_read_without_control_requests_or_dsp_changes() {
-    let (client, mut host) = setup(0, Fault::None, 32);
+    let mut host = setup(0, Fault::None, 32);
     assert_eq!(host.meters.read_peaks(), [0.; 2]);
     host.step(8, &[]).result.unwrap();
     assert_eq!(
@@ -571,14 +612,14 @@ fn peaks_accumulate_since_read_without_control_requests_or_dsp_changes() {
     host.step(8, &[]).result.unwrap();
     assert_eq!(host.meters.read_peak(0), Some(20.));
     assert_eq!(host.meters.read_peak(1), Some(30.));
-    assert_eq!(client.outstanding(), 0);
-    assert_eq!(host.render.work_counters().operations, 0);
+    assert_eq!(host.control.outstanding(), 0);
+    assert!(host.selections().is_empty());
 }
 
 #[shoop_test]
 fn meter_read_frequency_changes_neither_samples_nor_packets() {
-    let (_client, mut frequent) = setup(0, Fault::None, 32);
-    let (_other, mut infrequent) = setup(0, Fault::None, 32);
+    let mut frequent = setup(0, Fault::None, 32);
+    let mut infrequent = setup(0, Fault::None, 32);
     let mut peaks = [0f32; 2];
     for _ in 0..16 {
         let a = frequent.step(1, EVENTS);
@@ -597,26 +638,18 @@ fn meter_read_frequency_changes_neither_samples_nor_packets() {
 
 #[shoop_test]
 fn faulted_callbacks_preserve_actual_preset_publication_without_replay() {
-    for fault in [Fault::Before, Fault::After] {
-        let (mut client, mut host) = setup(0, fault, 32);
-        let _ticket = client.select(Frame(5), id(1), 1).unwrap();
+    for (fault, published) in [(0, false), (5, true)] {
+        let mut host = setup(0, Fault::From(fault), 32);
+        let ticket = host.select(5, id(1), 1);
         assert_eq!(host.step(8, &[]).result, Err(Error::InvalidState));
-        let result = client.try_completion().unwrap().request.result;
-        assert_eq!(
-            result,
-            Some(if fault == Fault::After {
-                Ok(applied(5, 1, 1))
-            } else {
-                Err(Refusal::Fault {
-                    decision_frame: Frame(0),
-                    error: Error::InvalidState,
-                })
-            })
-        );
-        assert_eq!(
-            host.render.revision(),
-            if fault == Fault::After { 2 } else { 1 }
-        );
+        let selections = host.selections();
+        if published {
+            assert_eq!(selections.len(), 1);
+            assert_eq!(selections[0].sequence, ticket.sequence());
+            assert_eq!(selections[0].processor_result, applied(5, 1, 1));
+        } else {
+            assert!(selections.is_empty());
+        }
     }
 }
 
@@ -634,13 +667,13 @@ fn packet_event_and_output_capacity_errors_are_guarded_and_truthful() {
     let overflow = (0..2)
         .flat_map(|port| (0..8).map(move |_| (0, port, packet_bytes)))
         .collect::<Vec<_>>();
-    for (events, capacity, expected, activated) in [
-        (many.as_slice(), 32, Error::Capacity, false),
-        (&[(0, 0, sysex.as_slice())][..], 32, Error::Capacity, true),
-        (overflow.as_slice(), 8, Error::Full, true),
+    for (events, capacity, expected) in [
+        (many.as_slice(), 32, Error::Capacity),
+        (&[(0, 0, sysex.as_slice())][..], 32, Error::Capacity),
+        (overflow.as_slice(), 8, Error::Full),
     ] {
-        let (mut client, mut host) = setup(0, Fault::None, capacity);
-        let _ticket = client.select(Frame(5), id(1), 1).unwrap();
+        let mut host = setup(0, Fault::None, capacity);
+        let ticket = host.select(5, id(1), 1);
         let out = host.step(8, events);
         if expected == Error::Full {
             assert_eq!(out.result, Ok(()));
@@ -658,35 +691,55 @@ fn packet_event_and_output_capacity_errors_are_guarded_and_truthful() {
             for i in 0..8 {
                 assert_eq!((out.left[i], out.right[i]), oracle(i as u64, i >= 5));
             }
+            assert_eq!(
+                only(&mut host, ticket.sequence()).processor_result,
+                applied(5, 1, 1)
+            );
         } else {
+            // The interval before frame 5 failed, so the selection was never delivered.
             assert_eq!(out.result, Err(expected));
+            assert!(host.selections().is_empty());
         }
-        assert_eq!(
-            client.try_completion().unwrap().request.result,
-            Some(if activated {
-                Ok(applied(5, 1, 1))
-            } else {
-                Err(Refusal::Fault {
-                    decision_frame: Frame(0),
-                    error: expected,
-                })
-            })
-        );
     }
 }
 
 #[shoop_test]
 fn disconnected_future_work_has_no_render_side_destruction() {
-    let (mut client, mut host) = setup(0, Fault::None, 32);
-    let ticket = client.select(Frame(100), id(1), 1).unwrap();
+    let mut host = setup(0, Fault::None, 32);
+    let ticket = host.select(100, id(1), 1);
     host.step(8, &[]).result.unwrap();
     drop(ticket);
-    drop(client);
-    let out = host.step(8, &[]);
-    out.result.unwrap();
-    assert!(!host.render.connected());
+    let Fixture {
+        control,
+        mut runtime,
+        ..
+    } = host;
+    drop(control);
+    let mut left = [0.; 8];
+    let mut right = [0.; 8];
+    let input = inputs(8);
+    let midi_in = [
+        MidiBuffer::new(1, 8).unwrap(),
+        MidiBuffer::new(1, 8).unwrap(),
+    ];
+    let mut midi_out = [MidiBuffer::new(1, 8).unwrap()];
+    heap::assert_no_heap(|| {
+        runtime.process(
+            AudioBlock {
+                frame: Frame(8),
+                frames: 8,
+                inputs: &[&input[0], &input[1], &input[2], &input[3]],
+                outputs: &mut [&mut left, &mut right],
+            },
+            MidiBlock {
+                inputs: &midi_in,
+                outputs: &mut midi_out,
+            },
+        )
+    })
+    .unwrap();
     for i in 0..8 {
-        assert_eq!((out.left[i], out.right[i]), oracle(i as u64 + 8, false));
+        assert_eq!((left[i], right[i]), oracle(i as u64 + 8, false));
     }
 }
 
@@ -734,27 +787,37 @@ fn preparation_and_callback_limits_refuse_before_consuming_requests() {
         prepare(config(), bank(), PresetId::from_parts(0, 1).unwrap()).err(),
         Some(Error::InvalidId)
     );
-    let (mut client, mut host) = setup(0, Fault::None, 32);
-    let _ticket = client.select(Frame(0), id(1), 1).unwrap();
+    let mut host = setup(0, Fault::None, 32);
+    let ticket = host.select(0, id(1), 1);
+    let mut left = [0.; 9];
+    let mut right = [0.; 9];
+    let input = [0.; 9];
     assert_eq!(
-        heap::assert_no_heap(|| host.render.begin_callback(Frame(0), 9)),
+        heap::assert_no_heap(|| host.runtime.process(
+            AudioBlock {
+                frame: Frame(0),
+                frames: 9,
+                inputs: &[&input, &input, &input, &input],
+                outputs: &mut [&mut left, &mut right],
+            },
+            MidiBlock {
+                inputs: &host.input,
+                outputs: &mut host.output,
+            },
+        )),
         Err(Error::InvalidShape)
     );
-    assert_eq!(
-        heap::assert_no_heap(|| host.render.begin_callback(Frame(u64::MAX - 1), 8)),
-        Err(Error::Capacity)
-    );
-    assert_eq!(host.render.callbacks(), 0);
+    assert_eq!(host.runtime.next_frame(), Frame(0));
     host.step(8, &[]).result.unwrap();
     assert_eq!(
-        client.try_completion().unwrap().request.result,
-        Some(Ok(applied(0, 1, 1)))
+        only(&mut host, ticket.sequence()).processor_result,
+        applied(0, 1, 1)
     );
 }
 
 #[shoop_test]
 fn nonfinite_meter_saturation_does_not_modify_audio() {
-    let (_client, mut host) = setup(0, Fault::None, 32);
+    let mut host = setup(0, Fault::None, 32);
     let mut input = [[0.; 8]; 4];
     input[0][0] = f32::INFINITY;
     input[1][0] = f32::NAN;

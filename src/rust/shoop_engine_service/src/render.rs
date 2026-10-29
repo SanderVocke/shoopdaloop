@@ -8,9 +8,8 @@ use rt_runtime::{executor::GraphRuntime, resource::ResourceStore};
 use shoop_loops::runtime::LoopPlanner;
 
 pub struct Render {
-    engine: GraphRuntime<crate::ServiceNode, LoopPlanner>,
+    engine: GraphRuntime<crate::ServiceNode, LoopPlanner, dsp::Operation>,
     ingress: Ingress,
-    dsp: dsp::RenderControl,
     recovery: MidiBuffer,
     reset: ResetState,
     config: Config,
@@ -20,14 +19,12 @@ pub struct Render {
 impl Render {
     pub(crate) fn new(
         config: Config,
-        engine: GraphRuntime<crate::ServiceNode, LoopPlanner>,
+        engine: GraphRuntime<crate::ServiceNode, LoopPlanner, dsp::Operation>,
         ingress: Ingress,
-        dsp: dsp::RenderControl,
     ) -> Result<Self, Error> {
         Ok(Self {
             engine,
             ingress,
-            dsp,
             recovery: MidiBuffer::new(64, 192)?,
             reset: ResetState::default(),
             config,
@@ -49,9 +46,6 @@ impl Render {
     }
     pub fn resource_usage(&self) -> rt_runtime::resource::PoolUsage {
         self.engine.resource_usage()
-    }
-    pub fn dsp_revision(&self) -> u32 {
-        self.dsp.revision()
     }
     fn report(&self) -> Report {
         Report {
@@ -117,8 +111,7 @@ impl Render {
             self.phase = Phase::Disconnecting;
             self.reset.request();
         }
-        let component = self.dsp.begin_callback(frame, frames);
-        let processing = ingress.and(component).and_then(|_| {
+        let processing = ingress.and_then(|_| {
             self.engine.process(
                 AudioBlock {
                     frame,
@@ -132,13 +125,12 @@ impl Render {
                 },
             )
         });
-        let component = self.dsp.finish_callback(processing);
         let outcomes = self.ingress.finish();
         let recovery = self
             .engine
             .drain_midi_recovery(0, &mut self.recovery, frames)
             .map(|_| ());
-        let result = processing.and(component).and(outcomes).and(recovery);
+        let result = processing.and(outcomes).and(recovery);
         if let Err(error) = result {
             self.phase = Phase::Faulted(error);
             self.reset.request();

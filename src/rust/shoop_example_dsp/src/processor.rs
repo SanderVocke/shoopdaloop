@@ -1,15 +1,13 @@
-use crate::{control::Mailbox, Config, Meters, Preset};
+use crate::{Config, Meters, Operation, Preset, Receipt, Refusal};
 use rt_runtime::{
     graph::PortCounts,
     planner::Planner,
-    processor::{ProcessBlock, Processor},
-    Error, Frame,
+    processor::{OperationContext, ProcessBlock, Processor},
+    Error,
 };
-use std::sync::{atomic::Ordering, Arc};
 
 pub struct Dsp {
     config: Config,
-    mailbox: Arc<Mailbox>,
     presets: Box<[Preset]>,
     active: Preset,
     revision: u32,
@@ -21,7 +19,6 @@ pub struct Dsp {
 impl Dsp {
     pub(crate) fn new(
         config: Config,
-        mailbox: Arc<Mailbox>,
         presets: Box<[Preset]>,
         active: Preset,
         delay: Box<[[f32; 2]]>,
@@ -29,7 +26,6 @@ impl Dsp {
     ) -> Self {
         Self {
             config,
-            mailbox,
             presets,
             active,
             revision: 1,
@@ -38,32 +34,13 @@ impl Dsp {
             meters,
         }
     }
-    fn activate(&mut self, frame: Frame) -> Result<(), Error> {
-        if self.revision != self.mailbox.revision.load(Ordering::Relaxed) {
-            return Err(Error::InvalidState);
-        }
-        let revision = self.revision.checked_add(1).ok_or(Error::Capacity)?;
-        let slot = self.mailbox.slot.load(Ordering::Relaxed) as usize;
-        let active = *self.presets.get(slot).ok_or(Error::InvalidId)?;
-        self.active = active;
-        self.delay.fill([0.; 2]);
-        self.cursor = 0;
-        let previous_revision = self.revision;
-        self.revision = revision;
-        self.mailbox.armed.store(false, Ordering::Relaxed);
-        self.mailbox.actual_frame.store(frame.0, Ordering::Relaxed);
-        self.mailbox
-            .previous_revision
-            .store(previous_revision, Ordering::Relaxed);
-        self.mailbox
-            .actual_revision
-            .store(revision, Ordering::Relaxed);
-        self.mailbox.acknowledged.store(true, Ordering::Release);
-        Ok(())
+    /// Revision of the active preset; each applied selection advances it.
+    pub fn revision(&self) -> u32 {
+        self.revision
     }
 }
 
-impl<L: Planner> Processor<L> for Dsp {
+impl<L: Planner> Processor<L, Operation> for Dsp {
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: 4,
@@ -71,6 +48,54 @@ impl<L: Planner> Processor<L> for Dsp {
             midi_inputs: 2,
             midi_outputs: 1,
         }
+    }
+    /// Selection resets the delay history to silence at its exact sample;
+    /// selecting the active preset again is still a new revision.
+    fn operation(
+        &mut self,
+        Operation::SelectPreparedPreset {
+            preset,
+            expected_revision,
+        }: Operation,
+        context: OperationContext<'_>,
+    ) -> Result<Result<Receipt, Refusal>, Error> {
+        if context.frame != context.requested_frame {
+            return Ok(Err(Refusal::Late {
+                requested: context.requested_frame,
+                decision_frame: context.frame,
+            }));
+        }
+        let Some(active) = self
+            .presets
+            .get(preset.slot() as usize)
+            .filter(|candidate| candidate.id == preset)
+            .copied()
+        else {
+            return Ok(Err(Refusal::InvalidPreset { preset }));
+        };
+        if expected_revision != self.revision {
+            return Ok(Err(Refusal::StaleRevision {
+                expected: expected_revision,
+                actual: self.revision,
+            }));
+        }
+        let Some(revision) = self.revision.checked_add(1) else {
+            return Ok(Err(Refusal::RevisionExhausted {
+                frame: context.frame,
+            }));
+        };
+        self.active = active;
+        self.delay.fill([0.; 2]);
+        self.cursor = 0;
+        let previous_revision = self.revision;
+        self.revision = revision;
+        Ok(Ok(Receipt {
+            requested_frame: context.requested_frame,
+            frame: context.frame,
+            previous_revision,
+            revision,
+            preset,
+        }))
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
         if block.frames == 0 {
@@ -89,23 +114,8 @@ impl<L: Planner> Processor<L> for Dsp {
         {
             return Err(Error::Capacity);
         }
-        let activation = self
-            .mailbox
-            .armed
-            .load(Ordering::Acquire)
-            .then(|| Frame(self.mailbox.frame.load(Ordering::Relaxed)));
         let mut peaks = [0f32; 2];
         for offset in 0..block.frames {
-            let frame = Frame(
-                block
-                    .frame
-                    .0
-                    .checked_add(offset as u64)
-                    .ok_or(Error::Capacity)?,
-            );
-            if activation == Some(frame) {
-                self.activate(frame)?;
-            }
             for channel in 0..2 {
                 let source = if self.active.swap_channels {
                     1 - channel

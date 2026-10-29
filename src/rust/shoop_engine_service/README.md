@@ -1,8 +1,9 @@
 # Prepared native engine service
 
-A bounded headless composition of the public `shoop_loops` facade and the
-independent `shoop_example_dsp`. One graph/render owner runs stereo live input and
-loop playback through the DSP to output and capture. This is a narrow native
+A bounded headless composition of the `shoop_loops` parts and the independent
+`shoop_example_dsp`. The service owns one runtime, its resource store and its node
+type (`ServiceNode`: the loop's nodes and the DSP). One graph/render owner runs
+stereo live input and loop playback through the DSP to output and capture. This is a narrow native
 integration slice, **not** the application backend, a plugin host, feature parity,
 or a browser/IPC protocol.
 
@@ -20,12 +21,12 @@ resource handles are removed rather than leaked into stopped cleanup. Preparatio
 uses finite resource upload accounting, never a silent engine callback.
 
 - `Client` is the single control-side producer. Move it to the control thread;
-  do not share it as multiple producers. Its typed loop requests and `dsp()` client
-  remain distinct domains.
+  do not share it as multiple producers. Loop requests and DSP selections are
+  distinct domains that share its one ordered path into the runtime.
 - `Render` is the single render owner. A host supplies contiguous `AudioBlock`
   frames with two input/output channels and one MIDI input/output port.
 - For each valid running nonempty callback, `Render::process` snapshots bounded
-  ingress and calls the existing loop engine exactly once. The resolver remains
+  ingress and calls the runtime exactly once; no component has its own hooks. The resolver remains
   authoritative; there is no service clock, nested runtime or callback splitting
   to renew quotas.
 - Initial loop nodes/graph are ready before frame zero. Initial graph epoch is **1**;
@@ -50,11 +51,12 @@ or actual execution:
 
 1. A successful call reserves a service credit and returns a component-checked
    cancellation `Ticket`.
-2. `try_delivery()` returns the original request or actual facade command/retired
+2. `try_delivery()` returns the original request or actual runtime command/retired
    owners. Inspect `phase`, `outcome`, and `terminal`. Poll/dispose these **off-render**.
 3. Nonterminal domain deliveries have a separate `try_execution()` record with
-   the actual loop receipt. A service `Aborted` is explicitly not a fabricated
-   loop execution. Drain owning and semantic streams independently.
+   the actual runtime execution: a loop receipt in `operation_result`, or a DSP
+   receipt/refusal in `processor_result`. A service `Aborted` is explicitly not a
+   fabricated execution. Drain owning and semantic streams independently.
 
 Retaining completed tickets retains their cancellation flags. After all flag
 storage is retained, new admission truthfully reports `Busy`, even if result
@@ -68,8 +70,11 @@ Callback-end work waits for a later nonempty callback. Zero-frame calls neither
 snapshot ingress nor execute sample-bound work or renew quotas; reported work is
 zero.
 
-`client.dsp().select(at, preset, expected_revision)` uses the component-owned
-prepared bridge, not a float parameter or a new loop operation. `read_peaks()` on
+`client.dsp_at(at, dsp::Operation::SelectPreparedPreset { preset, expected_revision })`
+schedules the DSP's own typed operation at `at` through the same runtime scheduler as
+loop work: not a float parameter, a private bridge or a new loop operation. At one
+frame, loop work is settled before the selection applies. `cancel_pending` cancels a
+selection that has not been delivered yet through the runtime's generic `Cancel`. `read_peaks()` on
 `client.meters()` atomically consumes peak-since-read telemetry without a reliable
 query. Repeated state/meter reads do not drive musical processing. A loop state
 cut is coherent in the loop domain; DSP receipts/meters do not create a cross-domain
@@ -91,10 +96,10 @@ Optional refusals are domain outcomes, not permission to stop admitted recording
 | Storage/work | Prepared bound |
 | --- | --- |
 | Host block | 1–64 frames; configurable maximum no greater than 64 |
-| Service normal | 16: eight domain operations plus eight bulk/graph/read requests |
+| Service normal | 17: eight loop operations, eight bulk/graph/read requests and one DSP selection |
 | Service recovery | One; separate internal disconnect-stop pending slot |
-| Native returns | 17 owning slots; ten semantic slots; retained fault spills |
-| Facade callback | 16 commands/publications; 32 scheduled events; 128 validation steps; 1,024 optional-transfer bytes |
+| Native returns | 18 owning slots; eleven semantic slots; retained fault spills |
+| Runtime callback | 17 commands, 16 publications; 32 scheduled events; 128 validation steps; 1,024 optional-transfer bytes |
 | Runtime host MIDI | 2,048 events / 8,192 bytes per port |
 | Loop node MIDI | 2,048 events; 512 packet/data bytes per interval |
 | Capture | Two groups/banks; stereo audio plus MIDI; 32,768 staging bytes/group |
@@ -231,11 +236,11 @@ rows and media/export/pin pools are free after idempotent stopped cleanup. Nativ
 Wasm compilation and actual Node execution are distinct evidence; none is a new
 AudioWorklet, physical-device, latency-compensation or full-feature-parity result.
 
-Further cases fill all sixteen normal credits and both reliable streams, then
+Further cases fill all sixteen loop and bulk credits and both reliable streams, then
 check full wrap output and reserved stop/cancel execution. A one-export limit,
 invalid preset and stale route preserve capture through eight complete lifecycles.
-Disconnect with active recording, sixteen stalled owning returns and a future DSP
-request restores the checked media/resource pool credits; a fault during capture
+Disconnect with active recording, seventeen stalled owning returns including a future
+DSP selection restores the checked media/resource pool credits; a fault during capture
 preserves prior real receipts without replay. The native two-thread case checks all 2,048 stereo frames and
 restoration packets while the controller polls results/meters. Only startup
 coordination and final joining may wait, outside callbacks. These safety tests are
