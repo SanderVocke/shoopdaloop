@@ -1,3 +1,4 @@
+use crate::assembly::{LoopControl, TestNode};
 use crate::{
     graph_transfer::{self, Counts, Id, Receiver},
     graph_wire::{self, Bank, Operation, Request, Response, Status, CREDITS},
@@ -11,7 +12,6 @@ use rt_runtime::{
     Epoch, Error, Frame, PreparedConfig, Sequence,
 };
 use shoop_loops::runtime::{Failure, LoopPlanner, Operation as DomainOperation, Reply};
-use shoop_loops_test_support::{LoopControl, TestNode};
 
 type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct Slot {

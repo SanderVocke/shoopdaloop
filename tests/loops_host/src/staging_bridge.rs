@@ -1,3 +1,4 @@
+use crate::assembly::{LoopControl, TestNode};
 use crate::{
     export_wire::{get32, put32, put64},
     scenario::Mix,
@@ -16,7 +17,6 @@ use shoop_loops::{
     topology::staging::{StageId, Status as ProgramStatus},
     LoopId, Timing, Transition,
 };
-use shoop_loops_test_support::{LoopControl, TestNode};
 type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct ResourceBank {
     generation: u32,

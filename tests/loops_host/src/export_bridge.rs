@@ -1,3 +1,4 @@
+use crate::assembly::{LoopControl, TestNode};
 use crate::{export_wire::*, scenario::Mix, wire};
 use rt_runtime::{
     executor::{Command, Retired},
@@ -10,7 +11,6 @@ use shoop_loops::{
     media::ExportId,
     runtime::{Failure, LoopPlanner, Operation, Reply, Selection},
 };
-use shoop_loops_test_support::{LoopControl, TestNode};
 
 type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct Lease {

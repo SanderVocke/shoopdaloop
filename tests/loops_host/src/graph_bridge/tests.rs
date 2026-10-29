@@ -1,8 +1,8 @@
 use super::*;
+use crate::assembly::{LoopControl, LoopRuntime};
 use crate::{graph_transfer::tests::transfer, graph_wire::Client, guarded, scenario};
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_loops::{Timing, Transition};
-use shoop_loops_test_support::{LoopControl, LoopRuntime};
 use std::sync::{atomic::AtomicU32, Arc};
 
 fn tick(engine: &mut LoopRuntime<Mix>) {

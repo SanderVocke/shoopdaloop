@@ -3,6 +3,9 @@
 //! Native scenario and bounded command bridge; AudioWorklet integration is separate.
 #[path = "../../../src/rust/shoop_wasm_test_support/src/heap.rs"]
 mod allocation_guard;
+#[path = "../../../src/rust/shoop_loops_test_support/src/lib.rs"]
+#[allow(dead_code)]
+mod assembly;
 #[global_allocator]
 static ALLOCATOR: allocation_guard::TrackingAllocator = allocation_guard::TrackingAllocator;
 

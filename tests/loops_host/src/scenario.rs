@@ -1,3 +1,4 @@
+use crate::assembly::{LoopControl, LoopRuntime};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType},
@@ -13,7 +14,6 @@ use shoop_loops::{
     Entry, Limits, LoopId, LoopKind, LoopSpec, Outcome, ProgramDescription, Section, Timing,
     TopologyDescription, Transition,
 };
-use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
 use std::sync::{
     atomic::{AtomicU32, Ordering},

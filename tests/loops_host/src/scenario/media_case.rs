@@ -1,4 +1,5 @@
 use super::*;
+use crate::assembly::{LoopControl, LoopRuntime};
 use rt_runtime::{
     midi_state::MidiState,
     resource::{self, Format},
@@ -7,7 +8,6 @@ use rt_runtime::{
 use shoop_loops::media;
 #[cfg(test)]
 use shoop_loops::Mode;
-use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
 pub(crate) const PAGES: usize = 42;
 fn upload(

@@ -1,4 +1,5 @@
 //! Render-instance adapter. Fixed wire credits retain both result phases.
+use crate::assembly::{LoopControl, LoopRuntime, StoppedLoops, TestNode};
 use crate::{
     scenario::{self, Mix},
     wire::{self, Error as WireError, Phase, Request, Response, Status, SLOTS},
@@ -13,7 +14,6 @@ use shoop_loops::{
     runtime::{Failure, LoopPlanner, Operation, Reply},
     LoopId, Outcome as DomainOutcome, Timing,
 };
-use shoop_loops_test_support::{LoopControl, LoopRuntime, StoppedLoops, TestNode};
 
 type Returned = Completion<Command<TestNode<Mix>, LoopPlanner>, Retired<TestNode<Mix>>>;
 struct Slot {

@@ -1,6 +1,6 @@
 use super::*;
+use crate::assembly::{LoopControl, LoopRuntime};
 use shoop_loops::{Mode, Trigger};
-use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
 pub(crate) const RECORDS: usize = 4096;
 pub(crate) const MIDI_EVENTS: usize = 16384;
