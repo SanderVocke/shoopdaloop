@@ -772,4 +772,6 @@ buffers now also stall independently while newly acknowledged playback continues
 raw MIDI uploads are not checkpointed playable sources.
 Separate real-resolver planner controls and exact error/heap canaries now also pass
 native, bindings and actual hosts; they do not add a production fault-injection API.
-No loop benchmark, production adapter or hard-deadline guarantee is supplied.
+This fixture is not a benchmark (the loop library has a separate
+[native benchmark](../../src/rust/shoop_loops/docs/performance.md)), a production
+adapter or a hard-deadline guarantee.

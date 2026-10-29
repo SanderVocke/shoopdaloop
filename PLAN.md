@@ -379,17 +379,20 @@ execution:
 - The loop test host is a library and cannot take a dev-dependency, so it compiles
   the support crate's assembly source by path.
 
-### Open items
+### Follow-ups outside this work
 
-- Remote CI and review need a pull request. The macOS and Windows jobs were not run
-  locally.
+None of these is part of the plan as approved; each needs its own decision.
+
+- Pull request, remote CI and review: the user chose no pull request stage. The
+  macOS and Windows jobs need GitHub's runners and were not run locally.
 - CI runs neither Miri nor Chrome; both are manual (see the
-  [CI scope decision](#remaining-stage-checks)). With the unmodified runner, six
-  Miri commands exceed the 900 s per-command watchdog on the reference machine,
-  equally on the baseline.
+  [CI scope decision](#remaining-stage-checks)). Both ran in the CI replay. With the
+  unmodified runner, six Miri commands exceed the 900 s per-command watchdog on the
+  reference machine, equally on the baseline.
 - Planner composition and cross-domain transactions remain
   [future work](ARCHITECTURE.md#composable-loop-boundary).
-- The draft loop book's chapters were updated to the new API; the book stays a draft.
+- The draft loop book's chapters were updated to the new API; continuing the book is
+  a separate decision.
 
 ## Proposed next work
 

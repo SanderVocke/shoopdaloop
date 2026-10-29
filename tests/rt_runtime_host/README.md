@@ -4,7 +4,7 @@ To verify failure propagation as well as the successful scenario, run `python3 s
 
 Test-only hosts using the public `rt_runtime` API. This separate, non-publishable workspace is not a Shoop backend, device adapter, or production browser package. Native and worklet builds share the processor, wire decoder, prepared ownership pools, and guarded render bridge. The main-thread controller compiles relocatable graph descriptions; it never sends Rust pointers to another instance.
 
-This fixture intentionally retains the signal-only `NoPlanner` path and its existing `RTR1` wire format. Generic planner bindings and typed domain operations are tested in the library suites, not encoded as parameter floats or retrofitted into this historical journal. No independent loop-host fixture/domain codec is supplied in this snapshot. Runs prove existing-host compatibility, not loop AudioWorklet execution; package-Wasm tests and offline loop examples have different scope.
+This fixture intentionally retains the signal-only `NoPlanner` path and its existing `RTR1` wire format. Generic planner bindings and typed domain operations are tested in the library suites, not encoded as parameter floats or retrofitted into this historical journal. The loop library's host fixture and domain codec are separate, in [`tests/loops_host`](../loops_host/README.md). Runs prove existing-host compatibility, not loop AudioWorklet execution; package-Wasm tests and offline loop examples have different scope.
 
 ## Run
 

@@ -63,9 +63,10 @@ pins and limits. Miri runs outside the Nix shell with the pinned
 | 6 — demonstrator | `87fc3c85` | DSP 15 and service 20 in debug/release, 15/18 on Node; `one_track` 42 frames / 487 packets / 378 bytes and `latency_probe` 18 cases in both profiles; Wasm build; dependency and boundary checks |
 | 8 — end to end, first run | `fcbd5ea6` | CI Linux command set: fmt (workspace and both hosts); workspace build; `rt_runtime` 197, `shoop_loops` 159, DSP 15, service 20 in debug/release; host crate 60 per profile; every runtime, loop and service example in both profiles plus the draft-book example; boundary, tracing (217 modules, closed), test-usage, script and collector unit tests; workspace nextest with `shoop_engine/app_backend` and `SHOOP_ALLOW_MISSING_BACKENDS=1`: 2191 passed, 4 skipped; `shoopdaloop` Wasm check, worklet build and browser dependency isolation; Wasm test policy; runtime benchmark; native runtime/loop hosts in both profiles; browser runtime host and loop hosts (debug and release) with failure canaries; Node and Chrome Wasm suites for all 21 packages; the complete CI Miri inventory, 16 batches with 152 commands and 308 interpreted test executions, confirmed by `run_rt_runtime_miri.py --verify-batches` |
 
-The `rt_runtime` docs checker (`check_rt_runtime_docs.py`) reports the same stale
-pending-chapter and example-inventory lists on the unchanged baseline as after the
-refactor; it is not run in CI.
+The `rt_runtime` docs checker (`check_rt_runtime_docs.py`) failed on the baseline
+because its manifest still marked finished chapters as pending and omitted twelve
+examples. With the manifest completed, `check_rt_runtime_docs.py --run-examples`
+passes and runs all 18 examples. It is not run in CI.
 
 The first Stage 8 run relaxed the Miri runner's 900 s per-command watchdog to
 3,600 s, and one loop-host browser run crashed its tab under a load near 200 and
