@@ -1,4 +1,21 @@
 path,context,classification,coverage_or_rationale
+src/rust/rt_runtime/src/buffer.rs,generic_realtime_library,excluded,Independent bounded runtime; no application tracing dependency. Hosts can observe Copy diagnostics outside rendering.
+src/rust/rt_runtime/src/config.rs,generic_realtime_library,excluded,Independent capacity validation; no application tracing dependency.
+src/rust/rt_runtime/src/error.rs,generic_realtime_library,excluded,Compact error definitions; no execution boundary to instrument.
+src/rust/rt_runtime/src/executor.rs,generic_realtime_library,excluded,Independent bounded renderer; no application tracing dependency. Hosts can observe Copy work and fault diagnostics outside rendering.
+src/rust/rt_runtime/src/graph.rs,generic_realtime_library,excluded,Independent graph compiler and bounded validator; no application tracing dependency.
+src/rust/rt_runtime/src/ids.rs,generic_realtime_library,excluded,Identity and clock value types; no execution boundary to instrument.
+src/rust/rt_runtime/src/lib.rs,generic_realtime_library,excluded,Independent crate declarations; no application tracing dependency.
+src/rust/rt_runtime/src/midi.rs,generic_realtime_library,excluded,Independent bounded MIDI validation; no application tracing dependency.
+src/rust/rt_runtime/src/processor.rs,generic_realtime_library,excluded,Processor interface definitions; host instrumentation must preserve callback obligations.
+src/rust/rt_runtime/src/render.rs,generic_realtime_library,excluded,Independent bounded render validation; no application tracing dependency.
+src/rust/rt_runtime/src/resource/capture.rs,generic_realtime_library,excluded,Independent bounded capture implementation; work and incomplete-state diagnostics are exposed to hosts.
+src/rust/rt_runtime/src/resource/format.rs,generic_realtime_library,excluded,Resource format value definitions; no execution boundary to instrument.
+src/rust/rt_runtime/src/resource/mod.rs,generic_realtime_library,excluded,Independent fixed-page store; bounded work and pool diagnostics are exposed to hosts.
+src/rust/rt_runtime/src/resource/request.rs,generic_realtime_library,excluded,Typed ownership requests and replies; no application tracing dependency.
+src/rust/rt_runtime/src/resource/tests.rs,test_support,excluded,Private resource generation-exhaustion tests; not a production execution boundary.
+src/rust/rt_runtime/src/schedule.rs,generic_realtime_library,excluded,Independent bounded scheduler; execution outcomes and work diagnostics are exposed to hosts.
+src/rust/rt_runtime/src/transport.rs,generic_realtime_library,excluded,Independent bounded ownership transport; completion and telemetry publication must not depend on application tracing.
 src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

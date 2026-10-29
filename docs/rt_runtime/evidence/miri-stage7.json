@@ -1,0 +1,88 @@
+{
+  "passed": true,
+  "toolchain": "nightly-2026-05-04",
+  "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+  "cases": [
+    {
+      "target": "contracts",
+      "arguments": [],
+      "seed": 0,
+      "passed": 12,
+      "log": "00-contracts-seed0.log"
+    },
+    {
+      "target": "wire_properties",
+      "arguments": [],
+      "seed": 0,
+      "passed": 3,
+      "log": "01-wire_properties-seed0.log"
+    },
+    {
+      "target": "resource_properties",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "02-resource_properties-seed0.log"
+    },
+    {
+      "target": "mixed_stress",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "03-mixed_stress-seed0.log"
+    },
+    {
+      "target": "capture",
+      "arguments": [],
+      "seed": 0,
+      "passed": 7,
+      "log": "04-capture-seed0.log"
+    },
+    {
+      "target": "lifecycle",
+      "arguments": [
+        "--",
+        "--skip",
+        "deterministic_admission_model",
+        "--skip",
+        "cancellation_flag_model"
+      ],
+      "seed": 0,
+      "passed": 9,
+      "log": "05-lifecycle-seed0.log"
+    },
+    {
+      "target": "resource_execution",
+      "arguments": [
+        "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "06-resource_execution-seed0.log"
+    },
+    {
+      "target": "lifecycle",
+      "arguments": [
+        "two_thread_stress_keeps_completion_and_state_publication_coherent"
+      ],
+      "seed": 1,
+      "passed": 1,
+      "log": "07-lifecycle-seed1.log"
+    },
+    {
+      "target": "lifecycle",
+      "arguments": [
+        "two_thread_stress_keeps_completion_and_state_publication_coherent"
+      ],
+      "seed": 2,
+      "passed": 1,
+      "log": "08-lifecycle-seed2.log"
+    }
+  ],
+  "limitations": [
+    "Not a whole-workspace or whole-suite Miri claim.",
+    "Loom's generator/FFI model runs natively, not under Miri.",
+    "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+    "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+  ]
+}

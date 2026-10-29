@@ -43,6 +43,35 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  rt_runtime_miri:
+    name: rt_runtime ownership (Miri)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned Miri toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-04
+          components: miri,rust-src
+      - name: Install test-support build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rt-runtime-miri-v1
+      - name: Run isolated ownership and aliasing checks
+        run: python3 scripts/run_rt_runtime_miri.py
+      - name: Upload Miri evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rt-runtime-miri-${{ github.run_id }}
+          path: target/rt-runtime-miri
+          if-no-files-found: error
+          retention-days: 14
+
   rust_coverage:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Rust coverage (Linux)
@@ -359,6 +388,10 @@ jobs:
               - 'scripts/run_wasm_tests.py'
               - 'scripts/wasm_test_report.py'
               - 'scripts/check_shoop_test_usage.py'
+              - 'scripts/run_rt_runtime_hosts.py'
+              - 'scripts/check_rt_runtime_boundary.py'
+              - 'src/rust/rt_runtime/**'
+              - 'tests/rt_runtime_host/**'
               - 'src/rust/shoop_test_macros/**'
               - 'src/rust/shoop_wasm_test_support/**'
               - 'src/rust/shoop_wasm_runtime_tests/**'
@@ -809,6 +842,35 @@ jobs:
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 
+      - name: Test independent rt_runtime and native hosts
+        if: matrix.target != 'web'
+        env:
+          RUSTFLAGS: -D warnings
+        shell: bash
+        run: |
+          cargo test --locked -p rt_runtime ${{ matrix.cargo_args }}
+          cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example gain_graph
+          python3 scripts/run_rt_runtime_hosts.py --native-only --profile '${{ matrix.profile }}'
+          python3 scripts/check_rt_runtime_boundary.py
+          python3 -m unittest scripts.tests.test_rt_runtime_boundary
+
+      - name: Measure guarded rt_runtime release workloads
+        if: matrix.target == 'linux' && matrix.profile == 'release'
+        env:
+          RUSTFLAGS: -D warnings
+        run: python3 scripts/benchmark_rt_runtime.py --iterations 4096 --trials 1
+
+      - name: Upload rt_runtime native and benchmark evidence
+        if: always() && matrix.target != 'web'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rt-runtime-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: |
+            target/rt-runtime-host/reports
+            target/rt-runtime-bench
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Smoke-test Carla benchmarks
         if: matrix.target == 'linux' && matrix.profile == 'release'
         env:
@@ -962,7 +1024,7 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package shoop_app --package shoop_app_api \
+            --package rt_runtime --package shoop_app --package shoop_app_api \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
             --package shoop_latency --package shoop_plugin_protocol --package shoop_scripting \
@@ -1039,6 +1101,24 @@ jobs:
           name: wasm-test-reports-${{ matrix.profile }}-${{ github.run_id }}
           path: target/wasm-tests/*/reports
           if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Run independent non-isolated AudioWorklet and failure gates
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
+          python3 scripts/check_rt_runtime_boundary.py
+          python3 scripts/run_rt_runtime_hosts.py --verify-failures
+
+      - name: Upload independent AudioWorklet evidence
+        if: always() && matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rt-runtime-worklet-${{ github.run_id }}
+          path: target/rt-runtime-host/reports
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Run retained hosted Chrome AudioWorklet smoke

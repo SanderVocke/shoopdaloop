@@ -1,0 +1,1485 @@
+{
+  "headSha": "fefe626b1ff866daaa16d55de9091668defc32e3",
+  "attempt": 1,
+  "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855",
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "linux x86_64 debug",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618005",
+      "successful_steps": [
+        "Test independent rt_runtime and native hosts",
+        "Upload rt_runtime native and benchmark evidence"
+      ]
+    },
+    {
+      "name": "linux x86_64 release",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618114",
+      "successful_steps": [
+        "Test independent rt_runtime and native hosts",
+        "Measure guarded rt_runtime release workloads",
+        "Upload rt_runtime native and benchmark evidence"
+      ]
+    },
+    {
+      "name": "windows x86_64 release",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618169",
+      "successful_steps": [
+        "Test independent rt_runtime and native hosts",
+        "Upload rt_runtime native and benchmark evidence"
+      ]
+    },
+    {
+      "name": "Rust coverage (Linux)",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618203",
+      "successful_steps": []
+    },
+    {
+      "name": "web wasm32 debug",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618235",
+      "successful_steps": [
+        "Run required Node Wasm suite",
+        "Run policy-triggered Chromium Wasm suite",
+        "Run independent non-isolated AudioWorklet and failure gates",
+        "Upload independent AudioWorklet evidence",
+        "Run retained hosted Chrome AudioWorklet smoke"
+      ]
+    },
+    {
+      "name": "macos arm64 release",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618259",
+      "successful_steps": [
+        "Test independent rt_runtime and native hosts",
+        "Upload rt_runtime native and benchmark evidence"
+      ]
+    },
+    {
+      "name": "windows x86_64 debug",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618291",
+      "successful_steps": [
+        "Test independent rt_runtime and native hosts",
+        "Upload rt_runtime native and benchmark evidence"
+      ]
+    },
+    {
+      "name": "web wasm32 release",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618301",
+      "successful_steps": [
+        "Run retained self-contained Chrome AudioWorklet smoke"
+      ]
+    },
+    {
+      "name": "macos arm64 debug",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618343",
+      "successful_steps": [
+        "Test independent rt_runtime and native hosts",
+        "Upload rt_runtime native and benchmark evidence"
+      ]
+    },
+    {
+      "name": "rt_runtime ownership (Miri)",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/40145050855/job/121024618430",
+      "successful_steps": [
+        "Run isolated ownership and aliasing checks"
+      ]
+    }
+  ],
+  "native_hosts": {
+    "rt-runtime-linux-debug-40145050855": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "debug",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "rt-runtime-linux-release-40145050855": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "release",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "rt-runtime-macos-debug-40145050855": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "debug",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "rt-runtime-macos-release-40145050855": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "release",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "rt-runtime-windows-debug-40145050855": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "debug",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "rt-runtime-windows-release-40145050855": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "release",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    }
+  },
+  "worklet": {
+    "passed": true,
+    "reports": [
+      {
+        "bytes": 1507328,
+        "callbacks": 2601,
+        "cross_origin_isolated": false,
+        "decoder_fallback": true,
+        "finalBytes": 1507328,
+        "frames": 332928,
+        "graph_hash": 487351092,
+        "independent_instances": true,
+        "max_copy": 1042,
+        "max_steps": 512,
+        "midi_events": 34,
+        "midi_hash": 3308430490,
+        "mode": "offline",
+        "pressure": {
+          "continued_frames": 2048,
+          "delayed_lateness": 1984,
+          "duplicate_refusals": 1,
+          "held_credits": 5,
+          "oversized_refusals": 1
+        },
+        "sample_hash": 480331717,
+        "type": "stopped"
+      },
+      {
+        "bytes": 1507328,
+        "callbacks": 12398,
+        "cross_origin_isolated": false,
+        "decoder_fallback": true,
+        "finalBytes": 1507328,
+        "frames": 1586944,
+        "graph_hash": 487351092,
+        "independent_instances": true,
+        "max_copy": 1042,
+        "max_steps": 512,
+        "midi_events": 34,
+        "midi_hash": 2614363254,
+        "mode": "live",
+        "pressure": {
+          "continued_frames": 2432,
+          "delayed_lateness": 2368,
+          "duplicate_refusals": 1,
+          "held_credits": 5,
+          "oversized_refusals": 1
+        },
+        "sample_hash": 1806354885,
+        "type": "stopped"
+      }
+    ],
+    "tools": {
+      "chrome": "Google Chrome for Testing 147.0.7727.117",
+      "chromedriver": "ChromeDriver 147.0.7727.117 (474cc805edd6b22006509896c910f6b6da2427ad-refs/branch-heads/7727_111@{#4})"
+    },
+    "native": [
+      {
+        "mode": "offline",
+        "quanta": 2601,
+        "frames": 332928,
+        "sample_hash": 480331717,
+        "midi_hash": 3308430490,
+        "midi_events": 34,
+        "graph_hash": 487351092,
+        "max_copy": 1042,
+        "max_steps": 512
+      },
+      {
+        "mode": "two-thread",
+        "quanta": 2601,
+        "frames": 332928,
+        "sample_hash": 480331717,
+        "midi_hash": 3308430490,
+        "midi_events": 34,
+        "graph_hash": 487351092,
+        "max_copy": 1042,
+        "max_steps": 512
+      }
+    ],
+    "failure_canaries": [
+      {
+        "kind": "processor",
+        "expected_failure_observed": true,
+        "exit_code": 1
+      },
+      {
+        "kind": "rust-heap",
+        "expected_failure_observed": true,
+        "exit_code": 1
+      }
+    ]
+  },
+  "wasm": {
+    "node": {
+      "success": true,
+      "tools": {
+        "node": "22.22.2",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+        "wasm-bindgen": "0.2.127",
+        "wasm-bindgen-test": "0.3.77",
+        "wasm-pack": "wasm-pack 0.15.0"
+      },
+      "packages": [
+        {
+          "package": "rt_runtime",
+          "tests": 89,
+          "passed": 89,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_app",
+          "tests": 106,
+          "passed": 106,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_app_api",
+          "tests": 23,
+          "passed": 23,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_audio_protocol",
+          "tests": 13,
+          "passed": 13,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_audio_worklet",
+          "tests": 24,
+          "passed": 24,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_backend",
+          "tests": 81,
+          "passed": 81,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_egui",
+          "tests": 204,
+          "passed": 204,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_engine",
+          "tests": 870,
+          "passed": 870,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_latency",
+          "tests": 4,
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_plugin_protocol",
+          "tests": 5,
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_script_resources",
+          "tests": 5,
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_scripting",
+          "tests": 32,
+          "passed": 32,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_session",
+          "tests": 37,
+          "passed": 37,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_settings",
+          "tests": 9,
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_wasm_runtime_tests",
+          "tests": 10,
+          "passed": 10,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_wasm_test_support",
+          "tests": 9,
+          "passed": 7,
+          "failed": 0,
+          "ignored": 2,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_worklet_client",
+          "tests": 47,
+          "passed": 47,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoopdaloop",
+          "tests": 16,
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        }
+      ]
+    },
+    "chrome": {
+      "success": true,
+      "tools": {
+        "chrome": "Google Chrome for Testing 147.0.7727.117",
+        "chromedriver": "ChromeDriver 147.0.7727.117 (474cc805edd6b22006509896c910f6b6da2427ad-refs/branch-heads/7727_111@{#4})",
+        "node": "22.22.2",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+        "wasm-bindgen": "0.2.127",
+        "wasm-bindgen-test": "0.3.77",
+        "wasm-pack": "wasm-pack 0.15.0"
+      },
+      "packages": [
+        {
+          "package": "rt_runtime",
+          "tests": 89,
+          "passed": 89,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_app",
+          "tests": 106,
+          "passed": 106,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_app_api",
+          "tests": 23,
+          "passed": 23,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_audio_protocol",
+          "tests": 13,
+          "passed": 13,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_audio_worklet",
+          "tests": 24,
+          "passed": 24,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_backend",
+          "tests": 81,
+          "passed": 81,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_egui",
+          "tests": 204,
+          "passed": 204,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_engine",
+          "tests": 870,
+          "passed": 870,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_latency",
+          "tests": 4,
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_plugin_protocol",
+          "tests": 5,
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_script_resources",
+          "tests": 5,
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_scripting",
+          "tests": 32,
+          "passed": 32,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_session",
+          "tests": 37,
+          "passed": 37,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_settings",
+          "tests": 9,
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_wasm_runtime_tests",
+          "tests": 10,
+          "passed": 10,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_wasm_test_support",
+          "tests": 9,
+          "passed": 7,
+          "failed": 0,
+          "ignored": 2,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoop_worklet_client",
+          "tests": 47,
+          "passed": 47,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        },
+        {
+          "package": "shoopdaloop",
+          "tests": 17,
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0,
+          "returncode": 0,
+          "success": true
+        }
+      ]
+    }
+  },
+  "miri": {
+    "passed": true,
+    "toolchain": "nightly-2026-05-04",
+    "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+    "cases": [
+      {
+        "target": "contracts",
+        "arguments": [],
+        "seed": 0,
+        "passed": 12,
+        "log": "00-contracts-seed0.log"
+      },
+      {
+        "target": "wire_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "01-wire_properties-seed0.log"
+      },
+      {
+        "target": "resource_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "02-resource_properties-seed0.log"
+      },
+      {
+        "target": "mixed_stress",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "03-mixed_stress-seed0.log"
+      },
+      {
+        "target": "capture",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "04-capture-seed0.log"
+      },
+      {
+        "target": "host_processor",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "05-host_processor-seed0.log"
+      },
+      {
+        "target": "lifecycle",
+        "arguments": [
+          "--",
+          "--skip",
+          "deterministic_admission_model",
+          "--skip",
+          "cancellation_flag_model"
+        ],
+        "seed": 0,
+        "passed": 9,
+        "log": "06-lifecycle-seed0.log"
+      },
+      {
+        "target": "resource_execution",
+        "arguments": [
+          "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "07-resource_execution-seed0.log"
+      },
+      {
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 1,
+        "passed": 1,
+        "log": "08-lifecycle-seed1.log"
+      },
+      {
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 2,
+        "passed": 1,
+        "log": "09-lifecycle-seed2.log"
+      }
+    ],
+    "limitations": [
+      "Not a whole-workspace or whole-suite Miri claim.",
+      "Loom's generator/FFI model runs natively, not under Miri.",
+      "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+      "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+    ]
+  },
+  "benchmark": {
+    "passed": true,
+    "iterations_per_case": 4096,
+    "warmup_callbacks_per_case": 512,
+    "trials": [
+      {
+        "trial": 0,
+        "elapsed_host_seconds": 0.1666093850000152,
+        "records": [
+          {
+            "case": "idle",
+            "callbacks": 4096,
+            "sample_rate": 48000,
+            "frames_per_callback": 128,
+            "nodes": 0,
+            "edges_max": 0,
+            "mean_ns": 60.63916015625,
+            "p50_ns": 60,
+            "p99_ns": 71,
+            "p999_ns": 80,
+            "max_ns": 220,
+            "deadline_ns": 2666666,
+            "deadline_misses": 0,
+            "copy_bytes_max": 0,
+            "validation_steps_max": 0,
+            "core_copy_bytes": 0,
+            "control_copy_bytes": 0,
+            "copy_mib_per_measured_callback_second": 0,
+            "copy_mib_per_simulated_second": 0,
+            "commands_completed": 0,
+            "refusals": 0,
+            "graph_activations": 0,
+            "outstanding_owners_max": 0,
+            "prepared_resource_bytes": 4096,
+            "resource_used_pages_at_callback_boundary_max": 0,
+            "process_peak_rss_kib": 2672,
+            "scheduler_counters": {
+              "voluntary_switches": 0,
+              "involuntary_switches": 0,
+              "minor_faults": 4,
+              "major_faults": 0
+            },
+            "rust_heap_operations": 0,
+            "slowest_callbacks": [
+              {
+                "callback": 0,
+                "nanoseconds": 220,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 0,
+                "edges": 0,
+                "epoch": 1
+              },
+              {
+                "callback": 2441,
+                "nanoseconds": 81,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 0,
+                "edges": 0,
+                "epoch": 1
+              },
+              {
+                "callback": 2581,
+                "nanoseconds": 81,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 0,
+                "edges": 0,
+                "epoch": 1
+              },
+              {
+                "callback": 3482,
+                "nanoseconds": 81,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 0,
+                "edges": 0,
+                "epoch": 1
+              },
+              {
+                "callback": 36,
+                "nanoseconds": 80,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 0,
+                "edges": 0,
+                "epoch": 1
+              }
+            ],
+            "tail_candidates": 0
+          },
+          {
+            "case": "dag-16",
+            "callbacks": 4096,
+            "sample_rate": 48000,
+            "frames_per_callback": 128,
+            "nodes": 16,
+            "edges_max": 34,
+            "mean_ns": 1193.907470703125,
+            "p50_ns": 1171,
+            "p99_ns": 1212,
+            "p999_ns": 10376,
+            "max_ns": 22204,
+            "deadline_ns": 2666666,
+            "deadline_misses": 0,
+            "copy_bytes_max": 0,
+            "validation_steps_max": 0,
+            "core_copy_bytes": 0,
+            "control_copy_bytes": 0,
+            "copy_mib_per_measured_callback_second": 0,
+            "copy_mib_per_simulated_second": 0,
+            "commands_completed": 0,
+            "refusals": 0,
+            "graph_activations": 0,
+            "outstanding_owners_max": 0,
+            "prepared_resource_bytes": 4096,
+            "resource_used_pages_at_callback_boundary_max": 0,
+            "process_peak_rss_kib": 2716,
+            "scheduler_counters": {
+              "voluntary_switches": 0,
+              "involuntary_switches": 0,
+              "minor_faults": 1,
+              "major_faults": 0
+            },
+            "rust_heap_operations": 0,
+            "slowest_callbacks": [
+              {
+                "callback": 2445,
+                "nanoseconds": 22204,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1
+              },
+              {
+                "callback": 10,
+                "nanoseconds": 12709,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1
+              },
+              {
+                "callback": 826,
+                "nanoseconds": 12119,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1
+              },
+              {
+                "callback": 1643,
+                "nanoseconds": 12088,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1
+              },
+              {
+                "callback": 4071,
+                "nanoseconds": 10896,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1
+              }
+            ],
+            "tail_candidates": 0
+          },
+          {
+            "case": "dense-dag-64",
+            "callbacks": 4096,
+            "sample_rate": 48000,
+            "frames_per_callback": 128,
+            "nodes": 64,
+            "edges_max": 256,
+            "mean_ns": 6573.592041015625,
+            "p50_ns": 6519,
+            "p99_ns": 8112,
+            "p999_ns": 17626,
+            "max_ns": 23806,
+            "deadline_ns": 2666666,
+            "deadline_misses": 0,
+            "copy_bytes_max": 0,
+            "validation_steps_max": 0,
+            "core_copy_bytes": 0,
+            "control_copy_bytes": 0,
+            "copy_mib_per_measured_callback_second": 0,
+            "copy_mib_per_simulated_second": 0,
+            "commands_completed": 0,
+            "refusals": 0,
+            "graph_activations": 0,
+            "outstanding_owners_max": 0,
+            "prepared_resource_bytes": 4096,
+            "resource_used_pages_at_callback_boundary_max": 0,
+            "process_peak_rss_kib": 2868,
+            "scheduler_counters": {
+              "voluntary_switches": 0,
+              "involuntary_switches": 1,
+              "minor_faults": 0,
+              "major_faults": 0
+            },
+            "rust_heap_operations": 0,
+            "slowest_callbacks": [
+              {
+                "callback": 2716,
+                "nanoseconds": 23806,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 64,
+                "edges": 256,
+                "epoch": 1
+              },
+              {
+                "callback": 2566,
+                "nanoseconds": 19089,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 64,
+                "edges": 256,
+                "epoch": 1
+              },
+              {
+                "callback": 3770,
+                "nanoseconds": 18548,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 64,
+                "edges": 256,
+                "epoch": 1
+              },
+              {
+                "callback": 142,
+                "nanoseconds": 18057,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 64,
+                "edges": 256,
+                "epoch": 1
+              },
+              {
+                "callback": 1360,
+                "nanoseconds": 17877,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 64,
+                "edges": 256,
+                "epoch": 1
+              }
+            ],
+            "tail_candidates": 0
+          },
+          {
+            "case": "midi-64-through-8",
+            "callbacks": 4096,
+            "sample_rate": 48000,
+            "frames_per_callback": 128,
+            "nodes": 8,
+            "edges_max": 27,
+            "mean_ns": 12738.0986328125,
+            "p50_ns": 12659,
+            "p99_ns": 18047,
+            "p999_ns": 19619,
+            "max_ns": 26439,
+            "deadline_ns": 2666666,
+            "deadline_misses": 0,
+            "copy_bytes_max": 0,
+            "validation_steps_max": 0,
+            "core_copy_bytes": 0,
+            "control_copy_bytes": 0,
+            "copy_mib_per_measured_callback_second": 0,
+            "copy_mib_per_simulated_second": 0,
+            "commands_completed": 0,
+            "refusals": 0,
+            "graph_activations": 0,
+            "outstanding_owners_max": 0,
+            "prepared_resource_bytes": 4096,
+            "resource_used_pages_at_callback_boundary_max": 0,
+            "process_peak_rss_kib": 2868,
+            "scheduler_counters": {
+              "voluntary_switches": 0,
+              "involuntary_switches": 0,
+              "minor_faults": 0,
+              "major_faults": 0
+            },
+            "rust_heap_operations": 0,
+            "slowest_callbacks": [
+              {
+                "callback": 1720,
+                "nanoseconds": 26439,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 27,
+                "epoch": 1
+              },
+              {
+                "callback": 3626,
+                "nanoseconds": 21162,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 27,
+                "epoch": 1
+              },
+              {
+                "callback": 1107,
+                "nanoseconds": 20661,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 27,
+                "epoch": 1
+              },
+              {
+                "callback": 193,
+                "nanoseconds": 20211,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 27,
+                "epoch": 1
+              },
+              {
+                "callback": 118,
+                "nanoseconds": 20080,
+                "copy_bytes": 0,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 27,
+                "epoch": 1
+              }
+            ],
+            "tail_candidates": 0
+          },
+          {
+            "case": "stereo-capture",
+            "callbacks": 4096,
+            "sample_rate": 48000,
+            "frames_per_callback": 128,
+            "nodes": 1,
+            "edges_max": 4,
+            "mean_ns": 1389.963134765625,
+            "p50_ns": 1322,
+            "p99_ns": 2925,
+            "p999_ns": 6720,
+            "max_ns": 12179,
+            "deadline_ns": 2666666,
+            "deadline_misses": 0,
+            "copy_bytes_max": 1024,
+            "validation_steps_max": 128,
+            "core_copy_bytes": 4194304,
+            "control_copy_bytes": 0,
+            "copy_mib_per_measured_callback_second": 0,
+            "copy_mib_per_simulated_second": 0,
+            "commands_completed": 128,
+            "refusals": 0,
+            "graph_activations": 0,
+            "outstanding_owners_max": 1,
+            "prepared_resource_bytes": 65536,
+            "resource_used_pages_at_callback_boundary_max": 128,
+            "process_peak_rss_kib": 2868,
+            "scheduler_counters": {
+              "voluntary_switches": 0,
+              "involuntary_switches": 0,
+              "minor_faults": 0,
+              "major_faults": 0
+            },
+            "rust_heap_operations": 0,
+            "slowest_callbacks": [
+              {
+                "callback": 406,
+                "nanoseconds": 12179,
+                "copy_bytes": 1024,
+                "validation_steps": 0,
+                "nodes": 1,
+                "edges": 4,
+                "epoch": 1
+              },
+              {
+                "callback": 2496,
+                "nanoseconds": 8232,
+                "copy_bytes": 1024,
+                "validation_steps": 128,
+                "nodes": 1,
+                "edges": 4,
+                "epoch": 1
+              },
+              {
+                "callback": 1099,
+                "nanoseconds": 7201,
+                "copy_bytes": 1024,
+                "validation_steps": 0,
+                "nodes": 1,
+                "edges": 4,
+                "epoch": 1
+              },
+              {
+                "callback": 3193,
+                "nanoseconds": 7041,
+                "copy_bytes": 1024,
+                "validation_steps": 0,
+                "nodes": 1,
+                "edges": 4,
+                "epoch": 1
+              },
+              {
+                "callback": 3892,
+                "nanoseconds": 6731,
+                "copy_bytes": 1024,
+                "validation_steps": 0,
+                "nodes": 1,
+                "edges": 4,
+                "epoch": 1
+              }
+            ],
+            "tail_candidates": 0
+          },
+          {
+            "case": "graph-transfers",
+            "callbacks": 4096,
+            "sample_rate": 48000,
+            "frames_per_callback": 128,
+            "nodes": 16,
+            "edges_max": 34,
+            "mean_ns": 1450.77001953125,
+            "p50_ns": 1522,
+            "p99_ns": 1593,
+            "p999_ns": 6860,
+            "max_ns": 17326,
+            "deadline_ns": 2666666,
+            "deadline_misses": 0,
+            "copy_bytes_max": 0,
+            "validation_steps_max": 128,
+            "core_copy_bytes": 0,
+            "control_copy_bytes": 0,
+            "copy_mib_per_measured_callback_second": 0,
+            "copy_mib_per_simulated_second": 0,
+            "commands_completed": 2048,
+            "refusals": 0,
+            "graph_activations": 2048,
+            "outstanding_owners_max": 1,
+            "prepared_resource_bytes": 4096,
+            "resource_used_pages_at_callback_boundary_max": 0,
+            "process_peak_rss_kib": 2868,
+            "scheduler_counters": {
+              "voluntary_switches": 0,
+              "involuntary_switches": 1,
+              "minor_faults": 0,
+              "major_faults": 0
+            },
+            "rust_heap_operations": 0,
+            "slowest_callbacks": [
+              {
+                "callback": 876,
+                "nanoseconds": 17326,
+                "copy_bytes": 0,
+                "validation_steps": 128,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 695
+              },
+              {
+                "callback": 226,
+                "nanoseconds": 8082,
+                "copy_bytes": 0,
+                "validation_steps": 128,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 370
+              },
+              {
+                "callback": 1518,
+                "nanoseconds": 7041,
+                "copy_bytes": 0,
+                "validation_steps": 128,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1016
+              },
+              {
+                "callback": 2170,
+                "nanoseconds": 7011,
+                "copy_bytes": 0,
+                "validation_steps": 128,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1342
+              },
+              {
+                "callback": 3474,
+                "nanoseconds": 7011,
+                "copy_bytes": 0,
+                "validation_steps": 128,
+                "nodes": 16,
+                "edges": 34,
+                "epoch": 1994
+              }
+            ],
+            "tail_candidates": 0
+          },
+          {
+            "case": "resource-roundtrip",
+            "callbacks": 4096,
+            "sample_rate": 48000,
+            "frames_per_callback": 128,
+            "nodes": 8,
+            "edges_max": 18,
+            "mean_ns": 777.463134765625,
+            "p50_ns": 771,
+            "p99_ns": 1141,
+            "p999_ns": 1212,
+            "max_ns": 6640,
+            "deadline_ns": 2666666,
+            "deadline_misses": 0,
+            "copy_bytes_max": 2048,
+            "validation_steps_max": 33,
+            "core_copy_bytes": 7667712,
+            "control_copy_bytes": 7667712,
+            "copy_mib_per_measured_callback_second": 2296.2867825889807,
+            "copy_mib_per_simulated_second": 0.6694793701171875,
+            "commands_completed": 4096,
+            "refusals": 0,
+            "graph_activations": 0,
+            "outstanding_owners_max": 1,
+            "prepared_resource_bytes": 131072,
+            "resource_used_pages_at_callback_boundary_max": 64,
+            "process_peak_rss_kib": 2996,
+            "scheduler_counters": {
+              "voluntary_switches": 0,
+              "involuntary_switches": 0,
+              "minor_faults": 0,
+              "major_faults": 0
+            },
+            "rust_heap_operations": 0,
+            "slowest_callbacks": [
+              {
+                "callback": 941,
+                "nanoseconds": 6640,
+                "copy_bytes": 2048,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 18,
+                "epoch": 1
+              },
+              {
+                "callback": 3980,
+                "nanoseconds": 6370,
+                "copy_bytes": 2048,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 18,
+                "epoch": 1
+              },
+              {
+                "callback": 1956,
+                "nanoseconds": 6310,
+                "copy_bytes": 2048,
+                "validation_steps": 0,
+                "nodes": 8,
+                "edges": 18,
+                "epoch": 1
+              },
+              {
+                "callback": 222,
+                "nanoseconds": 1222,
+                "copy_bytes": 0,
+                "validation_steps": 33,
+                "nodes": 8,
+                "edges": 18,
+                "epoch": 1
+              },
+              {
+                "callback": 1482,
+                "nanoseconds": 1212,
+                "copy_bytes": 0,
+                "validation_steps": 33,
+                "nodes": 8,
+                "edges": 18,
+                "epoch": 1
+              }
+            ],
+            "tail_candidates": 0
+          }
+        ],
+        "raw_directory": "target/rt-runtime-bench/trial-0-raw"
+      }
+    ],
+    "canaries": [
+      {
+        "profile": "debug",
+        "kind": "allocation",
+        "expected_failure_observed": true,
+        "exit_code": 101
+      },
+      {
+        "profile": "debug",
+        "kind": "reallocation",
+        "expected_failure_observed": true,
+        "exit_code": 101
+      },
+      {
+        "profile": "debug",
+        "kind": "deallocation",
+        "expected_failure_observed": true,
+        "exit_code": 101
+      },
+      {
+        "profile": "release",
+        "kind": "allocation",
+        "expected_failure_observed": true,
+        "exit_code": 101
+      },
+      {
+        "profile": "release",
+        "kind": "reallocation",
+        "expected_failure_observed": true,
+        "exit_code": 101
+      },
+      {
+        "profile": "release",
+        "kind": "deallocation",
+        "expected_failure_observed": true,
+        "exit_code": 101
+      }
+    ],
+    "host": {
+      "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+      "cpu_model": "AMD EPYC 9V45 96-Core Processor",
+      "logical_cpus": 4,
+      "allowed_cpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "affinity_cpu": 0,
+      "scaling_governor": null
+    },
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "rustflags": "-D warnings",
+    "release_profile": {},
+    "source_sha256": "8ae0537611e3d0cbf4cf87c56d19996bcda7070a0482c86c7373c8c884e43fdf",
+    "limitations": [
+      "Instant measures elapsed wall time around the guarded core render path, including preemption and guard overhead, not hardware CPU cycles.",
+      "Control submission, output verification, owner destruction, and raw-file I/O are outside measured callbacks.",
+      "No device/OS priority/deadline or JavaScript hard-real-time guarantee; no comparison with the Shoop engine.",
+      "Resource arena sizes are fixed prepared allocations. Used-page peaks are sampled at callback boundaries; VmHWM is cumulative whole-process RSS including measurement buffers.",
+      "Throughput uses both summed measured callback time and simulated audio time; it is not MessagePort/device/network throughput.",
+      "Deadline misses and tail candidates are recorded, never used as brittle CI pass/fail thresholds."
+    ]
+  },
+  "review": {
+    "reviews": [],
+    "review_requests": [],
+    "automated_code_reviewer_present": false,
+    "coverage_checks": "codecov/project and codecov/patch passed; coverage comment is not a code-review verdict",
+    "codeql": "all four languages passed"
+  }
+}
