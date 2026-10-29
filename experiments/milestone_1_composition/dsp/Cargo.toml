@@ -1,0 +1,8 @@
+[package]
+name = "shoop_m1_spike_dsp"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rt_runtime = { path = "../../../src/rust/rt_runtime" }

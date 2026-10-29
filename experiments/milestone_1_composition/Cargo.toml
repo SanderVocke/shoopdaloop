@@ -1,0 +1,17 @@
+[workspace]
+members = ["dsp"]
+resolver = "2"
+
+[package]
+name = "milestone_1_composition_spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rt_runtime = { path = "../../src/rust/rt_runtime" }
+shoop_loop_engine = { path = "../../src/rust/shoop_loop_engine" }
+shoop_m1_spike_dsp = { path = "dsp" }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../../src/rust/shoop_wasm_test_support" }

@@ -978,7 +978,8 @@ jobs:
             --package rt_runtime --package shoop_loop_engine --package shoop_app --package shoop_app_api \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
-            --package shoop_latency --package shoop_plugin_protocol --package shoop_scripting \
+            --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
+            --package shoop_plugin_protocol --package shoop_scripting \
             --package shoop_session --package shoop_settings \
             --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
             --package shoop_worklet_client --package shoopdaloop

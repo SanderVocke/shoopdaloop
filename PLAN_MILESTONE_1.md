@@ -2,7 +2,14 @@
 
 ## Status, purpose and execution contract
 
-**Plan only; implementation has not started.** Written on 2026-10-27 from
+**Historical execution record: Stages 0–6 were verified against the initial pin (7/8 stages).**
+
+The later direct consolidation request supersedes this plan's remaining execution
+workflow: merge the implementation into the current loop-layer branch, run focused
+smoke checks, commit and push. The historical checklist/evidence below is retained;
+this consolidation does not claim the original full Stage 7 acceptance/CI/review.
+
+Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
 combines the initial parity/architecture exercise with the native local-composition
 slice. Browser/IPC deployments of the resulting service belong to the following
@@ -27,6 +34,122 @@ Execution contract:
 - Goals and acceptance criteria must not be changed without explicit user approval.
 - Follow repository instructions, including build environment, test attributes,
   formatting, warning-denied builds and pre-commit/pre-push gates.
+
+## Progress
+
+- Persistent worktree:
+  `/home/sander/dev/shoopdaloop/.cache/milestone-1-worktree`, branch
+  `feat/milestone-1-engine-service`. `/tmp/shoopdaloop-milestone-1` is now only a
+  compatibility symlink. The user requested regular upstream checkpoints because
+  `/tmp` can disappear on reboot; the worktree was copied/repaired onto disk and
+  its old directory retained. The loop executor's checkout was not switched or reset.
+- Pinned initial loop/runtime revision: `d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94`.
+  Final completed-upstream agreement/integration is still pending.
+- Baseline: 341 native tests passed with warnings denied, and both dependency
+  boundary checks passed for their four configured targets. See
+  [integration notes](docs/integration/MILESTONE_1.md) for commands and limitations.
+- External composition spike: five guarded tests pass debug/release, including
+  exact typed preset timing, stalled results, recovery and generation refusals;
+  its independent DSP library builds for Wasm. No protected-source change is made.
+- Stage 1 workspace baseline: warning-denied build and nextest pass (2,141 passed,
+  four existing skips). These are historical baseline results, not final-head
+  integration evidence.
+- Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
+  Stage 1 contracts, finite limits, composition decision and probe definition are
+  recorded in the integration notes. Stage 2's new DSP is implemented and has
+  15 passing guarded tests in native debug, native release and real Node execution;
+  its Wasm library build also passes. Its Stage 2 native workspace baseline passed
+  2,156 tests with four existing skips.
+- Stage 3 adds the real native service with nine guarded tests passing debug,
+  release and actual Node execution, plus a warning-denied Wasm build. Full audio
+  and 133-packet MIDI oracles, typed DSP timing, coherent route cuts/live stereo
+  prefix reads, recovery/disconnect/fault receipts and inert state/meter polling
+  pass. Its Stage 3 workspace baseline passed 2,165 tests with four existing skips
+  and closed inventory contained 217 modules.
+- Stage 4 adds off-render startup stereo/indexed-MIDI import and the complete public
+  `one_track` example. All six partition/declaration-order runs pass debug/release:
+  42 stereo frames, 487 MIDI packets and 378 copied media bytes each, plus a separate
+  stopped-live-input case. Deliberate sample/packet/outcome mismatches fail in both
+  profiles. The service's 13 portable tests pass debug/release/actual Node execution;
+  its Wasm build passes. Its Stage 4 workspace baseline passed 2,169 tests with four
+  existing skips (110 binaries); closed inventory remained 217 modules.
+- Stage 5 executes the declared D=3 raw dry/wet probe across 18 signal/capture/
+  partition cases, plus 24 guarded current-engine channel references. Debug/release
+  transcripts agree exactly. Missing dry history, wet tail and independent playback
+  windows are demonstrated, not implemented by shifting raw media. The service now
+  passes 15 native debug/release tests and 14 actual Node tests (the old-engine
+  reference is native-only); its Wasm build passes. Current workspace: 2,171 passed,
+  four existing skips, 111 binaries; closed inventory 217 modules. Further
+  adversarial/two-thread work, measurements and final integration remain Stages 6–7.
+  See the named tests, committed raw transcript and findings in the integration notes.
+- Stage 6's first four items are verified: all 16 normal credits/owning and semantic
+  streams can stall while wraps and reserved stop/cancel progress; optional export
+  saturation, invalid presets and route rejection preserve active capture over eight
+  lifecycles; recording disconnect and a frame-2 active-capture fault restore the
+  checked media/resource pool credits; a native two-thread host checks every
+  sample/packet and the exact frame-137 DSP receipt. Service tests: 20 native debug/release, 18 actual Node;
+  Wasm build passes. Workspace: 2,176 passed, four existing skips, 111 binaries;
+  closed inventory 217 modules. The separate release capture below closes the two
+  measurement items. The retained-ticket fixture failure and its off-render
+  ticket-lifetime correction are recorded in the integration notes.
+- A native-only measurement host is now implemented and smoke-validated for five
+  service workloads and paired current-engine idle/steady graphs. All seven cases
+  pass debug and release; 128-sample release smokes include real wraps. Uniform raw
+  CSV and separate metadata expose callback/control/meter costs, packets, copied
+  bytes and RSS/pool occupancy. These are executable validation smokes, not accepted
+  M1-A9 results; the subsequent clean-source capture below supplies the repeated
+  measurements, statistics and provenance. This host checkpoint's workspace
+  gates again passed 2,176 tests with four existing skips and closed inventory 217.
+- The repeatable collector and raw-bundle auditor now have nine passing standard
+  unittest cases and a passing seven-process release validation. They retain all
+  compressed raw rows/stderr and verify counts, clocks, frames, work, hashes and
+  recomputed nearest-rank statistics. Full clean-source capture/reporting is now
+  recorded below. Before capture, the harness pre-touches result rows and stops its callback
+  clock before storing the returned counters; this is an instrumentation revision,
+  not sample filtering or a change to the declared workload/acceptance.
+- Stage 6 is complete against the initial dependency pin: clean source `c2734153`
+  produced 21 release processes / 43,008 raw callback observations with matching
+  full sample/media oracles, strict bundle audit and independent integer-rank
+  recomputation. Raw gzip CSV, stderr, source/binary/environment provenance and
+  per-run/pooled statistics are committed with the report. The declared common
+  workload shows higher service median costs: idle 4.048 vs 2.185 µs (+85.3%) and
+  steady 4.278 vs 2.385 µs (+79.4%). All tails, canonical MIDI differences, material
+  run variation, admission/refusals, copy throughput and RSS/pool observations are
+  reported without tuning or parity/deadline claims. Final-head integration,
+  reruns, CI/review and acceptance audit remain Stage 7, not satisfied by this data.
+- Stage 7 preflight observed shared HEAD `15cfb7fc`, an explicitly incomplete loop
+  plan and an in-progress `rt_runtime/src/buffer.rs` edit. No completed revision was
+  agreed or imported. PR #889 at `fc246d0c` is OPEN/draft with no check rollup,
+  workflow runs or submitted reviews; that is not CI/review success. The current
+  workflow automatically targets master, not this stacked PR's loop-branch base;
+  its existing manual dispatch can be used after final integration without
+  weakening triggers/gates. Initial-pin acceptance mapping and final rerun planning
+  may continue independently; final dependency agreement remains mandatory.
+- A provisional M1-A1–M1-A10 implementation/evidence map and ordered final rerun
+  sequence now identify named owned tests, artifacts, exclusions and still-open
+  closure conditions in the integration notes. This is initial-pin preparation,
+  not the final acceptance audit. Warning-denied rustdoc for both owned crates
+  passes; their doctest selections contain zero tests each and add no executable
+  coverage. All Stage 7 checkboxes remain open until actual final-head evidence.
+- The same completed-upstream prerequisite remains unmet over three consecutive
+  Stage 7 goal turns: CI/dependency preflight, acceptance/rerun preparation and a
+  final read-only handoff check. Shared HEAD remains `15cfb7fc570c5e37f362febe5f9221d3ad58dcd2`
+  with runtime/Miri edits; its loop plan records Stage 7 at 7/8, Stage 8 at 3/8 and
+  Stages 9–10 incomplete. The matching delivery-PR query returned no entries;
+  neither that absence nor the latest commit establishes completed agreement.
+  Independent preparation is pushed as `67f90f20`; dependent work is blocked,
+  not complete. Resume after the owning executor finishes and supplies the full
+  agreed integration SHA, then execute the recorded isolated final rerun sequence.
+  This is an external coordination prerequisite, not a new DSP/service test failure.
+- The user approved these and future necessary edits while emphasizing the loop
+  executor's ongoing finishing work. Before the additive metadata patch, the shared
+  inventory/workflow and repository guidance were checked against the dependency
+  base and concurrent checkout: no overlapping edit was present. Five new DSP
+  inventory rows and its package argument were added without changing existing
+  rows, checker logic or gates. Closed inventory (212 modules), Wasm dependency
+  policy, formatting, test attributes and warning-denied workspace build pass.
+  Protected runtime/loop paths remain unchanged; final upstream agreement remains
+  pending. Continue checking concurrent edits before touching shared files.
 
 ## Goals and scope
 
@@ -166,16 +289,17 @@ working names; update commands if Stage 1 chooses different names.
 
 ### Stage 0 — Isolate work and establish the dependency baseline
 
-- [ ] Confirm the loop executor's protected scope, agreed dependency commit and
-      whether the required public APIs are usable now. Record unresolved blockers.
-- [ ] Create `feat/milestone-1-engine-service` in an isolated worktree; inventory
+- [x] Confirm the loop executor's protected scope, pin the known initial dependency
+      commit and inspect current public APIs. Record the typed-control gap and
+      keep final completed-upstream agreement pending in Stage 7.
+- [x] Create `feat/milestone-1-engine-service` in an isolated worktree; inventory
       existing changes and preserve unrelated user/agent work.
-- [ ] Read repository/build/test guidance and current public runtime/loop examples.
+- [x] Read repository/build/test guidance and current public runtime/loop examples.
       Inspect the current `Backend` API, relevant old-engine tests and reusable
       latency/session modules; do not treat historical proposal names as APIs.
-- [ ] Run targeted baseline runtime/loop tests and boundary checks in the agreed
+- [x] Run targeted baseline runtime/loop tests and boundary checks in the agreed
       environment. If a dependency fails, invoke the pause rules before coding.
-- [ ] Push the isolated branch and open a draft PR when there is a meaningful
+- [x] Push the isolated branch and open a draft PR when there is a meaningful
       owned commit; state that loop integration is dependency-gated.
 
 **Verification:** baseline commands identify their source revision; no protected
@@ -183,24 +307,24 @@ files are changed. Branch/PR base and permitted shared-file edits are explicit.
 
 ### Stage 1 — Parity contracts and a local-composition feasibility gate
 
-- [ ] Build `docs/integration/PARITY.md` from actual app operations and tests:
+- [x] Build `docs/integration/PARITY.md` from actual app operations and tests:
       record/play/seek/sync/composites, replacing/overdub, dry/wet, prerecord/preplay,
       latency, routing/processors/devices, state/waveforms, media replacement,
       persistence/undo and scripting. Mark unsupported/future behaviour honestly.
-- [ ] Specify this slice's inputs, outputs, finite capacities, state/export cuts,
+- [x] Specify this slice's inputs, outputs, finite capacities, state/export cuts,
       same-frame command ordering, timing, recovery and teardown. Specify the
       native public caller API without prematurely introducing byte serialization.
-- [ ] Prove the custom-operation path in a minimal external compile/test spike.
+- [x] Prove the custom-operation path in a minimal external compile/test spike.
       Trace how `SelectPreparedPreset` reaches the DSP at frame F and how an actual
       terminal result returns while retaining bounded owners through stalls.
-- [ ] Compare only viable public extension paths. Record the chosen composition
+- [x] Compare only viable public extension paths. Record the chosen composition
       and why it preserves the existing loop planner and callback allowances.
       If a protected change is required, stop and request a separately owned
       prerequisite; do not proceed with an imitation or unapproved modification.
-- [ ] Define the fixed-delay probe's D-frame delay, physical/logical intervals,
+- [x] Define the fixed-delay probe's D-frame delay, physical/logical intervals,
       retained margins/tail needs and old-engine reference expectations. Full
       compensation is not assumed; define how a missing mechanism is demonstrated.
-- [ ] Update `ARCHITECTURE.md` with the proposed service and remaining gaps; settle
+- [x] Update `ARCHITECTURE.md` with the proposed service and remaining gaps; settle
       new module names and the allowed change set.
 
 **Verification:** an external spike demonstrates a real typed operation and
@@ -209,15 +333,20 @@ contracts before substantive implementation; no acceptance criteria are weakened
 
 ### Stage 2 — Independent prepared DSP and its tests
 
-- [ ] Add the independent DSP crate, component-defined preset IDs/operations/results,
+- [x] Add the independent DSP crate, component-defined preset IDs/operations/results,
       fixed pre-touched scratch/preset banks and off-render lifecycle.
-- [ ] Implement deterministic stereo processing and bounded stable MIDI passthrough/
+- [x] Implement deterministic stereo processing and bounded stable MIDI passthrough/
       fan-in. Include a fixed-delay mode suitable for the later probe.
-- [ ] Implement the Stage 1 control path with typed preset activation/revision,
+- [x] Implement the Stage 1 control path with typed preset activation/revision,
       malformed/stale request refusal and exact frame semantics. No magic float IDs.
-- [ ] Add independent scalar/packet references, equal-time ordering, zero/edge frame,
+- [x] Add independent scalar/packet references, equal-time ordering, zero/edge frame,
       preset-transition, capacity, destructor and heap-guard tests. Add portable
       test registration and Wasm configuration using existing repository conventions.
+- [x] Obtain the requested shared-metadata scope approval, register only the new
+      production modules in `docs/tracing_coverage.csv`, rerun the closed tracing
+      gate and commit the verified Stage 2 source. No existing row/checker is to
+      be changed. This earlier inventory registration is required by the existing
+      checker as soon as a new production crate is introduced.
 
 **Verification:** native debug/release tests and Wasm build pass. Dependency
 inspection proves no loop/old-engine/backend/UI dependency. Processing and normal
@@ -225,18 +354,18 @@ refusal paths perform no heap allocation/freeing; invalid requests change no sta
 
 ### Stage 3 — Engine service, native endpoints and telemetry
 
-- [ ] Add preparation and separate typed control/render endpoints around the actual
+- [x] Add preparation and separate typed control/render endpoints around the actual
       loop facade and Stage 2 DSP, with one graph/render owner and checked IDs.
-- [ ] Build the stereo/MIDI live+playback -> DSP -> output+capture graph before the
+- [x] Build the stereo/MIDI live+playback -> DSP -> output+capture graph before the
       first callback, plus optional staged graph storage for the required route cut.
-- [ ] Expose only the needed loop/DSP operations, state/export/read/release and
+- [x] Expose only the needed loop/DSP operations, state/export/read/release and
       explicit stop/disconnect/cleanup. Preserve requested/admitted/terminal phases
       and local owning returns; specify late and callback-end behaviour.
-- [ ] Add peak-since-read mirrors with independent UI reads and loop-state
+- [x] Add peak-since-read mirrors with independent UI reads and loop-state
       publication via supported query/observer APIs. Avoid a meter request queue.
-- [ ] Implement prepared credit limits, recovery and stopped reclamation for the
+- [x] Implement prepared credit limits, recovery and stopped reclamation for the
       new service-owned resources. Do not replace loop-owned lifecycle machinery.
-- [ ] Test the public endpoints, including ordinary command failures, no-warm-up
+- [x] Test the public endpoints, including ordinary command failures, no-warm-up
       initial state and the selected graph route activation semantics.
 
 **Verification:** guarded native tests prove local calls reach both real components,
@@ -245,19 +374,19 @@ not allocate or alter musical execution. Inspect protected-path diffs before com
 
 ### Stage 4 — Complete public scenario and media visibility
 
-- [ ] Add `one_track` using only public service APIs and deterministic stereo/MIDI
+- [x] Add `one_track` using only public service APIs and deterministic stereo/MIDI
       inputs, including initial MIDI state while stopped and equal-frame events.
-- [ ] Import initial immutable content off-render; record a distinct revision;
+- [x] Import initial immutable content off-render; record a distinct revision;
       finish and play at an interior frame; wrap, seek and select retained original
       content; activate a DSP preset and supported fixed-role route change.
-- [ ] Export a prefix while recording continues. Read audio/MIDI and initial-state
+- [x] Export a prefix while recording continues. Read audio/MIDI and initial-state
       metadata through owning buffers, continue appending, reread the same export
       unchanged, then release it and verify stale/double release refusal.
-- [ ] Check all samples, absolute packets, state cuts, media metadata and terminal
+- [x] Check all samples, absolute packets, state cuts, media metadata and terminal
       records against independently constructed expectations, not just hashes or
       the implementation's own journal. Exercise whole/single/irregular partitions
       and alternate valid declaration order with sufficient capacity.
-- [ ] Stop, deliver required MIDI cleanup/recovery while callbacks still run, then
+- [x] Stop, deliver required MIDI cleanup/recovery while callbacks still run, then
       extract/clean up and drive finite reclamation. Print summaries only off-render.
 
 **Verification:** the example runs in native debug/release and exits nonzero on
@@ -266,16 +395,16 @@ is heap/destructor guarded; complete resource/owner recovery is asserted.
 
 ### Stage 5 — Fixed-latency dry/wet compatibility probe
 
-- [ ] Execute the predeclared D-frame delay with impulse/ramp stereo inputs and
+- [x] Execute the predeclared D-frame delay with impulse/ramp stereo inputs and
       timestamped MIDI markers. Keep raw physical capture and proposed logical
       windows separately observable; use independent expectations and partitions.
-- [ ] Compare a narrowly matched current-engine scenario/reference, including
+- [x] Compare a narrowly matched current-engine scenario/reference, including
       start/finish edges and any required tail. Reuse pure latency mapping helpers
       only after verifying their contracts; do not import old session machinery.
-- [ ] Demonstrate what supported public mechanisms can express. Report missing
+- [x] Demonstrate what supported public mechanisms can express. Report missing
       prehistory/postroll/playback-window mechanisms and their proposed owning
       layer, rather than shifting timestamps or trimming output to fake parity.
-- [ ] Document the supported path and concrete gaps. If a required protected-layer
+- [x] Document the supported path and concrete gaps. If a required protected-layer
       change is discovered, pause and coordinate; a documented gap satisfies the
       probe criterion but not unrelated blocked composition acceptance criteria.
 
@@ -285,21 +414,21 @@ made, and no loop implementation is changed to force the experiment to pass.
 
 ### Stage 6 — Adversarial lifecycle and representative measurements
 
-- [ ] Saturate/stall normal results, meter readers and exports independently;
+- [x] Saturate/stall normal results, meter readers and exports independently;
       exercise invalid generations/presets, late/cancelled commands, active capture,
       route rejection and repeated prepare/run/stop cycles with complete cleanup.
-- [ ] Prove immediate stop/cancel recovery with normal credits full, continuing
+- [x] Prove immediate stop/cancel recovery with normal credits full, continuing
       admitted wraps under stalled results, and truthful optional-export failure.
-- [ ] Exercise disconnect during pending work/recording and an injected processor
+- [x] Exercise disconnect during pending work/recording and an injected processor
       fault. Preserve actual published state and owners; do not replay a failed
       callback or drop final owners while rendering.
-- [ ] Add a bounded two-thread native scenario; waits/coordination and joins stay
+- [x] Add a bounded two-thread native scenario; waits/coordination and joins stay
       outside guarded callbacks. The render path never waits for the controller.
-- [ ] Measure release idle/control overhead, steady looping, preset bursts,
+- [x] Measure release idle/control overhead, steady looping, preset bursts,
       state/meter polling and concurrent live exports. Preallocate timing/result
       storage; format/file I/O stays outside rendering. Record raw samples, median,
       p95/p99/max callback cost, refusals, transfer throughput and retained memory.
-- [ ] Run a current-engine baseline on a declared common workload/configuration.
+- [x] Run a current-engine baseline on a declared common workload/configuration.
       Separate differing work/semantics from genuine overhead. Establish no
       superiority or "no noticeable difference" claim from noisy averages.
 

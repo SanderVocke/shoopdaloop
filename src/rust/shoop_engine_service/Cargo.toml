@@ -1,0 +1,31 @@
+[package]
+name = "shoop_engine_service"
+version.workspace = true
+edition = "2021"
+description = "Prepared native stereo/MIDI loop and independent DSP composition"
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[lints]
+workspace = true
+
+[features]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
+[dependencies]
+rt_runtime = { path = "../rt_runtime" }
+shoop_loop_engine = { path = "../shoop_loop_engine" }
+shoop_example_dsp = { path = "../shoop_example_dsp" }
+rtrb = "0.4.0"
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+shoop_latency = { path = "../shoop_latency" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+shoop_engine = { path = "../shoop_engine", default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"

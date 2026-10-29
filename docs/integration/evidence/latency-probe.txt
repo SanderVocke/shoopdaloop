@@ -1,0 +1,237 @@
+case,Ramp,Raw,interval=4..12,physical_frames=19,capture_frames=8
+physical,0,input=1,wet=0
+physical,1,input=2,wet=0
+physical,2,input=3,wet=0
+physical,3,input=4,wet=1
+physical,4,input=5,wet=2
+physical,5,input=6,wet=3
+physical,6,input=7,wet=4
+physical,7,input=8,wet=5
+physical,8,input=9,wet=6
+physical,9,input=10,wet=7
+physical,10,input=11,wet=8
+physical,11,input=12,wet=9
+physical,12,input=13,wet=10
+physical,13,input=14,wet=11
+physical,14,input=15,wet=12
+physical,15,input=16,wet=13
+physical,16,input=17,wet=14
+physical,17,input=18,wet=15
+physical,18,input=19,wet=16
+capture,4,dry=5,wet=2
+capture,5,dry=6,wet=3
+capture,6,dry=7,wet=4
+capture,7,dry=8,wet=5
+capture,8,dry=9,wet=6
+capture,9,dry=10,wet=7
+capture,10,dry=11,wet=8
+capture,11,dry=12,wet=9
+marker,2,[176, 74, 2]
+marker,4,[176, 74, 4]
+marker,11,[176, 74, 11]
+marker,12,[176, 74, 12]
+marker,14,[176, 74, 14]
+captured_midi_bytes,[0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 4, 7, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 11]
+proposed_window,offset=0,dry=[Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0), Some(11.0), Some(12.0)],wet=[Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), None, None, None]
+proposed_window,offset=-2,dry=[None, None, Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0)],wet=[Some(3.0), Some(4.0), Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), None]
+current_engine,offset=0,channel=0,physical_start=4,raw=[5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],playback=[5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+current_engine,offset=0,channel=1,physical_start=4,raw=[2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],playback=[5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+current_engine,offset=-2,channel=0,physical_start=2,raw=[3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],playback=[3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+current_engine,offset=-2,channel=1,physical_start=4,raw=[2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],playback=[3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+case,Ramp,Tail,interval=4..15,physical_frames=19,capture_frames=11
+physical,0,input=1,wet=0
+physical,1,input=2,wet=0
+physical,2,input=3,wet=0
+physical,3,input=4,wet=1
+physical,4,input=5,wet=2
+physical,5,input=6,wet=3
+physical,6,input=7,wet=4
+physical,7,input=8,wet=5
+physical,8,input=9,wet=6
+physical,9,input=10,wet=7
+physical,10,input=11,wet=8
+physical,11,input=12,wet=9
+physical,12,input=13,wet=10
+physical,13,input=14,wet=11
+physical,14,input=15,wet=12
+physical,15,input=16,wet=13
+physical,16,input=17,wet=14
+physical,17,input=18,wet=15
+physical,18,input=19,wet=16
+capture,4,dry=5,wet=2
+capture,5,dry=6,wet=3
+capture,6,dry=7,wet=4
+capture,7,dry=8,wet=5
+capture,8,dry=9,wet=6
+capture,9,dry=10,wet=7
+capture,10,dry=11,wet=8
+capture,11,dry=12,wet=9
+capture,12,dry=13,wet=10
+capture,13,dry=14,wet=11
+capture,14,dry=15,wet=12
+marker,2,[176, 74, 2]
+marker,4,[176, 74, 4]
+marker,11,[176, 74, 11]
+marker,12,[176, 74, 12]
+marker,14,[176, 74, 14]
+captured_midi_bytes,[0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 4, 7, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 11, 8, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 12, 10, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 14]
+proposed_window,offset=0,dry=[Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0), Some(11.0), Some(12.0)],wet=[Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0), Some(11.0), Some(12.0)]
+proposed_window,offset=-2,dry=[None, None, Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0)],wet=[Some(3.0), Some(4.0), Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0)]
+case,Ramp,Margins,interval=2..13,physical_frames=19,capture_frames=11
+physical,0,input=1,wet=0
+physical,1,input=2,wet=0
+physical,2,input=3,wet=0
+physical,3,input=4,wet=1
+physical,4,input=5,wet=2
+physical,5,input=6,wet=3
+physical,6,input=7,wet=4
+physical,7,input=8,wet=5
+physical,8,input=9,wet=6
+physical,9,input=10,wet=7
+physical,10,input=11,wet=8
+physical,11,input=12,wet=9
+physical,12,input=13,wet=10
+physical,13,input=14,wet=11
+physical,14,input=15,wet=12
+physical,15,input=16,wet=13
+physical,16,input=17,wet=14
+physical,17,input=18,wet=15
+physical,18,input=19,wet=16
+capture,2,dry=3,wet=0
+capture,3,dry=4,wet=1
+capture,4,dry=5,wet=2
+capture,5,dry=6,wet=3
+capture,6,dry=7,wet=4
+capture,7,dry=8,wet=5
+capture,8,dry=9,wet=6
+capture,9,dry=10,wet=7
+capture,10,dry=11,wet=8
+capture,11,dry=12,wet=9
+capture,12,dry=13,wet=10
+marker,2,[176, 74, 2]
+marker,4,[176, 74, 4]
+marker,11,[176, 74, 11]
+marker,12,[176, 74, 12]
+marker,14,[176, 74, 14]
+captured_midi_bytes,[0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 2, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 4, 9, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 11, 10, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 12]
+proposed_window,offset=0,dry=[Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0), Some(11.0), Some(12.0)],wet=[Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0), None, None]
+proposed_window,offset=-2,dry=[Some(3.0), Some(4.0), Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0)],wet=[Some(3.0), Some(4.0), Some(5.0), Some(6.0), Some(7.0), Some(8.0), Some(9.0), Some(10.0)]
+case,Impulses,Raw,interval=4..12,physical_frames=19,capture_frames=8
+physical,0,input=0,wet=0
+physical,1,input=0,wet=0
+physical,2,input=-1,wet=0
+physical,3,input=0,wet=0
+physical,4,input=1,wet=0
+physical,5,input=0,wet=-1
+physical,6,input=0,wet=0
+physical,7,input=0,wet=1
+physical,8,input=0,wet=0
+physical,9,input=0,wet=0
+physical,10,input=0,wet=0
+physical,11,input=0.5,wet=0
+physical,12,input=0.25,wet=0
+physical,13,input=0,wet=0
+physical,14,input=0,wet=0.5
+physical,15,input=0,wet=0.25
+physical,16,input=0,wet=0
+physical,17,input=0,wet=0
+physical,18,input=0,wet=0
+capture,4,dry=1,wet=0
+capture,5,dry=0,wet=-1
+capture,6,dry=0,wet=0
+capture,7,dry=0,wet=1
+capture,8,dry=0,wet=0
+capture,9,dry=0,wet=0
+capture,10,dry=0,wet=0
+capture,11,dry=0.5,wet=0
+marker,2,[176, 74, 2]
+marker,4,[176, 74, 4]
+marker,11,[176, 74, 11]
+marker,12,[176, 74, 12]
+marker,14,[176, 74, 14]
+captured_midi_bytes,[0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 4, 7, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 11]
+proposed_window,offset=0,dry=[Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.5)],wet=[Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), None, None, None]
+proposed_window,offset=-2,dry=[None, None, Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)],wet=[Some(-1.0), Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), None]
+current_engine,offset=0,channel=0,physical_start=4,raw=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5],playback=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]
+current_engine,offset=0,channel=1,physical_start=4,raw=[0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5],playback=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]
+current_engine,offset=-2,channel=0,physical_start=2,raw=[-1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5],playback=[-1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+current_engine,offset=-2,channel=1,physical_start=4,raw=[0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],playback=[-1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+case,Impulses,Tail,interval=4..15,physical_frames=19,capture_frames=11
+physical,0,input=0,wet=0
+physical,1,input=0,wet=0
+physical,2,input=-1,wet=0
+physical,3,input=0,wet=0
+physical,4,input=1,wet=0
+physical,5,input=0,wet=-1
+physical,6,input=0,wet=0
+physical,7,input=0,wet=1
+physical,8,input=0,wet=0
+physical,9,input=0,wet=0
+physical,10,input=0,wet=0
+physical,11,input=0.5,wet=0
+physical,12,input=0.25,wet=0
+physical,13,input=0,wet=0
+physical,14,input=0,wet=0.5
+physical,15,input=0,wet=0.25
+physical,16,input=0,wet=0
+physical,17,input=0,wet=0
+physical,18,input=0,wet=0
+capture,4,dry=1,wet=0
+capture,5,dry=0,wet=-1
+capture,6,dry=0,wet=0
+capture,7,dry=0,wet=1
+capture,8,dry=0,wet=0
+capture,9,dry=0,wet=0
+capture,10,dry=0,wet=0
+capture,11,dry=0.5,wet=0
+capture,12,dry=0.25,wet=0
+capture,13,dry=0,wet=0
+capture,14,dry=0,wet=0.5
+marker,2,[176, 74, 2]
+marker,4,[176, 74, 4]
+marker,11,[176, 74, 11]
+marker,12,[176, 74, 12]
+marker,14,[176, 74, 14]
+captured_midi_bytes,[0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 4, 7, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 11, 8, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 12, 10, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 14]
+proposed_window,offset=0,dry=[Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.5)],wet=[Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.5)]
+proposed_window,offset=-2,dry=[None, None, Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)],wet=[Some(-1.0), Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)]
+case,Impulses,Margins,interval=2..13,physical_frames=19,capture_frames=11
+physical,0,input=0,wet=0
+physical,1,input=0,wet=0
+physical,2,input=-1,wet=0
+physical,3,input=0,wet=0
+physical,4,input=1,wet=0
+physical,5,input=0,wet=-1
+physical,6,input=0,wet=0
+physical,7,input=0,wet=1
+physical,8,input=0,wet=0
+physical,9,input=0,wet=0
+physical,10,input=0,wet=0
+physical,11,input=0.5,wet=0
+physical,12,input=0.25,wet=0
+physical,13,input=0,wet=0
+physical,14,input=0,wet=0.5
+physical,15,input=0,wet=0.25
+physical,16,input=0,wet=0
+physical,17,input=0,wet=0
+physical,18,input=0,wet=0
+capture,2,dry=-1,wet=0
+capture,3,dry=0,wet=0
+capture,4,dry=1,wet=0
+capture,5,dry=0,wet=-1
+capture,6,dry=0,wet=0
+capture,7,dry=0,wet=1
+capture,8,dry=0,wet=0
+capture,9,dry=0,wet=0
+capture,10,dry=0,wet=0
+capture,11,dry=0.5,wet=0
+capture,12,dry=0.25,wet=0
+marker,2,[176, 74, 2]
+marker,4,[176, 74, 4]
+marker,11,[176, 74, 11]
+marker,12,[176, 74, 12]
+marker,14,[176, 74, 14]
+captured_midi_bytes,[0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 2, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 4, 9, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 11, 10, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 176, 74, 12]
+proposed_window,offset=0,dry=[Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.5)],wet=[Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), None, None]
+proposed_window,offset=-2,dry=[Some(-1.0), Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)],wet=[Some(-1.0), Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)]
+verified 18 physical cases; logical windows remain separate, not replacement media
