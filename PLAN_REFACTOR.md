@@ -174,10 +174,10 @@ Stages 5 and 6 both depend on 4 but not on each other.
 
 ### Stage 0 — Baseline
 
-- [ ] Record the per-binary test counts for `rt_runtime`, the loop crate,
+- [x] Record the per-binary test counts for `rt_runtime`, the loop crate,
       `shoop_example_dsp` and `shoop_engine_service`, and for the loop host runs
       (native, Node, browser), in a "Baseline" section of this file.
-- [ ] Record release `measure_service` idle/steady and the loop benchmark,
+- [x] Record release `measure_service` idle/steady and the loop benchmark,
       using the existing collector/script defaults.
 
 **Verify:** the counts and commands are recorded, and every run passed.
@@ -312,6 +312,50 @@ document links resolve.
       result and counts in `VALIDATION.md` and here.
 
 **Verify:** all A1–A12 are satisfied, with evidence linked.
+
+## Baseline
+
+Source `2d13b8da`, run on 2026-10-29 in `nix develop` with `RUSTFLAGS="-D warnings"`.
+All runs passed.
+
+| Suite | Debug | Release |
+| --- | --- | --- |
+| `rt_runtime` | 193 tests / 36 binaries | 193 / 36 |
+| `shoop_loop_engine` | 155 / 20 | 155 / 20 |
+| `shoop_example_dsp` | 15 / 3 | 15 / 3 |
+| `shoop_engine_service` | 20 / 6 | 20 / 6 |
+| `tests/loop_engine_host` crate | 60 / 3 | — |
+
+| Host / Wasm run | Result |
+| --- | --- |
+| `run_loop_engine_hosts.py --native-only --profile debug` | passed |
+| `run_rt_runtime_hosts.py --native-only --profile debug` | passed |
+| `run_loop_engine_hosts.py --profile debug --verify-failures` | passed (offline and live contexts, failure canaries) |
+| `run_rt_runtime_hosts.py --verify-failures` | passed (failure canaries) |
+| `run_wasm_tests.py --profile dev --runtime node` | `rt_runtime` 189, `shoop_loop_engine` 155, `shoop_example_dsp` 15, `shoop_engine_service` 18 |
+
+The local environment differs from the scripts' tool pins: the Nix shell has
+Node 22.23.2 (pinned 22.22.2), and Chromium/chromedriver 151 from nixpkgs (pinned
+147). Local runs relax only those version checks; CI keeps its pins.
+
+Measurements on an AMD Ryzen 9 5950X, pinned to CPU 8 (`ondemand` governor).
+Service: `collect.py --cpu 8` defaults (3 runs × 2048 samples, 128 warm-up),
+callback median / p99 in ns:
+
+| Workload | Baseline |
+| --- | --- |
+| current/idle | 1974 / 2034 |
+| current/steady | 2175 / 3527 |
+| service/idle | 3697 / 3797 |
+| service/steady | 3036 / 7655 |
+| service/preset | 3135 / 7755 |
+| service/poll | 3697 / 10921 |
+| service/export | 5270 / 5751 |
+
+Loop benchmark: `benchmark_loop_engine.py --iterations 1024 --trials 3 --cpu 8`,
+median of per-trial p50 in ns: loop-idle 360, no-planner-idle 90, fx-capture 4779,
+seek-replace 4428, upload-export 4940, audio-4-257 13095, nested-regular 225296,
+midi-4-4 859236.
 
 ## Execution contract
 
