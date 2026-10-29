@@ -120,6 +120,6 @@ Errors are compact Copy values. Representative causes follow; each operation's s
 | `StaleRevision` | Expected resource revision no longer matches. |
 | `Cancelled` | A scheduled parameter, MIDI or processor action was cancelled by `Command::Cancel` before delivery. |
 
-Admission refusal returns the original value in `SubmitError::value`. An admitted owning completion has Applied/Scheduled/Rejected/Cancelled separately from later execution results. An execution has a runtime `Result<(), Error>` and optional typed domain result. A domain can report Refused while runtime delivery is `Ok(())`; neither success flag implies general domain publication.
+Admission refusal returns the original value in `SubmitError::value`. An admitted owning completion has Applied/Scheduled/Rejected/Cancelled separately from later execution results. An execution has a runtime `Result<(), Error>` and optional typed domain results: `operation_result` from the planner and `processor_result` from a processor. A domain can report Refused while runtime delivery is `Ok(())`; neither success flag implies general domain publication.
 
 Rendering faults can occur after frame/state/epoch publication. They are not rollback or authorization to replay the block. Diagnostic counters saturate rather than wrap; semantic exhaustion stays explicit. See [shutdown](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md) for graceful versus stopped-abandonment ownership.

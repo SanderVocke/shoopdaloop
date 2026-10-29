@@ -92,7 +92,7 @@ The later processor Multiply operation runs at frame 25 and immediately returns 
 
 The example exercises each. Its Cancel operation first looks for the delivered pending token; otherwise it cancels a queued normal typed action. A duplicate completion of a still-terminal token returns `InvalidState`, not a second outcome. Scoped sequence checks also prevent an old token resolving a reused slot.
 
-Parameter, MIDI and processor actions have no planner to cancel them. Submit `Command::Cancel { sequence }` on either lane to terminate one that has not been delivered yet; its execution reports `Err(Cancelled)` with `delivered_frame: None`. Cancelling a planner action this way refuses with `InvalidId`, as does cancelling work that was already delivered: use the planner's own cancellation for its operations.
+Parameter, MIDI and processor actions have no planner to cancel them. Submit `Command::Cancel { sequence }` on either lane to terminate one that has not been delivered yet; its execution reports `Err(Cancelled)` with `delivered_frame: None`. Cancelling a planner action this way refuses with `InvalidId`: use the planner's own cancellation for its operations. Cancelling an action that was already delivered refuses with `InvalidState` while its execution still holds the slot, and with `InvalidId` once the slot is released.
 
 The ticket flag is best effort only before its original dequeue. It cannot unschedule an accepted action, cancel a retained token, or undo a published domain effect. Parking normal validation for recovery does not create another cancellation observation; see [chapter 5](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md).
 

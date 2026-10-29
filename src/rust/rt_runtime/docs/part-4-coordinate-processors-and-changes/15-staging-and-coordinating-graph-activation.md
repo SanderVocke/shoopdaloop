@@ -131,7 +131,7 @@ A planner's permit is not the only way to change the graph. `prepare_with_initia
 - `Planner::admit_graph(candidate)` refuses a published graph that lacks a required consumer or binding;
 - `Planner::admit_processor_change(node)` refuses removing that node's processor, or installing into its slot.
 
-A refusal fails preparation, or rejects the command with the planner's error while the active graph, epoch and slots stay unchanged. Both hooks default to admitting everything. They run during callback ingress, so they obey the same no-heap, nonblocking contract as the rest of the planner.
+A refusal fails preparation, or rejects the command with the planner's error while the active graph, epoch and slots stay unchanged. Both hooks default to admitting everything. `admit_graph` also runs off-render in `prepare_with_initial_graph`; otherwise both run during callback ingress, so they obey the same no-heap, nonblocking contract as the rest of the planner.
 
 ## MIDI compatibility is not musical cleanup
 

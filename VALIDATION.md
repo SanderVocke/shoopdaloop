@@ -233,7 +233,7 @@ The [acceptance criteria](PLAN.md#acceptance-criteria), checked on `fcbd5ea6`
 | A8 — nothing lost | Met | Counts as the [baseline](#baseline) plus new tests in every suite (native, Node, Chrome, hosts with canaries). Replaced tests: three DSP bridge tests became runtime cancellation tests; one `pending_operations` refusal case (planner given a processor operation) became a nonfinite processor operation, since the types now forbid the former |
 | A9 — dev-only assembly | Met | `shoop_loops_test_support` is only a dev-dependency in the workspace, and `tests/loops_host` compiles its source by path; `cargo tree` finds no normal or build edge to it in either |
 | A10 — boundaries and safety | Met | Boundary, tracing (closed) and test-usage checks; `forbid(unsafe_code)` in all five crates; new render paths run under heap guards |
-| A11 — documentation | Met | Architecture, plan, validation, crate READMEs, guides, runtime book and draft book updated; links resolve apart from unchanged historical evidence reports |
+| A11 — documentation | Met | Architecture, plan, validation, crate READMEs, guides, runtime book and draft book updated; links resolve apart from unchanged historical evidence reports. A later audit of the crate docs against the code found a dozen passages the refactor had left stale (old controller and engine names, cancellation and admission details, same-frame DSP order); they are fixed |
 | A12 — measurements recorded | Met | Paired service and loop benchmark results under [Measurements](#measurements); the preset workload is 13–17% slower, with the cause recorded |
 
 ## Loop evidence

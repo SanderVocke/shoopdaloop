@@ -90,7 +90,7 @@ Audio buffers are planar `f32`: one slice per channel. They are borrowed only fo
 
 Use `next_frame()` for each successive call. Host lengths may vary up to `max_frames`, but their absolute frame ranges must be contiguous. This single call covers `[0,8)`.
 
-A live host makes the same `process` call from its audio callback while the controller runs separately. It must not wait there for commands or results, allocate buffers, or print diagnostics. The example's result checks and final message happen after processing returns.
+A live host makes the same `process` call from its audio callback while the control endpoint runs separately. It must not wait there for commands or results, allocate buffers, or print diagnostics. The example's result checks and final message happen after processing returns.
 
 ## 3. Check immediate playback and the wrap
 
@@ -116,7 +116,7 @@ These are not four host callbacks. The runtime splits the one supplied block its
 
 ## 4. Check admission and musical outcomes
 
-The controller has two result streams. An owning completion reports whether the runtime admitted the scheduled operation:
+The control endpoint has two result streams. An owning completion reports whether the runtime admitted the scheduled operation:
 
 ```rust
     for &(sequence, _) in &sequences {

@@ -1,7 +1,9 @@
 # Independent loop-host fixture
 
 This test-only workspace depends on `rt_runtime` and the actual `shoop_loops`,
-not the old backend, application or devices. Its own lockfile pins the same `rtrb`
+not the old backend, application or devices. It assembles the loop parts with the
+dev-only `shoop_loops_test_support` assembly, whose source it compiles by path
+(`src/lib.rs`), as it does the shared allocation guard. Its own lockfile pins the same `rtrb`
 version as the repository and host-only `wasm-bindgen` 0.2.127. The Python browser
 runner reuses the generic host's HTTP/WebDriver utilities and decoder fallback;
 the generic runtime fixture does not depend on loop semantics.
@@ -100,13 +102,13 @@ initial state has neutral pitch and released CC64/69/66 on all 16 channels;
 the independent expected packet list includes those 128 restoration packets,
 not merely the six original/replayed note packets. The total is 134 packets.
 
-Every engine callback is heap-guarded. In wire mode, guards also cover ingress,
+Every runtime callback is heap-guarded. In wire mode, guards also cover ingress,
 prepared submission, owning completion collection and response-slot recycling.
 Positive allocator instrumentation and three expected-panic tests prove allocation,
 reallocation and deallocation are detected in both native profiles. They do not certify JavaScript allocation or
 browser callback behavior.
 
-After Stop, drop control and extract the stopped engine off-render. Explicit
+After Stop, drop control and extract the stopped loops (`StoppedLoops`) off-render. Explicit
 cleanup and bounded reclamation must recover all 256 pages, 16 versions and
 16 snapshots, with zero media references.
 
@@ -144,7 +146,7 @@ cargo test --locked --manifest-path tests/loops_host/Cargo.toml --release \
    metadata/bindings and Seal. Pass exactly96 bytes per `Receiver::ingest` call.
    [LGP1](WIRE.md#prepared-graph-descriptor-payload-lgp1) defines every offset,
    canonical zero and target-width check. Seal means complete payload, not valid graph.
-3. `take(id)` hands a local prepared owner to `Controller::stage_graph`. Actual
+3. `take(id)` hands a local prepared owner to `LoopControl::stage_graph`. Actual
    runtime validation returns either the candidate or a Ready scoped ID. Only
    then request `GraphActivate` at an admitted future frame.
 4. Match owning returns to their local handoffs and call `recycle(id, plan)`.
@@ -231,7 +233,8 @@ node target/loops-host/release/node_checks.mjs
 1. Create `BrowserGraphClient(session)` in the control instance and
    `BrowserBridge.new_graphs(session, 0)` in the rendering instance before measuring
    fixed memory. The client compiles this fixture's host-output-bypass descriptor
-   through the public controller API off-render; it is not a general graph editor.
+   through the test assembly's `LoopControl::compile_graph` off-render; it is not a
+   general graph editor.
 2. Iterate `payload_count()`. Call `prepare_payload(index, bankSlot, generation,
    epoch, sequence)` and copy exactly96 bytes from local `payload_ptr()` to the
    render instance's local `graph_payload_ptr()`. Use BigInt for all64-bit arguments;
@@ -251,7 +254,7 @@ node target/loops-host/release/node_checks.mjs
    The shared check repeats128 real stage/release cycles on the smaller returned
    owner, with fixed memory and guarded preparation-free Rust paths throughout.
 6. Require both sides' command/retained counts zero before successful `stop()`.
-   Stop returns15 without consuming the engine if a graph remains Ready/Taken,
+   Stop returns15 without consuming the runtime if a graph remains Ready/Taken,
    even when command credits are empty. Fault abandonment stops callbacks and frees
    real owners off-render; it does not manufacture client returns.
 
@@ -706,8 +709,8 @@ Inspect the standalone selection without running Miri:
 python3 scripts/run_rt_runtime_miri.py --list --package loops_host_fixture
 ```
 
-The pinned nightly-2026-05-04 selection names all59 library tests exactly, plus
-primitive-wire and graph-actor tests at seeds1/2 (63 executions). It uses this
+The pinned nightly-2026-05-04 selection names all60 library tests exactly, plus
+primitive-wire and graph-actor tests at seeds1/2 (64 executions). It uses this
 workspace's manifest/lockfile, full native workloads and the existing allocator/
 destructor guards. This interprets native Rust, not JavaScript or AudioWorklets.
 
@@ -718,9 +721,9 @@ one supervised immutable snapshot from the repository root:
 python3 scripts/run_rt_runtime_miri_jobs.py start --stage stage-7 --commit HEAD
 ```
 
-The current default includes retained runtime/loop regressions and the Stage8
-sparse-projection/ordered-insert models:145 commands/298 executions across all
-three packages. The original Stage7 snapshot's144/291 remains historical. Do not launch it after each helper edit. Continue other
+The current default includes retained runtime/loop regressions, the Stage8
+sparse-projection/ordered-insert models and the runtime's planner-admission tests:
+152 commands/308 executions across all three packages. The original Stage7 snapshot's144/291 remains historical. Do not launch it after each helper edit. Continue other
 work and collect its terminal result using the returned job directory; launch,
 native dispatch checks and partial output are not passes. The900-second per-command
 watchdog is unchanged. See the [operational guide](../../docs/loop_layer/MIRI_BACKGROUND.md)

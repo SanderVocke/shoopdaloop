@@ -162,4 +162,6 @@ Removing the target before execution also produces an execution failure; its `No
 
 A submission ticket's `cancel()` is best effort before dequeue. It cannot remove an action already accepted into the scheduler. The completion, not the ticket flag, confirms cancellation.
 
+An accepted parameter change that has not been delivered yet can be cancelled with `Command::Cancel { sequence }`; its execution then reports `Err(Cancelled)` with `delivered_frame: None`. See [chapter 14](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md).
+
 [Next: Processing and scheduling MIDI](08-processing-and-scheduling-midi.md)

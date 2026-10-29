@@ -73,7 +73,9 @@ zero.
 `client.dsp_at(at, dsp::Operation::SelectPreparedPreset { preset, expected_revision })`
 schedules the DSP's own typed operation at `at` through the same runtime scheduler as
 loop work: not a float parameter, a private bridge or a new loop operation. At one
-frame, loop work is settled before the selection applies. `cancel_pending` cancels a
+frame, loop operations are delivered first, then the selection applies, and the loop
+planner settles that frame afterwards; both take effect from the same sample.
+`cancel_pending` cancels a
 selection that has not been delivered yet through the runtime's generic `Cancel`. `read_peaks()` on
 `client.meters()` atomically consumes peak-since-read telemetry without a reliable
 query. Repeated state/meter reads do not drive musical processing. A loop state

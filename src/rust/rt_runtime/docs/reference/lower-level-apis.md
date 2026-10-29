@@ -32,7 +32,7 @@ Actual retained capacities matter separately from validation. `storage_bytes` in
 
 Standalone schedulers retain their own prepared event/payload/result stores. The caller must validate targets/envelopes against the appropriate catalog and maintain the same callback-boundary recycling, stable delivery order and one-terminal-result obligations as GraphRuntime.
 
-Immediate parameter/MIDI completion differs from typed delivery receipts. A typed token's scope/sequence/state is checked on terminal completion; Pending application data must retain the token until resolved or explicitly abandoned after stopping. Queued typed cancellation is not ticket cancellation. Reading a result sends recycle credit for the next callback; it does not replenish the current callback through an internal interval.
+Immediate parameter/MIDI completion differs from typed delivery receipts. A typed token's scope/sequence/state is checked on terminal completion; Pending application data must retain the token until resolved or explicitly abandoned after stopping. Queued typed cancellation is not ticket cancellation. `Scheduler::cancel(frame, sequence)` terminates a queued normal-lane parameter, MIDI or processor action as `Cancelled` before delivery, and `Receipts::complete_processor` records a delivered processor operation's typed result. Reading a result sends recycle credit for the next callback; it does not replenish the current callback through an internal interval.
 
 Recovery execution capacity is explicitly prepared; it is not an unlimited side channel. Safe classification, current delivery-frame termination and structural restrictions remain caller/domain contracts. [Execution rules](execution-rules.md) define frames, sort keys and cancellation cuts.
 

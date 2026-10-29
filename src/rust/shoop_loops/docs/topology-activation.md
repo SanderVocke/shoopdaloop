@@ -38,7 +38,7 @@ For logical owner edits, also set `Options::node_pairs`. NodePairSettings reserv
 
 Supply physical Binding templates off-render. Each active primitive needs its own playback/capture pair. Additional unassigned node pair templates may occupy unused logical slots but stay outside the initial graph. IDs, signatures, channel/MIDI shapes, smoothing and group storage remain prepared/fixed. The application's other processors are also prepared and installed in the runtime, even if initially unrouted. Changing a logical LoopId generation does not replace physical NodeId generations.
 
-Enable graph-owner slots separately with `engine.prepare_graph_staging(count)`, once before the first nonempty callback. Timing staging does not implicitly enable them. Preparation checks retained metadata/scratch/storage products; allocator overhead, compiler temporaries, payloads and other owners are separate costs, not an exact RSS or deadline bound.
+Enable graph-owner slots separately with `GraphRuntime::prepare_graph_staging(count)`, once before the first nonempty callback. Timing staging does not implicitly enable them. Preparation checks retained metadata/scratch/storage products; allocator overhead, compiler temporaries, payloads and other owners are separate costs, not an exact RSS or deadline bound.
 
 ## 2. Make timing and graph candidates Ready
 
@@ -137,7 +137,7 @@ After successful program finish, internal collection frees its domain slot witho
 
 Normal sequence Cancel cancels pending work without silently releasing the graph. Recovery-safe TopologyCancel also requests recycling of the unpublished timing owner: Taken can persist until finish, then becomes Idle. It cannot undo applied publication. NodePairCancel releases unpublished Receiving/Ready edit sources; NodePairRecycle handles Taken node pair metadata. NodePairSourceRelease is separately recovery-safe. None forces graph activation through recovery.
 
-`release_graph` returns unused/displaced graph ownership through a reliable normal completion. Dispose/reuse it off-render. The example separately recycles node pair metadata, topology storage and the retired initial graph while retained old exports remain readable; it later releases every export and checks cleanup twice recovers all declared pools.
+`Command::ReleaseGraph { id }` returns unused/displaced graph ownership through a reliable normal completion. Dispose/reuse it off-render. The example separately recycles node pair metadata, topology storage and the retired initial graph while retained old exports remain readable; it later releases every export and checks cleanup twice recovers all declared pools.
 
 ## Fault and evidence boundaries
 
