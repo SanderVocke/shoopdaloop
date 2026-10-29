@@ -2,12 +2,15 @@
 
 ## Status, purpose and execution contract
 
-**Historical execution record: Stages 0–6 were verified against the initial pin (7/8 stages).**
+**Consolidated, smoke-tested, committed and pushed on `feat/loop-execution-layer`.**
+The source merge is `30d09bbdf4bbfd8f63b4eb58cc3e111b8e7a7a8c`.
 
-The later direct consolidation request supersedes this plan's remaining execution
-workflow: merge the implementation into the current loop-layer branch, run focused
-smoke checks, commit and push. The historical checklist/evidence below is retained;
-this consolidation does not claim the original full Stage 7 acceptance/CI/review.
+Stages 0–6 were verified against the initial pin (7/8 original stages). Stage 7
+now has completed source consolidation and focused integrated checks; its original
+broader acceptance/CI/review process was not completed or claimed. The later direct
+request to merge here, smoke test, commit and push superseded that remaining
+execution workflow and is fulfilled. The old dependency wait is no longer an
+active blocker for the completed consolidation.
 
 Written on 2026-10-27 from
 [METAPLAN_SHOOP_INTEGRATION.md](METAPLAN_SHOOP_INTEGRATION.md). This milestone
@@ -20,10 +23,11 @@ intended user behaviour, while enabling capabilities such as separate UI/engine
 processes. This milestone proves an extensible local control boundary, not full
 application integration or feature parity.
 
-The executor implementing [PLAN_LOOP_LAYER.md](PLAN_LOOP_LAYER.md) is still
-running. It is expected to make almost no further loop-layer changes, especially
-API changes, but that expectation is **not a freeze or permission to edit its
-work**. Apply the concurrency and pause rules below throughout this plan.
+The worker implementing [PLAN_LOOP_LAYER.md](PLAN_LOOP_LAYER.md) had finished for
+now when the user authorized consolidation. The merge preserved the newer
+loop/runtime implementation unchanged. The original concurrency/pause workflow
+below records how the isolated implementation was conducted; it must not be read
+as a current requirement to wait again before using the consolidated source.
 
 Execution contract:
 
@@ -35,16 +39,47 @@ Execution contract:
 - Follow repository instructions, including build environment, test attributes,
   formatting, warning-denied builds and pre-commit/pre-push gates.
 
-## Progress
+## Current state
 
-- Persistent worktree:
+- **Current checkout/branch:** `/home/sander/dev/shoopdaloop`,
+  `feat/loop-execution-layer`. The implementation is available here, not only in
+  the old isolated milestone worktree.
+- **Pushed source merge:** `30d09bbdf4bbfd8f63b4eb58cc3e111b8e7a7a8c`, combining
+  loop-branch parent `c33c9ce529bd385e2c90ca0e7b3c133b636b41aa` and milestone tip
+  `7a499de2f0f02b78b275b452094c1459472ee580`. The origin branch tip was verified
+  after pushing. No existing runtime/loop source or host/Miri runner was changed
+  by the merge; only the plan history required add/add conflict resolution.
+- **Integrated native smoke checks:** Nix, warnings denied, locked workspace build
+  and formatting passed. The DSP/service suites passed **35 native debug tests**
+  (15 DSP, 20 service), with no failures. All six `one_track` runs checked their
+  complete 42-frame/487-packet/378-byte oracles; `latency_probe` passed all 18
+  physical cases. No adapter fixes or weakened expectations were needed.
+- **Integrated portability/policy checks:** both new libraries compiled for
+  `wasm32-unknown-unknown`; test-attribute policy, closed tracing inventory
+  (**217 modules**) and Wasm test dependency isolation for runtime, loop, DSP and
+  service passed. Wasm compilation is not fresh Node/browser execution.
+- **Validation limits:** the full workspace test suite, release test/measurement
+  campaign, Node/browser/worklet/Miri runs and CI/review cycle were not rerun for
+  this consolidation, as requested. Earlier results below retain their original
+  source provenance; they are not fresh evidence for the merged tree. Original
+  full Stage 7 closure remains unclaimed, rather than blocking the delivered
+  smoke-only consolidation.
+- Smoke log: `.cache/milestone-1-consolidation/smoke.log`. Detailed historical
+  contracts, measurements and the consolidation summary are in
+  [the integration notes](docs/integration/MILESTONE_1.md).
+
+## Historical stage evidence (initial pin)
+
+The following records describe the earlier isolated work, not current checkout
+locations or new runs on the consolidated source.
+
+- Original persistent worktree:
   `/home/sander/dev/shoopdaloop/.cache/milestone-1-worktree`, branch
-  `feat/milestone-1-engine-service`. `/tmp/shoopdaloop-milestone-1` is now only a
-  compatibility symlink. The user requested regular upstream checkpoints because
-  `/tmp` can disappear on reboot; the worktree was copied/repaired onto disk and
-  its old directory retained. The loop executor's checkout was not switched or reset.
-- Pinned initial loop/runtime revision: `d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94`.
-  Final completed-upstream agreement/integration is still pending.
+  `feat/milestone-1-engine-service`. `/tmp/shoopdaloop-milestone-1` became a
+  compatibility symlink. The worktree was copied/repaired onto disk to avoid
+  reliance on `/tmp`; the other executor's checkout was not switched or reset.
+- Initial loop/runtime pin: `d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94`, distinct
+  from the later loop-branch parent and consolidated merge recorded above.
 - Baseline: 341 native tests passed with warnings denied, and both dependency
   boundary checks passed for their four configured targets. See
   [integration notes](docs/integration/MILESTONE_1.md) for commands and limitations.
@@ -54,8 +89,10 @@ Execution contract:
 - Stage 1 workspace baseline: warning-denied build and nextest pass (2,141 passed,
   four existing skips). These are historical baseline results, not final-head
   integration evidence.
-- Draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
-  Stage 1 contracts, finite limits, composition decision and probe definition are
+- Original draft PR: [#889](https://github.com/SanderVocke/shoopdaloop/pull/889).
+  Its milestone tip is included in the pushed source merge; this historical label
+  does not assert a fresh review/CI outcome. Stage 1 contracts, finite limits,
+  composition decision and probe definition are
   recorded in the integration notes. Stage 2's new DSP is implemented and has
   15 passing guarded tests in native debug, native release and real Node execution;
   its Wasm library build also passes. Its Stage 2 native workspace baseline passed
@@ -117,39 +154,21 @@ Execution contract:
   run variation, admission/refusals, copy throughput and RSS/pool observations are
   reported without tuning or parity/deadline claims. Final-head integration,
   reruns, CI/review and acceptance audit remain Stage 7, not satisfied by this data.
-- Stage 7 preflight observed shared HEAD `15cfb7fc`, an explicitly incomplete loop
-  plan and an in-progress `rt_runtime/src/buffer.rs` edit. No completed revision was
-  agreed or imported. PR #889 at `fc246d0c` is OPEN/draft with no check rollup,
-  workflow runs or submitted reviews; that is not CI/review success. The current
-  workflow automatically targets master, not this stacked PR's loop-branch base;
-  its existing manual dispatch can be used after final integration without
-  weakening triggers/gates. Initial-pin acceptance mapping and final rerun planning
-  may continue independently; final dependency agreement remains mandatory.
-- A provisional M1-A1–M1-A10 implementation/evidence map and ordered final rerun
-  sequence now identify named owned tests, artifacts, exclusions and still-open
-  closure conditions in the integration notes. This is initial-pin preparation,
-  not the final acceptance audit. Warning-denied rustdoc for both owned crates
-  passes; their doctest selections contain zero tests each and add no executable
-  coverage. All Stage 7 checkboxes remain open until actual final-head evidence.
-- The same completed-upstream prerequisite remains unmet over three consecutive
-  Stage 7 goal turns: CI/dependency preflight, acceptance/rerun preparation and a
-  final read-only handoff check. Shared HEAD remains `15cfb7fc570c5e37f362febe5f9221d3ad58dcd2`
-  with runtime/Miri edits; its loop plan records Stage 7 at 7/8, Stage 8 at 3/8 and
-  Stages 9–10 incomplete. The matching delivery-PR query returned no entries;
-  neither that absence nor the latest commit establishes completed agreement.
-  Independent preparation is pushed as `67f90f20`; dependent work is blocked,
-  not complete. Resume after the owning executor finishes and supplies the full
-  agreed integration SHA, then execute the recorded isolated final rerun sequence.
-  This is an external coordination prerequisite, not a new DSP/service test failure.
-- The user approved these and future necessary edits while emphasizing the loop
-  executor's ongoing finishing work. Before the additive metadata patch, the shared
-  inventory/workflow and repository guidance were checked against the dependency
-  base and concurrent checkout: no overlapping edit was present. Five new DSP
-  inventory rows and its package argument were added without changing existing
-  rows, checker logic or gates. Closed inventory (212 modules), Wasm dependency
-  policy, formatting, test attributes and warning-denied workspace build pass.
-  Protected runtime/loop paths remain unchanged; final upstream agreement remains
-  pending. Continue checking concurrent edits before touching shared files.
+- The earlier Stage 7 preflight at shared HEAD `15cfb7fc` found in-progress
+  runtime/Miri work and no completed agreed revision. PR #889's check/review
+  selections at `fc246d0c` were empty, not passes or approval. That historical
+  waiting condition was recorded in `7a499de2`; the later direct consolidation
+  request superseded it, and source integration is now complete as recorded above.
+- A provisional M1-A1–M1-A10 map and ordered full rerun sequence were prepared in
+  `67f90f20`. They remain initial-pin evidence, not a completed final acceptance
+  audit. Owned warning-denied rustdoc passed; both doctest selections were empty
+  and add no executable coverage. The broader unperformed checks are distinguished
+  from completed smoke-only consolidation in Stage 7 below.
+- Shared metadata additions were approved and additive: five DSP rows at Stage 2
+  (212 modules), then five service rows at Stage 3 (217 modules), plus their Wasm
+  checker arguments. Existing rows/checker logic/gates were not weakened. The
+  later merge also preserved the independently added loop-package argument and
+  the newer runtime/loop implementation.
 
 ## Goals and scope
 
@@ -438,6 +457,22 @@ are recorded, including any regression needing follow-up rather than hidden tuni
 
 ### Stage 7 — Final integration, end-to-end validation and delivery
 
+**Current status: consolidation delivered; original full-stage acceptance partial.**
+The later user request replaced the remaining execution workflow with focused
+consolidation, not the full validation campaign originally proposed here.
+
+Completed under that request:
+
+- [x] Merge milestone `7a499de2` into the current loop branch based on `c33c9ce5`,
+      preserving its runtime/loop work. Source merge: `30d09bbd`.
+- [x] Run the focused integrated native examples/tests, warning-denied build,
+      formatting, Wasm compilation and policies recorded in Current state.
+- [x] Commit and push the merged source to `origin/feat/loop-execution-layer`;
+      verify the remote tip and milestone ancestry.
+
+The original broader closure checklist is retained below, **not marked complete
+by the narrower consolidation**, and is not an active dependency wait for it:
+
 - [ ] Wait for the relevant loop executor to finish; integrate only the agreed
       completed revision in the isolated branch. Resolve this milestone's adapter
       conflicts locally, never by undoing upstream fixes or editing protected APIs.
@@ -457,11 +492,16 @@ are recorded, including any regression needing follow-up rather than hidden tuni
       until approval; report reviewer absence/unavailability without inventing it.
       Changes after validation require relevant reruns. Report any external blocker.
 
-**Verification:** final-head evidence covers all immutable criteria, protected work
-is unchanged except separately approved upstream prerequisites, CI is green and
-review status is explicit. No full feature-parity or remote-hosting claim is made.
+**Original full-scope verification (not claimed by consolidation):** final-head
+evidence covers all immutable criteria, protected work is unchanged except
+separately approved upstream prerequisites, CI is green and review status is
+explicit. No full feature-parity or remote-hosting claim is made.
 
 ## Verification commands and environment
+
+The commands below retain the original broader verification recipe. Only the
+focused subset recorded in Current state was executed for the consolidated code;
+this list itself is not a record of successful final-head runs.
 
 Run commands in the environment selected by `.agents/info/build.md`; on Nix/NixOS
 use `nix develop` or `nix develop --command ...`, and use the provisioned environment
