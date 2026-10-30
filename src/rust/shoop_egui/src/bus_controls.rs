@@ -419,6 +419,7 @@ impl BusControls {
         let features = processor.map(|value| value.features).unwrap_or_default();
         let color = bus_fx_color(fx);
         let fx_button = ui
+<<<<<<< HEAD
             .add_enabled_ui(bus_fx_supported, |ui| {
                 ui.add_sized(
                     [group_width, 22.0],
@@ -428,6 +429,13 @@ impl BusControls {
             .inner
             .on_hover_text(bus_fx_hover_text(fx))
             .on_disabled_hover_text(BackendCapability::BusFx.unavailable_reason());
+=======
+            .add_sized(
+                [group_width, FX_BUTTON_HEIGHT],
+                egui::Button::new(egui::RichText::new("FX").color(color)),
+            )
+            .on_hover_text(bus_fx_hover_text(fx));
+>>>>>>> origin/master
         #[cfg(test)]
         {
             self.test_rects.fx = Some(fx_button.rect);

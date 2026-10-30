@@ -1163,8 +1163,29 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+<<<<<<< HEAD
     /// Whether the backend schedules composite loops itself; otherwise the application does.
     /// Implies `BackendCapability::CompositeLoops`.
+=======
+    fn supports_audio_preview(&self) -> bool {
+        false
+    }
+    fn start_audio_preview(
+        &mut self,
+        _request_id: u64,
+        _sample_rate: u32,
+        _samples: Arc<[f32]>,
+    ) -> Result<()> {
+        Err(anyhow!("Master bus preview is unavailable in this backend"))
+    }
+    fn stop_audio_preview(&mut self) -> Result<()> {
+        Ok(())
+    }
+    fn finished_audio_preview(&self) -> Option<u64> {
+        None
+    }
+
+>>>>>>> origin/master
     fn supports_composite_loops(&self) -> bool {
         false
     }
