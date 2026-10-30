@@ -1,3 +1,4 @@
+use crate::carla_completion::Completion;
 use anyhow::{anyhow, Context, Result};
 use memmap2::{MmapMut, MmapOptions};
 use shoop_plugin_protocol::{
@@ -12,7 +13,7 @@ use tempfile::NamedTempFile;
 
 pub const SHARED_SLOT_COUNT: usize = 3;
 const FILE_HEADER_SIZE: usize = 4096;
-const SLOT_HEADER_SIZE: usize = 64;
+const SLOT_HEADER_SIZE: usize = 128;
 const AUDIO_PLANE_BYTES: usize = MAX_BLOCK_FRAMES * std::mem::size_of::<f32>();
 const AUDIO_REGION_BYTES: usize = MAX_AUDIO_CHANNELS * AUDIO_PLANE_BYTES;
 const AUDIO_INPUT_OFFSET: usize = SLOT_HEADER_SIZE;
@@ -23,6 +24,7 @@ const SLOT_CONTENT_BYTES: usize = MIDI_OUTPUT_OFFSET + MAX_MIDI_BYTES_PER_BLOCK;
 const SLOT_SIZE: usize = SLOT_CONTENT_BYTES.div_ceil(4096) * 4096;
 const FILE_SIZE: usize = FILE_HEADER_SIZE + SHARED_SLOT_COUNT * SLOT_SIZE;
 const MAGIC: &[u8; 8] = b"SHOOPFX\0";
+const COMPLETION_PORT_OFFSET: usize = 64;
 
 const STATE_FREE: u32 = 0;
 const STATE_READY: u32 = 1;
@@ -39,6 +41,11 @@ const AUDIO_INPUTS_OFFSET: usize = 28;
 const AUDIO_OUTPUTS_OFFSET: usize = 32;
 const MIDI_INPUT_BYTES_OFFSET: usize = 36;
 const MIDI_OUTPUT_BYTES_OFFSET: usize = 40;
+const DEADLINE_OFFSET: usize = 48;
+const SCHEDULING_POLICY_OFFSET: usize = 56;
+const SCHEDULING_PRIORITY_OFFSET: usize = 60;
+const SCHEDULING_CEILING_OFFSET: usize = 64;
+const SCHEDULING_PARAMETERS_OFFSET: usize = 68;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SharedBlockToken {
@@ -55,6 +62,8 @@ pub enum SharedBlockError {
     InvalidCapacity,
     MidiOverflow,
     StaleCompletion,
+    NotificationFailure,
+    InvalidDeadline,
 }
 
 impl std::fmt::Display for SharedBlockError {
@@ -72,6 +81,9 @@ pub struct SharedBlockTransport {
     path: PathBuf,
     generation: ProcessGeneration,
     next_slot: usize,
+    completion: Completion,
+    scheduling_ceiling: i32,
+    scheduling_override: Option<crate::carla_scheduling::SchedulingRequest>,
 }
 
 unsafe impl Send for SharedBlockTransport {}
@@ -109,6 +121,9 @@ impl SharedBlockTransport {
         write_u32(&mut mapping, 12, SHARED_SLOT_COUNT as u32);
         write_u64(&mut mapping, 16, generation.0);
         mapping[24..56].copy_from_slice(nonce);
+        let completion =
+            Completion::create().context("could not create Carla completion notification")?;
+        write_u32(&mut mapping, COMPLETION_PORT_OFFSET, completion.port());
         for slot in 0..SHARED_SLOT_COUNT {
             unsafe {
                 std::ptr::write(
@@ -139,6 +154,9 @@ impl SharedBlockTransport {
             _temporary_file: Some(file),
             generation,
             next_slot: 0,
+            completion,
+            scheduling_ceiling: i32::MAX,
+            scheduling_override: None,
         })
     }
 
@@ -170,6 +188,8 @@ impl SharedBlockTransport {
         if &mapping[24..56] != expected_nonce {
             return Err(anyhow!("Carla shared-memory nonce does not match"));
         }
+        let completion = Completion::open(read_u32(&mapping, COMPLETION_PORT_OFFSET))
+            .context("could not open Carla completion notification")?;
         Ok(Self {
             mapping,
             _file: Some(file),
@@ -177,6 +197,9 @@ impl SharedBlockTransport {
             path: path.to_path_buf(),
             generation: expected_generation,
             next_slot: 0,
+            completion,
+            scheduling_ceiling: i32::MAX,
+            scheduling_override: None,
         })
     }
 
@@ -186,6 +209,10 @@ impl SharedBlockTransport {
 
     pub fn generation(&self) -> ProcessGeneration {
         self.generation
+    }
+
+    pub fn set_scheduling_ceiling(&mut self, ceiling: i32) {
+        self.scheduling_ceiling = ceiling;
     }
 
     pub fn occupied_slots(&self) -> usize {
@@ -203,6 +230,32 @@ impl SharedBlockTransport {
         midi_inputs: &[Vec<(u32, Vec<u8>)>],
         midi_input_counts: &[usize],
     ) -> std::result::Result<SharedBlockToken, SharedBlockError> {
+        self.submit_until(
+            sequence,
+            frames,
+            audio_inputs,
+            audio_output_channels,
+            midi_inputs,
+            midi_input_counts,
+            None,
+        )
+    }
+
+    pub fn submit_until(
+        &mut self,
+        sequence: BlockSequence,
+        frames: usize,
+        audio_inputs: &[Vec<f32>],
+        audio_output_channels: usize,
+        midi_inputs: &[Vec<(u32, Vec<u8>)>],
+        midi_input_counts: &[usize],
+        deadline: Option<Instant>,
+    ) -> std::result::Result<SharedBlockToken, SharedBlockError> {
+        let deadline = deadline
+            .map(crate::carla_deadline::encode)
+            .transpose()
+            .map_err(|_| SharedBlockError::InvalidDeadline)?
+            .unwrap_or(0);
         if sequence.0 == 0
             || frames == 0
             || frames > MAX_BLOCK_FRAMES
@@ -274,6 +327,32 @@ impl SharedBlockTransport {
             midi_bytes as u32,
         );
         write_u32(&mut self.mapping, base + MIDI_OUTPUT_BYTES_OFFSET, 0);
+        write_u64(&mut self.mapping, base + DEADLINE_OFFSET, deadline);
+        let scheduling = self.scheduling_override.unwrap_or_else(|| {
+            crate::carla_scheduling::SchedulingRequest::for_consumer(self.scheduling_ceiling)
+        });
+        write_u32(
+            &mut self.mapping,
+            base + SCHEDULING_POLICY_OFFSET,
+            scheduling.policy as u32,
+        );
+        write_u32(
+            &mut self.mapping,
+            base + SCHEDULING_PRIORITY_OFFSET,
+            scheduling.priority as u32,
+        );
+        write_u32(
+            &mut self.mapping,
+            base + SCHEDULING_CEILING_OFFSET,
+            scheduling.ceiling as u32,
+        );
+        for (index, value) in scheduling.parameters.iter().enumerate() {
+            write_u32(
+                &mut self.mapping,
+                base + SCHEDULING_PARAMETERS_OFFSET + index * 4,
+                *value,
+            );
+        }
         self.state(slot).store(STATE_READY, Ordering::Release);
         Ok(SharedBlockToken {
             slot,
@@ -281,6 +360,65 @@ impl SharedBlockTransport {
             generation: self.generation,
             frames,
         })
+    }
+
+    pub(crate) fn submit_scheduling_probe(
+        &mut self,
+        sequence: BlockSequence,
+        request: crate::carla_scheduling::SchedulingRequest,
+        deadline: Instant,
+    ) -> std::result::Result<SharedBlockToken, SharedBlockError> {
+        self.scheduling_override = Some(request);
+        let result = self.submit_until(sequence, 1, &[], 0, &[], &[], Some(deadline));
+        self.scheduling_override = None;
+        result
+    }
+
+    pub(crate) fn worker_is_scheduling_probe(&self, token: SharedBlockToken) -> bool {
+        token.frames == 1
+            && self.worker_audio_input_channels(token) == 0
+            && self.worker_audio_output_channels(token) == 0
+            && read_u32(
+                &self.mapping,
+                slot_offset(token.slot) + MIDI_INPUT_BYTES_OFFSET,
+            ) == 0
+    }
+
+    pub(crate) fn worker_complete_scheduling_probe(
+        &mut self,
+        token: SharedBlockToken,
+        report: crate::carla_scheduling::SchedulingReport,
+    ) -> std::result::Result<(), SharedBlockError> {
+        use crate::carla_scheduling::SchedulingReport;
+        let (mode, policy, priority, error) = match report {
+            SchedulingReport::Normal => (0, 0, 0, 0),
+            SchedulingReport::Realtime { policy, priority } => (1, policy, priority, 0),
+            SchedulingReport::Fallback { error } => (2, 0, 0, error),
+        };
+        let base = slot_offset(token.slot);
+        for (index, value) in [mode, policy, priority, error].into_iter().enumerate() {
+            write_u32(&mut self.mapping, base + 88 + index * 4, value as u32);
+        }
+        self.worker_complete(token, &[], &[])
+    }
+
+    pub(crate) fn scheduling_probe_report(
+        &self,
+        token: SharedBlockToken,
+    ) -> std::result::Result<crate::carla_scheduling::SchedulingReport, SharedBlockError> {
+        use crate::carla_scheduling::SchedulingReport;
+        let base = slot_offset(token.slot);
+        match read_u32(&self.mapping, base + 88) {
+            0 => Ok(SchedulingReport::Normal),
+            1 => Ok(SchedulingReport::Realtime {
+                policy: read_u32(&self.mapping, base + 92) as i32,
+                priority: read_u32(&self.mapping, base + 96) as i32,
+            }),
+            2 => Ok(SchedulingReport::Fallback {
+                error: read_u32(&self.mapping, base + 100) as i32,
+            }),
+            _ => Err(SharedBlockError::InvalidCapacity),
+        }
     }
 
     pub fn wait_and_copy(
@@ -344,7 +482,17 @@ impl SharedBlockTransport {
                 }
                 continue;
             }
-            std::hint::spin_loop();
+            if self
+                .completion
+                .wait(self.state(token.slot), state, deadline)
+                .is_err()
+                && self
+                    .state(token.slot)
+                    .compare_exchange(state, STATE_ABANDONED, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            {
+                return Err(SharedBlockError::NotificationFailure);
+            }
         }
     }
 
@@ -414,7 +562,17 @@ impl SharedBlockTransport {
                 }
                 continue;
             }
-            std::hint::spin_loop();
+            if self
+                .completion
+                .wait(self.state(token.slot), state, deadline)
+                .is_err()
+                && self
+                    .state(token.slot)
+                    .compare_exchange(state, STATE_ABANDONED, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            {
+                return Err(SharedBlockError::NotificationFailure);
+            }
         }
     }
 
@@ -458,6 +616,35 @@ impl SharedBlockTransport {
             });
         }
         None
+    }
+
+    pub(crate) fn worker_scheduling(
+        &self,
+        token: SharedBlockToken,
+    ) -> crate::carla_scheduling::SchedulingRequest {
+        let base = slot_offset(token.slot);
+        crate::carla_scheduling::SchedulingRequest {
+            policy: read_u32(&self.mapping, base + SCHEDULING_POLICY_OFFSET) as i32,
+            priority: read_u32(&self.mapping, base + SCHEDULING_PRIORITY_OFFSET) as i32,
+            ceiling: read_u32(&self.mapping, base + SCHEDULING_CEILING_OFFSET) as i32,
+            parameters: std::array::from_fn(|index| {
+                read_u32(
+                    &self.mapping,
+                    base + SCHEDULING_PARAMETERS_OFFSET + index * 4,
+                )
+            }),
+        }
+    }
+
+    pub fn worker_deadline(
+        &self,
+        token: SharedBlockToken,
+    ) -> std::result::Result<Option<Instant>, SharedBlockError> {
+        crate::carla_deadline::decode(read_u64(
+            &self.mapping,
+            slot_offset(token.slot) + DEADLINE_OFFSET,
+        ))
+        .map_err(|_| SharedBlockError::InvalidDeadline)
     }
 
     pub fn worker_audio_input_channels(&self, token: SharedBlockToken) -> usize {
@@ -563,13 +750,40 @@ impl SharedBlockTransport {
             base + MIDI_OUTPUT_BYTES_OFFSET,
             midi_bytes as u32,
         );
+        self.publish_completion(token)
+    }
+
+    pub fn worker_complete_silence(
+        &mut self,
+        token: SharedBlockToken,
+    ) -> std::result::Result<(), SharedBlockError> {
+        let channels = self.worker_audio_output_channels(token);
+        if channels > MAX_AUDIO_CHANNELS {
+            return Err(SharedBlockError::InvalidCapacity);
+        }
+        let base = slot_offset(token.slot);
+        for channel in 0..channels {
+            let start = base + AUDIO_OUTPUT_OFFSET + channel * AUDIO_PLANE_BYTES;
+            self.mapping[start..start + token.frames * std::mem::size_of::<f32>()].fill(0);
+        }
+        write_u32(&mut self.mapping, base + MIDI_OUTPUT_BYTES_OFFSET, 0);
+        self.publish_completion(token)
+    }
+
+    fn publish_completion(
+        &self,
+        token: SharedBlockToken,
+    ) -> std::result::Result<(), SharedBlockError> {
         match self.state(token.slot).compare_exchange(
             STATE_PROCESSING,
             STATE_DONE,
             Ordering::Release,
             Ordering::Acquire,
         ) {
-            Ok(_) => Ok(()),
+            Ok(_) => self
+                .completion
+                .notify(self.state(token.slot))
+                .map_err(|_| SharedBlockError::NotificationFailure),
             Err(STATE_ABANDONED) => {
                 self.state(token.slot).store(STATE_FREE, Ordering::Release);
                 Err(SharedBlockError::DeadlineMiss)
@@ -857,6 +1071,72 @@ mod tests {
                 &mut Vec::new(),
             )
             .unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn nested_transports_preserve_one_deadline_instead_of_renewing_the_budget() {
+        let generation = ProcessGeneration(1);
+        let nonce = [21; 32];
+        let mut outer = SharedBlockTransport::create(generation, &nonce).unwrap();
+        let mut bridge = SharedBlockTransport::open(outer.path(), generation, &nonce).unwrap();
+        let mut inner = SharedBlockTransport::create(generation, &nonce).unwrap();
+        let mut child = SharedBlockTransport::open(inner.path(), generation, &nonce).unwrap();
+        let deadline = Instant::now() + Duration::from_millis(200);
+        outer
+            .submit_until(
+                BlockSequence(1),
+                8,
+                &[vec![1.0; 8]],
+                1,
+                &[],
+                &[],
+                Some(deadline),
+            )
+            .unwrap();
+        let token = bridge.worker_take().unwrap();
+        let forwarded = bridge.worker_deadline(token).unwrap().unwrap();
+        std::thread::sleep(Duration::from_millis(10));
+        inner
+            .submit_until(
+                BlockSequence(1),
+                8,
+                &[vec![1.0; 8]],
+                1,
+                &[],
+                &[],
+                Some(forwarded),
+            )
+            .unwrap();
+        let token = child.worker_take().unwrap();
+        let received = child.worker_deadline(token).unwrap().unwrap();
+        assert!(forwarded <= deadline + Duration::from_micros(100));
+        assert!(received <= forwarded + Duration::from_micros(100));
+        assert!(received < Instant::now() + Duration::from_millis(195));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn quiesced_worker_publishes_audio_and_midi_silence_without_allocation() {
+        let generation = ProcessGeneration(1);
+        let nonce = [22; 32];
+        let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
+        let mut worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
+        let token = parent
+            .submit(BlockSequence(1), 8, &[vec![1.0; 8]], 1, &[], &[])
+            .unwrap();
+        let worker_token = worker.worker_take().unwrap();
+        assert_no_alloc::assert_no_alloc(|| worker.worker_complete_silence(worker_token).unwrap());
+        let mut output = [vec![1.0; 8]];
+        let mut midi = Vec::new();
+        parent
+            .wait_and_copy(
+                token,
+                Instant::now() + Duration::from_millis(100),
+                &mut output,
+                &mut midi,
+            )
+            .unwrap();
+        assert_eq!(output[0], [0.0; 8]);
+        assert!(midi.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

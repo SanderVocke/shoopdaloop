@@ -12,6 +12,27 @@ bounded failure for that wet block instead of delaying the audio callback.
 Other tracks continue. Recovery starts a new worker generation and restores the
 last confirmed state and desired active state.
 
+Completion waits sleep rather than spinning for an entire buffer. Hardware
+callbacks share one absolute deadline across all Carla chains and nested worker
+waits. UI and state mutations quiesce the affected processor; its wet output is
+silent while control owns it, without making realtime DSP wait for a control
+mutex.
+
+Worker startup verifies scheduling before publishing the realtime endpoint.
+Where a backend exposes its callback priority it is used for startup preflight;
+otherwise the actual callback supplies the scheduling context on first use.
+Linux DSP workers run below their synchronous callers so a callback deadline can
+preempt an overrunning plugin. A dedicated bounded budget monitor demotes a
+CPU-overrunning DSP worker so it cannot starve healthy workers. Windows uses
+scoped Pro Audio MMCSS and macOS inherits the callback's Mach time-constraint
+class. Scheduling denial or exhausted priority range is reported explicitly and
+uses ordinary scheduling with the same bounded sleeping completion wait.
+
+These mechanisms bound audio handoff failures, not arbitrary plugin code.
+Subprocess recovery can terminate a stuck worker. In-process hosting cannot
+safely destroy a plugin that never returns, and does not isolate native crashes.
+OS scheduling and timer resolution still affect latency.
+
 Processed-track controls expose lifecycle and recovery state. **Carla Process
 Logs...** shows bounded stdout and stderr records per generation, including any
 dropped-byte count. Closing a plugin UI or unloading a session is normal

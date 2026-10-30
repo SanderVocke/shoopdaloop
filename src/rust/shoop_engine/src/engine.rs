@@ -311,10 +311,33 @@ impl Engine {
     /// Reaching for `session_mut().process(..)` instead skips engine counters and should only
     /// be used by code that intentionally bypasses the driver boundary.
     pub fn run_cycle(&mut self, n_frames: usize) {
+        self.run_cycle_inner(
+            n_frames,
+            #[cfg(not(target_arch = "wasm32"))]
+            None,
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn run_cycle_until(&mut self, n_frames: usize, deadline: std::time::Instant) {
+        self.run_cycle_inner(n_frames, Some(deadline));
+    }
+
+    fn run_cycle_inner(
+        &mut self,
+        n_frames: usize,
+        #[cfg(not(target_arch = "wasm32"))] deadline: Option<std::time::Instant>,
+    ) {
         let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
         let started = shoop_tracing::is_realtime_cpu_timing_enabled().then(std::time::Instant::now);
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
-            crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.cycle_inner(n_frames))
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                self.cycle_inner(
+                    n_frames,
+                    #[cfg(not(target_arch = "wasm32"))]
+                    deadline,
+                )
+            })
         });
         self.finish_callback_timing(started, n_frames);
         shoop_tracing::realtime_frame_mark!("engine.callback");
@@ -345,11 +368,25 @@ impl Engine {
 
     fn process_inner(&mut self, n_frames: usize) {
         self.apply_commands_and_publish_graph_staleness();
-        self.cycle_inner(n_frames);
+        self.cycle_inner(
+            n_frames,
+            #[cfg(not(target_arch = "wasm32"))]
+            None,
+        );
     }
 
-    fn cycle_inner(&mut self, n_frames: usize) {
+    fn cycle_inner(
+        &mut self,
+        n_frames: usize,
+        #[cfg(not(target_arch = "wasm32"))] deadline: Option<std::time::Instant>,
+    ) {
         let _span = shoop_tracing::realtime_span!("engine.rt.cycle", value = n_frames);
+        #[cfg(not(target_arch = "wasm32"))]
+        match deadline {
+            Some(deadline) => self.session.process_until(n_frames, deadline),
+            None => self.session.process(n_frames),
+        }
+        #[cfg(target_arch = "wasm32")]
         self.session.process(n_frames);
         self.stats.cycles.fetch_add(1, Ordering::Relaxed);
         self.stats

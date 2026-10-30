@@ -872,6 +872,7 @@ trait MainThreadUiTarget: Send + Sync {
 }
 
 struct NativeInstance {
+    execution: crate::carla_execution::ExecutionGate,
     runtime: Option<Arc<CarlaRuntime>>,
     descriptor: NonNull<NativePluginDescriptor>,
     handle: NonNull<c_void>,
@@ -883,9 +884,8 @@ struct NativeInstance {
     cleaned: AtomicBool,
 }
 
-// The Carla Native contract explicitly allows DSP and main-thread UI callbacks
-// to overlap. NativeInstance exposes only those two callback domains, while
-// HostContext isolates their mutable callback state.
+// UI/state mutation excludes DSP through atomic block-boundary admission.
+// The control owner may wait; DSP emits silence instead of waiting for control.
 unsafe impl Send for NativeInstance {}
 unsafe impl Sync for NativeInstance {}
 
@@ -897,6 +897,7 @@ impl NativeInstance {
 
 impl MainThreadUiTarget for NativeInstance {
     fn set_visible(&self, visible: bool) -> Result<()> {
+        let _control = self.execution.control();
         if self.cleaned.load(Ordering::Acquire) {
             bail!("Carla Native UI has already been cleaned up");
         }
@@ -921,6 +922,10 @@ impl MainThreadUiTarget for NativeInstance {
         if self.cleaned.load(Ordering::Acquire) || !self.is_visible() {
             return;
         }
+        let _control = self.execution.control();
+        if self.cleaned.load(Ordering::Acquire) || !self.is_visible() {
+            return;
+        }
         if let Some(idle) = self.descriptor().ui_idle {
             let _span = tracing::trace_span!("engine.fx.ui.idle").entered();
             unsafe { idle(self.handle.as_ptr()) };
@@ -928,6 +933,7 @@ impl MainThreadUiTarget for NativeInstance {
     }
 
     fn cleanup(&self) {
+        let _control = self.execution.control();
         if self.cleaned.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -1309,6 +1315,7 @@ impl CarlaNativeHost {
         let input_pointers = audio_inputs.iter_mut().map(Vec::as_mut_ptr).collect();
         let output_pointers = audio_outputs.iter_mut().map(Vec::as_mut_ptr).collect();
         let instance = Arc::new(NativeInstance {
+            execution: Default::default(),
             runtime: Some(runtime),
             descriptor,
             handle,
@@ -1360,8 +1367,11 @@ impl CarlaNativeHost {
 impl Drop for CarlaNativeHost {
     fn drop(&mut self) {
         if self.active {
-            if let Some(deactivate) = self.descriptor().deactivate {
-                unsafe { deactivate(self.instance.handle.as_ptr()) };
+            let _control = self.instance.execution.control();
+            if !self.instance.cleaned.load(Ordering::Acquire) {
+                if let Some(deactivate) = self.descriptor().deactivate {
+                    unsafe { deactivate(self.instance.handle.as_ptr()) };
+                }
             }
             self.active = false;
         }
@@ -1392,6 +1402,11 @@ impl CarlaProcessor for CarlaNativeHost {
     }
 
     fn set_active(&mut self, active: bool) {
+        let _control = self.instance.execution.control();
+        if self.instance.cleaned.load(Ordering::Acquire) {
+            self.active = false;
+            return;
+        }
         if active == self.active {
             return;
         }
@@ -1424,6 +1439,10 @@ impl CarlaProcessor for CarlaNativeHost {
 
     #[tracing::instrument(name = "engine.plugin.save_state", skip_all)]
     fn save_state(&mut self) -> Result<String> {
+        let _control = self.instance.execution.control();
+        if self.instance.cleaned.load(Ordering::Acquire) {
+            bail!("Carla Native host has been cleaned up");
+        }
         let get_state = self
             .descriptor()
             .get_state
@@ -1450,6 +1469,10 @@ impl CarlaProcessor for CarlaNativeHost {
     fn restore_state(&mut self, state: &str) -> Result<()> {
         let bytes = decode_state(state, self.info.chain_type)?;
         let state = CString::new(bytes)?;
+        let _control = self.instance.execution.control();
+        if self.instance.cleaned.load(Ordering::Acquire) {
+            bail!("Carla Native host has been cleaned up");
+        }
         let set_state = self
             .descriptor()
             .set_state
@@ -1552,6 +1575,13 @@ impl CarlaProcessor for CarlaNativeHost {
             .host_context
             .midi_output_count
             .store(0, Ordering::Relaxed);
+        let dsp = self.instance.execution.try_dsp();
+        if dsp.is_none() || self.instance.cleaned.load(Ordering::Acquire) {
+            for output in &mut self.audio_outputs {
+                output[..frames].fill(0.0);
+            }
+            return Ok(());
+        }
         self.instance
             .host_context
             .process_frames
@@ -1692,6 +1722,7 @@ mod tests {
         });
         let host_descriptor = Box::new(unsafe { std::mem::zeroed() });
         let instance = Arc::new(NativeInstance {
+            execution: Default::default(),
             runtime: None,
             descriptor: descriptor_pointer,
             handle,

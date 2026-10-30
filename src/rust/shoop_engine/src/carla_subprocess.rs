@@ -87,6 +87,7 @@ pub enum CarlaWorkerTestMode {
     ProcessError,
     Hang,
     DelayOnce,
+    CpuBusy,
     UiClose,
     FloodLogs,
     MalformedHandshake,
@@ -103,6 +104,7 @@ impl std::str::FromStr for CarlaWorkerTestMode {
             "process-error" => Ok(Self::ProcessError),
             "hang" => Ok(Self::Hang),
             "delay-once" => Ok(Self::DelayOnce),
+            "cpu-busy" => Ok(Self::CpuBusy),
             "ui-close" => Ok(Self::UiClose),
             "flood-logs" => Ok(Self::FloodLogs),
             "malformed-handshake" => Ok(Self::MalformedHandshake),
@@ -120,6 +122,7 @@ impl fmt::Display for CarlaWorkerTestMode {
             Self::ProcessError => "process-error",
             Self::Hang => "hang",
             Self::DelayOnce => "delay-once",
+            Self::CpuBusy => "cpu-busy",
             Self::UiClose => "ui-close",
             Self::FloodLogs => "flood-logs",
             Self::MalformedHandshake => "malformed-handshake",
@@ -192,6 +195,7 @@ fn run_shared_worker(
     processed_blocks: Arc<AtomicU64>,
     notification: UdpSocket,
     notification_token: [u8; 16],
+    mut scheduling: crate::carla_scheduling::WorkerScheduling,
 ) {
     let mut midi_inputs = CarlaMidiBuffer::new(
         MAX_MIDI_EVENTS_PER_BLOCK,
@@ -221,8 +225,33 @@ fn run_shared_worker(
             }
             continue;
         };
+        let request = transport.worker_scheduling(token);
+        let deadline = match transport.worker_deadline(token) {
+            Ok(deadline) => deadline,
+            Err(error) => {
+                eprintln!("Carla worker deadline failed: {error}");
+                break;
+            }
+        };
+        let (priority, report) = scheduling.enter(request, deadline);
+        if transport.worker_is_scheduling_probe(token) {
+            drop(priority);
+            scheduling.report(request, report);
+            if let Err(error) = transport.worker_complete_scheduling_probe(token, report) {
+                eprintln!("Carla scheduling probe failed: {error}");
+                break;
+            }
+            continue;
+        }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
-            let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
+            let mut host = match host.try_lock() {
+                Ok(host) => host,
+                Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    transport.worker_complete_silence(token)?;
+                    return Ok(());
+                }
+            };
             let host = host
                 .as_mut()
                 .ok_or_else(|| anyhow!("shared block arrived before Carla instantiation"))?;
@@ -249,7 +278,11 @@ fn run_shared_worker(
                 }
                 host.set_midi_input_events(0, &refs[..midi_inputs.as_slice().len()])?;
             }
-            host.process(token.frames)?;
+            if let Some(deadline) = transport.worker_deadline(token)? {
+                host.process_until(token.frames, deadline)?;
+            } else {
+                host.process(token.frames)?;
+            }
             midi_outputs.clear();
             if info.midi_outputs > 0 {
                 host.fill_midi_output_events(0, &mut midi_outputs)?;
@@ -272,6 +305,8 @@ fn run_shared_worker(
             processed_blocks.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
+        drop(priority);
+        scheduling.report(request, report);
         match result {
             Ok(Ok(())) => {}
             Ok(Err(error))
@@ -323,6 +358,10 @@ fn instantiate_worker_host(
             },
             CarlaWorkerTestMode::Hang => FakeProcessorBehavior {
                 process_delay: Duration::from_secs(5),
+                ..Default::default()
+            },
+            CarlaWorkerTestMode::CpuBusy => FakeProcessorBehavior {
+                process_busy_delay: Duration::from_millis(500),
                 ..Default::default()
             },
             CarlaWorkerTestMode::DelayOnce => FakeProcessorBehavior {
@@ -389,6 +428,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
     let mut external_ui: Option<Arc<dyn CarlaExternalUi>> = None;
     let stop = Arc::new(AtomicBool::new(false));
     let processed_blocks = Arc::new(AtomicU64::new(0));
+    let (startup_sender, startup_receiver) = std::sync::mpsc::sync_channel(1);
     let shared_thread = thread::Builder::new()
         .name("carla-worker-realtime".to_owned())
         .spawn({
@@ -399,6 +439,16 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                 .try_into()
                 .expect("nonce prefix has fixed size");
             move || {
+                let scheduling = match crate::carla_scheduling::WorkerScheduling::new() {
+                    Ok(scheduling) => {
+                        let _ = startup_sender.send(Ok(()));
+                        scheduling
+                    }
+                    Err(error) => {
+                        let _ = startup_sender.send(Err(error));
+                        return;
+                    }
+                };
                 run_shared_worker(
                     shared_transport,
                     host,
@@ -406,6 +456,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     processed_blocks,
                     notification,
                     notification_token,
+                    scheduling,
                 )
             }
         })?;
@@ -413,6 +464,9 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
         stop,
         thread: Some(shared_thread),
     };
+    startup_receiver
+        .recv_timeout(STARTUP_TIMEOUT)
+        .context("Carla DSP worker startup failed")??;
     let mut status = WorkerStatus {
         lifecycle: LifecycleState::Starting,
         generation: options.generation,
@@ -1451,7 +1505,54 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
         Ok(())
     }
 
+    fn set_scheduling_ceiling(&mut self, ceiling: i32) {
+        self.shared_transport.set_scheduling_ceiling(ceiling);
+    }
+
+    fn prepare_scheduling(
+        &mut self,
+        policy: i32,
+        priority: i32,
+        ceiling: i32,
+        parameters: [u32; 4],
+        deadline: Instant,
+    ) -> Result<()> {
+        let request = crate::carla_scheduling::SchedulingRequest {
+            policy,
+            priority,
+            ceiling,
+            parameters,
+        };
+        self.block_sequence = self.block_sequence.saturating_add(1);
+        let token = self.shared_transport.submit_scheduling_probe(
+            BlockSequence(self.block_sequence),
+            request,
+            deadline,
+        )?;
+        self.notification.send(&self.notification_token)?;
+        self.shared_transport
+            .wait_and_copy(token, deadline, &mut [], &mut Vec::new())?;
+        let report = self.shared_transport.scheduling_probe_report(token)?;
+        if matches!(
+            report,
+            crate::carla_scheduling::SchedulingReport::Fallback { .. }
+        ) {
+            tracing::warn!(
+                ?request,
+                ?report,
+                "Carla child startup uses safe sleeping scheduling fallback"
+            );
+        } else {
+            tracing::info!(?request, ?report, "Carla child startup scheduling verified");
+        }
+        Ok(())
+    }
+
     fn process(&mut self, frames: usize) -> Result<()> {
+        self.process_until(frames, Instant::now() + self.process_timeout)
+    }
+
+    fn process_until(&mut self, frames: usize, deadline: Instant) -> Result<()> {
         if self.serialized_reference_transport {
             return self.process_serialized_reference(frames);
         }
@@ -1463,19 +1564,26 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
             self.clear_outputs(frames.min(MAX_BLOCK_FRAMES));
             return Err(anyhow!("invalid subprocess block size {frames}"));
         }
+        if Instant::now() >= deadline {
+            self.deadline_misses = self.deadline_misses.saturating_add(1);
+            self.degraded = true;
+            self.clear_outputs(frames);
+            return Ok(());
+        }
         self.block_sequence = self.block_sequence.saturating_add(1);
         let token = match {
             let _span = shoop_tracing::realtime_span_detail!(
                 "engine.rt.fx.subprocess_submit",
                 value = frames
             );
-            self.shared_transport.submit(
+            self.shared_transport.submit_until(
                 BlockSequence(self.block_sequence),
                 frames,
                 &self.audio_inputs,
                 self.audio_outputs.len(),
                 &self.midi_inputs,
                 &self.midi_input_counts,
+                Some(deadline),
             )
         } {
             Ok(token) => {
@@ -1511,7 +1619,7 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
             self.shared_midi_output_count = 0;
             self.shared_transport.wait_and_copy_reusing_midi(
                 token,
-                Instant::now() + self.process_timeout,
+                deadline,
                 &mut self.audio_outputs,
                 &mut self.shared_midi_outputs,
                 &mut self.shared_midi_output_count,
@@ -1617,6 +1725,7 @@ pub struct SupervisedCarlaProcessor {
     nominal_buffer_size: u32,
     chain_id: ChainId,
     test_mode: Option<CarlaWorkerTestMode>,
+    scheduling_request: Option<crate::carla_scheduling::SchedulingRequest>,
     generation: ProcessGeneration,
     current: Option<SubprocessCarlaProcessor>,
     previous_logs: VecDeque<CarlaGenerationLog>,
@@ -1708,6 +1817,7 @@ impl SupervisedCarlaProcessor {
             nominal_buffer_size,
             chain_id,
             test_mode,
+            scheduling_request: None,
             generation: ProcessGeneration(0),
             current: None,
             previous_logs: VecDeque::new(),
@@ -1783,6 +1893,21 @@ impl SupervisedCarlaProcessor {
                 return;
             }
         };
+        if let Some(request) = self.scheduling_request {
+            if let Err(error) = current.prepare_scheduling(
+                request.policy,
+                request.priority,
+                request.ceiling,
+                request.parameters,
+                Instant::now() + CONTROL_TIMEOUT,
+            ) {
+                self.lifecycle = CarlaProcessorLifecycle::Unavailable;
+                self.exit_kind = WorkerExitKind::StartupFailure;
+                self.crash_summary = Some(format!("worker scheduling startup failed: {error}"));
+                self.current = Some(current);
+                return;
+            }
+        }
         if self.has_checkpoint {
             if let Err(error) = current.restore_state(&self.checkpoint) {
                 self.lifecycle = CarlaProcessorLifecycle::Unavailable;
@@ -2063,7 +2188,42 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
         }
     }
 
+    fn prepare_scheduling(
+        &mut self,
+        policy: i32,
+        priority: i32,
+        ceiling: i32,
+        parameters: [u32; 4],
+        deadline: Instant,
+    ) -> Result<()> {
+        self.scheduling_request = Some(crate::carla_scheduling::SchedulingRequest {
+            policy,
+            priority,
+            ceiling,
+            parameters,
+        });
+        self.current
+            .as_mut()
+            .ok_or_else(|| anyhow!("Carla worker is unavailable"))?
+            .prepare_scheduling(policy, priority, ceiling, parameters, deadline)
+    }
+
+    fn set_scheduling_ceiling(&mut self, ceiling: i32) {
+        if let Some(current) = self.current.as_mut() {
+            current.set_scheduling_ceiling(ceiling);
+        }
+    }
+
     fn process(&mut self, frames: usize) -> Result<()> {
+        let timeout = self
+            .current
+            .as_ref()
+            .map(|current| current.process_timeout)
+            .unwrap_or_default();
+        self.process_until(frames, Instant::now() + timeout)
+    }
+
+    fn process_until(&mut self, frames: usize, deadline: Instant) -> Result<()> {
         if self.lifecycle != CarlaProcessorLifecycle::Running {
             return Err(anyhow!("Carla worker is not running"));
         }
@@ -2071,7 +2231,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
             .current
             .as_mut()
             .ok_or_else(|| anyhow!("Carla worker is unavailable"))?
-            .process(frames);
+            .process_until(frames, deadline);
         if let Err(error) = &result {
             self.lifecycle = CarlaProcessorLifecycle::Crashed;
             self.exit_kind = if self

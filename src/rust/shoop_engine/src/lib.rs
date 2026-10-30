@@ -15,9 +15,19 @@ pub mod audio_preview;
 pub mod basic_loop;
 pub mod buffer_queue;
 pub mod builtin_fx;
+#[cfg(target_os = "linux")]
+mod carla_budget;
+#[cfg(not(target_arch = "wasm32"))]
+mod carla_completion;
+#[cfg(not(target_arch = "wasm32"))]
+mod carla_deadline;
+#[cfg(not(target_arch = "wasm32"))]
+mod carla_execution;
 #[cfg(feature = "carla")]
 pub mod carla_native;
 pub mod carla_processor;
+#[cfg(not(target_arch = "wasm32"))]
+mod carla_scheduling;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod carla_shared_memory;
 #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]

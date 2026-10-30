@@ -345,6 +345,8 @@ impl jack::ProcessHandler for JackProcess {
 impl JackProcess {
     fn process_inner(&mut self, ps: &jack::ProcessScope) -> jack::Control {
         let n_frames = ps.n_frames() as usize;
+        let deadline = Instant::now()
+            + Duration::from_secs_f64(n_frames as f64 / self.sample_rate.max(1) as f64);
         let _driver_kind =
             shoop_tracing::realtime_span!("engine.rt.driver", value = AudioDriverType::Jack as i32);
         let _span = shoop_tracing::realtime_span!("engine.rt.driver.jack", value = n_frames);
@@ -414,7 +416,7 @@ impl JackProcess {
 
         // `run_cycle` on the engine, not `process` on the session: the engine is what updates
         // the counters and publishes the state snapshot every reader polls.
-        engine.run_cycle(n_frames);
+        engine.run_cycle_until(n_frames, deadline);
         let session = engine.session();
         stale_graph_cycles.store(session.n_stale_cycles(), Ordering::Relaxed);
 
@@ -989,6 +991,8 @@ impl CpalBackend {
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
                     let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
+                    let deadline = Instant::now()
+                        + Duration::from_secs_f64(n_frames as f64 / sample_rate.max(1) as f64);
                     let _driver_kind = shoop_tracing::realtime_span!(
                         "engine.rt.driver",
                         value = AudioDriverType::Cpal as i32
@@ -1086,7 +1090,7 @@ impl CpalBackend {
                         }
                     }
 
-                    engine.run_cycle(n_frames);
+                    engine.run_cycle_until(n_frames, deadline);
                     let session = engine.session();
                     stale_cb.store(session.n_stale_cycles(), Ordering::Relaxed);
 
@@ -3075,10 +3079,32 @@ impl BackendSession {
                             }
                         };
                     match host.and_then(|host| {
-                        engine::carla_processor::spawn_processor_bridge(
-                            host,
-                            sample_rate,
-                            buffer_size,
+                        #[cfg(all(target_os = "linux", feature = "jack"))]
+                        let request = self.shared.jack().map(|jack| {
+                            let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+                            let client = jack.client().raw();
+                            let maximum = unsafe { jack_sys::jack_client_max_real_time_priority(client) };
+                            let callback = unsafe { jack_sys::jack_client_real_time_priority(client) };
+                            let ceiling = if maximum > 0 { maximum } else {
+                                log::warn!("JACK maximum priority unavailable; limiting Carla workers to the observed callback priority");
+                                i32::MAX
+                            };
+                            if callback > 0 {
+                                let ceiling = ceiling.min(callback);
+                                engine::carla_scheduling::SchedulingRequest {
+                                    policy: libc::SCHED_FIFO,
+                                    priority: ceiling.saturating_sub(1),
+                                    ceiling,
+                                    parameters: [0; 4],
+                                }
+                            } else {
+                                engine::carla_scheduling::SchedulingRequest::for_consumer(ceiling)
+                            }
+                        }).unwrap_or_else(|| engine::carla_scheduling::SchedulingRequest::for_consumer(i32::MAX));
+                        #[cfg(not(all(target_os = "linux", feature = "jack")))]
+                        let request = engine::carla_scheduling::SchedulingRequest::for_consumer(i32::MAX);
+                        engine::carla_processor::spawn_processor_bridge_for_backend(
+                            host, sample_rate, buffer_size, request,
                         )
                     }) {
                         Ok((control, realtime)) => {
