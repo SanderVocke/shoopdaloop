@@ -4,8 +4,8 @@ use egui_material_icons::icons::{
 };
 
 use crate::{
-    colors, optimistic_value::OptimisticValue, DefaultRecordingAction, GlobalControlAction,
-    GlobalControlState,
+    add_with_capability, colors, optimistic_value::OptimisticValue, BackendCapability,
+    DefaultRecordingAction, GlobalControlAction, GlobalControlState,
 };
 
 const CONTROL_BUTTON_SIZE: [f32; 2] = [34.0, 28.0];
@@ -104,19 +104,31 @@ impl GlobalControls {
                         self.new_session_requested = true;
                         ui.close();
                     }
-                    let save_session = ui.button("Save session…");
+                    let save_session = add_with_capability(
+                        ui,
+                        BackendCapability::SessionCapture,
+                        egui::Button::new("Save session…"),
+                    );
                     self.record_rect(TestGlobalControl::SaveSession, &save_session);
                     if save_session.clicked() {
                         self.save_session_requested = true;
                         ui.close();
                     }
-                    let load_session = ui.button("Load session…");
+                    let load_session = add_with_capability(
+                        ui,
+                        BackendCapability::SessionContentLoad,
+                        egui::Button::new("Load session…"),
+                    );
                     self.record_rect(TestGlobalControl::LoadSession, &load_session);
                     if load_session.clicked() {
                         self.load_session_requested = true;
                         ui.close();
                     }
-                    let load_session_url = ui.button("Load session from URL…");
+                    let load_session_url = add_with_capability(
+                        ui,
+                        BackendCapability::SessionContentLoad,
+                        egui::Button::new("Load session from URL…"),
+                    );
                     self.record_rect(TestGlobalControl::LoadSessionUrl, &load_session_url);
                     if load_session_url.clicked() {
                         self.load_session_url_requested = true;
@@ -146,11 +158,19 @@ impl GlobalControls {
             if response.clicked() {
                 actions.push(GlobalControlAction::StopAll);
             }
-            let response = icon_button(
-                ui,
-                ICON_VOLUME_OFF,
-                "MIDI panic: send All Sound Off to all monitored MIDI tracks",
-            );
+            let response = ui
+                .add_enabled_ui(
+                    crate::supports(ui.ctx(), BackendCapability::MidiInjection),
+                    |ui| {
+                        icon_button(
+                            ui,
+                            ICON_VOLUME_OFF,
+                            "MIDI panic: send All Sound Off to all monitored MIDI tracks",
+                        )
+                    },
+                )
+                .inner
+                .on_disabled_hover_text(BackendCapability::MidiInjection.unavailable_reason());
             self.record_rect(TestGlobalControl::MidiPanic, &response);
             if response.clicked() {
                 actions.push(GlobalControlAction::MidiPanic);
@@ -223,11 +243,18 @@ impl GlobalControls {
                     },
                 ]
             };
-            let response = layered_icon_button(
-                ui,
-                recording_icons,
-                "Default recording action: click to switch between record and grab",
-            );
+            let grab_available =
+                !recording_is_record || crate::supports(ui.ctx(), BackendCapability::Grab);
+            let response = ui
+                .add_enabled_ui(grab_available, |ui| {
+                    layered_icon_button(
+                        ui,
+                        recording_icons,
+                        "Default recording action: click to switch between record and grab",
+                    )
+                })
+                .inner
+                .on_disabled_hover_text(BackendCapability::Grab.unavailable_reason());
             self.record_rect(TestGlobalControl::DefaultRecordingAction, &response);
             if response.clicked() {
                 let next = match state.default_recording_action {
@@ -768,6 +795,40 @@ mod tests {
             ),
             vec![GlobalControlAction::SetAutoArmTrackInputs(false)]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn unsupported_global_controls_are_disabled() {
+        let state = GlobalControlState::default();
+        for control in [
+            TestGlobalControl::SaveSession,
+            TestGlobalControl::LoadSession,
+            TestGlobalControl::LoadSessionUrl,
+            TestGlobalControl::NewSession,
+            TestGlobalControl::DefaultRecordingAction,
+            TestGlobalControl::MidiPanic,
+        ] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            crate::set_backend_capabilities(&context, crate::BackendCapabilities::NONE);
+            let mut controls = GlobalControls::default();
+            if !matches!(
+                control,
+                TestGlobalControl::DefaultRecordingAction | TestGlobalControl::MidiPanic
+            ) {
+                assert!(
+                    click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty()
+                );
+            }
+            assert!(click(&context, &mut controls, &state, control).is_empty());
+            assert!(!controls.take_save_session_requested());
+            assert!(!controls.take_load_session_requested());
+            assert!(!controls.take_load_session_url_requested());
+            assert_eq!(
+                controls.take_new_session_requested(),
+                matches!(control, TestGlobalControl::NewSession)
+            );
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

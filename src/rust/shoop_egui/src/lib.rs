@@ -106,6 +106,49 @@ fn script_markdown_base_uri(script_path: &str) -> String {
     }
 }
 
+const BACKEND_CAPABILITIES_ID: &str = "shoop_backend_capabilities";
+
+pub(crate) fn set_backend_capabilities(context: &egui::Context, capabilities: BackendCapabilities) {
+    context.data_mut(|data| data.insert_temp(egui::Id::new(BACKEND_CAPABILITIES_ID), capabilities));
+}
+
+/// The capabilities published by the application; every feature when none were published.
+pub(crate) fn backend_capabilities(context: &egui::Context) -> BackendCapabilities {
+    context
+        .data(|data| data.get_temp(egui::Id::new(BACKEND_CAPABILITIES_ID)))
+        .unwrap_or_default()
+}
+
+pub(crate) fn supports(context: &egui::Context, capability: BackendCapability) -> bool {
+    backend_capabilities(context).supports(capability)
+}
+
+/// Adds a widget that is disabled, with the reason on hover, when the backend lacks a capability.
+pub(crate) fn add_with_capability(
+    ui: &mut egui::Ui,
+    capability: BackendCapability,
+    widget: impl egui::Widget,
+) -> egui::Response {
+    add_with_capabilities(ui, &[capability], widget)
+}
+
+pub(crate) fn add_with_capabilities(
+    ui: &mut egui::Ui,
+    capabilities: &[BackendCapability],
+    widget: impl egui::Widget,
+) -> egui::Response {
+    let supported = backend_capabilities(ui.ctx());
+    match capabilities
+        .iter()
+        .find(|capability| !supported.supports(**capability))
+    {
+        Some(missing) => ui
+            .add_enabled(false, widget)
+            .on_disabled_hover_text(missing.unavailable_reason()),
+        None => ui.add(widget),
+    }
+}
+
 fn control_safe_scroll_source() -> egui::scroll_area::ScrollSource {
     egui::scroll_area::ScrollSource {
         drag: egui::scroll_area::DragScroll::Never,

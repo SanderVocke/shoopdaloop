@@ -1,8 +1,8 @@
 use crate::{
-    builtin_fx_editor::BuiltInFxEditor, colors, dial::paint_dial,
-    meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue, BusAction, BusId,
-    BusState, FxLifecycle, TrackFxState, TrackProcessorDescriptor, MAX_BUS_GAIN_DB,
-    MIN_BUS_GAIN_DB,
+    add_with_capability, builtin_fx_editor::BuiltInFxEditor, colors, dial::paint_dial,
+    meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue, BackendCapability,
+    BusAction, BusId, BusState, FxLifecycle, TrackFxState, TrackProcessorDescriptor,
+    MAX_BUS_GAIN_DB, MIN_BUS_GAIN_DB,
 };
 use egui_material_icons::icons::{
     ICON_DRAG_INDICATOR, ICON_MORE_VERT, ICON_VOLUME_MUTE, ICON_VOLUME_UP,
@@ -151,7 +151,11 @@ impl BusControls {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let _menu =
                                 ui.menu_button(ICON_MORE_VERT.rich_text().size(17.0), |ui| {
-                                    let remove = ui.button("Delete bus");
+                                    let remove = add_with_capability(
+                                        ui,
+                                        BackendCapability::BusManagement,
+                                        egui::Button::new("Delete bus"),
+                                    );
                                     #[cfg(test)]
                                     {
                                         self.test_rects.remove = Some(remove.rect);
@@ -372,19 +376,25 @@ impl BusControls {
         group_width: f32,
         actions: &mut Vec<BusAction>,
     ) {
+        let bus_fx_supported = crate::supports(ui.ctx(), BackendCapability::BusFx);
         let Some(fx) = &state.fx else {
             let mut selected = String::from("none");
-            egui::ComboBox::from_id_salt(("bus_fx_processor", state.id.raw()))
-                .selected_text("No FX")
-                .show_ui(ui, |ui| {
-                    for entry in catalog.iter().filter(|entry| entry.available) {
-                        ui.selectable_value(
-                            &mut selected,
-                            entry.id.as_str().to_owned(),
-                            entry.label.as_str(),
-                        );
-                    }
-                });
+            ui.add_enabled_ui(bus_fx_supported, |ui| {
+                egui::ComboBox::from_id_salt(("bus_fx_processor", state.id.raw()))
+                    .selected_text("No FX")
+                    .show_ui(ui, |ui| {
+                        for entry in catalog.iter().filter(|entry| entry.available) {
+                            ui.selectable_value(
+                                &mut selected,
+                                entry.id.as_str().to_owned(),
+                                entry.label.as_str(),
+                            );
+                        }
+                    })
+                    .response
+            })
+            .inner
+            .on_disabled_hover_text(BackendCapability::BusFx.unavailable_reason());
             if selected != "none" {
                 if let Some(entry) = catalog.iter().find(|entry| entry.id.as_str() == selected) {
                     actions.push(BusAction::FxProcessorChanged(Some(entry.id.clone())));
@@ -395,11 +405,15 @@ impl BusControls {
         let features = processor.map(|value| value.features).unwrap_or_default();
         let color = bus_fx_color(fx);
         let fx_button = ui
-            .add_sized(
-                [group_width, 22.0],
-                egui::Button::new(egui::RichText::new("FX").color(color)),
-            )
-            .on_hover_text(bus_fx_hover_text(fx));
+            .add_enabled_ui(bus_fx_supported, |ui| {
+                ui.add_sized(
+                    [group_width, 22.0],
+                    egui::Button::new(egui::RichText::new("FX").color(color)),
+                )
+            })
+            .inner
+            .on_hover_text(bus_fx_hover_text(fx))
+            .on_disabled_hover_text(BackendCapability::BusFx.unavailable_reason());
         #[cfg(test)]
         {
             self.test_rects.fx = Some(fx_button.rect);

@@ -15,9 +15,10 @@ use anyhow::{anyhow, Result};
 #[cfg(test)]
 use shoop_app_api::TrackLatencySpec;
 use shoop_app_api::{
-    AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, AudioChannelMappingState,
-    AudioChannelSelectionState, AudioDriverConfig, AudioDriverRuntimeState, AudioDriverState,
-    AudioDriverSwitchState, AudioDriverSwitchStatus, BusAction, BusChannelId, BusChannelState,
+    AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
+    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverConfig,
+    AudioDriverRuntimeState, AudioDriverState, AudioDriverSwitchState, AudioDriverSwitchStatus,
+    BackendCapabilities, BackendCapability, BusAction, BusChannelId, BusChannelState,
     BusCreationResult, BusId, BusSpec, BusState, ChannelId, ClickSoundDescriptor, ClickTrackKind,
     ClickTrackPreviewStatus, ClickTrackRequest, ClickTrackState, CompositeDetailsState,
     CompositeEventDetailsState, CompositeEventId, CompositeTrackDetailsState,
@@ -26,13 +27,13 @@ use shoop_app_api::{
     GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState, IoTaskStatus,
     KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode,
     LoopState, MidiEventState, MidiSequenceChannelState, MixerRouteErrorState, MixerRouteState,
-    PendingConnectionState, PendingMixerRouteState, PianoAction, PortDataType, PortDirection,
-    PortId, PortRole, ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState,
-    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
-    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
-    TrackControlState, TrackCreationResult, TrackId, TrackLatencyState, TrackPortOwnerKind,
-    TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState, TrackTopology,
-    WaveformChannelState,
+    NotificationLevel, PendingConnectionState, PendingMixerRouteState, PianoAction, PortDataType,
+    PortDirection, PortId, PortRole, ProcessorLatencyAdjustmentState,
+    RecordingOffsetAdjustmentState, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
+    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
+    TaskId, TrackAction, TrackControlState, TrackCreationResult, TrackId, TrackLatencyState,
+    TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
+    TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     canonical_midi_start_state, default_bus_channel_labels, Backend, BackendAsyncResult,
@@ -647,6 +648,7 @@ fn update_application(
         backend.advance(elapsed);
     }
     model.age_pending_connections(backend, elapsed);
+    model.capabilities = backend.capabilities();
     match backend.poll() {
         Ok(snapshot) => {
             model.clear_periodic_failure("backend.poll");
@@ -744,6 +746,10 @@ struct ApplicationModel {
     status: StatusState,
     last_callback_budget_overruns: u32,
     audio_drivers: AudioDriverRuntimeState,
+    capabilities: BackendCapabilities,
+    notifications: VecDeque<AppNotification>,
+    notification_view: Arc<[AppNotification]>,
+    next_notification_id: u64,
     click_track: ClickTrackState,
     next_preview_request_id: u64,
     active_periodic_failures: BTreeSet<&'static str>,
@@ -1832,6 +1838,10 @@ impl ApplicationModel {
             status: Default::default(),
             last_callback_budget_overruns: 0,
             audio_drivers: backend.audio_driver_state().unwrap_or_default(),
+            capabilities: backend.capabilities(),
+            notifications: VecDeque::new(),
+            notification_view: Arc::from([]),
+            next_notification_id: 1,
             click_track: ClickTrackState {
                 sounds: click_sound_ids()
                     .map(|id| ClickSoundDescriptor {
@@ -1909,6 +1919,23 @@ impl ApplicationModel {
             outcome = tracing::field::Empty
         );
         let _entered = span.enter();
+        if let Err(error) = self.intent_capability_check(&intent) {
+            span.record("outcome", "refused");
+            tracing::warn!(intent = kind, error = %error, "frontend.app.intent_refused");
+            match &intent {
+                AppIntent::AddTrackWithTopology(TrackSpec {
+                    creation_request_id: Some(request_id),
+                    ..
+                }) => self.record_track_creation_result(*request_id, false),
+                AppIntent::AddBus(BusSpec {
+                    creation_request_id: Some(request_id),
+                    ..
+                }) => self.record_bus_creation_result(*request_id, false),
+                _ => {}
+            }
+            self.notify(NotificationLevel::Warning, error);
+            return;
+        }
         let result = match intent {
             AppIntent::SetLoopSmoothingMs(milliseconds) => backend
                 .set_loop_smoothing_ms(milliseconds)
@@ -2163,6 +2190,10 @@ impl ApplicationModel {
                 self.status.xruns = 0;
                 Ok(())
             }
+            AppIntent::DismissNotification { id } => {
+                self.dismiss_notification(id);
+                Ok(())
+            }
             AppIntent::RequestNewSession => self.begin_new_session(),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
@@ -2233,9 +2264,165 @@ impl ApplicationModel {
         if let Err(error) = result {
             span.record("outcome", "error");
             tracing::warn!(intent = kind, error = %error, "frontend.app.intent_failed");
+            let shown_by_io_task = self
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Failed && task.message == error);
+            if !shown_by_io_task {
+                self.notify(NotificationLevel::Error, error);
+            }
         } else {
             span.record("outcome", "ok");
         }
+    }
+
+    fn intent_capability_check(&self, intent: &AppIntent) -> Result<(), String> {
+        use BackendCapability as Capability;
+        let capabilities = self.capabilities;
+        let require = |capability| capabilities.require(capability);
+        match intent {
+            AppIntent::SetLoopTimeline { .. } => require(Capability::LoopTimingEdits),
+            AppIntent::Loop { action, .. } => match action {
+                LoopAction::PlayDryClicked | LoopAction::RerecordClicked => {
+                    require(Capability::DryWetModes)
+                }
+                LoopAction::GrabClicked => require(Capability::Grab),
+                LoopAction::RestoreRecordedFxState => require(Capability::TrackFx),
+                LoopAction::ConvertToComposite
+                | LoopAction::ComposeIntoEnd(_)
+                | LoopAction::ComposeIntoParallel(_) => require(Capability::CompositeLoops),
+                LoopAction::Duplicate | LoopAction::DuplicateTo(_) => {
+                    require(Capability::SessionCapture)?;
+                    require(Capability::LoopContentImport)
+                }
+                _ => Ok(()),
+            },
+            AppIntent::Track { action, .. } => match action {
+                TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::DryThroughWet) => {
+                    require(Capability::DryWetModes)
+                }
+                TrackAction::FxActiveChanged(_)
+                | TrackAction::FxVisibilityChanged(_)
+                | TrackAction::FxToggleOrRecover
+                | TrackAction::FxRestoreState(_)
+                | TrackAction::FxClearLogs
+                | TrackAction::BuiltInFx(_)
+                | TrackAction::OxiSynth(_) => require(Capability::TrackFx),
+                _ => Ok(()),
+            },
+            AppIntent::Bus { action, .. } => match action {
+                BusAction::Remove => require(Capability::BusManagement),
+                BusAction::FxActiveChanged(_)
+                | BusAction::FxVisibilityChanged(_)
+                | BusAction::FxToggleOrRecover
+                | BusAction::FxRestoreState(_)
+                | BusAction::FxClearLogs
+                | BusAction::BuiltInFx(_)
+                | BusAction::FxProcessorChanged(_) => require(Capability::BusFx),
+                _ => Ok(()),
+            },
+            AppIntent::SetTrackLatency { .. } => require(Capability::LatencyCompensation),
+            AppIntent::SetTakeAlignment { .. } | AppIntent::SetTakeProcessorAlignment { .. } => {
+                require(Capability::TakeAlignment)
+            }
+            AppIntent::Global(GlobalControlAction::SetDefaultRecordingAction(
+                DefaultRecordingAction::Grab,
+            )) => require(Capability::Grab),
+            AppIntent::Piano(PianoAction::Press(_))
+            | AppIntent::Global(GlobalControlAction::MidiPanic) => {
+                require(Capability::MidiInjection)
+            }
+            AppIntent::AddTrackWithTopology(spec) => {
+                if let TrackSpecTopology::DryWet {
+                    default_playback_mode,
+                    ..
+                } = &spec.topology
+                {
+                    require(Capability::DryWetTracks)?;
+                    if *default_playback_mode == DefaultPlaybackMode::DryThroughWet {
+                        require(Capability::DryWetModes)?;
+                    }
+                }
+                if spec.latency != Default::default() {
+                    require(Capability::LatencyCompensation)?;
+                }
+                Ok(())
+            }
+            AppIntent::AddBus(spec) => {
+                require(Capability::BusManagement)?;
+                if spec.fx.is_some() {
+                    require(Capability::BusFx)?;
+                }
+                Ok(())
+            }
+            AppIntent::ComposeLoopSerial { .. }
+            | AppIntent::ComposeLoopAt { .. }
+            | AppIntent::DeleteCompositeEvents { .. }
+            | AppIntent::RelocateCompositeEvents { .. }
+            | AppIntent::SetCompositeLoopCycles { .. }
+            | AppIntent::SetCompositeKind { .. } => require(Capability::CompositeLoops),
+            AppIntent::SetCompositeEventMode { mode, .. } => {
+                require(Capability::CompositeLoops)?;
+                require_loop_mode(capabilities, *mode)
+            }
+            AppIntent::RequestAudioDriverSwitch { .. }
+            | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. } => {
+                require(Capability::AudioDriverSwitching)
+            }
+            AppIntent::RequestSaveSession
+            | AppIntent::RequestLoopAudioExport { .. }
+            | AppIntent::RequestLoopMidiExport { .. } => require(Capability::SessionCapture),
+            AppIntent::RequestLoopAudioImportPicker { .. }
+            | AppIntent::ImportLoopAudioBytes { .. }
+            | AppIntent::RequestLoopMidiImportPicker { .. }
+            | AppIntent::ImportLoopMidiBytes { .. }
+            | AppIntent::GenerateClickTrack { .. } => require(Capability::LoopContentImport),
+            _ => Ok(()),
+        }
+    }
+
+    fn script_operation_capability_check(
+        &self,
+        operation: &ControlOperation,
+    ) -> Result<(), String> {
+        let capabilities = self.capabilities;
+        match operation {
+            ControlOperation::Transition { mode, .. } | ControlOperation::Trigger { mode, .. } => {
+                require_loop_mode(capabilities, *mode)
+            }
+            ControlOperation::Grab { .. } | ControlOperation::AdoptRingbuffers { .. } => {
+                capabilities.require(BackendCapability::Grab)
+            }
+            ControlOperation::ComposeAddToEnd { .. } => {
+                capabilities.require(BackendCapability::CompositeLoops)
+            }
+            ControlOperation::SetDefaultRecordingAction(DefaultRecordingAction::Grab) => {
+                capabilities.require(BackendCapability::Grab)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn notify(&mut self, level: NotificationLevel, message: String) {
+        const MAX_NOTIFICATIONS: usize = 8;
+        self.notifications
+            .retain(|notification| notification.message != message);
+        self.notifications.push_back(AppNotification {
+            id: self.next_notification_id,
+            level,
+            message,
+        });
+        self.next_notification_id = self.next_notification_id.wrapping_add(1);
+        while self.notifications.len() > MAX_NOTIFICATIONS {
+            self.notifications.pop_front();
+        }
+        self.notification_view = self.notifications.iter().cloned().collect();
+    }
+
+    fn dismiss_notification(&mut self, id: u64) {
+        self.notifications
+            .retain(|notification| notification.id != id);
+        self.notification_view = self.notifications.iter().cloned().collect();
     }
 
     fn set_loop_timeline(
@@ -2859,6 +3046,14 @@ impl ApplicationModel {
 
     fn apply_script_operations(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
         for operation in self.script_manager.take_control_operations() {
+            if let Err(error) = self.script_operation_capability_check(&operation) {
+                tracing::warn!(error = %error, "frontend.app.script_operation_refused");
+                self.notify(
+                    NotificationLevel::Warning,
+                    format!("A script operation was refused: {error}"),
+                );
+                continue;
+            }
             self.apply_script_operation(backend, operation)?;
         }
         Ok(())
@@ -4229,6 +4424,10 @@ impl ApplicationModel {
             self.finish_io(IoTaskStatus::Failed, &message);
             return Err(message);
         }
+        if let Err(message) = document_capability_check(&bundle.document, self.capabilities) {
+            self.finish_io(IoTaskStatus::Failed, &message);
+            return Err(message);
+        }
         if bundle.document.sample_rate != self.status.sample_rate {
             let source_rate = bundle.document.sample_rate;
             let target_rate = self.status.sample_rate;
@@ -4547,7 +4746,7 @@ impl ApplicationModel {
     fn fail_io(&mut self, message: String) {
         self.master_bootstrap_after_load = false;
         self.finish_io(IoTaskStatus::Failed, &message);
-        self.report_error(message);
+        tracing::error!(error = %message, "frontend.app.operation_failed");
     }
 
     fn start_session_encoding(&mut self, bundle: SessionBundle) {
@@ -7427,6 +7626,8 @@ impl ApplicationModel {
         target: LoopId,
         composite: &CompositeDocument,
     ) -> Result<Option<BackendCompositeId>, String> {
+        self.capabilities
+            .require(BackendCapability::CompositeLoops)?;
         if !backend.supports_composite_loops() {
             return Ok(None);
         }
@@ -8232,6 +8433,7 @@ impl ApplicationModel {
         initiating_loop: LoopId,
         include_selection: bool,
     ) -> Result<(), String> {
+        self.capabilities.require(BackendCapability::Grab)?;
         let sync_length = self.sync_length();
         if sync_length == 0 {
             return Err("cannot grab before the sync loop has a length".to_owned());
@@ -9321,10 +9523,15 @@ impl ApplicationModel {
                 Some(BackendMutationDetail::BusFxControl(_)) => {}
                 None => {}
             }
-            self.report_error(format!(
+            let message = format!(
                 "Backend rejected {:?} mutation (driver generation {}, sequence {}): {}",
                 failure.kind, failure.driver_generation, failure.sequence, failure.message
-            ));
+            );
+            tracing::error!(error = %message, "frontend.app.operation_failed");
+            self.notify(
+                NotificationLevel::Error,
+                format!("The audio backend refused a change: {}", failure.message),
+            );
         }
         let rejected_tracks = self
             .tracks
@@ -11581,6 +11788,8 @@ impl ApplicationModel {
             global_controls: self.global.clone(),
             status: self.status.clone(),
             audio_drivers: self.audio_drivers.clone(),
+            capabilities: self.capabilities,
+            notifications: Arc::clone(&self.notification_view),
             details: self.details_snapshot(),
             connections: Arc::clone(&self.connection_view),
             scripting: Arc::clone(&self.scripting_view),
@@ -12236,8 +12445,9 @@ impl ApplicationModel {
         tracing::warn!(diagnostic = %message, "frontend.app.warning");
     }
 
-    fn report_error(&self, message: String) {
+    fn report_error(&mut self, message: String) {
         tracing::error!(error = %message, "frontend.app.operation_failed");
+        self.notify(NotificationLevel::Error, message);
     }
 
     fn report_periodic_result(
@@ -12798,6 +13008,102 @@ fn validate_bus_processor(
         ));
     }
     Ok(())
+}
+
+fn loop_mode_capability(mode: LoopMode) -> Option<BackendCapability> {
+    match mode {
+        LoopMode::Replacing => Some(BackendCapability::ReplacingMode),
+        LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet => {
+            Some(BackendCapability::DryWetModes)
+        }
+        LoopMode::Unknown | LoopMode::Stopped | LoopMode::Playing | LoopMode::Recording => None,
+    }
+}
+
+fn require_loop_mode(capabilities: BackendCapabilities, mode: LoopMode) -> Result<(), String> {
+    loop_mode_capability(mode).map_or(Ok(()), |capability| capabilities.require(capability))
+}
+
+/// Lists every capability the document needs that the backend lacks, so that the document is
+/// rejected whole instead of being applied partially.
+fn document_capability_check(
+    document: &SessionDocument,
+    capabilities: BackendCapabilities,
+) -> Result<(), String> {
+    let mut needed = BTreeSet::new();
+    if document.global.default_recording_action == RecordingActionDocument::Grab {
+        needed.insert(BackendCapability::Grab);
+    }
+    for bus in &document.buses {
+        if bus.name != "Master" || bus.channels.len() != 2 || document.buses.len() > 1 {
+            needed.insert(BackendCapability::BusManagement);
+        }
+        if bus.fx_chain.is_some() {
+            needed.insert(BackendCapability::BusFx);
+        }
+    }
+    for track in document.track_groups.iter().flat_map(|group| &group.tracks) {
+        if !matches!(track.topology, TrackTopologyDocument::Direct { .. }) {
+            needed.insert(BackendCapability::DryWetTracks);
+        }
+        if track.default_playback_mode == DefaultPlaybackModeDocument::DryThroughWet {
+            needed.insert(BackendCapability::DryWetModes);
+        }
+        if track.fx_chain.is_some() {
+            needed.insert(BackendCapability::TrackFx);
+        }
+        let latency = &track.latency;
+        let default_latency = TrackLatencyDocument::default();
+        if latency.adjustment != default_latency.adjustment
+            || latency.manual_frames != default_latency.manual_frames
+            || latency.processor_adjustment != default_latency.processor_adjustment
+            || latency.processor_manual_frames != default_latency.processor_manual_frames
+        {
+            needed.insert(BackendCapability::LatencyCompensation);
+        }
+        for loop_ in &track.loops {
+            if let Some(composite) = &loop_.composite {
+                needed.insert(BackendCapability::CompositeLoops);
+                needed.extend(
+                    composite
+                        .instances
+                        .iter()
+                        .filter_map(|instance| instance.mode.as_deref())
+                        .filter_map(document_loop_mode)
+                        .filter_map(loop_mode_capability),
+                );
+            }
+            let mut has_content = loop_.length_frames > 0;
+            for channel in &loop_.channels {
+                if channel.start_offset_frames != 0 || channel.preplay_frames != 0 {
+                    needed.insert(BackendCapability::LoopTimingEdits);
+                }
+                if channel.capture_alignment_frames != 0 {
+                    needed.insert(BackendCapability::TakeAlignment);
+                }
+                has_content |= channel.data_length_frames > 0
+                    || channel.start_offset_frames != 0
+                    || channel.preplay_frames != 0
+                    || channel.capture_alignment_frames != 0;
+            }
+            if has_content {
+                needed.insert(BackendCapability::SessionContentLoad);
+            }
+        }
+    }
+    let missing = needed
+        .into_iter()
+        .filter(|capability| !capabilities.supports(*capability))
+        .map(BackendCapability::unavailable_reason)
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "The session was not loaded because it needs unsupported features. {}",
+            missing.join(" ")
+        ))
+    }
 }
 
 fn session_script_sources(bundle: &SessionBundle) -> Result<Vec<SessionScriptSource>, String> {
@@ -25709,5 +26015,621 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             model.tracks[1].default_playback_mode,
             DefaultPlaybackMode::Regular
         );
+    }
+
+    fn capability_test_model(
+        capability: Option<BackendCapability>,
+    ) -> (FakeBackend, ApplicationModel) {
+        let mut backend = FakeBackend::default();
+        if let Some(capability) = capability {
+            backend.set_capability(capability, false);
+        }
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+            true,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        (backend, model)
+    }
+
+    fn capability_test_intents(model: &ApplicationModel) -> Vec<(BackendCapability, AppIntent)> {
+        let track_id = model.tracks[1].id;
+        let loop_id = model.tracks[1].loops[0];
+        let bus_id = model.bus_order[0];
+        let loop_intent = |action| AppIntent::Loop {
+            track_id,
+            loop_id,
+            action,
+        };
+        vec![
+            (
+                BackendCapability::SessionCapture,
+                AppIntent::RequestSaveSession,
+            ),
+            (
+                BackendCapability::CompositeLoops,
+                loop_intent(LoopAction::ConvertToComposite),
+            ),
+            (
+                BackendCapability::Grab,
+                loop_intent(LoopAction::GrabClicked),
+            ),
+            (
+                BackendCapability::ReplacingMode,
+                AppIntent::SetCompositeEventMode {
+                    target_loop_id: loop_id,
+                    event: CompositeEventId { instance_id: 1 },
+                    mode: LoopMode::Replacing,
+                },
+            ),
+            (
+                BackendCapability::DryWetModes,
+                loop_intent(LoopAction::PlayDryClicked),
+            ),
+            (
+                BackendCapability::DryWetTracks,
+                AppIntent::AddTrackWithTopology(TrackSpec {
+                    name: "Dry/wet".to_owned(),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: 1,
+                        wet_audio_channels: 1,
+                        dry_midi: false,
+                        processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                            shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                        ),
+                        default_playback_mode: DefaultPlaybackMode::Regular,
+                    },
+                    latency: Default::default(),
+                    initial_output_bus_names: Vec::new(),
+                    creation_request_id: Some(7),
+                }),
+            ),
+            (
+                BackendCapability::TrackFx,
+                AppIntent::Track {
+                    track_id,
+                    action: TrackAction::FxToggleOrRecover,
+                },
+            ),
+            (
+                BackendCapability::BusFx,
+                AppIntent::Bus {
+                    bus_id,
+                    action: BusAction::FxProcessorChanged(None),
+                },
+            ),
+            (
+                BackendCapability::LatencyCompensation,
+                AppIntent::SetTrackLatency {
+                    track_id,
+                    adjustment: RecordingOffsetAdjustmentState::ManualOverride,
+                    manual_frames: 4,
+                    processor_adjustment: ProcessorLatencyAdjustmentState::ManualOverride,
+                    processor_manual_frames: 0,
+                },
+            ),
+            (
+                BackendCapability::TakeAlignment,
+                AppIntent::SetTakeAlignment {
+                    loop_id,
+                    capture_alignment_frames: 4,
+                },
+            ),
+            (
+                BackendCapability::LoopContentImport,
+                AppIntent::ImportLoopAudioBytes {
+                    loop_id,
+                    name: "take.wav".to_owned(),
+                    bytes: Arc::from([]),
+                    update_loop_length: true,
+                },
+            ),
+            (
+                BackendCapability::LoopTimingEdits,
+                AppIntent::SetLoopTimeline {
+                    loop_id,
+                    start_offset: Some(4),
+                    preplay_samples: None,
+                    loop_length: None,
+                },
+            ),
+            (
+                BackendCapability::BusManagement,
+                AppIntent::AddBus(BusSpec {
+                    name: "Cue".to_owned(),
+                    channel_count: 2,
+                    fx: None,
+                    creation_request_id: Some(9),
+                }),
+            ),
+            (
+                BackendCapability::AudioDriverSwitching,
+                AppIntent::RequestAudioDriverSwitch {
+                    config: AudioDriverConfig::default(),
+                },
+            ),
+            (
+                BackendCapability::MidiInjection,
+                AppIntent::Piano(PianoAction::Press(
+                    shoop_app_api::MidiNote::new(60).unwrap(),
+                )),
+            ),
+            (
+                BackendCapability::MidiInjection,
+                AppIntent::Global(GlobalControlAction::MidiPanic),
+            ),
+        ]
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn intents_needing_unsupported_capabilities_are_refused_visibly() {
+        let (_, model) = capability_test_model(None);
+        let covered = capability_test_intents(&model)
+            .into_iter()
+            .map(|(capability, _)| capability)
+            .chain([BackendCapability::SessionContentLoad])
+            .collect::<BTreeSet<_>>();
+        assert_eq!(covered, BackendCapability::ALL.into_iter().collect());
+
+        for (capability, intent) in capability_test_intents(&model) {
+            let (mut backend, mut model) = capability_test_model(Some(capability));
+            let snapshot = model.snapshot();
+            assert_eq!(
+                snapshot.capabilities,
+                BackendCapabilities::FULL.with(capability, false)
+            );
+            let operations = backend.operations().len();
+            let tracks = snapshot.tracks.len();
+            let buses = snapshot.buses.len();
+            model.handle_intent(&mut backend, intent);
+            assert_eq!(backend.operations().len(), operations, "{capability:?}");
+            model.refresh_bus_view();
+            let snapshot = model.snapshot();
+            assert_eq!(snapshot.tracks.len(), tracks, "{capability:?}");
+            assert_eq!(snapshot.buses.len(), buses, "{capability:?}");
+            assert!(snapshot.io_task.is_none(), "{capability:?}");
+            assert_eq!(
+                snapshot
+                    .notifications
+                    .iter()
+                    .map(|notification| (notification.level, notification.message.as_str()))
+                    .collect::<Vec<_>>(),
+                [(NotificationLevel::Warning, capability.unavailable_reason())],
+                "{capability:?}"
+            );
+            match capability {
+                BackendCapability::DryWetTracks => assert_eq!(
+                    snapshot.track_creation_results.as_ref(),
+                    [TrackCreationResult {
+                        request_id: 7,
+                        success: false
+                    }]
+                ),
+                BackendCapability::BusManagement => assert_eq!(
+                    snapshot.bus_creation_results.as_ref(),
+                    [BusCreationResult {
+                        request_id: 9,
+                        success: false
+                    }]
+                ),
+                _ => {}
+            }
+            let id = snapshot.notifications[0].id;
+            model.handle_intent(&mut backend, AppIntent::DismissNotification { id });
+            assert!(model.snapshot().notifications.is_empty());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn intents_with_every_capability_are_not_refused() {
+        let (_, model) = capability_test_model(None);
+        for (capability, intent) in capability_test_intents(&model) {
+            let (mut backend, mut model) = capability_test_model(None);
+            assert_eq!(model.snapshot().capabilities, BackendCapabilities::FULL);
+            model.handle_intent(&mut backend, intent);
+            assert!(
+                !model
+                    .snapshot()
+                    .notifications
+                    .iter()
+                    .any(|notification| notification.message == capability.unavailable_reason()),
+                "{capability:?}"
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn backend_refusals_and_failed_actions_reach_the_user() {
+        let (mut backend, mut model) = capability_test_model(None);
+        let track_id = model.tracks[1].id;
+        let loop_id = model.tracks[1].loops[0];
+        model.handle_intent(
+            &mut backend,
+            AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::GrabClicked,
+            },
+        );
+        let snapshot = model.snapshot();
+        assert_eq!(snapshot.notifications.len(), 1);
+        assert_eq!(snapshot.notifications[0].level, NotificationLevel::Error);
+        assert_eq!(
+            snapshot.notifications[0].message,
+            "cannot grab before the sync loop has a length"
+        );
+
+        model.apply_backend_snapshot(BackendSnapshot {
+            mutation_failures: vec![shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 2,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackStructure,
+                entity: None,
+                detail: None,
+                message: "track pool exhausted".to_owned(),
+            }],
+            ..backend.poll().unwrap()
+        });
+        let messages = model
+            .snapshot()
+            .notifications
+            .iter()
+            .map(|notification| notification.message.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            messages,
+            [
+                "cannot grab before the sync loop has a length".to_owned(),
+                "The audio backend refused a change: track pool exhausted".to_owned(),
+            ]
+        );
+
+        for _ in 0..12 {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::Loop {
+                    track_id,
+                    loop_id,
+                    action: LoopAction::GrabClicked,
+                },
+            );
+        }
+        let notifications = model.snapshot().notifications;
+        assert_eq!(notifications.len(), 2);
+        assert_eq!(
+            notifications[1].message,
+            "cannot grab before the sync loop has a length"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn script_operations_needing_unsupported_capabilities_are_refused_visibly() {
+        let mut backend = FakeBackend::default();
+        backend.set_capability(BackendCapability::Grab, false);
+        backend.set_capability(BackendCapability::ReplacingMode, false);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Track".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "refused.lua".to_owned(),
+                source: Arc::from(
+                    "shoop_announce_api_version(1, 0); local c=require('shoop_control'); c.loop_trigger_grab({0,0}); c.loop_trigger({0,0},c.constants.LoopMode_Replacing); c.loop_trigger({0,0},c.constants.LoopMode_Recording)",
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        let messages = snapshot
+            .notifications
+            .iter()
+            .map(|notification| notification.message.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            messages,
+            [
+                format!(
+                    "A script operation was refused: {}",
+                    BackendCapability::Grab.unavailable_reason()
+                ),
+                format!(
+                    "A script operation was refused: {}",
+                    BackendCapability::ReplacingMode.unavailable_reason()
+                ),
+            ]
+        );
+        let loop_ = &snapshot.tracks[1].loops[0];
+        assert!(loop_.mode == LoopMode::Recording || loop_.next_mode == LoopMode::Recording);
+    }
+
+    fn saved_session_with_track() -> SessionBundle {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Sources".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if let Some(output) = runtime.take_file_output() {
+                return decode_session(&output.bytes).unwrap();
+            }
+        }
+        panic!("save did not complete: {:?}", runtime.snapshot().io_task);
+    }
+
+    fn load_session(
+        runtime: &mut CooperativeApplicationRuntime,
+        bundle: &SessionBundle,
+    ) -> IoTaskState {
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "capabilities.shoop".to_owned(),
+                bytes: Arc::from(encode_session(bundle, "test").unwrap()),
+            })
+            .unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            let task = runtime.snapshot().io_task.clone().unwrap();
+            if matches!(task.status, IoTaskStatus::Completed | IoTaskStatus::Failed) {
+                return task;
+            }
+        }
+        panic!("load did not finish: {:?}", runtime.snapshot().io_task);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn composite_session_is_rejected_whole_without_composite_support() {
+        let mut bundle = saved_session_with_track();
+        let track = &mut bundle.document.track_groups[1].tracks[0];
+        let source = track.loops[1].id;
+        track.loops[0].channels.clear();
+        track.loops[0].composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: source,
+                mode: None,
+                n_cycles: None,
+            }],
+        });
+        track.name = "Loaded".to_owned();
+
+        let mut backend = FakeBackend::default();
+        backend.set_capability(BackendCapability::CompositeLoops, false);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        let before = runtime.snapshot();
+        let task = load_session(&mut runtime, &bundle);
+        assert_eq!(task.status, IoTaskStatus::Failed);
+        assert!(task
+            .message
+            .contains(BackendCapability::CompositeLoops.unavailable_reason()));
+        let after = runtime.snapshot();
+        assert_eq!(
+            after
+                .tracks
+                .iter()
+                .map(|track| (&track.name, track.loops.len()))
+                .collect::<Vec<_>>(),
+            before
+                .tracks
+                .iter()
+                .map(|track| (&track.name, track.loops.len()))
+                .collect::<Vec<_>>()
+        );
+        assert!(after.notifications.is_empty());
+
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let task = load_session(&mut runtime, &bundle);
+        assert_eq!(task.status, IoTaskStatus::Completed);
+        let loaded = runtime.snapshot();
+        assert_eq!(loaded.tracks[1].name, "Loaded");
+        assert_eq!(
+            loaded.tracks[1].loops[0].composite_kind,
+            shoop_app_api::CompositeKind::Regular
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_content_is_rejected_whole_without_content_loading() {
+        let mut bundle = saved_session_with_track();
+        let track = &mut bundle.document.track_groups[1].tracks[0];
+        track.loops[1].length_frames = 100;
+        track.name = "Loaded".to_owned();
+
+        let mut backend = FakeBackend::default();
+        backend.set_capability(BackendCapability::SessionContentLoad, false);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        let task = load_session(&mut runtime, &bundle);
+        assert_eq!(task.status, IoTaskStatus::Failed);
+        assert!(task
+            .message
+            .contains(BackendCapability::SessionContentLoad.unavailable_reason()));
+        assert_eq!(runtime.snapshot().tracks.len(), 1);
+
+        bundle.document.track_groups[1].tracks[0].loops[1].length_frames = 0;
+        let task = load_session(&mut runtime, &bundle);
+        assert_eq!(task.status, IoTaskStatus::Completed);
+        assert_eq!(runtime.snapshot().tracks[1].name, "Loaded");
+
+        runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_documents_list_every_unsupported_capability_they_need() {
+        let base = new_session_document(48_000);
+        assert_eq!(
+            document_capability_check(&base, BackendCapabilities::NONE),
+            Ok(())
+        );
+        let fx_chain = || FxChainDocument {
+            id: 50,
+            title: "fx".to_owned(),
+            chain_type: FxChainTypeDocument::BuiltInFx,
+            ports: Vec::new(),
+            internal_state: String::new(),
+            builtin_fx_midi_cc_assignments: Vec::new(),
+            midi_cc_assignments: Vec::new(),
+        };
+        let composite = |mode: Option<&str>| CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            instances: vec![CompositeLoopInstanceDocument {
+                instance_id: 1,
+                start_cycle: 0,
+                loop_id: 1,
+                mode: mode.map(str::to_owned),
+                n_cycles: None,
+            }],
+        };
+        let cases: Vec<(BackendCapability, Box<dyn Fn(&mut SessionDocument)>)> = vec![
+            (
+                BackendCapability::Grab,
+                Box::new(|document: &mut SessionDocument| {
+                    document.global.default_recording_action = RecordingActionDocument::Grab
+                }),
+            ),
+            (
+                BackendCapability::BusManagement,
+                Box::new(|document: &mut SessionDocument| {
+                    let mut bus = document.buses[0].clone();
+                    bus.id = 2;
+                    bus.name = "Cue".to_owned();
+                    document.buses.push(bus);
+                }),
+            ),
+            (
+                BackendCapability::BusFx,
+                Box::new(move |document: &mut SessionDocument| {
+                    document.buses[0].fx_chain = Some(fx_chain())
+                }),
+            ),
+            (
+                BackendCapability::DryWetTracks,
+                Box::new(|document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].topology =
+                        TrackTopologyDocument::DryWetExternal {
+                            dry_audio_channels: 1,
+                            wet_audio_channels: 1,
+                            dry_midi: false,
+                        }
+                }),
+            ),
+            (
+                BackendCapability::DryWetModes,
+                Box::new(|document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].default_playback_mode =
+                        DefaultPlaybackModeDocument::DryThroughWet
+                }),
+            ),
+            (
+                BackendCapability::TrackFx,
+                Box::new(move |document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].fx_chain = Some(fx_chain())
+                }),
+            ),
+            (
+                BackendCapability::LatencyCompensation,
+                Box::new(|document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].latency.manual_frames = 12
+                }),
+            ),
+            (
+                BackendCapability::CompositeLoops,
+                Box::new(move |document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].loops[0].composite = Some(composite(None))
+                }),
+            ),
+            (
+                BackendCapability::ReplacingMode,
+                Box::new(move |document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].loops[0].composite =
+                        Some(composite(Some("replacing")))
+                }),
+            ),
+            (
+                BackendCapability::LoopTimingEdits,
+                Box::new(|document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].loops[0].channels[0].preplay_frames = 8
+                }),
+            ),
+            (
+                BackendCapability::TakeAlignment,
+                Box::new(|document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].loops[0].channels[0]
+                        .capture_alignment_frames = 8
+                }),
+            ),
+            (
+                BackendCapability::SessionContentLoad,
+                Box::new(|document: &mut SessionDocument| {
+                    document.track_groups[0].tracks[0].loops[0].length_frames = 100
+                }),
+            ),
+        ];
+        for (capability, change) in cases {
+            let mut document = base.clone();
+            change(&mut document);
+            assert_eq!(
+                document_capability_check(&document, BackendCapabilities::FULL),
+                Ok(()),
+                "{capability:?}"
+            );
+            let error = document_capability_check(
+                &document,
+                BackendCapabilities::FULL.with(capability, false),
+            )
+            .unwrap_err();
+            assert!(
+                error.contains(capability.unavailable_reason()),
+                "{capability:?}: {error}"
+            );
+        }
+
+        let mut document = base.clone();
+        document.global.default_recording_action = RecordingActionDocument::Grab;
+        document.track_groups[0].tracks[0].latency.manual_frames = 12;
+        let error = document_capability_check(&document, BackendCapabilities::NONE).unwrap_err();
+        assert!(error.contains(BackendCapability::Grab.unavailable_reason()));
+        assert!(error.contains(BackendCapability::LatencyCompensation.unavailable_reason()));
     }
 }

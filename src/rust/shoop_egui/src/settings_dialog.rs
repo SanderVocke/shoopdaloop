@@ -704,6 +704,14 @@ impl SettingsDialog {
             );
             return;
         }
+        if !crate::supports(ui.ctx(), crate::BackendCapability::AudioDriverSwitching) {
+            ui.heading("Audio driver");
+            ui.colored_label(
+                colors::WARNING,
+                crate::BackendCapability::AudioDriverSwitching.unavailable_reason(),
+            );
+            return;
+        }
         let active_kind = audio.active.as_ref().map(|active| active.configured.kind());
         let mut selected = self
             .audio_target
@@ -2012,6 +2020,56 @@ mod tests {
         output.textures_delta.clear();
         assert_eq!(dialog.setting_card_rects.len(), 2);
         assert!(response.app_actions.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test(
+        no_wasm = "the browser build never offers runtime driver switching"
+    )]
+    fn driver_switching_is_hidden_when_the_backend_cannot_switch() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_audio_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let audio = AudioDriverRuntimeState {
+            supported: true,
+            catalog: Arc::from([crate::AudioDriverDescriptor {
+                kind: AudioDriverKind::Dummy,
+                available: true,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        for (capabilities, expect_discovery) in [
+            (crate::BackendCapabilities::FULL, true),
+            (
+                crate::BackendCapabilities::FULL
+                    .with(crate::BackendCapability::AudioDriverSwitching, false),
+                false,
+            ),
+        ] {
+            let mut dialog = SettingsDialog::new(Arc::clone(&registry));
+            dialog.open(&state);
+            let context = egui::Context::default();
+            crate::set_backend_capabilities(&context, capabilities);
+            let mut response = SettingsDialogResponse::default();
+            let mut output = context.run_ui(Default::default(), |ui| {
+                dialog.show_audio(ui, &audio, &mut response);
+            });
+            output.textures_delta.clear();
+            assert_eq!(
+                response
+                    .app_actions
+                    .iter()
+                    .any(|action| matches!(action, AppAction::RefreshAudioDriverDiscovery { .. })),
+                expect_discovery
+            );
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

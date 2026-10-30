@@ -43,17 +43,17 @@ use shoop_backend::{
     BackendActiveCompositeChild, BackendAsyncResult, BackendAudioChannelData, BackendAudioData,
     BackendBusChannelId, BackendBusChannelState, BackendBusControl, BackendBusCreation,
     BackendBusFxControl, BackendBusFxRequest, BackendBusId, BackendBusRequest, BackendBusState,
-    BackendChannelMode, BackendCompositeConfig, BackendCompositeId, BackendCompositeKind,
-    BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure,
-    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
-    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMixerFailure,
-    BackendMixerLink, BackendMutationDetail, BackendMutationFailure, BackendMutationKind,
-    BackendOperationKind, BackendOperationProgress, BackendPortDataType, BackendPortDescriptor,
-    BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
+    BackendCapabilities, BackendCapability, BackendChannelMode, BackendCompositeConfig,
+    BackendCompositeId, BackendCompositeKind, BackendCompositeState, BackendCompositeTarget,
+    BackendConfirmedLink, BackendConnectionFailure, BackendDefaultPlaybackMode, BackendDriverState,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendMixerFailure, BackendMixerLink, BackendMutationDetail, BackendMutationFailure,
+    BackendMutationKind, BackendOperationKind, BackendOperationProgress, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
     TrackProcessorTypeId, TrackRequest, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
     MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID, MASTER_BUS_OUTPUT_PORT_IDS, MAX_BUSES,
     MAX_TOTAL_BUS_CHANNELS,
@@ -1844,6 +1844,10 @@ impl Backend for RemoteWorkletBackend {
 
     fn supports_composite_loops(&self) -> bool {
         true
+    }
+
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities::FULL.with(BackendCapability::AudioDriverSwitching, false)
     }
 
     fn composite_plan_mutations_are_synchronous(&self) -> bool {

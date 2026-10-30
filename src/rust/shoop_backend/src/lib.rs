@@ -12,11 +12,11 @@ pub use native::{
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 pub use native::{default_native_audio_driver_kind, NativeBackend};
 pub use shoop_app_api::{
-    BuiltInFxControl, BuiltInFxDriveType, BuiltInFxMidiCcAssignment, BuiltInFxModulationType,
-    BuiltInFxParameter, BuiltInFxReverbType, BuiltInFxStage, BuiltInFxState, OxiSynthControl,
-    OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState, TrackProcessorEditorState,
-    TrackProcessorTypeId, MAX_BUSES, MAX_BUS_CHANNELS, MAX_BUS_HOST_LINKS, MAX_BUS_NAME_BYTES,
-    MAX_MIXER_ROUTES, MAX_TOTAL_BUS_CHANNELS,
+    BackendCapabilities, BackendCapability, BuiltInFxControl, BuiltInFxDriveType,
+    BuiltInFxMidiCcAssignment, BuiltInFxModulationType, BuiltInFxParameter, BuiltInFxReverbType,
+    BuiltInFxStage, BuiltInFxState, OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter,
+    OxiSynthState, TrackProcessorEditorState, TrackProcessorTypeId, MAX_BUSES, MAX_BUS_CHANNELS,
+    MAX_BUS_HOST_LINKS, MAX_BUS_NAME_BYTES, MAX_MIXER_ROUTES, MAX_TOTAL_BUS_CHANNELS,
 };
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -1027,6 +1027,31 @@ pub struct BackendSessionData {
     pub use_legacy_browser_default_routes: bool,
 }
 
+/// Whether any loop in the session carries content, as opposed to a structure-only session.
+pub fn session_has_loop_content(session: &BackendSessionData) -> bool {
+    session
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .any(|content| {
+            content.length > 0
+                || content.audio.iter().any(|channel| {
+                    !channel.samples.is_empty()
+                        || channel.start_offset != 0
+                        || channel.capture_alignment_frames != 0
+                        || channel.preplay != 0
+                })
+                || content.midi.iter().any(|channel| {
+                    channel.length > 0
+                        || !channel.events.is_empty()
+                        || !channel.start_state.is_empty()
+                        || channel.start_offset != 0
+                        || channel.capture_alignment_frames != 0
+                        || channel.preplay != 0
+                })
+        })
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct BackendSessionReplacement {
     pub tracks: BTreeMap<u64, BackendTrackCreation>,
@@ -1136,8 +1161,15 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    /// Whether the backend schedules composite loops itself; otherwise the application does.
+    /// Implies `BackendCapability::CompositeLoops`.
     fn supports_composite_loops(&self) -> bool {
         false
+    }
+
+    /// The optional features this backend supports.
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities::FULL
     }
 
     fn composite_plan_mutations_are_synchronous(&self) -> bool {
@@ -5735,6 +5767,13 @@ impl Backend for EngineBackend {
         true
     }
 
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities::FULL.with(
+            BackendCapability::AudioDriverSwitching,
+            self.port_model == EnginePortModel::Dummy,
+        )
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![builtin_fx_descriptor(), oxisynth_descriptor()].into())
     }
@@ -7970,6 +8009,12 @@ impl Backend for LocalDummyBackend {
         self.runtime.supports_composite_loops()
     }
 
+    fn capabilities(&self) -> BackendCapabilities {
+        self.runtime
+            .capabilities()
+            .with(BackendCapability::BusFx, false)
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         self.runtime.track_processor_catalog()
     }
@@ -8549,6 +8594,7 @@ pub struct FakeBackend {
     composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
     composite_configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
     composite_loops_supported: bool,
+    capabilities: BackendCapabilities,
     fail_next_composite_configuration: Option<String>,
     next_loop_id: u64,
     next_composite_id: u64,
@@ -8704,6 +8750,7 @@ impl Default for FakeBackend {
             composites: BTreeMap::new(),
             composite_configs: BTreeMap::new(),
             composite_loops_supported: false,
+            capabilities: BackendCapabilities::FULL,
             fail_next_composite_configuration: None,
             next_loop_id: 1,
             next_composite_id: 1,
@@ -8753,6 +8800,18 @@ impl FakeBackend {
 
     pub fn enable_composite_loops(&mut self) {
         self.composite_loops_supported = true;
+    }
+
+    /// Switches a capability on or off. Operations that need a switched-off capability are
+    /// refused.
+    pub fn set_capability(&mut self, capability: BackendCapability, supported: bool) {
+        self.capabilities = self.capabilities.with(capability, supported);
+    }
+
+    fn require_capability(&self, capability: BackendCapability) -> Result<()> {
+        self.capabilities()
+            .require(capability)
+            .map_err(|message| anyhow!(message))
     }
 
     pub fn fail_next_composite_configuration(&mut self, message: impl Into<String>) {
@@ -9090,6 +9149,13 @@ impl Backend for FakeBackend {
 
     fn supports_composite_loops(&self) -> bool {
         self.composite_loops_supported
+            && self
+                .capabilities
+                .supports(BackendCapability::CompositeLoops)
+    }
+
+    fn capabilities(&self) -> BackendCapabilities {
+        self.capabilities
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
@@ -9130,6 +9196,7 @@ impl Backend for FakeBackend {
         &mut self,
         config: &AudioDriverConfig,
     ) -> Result<ResolvedAudioDriverConfig> {
+        self.require_capability(BackendCapability::AudioDriverSwitching)?;
         let (sample_rate, buffer_size, instance_name) = match config {
             AudioDriverConfig::Dummy(config) => {
                 if config.sample_rate == 0 || config.buffer_size == 0 {
@@ -9275,6 +9342,7 @@ impl Backend for FakeBackend {
     }
 
     fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        self.require_capability(BackendCapability::CompositeLoops)?;
         let id = BackendCompositeId::from_raw(self.next_composite_id);
         self.next_composite_id = self.next_composite_id.saturating_add(1);
         self.composites.insert(id, BackendCompositeState::default());
@@ -9287,6 +9355,7 @@ impl Backend for FakeBackend {
         composite_id: BackendCompositeId,
         config: &BackendCompositeConfig,
     ) -> Result<u64> {
+        self.require_capability(BackendCapability::CompositeLoops)?;
         if !self.composites.contains_key(&composite_id) {
             return Err(anyhow!("unknown fake composite {composite_id:?}"));
         }
@@ -9425,6 +9494,9 @@ impl Backend for FakeBackend {
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        if !matches!(request.topology, BackendTrackTopology::Direct { .. }) {
+            self.require_capability(BackendCapability::DryWetTracks)?;
+        }
         match &request.topology {
             BackendTrackTopology::Direct {
                 audio_channels,
@@ -9657,6 +9729,9 @@ impl Backend for FakeBackend {
         track_id: BackendTrackId,
         mode: BackendDefaultPlaybackMode,
     ) -> Result<()> {
+        if mode == BackendDefaultPlaybackMode::DryThroughWet {
+            self.require_capability(BackendCapability::DryWetModes)?;
+        }
         if let Some(message) = self.fail_next_track_control.take() {
             return Err(anyhow!(message));
         }
@@ -9683,6 +9758,7 @@ impl Backend for FakeBackend {
         processor_adjustment: BackendProcessorLatencyAdjustment,
         processor_manual_frames: i32,
     ) -> Result<()> {
+        self.require_capability(BackendCapability::LatencyCompensation)?;
         let loops = self
             .tracks
             .get(&track_id)
@@ -9725,6 +9801,7 @@ impl Backend for FakeBackend {
         loop_id: BackendLoopId,
         capture_alignment_frames: i32,
     ) -> Result<()> {
+        self.require_capability(BackendCapability::TakeAlignment)?;
         shoop_latency::RecordingOffset::new(capture_alignment_frames)?;
         if self.loops.get(&loop_id).is_some_and(|state| {
             matches!(
@@ -9841,6 +9918,7 @@ impl Backend for FakeBackend {
         loop_id: BackendLoopId,
         processor_alignment_frames: u32,
     ) -> Result<()> {
+        self.require_capability(BackendCapability::TakeAlignment)?;
         shoop_latency::ProcessorRenderAdvance::new(processor_alignment_frames)?;
         if self.loops.get(&loop_id).is_some_and(|state| {
             matches!(
@@ -9977,6 +10055,7 @@ impl Backend for FakeBackend {
         track_id: BackendTrackId,
         events: &[BackendMidiEvent],
     ) -> Result<()> {
+        self.require_capability(BackendCapability::MidiInjection)?;
         validate_midi_input_events(events)?;
         if self.failed_midi_input_tracks.contains(&track_id) {
             return Err(anyhow!("injected fake MIDI input failure {track_id:?}"));
@@ -9998,6 +10077,7 @@ impl Backend for FakeBackend {
         track_id: BackendTrackId,
         control: BackendTrackFxControl,
     ) -> Result<()> {
+        self.require_capability(BackendCapability::TrackFx)?;
         let fx = self
             .tracks
             .get_mut(&track_id)
@@ -10107,6 +10187,7 @@ impl Backend for FakeBackend {
     }
 
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        self.require_capability(BackendCapability::Grab)?;
         for request in requests {
             self.require_loop(request.loop_id)?;
             let track = self
@@ -10218,6 +10299,15 @@ impl Backend for FakeBackend {
         mode: BackendLoopMode,
         cycles_delay: Option<u32>,
     ) -> Result<()> {
+        match mode {
+            BackendLoopMode::Replacing => {
+                self.require_capability(BackendCapability::ReplacingMode)?
+            }
+            BackendLoopMode::PlayingDryThroughWet | BackendLoopMode::RecordingDryIntoWet => {
+                self.require_capability(BackendCapability::DryWetModes)?
+            }
+            _ => {}
+        }
         if matches!(
             mode,
             BackendLoopMode::Recording
@@ -10412,6 +10502,7 @@ impl Backend for FakeBackend {
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
     ) -> Result<()> {
+        self.require_capability(BackendCapability::LoopContentImport)?;
         if update.audio.is_empty() && update.midi.is_empty() {
             return Err(anyhow!("loop content update is empty"));
         }
@@ -10604,6 +10695,7 @@ impl Backend for FakeBackend {
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
     ) -> Result<BackendAsyncResult<()>> {
+        self.require_capability(BackendCapability::LoopContentImport)?;
         if self.pending_loop_content_replacements > 0 {
             self.pending_loop_content_replacements -= 1;
             return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
@@ -10628,6 +10720,7 @@ impl Backend for FakeBackend {
         preplay: Option<u32>,
         length: Option<u32>,
     ) -> Result<()> {
+        self.require_capability(BackendCapability::LoopTimingEdits)?;
         self.require_loop(loop_id)?;
         let state = self
             .loops
@@ -10722,6 +10815,7 @@ impl Backend for FakeBackend {
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
+        self.require_capability(BackendCapability::SessionCapture)?;
         if self.loops.values().any(|state| {
             matches!(
                 state.mode,
@@ -10856,6 +10950,7 @@ impl Backend for FakeBackend {
     }
 
     fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        self.require_capability(BackendCapability::SessionCapture)?;
         if self.pending_session_captures > 0 {
             self.pending_session_captures -= 1;
             return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
@@ -10874,6 +10969,9 @@ impl Backend for FakeBackend {
     ) -> Result<BackendSessionReplacement> {
         if let Some(message) = self.fail_next_session_replace.take() {
             return Err(anyhow!(message));
+        }
+        if session_has_loop_content(session) {
+            self.require_capability(BackendCapability::SessionContentLoad)?;
         }
         if session.sample_rate != self.status.sample_rate {
             return Err(anyhow!(
@@ -11327,6 +11425,10 @@ impl Backend for FakeBackend {
     }
 
     fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
+        self.require_capability(BackendCapability::BusManagement)?;
+        if request.fx.is_some() {
+            self.require_capability(BackendCapability::BusFx)?;
+        }
         if let Some(message) = self.fail_next_bus_structure.take() {
             return Err(anyhow!(message));
         }
@@ -11431,6 +11533,7 @@ impl Backend for FakeBackend {
     }
 
     fn remove_bus(&mut self, bus_id: BackendBusId) -> Result<()> {
+        self.require_capability(BackendCapability::BusManagement)?;
         if let Some(message) = self.fail_next_bus_structure.take() {
             return Err(anyhow!(message));
         }
@@ -11496,6 +11599,7 @@ impl Backend for FakeBackend {
         bus_id: BackendBusId,
         control: BackendBusFxControl,
     ) -> Result<()> {
+        self.require_capability(BackendCapability::BusFx)?;
         if let BackendBusFxControl::SetProcessor(fx) = control {
             let bus = self
                 .mixer
@@ -12940,6 +13044,149 @@ mod tests {
 
         backend.remove_composite_loop(composite).unwrap();
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn legacy_backends_report_the_capabilities_they_support() {
+        let local = EngineBackend::new_dummy(48_000, 64).unwrap();
+        assert_eq!(
+            Backend::capabilities(&local),
+            BackendCapabilities::FULL.with(BackendCapability::BusFx, false)
+        );
+        assert!(Backend::supports_composite_loops(&local));
+        assert_eq!(Backend::capabilities(&*local), BackendCapabilities::FULL);
+        let web_audio = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        assert_eq!(
+            web_audio.capabilities(),
+            BackendCapabilities::FULL.with(BackendCapability::AudioDriverSwitching, false)
+        );
+
+        let mut fake = FakeBackend::default();
+        assert_eq!(fake.capabilities(), BackendCapabilities::FULL);
+        assert!(!fake.supports_composite_loops());
+        fake.enable_composite_loops();
+        assert_eq!(fake.capabilities(), BackendCapabilities::FULL);
+        assert!(fake.supports_composite_loops());
+        fake.set_capability(BackendCapability::CompositeLoops, false);
+        assert!(!fake.supports_composite_loops());
+        assert!(fake.create_composite_loop().is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_backend_refuses_operations_of_switched_off_capabilities() {
+        fn attempt(
+            backend: &mut FakeBackend,
+            capability: BackendCapability,
+            track_id: BackendTrackId,
+            loop_id: BackendLoopId,
+        ) -> Result<()> {
+            match capability {
+                BackendCapability::SessionCapture => backend.capture_session().map(drop),
+                BackendCapability::SessionContentLoad => {
+                    let mut session = backend.capture_session()?;
+                    let content = session
+                        .tracks
+                        .iter_mut()
+                        .flat_map(|track| &mut track.loops)
+                        .find(|content| content.source_id == loop_id.raw())
+                        .unwrap();
+                    content.length = 4;
+                    backend.replace_session(&session).map(drop)
+                }
+                BackendCapability::CompositeLoops => backend.create_composite_loop().map(drop),
+                BackendCapability::Grab => backend.grab_loops(&[BackendGrabRequest {
+                    loop_id,
+                    reverse_start_cycle: None,
+                    cycles_length: None,
+                    go_to_cycle: None,
+                    go_to_mode: BackendLoopMode::Playing,
+                }]),
+                BackendCapability::ReplacingMode => {
+                    backend.transition_loop(loop_id, BackendLoopMode::Replacing, None)
+                }
+                BackendCapability::DryWetModes => {
+                    backend.transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
+                }
+                BackendCapability::DryWetTracks => backend
+                    .create_track(TrackRequest {
+                        port_name_base: "dry_wet".to_owned(),
+                        topology: BackendTrackTopology::DryWetExternal {
+                            dry_audio_channels: 1,
+                            wet_audio_channels: 1,
+                            dry_midi: false,
+                        },
+                        initial_loops: 1,
+                    })
+                    .map(drop),
+                BackendCapability::TrackFx => {
+                    backend.set_track_fx_control(track_id, BackendTrackFxControl::SetActive(true))
+                }
+                BackendCapability::BusFx => backend.set_bus_fx_control(
+                    BackendBusId::from_raw(1),
+                    BackendBusFxControl::SetActive(true),
+                ),
+                BackendCapability::LatencyCompensation => backend.set_track_latency(
+                    track_id,
+                    BackendRecordingOffsetAdjustment::ManualOverride(0),
+                    BackendProcessorLatencyAdjustment::ManualOverride,
+                    0,
+                ),
+                BackendCapability::TakeAlignment => backend.set_take_alignment(loop_id, 0),
+                BackendCapability::LoopContentImport => backend.replace_loop_content(
+                    loop_id,
+                    &BackendLoopContentUpdate {
+                        audio: vec![BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![0.0; 4],
+                            start_offset: None,
+                            capture_alignment_frames: None,
+                            preplay: None,
+                        }],
+                        midi: Vec::new(),
+                        length: Some(4),
+                    },
+                ),
+                BackendCapability::LoopTimingEdits => backend.set_loop_length(loop_id, 4),
+                BackendCapability::BusManagement => backend
+                    .create_bus(BackendBusRequest {
+                        name: "Cue".to_owned(),
+                        channel_count: 2,
+                        fx: None,
+                    })
+                    .map(drop),
+                BackendCapability::AudioDriverSwitching => backend
+                    .preflight_audio_driver(&AudioDriverConfig::default())
+                    .map(drop),
+                BackendCapability::MidiInjection => backend.inject_midi_input(
+                    track_id,
+                    &[BackendMidiEvent {
+                        time: 0,
+                        data: vec![0x90, 60, 100],
+                    }],
+                ),
+            }
+        }
+
+        for capability in BackendCapability::ALL {
+            let mut backend = FakeBackend::default();
+            backend.enable_composite_loops();
+            let created = backend
+                .create_direct_track(DirectTrackRequest {
+                    port_name_base: "track".to_owned(),
+                    audio_channels: 1,
+                    midi: true,
+                    initial_loops: 1,
+                })
+                .unwrap();
+            backend.set_capability(capability, false);
+            assert_eq!(
+                backend.capabilities(),
+                BackendCapabilities::FULL.with(capability, false)
+            );
+            let error = attempt(&mut backend, capability, created.track_id, created.loops[0])
+                .expect_err(&format!("{capability:?} must be refused"));
+            assert_eq!(error.to_string(), capability.unavailable_reason());
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

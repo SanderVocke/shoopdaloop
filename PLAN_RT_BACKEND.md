@@ -244,8 +244,10 @@ Render performance is not an acceptance criterion of this milestone.
   `plan_transition` does.
 - **Worklet discipline.** The worklet module has no Wasm imports, as the existing
   worklet does; its engine is prepared before the first render quantum.
-- **Minimal loop-library change.** The only planned `shoop_loops` change is gain and
-  balance. Anything else the backend needs there is a documented plan revision.
+- **Minimal loop-library change.** The planned `shoop_loops` changes are gain and
+  balance, and clearing a loop. Anything else the backend needs there is a documented
+  plan revision. *Revised during Stage 5:* clearing was added because the core set
+  needs it and the loop library had no way to return a loop to empty content.
 - **Do not touch the legacy path** beyond reporting capabilities and exposing the
   shared contract tests.
 - **Test as described below**, not exhaustively at every step.
@@ -264,7 +266,8 @@ Render performance is not an acceptance criterion of this milestone.
     that kernel-enforced limit is preferred; the wrapper then remains as an early
     warning;
   - keep build output off the shared `/home` pool: the repository's `target`
-    directories are symlinks into `/tmp`, and caches and reports go there too.
+    directories are symlinks into the scratch dataset
+    (`/scratch/sander/dev/shoopdaloop/target`), and caches and reports go to `/tmp`.
 - **Project rules apply.** Follow `AGENTS.md` and `.agents/`. Build through
   `nix develop` with `RUSTFLAGS="-D warnings"`, run `cargo fmt --all` before
   committing, use `#[shoop_test]` and run `check_shoop_test_usage.py` when tests
@@ -314,19 +317,23 @@ Stage 6 needs 2, 3 and 5. Stages 7 and 8 need 6; Stage 7 also needs 1.
 
 ### Stage 1 — Capability descriptor and UI gating
 
-- [ ] Add a capability descriptor to `Backend`; the legacy backends report their
+- [x] Add a capability descriptor to `Backend`; the legacy backends report their
       full feature set.
-- [ ] Gate every unsupported action in the UI (disabled with an explanation, or
+- [x] Gate every unsupported action in the UI (disabled with an explanation, or
       hidden): saving and loading, composites, grab, the modes, processor tracks, FX,
       latency, imports, length and timing edits, buses other than Master, driver
       switching.
-- [ ] Reject documents, session loads and script operations that need an
+- [x] Reject documents, session loads and script operations that need an
       unsupported capability, including composites on a backend without them.
-- [ ] Make refusals and capacity errors from user actions visible to the user.
+- [x] Make refusals and capacity errors from user actions visible to the user.
 
 **Verify:** new `shoop_app` and `shoop_egui` tests against `FakeBackend` with each
 capability switched off; `shoop_backend`, `shoop_app` and `shoop_egui` tests; one
 workspace `nextest` at the end.
+
+*Done:* the descriptor is `BackendCapabilities` in `shoop_app_api`, re-exported by
+`shoop_backend`; refusals reach the user as dismissible notifications in the
+snapshot. Workspace `nextest`: 2217 passed, 4 skipped.
 
 ### Stage 2 — Shared backend contract tests
 
@@ -371,6 +378,7 @@ tests run against both carriers; wasm32 check.
       allocation-free; telemetry publication; chunked bulk reads.
 - [ ] The render owner: one runtime `process` call per callback, absolute frames,
       MIDI recovery, fault and disconnect handling, stopped cleanup.
+- [ ] *Added:* a minimal operation in `shoop_loops` that clears a loop's content.
 - [ ] The deterministic offline test host; a boundary check that engine-side crates
       do not depend on application crates.
 
