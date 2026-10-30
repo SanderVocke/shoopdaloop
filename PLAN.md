@@ -5,6 +5,8 @@
 ## Authority and execution
 
 This is the single maintained planning/status document for the workstreams below.
+The one exception is the [opt-in runtime backend plan](PLAN_RT_BACKEND.md), which the
+user commissioned as its own plan; this document links its status.
 It consolidates the plans present at `fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a`.
 Superseded plans and their redirect pages have been retired from the root.
 [Readable historical views](docs/history/README.md) preserve the original text with
@@ -39,6 +41,7 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | Runtime book and existing loop guides | Documentation completion recorded; accepted guides remain authoritative | Maintain only affected material with future changes; no retrospective book audit or handoff queue |
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
 | [Composable loop boundary](#composable-loop-boundary) | **Delivered**: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations; A1–A12 met and verified locally, including a CI replay | Remote CI/review need a PR; composing several planners in one runtime remains future work |
+| [Opt-in runtime backend](PLAN_RT_BACKEND.md) | Planned, not started | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend; save/load and the other parity gaps stay with the legacy backend |
 | [Common transport / application integration](#proposed-next-work) | Proposed, not delivered | Scope a next milestone before implementation; no IPC/network or production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
