@@ -90,10 +90,12 @@ impl MidiSequenceWidget {
         channel: &MidiSequenceChannelState,
         view: MediaView,
         sync_loop_length: u64,
+        grid_divider: Option<u32>,
         editing: bool,
+        height: f32,
     ) -> MediaWidgetResponse {
         self.update_notes(channel);
-        let desired = egui::vec2(ui.available_width(), 96.0);
+        let desired = egui::vec2(ui.available_width(), height.max(1.0));
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
         let pan_frames = if response.dragged() && !editing {
             let mut panned_view = view;
@@ -119,6 +121,7 @@ impl MidiSequenceWidget {
             channel.preplay_samples,
             channel.loop_length,
             sync_loop_length,
+            grid_divider,
         );
 
         if self.notes.is_empty() {
@@ -170,6 +173,7 @@ impl MidiSequenceWidget {
         );
         ui.place(label_rect, egui::Label::new(&channel.label).truncate());
         MediaWidgetResponse {
+            rect,
             pan_frames,
             clicked_frame: editing
                 .then(|| response.interact_pointer_pos())
@@ -288,7 +292,9 @@ mod tests {
                     end_frame: 16.0,
                 },
                 4,
+                Some(8),
                 false,
+                96.0,
             );
             assert!(ui.next_widget_position().y >= top + 96.0);
         });
@@ -319,7 +325,9 @@ mod tests {
                         end_frame: 16.0,
                     },
                     4,
+                    Some(8),
                     false,
+                    96.0,
                 );
             });
             output.textures_delta.clear();

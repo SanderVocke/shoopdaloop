@@ -112,9 +112,11 @@ impl WaveformWidget {
         channel: &WaveformChannelState,
         view: MediaView,
         sync_loop_length: u64,
+        grid_divider: Option<u32>,
         editing: bool,
+        height: f32,
     ) -> MediaWidgetResponse {
-        let desired = egui::vec2(ui.available_width(), 72.0);
+        let desired = egui::vec2(ui.available_width(), height.max(1.0));
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
         let pan_frames = if response.dragged() && !editing {
             let mut panned_view = view;
@@ -144,6 +146,7 @@ impl WaveformWidget {
             channel.preplay_samples,
             channel.loop_length,
             sync_loop_length,
+            grid_divider,
         );
         let clicked_frame = editing
             .then(|| response.interact_pointer_pos())
@@ -151,6 +154,7 @@ impl WaveformWidget {
             .filter(|_| response.clicked())
             .map(|position| view.x_to_frame(position.x, rect).round() as i64);
         let result = MediaWidgetResponse {
+            rect,
             pan_frames,
             clicked_frame,
         };
@@ -307,7 +311,9 @@ mod tests {
                     end_frame: 16.0,
                 },
                 4,
+                Some(8),
                 false,
+                72.0,
             );
             assert!(ui.next_widget_position().y >= top + 72.0);
         });
