@@ -441,7 +441,7 @@ other operation is refused with the capability's explanation.
 
 ### Stage 7 — Native host and application integration (`shoop_rt_host_native`)
 
-- [ ] The dummy driver on a real-time thread; the CPAL and midir adapter with
+- [x] The dummy driver on a real-time thread; the CPAL and midir adapter with
       lock-free bridges, xrun counting and a clear refusal of buffers above the
       prepared maximum.
 - [ ] The composition root in `shoopdaloop`: a restart-required backend setting, an
@@ -451,9 +451,15 @@ other operation is refused with the capability's explanation.
 application smoke of the core workflow on the dummy driver; a manual smoke on a real
 device on Linux, plus macOS or Windows where available; one workspace `nextest`.
 
+*Host notes:* device discovery is local to the native host, not protocol data; a
+remote engine needs it added to the protocol. Separate input and output devices are
+bridged without resampling, so clock drift shows as xruns. MIDI output is sent when
+the pump sees it, not placed within the buffer. Callbacks larger than the prepared
+maximum are rendered in parts and counted.
+
 ### Stage 8 — Browser host (`shoop_rt_host_worklet`)
 
-- [ ] The raw-Wasm worklet module around the engine and the MessagePort carrier
+- [x] The raw-Wasm worklet module around the engine and the MessagePort carrier
       server, prepared before its first render quantum.
 - [ ] The main-thread half: carrier client wiring and Web MIDI forwarding on its own
       lane.
@@ -463,6 +469,11 @@ device on Linux, plus macOS or Windows where available; one workspace `nextest`.
 **Verify:** Node tests of the worklet logic over a simulated MessagePort carrier;
 the protocol tests over the record carrier; a check that the worklet module has no
 imports; one browser smoke of the core workflow.
+
+*Worklet notes:* `shoop_rt_host_worklet.wasm` is built next to the legacy artifact
+and driven by `rt_audio_worklet.js`; `rt_worklet_contract.mjs` checks in CI that it
+has no imports and runs it over a simulated MessagePort. The worklet also has a
+MIDI-out lane for the main-thread half to forward to Web MIDI outputs.
 
 ### Stage 9 — Documents
 

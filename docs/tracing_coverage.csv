@@ -255,3 +255,10 @@ src/rust/shoop_rt_host_native/src/lib.rs,native_engine_host,instrumented_direct,
 src/rust/shoop_rt_host_native/src/midi.rs,native_engine_host,excluded,Lock-free MIDI bridges used by device and audio threads and an output pump thread; drops and failures are counted in host status.
 src/rust/shoop_rt_host_native/src/midir_ports.rs,native_engine_host,instrumented_indirect,Opens midir ports within the traced host start; ports that are missing or fail to open become traced warnings.
 src/rust/shoop_rt_host_native/src/status.rs,native_engine_host,excluded,Atomic counters and driver state written from callbacks; no execution boundary to instrument.
+src/rust/shoop_rt_host_worklet/src/abi.rs,browser_engine_host,excluded,"Import-free module exports called on the audio thread; preparation and render failures are returned as status codes, which the processor script posts to the traced main-thread half."
+src/rust/shoop_rt_host_worklet/src/config.rs,browser_engine_host,excluded,Plain configuration record encoding and validation; the main-thread half traces preparation failures.
+src/rust/shoop_rt_host_worklet/src/framing.rs,browser_engine_host,excluded,Allocation-free record framing over postMessage; framing errors are counted and end the connection with a protocol error.
+src/rust/shoop_rt_host_worklet/src/host.rs,browser_engine_host,excluded,"Pumps the record server and renders on the audio thread, which must not trace; xruns, load, MIDI drops and faults are reported through counters and engine telemetry."
+src/rust/shoop_rt_host_worklet/src/lane.rs,browser_engine_host,excluded,Plain MIDI lane event encoding; drops are counted by the host.
+src/rust/shoop_rt_host_worklet/src/lib.rs,browser_engine_host,excluded,Module declarations and re-exports.
+src/rust/shoop_rt_host_worklet/src/stream.rs,browser_engine_host,excluded,Fixed-capacity byte buffers shared with the processor script; no execution boundary to instrument.
