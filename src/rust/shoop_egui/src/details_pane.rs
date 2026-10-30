@@ -19,7 +19,14 @@ pub(crate) struct MediaWidgetResponse {
 }
 
 pub const GRID_DIVIDER_CHOICES: [Option<u32>; 8] = [
-    None, Some(1), Some(2), Some(3), Some(4), Some(6), Some(8), Some(16),
+    None,
+    Some(1),
+    Some(2),
+    Some(3),
+    Some(4),
+    Some(6),
+    Some(8),
+    Some(16),
 ];
 
 const MIN_GRID_LINE_PIXELS: f32 = 20.0;
@@ -38,9 +45,8 @@ fn snap_frame_to_grid(frame: i64, start_offset: i64, interval: u64) -> i64 {
         }
     };
     let steps = round_div(delta);
-    start_offset.saturating_add(
-        (steps * interval).clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64,
-    )
+    start_offset
+        .saturating_add((steps * interval).clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64)
 }
 
 fn grid_interval(sync_loop_length: u64, divider: Option<u32>) -> Option<u64> {
@@ -169,10 +175,13 @@ impl Default for MediaViewState {
     }
 }
 
+const MIN_ZOOM: f32 = 0.01;
+const MAX_ZOOM: f32 = 64.0;
+
 impl MediaViewState {
     fn view(&mut self, (timeline_start, timeline_end): (f64, f64)) -> MediaView {
         let total_frames = (timeline_end - timeline_start).max(1.0);
-        let visible_frames = (total_frames / f64::from(self.zoom)).max(1.0);
+        let visible_frames = (total_frames * f64::from(self.zoom)).max(1.0);
         let max_offset = (timeline_end - visible_frames).max(timeline_start);
         self.offset = self.offset.clamp(timeline_start, max_offset);
         MediaView {
@@ -332,22 +341,23 @@ impl DetailsPane {
         ui.horizontal(|ui| {
             ui.label("Zoom:");
             if ui.small_button("\u{2212}").clicked() {
-                self.media_view.zoom = (self.media_view.zoom / 1.25).clamp(1.0, 64.0);
+                self.media_view.zoom = (self.media_view.zoom / 1.25).clamp(MIN_ZOOM, MAX_ZOOM);
             }
             ui.add(
-                egui::Slider::new(&mut self.media_view.zoom, 1.0..=64.0)
+                egui::Slider::new(&mut self.media_view.zoom, MIN_ZOOM..=MAX_ZOOM)
                     .logarithmic(true)
                     .show_value(false)
                     .text("zoom"),
             )
-            .on_hover_text(format!("Media zoom: {:.1}×", self.media_view.zoom));
+            .on_hover_text(format!("Media zoom: {:.2}×", self.media_view.zoom));
             if ui.small_button("+").clicked() {
-                self.media_view.zoom = (self.media_view.zoom * 1.25).clamp(1.0, 64.0);
+                self.media_view.zoom = (self.media_view.zoom * 1.25).clamp(MIN_ZOOM, MAX_ZOOM);
             }
             if ui.small_button("Fit").clicked() {
                 let margin_factor = 1.2;
                 let total = (bounds.1 - bounds.0).max(1.0);
-                self.media_view.zoom = (total as f32 * margin_factor as f32).clamp(1.0, 64.0);
+                self.media_view.zoom =
+                    (1.0 / (total * margin_factor)).clamp(MIN_ZOOM as f64, MAX_ZOOM as f64) as f32;
                 self.media_view.offset = bounds.0 - (total * (margin_factor - 1.0)) / 2.0;
             }
         });
@@ -392,7 +402,8 @@ impl DetailsPane {
         self.midi_sequences
             .resize_with(details.midi_channels.len(), MidiSequenceWidget::default);
         let lane_count = details.channels.len() + details.midi_channels.len();
-        self.lane_heights.resize(lane_count, DEFAULT_AUDIO_LANE_HEIGHT);
+        self.lane_heights
+            .resize(lane_count, DEFAULT_AUDIO_LANE_HEIGHT);
         for index in details.channels.len()..lane_count {
             self.lane_heights[index] = DEFAULT_MIDI_LANE_HEIGHT;
         }
@@ -416,8 +427,7 @@ impl DetailsPane {
                         );
                         pan_frames += response.pan_frames;
                         clicked_frame = clicked_frame.or(response.clicked_frame);
-                        self.lane_heights[lane_index] =
-                            resize_lane(ui, response.rect, height);
+                        self.lane_heights[lane_index] = resize_lane(ui, response.rect, height);
                         lane_index += 1;
                     }
                     for (channel, sequence) in
@@ -435,8 +445,7 @@ impl DetailsPane {
                         );
                         pan_frames += response.pan_frames;
                         clicked_frame = clicked_frame.or(response.clicked_frame);
-                        self.lane_heights[lane_index] =
-                            resize_lane(ui, response.rect, height);
+                        self.lane_heights[lane_index] = resize_lane(ui, response.rect, height);
                         lane_index += 1;
                     }
                 });
@@ -445,7 +454,11 @@ impl DetailsPane {
         let Some((tool, frame)) = self.edit_tool.zip(clicked_frame) else {
             return Vec::new();
         };
-        vec![timeline_edit_intent(details, tool, self.snap_frame(details, frame))]
+        vec![timeline_edit_intent(
+            details,
+            tool,
+            self.snap_frame(details, frame),
+        )]
     }
 
     fn snap_frame(&self, details: &LoopDetailsState, frame: i64) -> i64 {
@@ -564,7 +577,7 @@ mod tests {
         assert_eq!(bounds, (-30.0, 220.0));
 
         let mut state = MediaViewState {
-            zoom: 2.0,
+            zoom: 0.5,
             offset: -30.0,
         };
         let mut view = state.view(bounds);
@@ -729,10 +742,10 @@ mod tests {
         };
         let bounds: (f64, f64) = (0.0, 40.0);
         let total = (bounds.1 - bounds.0).max(1.0_f64);
-        state.zoom = 2.0;
+        state.zoom = 0.5;
         state.offset = bounds.0;
         let view = state.view(bounds);
         assert_eq!(view.start_frame, bounds.0);
-        assert_eq!(view.end_frame - view.start_frame, total / 2.0);
+        assert_eq!(view.end_frame - view.start_frame, total * 0.5);
     }
 }
