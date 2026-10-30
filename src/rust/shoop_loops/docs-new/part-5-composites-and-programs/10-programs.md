@@ -1,12 +1,12 @@
-# 8. Programs
+# 11. Programs
 
 <!-- rust-source: ../examples/program_loop.rs -->
 
-[Contents](../README.md) · [Previous: Sync-scheduled transitions](07-sync-scheduled-transitions.md) · [Next: A MIDI loop](../part-4-midi/09-a-midi-loop.md)
+[Contents](../README.md) · [Previous: Composite loops](09-composite-loops.md) · [Next: Exporting and importing media](../part-6-content-and-graph/11-exporting-and-importing-media.md)
 
 A **program** is a small arrangement attached to a composite loop: a list of **entries** that say which child loop plays (or records, or stops) during which part of the parent's timeline. When the composite starts playing, the planner advances the program on each tick of its sync source and issues the entries' transitions to the children for you.
 
-The [program example](../examples/program_loop.rs) from chapter 6 uses this program:
+The [program example](../examples/program_loop.rs) from chapter 10 uses this program:
 
 ```rust
     programs: vec![ProgramDescription {
@@ -77,4 +77,4 @@ drums out:  0    5    6    0    5    6    0    5    6    0    5    6
 - A stopped or idle sync source stalls the program: iterations only advance on delivered ticks.
 - Program entries are compiled into segments at `compile` time; the render side never interprets the description.
 
-[Previous: Sync-scheduled transitions](07-sync-scheduled-transitions.md) · [Next: A MIDI loop](../part-4-midi/09-a-midi-loop.md)
+[Previous: Composite loops](09-composite-loops.md) · [Next: Exporting and importing media](../part-6-content-and-graph/11-exporting-and-importing-media.md)

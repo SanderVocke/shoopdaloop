@@ -1,6 +1,6 @@
-# 12. Editing the graph around loops
+# 13. Editing the graph around loops
 
-[Contents](../README.md) · [Previous: Exporting and importing media](11-exporting-and-importing-media.md) · [Next: Capacities, refusals, and results](../part-6-operating/13-capacities-refusals-and-results.md)
+[Contents](../README.md) · [Previous: Exporting and importing media](11-exporting-and-importing-media.md) · [Next: Capacities, refusals, and results](../part-7-operating/13-capacities-refusals-and-results.md)
 
 The signal graph around a loop is yours: you can route host ports, your own processors, and loop nodes however you like at prepare time, and `rt_runtime` lets you edit routes live (see [its chapter 6](../../../../rt_runtime/docs/part-2-control-a-running-graph/06-routing-and-live-graph-edits.md)). Two rules protect the loop library's timing:
 
@@ -17,4 +17,4 @@ Build that graph at prepare time in `GraphDescription` exactly as in chapter 2, 
 
 If a running loop must move to different nodes (for example because you rebuilt your FX chain), stage the node-pair change instead of editing routes around it — the planner will refuse the unsafe edit and the staged path is the supported one.
 
-[Previous: Exporting and importing media](11-exporting-and-importing-media.md) · [Next: Capacities, refusals, and results](../part-6-operating/13-capacities-refusals-and-results.md)
+[Previous: Exporting and importing media](11-exporting-and-importing-media.md) · [Next: Capacities, refusals, and results](../part-7-operating/13-capacities-refusals-and-results.md)

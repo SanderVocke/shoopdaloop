@@ -1,8 +1,8 @@
-# 9. A MIDI loop
+# 8. A MIDI loop
 
 <!-- rust-source: ../examples/midi_loop.rs -->
 
-[Contents](../README.md) · [Previous: Programs](../part-3-several-loops/08-programs.md) · [Next: MIDI state and restoration](10-midi-state-and-restoration.md)
+[Contents](../README.md) · [Previous: Sync-scheduled recording](../part-3-syncing-loops/07-sync-scheduled-recording.md) · [Next: MIDI state and restoration](08-midi-state-and-restoration.md)
 
 Audio loops carry samples; a **MIDI loop** carries events. The mechanics are the same — record, play, wrap, stop — but the signal is a stream of timestamped packets instead of sample buffers. This chapter records two events (a note-on at frame 0 and a sustain-pedal CC at frame 1), plays them back from frame 4, and stops at frame 7.
 
@@ -130,4 +130,4 @@ The recording is two events over frames 0–1, so its length is 2 frames. Play a
 
 (The earlier events in the block are the reset-all-controllers/all-notes-off preamble the playback node emits at the play boundary; the example asserts the tail because that is the recorded content.)
 
-[Previous: Programs](../part-3-several-loops/08-programs.md) · [Next: MIDI state and restoration](10-midi-state-and-restoration.md)
+[Previous: Sync-scheduled recording](../part-3-syncing-loops/07-sync-scheduled-recording.md) · [Next: MIDI state and restoration](08-midi-state-and-restoration.md)

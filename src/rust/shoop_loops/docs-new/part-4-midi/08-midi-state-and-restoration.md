@@ -1,8 +1,8 @@
-# 10. MIDI state and restoration
+# 9. MIDI state and restoration
 
 <!-- rust-source: ../examples/midi_loop.rs -->
 
-[Contents](../README.md) · [Previous: A MIDI loop](09-a-midi-loop.md) · [Next: Exporting and importing media](../part-5-content-and-graph/11-exporting-and-importing-media.md)
+[Contents](../README.md) · [Previous: A MIDI loop](07-a-midi-loop.md) · [Next: Composite loops](../part-5-composites-and-programs/09-composite-loops.md)
 
 MIDI is stateful: a note-on without a note-off leaves a key held on the instrument forever. `shoop_loops` tracks that state per loop and emits **cleanup** when playback stops, so your synth does not hang notes. This chapter uses the same [MIDI example](../examples/midi_loop.rs): the take holds note 60 and the sustain pedal (CC 64) at 127, and Stop at frame 7 must release both.
 
@@ -36,4 +36,4 @@ The state is also queryable from the control side: `Operation::State` returns a 
 
 Restoration replays the fixed protocol (notes, pedals, controllers, selectors) from recorded state. It does not reconstruct synthesizer voices or parameters that were never sent as MIDI, and relative parameter commands (data-entry increments) are not replayed as state. If a device needs more than that, send your own reset from the application after Stop.
 
-[Previous: A MIDI loop](09-a-midi-loop.md) · [Next: Exporting and importing media](../part-5-content-and-graph/11-exporting-and-importing-media.md)
+[Previous: A MIDI loop](07-a-midi-loop.md) · [Next: Composite loops](../part-5-composites-and-programs/09-composite-loops.md)

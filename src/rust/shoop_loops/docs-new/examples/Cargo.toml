@@ -27,6 +27,10 @@ name = "sync_loops"
 path = "sync_loops.rs"
 
 [[bin]]
+name = "sync_record"
+path = "sync_record.rs"
+
+[[bin]]
 name = "program_loop"
 path = "program_loop.rs"
 

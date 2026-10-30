@@ -1,8 +1,8 @@
-# 11. Exporting and importing media
+# 12. Exporting and importing media
 
 <!-- rust-source: ../examples/seek_loop.rs -->
 
-[Contents](../README.md) · [Previous: MIDI state and restoration](../part-4-midi/10-midi-state-and-restoration.md) · [Next: Editing the graph around loops](12-editing-the-graph-around-loops.md)
+[Contents](../README.md) · [Previous: Programs](../part-5-composites-and-programs/10-programs.md) · [Next: Editing the graph around loops](12-editing-the-graph-around-loops.md)
 
 A loop keeps at most two takes: the one **playing** and the **latest** completed one. When you need a take to outlive that — to save it, hand it to another loop, or query it — you **export** it. Exporting is a control-side request that returns an immutable snapshot handle; the loop keeps playing its own copy. This chapter extends the [seek example](../examples/seek_loop.rs): after the six-frame recording finishes, it exports the latest take.
 
@@ -57,4 +57,4 @@ The reverse direction happens before rendering: upload content into the resource
 
 `Operation::Select { target, timing, media, preserve_position }` makes a loop switch to a previously exported media id — the same way `coordinated_loop.rs` re-selects its exported original after experimenting. The `media` id must belong to that loop's owner.
 
-[Previous: MIDI state and restoration](../part-4-midi/10-midi-state-and-restoration.md) · [Next: Editing the graph around loops](12-editing-the-graph-around-loops.md)
+[Previous: Programs](../part-5-composites-and-programs/10-programs.md) · [Next: Editing the graph around loops](12-editing-the-graph-around-loops.md)

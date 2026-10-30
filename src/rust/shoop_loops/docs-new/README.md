@@ -13,26 +13,30 @@ Draft opening of the replacement book. The existing documentation remains unchan
 - [4. Seeking and iterations](part-2-steer-one-loop/04-seeking-and-iterations.md)
 - [5. Recording over existing content](part-2-steer-one-loop/05-recording-over-existing-content.md)
 
-## Part III — Several loops
+## Part III — Syncing loops
 
-- [6. Composite loops and sync sources](part-3-several-loops/06-composite-loops-and-sync-sources.md)
-- [7. Sync-scheduled transitions](part-3-several-loops/07-sync-scheduled-transitions.md)
-- [8. Programs](part-3-several-loops/08-programs.md)
+- [6. Syncing loops](part-3-syncing-loops/06-syncing-loops.md)
+- [7. Sync-scheduled recording](part-3-syncing-loops/07-sync-scheduled-recording.md)
 
 ## Part IV — MIDI
 
-- [9. A MIDI loop](part-4-midi/09-a-midi-loop.md)
-- [10. MIDI state and restoration](part-4-midi/10-midi-state-and-restoration.md)
+- [8. A MIDI loop](part-4-midi/07-a-midi-loop.md)
+- [9. MIDI state and restoration](part-4-midi/08-midi-state-and-restoration.md)
 
-## Part V — Content and graph
+## Part V — Composites and programs
 
-- [11. Exporting and importing media](part-5-content-and-graph/11-exporting-and-importing-media.md)
-- [12. Editing the graph around loops](part-5-content-and-graph/12-editing-the-graph-around-loops.md)
+- [10. Composite loops](part-5-composites-and-programs/09-composite-loops.md)
+- [11. Programs](part-5-composites-and-programs/10-programs.md)
 
-## Part VI — Operating
+## Part VI — Content and graph
 
-- [13. Capacities, refusals, and results](part-6-operating/13-capacities-refusals-and-results.md)
-- [14. Shutdown](part-6-operating/14-shutdown.md)
+- [12. Exporting and importing media](part-6-content-and-graph/11-exporting-and-importing-media.md)
+- [13. Editing the graph around loops](part-6-content-and-graph/12-editing-the-graph-around-loops.md)
+
+## Part VII — Operating
+
+- [14. Capacities, refusals, and results](part-7-operating/13-capacities-refusals-and-results.md)
+- [15. Shutdown](part-7-operating/14-shutdown.md)
 
 ## Run the examples
 
@@ -44,7 +48,7 @@ Run it from the repository root:
 cargo run --locked --manifest-path src/rust/shoop_loops/docs-new/examples/Cargo.toml --bin first_loop
 ```
 
-Every chapter's example runs the same way: `--bin seek_loop`, `--bin overdub_loop`, `--bin sync_loops`, `--bin program_loop`, or `--bin midi_loop`.
+Every chapter's example runs the same way: `--bin seek_loop`, `--bin overdub_loop`, `--bin sync_loops`, `--bin sync_record`, `--bin program_loop`, or `--bin midi_loop`.
 
 Add `--release` for the optimized build. The examples have a separate Cargo manifest so this draft does not change the library's existing examples or workspace configuration.
 

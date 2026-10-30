@@ -1,6 +1,6 @@
-# 13. Capacities, refusals, and results
+# 14. Capacities, refusals, and results
 
-[Contents](../README.md) · [Previous: Editing the graph around loops](../part-5-content-and-graph/12-editing-the-graph-around-loops.md) · [Next: Shutdown](14-shutdown.md)
+[Contents](../README.md) · [Previous: Editing the graph around loops](../part-6-content-and-graph/12-editing-the-graph-around-loops.md) · [Next: Shutdown](14-shutdown.md)
 
 Everything in `shoop_loops` is fixed-size: there is no allocation at render time, so the capacities you set at prepare time are the whole budget. When a budget is exhausted, you get a typed refusal — never a panic and never a silent drop.
 
@@ -28,4 +28,4 @@ Common `Failed` reasons: `EmptyContent` (Play on an empty loop), `InvalidFrame` 
 
 In a live application, poll both streams regularly and destroy returned owners on the control side; unread results occupy their finite slots. Match replies by `sequence`, not by order.
 
-[Previous: Editing the graph around loops](../part-5-content-and-graph/12-editing-the-graph-around-loops.md) · [Next: Shutdown](14-shutdown.md)
+[Previous: Editing the graph around loops](../part-6-content-and-graph/12-editing-the-graph-around-loops.md) · [Next: Shutdown](14-shutdown.md)

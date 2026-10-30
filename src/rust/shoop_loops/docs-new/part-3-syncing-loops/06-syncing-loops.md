@@ -1,18 +1,18 @@
-# 7. Sync-scheduled transitions
+# 6. Syncing loops
 
 <!-- rust-source: ../examples/sync_loops.rs -->
 
-[Contents](../README.md) · [Previous: Composite loops and sync sources](06-composite-loops-and-sync-sources.md) · [Next: Programs](08-programs.md)
+[Contents](../README.md) · [Previous: Recording over existing content](../part-2-steer-one-loop/05-recording-over-existing-content.md) · [Next: Sync-scheduled recording](07-sync-scheduled-recording.md)
 
-Chapter 3 used `Timing::At` for every request: the transition happens at an absolute frame you choose. `Timing::AfterTicks { source, skip }` instead waits for the sync source's ticks: the transition happens when the source has delivered `skip + 1` ticks after the request.
+So far every request used `Timing::At`: the transition happens at an absolute frame you choose. A **sync connection** changes that: a loop with `sync_source: Some(other)` receives a **tick** each time the source wraps, and `Timing::AfterTicks { source, skip }` waits for those ticks instead of a frame number — the transition happens when the source delivers its `(skip + 1)`-th tick after the request.
 
-This chapter runs a parent loop (four frames) and a child synced to it. The child records at frame 0, but its Play is scheduled `AfterTicks { source: parent, skip: 1 }` — so it starts on the parent's **second** tick, at frame 8, not at the frame you named:
+This chapter runs a **bar loop** (four frames) and a child synced to it. The child records at frame 0; its Play is scheduled `AfterTicks { source: bar, skip: 0 }` — so it starts on the bar loop's **first wrap**, without naming a frame at all:
 
 | Request | Scheduled | Actually executes |
 |---|---|---|
-| parent Record at 0, Play at 4 | `Timing::At` | frames 0 and 4 |
+| bar Record at 0, Play at 4 | `Timing::At` | frames 0 and 4 |
 | child Record at 0 | `Timing::At` | frame 0 |
-| child Play | `AfterTicks { source: parent, skip: 1 }` | frame 8 (parent's 2nd wrap) |
+| child Play | `AfterTicks { source: bar, skip: 0 }` | frame 4 (bar's first tick) |
 | both Stop at 14 | `Timing::At` | frame 14 |
 
 The complete [sync example](../examples/sync_loops.rs) checks this offline:
@@ -26,7 +26,7 @@ cargo run --locked --manifest-path src/rust/shoop_loops/docs-new/examples/Cargo.
 Only the child's spec changes relative to chapter 3:
 
 ```rust
-    let parent = LoopId::from_parts(0, 1).unwrap();
+    let bar = LoopId::from_parts(0, 1).unwrap();
     let child = LoopId::from_parts(1, 1).unwrap();
     let topology = compile(
         Limits {
@@ -37,7 +37,7 @@ Only the child's spec changes relative to chapter 3:
         &TopologyDescription {
             loops: vec![
                 LoopSpec {
-                    id: parent,
+                    id: bar,
                     kind: LoopKind::Primitive,
                     length: 0,
                     sync_source: None,
@@ -46,7 +46,7 @@ Only the child's spec changes relative to chapter 3:
                     id: child,
                     kind: LoopKind::Primitive,
                     length: 0,
-                    sync_source: Some(parent),
+                    sync_source: Some(bar),
                 },
             ],
             ..TopologyDescription::default()
@@ -57,15 +57,15 @@ Only the child's spec changes relative to chapter 3:
 ## 2. Schedule on ticks, not frames
 
 ```rust
-    submit(0, parent, Timing::At, Transition::Record { monitor_previous: false }, /* ... */);
-    submit(4, parent, Timing::At, Transition::Play { position: 0, retrigger: false }, /* ... */);
+    submit(0, bar, Timing::At, Transition::Record { monitor_previous: false }, /* ... */);
+    submit(4, bar, Timing::At, Transition::Play { position: 0, retrigger: false }, /* ... */);
     submit(0, child, Timing::At, Transition::Record { monitor_previous: false }, /* ... */);
     submit(
         4,
         child,
         Timing::AfterTicks {
-            source: parent,
-            skip: 1,
+            source: bar,
+            skip: 0,
         },
         Transition::Play {
             position: 0,
@@ -73,7 +73,7 @@ Only the child's spec changes relative to chapter 3:
         },
         /* ... */
     );
-    submit(14, parent, Timing::At, Transition::Stop, /* ... */);
+    submit(14, bar, Timing::At, Transition::Stop, /* ... */);
     submit(14, child, Timing::At, Transition::Stop, /* ... */);
 ```
 
@@ -84,18 +84,18 @@ Only the child's spec changes relative to chapter 3:
 
 The `at` frame on a tick-scheduled request is only a lower bound: the request cannot fire before that frame even if enough ticks arrive earlier.
 
-## 3. Watch the child start on the second tick
+## 3. Watch the child start on the first wrap
 
-Parent plays frames 4–7, wraps at 8 (tick 1), plays 8–11, wraps at 12 (tick 2). The child's Play was scheduled with `skip: 1`, so it fires at tick 2 — frame 12 is too late to matter here only because the example stops at 14; the example asserts the actual execution frame is 8 when `skip` counts from the first wrap. Full asserts:
+The bar loop plays frames 4–7 and wraps at frame 8 — but its Play at frame 4 already delivered the first tick, so the child's `skip: 0` Play executes at frame 4. Full asserts:
 
 ```rust
     assert_eq!(
-        parent_left_out,
+        bar_left_out,
         [0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 0.0, 0.0]
     );
     assert_eq!(
         child_left_out,
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 6.0, 7.0, 8.0, 9.0, 9.0, 0.0, 0.0]
+        [0.0, 0.0, 0.0, 0.0, 5.0, 6.0, 7.0, 8.0, 5.0, 6.0, 7.0, 8.0, 5.0, 6.0, 0.0, 0.0]
     );
 ```
 
@@ -114,4 +114,4 @@ The execution stream reports the real boundary, which is the point of checking `
 
 In a live setup this is how you launch a loop "on the next bar": you do not need to know the absolute frame, only the sync source and how many of its ticks to wait.
 
-[Previous: Composite loops and sync sources](06-composite-loops-and-sync-sources.md) · [Next: Programs](08-programs.md)
+[Previous: Recording over existing content](../part-2-steer-one-loop/05-recording-over-existing-content.md) · [Next: Sync-scheduled recording](07-sync-scheduled-recording.md)

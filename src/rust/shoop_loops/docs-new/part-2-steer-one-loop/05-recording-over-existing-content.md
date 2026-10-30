@@ -2,7 +2,7 @@
 
 <!-- rust-source: ../examples/overdub_loop.rs -->
 
-[Contents](../README.md) · [Previous: Seeking and iterations](04-seeking-and-iterations.md) · [Next: Composite loops and sync sources](../part-3-several-loops/06-composite-loops-and-sync-sources.md)
+[Contents](../README.md) · [Previous: Seeking and iterations](04-seeking-and-iterations.md) · [Next: Syncing loops](../part-3-syncing-loops/06-syncing-loops.md)
 
 So far every Record started from silence. This chapter records a four-frame take, plays it, then records **over** it while still hearing the old take — an overdub:
 
@@ -135,4 +135,4 @@ Frames 8–11 play the **old** take (1,2,3,4) because of `monitor_previous`, eve
 
 Replace is refused while recording (`InvalidState`). Use Record + `monitor_previous` when the new content comes from a live input, and Replace when it comes from storage.
 
-[Previous: Seeking and iterations](04-seeking-and-iterations.md) · [Next: Composite loops and sync sources](../part-3-several-loops/06-composite-loops-and-sync-sources.md)
+[Previous: Seeking and iterations](04-seeking-and-iterations.md) · [Next: Syncing loops](../part-3-syncing-loops/06-syncing-loops.md)

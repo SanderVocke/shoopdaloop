@@ -209,7 +209,7 @@ fn main() {
         child,
         Timing::AfterTicks {
             source: parent,
-            skip: 1,
+            skip: 0,
         },
         Transition::Play {
             position: 0,
@@ -275,11 +275,11 @@ fn main() {
     );
     assert_eq!(
         child_left_out,
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 6.0, 7.0, 8.0, 9.0, 9.0, 0.0, 0.0]
+        [0.0, 0.0, 0.0, 0.0, 5.0, 6.0, 7.0, 8.0, 5.0, 6.0, 7.0, 8.0, 5.0, 6.0, 0.0, 0.0]
     );
     assert_eq!(
         child_right_out,
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 50.0, 60.0, 70.0, 80.0, 90.0, 90.0, 0.0, 0.0]
+        [0.0, 0.0, 0.0, 0.0, 50.0, 60.0, 70.0, 80.0, 50.0, 60.0, 70.0, 80.0, 50.0, 60.0, 0.0, 0.0]
     );
     assert_eq!(runtime.next_frame(), Frame(16));
 
@@ -305,7 +305,7 @@ fn main() {
         .copied();
     assert_eq!(
         child_play,
-        Some((sequences[3].0, Frame(8), Outcome::Applied { frame: Frame(8) }))
+        Some((sequences[3].0, Frame(4), Outcome::Applied { frame: Frame(4) }))
     );
 
     drop(control);
@@ -320,5 +320,5 @@ fn main() {
     assert_eq!(usage.reserved_pages, 0);
     assert_eq!(planner.media_usage().references, 0);
 
-    println!("Parent loop recorded and played; child started on the parent's second tick at frame 8; stop and cleanup verified.");
+    println!("Parent bar loop recorded and played; child started on the parent's first tick at frame 4; stop and cleanup verified.");
 }

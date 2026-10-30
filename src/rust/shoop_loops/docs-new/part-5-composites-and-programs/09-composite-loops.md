@@ -1,8 +1,8 @@
-# 6. Composite loops and sync sources
+# 10. Composite loops
 
 <!-- rust-source: ../examples/program_loop.rs -->
 
-[Contents](../README.md) · [Previous: Recording over existing content](../part-2-steer-one-loop/05-recording-over-existing-content.md) · [Next: Sync-scheduled transitions](07-sync-scheduled-transitions.md)
+[Contents](../README.md) · [Previous: MIDI state and restoration](../part-4-midi/08-midi-state-and-restoration.md) · [Next: Programs](10-programs.md)
 
 A **sync source** is a loop whose wraps act as a metronome. Any loop with `sync_source: Some(other)` receives a **tick** (a pulse) each time the source wraps. This chapter builds that: a one-frame **clock** loop plays continuously and wraps every frame, so it ticks every frame. An **arranger**, a composite loop synced to the clock, runs a program that starts and stops child loops on those ticks.
 
@@ -61,7 +61,7 @@ The topology names each loop's kind and sync source:
                     sync_source: Some(arranger),
                 },
             ],
-            programs: vec![ /* ... chapter 8 ... */ ],
+            programs: vec![ /* ... chapter 11 ... */ ],
             ..TopologyDescription::default()
         },
     );
@@ -70,7 +70,7 @@ The topology names each loop's kind and sync source:
 | Field | Meaning |
 |---|---|
 | `LoopKind::Primitive` | A loop with recorded content (audio/MIDI). |
-| `LoopKind::Composite` | A loop with no content of its own; it runs a **program** (chapter 8) and has a compiled length. |
+| `LoopKind::Composite` | A loop with no content of its own; it runs a **program** (chapter 11) and has a compiled length. |
 | `sync_source` | Another loop whose wraps tick this loop. The source of a composite must be a composite too is not required — here the arranger ticks from the clock, and the children tick from the arranger. |
 
 Only primitive loops get a **binding** (signal nodes). The composite arranger is timing-only: it has no capture or playback node and no host ports, so `max_nodes` counts only the three primitives' six nodes.
@@ -137,4 +137,4 @@ The bass (3 frames) starts at tick 0 and plays one frame per tick for 3 ticks; t
 
 A sync source's ticks are delivered to its followers at the source's wrap frame, in the same render pass — there is no one-block delay. Ticks do not themselves start or stop anything; they make a follower *eligible* for its scheduled requests (next chapter) and drive its program iterations. A follower with no pending work simply keeps its current mode.
 
-[Previous: Recording over existing content](../part-2-steer-one-loop/05-recording-over-existing-content.md) · [Next: Sync-scheduled transitions](07-sync-scheduled-transitions.md)
+[Previous: MIDI state and restoration](../part-4-midi/08-midi-state-and-restoration.md) · [Next: Programs](10-programs.md)
