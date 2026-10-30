@@ -6849,6 +6849,41 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_driver_settings_saved_without_switching_apply_on_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut manager = SettingsManager::load_from_path(registry.clone(), "test", path.clone());
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        draft.set(shoop_egui::AUDIO_BACKEND, "new_engine".to_owned());
+        draft.set(shoop_egui::NEW_ENGINE_TRACKS, 2);
+        draft.set(shoop_egui::NEW_ENGINE_LOOPS, 9);
+        draft.set(shoop_egui::NEW_ENGINE_LOOP_MEMORY_MB, 16);
+        shoop_egui::set_selected_audio_driver(&mut draft, shoop_egui::AudioDriverKind::Dummy);
+        draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
+        draft.set(shoop_egui::DUMMY_BUFFER_SIZE, 64);
+        manager.request_save(draft).unwrap();
+        wait_for_settings_save(&mut manager);
+        drop(manager);
+
+        let restarted = SettingsManager::load_from_path(registry, "test-2", path);
+        let runtime = Runtime::new(&restarted.active(), &AppArgs::default()).unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "the saved driver", |snapshot| {
+            snapshot.status.sample_rate == 32_000 && snapshot.status.buffer_size == 64
+        });
+        assert!(!snapshot
+            .capabilities
+            .supports(shoop_egui::BackendCapability::AudioDriverSwitching));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn new_engine_startup_fallbacks_are_shown_to_the_user() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();

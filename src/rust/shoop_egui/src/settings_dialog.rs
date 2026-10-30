@@ -120,6 +120,8 @@ pub struct SettingsDialog {
     ephemeral_picker_rect: Option<egui::Rect>,
     #[cfg(test)]
     restart_rects: BTreeMap<ScriptId, egui::Rect>,
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    driver_choice_rects: Vec<(AudioDriverKind, egui::Rect)>,
     #[cfg(test)]
     stop_rects: BTreeMap<ScriptId, egui::Rect>,
     #[cfg(test)]
@@ -164,6 +166,8 @@ impl SettingsDialog {
             ephemeral_picker_rect: None,
             #[cfg(test)]
             restart_rects: BTreeMap::new(),
+            #[cfg(all(test, not(target_arch = "wasm32")))]
+            driver_choice_rects: Vec::new(),
             #[cfg(test)]
             stop_rects: BTreeMap::new(),
             #[cfg(test)]
@@ -682,6 +686,16 @@ impl SettingsDialog {
             .collect::<Vec<_>>();
         self.show_definition_cards(ui, definitions, None);
 
+        #[cfg(not(target_arch = "wasm32"))]
+        if !crate::supports(ui.ctx(), crate::BackendCapability::AudioDriverSwitching) {
+            ui.heading("Audio driver");
+            ui.colored_label(
+                colors::WARNING,
+                crate::BackendCapability::AudioDriverSwitching.unavailable_reason(),
+            );
+            self.show_next_start_driver(ui);
+            return;
+        }
         if !audio.supported || cfg!(target_arch = "wasm32") {
             #[cfg(target_arch = "wasm32")]
             {
@@ -701,19 +715,7 @@ impl SettingsDialog {
             #[cfg(not(target_arch = "wasm32"))]
             ui.colored_label(
                 colors::WARNING,
-                if crate::supports(ui.ctx(), crate::BackendCapability::AudioDriverSwitching) {
-                    "Native runtime driver switching is unavailable in this build."
-                } else {
-                    crate::BackendCapability::AudioDriverSwitching.unavailable_reason()
-                },
-            );
-            return;
-        }
-        if !crate::supports(ui.ctx(), crate::BackendCapability::AudioDriverSwitching) {
-            ui.heading("Audio driver");
-            ui.colored_label(
-                colors::WARNING,
-                crate::BackendCapability::AudioDriverSwitching.unavailable_reason(),
+                "Native runtime driver switching is unavailable in this build.",
             );
             return;
         }
@@ -831,6 +833,70 @@ impl SettingsDialog {
         }
     }
 
+    /// The preferred driver's settings, saved for the next start of a backend that cannot
+    /// switch drivers while it runs.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn show_next_start_driver(&mut self, ui: &mut egui::Ui) {
+        ui.colored_label(
+            colors::WARNING,
+            "Driver settings are saved for the next start: restart ShoopDaLoop to apply them.",
+        );
+        let Some(draft) = &mut self.draft else {
+            return;
+        };
+        let selected = |draft: &SettingsDraft| {
+            let id = draft.get(crate::SELECTED_AUDIO_DRIVER).ok()?;
+            [
+                AudioDriverKind::Dummy,
+                AudioDriverKind::Jack,
+                AudioDriverKind::Cpal,
+            ]
+            .into_iter()
+            .find(|kind| kind.id() == id)
+        };
+        let current = selected(draft);
+        #[cfg(test)]
+        self.driver_choice_rects.clear();
+        ui.horizontal_wrapped(|ui| {
+            for kind in [AudioDriverKind::Dummy, AudioDriverKind::Cpal] {
+                let button = egui::Button::selectable(current == Some(kind), kind.label());
+                let response = ui.add(button);
+                #[cfg(test)]
+                self.driver_choice_rects.push((kind, response.rect));
+                if response.clicked() {
+                    crate::set_selected_audio_driver(draft, kind);
+                }
+            }
+        });
+        let prefix = match selected(draft) {
+            Some(AudioDriverKind::Dummy) => "audio.dummy.",
+            Some(AudioDriverKind::Cpal) => "audio.cpal.",
+            Some(AudioDriverKind::Jack) => {
+                ui.label(
+                    "This audio backend has no JACK driver and uses CPAL's JACK host or default devices instead. Choose Dummy or CPAL to configure its driver.",
+                );
+                "audio.jack."
+            }
+            Some(AudioDriverKind::WebAudio) | None => return,
+        };
+        let definitions = self
+            .registry
+            .definitions()
+            .iter()
+            .filter(|definition| {
+                definition.key().starts_with(prefix)
+                    && definition.key() != crate::CPAL_CAPTURE_RING_FRAMES.id()
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        self.show_cards(
+            ui,
+            definitions,
+            None,
+            Some(shoop_settings::SettingEffect::RestartRequired),
+        );
+    }
+
     fn show_audio_backend(&mut self, ui: &mut egui::Ui) {
         let Some(backend) = self.registry.definition(crate::AUDIO_BACKEND.id()).cloned() else {
             return;
@@ -946,6 +1012,18 @@ impl SettingsDialog {
         definitions: Vec<shoop_settings::ErasedSettingDefinition>,
         audio: Option<&crate::AudioDriverDescriptor>,
     ) {
+        self.show_cards(ui, definitions, audio, None);
+    }
+
+    /// Setting cards; `effect` replaces the definitions' own effect where it differs in
+    /// this context.
+    fn show_cards(
+        &mut self,
+        ui: &mut egui::Ui,
+        definitions: Vec<shoop_settings::ErasedSettingDefinition>,
+        audio: Option<&crate::AudioDriverDescriptor>,
+        effect: Option<shoop_settings::SettingEffect>,
+    ) {
         for definition in definitions {
             let card = egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(8));
             let margin = card.total_margin();
@@ -961,7 +1039,7 @@ impl SettingsDialog {
                     }
                 });
                 ui.label(definition.help());
-                ui.weak(definition.effect().label());
+                ui.weak(effect.unwrap_or(definition.effect()).label());
                 if let Some(draft) = &mut self.draft {
                     let Some(value) = draft.value(definition.key()).cloned() else {
                         ui.colored_label(colors::ERROR, "Missing draft value");
@@ -2091,6 +2169,93 @@ mod tests {
             cards.push(dialog.setting_card_rects.len());
         }
         assert_eq!(cards, [3, 7]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "browser builds have no native drivers")]
+    fn driver_settings_are_saved_for_the_next_start_when_the_backend_cannot_switch() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_audio_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let audio = AudioDriverRuntimeState {
+            supported: false,
+            catalog: Arc::from([crate::AudioDriverDescriptor {
+                kind: AudioDriverKind::Dummy,
+                available: true,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        let context = egui::Context::default();
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::FULL
+                .with(crate::BackendCapability::AudioDriverSwitching, false),
+        );
+        let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
+            let mut response = SettingsDialogResponse::default();
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| dialog.show_audio(ui, &audio, &mut response),
+            );
+            output.textures_delta.clear();
+            assert!(response.app_actions.is_empty());
+            assert!(response.settings_actions.is_empty());
+            dialog.setting_card_rects.len()
+        };
+
+        // Loop audio and the dummy driver's rate and buffer.
+        assert_eq!(frame(&mut dialog, Vec::new()), 4);
+        let cpal = dialog
+            .driver_choice_rects
+            .iter()
+            .find(|(kind, _)| *kind == AudioDriverKind::Cpal)
+            .unwrap()
+            .1
+            .center();
+        for pressed in [true, false] {
+            frame(
+                &mut dialog,
+                vec![
+                    egui::Event::PointerMoved(cpal),
+                    egui::Event::PointerButton {
+                        pos: cpal,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        let draft = dialog.draft_mut().unwrap();
+        assert_eq!(draft.get(crate::SELECTED_AUDIO_DRIVER).unwrap(), "cpal");
+        draft.set(crate::CPAL_OUTPUT_DEVICE, "USB Audio".to_owned());
+        // Every CPAL setting the new engine uses: client name, host, devices, rate, buffer,
+        // channels and MIDI ports.
+        assert_eq!(frame(&mut dialog, Vec::new()), 12);
+
+        let Some(SettingsAction::Save(saved)) = dialog.save_action() else {
+            panic!("expected a plain settings save");
+        };
+        assert_eq!(saved.get(crate::SELECTED_AUDIO_DRIVER).unwrap(), "cpal");
+        assert_eq!(saved.get(crate::CPAL_OUTPUT_DEVICE).unwrap(), "USB Audio");
+
+        dialog
+            .draft_mut()
+            .unwrap()
+            .set(crate::SELECTED_AUDIO_DRIVER, "jack".to_owned());
+        assert_eq!(frame(&mut dialog, Vec::new()), 3);
     }
 
     #[shoop_wasm_test_support::shoop_test(
