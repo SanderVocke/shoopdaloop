@@ -50,7 +50,7 @@ A running snapshot shares complete pages and copies its partial mutable tail int
 
 The example appends samples 4, 5 and 6, mutating the old tail and crossing its page boundary. Exporting `prefix` still returns exactly samples 1, 2 and 3. `Currentness::Stale` is compatible with an immutable readable lease.
 
-`export` is an example helper, not a store API: it allocates the destination off-render and copies through the snapshot's page-bounded cursor with explicit progress/EOF checks. Running hosts can instead use the owning Read commands from [chapter 9](09-loading-and-reading-resources.md).
+`export` is an example helper, not a store API: it allocates the destination off-render and copies through the snapshot's page-bounded cursor with explicit progress/EOF checks. Running hosts can instead use the owning Read commands from [Loading and reading resources](../part-3-work-with-stored-media/09-loading-and-reading-resources.md).
 
 ## 3. Freeze without changing the recorded bytes
 
@@ -85,7 +85,7 @@ The example starts at absolute 200 and records note-on/note-off packets both at 
 
 The bytes remain the same two 15-byte records; duration increases from four to six. The held earlier snapshot retains duration four. The example checks exact serialized bytes for both exports.
 
-A zero-length append extends nothing. Invalid shape/time calls are not successful recording, but not every invalid call halts capture. This unindexed capture supports sequential event reading; bounded protocol-state seeking is opt-in in [chapter 12](12-midi-state-and-checkpointed-seeking.md).
+A zero-length append extends nothing. Invalid shape/time calls are not successful recording, but not every invalid call halts capture. This unindexed capture supports sequential event reading; bounded protocol-state seeking is opt-in in [MIDI state and checkpointed seeking](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md).
 
 ## Storage exhaustion preserves a complete earlier prefix
 

@@ -31,7 +31,7 @@ Its recovery Cancel uses `ReceiptWriter::cancel_queued` on the undelivered typed
                 assert_eq!(execution.operation_result, Some(Reply::Cancelled));
 ```
 
-The cancellation's own result records delivery at 1 and `Reply::Done`. Cancellation can terminate future work before its requested frame; it does not pretend that Wait ran. Both results must be consumed. For delivered Pending work, resolve the retained token instead; [chapter 14](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md) demonstrates that separate cut.
+The cancellation's own result records delivery at 1 and `Reply::Done`. Cancellation can terminate future work before its requested frame; it does not pretend that Wait ran. Both results must be consumed. For delivered Pending work, resolve the retained token instead; [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md) demonstrates that separate cut.
 
 Ticket cancellation is only a pre-original-dequeue observation. It cannot universally unschedule admitted work, cancel a parked validator anew or undo a published effect. Recovery remains finite and must settle at its delivery boundary before positive samples.
 
@@ -77,8 +77,8 @@ It cancels that incomplete upload, releases the acquired snapshot, removes activ
 | Tickets/prepared flag references | Receiving returns releases admission; flag reuse waits for external references. Final last-owner destruction stays off-render. |
 | Uploads | Finish/commit intentionally or cancel; release remaining reservations and reclaim retired data. |
 | Acquired snapshots/playback/export pins | Explicitly release each acquired lease once. Copying IDs/views acquires nothing; Drop releases nothing. |
-| Prepared group interval/take | Cancel interval before take. Active groups instead freeze their actual common prefix; release final leases and Idle claims. See [chapter 16](../part-4-coordinate-processors-and-changes/16-recording-resources-together.md). |
-| Ready candidates / Taken retired graphs | Normal-lane ReleaseGraph returns the appropriate owner; Taken can have none after first activation into an empty graph. Views/pending StageIds do not own or lock candidates. See [chapter 15](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md). |
+| Prepared group interval/take | Cancel interval before take. Active groups instead freeze their actual common prefix; release final leases and Idle claims. See [Recording resources together](../part-4-coordinate-processors-and-changes/16-recording-resources-together.md). |
+| Ready candidates / Taken retired graphs | Normal-lane ReleaseGraph returns the appropriate owner; Taken can have none after first activation into an empty graph. Views/pending StageIds do not own or lock candidates. See [Staging and coordinating graph activation](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md). |
 | Active/retired resource content | Remove/reclaim for reuse, or intentionally destroy the whole stopped store. Release does not instantly recover all pages. |
 
 Graph retirement does not clean processors, resource claims or held notes. Loop topology/node-pair/source/media owners have additional planner-specific release paths, not generic graph metadata semantics.

@@ -8,14 +8,14 @@ A byte position, a MIDI event boundary and the protocol state before a musical f
 
 ## Run the examples
 
-The [stored audio example](../../examples/stored_audio.rs) from chapter 9 checks byte positions inside a page and at EOF. The first half of [MIDI seeking](../../examples/midi_seeking.rs) reads packets across small pages:
+The [stored audio example](../../examples/stored_audio.rs) from [Loading and reading resources](../part-3-work-with-stored-media/09-loading-and-reading-resources.md) checks byte positions inside a page and at EOF. The first half of [MIDI seeking](../../examples/midi_seeking.rs) reads packets across small pages:
 
 ```sh
 cargo run -p rt_runtime --example stored_audio
 cargo run -p rt_runtime --example midi_seeking
 ```
 
-Its event iteration and packet copies are heap-guarded. Packet encoding, scratch allocation and final destruction are off-render. The checkpoint half continues in chapter 12.
+Its event iteration and packet copies are heap-guarded. Packet encoding, scratch allocation and final destruction are off-render. The checkpoint half continues in [MIDI state and checkpointed seeking](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md).
 
 ## 1. Position bytes through a pinned index
 
@@ -87,7 +87,7 @@ The destination remains unchanged. Retain `event` and retry it with sufficient s
 
 ## Keep the lease until every cursor/event is finished
 
-Replacing the active revision does not retarget old event tokens. The example replaces its resource with an empty five-frame stream, then still copies the original 37-byte SysEx through the old lease. Captured-prefix byte immutability across appends is demonstrated in [chapter 10](10-recording-and-exporting.md).
+Replacing the active revision does not retarget old event tokens. The example replaces its resource with an empty five-frame stream, then still copies the original 37-byte SysEx through the old lease. Captured-prefix byte immutability across appends is demonstrated in [Recording and exporting](../part-3-work-with-stored-media/10-recording-and-exporting.md).
 
 A foreign store rejects the scoped event/index. Releasing the original snapshot makes its retained event and cursor return `InvalidId`. Copies of those handles do not keep the lease alive or acquire another one. Raw resource/snapshot preparation still requires same-store discipline; this stronger scoped validation is not a claim that all raw IDs detect foreign stores.
 

@@ -94,7 +94,7 @@ The example exercises each. Its Cancel operation first looks for the delivered p
 
 Parameter, MIDI and processor actions have no planner to cancel them. Submit `Command::Cancel { sequence }` on either lane to terminate one that has not been delivered yet; its execution reports `Err(Cancelled)` with `delivered_frame: None`. Cancelling a planner action this way refuses with `InvalidId`: use the planner's own cancellation for its operations. Cancelling an action that was already delivered refuses with `InvalidState` while its execution still holds the slot, and with `InvalidId` once the slot is released.
 
-The ticket flag is best effort only before its original dequeue. It cannot unschedule an accepted action, cancel a retained token, or undo a published domain effect. Parking normal validation for recovery does not create another cancellation observation; see [chapter 5](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md).
+The ticket flag is best effort only before its original dequeue. It cannot unschedule an accepted action, cancel a retained token, or undo a published domain effect. Parking normal validation for recovery does not create another cancellation observation; see [Commands, completions, and ownership](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md).
 
 ## Recovery has an independent, finite receipt
 
@@ -106,7 +106,7 @@ Both results remain unread. Another recovery Stop is refused Full: independent d
 
 Classify only payload-free, nonfuture, finitely bounded operations through `Planner::recovery_safe`. This example classifies Cancel/Stop. Unsafe, future or payload-bearing recovery is rejected; a recovery request that remains pending beyond planning at its delivery frame faults. Classification is a trusted semantic contract, not an escape from no-heap/nonblocking rules.
 
-Recovery operation contexts cannot activate graphs. Staging/releasing owners remains normal-lane work. A copied StageId in pending application data also does not own or lock a Ready candidate: revalidate at the actual cut in [chapter 15](15-staging-and-coordinating-graph-activation.md).
+Recovery operation contexts cannot activate graphs. Staging/releasing owners remains normal-lane work. A copied StageId in pending application data also does not own or lock a Ready candidate: revalidate at the actual cut in [Staging and coordinating graph activation](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md).
 
 ## Refusal is not one undifferentiated success flag
 
@@ -119,7 +119,7 @@ The example checks:
 | Nonfinite Multiply delivered to the processor | Scheduled | Runtime `Err(InvalidEvent)`, no processor value |
 | Explicit domain Refuse | Scheduled | Runtime `Ok(())`, domain `Some(Reply::Refused)` |
 
-An identity can also become stale after admission, as the removed processor example in [chapter 6](../part-2-control-a-running-graph/06-routing-and-live-graph-edits.md) demonstrates. Generic `Ok(())` means successful runtime delivery/completion, not necessarily application publication.
+An identity can also become stale after admission, as the removed processor example in [Routing and live graph edits](../part-2-control-a-running-graph/06-routing-and-live-graph-edits.md) demonstrates. Generic `Ok(())` means successful runtime delivery/completion, not necessarily application publication.
 
 Drain owning completions and execution results off-render, retaining payload owners on refusal when retrying. The example extracts planner/resources only after all pending/recovery slots are empty. A faulted domain may need a retained cleanup ledger instead; stopped extraction does not invent terminal receipts, roll back changes or authorize replay.
 

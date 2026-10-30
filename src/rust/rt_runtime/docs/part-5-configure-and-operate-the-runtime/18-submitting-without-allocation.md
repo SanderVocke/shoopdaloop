@@ -50,7 +50,7 @@ The example receives the cancelled completion but retains it:
 
 Admission is free, but the completion still owns a reference to the normal cancellation flag—even after dropping the ticket. No new normal prepared submit can reuse that flag yet.
 
-Recovery uses a different range. `Command::ResetMidi` is admitted and completes Applied while the normal completion remains held. A second recovery submit is Full while that credit is occupied. This runtime has no MIDI outputs, so this proves transport independence, **not** downstream reset delivery; chapter 8 demonstrates the latter.
+Recovery uses a different range. `Command::ResetMidi` is admitted and completes Applied while the normal completion remains held. A second recovery submit is Full while that credit is occupied. This runtime has no MIDI outputs, so this proves transport independence, **not** downstream reset delivery; [Processing and scheduling MIDI](../part-2-control-a-running-graph/08-processing-and-scheduling-midi.md) demonstrates the latter.
 
 Only after moving the owning request out and leaving the completion's scope does its flag reference go away. The endpoint's base flag owner remains, so these demonstrated ticket/completion drops do not deallocate. This does not make arbitrary generic completion/retirement destructors safe to run under the same guard.
 
@@ -69,7 +69,7 @@ Each iteration cancels its ticket **after** the callback has dequeued/applied th
 
 The normal and spare buffers keep their original addresses. The example stops its finite callback loop, extracts the store, finishes/commits the upload and independently reads back the exact 16 bytes. It releases the snapshot, removes content and checks all declared page/version/snapshot pools recover. Final buffers/endpoints/store destruction occur outside the guard.
 
-Prepared submission is not settlement. Schedule commands still have separate owning completions and eventual execution results; Pending tokens/unread results retain scheduler credit independently of flags. Prepared ingress does not allow structural recovery activation or relax delivery-frame termination from chapter 14.
+Prepared submission is not settlement. Schedule commands still have separate owning completions and eventual execution results; Pending tokens/unread results retain scheduler credit independently of flags. Prepared ingress does not allow structural recovery activation or relax delivery-frame termination from [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md).
 
 ## Reusing an inactive graph owner
 

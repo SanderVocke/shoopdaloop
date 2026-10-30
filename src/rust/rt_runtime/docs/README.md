@@ -34,6 +34,28 @@
 - [18. Submitting without allocation](part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md)
 - [19. Stopping, disconnecting, and reclaiming ownership](part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md)
 
+## Terms used in this book
+
+| Term | Meaning |
+|---|---|
+| Host / callback | Your application's audio callback; the host supplies borrowed buffers, the runtime processes them. |
+| Control side / render side | The control endpoint submits commands and collects results; the render side owns the running graph and processes buffers. |
+| Processor | A node with audio/MIDI ports that implements the work done per processing call. |
+| Graph | The installed set of processors and the connections between their ports and host ports. |
+| NodeId / generation | Identifies a processor slot; the generation distinguishes replacements in the same slot. |
+| Epoch | The runtime's checked identity of the currently active graph; used to reject stale changes. |
+| Command / ticket | An owned request submitted to the render side; its sequence number identifies it. |
+| Completion | The owning return of a command: the request, its outcome, and any retired object. |
+| Execution result | The separate receipt for a scheduled action, delivered at its actual frame. |
+| Lane / recovery | The normal command lane, plus a small independent recovery lane for bounded urgent operations. |
+| Resource / revision | A stored media object and its version; uploads create new revisions. |
+| Snapshot / lease | A pinned, immutable view of a resource at some revision; dropping a copied handle releases nothing — release leases explicitly. |
+| Planner | An optional single authority that settles domain decisions for each processing interval before processors run. |
+| Decision binding | Links a consumer processor to a planner decision slot; not a signal connection. |
+| Stage / Ready | A validated but not-yet-active graph candidate; activation publishes it at one boundary. |
+| Capture group | Coordinated storage for recording several resources together. |
+| Capacity vs budget | Capacity is prepared storage (fixed at prepare time); budgets bound optional work per callback. |
+
 ## Reference
 
 - [Reference index](reference/README.md)

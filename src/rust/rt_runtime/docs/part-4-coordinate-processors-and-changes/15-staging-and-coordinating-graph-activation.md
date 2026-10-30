@@ -6,7 +6,7 @@
 
 A staged graph separates owning validation from publication. A normal command makes a candidate Ready while the old graph continues. Later, a planner can preflight its domain change and publish it with the graph at one internal boundary.
 
-This is different from startup installation in chapter 2 and ordinary callback-ingress Commit in chapter 6. A graph permit is not a general resource transaction, processor constructor or rollback mechanism.
+This is different from startup installation in [Your first audio graph](../part-1-process-audio/02-your-first-audio-graph.md) and ordinary callback-ingress Commit in [Routing and live graph edits](../part-2-control-a-running-graph/06-routing-and-live-graph-edits.md). A graph permit is not a general resource transaction, processor constructor or rollback mechanism.
 
 ## Run the example
 
@@ -32,7 +32,7 @@ Runtime admission accounts for **retained vector capacities**, not just populate
 
 Submit `Command::stage_graph(slot, expected_epoch, plan)` on the normal lane. In the example, `stage` uses the same finite submit/render/poll pattern as earlier helpers. Its first real callback still renders the initial graph; this is not a hidden startup warm-up.
 
-Validation uses the callback-wide allowance. Larger candidates/smaller allowances may need several callbacks; no partially validated graph is Ready. Recovery can preempt a held normal validator without losing its sequence/progress, as explained in [chapter 5](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md).
+Validation uses the callback-wide allowance. Larger candidates/smaller allowances may need several callbacks; no partially validated graph is Ready. Recovery can preempt a held normal validator without losing its sequence/progress, as explained in [Commands, completions, and ownership](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md).
 
 On Applied, recover the stage identity from the changed owning request:
 
@@ -120,7 +120,7 @@ Any later graph/catalog edit invalidates earlier validation even if the routes s
 
 After activation, the slot is Taken and retains the displaced graph. `Command::ReleaseGraph { id }` on the normal lane returns it as `Retired::Plan`. Dispose/reuse it off-render. Release invalidates that identity; slot reuse advances its checked generation. The example verifies a second release returns InvalidId, then stages/releases a fresh unused candidate without another publication.
 
-The separate initially-empty case legitimately releases a Taken slot with no retired plan: there was no previous active owner. This is a lifecycle case, not a reason to replace the simpler startup constructor in chapter 2.
+The separate initially-empty case legitimately releases a Taken slot with no retired plan: there was no previous active owner. This is a lifecycle case, not a reason to replace the simpler startup constructor in [Your first audio graph](../part-1-process-audio/02-your-first-audio-graph.md).
 
 Release does not undo the new active graph. Nor does disconnect release hidden application references, perform note cleanup or settle pending work. The example drains results and checks its pending ledger before stopped extraction.
 
