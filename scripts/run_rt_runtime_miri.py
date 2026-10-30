@@ -63,7 +63,15 @@ ENGINE_CASES = (
     ("shoop_rt_protocol", "protocol", [], 5),
     ("shoop_rt_engine", "lib", [], 2),
     ("shoop_rt_engine", "workflow", [], 1),
-    ("shoop_rt_engine", "control", [], 7),
+    *(("shoop_rt_engine", "control", [name, "--", "--exact"], 1) for name in (
+        "telemetry_reports_levels_activity_and_driver_inputs",
+        "bulk_reads_return_recorded_audio_channels_and_midi",
+        "resync_streams_the_confirmed_state",
+        "credits_limits_and_the_connection_lifecycle_are_enforced",
+        "dropping_the_endpoint_silences_output_and_stopped_cleanup_recovers_pools",
+        "stopping_monitoring_releases_the_notes_it_passed_through",
+        "a_render_fault_silences_output_and_ends_the_connection",
+    )),
     ("shoop_rt_engine", "structure", ["reused_slots_start_fresh_and_clear_empties_a_loop", "--", "--exact"], 1),
     ("shoop_rt_engine", "structure", ["edits_keep_other_paths_continuous_and_ramp_removed_paths", "--", "--exact"], 1),
 )

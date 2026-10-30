@@ -7100,6 +7100,212 @@ mod tests {
         );
     }
 
+    /// Opt-in, because it opens the default audio devices: set `SHOOP_TEST_CPAL_DEVICE=1`.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_backend_runs_the_core_workflow_on_a_cpal_device() {
+        use shoop_egui::{
+            BusAction, GlobalControlAction, IoTaskStatus, NotificationLevel, StructuralState,
+        };
+
+        if std::env::var_os("SHOOP_TEST_CPAL_DEVICE").is_none() {
+            eprintln!("skipping the CPAL device workflow; set SHOOP_TEST_CPAL_DEVICE=1");
+            return;
+        }
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        shoop_egui::set_selected_audio_driver(&mut draft, shoop_egui::AudioDriverKind::Cpal);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let mut runtime = Runtime::new(&settings, &new_engine_args()).unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
+        assert_eq!(
+            snapshot
+                .audio_drivers
+                .active
+                .as_ref()
+                .unwrap()
+                .configured
+                .kind(),
+            shoop_egui::AudioDriverKind::Cpal,
+            "{:?}",
+            snapshot.notifications
+        );
+        eprintln!(
+            "CPAL device: {} Hz, {} frames, host ports {:?}",
+            snapshot.status.sample_rate,
+            snapshot.status.buffer_size,
+            snapshot
+                .connections
+                .host_ports
+                .iter()
+                .map(|port| port.name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "a new session", |snapshot| {
+            snapshot
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        });
+        let sync = snapshot.tracks[0].clone();
+        let master = snapshot.buses[0].clone();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Audio".to_owned(),
+                audio_channels: 2,
+                midi: false,
+            }))
+            .unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "a new track", |snapshot| {
+            snapshot.tracks.len() == 2
+                && snapshot
+                    .tracks
+                    .iter()
+                    .all(|track| track.structural_state == StructuralState::Confirmed)
+        });
+        let audio = snapshot.tracks[1].clone();
+        let captures = snapshot
+            .connections
+            .host_ports
+            .iter()
+            .filter(|port| port.name.contains(":capture_"))
+            .map(|port| port.id.clone())
+            .collect::<Vec<_>>();
+        for (port, capture) in track_ports(&snapshot, audio.id, PortRole::AudioInput)
+            .into_iter()
+            .zip(captures.iter().cycle())
+        {
+            runtime
+                .dispatch(AppIntent::SetPortConnected {
+                    port_id: port,
+                    host_port_id: capture.clone(),
+                    connected: true,
+                })
+                .unwrap();
+        }
+        for (port, channel) in track_ports(&snapshot, audio.id, PortRole::AudioOutput)
+            .into_iter()
+            .zip(master.channels.iter())
+        {
+            runtime
+                .dispatch(AppIntent::SetMixerRouteConnected {
+                    source_port_id: port,
+                    destination_channel_id: channel.id,
+                    connected: true,
+                })
+                .unwrap();
+        }
+
+        loop_action(&mut runtime, &sync, LoopAction::RecordClicked);
+        wait_for_snapshot(&runtime, "sync recording", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Recording
+        });
+        thread::sleep(Duration::from_millis(300));
+        loop_action(&mut runtime, &sync, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(&runtime, "sync playback", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Playing
+        });
+        let sync_length = first_loop(&snapshot, sync.id).length_frames;
+        assert!(sync_length > 0);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+            .unwrap();
+        loop_action(&mut runtime, &audio, LoopAction::RecordClicked);
+        wait_for_snapshot(&runtime, "synchronized recording", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Recording
+        });
+        loop_action(&mut runtime, &audio, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(&runtime, "synchronized playback", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Playing
+        });
+        let audio_length = first_loop(&snapshot, audio.id).length_frames;
+        assert!(
+            audio_length > 0 && audio_length % sync_length == 0,
+            "{audio_length} frames for a sync loop of {sync_length}"
+        );
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: master.id,
+                action: BusAction::GainChanged(-3.0),
+            })
+            .unwrap();
+        loop_action(
+            &mut runtime,
+            &audio,
+            LoopAction::IconClicked(SelectionModifiers::default()),
+        );
+        wait_for_snapshot(&runtime, "the waveform", |snapshot| {
+            snapshot.details.as_ref().is_some_and(|details| {
+                details.loop_id == audio.loops[0].id
+                    && details.channels.len() == 2
+                    && details
+                        .channels
+                        .iter()
+                        .all(|channel| channel.samples.len() as u64 == audio_length)
+            })
+        });
+        let before = runtime.snapshot().status.clone();
+        thread::sleep(Duration::from_millis(1000));
+        let after = runtime.snapshot().status.clone();
+        eprintln!(
+            "CPAL device: {} frames and {} xruns in one second, load {:.1}%",
+            after
+                .processed_frames
+                .saturating_sub(before.processed_frames),
+            after.xruns,
+            after.dsp_load_percent
+        );
+        assert!(after.processed_frames > before.processed_frames);
+
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        loop_action(&mut runtime, &audio, LoopAction::StopClicked);
+        wait_for_snapshot(&runtime, "immediate stop", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Stopped
+        });
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::ClearRecordings {
+                include_sync: false,
+            }))
+            .unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "a cleared loop", |snapshot| {
+            first_loop(snapshot, audio.id).length_frames == 0
+        });
+        assert!(
+            snapshot
+                .notifications
+                .iter()
+                .all(|notification| notification.level != NotificationLevel::Error),
+            "{:?}",
+            snapshot.notifications
+        );
+        let host = runtime._engine_host.take().unwrap();
+        drop(runtime);
+        let problems = host.stop();
+        assert!(
+            !problems.iter().any(|problem| problem.contains("fault")),
+            "{problems:?}"
+        );
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn new_engine_capacity_settings_bound_the_application_visibly() {

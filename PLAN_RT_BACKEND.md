@@ -524,16 +524,36 @@ with warnings as errors. Every new crate has a README.
 
 ### Stage 10 — End-to-end validation
 
-- [ ] Run the CI workflow's Linux and web command set locally, including the new
+- [x] Run the CI workflow's Linux and web command set locally, including the new
       crates and the complete Node suite.
-- [ ] Run the shared contracts against the legacy and the new backends.
-- [ ] Run the core workflow natively on the dummy driver and on a real CPAL device,
+- [x] Run the shared contracts against the legacy and the new backends.
+- [x] Run the core workflow natively on the dummy driver and on a real CPAL device,
       and in the browser (Chrome manually, Firefox).
-- [ ] Run the Miri inventory, including the new cases, in batches.
-- [ ] Check every acceptance criterion and record the results in `VALIDATION.md` and
+- [x] Run the Miri inventory, including the new cases, in batches.
+- [x] Check every acceptance criterion and record the results in `VALIDATION.md` and
       here.
 
+- [x] *Added:* CI covers the new crates in the Linux release, macOS and Windows test
+      steps, the Wasm dependency audit and the isolation checks.
+
 **Verify:** B1–B12 are met, with evidence linked.
+
+*Done:* recorded in [VALIDATION.md](VALIDATION.md#new-engine-backend-evidence) at
+`0d3925bb` and, where it could matter, after the merge `8cadc053`. Workspace `nextest`:
+2328 passed, 4 skipped (baseline 2191); Node suite: 25 packages, 1976 passed. The
+shared contracts pass against `FakeBackend`, `EngineBackend`, the legacy timing
+reference and the new stack, in debug, release and on Node. The core workflow passes
+on the dummy driver, on a real CPAL device (ALSA through a PulseAudio null sink, in the
+opt-in test `new_engine_backend_runs_the_core_workflow_on_a_cpal_device`), in Firefox
+136 and, headless, in Chrome for Testing 147. Miri: 151 of 158 commands pass; six
+exceed the 900 s watchdog as on the baseline, and the engine's `control` command was
+split into seven commands, which pass.
+
+*Result:* B1 and B3–B12 are met, B9 with the declared observation lag and B10's
+no-lock and no-wait rules by source review. B2 is verified on Linux and in the browser
+only: macOS and Windows were type-checked for the engine-side crates, and midir was
+not run against real MIDI ports. Left for the user: CI's macOS and Windows jobs, a
+manual Chrome check with real devices, and MIDI hardware.
 
 ## Baseline
 

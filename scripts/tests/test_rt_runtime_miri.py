@@ -41,7 +41,7 @@ class MiriRunnerTests(unittest.TestCase):
         )
         cases = runner.selected_cases()
         self.assertEqual(runner.STAGE8_MODELS, expected)
-        self.assertEqual(len(cases), 158)
+        self.assertEqual(len(cases), 164)
         self.assertEqual(cases[-4:], [(owner, target, [name, "--", "--exact"], 1, 0)
                                     for owner, target, name in expected])
         self.assertEqual([case for case in cases if case[1].startswith("adversarial_")], cases[-4:])

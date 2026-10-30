@@ -755,7 +755,12 @@ jobs:
             -p shoop_backend \
             -p shoop_app \
             -p shoop_egui \
-            -p shoopdaloop
+            -p shoopdaloop \
+            -p shoop_rt_protocol \
+            -p shoop_rt_engine \
+            -p shoop_rt_backend \
+            -p shoop_rt_host_native \
+            -p shoop_rt_host_worklet
 
       - name: Test complete retained workspace
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -876,10 +881,13 @@ jobs:
           cargo check --locked -p shoop_engine --features carla
           cargo check --locked -p shoop_engine
           cargo check --locked -p shoopdaloop --no-default-features
+          cargo check --locked -p shoop_rt_host_native --no-default-features
           cargo tree -p shoop_engine --no-default-features > /tmp/engine-minimal-tree.txt
           cargo tree -p shoop_engine --features carla > /tmp/engine-carla-tree.txt
+          cargo tree -p shoop_rt_host_native --no-default-features > /tmp/rt-host-dummy-tree.txt
           if grep -E '(^| )((lilv|lv2_raw) v)' /tmp/engine-carla-tree.txt; then exit 1; fi
           if grep -E '(^| )((lilv|lv2_raw|libloading|rfd) v)' /tmp/engine-minimal-tree.txt; then exit 1; fi
+          if grep -E '(^| )((cpal|midir|jack) v)' /tmp/rt-host-dummy-tree.txt; then exit 1; fi
           if rg -i 'CarlaLv2Host|lv2_carla|feature = "lv2"|shoop_engine/lv2|LV2_PATH' Cargo.toml Cargo.lock src/rust INSTALL.md README.md docs scripts third_party/carla --glob '!src/rust/shoop_engine/test_data/**'; then exit 1; fi
 
       - name: Smoke-test bundled Carla external UI
@@ -976,9 +984,11 @@ jobs:
         if: matrix.target == 'web'
         run: |
           cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
+          cargo tree -p shoop_rt_host_worklet --target wasm32-unknown-unknown > /tmp/rt-worklet-tree.txt
           cargo tree -p shoopdaloop --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
           python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
+          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/rt-worklet-tree.txt; then exit 1; fi
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
           node src/rust/shoopdaloop/raw_wasm_host_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm
@@ -993,7 +1003,8 @@ jobs:
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
             --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
-            --package shoop_plugin_protocol --package shoop_rt_host_worklet --package shoop_scripting \
+            --package shoop_plugin_protocol --package shoop_rt_backend --package shoop_rt_engine \
+            --package shoop_rt_host_worklet --package shoop_rt_protocol --package shoop_scripting \
             --package shoop_session --package shoop_settings \
             --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
             --package shoop_worklet_client --package shoopdaloop

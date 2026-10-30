@@ -41,7 +41,7 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | Runtime book and existing loop guides | Documentation completion recorded; accepted guides remain authoritative | Maintain only affected material with future changes; no retrospective book audit or handoff queue |
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
 | [Composable loop boundary](#composable-loop-boundary) | **Delivered**: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations; A1–A12 met and verified locally, including a CI replay | Remote CI/review need a PR; composing several planners in one runtime remains future work |
-| [New engine backend](#new-engine-backend) | **In progress** under [its own plan](PLAN_RT_BACKEND.md): Stages 0–6 done; Stage 7 native host done, composition root in progress; Stage 8 worklet module done, main-thread half and browser selection open; Stage 9 in progress, Stage 10 open | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend, which stays the default; finish the composition roots and documents, then validate B1–B12. Save/load and the other [parity gaps](#remaining-parity-gaps) stay with the legacy backend |
+| [New engine backend](#new-engine-backend) | **Validated locally** under [its own plan](PLAN_RT_BACKEND.md): Stages 0–10 done; B1 and B3–B12 met, B2 verified on Linux and in the browser ([evidence](VALIDATION.md#new-engine-backend-evidence)) | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend, which stays the default. Open: macOS and Windows runs (CI on push), real MIDI hardware, a manual Chrome check, remote CI and review. Save/load and the other [parity gaps](#remaining-parity-gaps) stay with the legacy backend |
 | [Common transport / application integration](#proposed-next-work) | Proposed; the new engine backend's protocol is its first concrete instance, with in-process and MessagePort carriers | Scope IPC/network carriers and any common framework beyond that protocol before implementation; no production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
@@ -416,10 +416,10 @@ baseline and the revisions made during execution. The design is in
 | 4 — Protocol (`shoop_rt_protocol`) | Done |
 | 5 — Engine (`shoop_rt_engine`) | Done; clearing a loop and changing its boundary smoothing at runtime were added to `shoop_loops` |
 | 6 — Adapter (`shoop_rt_backend`) | Done; the shared contracts, including the legacy timing reference, pass on the new stack |
-| 7 — Native host and application integration | Host (`shoop_rt_host_native`) done; the composition root is in progress |
-| 8 — Browser host | Worklet module (`shoop_rt_host_worklet`) and its build artifact done; the main-thread half, Web MIDI forwarding and browser selection are open |
-| 9 — Documents | In progress; user docs follow the composition roots |
-| 10 — End-to-end validation | Open; B1–B12 are not yet claimed |
+| 7 — Native host and application integration | Done: the host (`shoop_rt_host_native`) and the composition root with its setting, override and capacity settings |
+| 8 — Browser host | Done: the worklet module (`shoop_rt_host_worklet`), the main-thread half with Web MIDI forwarding, and browser selection |
+| 9 — Documents | Done, including the user guide |
+| 10 — End-to-end validation | Done locally ([evidence](VALIDATION.md#new-engine-backend-evidence)): B1 and B3–B12 met; B2 verified on Linux and in the browser, with macOS and Windows open |
 
 ### Authority
 

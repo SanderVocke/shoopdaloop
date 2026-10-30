@@ -44,7 +44,7 @@ class MiriPartitionTests(unittest.TestCase):
             runner.main()
         report = json.loads(output.getvalue())
         self.assertEqual(report["shard"], {"index": 1, "total": 16})
-        self.assertEqual(len(report["cases"]), 10)
+        self.assertEqual(len(report["cases"]), 11)
         self.assertEqual(report["full_inventory_sha256"], runner.inventory()["full_inventory_sha256"])
 
     def test_package_partitions_cannot_claim_the_default_inventory(self):

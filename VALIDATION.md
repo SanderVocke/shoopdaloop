@@ -41,6 +41,7 @@ completion. Do not maintain a second editable Miri ledger or native task plan.
 | Native bus-FX fix | Completed regression/build/suite and PR #873 delivery recorded | No new live check of that PR during migration |
 | Replacement loop book / protocol | Draft or proposed only | No implementation or acceptance claim |
 | [Composable loop boundary](PLAN.md#composable-loop-boundary) | Delivered; local stage-by-stage verification, a CI replay and the acceptance check recorded [below](#composable-loop-refactor-evidence) | Remote CI and review (no PR yet); acceptance of the open portable-loop checks |
+| [New engine backend](PLAN_RT_BACKEND.md) | Stage 10 local validation at `0d3925bb` and the merge `8cadc053`: the CI Linux and web command set, the shared contracts, the core workflow natively (dummy, CPAL) and in Firefox and Chrome for Testing, and the Miri inventory; B1–B12 checked [below](#new-engine-backend-evidence) | macOS and Windows runs, real MIDI hardware, a manual Chrome check, remote CI and review |
 
 <a id="composable-loop-refactor-evidence"></a>
 
@@ -236,6 +237,273 @@ The [acceptance criteria](PLAN.md#acceptance-criteria), checked on `fcbd5ea6`
 | A10 — boundaries and safety | Met | Boundary, tracing (closed) and test-usage checks; `forbid(unsafe_code)` in all five crates; new render paths run under heap guards |
 | A11 — documentation | Met | Architecture, plan, validation, crate READMEs, guides, runtime book and draft book updated; links resolve apart from unchanged historical evidence reports. A later audit of the crate docs against the code found a dozen passages the refactor had left stale (old controller and engine names, cancellation and admission details, same-frame DSP order); they are fixed. Final sweep at `62feff2b`: no current document or script uses a removed name or loop role vocabulary; rustdoc and doctests pass with warnings denied; the runtime book check passes and runs all 18 examples; every loop and service example and the draft-book example run; all 16 marked loop-doc excerpts match their examples |
 | A12 — measurements recorded | Met | Paired service and loop benchmark results under [Measurements](#measurements); the preset workload is 13–17% slower, with the cause recorded |
+
+<a id="new-engine-backend-evidence"></a>
+
+## New engine backend evidence
+
+Stage 10 of the [new engine backend plan](PLAN_RT_BACKEND.md#stage-10--end-to-end-validation),
+run on Linux (AMD Ryzen 9 5950X, Ubuntu 20.04 host) on 2026-10-30 at `0d3925bb` plus
+the Stage 10 working-tree changes: the CI wiring below, an opt-in CPAL device test,
+plan status and the [example fixes](#after-the-merge-of-8cadc053). The branch then
+merged `8cadc053`, which changes only documentation, comments in `rt_runtime`
+examples and the separate `shoop_loops` book example package; the checks it can
+affect were repeated on it. Builds and tests ran in `nix develop` with
+`RUSTFLAGS="-D warnings"` at `nice 19` and idle I/O under a memory watchdog; peak
+session memory was 8.1 GiB. Tools: the dev shell's Rust 1.97.1, wasm-pack 0.15.0 and
+trunk 0.21.14, with CI's nextest 0.9.116 and Node 22.22.2. Miri ran outside the Nix
+shell with the pinned `nightly-2026-05-04`. The baseline is the plan's
+[Baseline](PLAN_RT_BACKEND.md#baseline) at `137cc837`.
+
+### CI wiring
+
+`build_and_test.yml` now covers the new crates where comparable crates are covered:
+
+- the application-path nextest of the Linux release, macOS and Windows jobs runs
+  `shoop_rt_protocol`, `shoop_rt_engine`, `shoop_rt_backend`, `shoop_rt_host_native`
+  and `shoop_rt_host_worklet`, debug and release (Linux debug runs the whole workspace);
+- the Wasm dependency audit lists `shoop_rt_protocol`, `shoop_rt_engine` and
+  `shoop_rt_backend` next to `shoop_rt_host_worklet`;
+- browser dependency isolation also checks the new worklet's tree for device and
+  plugin libraries;
+- feature isolation checks `shoop_rt_host_native` without its CPAL feature and that
+  this build has no `cpal`, `midir` or `jack`.
+
+Already wired: the Node suite discovers the four Wasm-enabled new crates from their
+manifests (`shoop_rt_host_native` is native only); `check_rt_engine_boundary.py` and
+its tests run in the native and web jobs; the web jobs build `shoop_rt_host_worklet`
+for wasm32, run `rt_worklet_contract.mjs` and verify the packaged worklet. Miri and
+Chrome stay manual.
+
+### Local CI run
+
+The Linux and web jobs of `build_and_test.yml`, step by step in CI's order.
+
+| Job | Steps and results |
+| --- | --- |
+| Linux debug | Application build; complete workspace nextest (`--features shoop_engine/app_backend --profile ci`, `SHOOP_ALLOW_MISSING_BACKENDS=1`): **2327 passed, 4 skipped** (baseline 2191, the same four intentional skips); `rt_runtime` and `shoop_loops` (361) and the loop host crate (60); the four examples; native runtime and loop host runners; runtime, loop and engine boundary checks for the Linux, Windows, macOS and wasm32 targets with their 9 script tests; feature and dependency isolation; formatting, tracing inventory (269 modules, closed), test attributes and 73 script tests; Perfetto trace validation |
+| Linux release | Application build; application-path nextest including the new crates: **1720 passed**; `rt_runtime`, `shoop_loops`, loop host crate, examples, host runners and boundary checks in release; guarded runtime and loop benchmarks without misses |
+| Web debug | Trunk build; packaging and artifact verification; Wasm check and both worklet builds; browser dependency isolation, the legacy worklet's contracts and `rt_worklet_contract.mjs`; Wasm test policy and the dependency audit of 24 packages; **Node suite: 25 packages, 1976 passed, 0 failed**, plus the 2 intentionally ignored canaries (`shoop_rt_protocol` 5, `shoop_rt_engine` 20, `shoop_rt_host_worklet` 26, `shoop_rt_backend` 14, `shoop_engine` 870); runtime and loop host formatting and boundary checks |
+| Web release | Optimized trunk build; packaging with the single-file HTML and artifact verification; release Wasm check and worklet builds; browser dependency isolation and both worklet contracts; loop host formatting and boundary checks; Firefox Web Audio workflow passes |
+
+Per-crate workspace counts against the baseline:
+
+| Crate | Baseline | Now |
+| --- | --- | --- |
+| `shoop_rt_protocol`, `shoop_rt_engine`, `shoop_rt_host_native`, `shoop_rt_host_worklet`, `shoop_rt_backend` | — | 5, 20, 21, 26, 15 |
+| `shoop_backend` | 123 | 128 |
+| `shoop_app` | 126 | 136 |
+| `shoop_egui` | 212 | 222 |
+| `shoopdaloop` | 50 | 68 |
+| `shoop_app_api` | 23 | 24 |
+| `shoop_loops` | 159 | 164 |
+| `shoop_engine`, `rt_runtime`, `shoop_worklet_client` and the rest | — | unchanged (`shoop_engine` 1054) |
+
+Every baseline test still passes. The two legacy contract tests,
+`fake_backend_satisfies_contracts` and `engine_dummy_backend_satisfies_contracts`,
+moved from `shoop_backend`'s private tests into its shared `contracts` module under
+the same names. The workspace run predates the opt-in CPAL test; the release run
+includes it (`shoopdaloop` 69), where it skips without its variable.
+
+`shoop_engine::midi_state_diff the_pitch_wheel_is_independent_from_channel_pressure`,
+which crashed once with SIGSEGV in the Stage 7 workspace run, passed in both runs and
+in 20 further runs of its binary. `shoop_engine` is unchanged since `cb8a0324`.
+
+Not run: the Carla steps (building the pinned Carla 2.5.10 runtime, the fake-Carla
+rejections and probes, native packaging with the Carla runtime and its archive probes,
+the Carla UI and benchmark smokes, and `SHOOP_REQUIRE_CARLA_TESTS=1`), which need that
+build and cover unchanged legacy paths; the Rust coverage job; the optimized Node suite
+and the Perfetto failure canaries, which run only on schedule or dispatch; the macOS
+and Windows jobs; uploads, Codecov and remote CI. CI has no clippy step.
+
+### After the merge of `8cadc053`
+
+Repeated on the merge, with the Stage 10 changes:
+
+- the workspace nextest: **2328 passed, 4 skipped**, now including the opt-in CPAL
+  test, which skips;
+- `rt_runtime` and `shoop_loops` tests with their examples and CI's four examples, in
+  debug and release; formatting, tracing, test attributes and script tests;
+- the `rt_runtime` book check with all its examples
+  (`check_rt_runtime_docs.py --run-examples`), which CI does not run;
+- the `shoop_loops` book examples (`src/rust/shoop_loops/docs-new/examples`, a
+  separate Cargo workspace that neither CI nor a script builds): all seven binaries
+  build against the current loop library and run to completion, so the loop-library
+  additions of this milestone do not break them.
+
+The other results stand: apart from comments, the merge changes no compiled code.
+
+Fixed defects the merge brought:
+
+- Its comments in seven `rt_runtime` examples start at column 0, so CI's
+  `cargo fmt --all -- --check` failed. `cargo fmt` re-indented those 18 comment lines
+  and nothing else.
+- Four of those comments fall inside excerpts that the `rt_runtime` book quotes, so
+  its check reported four mismatches. The same comment lines were added to the
+  excerpts in chapters 2, 5 and 9.
+
+Not changed: in the draft `shoop_loops` book (`docs-new`), 12 of 41 marked excerpts
+differ from their examples, as on the merged branch itself (9 already before its last
+two commits), and `overdub_loop.rs` and `program_loop.rs` are not rustfmt-clean. No
+check in CI or `scripts/` covers them.
+
+### Shared contracts
+
+| Backend | Runner | Result |
+| --- | --- | --- |
+| `FakeBackend`, with all capabilities and with none | `shoop_backend` `contracts::tests::fake_backend_satisfies_contracts`, `fake_backend_without_capabilities_satisfies_contracts` | Pass: debug, release, Node |
+| `EngineBackend::new_dummy` | `engine_dummy_backend_satisfies_contracts` | Pass: debug, release, Node |
+| `EngineBackend`, Web Audio port model | `engine_web_audio_backend_satisfies_contracts` | Pass: debug, release, Node |
+| Legacy timing reference (`WebAudioTimingHarness`) | `legacy_web_audio_backend_satisfies_harness_contracts` | Pass: debug, release, Node |
+| New engine backend: adapter, in-process carrier, engine, offline host | `shoop_rt_backend::contracts` `adapter_satisfies_backend_contracts`, `adapter_satisfies_harness_contracts` | Pass: debug, release, Node |
+
+The harness contracts are the transition-timing, signal-chain and loop-playback
+contracts built from Stage 0's legacy reference. The new backend passes them with its
+declared observation lag (see [known differences](#new-engine-backend-known-differences)).
+
+### Core workflow
+
+**Dummy driver.** `shoopdaloop`
+`tests::new_engine_backend_runs_the_core_workflow_in_the_application` passes in debug
+and release. It starts the application on the new engine, creates a new session, adds
+an audio and a MIDI track, connects them to host ports and Master, records and plays
+the sync loop, records and plays a synchronized audio loop and an immediate MIDI
+loop, changes gains, balance, mute and monitoring, waits for meters and loop
+progress, reads the waveform and MIDI details, sees a refused driver switch, stops
+and clears. Its timings with `--no-capture`, from the request to the confirming
+snapshot, polled every 5 ms:
+
+| Step | Release | Debug |
+| --- | --- | --- |
+| Application start | 825 ms | 1987 ms |
+| New session | 198 ms | 197 ms |
+| Two new tracks | 132 ms | 137 ms |
+| Connections and routes | 66 ms | 75 ms |
+| Sync loop recording / playback | 20 / 35 ms | 35 / 20 ms |
+| Planned synchronized recording shown | 5 ms | 5 ms |
+| Synchronized recording / playback (waits for a wrap) | 112 / 178 ms | 147 / 183 ms |
+| Immediate MIDI recording / playback | 35 / 35 ms | 20 / 20 ms |
+| Controls and meters | 20 ms | 20 ms |
+| Waveform / MIDI detail | 71 / 66 ms | 76 / 71 ms |
+| Refused driver switch shown | 5 ms | 5 ms |
+| Immediate stop | 38 ms | 20 ms |
+| Clear | 310 ms | 321 ms |
+
+**Real CPAL device.** The opt-in test
+`tests::new_engine_backend_runs_the_core_workflow_on_a_cpal_device`
+(`SHOOP_TEST_CPAL_DEVICE=1`; it skips without it) passes in debug and release on
+ALSA's default device, through the host's PulseAudio plugin
+(`ALSA_PLUGIN_DIR=/usr/lib/x86_64-linux-gnu/alsa-lib`), into a private PulseAudio
+server with a null sink: 44.1 kHz, 512 frames, two capture and two playback ports.
+It creates a new session and a stereo track connected to the capture ports and routed
+to Master, records and plays the sync loop and a synchronized loop, changes Master's
+gain, reads both waveform channels at full length, plays for one second (44,544
+frames, 0 xruns, load 0.9% in release and 11.5% in debug), stops immediately and
+clears, without an error notification or a host fault. The sandbox has no ALSA
+sequencer, so midir found no MIDI ports.
+
+**Browser.** Against the release build:
+
+| Browser | Run | Result |
+| --- | --- | --- |
+| Firefox 136, headless, geckodriver 0.37.1, private PulseAudio null sink | CI's `browser_firefox_smoke.py` (legacy) | Pass: 10 callbacks of 128 frames, no overflows |
+| | `browser_firefox_smoke.py --backend new_engine` | Pass: the in-page self-test runs the core workflow (new session, an audio and a MIDI track, host connections and Master routes, synchronized and immediate recording and playback, MIDI, waveform, clear) at 44.1 kHz in 128-frame quanta, 0 xruns |
+| Chrome for Testing 147.0.7727.117, headless | `NEW_ENGINE=1 node --experimental-websocket browser_smoke.mjs` | Pass, hosted, 0 xruns |
+| | The same with `SELF_CONTAINED=1` (the single-file HTML) | Pass, 0 xruns |
+| | Legacy single-file output-only smoke | Pass |
+
+The Nix shell has no Chrome or Chromium, and the host's snap Chromium cannot start in
+the sandbox. The Chrome for Testing binary is the one kept from the earlier
+[CI replay](#ci-replay-at-61beffad) (CI's former pin); nothing was installed. All
+browser runs use fake media devices; a manual check in an installed Chrome with real
+devices and permission prompts remains open.
+
+### Miri
+
+`run_rt_runtime_miri.py` with Miri `0.1.0 (ad3a598ca4 2026-05-03)` and its unchanged
+900 s per-command watchdog, at `0d3925bb` (inventory 158 commands, 327 executions,
+SHA-256 `900afdac…`), in 16 batches (`--shard N/16`), four at a time with a target
+directory each; 5,601 s for all 16.
+
+| Batches | Result |
+| --- | --- |
+| 1–7, 15, 16 | Pass: 28, 20, 33, 21, 36, 22, 18, 11 and 11 executions |
+| 8 | 9 of 10 commands pass; `shoop_rt_engine` `control` exceeds the watchdog |
+| 9, 10, 11 | Stop at `rt_runtime` `midi_state` and the loop host's two `native_dense` cases; their other commands, rerun with the unchanged runner without only the timed-out command, pass (9, 14 and 11 executions) |
+| 12, 13, 14 | 9 of 10 commands pass; the seeded `adversarial_capture` model and both seeded `adversarial_timeline` models exceed the watchdog |
+
+So 151 of 158 commands and 308 of 327 executions pass, including every new engine
+and protocol case except `control`. The six other commands are the ones that exceed
+the watchdog equally on the baseline (see the [CI replay](#ci-replay-at-61beffad)).
+`--verify-batches` therefore refuses the set as incomplete.
+
+`control` held all seven tests of its binary in one command. Run alone without the
+watchdog, each passes in 153–194 s (1,129 s in all), so together they cannot fit
+900 s. The inventory now lists them as seven exact commands, as it already did for
+`structure` (164 commands, 327 executions; the runner's unit tests follow the count).
+The engine's part of that inventory (`--package shoop_rt_engine`, 11 commands in three
+batches, at the merge `8cadc053`) then passes within the watchdog: 12 executions, the
+longest command 422 s with the batches in parallel.
+
+### Platforms
+
+macOS and Windows could not run here. No standard library for those targets is
+installed (the Nix toolchain has the host and wasm32 only), so the pinned nightly
+type-checked them with `-Zbuild-std` (`cargo check`, warnings denied):
+
+| Target | Type-checks | Not checkable here |
+| --- | --- | --- |
+| `aarch64-apple-darwin` | `shoop_rt_protocol`, `shoop_rt_engine`, `shoop_rt_host_worklet`; `shoop_rt_host_native` with CPAL and midir and without | `shoop_rt_backend`, `shoopdaloop` and all test targets: they build the legacy engine's or the test support's Perfetto C++ SDK, which needs the target's SDK |
+| `x86_64-pc-windows-msvc` | `shoop_rt_protocol`, `shoop_rt_engine`, `shoop_rt_host_worklet`; `shoop_rt_host_native` without CPAL | `shoop_rt_host_native` with CPAL (CPAL's ASIO build needs Visual Studio), `shoop_rt_backend`, `shoopdaloop` and all test targets (Perfetto) |
+
+The new crates have no platform-specific code; CPAL and midir are the device layer.
+With the CI wiring above, a push builds the application and runs the new crates'
+tests in CI's macOS and Windows jobs.
+
+<a id="new-engine-backend-known-differences"></a>
+
+### Known differences and limits
+
+- **Observation lag.** The snapshot describes the state at the start of the last
+  rendered callback, one callback behind legacy. Transition frames, lengths and
+  content are equal; the timing harness declares the lag. A synchronized request
+  within one callback of a wrap can be scheduled one cycle later than on legacy.
+- **Host ports fixed at preparation.** Natively the driver's ports are fixed at
+  startup; in the browser, output-only mode reserves two capture channels and Web
+  MIDI ports that appear after audio starts need a reload.
+- **Restart for driver, capacity and backend changes.** Runtime driver switching is
+  refused; settings are saved for the next start.
+- **One fixed pool segment.** Capacities are set at startup; growth is later work.
+- **Native device bridging.** Separate CPAL input and output devices are not
+  resampled to each other, so drift shows as xruns; MIDI output is sent when the pump
+  sees it, not placed within the buffer.
+- **Browser.** Offline and Worker modes are refused for the new engine; its worklet
+  has no trace realm.
+
+<a id="new-engine-backend-acceptance-check"></a>
+
+### Acceptance check
+
+The [acceptance criteria](PLAN_RT_BACKEND.md#acceptance-criteria), checked on
+`0d3925bb` and the merge `8cadc053`, with the Stage 10 changes.
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| B1 — opt-in selection | Met | `audio.backend` defaults to legacy and requires a restart (`shoop_egui` `audio_backend_settings_default_to_legacy_and_require_a_restart`, `audio_backend_choice_shows_new_engine_pools_only_when_selected`); `--audio-backend` (`cli_overrides_the_audio_backend`) and `?audio-backend=` (`web_query_overrides_the_audio_backend`, Node) override it. Both composition roots choose once at startup; a failing driver falls back to the dummy driver on the chosen backend (`a_failing_device_driver_falls_back_to_the_dummy_driver`, `new_engine_startup_fallbacks_are_shown_to_the_user`). `shoop_rt_backend` uses only the protocol client and refuses what it does not support; it never constructs a legacy backend |
+| B2 — platforms | Partly verified | Linux: dummy and CPAL core workflow tests in debug and release; midir only through the native host's MIDI bridge tests (no ALSA sequencer here). Browser AudioWorklet: Firefox 136 and Chrome for Testing 147. macOS and Windows: [type checks](#platforms) of the engine-side crates only; not run |
+| B3 — core workflow | Met on Linux and in the browser | [Core workflow](#core-workflow): the dummy and CPAL application tests, `shoop_app::rt_backend core_workflow_runs_on_the_new_engine_backend` (native and Node), the browser self-test in Firefox and Chrome |
+| B4 — explicit capabilities | Met | Legacy backends report their full sets (`legacy_backends_report_the_capabilities_they_support`); the new backend reports only MIDI injection (asserted by the core workflow test; `only_midi_injection_is_reported_and_the_rest_is_refused_with_its_reason`). UI: `unsupported_global_controls_are_disabled`, `unsupported_latency_and_dry_wet_options_are_disabled`, `context_menu_disables_items_the_backend_cannot_perform`, `hover_variants_are_hidden_without_grab_and_dry_wet_modes`, `unsupported_bus_and_track_features_cannot_be_requested`, `driver_switching_is_hidden_when_the_backend_cannot_switch`. Refusals reach the user: `backend_refusals_and_failed_actions_reach_the_user`, `intents_needing_unsupported_capabilities_are_refused_visibly`, `unsupported_actions_are_refused_visibly_on_the_new_engine_backend`. Whole rejection: `composite_session_is_rejected_whole_without_composite_support`, `session_content_is_rejected_whole_without_content_loading`, `session_documents_list_every_unsupported_capability_they_need`, `script_operations_needing_unsupported_capabilities_are_refused_visibly` |
+| B5 — one implementation | Met | One engine, protocol and adapter used by both composition roots: natively `RtBackend::connect` over the in-process carrier, in the browser `RtBackend::begin` over the MessagePort record carrier, with the same engine compiled into the worklet module. `check_rt_engine_boundary.py` passes for the engine, the protocol and both hosts on the Linux, Windows, macOS and wasm32 targets (native and web CI jobs); the hosts depend only on the engine, the protocol and device libraries |
+| B6 — carrier-neutral protocol | Met | `shoop_rt_protocol` runs the same checks on the in-process and record carriers (`lifecycle_credits_resync_bulk_and_limits_behave_alike_on_both_carriers`, `a_version_mismatch_is_rejected_on_both_carriers`, `telemetry_keeps_the_latest_records_while_reliable_and_bulk_lanes_refuse`, codec round-trip and malformed-input tests), natively, on Node and under Miri; `LimitsChanged` and the growable-limits capability; resync (`resync_streams_the_confirmed_state`, `connecting_removes_engine_structure_the_application_does_not_know`); disconnect (`a_disconnected_engine_is_reported_failed_and_operations_are_refused`, `a_framing_error_ends_the_connection_and_a_new_hello_reconnects`, `a_render_fault_silences_output_and_ends_the_connection`); generations (`a_new_backend_uses_newer_generations_after_reconnecting`) |
+| B7 — audio never stops for structural changes | Met | `edits_keep_other_paths_continuous_and_ramp_removed_paths`, `master_outputs_are_connections_that_cross_fade_and_resync`, `repeated_create_and_remove_hands_slots_over_without_leaking`; on the real-time dummy driver `the_driver_loop_does_not_touch_the_heap_through_structural_edits`. Driver, rate and buffer changes are refused while running and saved for the next start (`driver_settings_are_saved_for_the_next_start_when_the_backend_cannot_switch`, `new_engine_driver_settings_saved_without_switching_apply_on_restart`, the refused switch in the core workflow test), so a restart is the only operation that changes them |
+| B8 — prepared, segmented pools | Met, with one segment | Pools are segments sized from four settings, mapped onto one segment (`capacity_settings_become_one_prepared_segment`); exceeding them is refused visibly (`pools_and_identities_are_enforced`, `exhausted_pools_are_refused_with_a_visible_message`, `new_engine_capacity_settings_bound_the_application_visibly`); inactive slots are not rendered (`only_occupied_slots_are_rendered`). No segment is added at runtime |
+| B9 — timing equivalence | Met, with the declared observation lag | The harness contracts pass on the legacy reference and on the new stack ([Shared contracts](#shared-contracts)); `shoop_rt_engine::timing synchronized_transitions_match_the_legacy_reference` |
+| B10 — callback contract | Met for heap use; locks and waits by construction | Heap guards around the control endpoint and render owner in every engine test, the native host's driver loops (`heap_guards_are_live`, `threaded_streams_render_while_a_client_works_without_heap_operations`, `the_driver_loop_does_not_touch_the_heap_through_structural_edits`) and the worklet's render and lane writes (`message_port` tests); Miri for the codec, the endpoint's command materialization and pool handover. No test detects locks or waits: the engine, protocol and worklet host have none, and the native host's only mutex and sleeps are off the render path (the dummy driver's controlled-mode requests, its period between callbacks, the MIDI pump). Xruns are reported (`xruns_are_reported_since_the_previous_poll`, `bridge_underruns_and_overruns_and_backend_underruns_are_counted_as_xruns`, `reports_driver_state_load_and_xruns_in_telemetry`) |
+| B11 — legacy unchanged | Met | `shoop_engine`, `shoop_audio_worklet` and `shoop_audio_protocol` are unchanged since `cb8a0324`; `shoop_backend` and `shoop_worklet_client` changed only for capability reports, `FakeBackend`'s switchable capabilities and the shared contracts. Every baseline test passes ([counts](#local-ci-run)), and so do the legacy browser smokes |
+| B12 — documentation | Met | READMEs for all five new crates; `ARCHITECTURE.md` (implementation map and "New engine backend"); `PLAN.md` (workstream, status, authority, parity gaps); this section; the user guide's "New engine backend" page (`docs/source/usage.new_engine_backend.rst`, `0d3925bb`) |
+
+Open for the user: running on macOS and Windows (a push runs CI there), real MIDI
+hardware, a manual Chrome check with real devices, and remote CI and review.
 
 ## Loop evidence
 
