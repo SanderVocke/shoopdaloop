@@ -780,5 +780,60 @@ fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
         "passthrough-muted JACK track emitted {muted_count} MIDI events"
     );
 }
+#[shoop_wasm_test_support::shoop_test]
+fn master_preview_source_reaches_real_jack_output_and_stops_without_loop_transport() {
+    use std::sync::atomic::AtomicU64;
+    let suffix = std::process::id();
+    let Some(peer) = peer_client(&format!("preview-consumer-{suffix}")) else {
+        return;
+    };
+    let port = peer.register_port("in", jack::AudioIn::default()).unwrap();
+    let name = port.name().unwrap();
+    let max_bits = Arc::new(AtomicU32::new(0));
+    let consumer = peer
+        .activate_async(
+            (),
+            AtomicAudioConsumer {
+                port,
+                max_bits: Arc::clone(&max_bits),
+            },
+        )
+        .unwrap();
+    let Some((driver, session)) = app_jack(&format!("preview-writer-{suffix}")) else {
+        return;
+    };
+    let input =
+        AudioPort::new_internal_port(&session, "master_input", &PortDirection::Input, 0).unwrap();
+    let output =
+        AudioPort::new_driver_port(&session, &driver, "master_out", &PortDirection::Output, 0)
+            .unwrap();
+    input.connect_internal(&output).unwrap();
+    driver.wait_process();
+    let finished = Arc::new(AtomicU64::new(0));
+    session
+        .configure_audio_preview(&[input], Arc::clone(&finished))
+        .unwrap();
+    driver.wait_process();
+    output.connect_external_port(&name);
+    session
+        .replace_audio_preview(1, Arc::from(vec![0.25; 48_000]))
+        .unwrap();
+    assert!(wait_until(|| f32::from_bits(
+        max_bits.load(Ordering::Acquire)
+    ) == 0.25));
+    session.replace_audio_preview(0, Arc::from([])).unwrap();
+    std::thread::sleep(Duration::from_millis(50));
+    max_bits.store(0, Ordering::Release);
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(max_bits.load(Ordering::Acquire), 0);
+    assert_eq!(finished.load(Ordering::Acquire), 0);
+    session
+        .replace_audio_preview(2, Arc::from(vec![0.5; 4096]))
+        .unwrap();
+    assert!(wait_until(|| finished.load(Ordering::Acquire) == 2));
+    assert_eq!(f32::from_bits(max_bits.load(Ordering::Acquire)), 0.5);
+    let _ = consumer.deactivate();
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

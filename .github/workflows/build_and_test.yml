@@ -9,6 +9,17 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
+      nightly_flavor:
+        description: Run only a selected CPAL-free nightly build flavor
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - all
+          - linux
+          - macos-intel
+          - macos-intel-10.15
       perfetto_failure_canary:
         description: Run the intentional nextest failure-capture canary
         required: false
@@ -33,6 +44,7 @@ env:
 
 jobs:
   rust_coverage:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Rust coverage (Linux)
     runs-on: ubuntu-24.04
     steps:
@@ -79,6 +91,7 @@ jobs:
             --lcov --output-path lcov.info
 
       - name: Publish Rust coverage to Codecov
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -96,7 +109,127 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  without_cpal:
+    name: Nightly without CPAL (${{ matrix.flavor }})
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.nightly_flavor != 'none')
+    runs-on: ${{ matrix.flavor == 'linux' && 'ubuntu-24.04' || 'macos-15-intel' }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      NATIVE_BUILD_TARGET: ${{ matrix.flavor == 'linux' && 'x86_64-unknown-linux-gnu' || 'x86_64-apple-darwin' }}
+      RUSTFLAGS: "-D warnings"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.nightly_flavor != 'all' && format('["{0}"]', inputs.nightly_flavor) || '["linux","macos-intel","macos-intel-10.15"]') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.NATIVE_BUILD_TARGET }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.flavor == 'macos-intel-10.15' && 'macos-intel-10.15-portable-release' || format('without-cpal-{0}', matrix.flavor) }}
+          cache-on-failure: ${{ matrix.flavor == 'macos-intel-10.15' }}
+      - name: Configure macOS deployment target
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: echo 'MACOSX_DEPLOYMENT_TARGET=10.15' >> "$GITHUB_ENV"
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev libgl1-mesa-dev \
+            libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcursor-dev libxi-dev libxkbcommon-dev libxrandr-dev libwayland-dev
+      - name: Assert production and test graphs exclude CPAL and Rodio
+        shell: bash
+        run: |
+          cargo tree --locked --workspace --no-default-features --features shoopdaloop/native-fx \
+            --target ${{ env.NATIVE_BUILD_TARGET }} --edges normal,build,dev --prefix none --format '{p}' > dependency-tree.txt
+          if grep -E '^(cpal|rodio) v' dependency-tree.txt; then
+            echo 'CPAL-free builds must not enable CPAL or Rodio, including through test dependencies.'
+            exit 1
+          fi
+      - name: Test packaging checks
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: python3 -m unittest discover -s scripts/tests
+      - name: Prepare pinned macOS Carla runtime
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: |
+          bash scripts/build_macos_catalina_dependencies.sh .catalina-deps
+          curl -L --fail --retry 3 -o carla.dmg https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-macOS-universal.dmg
+          echo "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1  carla.dmg" | shasum -a 256 --check
+          mkdir .carla-volume
+          hdiutil attach carla.dmg -nobrowse -readonly -mountpoint .carla-volume
+          trap 'hdiutil detach .carla-volume' EXIT
+          curl -L --fail --retry 3 -o carla-GPL.txt https://raw.githubusercontent.com/falkTX/Carla/v2.5.10/doc/GPL.txt
+          python3 scripts/carla_runtime.py normalize --platform macos --search-root .carla-volume --license carla-GPL.txt --output .carla-component --macos-dependency-dir .catalina-deps
+          python3 scripts/check_macos_compatibility.py --root .carla-component --arch x86_64 --minimum-os 10.15 | tee carla-compatibility.txt
+      - name: Build without CPAL or Rodio
+        if: matrix.flavor != 'macos-intel-10.15'
+        run: cargo build --locked -p shoopdaloop --no-default-features --features native-fx --target ${{ env.NATIVE_BUILD_TARGET }}
+      - name: Build Intel release targeting Catalina
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: cargo build --locked --release -p shoopdaloop --no-default-features --features native-fx --target x86_64-apple-darwin
+      - name: Package portable Catalina distribution
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: |
+          python3 src/rust/shoopdaloop/package_artifacts.py native \
+            --platform macos --arch x86_64 --profile release --macos-minimum-version 10.15 \
+            --binary target/x86_64-apple-darwin/release/shoopdaloop \
+            --carla-runtime .carla-component --output-dir artifacts
+          package=$(find artifacts -name '*.tar.gz' -type f)
+          destination="artifacts/shoopdaloop-macos-x86_64-10.15-without-cpal-release-dev-$(git rev-parse --short=8 HEAD).tar.gz"
+          mv "$package" "$destination"
+          echo "SHOOP_ARTIFACT=$destination" >> "$GITHUB_ENV"
+      - name: Probe extracted application and bundled Carla
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: |
+          destination="$RUNNER_TEMP/Shoop Δ Catalina"
+          mkdir -p "$destination"
+          tar -xzf "$SHOOP_ARTIFACT" -C "$destination"
+          app="$destination/shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoopdaloop"
+          cd "$RUNNER_TEMP"
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR "$app" --probe-builtins
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR "$app" --probe-carla-native \
+            | grep '/Frameworks/carla-runtime/lib/libcarla_native-plugin.dylib'
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR "$app" --probe-carla-native-ui
+          sleep 1
+          ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
+      - name: Upload portable Catalina distribution
+        if: matrix.flavor == 'macos-intel-10.15'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.SHOOP_ARTIFACT }}
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
+      - uses: taiki-e/install-action@v2
+        if: runner.os == 'Linux'
+        with:
+          tool: nextest@0.9.116
+      - name: Test CPAL-free workspace
+        if: runner.os == 'Linux'
+        env:
+          SHOOP_ALLOW_MISSING_BACKENDS: "1"
+        run: cargo nextest run --locked --workspace --no-default-features --features shoopdaloop/native-fx,shoop_engine/app_backend --profile ci
+      - name: Upload compatibility diagnostics
+        if: always() && matrix.flavor == 'macos-intel-10.15'
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-catalina-compatibility-${{ github.run_id }}
+          path: |
+            carla-compatibility.txt
+            dependency-tree.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
   build_and_test:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
     runs-on: ${{ matrix.os }}
     strategy:

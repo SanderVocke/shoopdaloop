@@ -31,6 +31,7 @@ APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
 BUILTINS = ROOT / "resources" / "builtins"
 sys.path.insert(0, str(ROOT / "scripts"))
 from carla_runtime import verify_component  # noqa: E402
+from check_macos_compatibility import inspect_macho, verify_payloads  # noqa: E402
 ROBOTO_FILES = (
     "LICENSE.txt",
     "README.md",
@@ -92,7 +93,7 @@ def stage_carla_runtime(platform: str, component: Path, root: Path) -> None:
     shutil.copytree(component, destination)
 
 
-def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage: Path) -> None:
+def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage: Path, macos_minimum_version: str = "11.0") -> None:
     root = stage / ARCHIVE_ROOT
     root.mkdir()
     copy_metadata(root)
@@ -117,7 +118,7 @@ def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage:
             "CFBundleName": "ShoopDaLoop",
             "CFBundlePackageType": "APPL",
             "CFBundleVersion": "0",
-            "LSMinimumSystemVersion": "11.0",
+            "LSMinimumSystemVersion": macos_minimum_version,
             "NSHighResolutionCapable": True,
         }
         with (contents / "Info.plist").open("wb") as handle:
@@ -163,7 +164,7 @@ def package_native(args: argparse.Namespace) -> list[Path]:
     output.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="shoop-package-") as temporary:
         stage = Path(temporary)
-        create_native_stage(args.platform, binary, args.carla_runtime.resolve(), stage)
+        create_native_stage(args.platform, binary, args.carla_runtime.resolve(), stage, args.macos_minimum_version or "11.0")
         staged_executable = (
             stage / ARCHIVE_ROOT / "ShoopDaLoop.app" / "Contents" / "MacOS" / "shoopdaloop"
             if args.platform == "macos"
@@ -178,7 +179,7 @@ def package_native(args: argparse.Namespace) -> list[Path]:
             write_zip(stage / ARCHIVE_ROOT, output)
         else:
             write_tar(stage / ARCHIVE_ROOT, output)
-    verify_native(output, args.platform)
+    verify_native(output, args.platform, args.arch, args.macos_minimum_version)
     return [output]
 
 
@@ -338,7 +339,7 @@ def require_click_assets(binary: bytes, artifact: str) -> None:
         raise RuntimeError(f"{artifact} is missing embedded click assets: {missing}")
 
 
-def require_native_architecture(binary: bytes, platform: str, artifact: str) -> None:
+def require_native_architecture(binary: bytes, platform: str, artifact: str, arch: str | None = None) -> None:
     if platform == "linux":
         valid = (
             len(binary) >= 20
@@ -354,17 +355,7 @@ def require_native_architecture(binary: bytes, platform: str, artifact: str) -> 
             and int.from_bytes(binary[pe_offset + 4 : pe_offset + 6], "little") == 0x8664
         )
     else:
-        arm64 = 0x0100000C
-        magic = binary[:4]
-        valid = magic == b"\xcf\xfa\xed\xfe" and int.from_bytes(binary[4:8], "little") == arm64
-        if magic in {b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"} and len(binary) >= 8:
-            count = int.from_bytes(binary[4:8], "big")
-            stride = 32 if magic == b"\xca\xfe\xba\xbf" else 20
-            valid = any(
-                8 + stride * (index + 1) <= len(binary)
-                and int.from_bytes(binary[8 + stride * index : 12 + stride * index], "big") == arm64
-                for index in range(count)
-            )
+        valid = inspect_macho(binary, arch or "arm64") is not None
     if not valid:
         raise RuntimeError(f"{artifact} has the wrong {platform} architecture")
 
@@ -389,7 +380,7 @@ def carla_archive_path(platform: str, relative: str) -> str:
     return f"{root}carla-runtime/{relative}"
 
 
-def verify_native(path: Path, platform: str) -> None:
+def verify_native(path: Path, platform: str, arch: str | None = None, macos_minimum_version: str | None = None) -> None:
     names, modes = archive_names(path)
     payloads = archive_payloads(path)
     root = f"{ARCHIVE_ROOT}/"
@@ -446,9 +437,14 @@ def verify_native(path: Path, platform: str) -> None:
     if platform != "windows" and modes.get(executable, 0) & 0o111 == 0:
         raise RuntimeError(f"archive executable has no execute bit: {executable}")
     binary = payloads[executable]
-    require_native_architecture(binary, platform, "native executable")
+    require_native_architecture(binary, platform, "native executable", arch)
     carla_library = payloads[carla_archive_path(platform, component_manifest["library"])]
-    require_native_architecture(carla_library, platform, "Carla Native library")
+    require_native_architecture(carla_library, platform, "Carla Native library", arch)
+    if platform == "macos" and macos_minimum_version:
+        plist = plistlib.loads(payloads[f"{root}ShoopDaLoop.app/Contents/Info.plist"])
+        if plist.get("LSMinimumSystemVersion") != macos_minimum_version:
+            raise RuntimeError("macOS bundle has the wrong minimum OS version")
+        print("\n".join(verify_payloads(payloads, arch or "arm64", macos_minimum_version)))
     require_application_icon(binary, "native executable")
     require_click_assets(binary, "native executable")
     reject_application_script_payload(binary, "native executable")
@@ -551,7 +547,7 @@ def verify(args: argparse.Namespace) -> list[Path]:
     if args.platform == "web":
         verify_web(args.artifact, args.html)
         return [args.artifact, *([args.html] if args.html is not None else [])]
-    verify_native(args.artifact, args.platform)
+    verify_native(args.artifact, args.platform, args.arch, args.macos_minimum_version)
     return [args.artifact]
 
 
@@ -566,6 +562,7 @@ def parser() -> argparse.ArgumentParser:
     native.add_argument("--binary", type=Path, required=True)
     native.add_argument("--carla-runtime", type=Path, required=True)
     native.add_argument("--output-dir", type=Path, required=True)
+    native.add_argument("--macos-minimum-version")
     native.set_defaults(function=package_native)
 
     web = subcommands.add_parser("web")
@@ -578,6 +575,8 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument("--platform", choices=(*NATIVE_PLATFORMS, "web"), required=True)
     check.add_argument("--artifact", type=Path, required=True)
     check.add_argument("--html", type=Path)
+    check.add_argument("--arch", choices=("x86_64", "arm64"))
+    check.add_argument("--macos-minimum-version")
     check.set_defaults(function=verify)
     return result
 

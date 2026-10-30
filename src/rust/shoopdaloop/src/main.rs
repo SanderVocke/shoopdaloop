@@ -1272,6 +1272,8 @@ impl UnifiedApp {
         #[cfg(target_arch = "wasm32")]
         self.runtime.set_repaint_context(ui.ctx().clone());
         self.runtime.tick(elapsed);
+        self.widget
+            .set_click_track_preview_available(self.runtime.audio_preview_available());
         self.runtime.process_audio_previews();
 
         #[cfg(target_arch = "wasm32")]
@@ -1925,6 +1927,8 @@ struct Runtime {
     catalog_scan_tx: std::sync::mpsc::Sender<CatalogScanCompletion>,
     catalog_scan_rx: std::sync::mpsc::Receiver<CatalogScanCompletion>,
     preview_player: native_preview::NativePreviewPlayer,
+    pending_preview: Option<shoop_app::ApplicationAudioPreview>,
+    preview_availability: std::cell::Cell<Option<(Instant, bool)>>,
     applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
     /// The new engine backend's host. It is declared after the application runtime so that
@@ -2082,6 +2086,8 @@ impl Runtime {
             catalog_scan_tx,
             catalog_scan_rx,
             preview_player,
+            pending_preview: None,
+            preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
             _engine_host: engine_host,
@@ -2312,13 +2318,74 @@ impl Runtime {
     }
 
     fn process_audio_previews(&mut self) {
-        while let Some(preview) = self.handle.take_audio_preview() {
-            self.preview_player.play(preview);
+        let state = self.handle.snapshot();
+        if !matches!(
+            state.click_track.preview_status,
+            shoop_egui::ClickTrackPreviewStatus::Queued
+                | shoop_egui::ClickTrackPreviewStatus::Playing
+        ) {
+            if let Err(error) = self.preview_player.stop() {
+                tracing::warn!(%error, "frontend.preview.stop_failed");
+            }
+        }
+        while let Some(preview) = self
+            .pending_preview
+            .take()
+            .or_else(|| self.handle.take_audio_preview())
+        {
+            let request_id = preview.request_id;
+            let current = self.handle.snapshot();
+            // Preview samples can arrive before the actor publishes their queued state.
+            if current.click_track.preview_request_id < request_id {
+                self.pending_preview = Some(preview);
+                break;
+            }
+            if current.click_track.preview_request_id != request_id
+                || current.click_track.preview_status != shoop_egui::ClickTrackPreviewStatus::Queued
+            {
+                continue;
+            }
+            if let Err(error) = self.preview_player.stop() {
+                let _ = self.handle.dispatch(AppIntent::CompleteClickTrackPreview {
+                    request_id,
+                    success: false,
+                    message: error.to_string(),
+                });
+                continue;
+            }
+            match preview.output {
+                shoop_egui::ClickTrackPreviewOutput::System => self.preview_player.play(preview),
+                shoop_egui::ClickTrackPreviewOutput::MasterBus => {
+                    if let Err(error) =
+                        self.handle
+                            .dispatch(AppIntent::StartMasterClickTrackPreview {
+                                request_id,
+                                sample_rate: preview.sample_rate,
+                                samples: Arc::clone(&preview.samples),
+                            })
+                    {
+                        if error == shoop_app::DispatchError::Full {
+                            self.pending_preview = Some(preview);
+                        } else {
+                            tracing::warn!(%error, "frontend.preview.actor_disconnected");
+                        }
+                        break;
+                    }
+                }
+            }
         }
     }
 
     fn audio_preview_available(&self) -> bool {
-        native_preview::is_available()
+        if let Some((checked, available)) = self.preview_availability.get() {
+            if checked.elapsed() < Duration::from_secs(1) {
+                return available;
+            }
+        }
+        let available = native_preview::is_available();
+        self.preview_availability
+            .set(Some((Instant::now(), available)));
+        available
     }
 }
 
@@ -5425,6 +5492,7 @@ impl BrowserSelfTest {
                 };
                 runtime
                     .dispatch(AppIntent::PreviewClickTrack {
+                output: shoop_egui::ClickTrackPreviewOutput::System,
                         loop_id: loop_state.id,
                         request: browser_click_request(shoop_egui::ClickTrackKind::Audio),
                     })
@@ -7740,6 +7808,139 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
+    fn native_preview_waits_for_actor_snapshot_publication() {
+        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
+        let request_id = app.runtime.snapshot().click_track.preview_request_id + 1;
+        app.runtime.pending_preview = Some(shoop_app::ApplicationAudioPreview {
+            output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
+            request_id,
+            sample_rate: 48_000,
+            samples: Arc::from([0.25; 4]),
+        });
+        app.runtime.process_audio_previews();
+        assert_eq!(
+            app.runtime
+                .pending_preview
+                .as_ref()
+                .map(|preview| preview.request_id),
+            Some(request_id)
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_preview_buttons_share_cancellation_and_ignore_stale_results() {
+        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
+        let wait = |app: &mut UnifiedApp, predicate: &dyn Fn(&shoop_egui::AppSnapshot) -> bool| {
+            let start = Instant::now();
+            loop {
+                app.runtime.process_audio_previews();
+                let snapshot = app.runtime.snapshot();
+                if predicate(&snapshot) {
+                    break snapshot;
+                }
+                assert!(
+                    start.elapsed() < Duration::from_secs(5),
+                    "preview timed out: {:?}",
+                    snapshot.click_track
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        let initial = wait(&mut app, &|snapshot| {
+            snapshot.status.sample_rate > 0 && !snapshot.tracks.is_empty()
+        });
+        let before = initial.tracks[0].loops[0].clone();
+        let loop_id = before.id;
+        let request = shoop_egui::ClickTrackRequest {
+            bpm: 600.0,
+            click_count: 1,
+            ..Default::default()
+        };
+        app.runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request: request.clone(),
+                output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
+            })
+            .unwrap();
+        let done = wait(&mut app, &|snapshot| {
+            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Completed
+        });
+        assert_eq!(done.tracks[0].loops[0].length_frames, before.length_frames);
+        assert_eq!(done.tracks[0].loops[0].empty, before.empty);
+        let long = shoop_egui::ClickTrackRequest {
+            bpm: 60.0,
+            click_count: 8,
+            ..Default::default()
+        };
+        app.runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request: long.clone(),
+                output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
+            })
+            .unwrap();
+        let playing = wait(&mut app, &|snapshot| {
+            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Playing
+        });
+        let first_id = playing.click_track.preview_request_id;
+        app.runtime
+            .dispatch(AppIntent::StopClickTrackPreview)
+            .unwrap();
+        wait(&mut app, &|snapshot| {
+            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
+        });
+        app.runtime
+            .dispatch(AppIntent::CompleteClickTrackPreview {
+                request_id: first_id,
+                success: true,
+                message: "late completion".to_owned(),
+            })
+            .unwrap();
+        app.runtime
+            .dispatch(AppIntent::StartMasterClickTrackPreview {
+                request_id: first_id,
+                sample_rate: initial.status.sample_rate,
+                samples: Arc::from([0.5; 64]),
+            })
+            .unwrap();
+        app.runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request,
+                output: shoop_egui::ClickTrackPreviewOutput::System,
+            })
+            .unwrap();
+        let system = wait(&mut app, &|snapshot| {
+            snapshot.click_track.preview_request_id > first_id
+                && matches!(
+                    snapshot.click_track.preview_status,
+                    shoop_egui::ClickTrackPreviewStatus::Completed
+                        | shoop_egui::ClickTrackPreviewStatus::Failed
+                )
+        });
+        let system_id = system.click_track.preview_request_id;
+        app.runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request: long,
+                output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
+            })
+            .unwrap();
+        wait(&mut app, &|snapshot| {
+            snapshot.click_track.preview_request_id > system_id
+                && snapshot.click_track.preview_status
+                    == shoop_egui::ClickTrackPreviewStatus::Playing
+        });
+        app.runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        wait(&mut app, &|snapshot| {
+            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
+        });
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
         let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
         let track_specs = [
@@ -8042,6 +8243,7 @@ mod tests {
         let before_preview = target.loops[1].clone();
         app.runtime
             .dispatch(AppIntent::PreviewClickTrack {
+                output: shoop_egui::ClickTrackPreviewOutput::System,
                 loop_id: generated_loop,
                 request: request.clone(),
             })

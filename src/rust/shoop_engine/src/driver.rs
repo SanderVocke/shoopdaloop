@@ -64,6 +64,12 @@ pub struct BackendSessionState {
 }
 
 pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
+    if matches!(
+        driver_type,
+        AudioDriverType::Cpal | AudioDriverType::CpalTest
+    ) {
+        return cfg!(feature = "cpal");
+    }
     matches!(
         driver_type,
         AudioDriverType::Dummy

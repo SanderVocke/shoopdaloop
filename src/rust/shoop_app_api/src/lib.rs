@@ -1610,8 +1610,15 @@ impl Default for ScriptingState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClickTrackPreviewOutput {
+    System,
+    MasterBus,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ClickTrackPreviewStatus {
+    Cancelled,
     #[default]
     Idle,
     Queued,
@@ -1628,6 +1635,8 @@ pub struct ClickSoundDescriptor {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClickTrackState {
+    pub preview_output: Option<ClickTrackPreviewOutput>,
+    pub master_preview_available: bool,
     pub sounds: Arc<[ClickSoundDescriptor]>,
     pub max_click_count: u32,
     pub max_output_frames: u32,
@@ -2390,8 +2399,18 @@ pub enum AppIntent {
         message: String,
     },
     PreviewClickTrack {
+        output: ClickTrackPreviewOutput,
         loop_id: LoopId,
         request: ClickTrackRequest,
+    },
+    StopClickTrackPreview,
+    StartMasterClickTrackPreview {
+        request_id: u64,
+        sample_rate: u32,
+        samples: Arc<[f32]>,
+    },
+    ClickTrackPreviewStarted {
+        request_id: u64,
     },
     CompleteClickTrackPreview {
         request_id: u64,
@@ -2620,6 +2639,9 @@ impl AppIntent {
             Self::FailIoTask { .. } => "io.fail",
             Self::FailIoWorkflow { .. } => "io.fail_workflow",
             Self::PreviewClickTrack { .. } => "click_track.preview",
+            Self::StopClickTrackPreview => "click_track.preview.stop",
+            Self::StartMasterClickTrackPreview { .. } => "click_track.preview.master",
+            Self::ClickTrackPreviewStarted { .. } => "click_track.preview.started",
             Self::CompleteClickTrackPreview { .. } => "click_track.complete_preview",
             Self::GenerateClickTrack { .. } => "click_track.generate",
             Self::RequestLoopAudioExport { .. } => "loop_audio.request_export",

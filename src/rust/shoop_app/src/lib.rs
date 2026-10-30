@@ -108,6 +108,7 @@ pub struct ApplicationFileOutput {
 
 #[derive(Clone, Debug)]
 pub struct ApplicationAudioPreview {
+    pub output: shoop_app_api::ClickTrackPreviewOutput,
     pub request_id: u64,
     pub sample_rate: u32,
     pub samples: Arc<[f32]>,
@@ -654,6 +655,14 @@ fn update_application(
         let _span = tracing::trace_span!("frontend.app.backend_advance").entered();
         backend.advance(elapsed);
     }
+    if let Some(request_id) = backend.finished_audio_preview() {
+        let _ = model.complete_click_track_preview(
+            request_id,
+            true,
+            "Click preview completed".to_owned(),
+        );
+    }
+    model.click_track.master_preview_available = backend.supports_audio_preview();
     model.age_pending_connections(backend, elapsed);
     model.capabilities = backend.capabilities();
     match backend.poll() {
@@ -2207,7 +2216,9 @@ impl ApplicationModel {
             | AppIntent::RequestLoadSessionUrl
             | AppIntent::RequestLoopAudioImportPicker { .. }
             | AppIntent::RequestLoopMidiImportPicker { .. } => Ok(()),
-            AppIntent::LoadSessionBytes { name, bytes } => self.begin_load_session(name, &bytes),
+            AppIntent::LoadSessionBytes { name, bytes } => self
+                .stop_click_track_preview(backend)
+                .and_then(|()| self.begin_load_session(name, &bytes)),
             AppIntent::ConfirmSampleRateConversion { task_id, accept } => {
                 self.confirm_sample_rate_conversion(backend, task_id, accept)
             }
@@ -2238,8 +2249,46 @@ impl ApplicationModel {
                 }
                 Ok(())
             }
-            AppIntent::PreviewClickTrack { loop_id, request } => {
-                self.preview_click_track(loop_id, request)
+            AppIntent::PreviewClickTrack {
+                loop_id,
+                request,
+                output,
+            } => self.preview_click_track(backend, loop_id, request, output),
+            AppIntent::StopClickTrackPreview => self.stop_click_track_preview(backend),
+            AppIntent::StartMasterClickTrackPreview {
+                request_id,
+                sample_rate,
+                samples,
+            } => {
+                if self.click_track.preview_request_id != request_id
+                    || self.click_track.preview_status != ClickTrackPreviewStatus::Queued
+                    || self.click_track.preview_output
+                        != Some(shoop_app_api::ClickTrackPreviewOutput::MasterBus)
+                {
+                    Ok(())
+                } else {
+                    match backend.start_audio_preview(request_id, sample_rate, samples) {
+                        Ok(()) => {
+                            self.click_track.preview_status = ClickTrackPreviewStatus::Playing;
+                            self.click_track.preview_message =
+                                "Previewing through Master bus".to_owned();
+                            Ok(())
+                        }
+                        Err(error) => {
+                            self.complete_click_track_preview(request_id, false, error.to_string())
+                        }
+                    }
+                }
+            }
+            AppIntent::ClickTrackPreviewStarted { request_id } => {
+                if self.click_track.preview_request_id == request_id
+                    && self.click_track.preview_status == ClickTrackPreviewStatus::Queued
+                {
+                    self.click_track.preview_status = ClickTrackPreviewStatus::Playing;
+                    self.click_track.preview_message =
+                        "Previewing through system output".to_owned();
+                }
+                Ok(())
             }
             AppIntent::CompleteClickTrackPreview {
                 request_id,
@@ -3896,6 +3945,7 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         self.ensure_io_idle()?;
         self.ensure_bus_structures_settled()?;
+        self.stop_click_track_preview(backend)?;
         if matches!(
             self.audio_drivers.switch.status,
             AudioDriverSwitchStatus::AwaitingConfirmation
@@ -4030,6 +4080,7 @@ impl ApplicationModel {
         self.audio_drivers.switch.status = AudioDriverSwitchStatus::Switching;
         self.audio_drivers.switch.message =
             "Starting the target driver and restoring session".to_owned();
+        self.stop_click_track_preview(backend)?;
         let replacement = match backend.switch_audio_driver(
             &pending.target.configured,
             target_rate,
@@ -4189,15 +4240,36 @@ impl ApplicationModel {
         };
     }
 
+    fn stop_click_track_preview(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        backend
+            .stop_audio_preview()
+            .map_err(|error| error.to_string())?;
+        self.preview_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clear();
+        if matches!(
+            self.click_track.preview_status,
+            ClickTrackPreviewStatus::Queued | ClickTrackPreviewStatus::Playing
+        ) {
+            self.click_track.preview_status = ClickTrackPreviewStatus::Cancelled;
+            self.click_track.preview_message = "Click preview stopped".to_owned();
+        }
+        Ok(())
+    }
+
     fn preview_click_track(
         &mut self,
+        backend: &mut dyn Backend,
         loop_id: LoopId,
         request: ClickTrackRequest,
+        output: shoop_app_api::ClickTrackPreviewOutput,
     ) -> Result<(), String> {
         self.validate_click_track_target(loop_id, ClickTrackKind::Audio)?;
         if request.kind != ClickTrackKind::Audio {
             return Err("MIDI click tracks cannot be previewed as audio".to_owned());
         }
+        self.stop_click_track_preview(backend)?;
         let request_id = self.next_preview_request_id;
         self.next_preview_request_id = self.next_preview_request_id.wrapping_add(1).max(1);
         let result = generate_audio_click_track(
@@ -4233,11 +4305,13 @@ impl ApplicationModel {
             outputs.pop_front();
         }
         outputs.push_back(ApplicationAudioPreview {
+            output,
             request_id,
             sample_rate: audio.sample_rate,
             samples: samples.into(),
         });
         self.click_track.preview_request_id = request_id;
+        self.click_track.preview_output = Some(output);
         self.click_track.preview_status = ClickTrackPreviewStatus::Queued;
         self.click_track.preview_message = "Click preview queued".to_owned();
         Ok(())
@@ -4249,7 +4323,12 @@ impl ApplicationModel {
         success: bool,
         message: String,
     ) -> Result<(), String> {
-        if request_id != self.click_track.preview_request_id {
+        if request_id != self.click_track.preview_request_id
+            || !matches!(
+                self.click_track.preview_status,
+                ClickTrackPreviewStatus::Queued | ClickTrackPreviewStatus::Playing
+            )
+        {
             return Ok(());
         }
         self.click_track.preview_status = if success {
@@ -4846,7 +4925,11 @@ impl ApplicationModel {
                 name,
                 bundle,
                 backend_data,
-            } => match backend.replace_session_async(&backend_data) {
+            } => match self
+                .stop_click_track_preview(backend)
+                .map_err(anyhow::Error::msg)
+                .and_then(|()| backend.replace_session_async(&backend_data))
+            {
                 Ok(BackendAsyncResult::Ready(replacement)) => {
                     match self.apply_loaded_session(backend, &bundle, &replacement) {
                         Ok(()) => {
@@ -5721,6 +5804,13 @@ impl ApplicationModel {
         action: BusAction,
     ) -> Result<(), String> {
         if action == BusAction::Remove {
+            if self
+                .buses
+                .get(&bus_id)
+                .is_some_and(|bus| bus.backend_id == shoop_backend::MASTER_BUS_ID)
+            {
+                self.stop_click_track_preview(backend)?;
+            }
             let bus = self
                 .buses
                 .get_mut(&bus_id)
@@ -24987,6 +25077,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let state_before_preview = runtime.snapshot();
         runtime
             .dispatch(AppIntent::PreviewClickTrack {
+                output: shoop_app_api::ClickTrackPreviewOutput::System,
                 loop_id,
                 request: audio_request.clone(),
             })
@@ -25001,6 +25092,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
         runtime
             .dispatch(AppIntent::PreviewClickTrack {
+                output: shoop_app_api::ClickTrackPreviewOutput::System,
                 loop_id,
                 request: audio_request,
             })

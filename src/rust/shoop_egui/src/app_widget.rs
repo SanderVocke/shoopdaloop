@@ -43,6 +43,7 @@ fn bus_move_changes_order(
 
 fn show_bus_insert_zone(
     ui: &mut egui::Ui,
+    height: f32,
     bus_ids: &[crate::BusId],
     target: Option<crate::BusId>,
     actions: &mut Vec<AppAction>,
@@ -52,7 +53,7 @@ fn show_bus_insert_zone(
         .as_ref()
         .is_some_and(|payload| bus_move_changes_order(bus_ids, payload.bus_id, target));
     let (_, response) = ui.allocate_exact_size(
-        egui::vec2(BUS_INSERT_ZONE_WIDTH, ui.available_height()),
+        egui::vec2(BUS_INSERT_ZONE_WIDTH, height),
         egui::Sense::hover(),
     );
     if valid && response.contains_pointer() {
@@ -1847,10 +1848,10 @@ impl AppWidget {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_height(strip_height);
-                ui.horizontal(|ui| {
+                ui.horizontal_top(|ui| {
                     let bus_ids = visible_buses.iter().map(|bus| bus.id).collect::<Vec<_>>();
                     for bus in visible_buses {
-                        show_bus_insert_zone(ui, &bus_ids, Some(bus.id), actions);
+                        show_bus_insert_zone(ui, strip_height, &bus_ids, Some(bus.id), actions);
                         let channel_ids = bus
                             .channels
                             .iter()
@@ -1881,23 +1882,30 @@ impl AppWidget {
                                 .find(|processor| processor.id == fx.processor_type)
                         });
                         actions.extend(
-                            controls
-                                .show_with_catalog(
-                                    ui,
-                                    bus,
-                                    incoming_routes,
-                                    outgoing_links,
-                                    processor,
-                                    &state.bus_processors,
-                                )
-                                .into_iter()
-                                .map(|action| AppAction::Bus {
-                                    bus_id: bus.id,
-                                    action,
-                                }),
+                            ui.allocate_ui_with_layout(
+                                // A sibling overflowing the row must not enlarge this strip.
+                                egui::vec2(0.0, strip_height),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    controls.show_with_catalog(
+                                        ui,
+                                        bus,
+                                        incoming_routes,
+                                        outgoing_links,
+                                        processor,
+                                        &state.bus_processors,
+                                    )
+                                },
+                            )
+                            .inner
+                            .into_iter()
+                            .map(|action| AppAction::Bus {
+                                bus_id: bus.id,
+                                action,
+                            }),
                         );
                     }
-                    show_bus_insert_zone(ui, &bus_ids, None, actions);
+                    show_bus_insert_zone(ui, strip_height, &bus_ids, None, actions);
                 });
             });
     }
@@ -4835,6 +4843,28 @@ mod tests {
         assert!(strips[0].right() < strips[1].left());
         assert!(strips[1].right() < strips[2].left());
         assert!((strips[0].top() - strips[2].top()).abs() < 0.01);
+        let strip_size = strips[0].size();
+        let fader_height = widget.bus_controls[&crate::BusId::from_raw(1)]
+            .gain_rect()
+            .unwrap()
+            .height();
+        for count in [3, 4, 6, 2, 1] {
+            state.buses = (1..=count).map(bus).collect::<Vec<_>>().into();
+            for _ in 0..2 {
+                frame(&context, &mut widget, &state, Vec::new());
+                let area = widget.bus_area_rect.unwrap();
+                for id in 1..=count {
+                    let controls = &widget.bus_controls[&crate::BusId::from_raw(id)];
+                    let strip = controls.block_rect().unwrap();
+                    assert_eq!(strip.size(), strip_size, "bus {id} of {count}");
+                    assert_eq!(controls.gain_rect().unwrap().height(), fader_height);
+                    assert!(
+                        strip.bottom() <= area.bottom(),
+                        "{strip:?} outside {area:?}"
+                    );
+                }
+            }
+        }
 
         let mute = widget.bus_controls[&crate::BusId::from_raw(1)]
             .mute_rect()

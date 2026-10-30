@@ -173,6 +173,15 @@ def normalize(args: argparse.Namespace) -> None:
     resource_candidates.sort(key=lambda path: (len(path.parts), str(path)))
     shutil.copytree(resource_candidates[0], output / "resources", symlinks=False)
 
+    if args.macos_dependency_dir:
+        if args.platform != "macos":
+            raise RuntimeError("macOS dependency replacements require a macOS runtime")
+        for name in ("libcrypto.3.dylib", "liblzma.5.dylib"):
+            for directory in (output / "lib", output / "resources"):
+                copy_file(args.macos_dependency_dir / "lib" / name, directory / name)
+        for name in ("QtDesigner.so", "QtHelp.so"):
+            (output / "resources" / "lib" / "PyQt5" / name).unlink()
+
     if args.platform == "windows":
         # Carla starts frozen UIs from an 8.3 resource path, which prevents
         # their literal "resources" suffix check from finding the parent.
@@ -194,6 +203,9 @@ def normalize(args: argparse.Namespace) -> None:
     shutil.copy2(LOCK, output / "runtime-lock.json")
     shutil.copy2(ROOT / "third_party" / "carla" / "README.md", output / "licenses" / "README.md")
     shutil.copy2(args.license.resolve(), output / "licenses" / "COPYING")
+    if args.macos_dependency_dir:
+        for license in (args.macos_dependency_dir / "licenses").iterdir():
+            copy_file(license, output / "licenses" / license.name)
 
     files = []
     for path in sorted(output.rglob("*")):
@@ -309,6 +321,7 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--search-root", type=Path, action="append", required=True)
     build.add_argument("--license", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
+    build.add_argument("--macos-dependency-dir", type=Path)
     build.set_defaults(function=normalize)
     check = commands.add_parser("verify")
     check.add_argument("--platform", choices=tuple(LIBRARY_NAMES), required=True)

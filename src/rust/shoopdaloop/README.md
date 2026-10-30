@@ -2,6 +2,18 @@
 
 This is the shared native and browser application composition root.
 
+The `macos-intel-10.15` nightly flavor uploads an experimental CPAL/Rodio-free
+release archive containing `shoopdaloop/ShoopDaLoop.app`, built-ins, and the pinned
+Carla runtime. It can also be selected through the workflow's `nightly_flavor`
+manual-run input. Extract the archive and launch the application from Finder, or run
+`shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoopdaloop` from a terminal for
+diagnostics. Use a Catalina-compatible JACK installation for audio. Click-track
+preview uses the Master bus; System preview is unavailable in this build.
+CI checks the Intel binaries' minimum OS versions and dependency paths, then
+probes the extracted bundle on a newer macOS runner. A stakeholder confirmed that
+the initial distribution worked on an actual Catalina system. The application
+archive is unsigned and not notarized.
+
 - Native builds use the existing threaded JACK, CPAL+midir, or dummy/offline engine backend selected from persistent settings and provide actor-owned Lua scripting, keyboard control, and script-created native MIDI control ports.
 - Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action and run the same omniLua-backed scripting manager cooperatively on the application owner.
 - A separate explicit Web MIDI action discovers physical browser endpoints. One bounded main-thread hub serves direct-track MIDI recording/playback and Lua-created control ports while the AudioWorklet retains track-route truth.
@@ -133,7 +145,15 @@ Piano messages enter ordinary track MIDI input processing at frame zero of the n
 
 The main menu saves and loads `.shoop` major-version 1 sessions with session document version 13. Loop context menus import/export exact `.shoop-audio` and `.shoop-midi`, float WAV, and standard MIDI. Audio import requires explicit destination mapping; audio export presents an ordered channel selection. Direct, dry, and wet role labels are preserved, including dry-only, wet-only, mixed, and reordered exports; exact/standard MIDI targets dry MIDI. Different-rate assets require confirmation before deterministic audio/MIDI/timing conversion. Predecessor session/media formats are deliberately unsupported.
 
-Right-click a primitive loop and choose **Generate click track...** to create embedded audio or MIDI click content with primary/secondary sounds, fractional tempo, click count, odd-click delay, and loop-length fitting. Audio Preview is non-mutating. Native preview uses the default system playback output on a bounded worker and is disabled with an explanation when no default output is available. Hosted browser preview uses the running Web Audio context; explicit offline mode creates a bounded fallback context subject to browser autoplay policy. Generated content persists as ordinary loop media without storing the dialog draft.
+Right-click a primitive loop and choose **Generate click track...** to create embedded audio or MIDI click content with primary/secondary sounds, fractional tempo, click count, odd-click delay, and loop-length fitting. Audio preview is non-mutating. The **Preview** group contains **Master** (the app's current audio driver and Master bus), **System** (Rodio's default system playback device), and **Stop**. The dialog does not display preview-state text. Master and System are independently disabled when unavailable; the CPAL-free build disables System. Stop is enabled while a preview is queued or playing. Master previews mix with ongoing playback, also run while loops are stopped, and respect Master effects, gain, balance, mute, and output connections. Dummy/offline mode is treated normally. **Stop**, closing the dialog, starting another preview, loading a session, or switching audio drivers stops the current preview. There is no preview-output preference, and preview buffers are never saved in a session. Hosted browser preview uses the running Web Audio context; explicit offline mode creates a bounded fallback context subject to browser autoplay policy. Generated content persists as ordinary loop media without storing the dialog draft.
+
+Default build with both preview outputs available:
+
+![Native click preview controls with system output available](../../../docs/images/click-preview-system.png)
+
+CPAL-free build during Master-bus preview:
+
+![Master preview remains available without CPAL or Rodio](../../../docs/images/click-preview-without-cpal.png)
 
 Native picker reads and atomic temporary-file replacement run outside the application actor. Browser pickers use asynchronous upload/download file handles; ordinary hosted and direct-file artifacts do not require the File System Access API. Session/media and generated preview bytes stay outside immutable GUI snapshots. See `../../../docs/session_format_v1.md` for formats, limits, timing, and recovery behavior.
 

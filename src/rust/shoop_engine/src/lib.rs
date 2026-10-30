@@ -11,6 +11,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 pub mod app_backend;
 pub mod audio_channel;
 pub mod audio_midi_loop;
+pub mod audio_preview;
 pub mod basic_loop;
 pub mod buffer_queue;
 pub mod builtin_fx;
