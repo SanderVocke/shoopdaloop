@@ -288,8 +288,6 @@ mod tests {
                     ..Default::default()
                 },
                 MediaView {
-                    timeline_start: 0.0,
-                    timeline_end: 16.0,
                     start_frame: 0.0,
                     end_frame: 16.0,
                 },
@@ -321,8 +319,6 @@ mod tests {
                         ..Default::default()
                     },
                     MediaView {
-                        timeline_start: 0.0,
-                        timeline_end: 16.0,
                         start_frame: 0.0,
                         end_frame: 16.0,
                     },

@@ -5,8 +5,6 @@ use crate::{
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MediaView {
-    pub(crate) timeline_start: f64,
-    pub(crate) timeline_end: f64,
     pub(crate) start_frame: f64,
     pub(crate) end_frame: f64,
 }
@@ -152,10 +150,7 @@ impl MediaView {
 
     pub(crate) fn pan(&mut self, drag_delta_x: f32, width: f32) {
         let visible_frames = self.visible_frames();
-        let max_start = (self.timeline_end - visible_frames).max(self.timeline_start);
-        self.start_frame = (self.start_frame
-            - f64::from(drag_delta_x) * visible_frames / f64::from(width.max(1.0)))
-        .clamp(self.timeline_start, max_start);
+        self.start_frame -= f64::from(drag_delta_x) * visible_frames / f64::from(width.max(1.0));
         self.end_frame = self.start_frame + visible_frames;
     }
 }
@@ -182,14 +177,25 @@ impl MediaViewState {
     fn view(&mut self, (timeline_start, timeline_end): (f64, f64)) -> MediaView {
         let total_frames = (timeline_end - timeline_start).max(1.0);
         let visible_frames = (total_frames / f64::from(self.zoom)).max(1.0);
-        let max_offset = (timeline_end - visible_frames).max(timeline_start);
-        self.offset = self.offset.clamp(timeline_start, max_offset);
         MediaView {
-            timeline_start,
-            timeline_end,
             start_frame: self.offset,
             end_frame: self.offset + visible_frames,
         }
+    }
+
+    fn set_zoom(&mut self, new_zoom: f32, bounds: (f64, f64)) {
+        let old_visible = (bounds.1 - bounds.0).max(1.0) / f64::from(self.zoom);
+        let new_visible = (bounds.1 - bounds.0).max(1.0) / f64::from(new_zoom);
+        let center = self.offset + old_visible / 2.0;
+        self.zoom = new_zoom;
+        self.offset = center - new_visible / 2.0;
+    }
+
+    fn fit(&mut self, bounds: (f64, f64)) {
+        let margin_factor = 1.2;
+        let total = (bounds.1 - bounds.0).max(1.0);
+        self.zoom = (margin_factor / total).clamp(MIN_ZOOM as f64, MAX_ZOOM as f64) as f32;
+        self.offset = bounds.0 - (total * (margin_factor - 1.0)) / 2.0;
     }
 }
 
@@ -341,24 +347,32 @@ impl DetailsPane {
         ui.horizontal(|ui| {
             ui.label("Zoom:");
             if ui.small_button("\u{2212}").clicked() {
-                self.media_view.zoom = (self.media_view.zoom / 1.25).clamp(MIN_ZOOM, MAX_ZOOM);
+                self.media_view.set_zoom(
+                    (self.media_view.zoom / 1.25).clamp(MIN_ZOOM, MAX_ZOOM),
+                    bounds,
+                );
             }
-            ui.add(
-                egui::Slider::new(&mut self.media_view.zoom, MIN_ZOOM..=MAX_ZOOM)
-                    .logarithmic(true)
-                    .show_value(false)
-                    .text("zoom"),
-            )
-            .on_hover_text(format!("Media zoom: {:.2}×", self.media_view.zoom));
+            let mut zoom = self.media_view.zoom;
+            if ui
+                .add(
+                    egui::Slider::new(&mut zoom, MIN_ZOOM..=MAX_ZOOM)
+                        .logarithmic(true)
+                        .show_value(false)
+                        .text("zoom"),
+                )
+                .on_hover_text(format!("Media zoom: {:.2}×", zoom))
+                .changed()
+            {
+                self.media_view.set_zoom(zoom, bounds);
+            }
             if ui.small_button("+").clicked() {
-                self.media_view.zoom = (self.media_view.zoom * 1.25).clamp(MIN_ZOOM, MAX_ZOOM);
+                self.media_view.set_zoom(
+                    (self.media_view.zoom * 1.25).clamp(MIN_ZOOM, MAX_ZOOM),
+                    bounds,
+                );
             }
             if ui.small_button("Fit").clicked() {
-                let margin_factor = 1.2;
-                let total = (bounds.1 - bounds.0).max(1.0);
-                self.media_view.zoom =
-                    (margin_factor / total).clamp(MIN_ZOOM as f64, MAX_ZOOM as f64) as f32;
-                self.media_view.offset = bounds.0 - (total * (margin_factor - 1.0)) / 2.0;
+                self.media_view.fit(bounds);
             }
         });
 
@@ -583,7 +597,7 @@ mod tests {
         let mut view = state.view(bounds);
         assert_eq!((view.start_frame, view.end_frame), (-30.0, 95.0));
         view.pan(-1_000.0, 100.0);
-        assert_eq!((view.start_frame, view.end_frame), (95.0, 220.0));
+        assert_eq!((view.start_frame, view.end_frame), (1220.0, 1345.0));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -741,11 +755,26 @@ mod tests {
             offset: 0.0,
         };
         let bounds: (f64, f64) = (0.0, 40.0);
-        let total = (bounds.1 - bounds.0).max(1.0_f64);
-        state.zoom = 2.0;
-        state.offset = bounds.0;
+        state.fit(bounds);
         let view = state.view(bounds);
-        assert_eq!(view.start_frame, bounds.0);
-        assert_eq!(view.end_frame - view.start_frame, total / 2.0);
+        assert!(view.start_frame <= bounds.0);
+        assert!(view.end_frame >= bounds.1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn zoom_anchors_the_view_center_and_is_not_boundary_clamped() {
+        let bounds: (f64, f64) = (0.0, 400.0);
+        let mut state = MediaViewState {
+            zoom: 2.0,
+            offset: 100.0,
+        };
+        state.set_zoom(4.0, bounds);
+        let view = state.view(bounds);
+        assert_eq!(view.start_frame, 150.0);
+        assert_eq!(view.end_frame, 250.0);
+        state.set_zoom(0.5, bounds);
+        let view = state.view(bounds);
+        assert_eq!(view.start_frame, -200.0);
+        assert_eq!(view.end_frame, 600.0);
     }
 }
