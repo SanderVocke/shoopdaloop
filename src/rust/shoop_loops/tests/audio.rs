@@ -320,6 +320,49 @@ fn configurable_channels_cross_pages_and_keep_removed_revision_playable() {
     }
 }
 #[shoop_test]
+fn smoothing_changes_apply_from_the_next_restart() {
+    let mut store = store();
+    let snapshot = upload(&mut store, 1, &[1.; 8]);
+    let index = store.read_index(snapshot.id).unwrap();
+    let mut renderer =
+        AudioRenderer::prepare(1, 8, Smoothing::LinearRestart { frames: 2 }).unwrap();
+    let mut render = |renderer: &mut AudioRenderer,
+                      source: Option<ReadIndex>,
+                      gain: f32,
+                      discontinuity: bool,
+                      frames: usize| {
+        let mut output = [9.; 8];
+        assert_no_heap(|| {
+            renderer
+                .render(
+                    &mut store.render_io(),
+                    Playback {
+                        source,
+                        position: 0,
+                        gain,
+                        balance: 0.0,
+                        discontinuity,
+                    },
+                    &mut [&mut output[..frames]],
+                )
+                .unwrap();
+        });
+        output[..frames].to_vec()
+    };
+    assert_eq!(render(&mut renderer, Some(index), 1., true, 1), [0.5]);
+    renderer.set_smoothing(Smoothing::LinearRestart { frames: 4 });
+    // The ramp in progress keeps its length.
+    assert_eq!(render(&mut renderer, Some(index), 1., false, 2), [1., 1.]);
+    assert_eq!(render(&mut renderer, None, 1., false, 1), [0.]);
+    assert_eq!(
+        render(&mut renderer, Some(index), 1., true, 5),
+        [0.25, 0.5, 0.75, 1., 1.]
+    );
+    renderer.set_smoothing(Smoothing::None);
+    assert_eq!(render(&mut renderer, Some(index), 0.5, true, 2), [0.5, 0.5]);
+}
+
+#[shoop_test]
 fn stereo_balance_scales_one_side_and_leaves_other_layouts_unscaled() {
     for (channels, balance, expected) in [
         (2, -0.25, vec![0.5, 0.75 * 1.0]),

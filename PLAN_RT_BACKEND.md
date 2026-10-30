@@ -245,9 +245,12 @@ Render performance is not an acceptance criterion of this milestone.
 - **Worklet discipline.** The worklet module has no Wasm imports, as the existing
   worklet does; its engine is prepared before the first render quantum.
 - **Minimal loop-library change.** The planned `shoop_loops` changes are gain and
-  balance, and clearing a loop. Anything else the backend needs there is a documented
-  plan revision. *Revised during Stage 5:* clearing was added because the core set
-  needs it and the loop library had no way to return a loop to empty content.
+  balance, clearing a loop, and changing boundary smoothing at runtime. Anything else
+  the backend needs there is a documented plan revision. *Revised during Stage 5:*
+  clearing was added because the core set needs it and the loop library had no way
+  to return a loop to empty content; runtime smoothing was added because the
+  application changes it as a live global setting, while the loop library fixed it
+  when preparing a loop.
 - **Do not touch the legacy path** beyond reporting capabilities and exposing the
   shared contract tests.
 - **Test as described below**, not exhaustively at every step.
@@ -386,6 +389,12 @@ tests run against both carriers; wasm32 check.
 - [x] The render owner: one runtime `process` call per callback, absolute frames,
       MIDI recovery, fault and disconnect handling, stopped cleanup.
 - [x] *Added:* a minimal operation in `shoop_loops` that clears a loop's content.
+- [x] *Added:* a minimal `shoop_loops` operation that changes a loop's boundary
+      smoothing, applied by the engine to current and later loops.
+- [x] *Added:* protocol support for the application's mixer and I/O model: Master
+      channels connect to host ports like strip ports (`EnginePort`), routes go from
+      one strip output to one Master channel, and `Limits` reports Master's channel
+      count.
 - [x] The deterministic offline test host; a boundary check that engine-side crates
       do not depend on application crates.
 
@@ -393,6 +402,12 @@ tests run against both carriers; wasm32 check.
 release: structural edits while rendering produce no gap and ramp out cleanly;
 capacity refusals; telemetry; bulk reads; wasm32 check with no imports for engine and
 protocol.
+
+*Done:* `prepare(&EngineDescription, DriverStatus)` returns the control endpoint,
+the render owner and the host status. Loops without a sync source are synced to
+themselves, so delays count their own wraps, as in legacy. A render fault silences
+output and ends the connection with `Disconnected(Fault)`. A throwaway module built
+from the engine and protocol had no Wasm imports; Stage 8 commits that check.
 
 ### Stage 6 — Adapter (`shoop_rt_backend`)
 

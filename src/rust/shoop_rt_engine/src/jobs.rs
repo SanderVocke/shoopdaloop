@@ -16,6 +16,7 @@ use crate::node::EngineOp;
 use crate::topology::{TopologyLoop, RECORD_BYTES};
 use rt_runtime::executor::Command;
 use rt_runtime::{Frame, NodeId};
+use shoop_loops::audio::Smoothing;
 use shoop_loops::runtime::{GraphStageId, NodePairInitial, NodePairStageId, Operation, Reply};
 use shoop_loops::topology::staging::StageId;
 use shoop_loops::{media::MediaId, LoopId, Timing, Transition};
@@ -36,6 +37,7 @@ pub(crate) enum Step {
     Cleanup,
     ClearStop,
     ClearApply,
+    Smoothing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,12 +54,21 @@ enum Phase {
     Finishing,
     ClearStop,
     ClearApply,
+    Smoothing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Kind {
     Change(Change),
     Clear(LoopSlotId),
+    Smoothing(u32),
+}
+
+pub(crate) fn smoothing(frames: u32) -> Smoothing {
+    match frames {
+        0 => Smoothing::None,
+        frames => Smoothing::LinearRestart { frames },
+    }
 }
 
 pub(crate) struct Job {
@@ -110,13 +121,16 @@ impl Job {
     pub(crate) fn clear(id: LoopSlotId) -> Self {
         Self::new(Kind::Clear(id))
     }
+    pub(crate) fn smoothing(frames: u32) -> Self {
+        Self::new(Kind::Smoothing(frames))
+    }
     fn fail(&mut self, refusal: Refusal) {
         self.failure.get_or_insert(refusal);
     }
     fn change_ref(&self) -> Option<Change> {
         match self.kind {
             Kind::Change(change) => Some(change),
-            Kind::Clear(_) => None,
+            Kind::Clear(_) | Kind::Smoothing(_) => None,
         }
     }
 }
@@ -237,6 +251,14 @@ impl ControlEndpoint {
                 }
                 true
             }
+            Phase::Smoothing => {
+                if let Kind::Smoothing(frames) = job.kind {
+                    self.settings.smoothing = frames;
+                }
+                self.answer_job(job, Outcome::Done);
+                job.phase = Phase::Finishing;
+                true
+            }
             Phase::ClearApply => {
                 if let Some(refusal) = job.failure {
                     self.answer_job(job, Outcome::Refused(refusal));
@@ -249,6 +271,25 @@ impl ControlEndpoint {
 
     fn start_job(&mut self, job: &mut Job) -> bool {
         let change = match job.kind {
+            Kind::Smoothing(frames) => {
+                let loops = self.model.loops.iter().flatten().count();
+                if !self.room(loops) {
+                    return false;
+                }
+                let at = self.at();
+                for slot in 0..self.model.loops.len() {
+                    let Some(entry) = self.model.loops[slot] else {
+                        continue;
+                    };
+                    let operation = Operation::Smoothing {
+                        target: loop_id(entry.id),
+                        smoothing: smoothing(frames),
+                    };
+                    self.submit_job_loop(job, at, operation, Step::Smoothing);
+                }
+                job.phase = Phase::Smoothing;
+                return true;
+            }
             Kind::Clear(id) => {
                 if !self.room(PLANNED + 1) {
                     return false;
@@ -484,6 +525,7 @@ impl ControlEndpoint {
             Change::Route { strip, .. } => {
                 crossfade = Some(self.pool.strip_output(strip.0.index as usize));
             }
+            Change::ConnectMaster { .. } => crossfade = Some(self.pool.master()),
             Change::Sync { .. } => {}
         }
         if let Some(node) = job.faded {
@@ -578,6 +620,11 @@ impl ControlEndpoint {
         if let Some(created) = job.created {
             job.phase = Phase::Query;
             let at = self.at();
+            let operation = Operation::Smoothing {
+                target: created,
+                smoothing: smoothing(self.settings.smoothing),
+            };
+            self.submit_job_loop(job, at, operation, Step::Prelude);
             self.submit_job_loop(job, at, Operation::State { target: created }, Step::Query);
         } else {
             job.phase = Phase::Cleanup;

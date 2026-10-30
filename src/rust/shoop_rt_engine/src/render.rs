@@ -172,6 +172,7 @@ impl Render {
             .store(self.runtime.next_frame().0, Ordering::Relaxed);
         if let Err(error) = result.and(recovery) {
             self.phase = Phase::Faulted(error);
+            self.cells.faulted.store(true, Ordering::Relaxed);
             self.request_resets();
             Self::silence(&mut audio, &mut midi, frames);
             self.drain_resets(frames)?;

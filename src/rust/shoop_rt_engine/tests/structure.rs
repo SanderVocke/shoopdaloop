@@ -175,34 +175,29 @@ fn edits_keep_other_paths_continuous_and_ramp_removed_paths() {
     assert!(harness.outputs[0][from..].iter().all(|s| *s == 1.));
     assert!(removal > from);
 
-    // Routing to Master adds the strip on both Master outputs with a ramp.
+    // Each route to a Master channel ramps in on that channel's output only.
     let from = harness.outputs[0].len();
-    assert_eq!(
-        harness.apply_in(
-            Request::Route {
-                strip: x,
-                bus: BusId::Master,
-                connected: true,
-            },
-            3
-        ),
-        Outcome::Done
-    );
+    assert_eq!(harness.apply_in(route(x, 0, 0, true), 3), Outcome::Done);
     harness.run(6, 3);
-    let route = ramped(
+    ramped(
         &harness.outputs[0],
         from,
         |_| 1.,
         |_, step| 1. + (step + 1) as f32 / RAMP as f32,
         |_| 2.,
     );
+    assert!(harness.outputs[1][from..].iter().all(|s| *s == 0.));
+    let from = harness.outputs[1].len();
+    assert_eq!(harness.apply_in(route(x, 0, 1, true), 3), Outcome::Done);
+    harness.run(6, 3);
     ramped(
         &harness.outputs[1],
-        route,
+        from,
         |_| 0.,
         |_, step| (step + 1) as f32 / RAMP as f32,
         |_| 1.,
     );
+    assert!(harness.outputs[0][from..].iter().all(|s| *s == 2.));
 
     // Removing the strip fades everything it fed.
     let from = harness.outputs[0].len();
@@ -343,8 +338,8 @@ fn pools_and_identities_are_enforced() {
         Outcome::Refused(Refusal::InvalidValue)
     );
     assert_eq!(
-        harness.apply(Request::SetSmoothing { frames: 7 }),
-        Outcome::Refused(Refusal::Unsupported)
+        harness.apply(Request::SetSmoothing { frames: 9 }),
+        Outcome::Refused(Refusal::InvalidValue)
     );
     harness.done(Request::SetSmoothing { frames: 0 });
     // Removing a sync source unsyncs its followers; a stale loop is refused.
@@ -527,4 +522,222 @@ fn only_occupied_slots_are_rendered() {
     harness.done(Request::RemoveStrip { strip: track });
     harness.run(1, 1);
     assert_eq!(harness.host.render.diagnostics().nodes_processed, 1);
+}
+
+#[shoop_test]
+fn master_outputs_are_connections_that_cross_fade_and_resync() {
+    let mut harness = Harness::new(&description());
+    harness.input = Box::new(|port, _| if port == 0 { 1. } else { 0. });
+    let track = strip(0, 1);
+    harness.done(Request::CreateStrip {
+        strip: track,
+        shape: shape(1, 1, false),
+    });
+    harness.done(connect(track, PortKind::AudioIn, audio_in(0), true));
+    harness.done(Request::StripControl {
+        strip: track,
+        control: StripControl::Monitoring(true),
+    });
+    harness.done(route(track, 0, 0, true));
+    harness.done(route(track, 0, 1, true));
+    harness.run(4, 2);
+    // The prepared wiring feeds both host outputs from the mono strip.
+    assert_eq!(harness.outputs[0].last(), Some(&1.));
+    assert_eq!(harness.outputs[1].last(), Some(&1.));
+    let wired = |harness: &mut Harness| {
+        harness.states.clear();
+        assert_no_heap(|| harness.host.client.resync()).unwrap();
+        harness.run(2, 1);
+        let mut connections: Vec<_> = harness
+            .states
+            .iter()
+            .filter_map(|record| match record {
+                StateRecord::Connection {
+                    port: EnginePort::Bus(BusPort { index, .. }),
+                    host,
+                } => Some((*index, *host)),
+                _ => None,
+            })
+            .collect();
+        connections.sort();
+        connections
+    };
+    assert_eq!(wired(&mut harness), [(0, audio_out(0)), (1, audio_out(1))]);
+    let bus = |index, host, connected| Request::Connect {
+        port: master(index),
+        host,
+        connected,
+    };
+    let from = harness.outputs[0].len();
+    assert_eq!(
+        harness.apply_in(bus(0, audio_out(0), false), 3),
+        Outcome::Done
+    );
+    harness.run(6, 3);
+    ramped(
+        &harness.outputs[0],
+        from,
+        |_| 1.,
+        |_, step| 1. - (step + 1) as f32 / RAMP as f32,
+        |_| 0.,
+    );
+    assert!(harness.outputs[1][from..].iter().all(|s| *s == 1.));
+    let from = harness.outputs[1].len();
+    assert_eq!(
+        harness.apply_in(bus(0, audio_out(1), true), 3),
+        Outcome::Done
+    );
+    harness.run(6, 3);
+    ramped(
+        &harness.outputs[1],
+        from,
+        |_| 1.,
+        |_, step| 1. + (step + 1) as f32 / RAMP as f32,
+        |_| 2.,
+    );
+    assert_eq!(harness.apply(bus(0, audio_out(1), true)), Outcome::Done);
+    assert_eq!(
+        harness.apply(bus(2, audio_out(0), true)),
+        Outcome::Refused(Refusal::InvalidValue)
+    );
+    assert_eq!(
+        harness.apply(bus(0, audio_in(0), true)),
+        Outcome::Refused(Refusal::InvalidId)
+    );
+    assert_eq!(wired(&mut harness), [(0, audio_out(1)), (1, audio_out(1))]);
+}
+
+#[shoop_test]
+fn smoothing_applies_to_current_and_later_loops_within_the_limit() {
+    let mut harness = Harness::new(&description());
+    harness.input = Box::new(|port, _| if port == 0 { 1. } else { 0. });
+    let track = strip(0, 1);
+    let (first, second) = (loop_id(0, 1), loop_id(1, 1));
+    harness.done(Request::CreateStrip {
+        strip: track,
+        shape: shape(1, 1, false),
+    });
+    harness.done(connect(track, PortKind::AudioIn, audio_in(0), true));
+    harness.done(connect(track, PortKind::AudioOut, audio_out(0), true));
+    harness.done(Request::CreateLoop {
+        loop_id: first,
+        strip: track,
+    });
+    harness.done(transition(first, LoopMode::Recording));
+    harness.run(5, 5);
+    harness.done(transition(first, LoopMode::Stopped));
+    assert_eq!(
+        harness.apply(Request::SetSmoothing { frames: 9 }),
+        Outcome::Refused(Refusal::InvalidValue)
+    );
+    harness.done(Request::SetSmoothing { frames: 4 });
+    let ramp = [0.25, 0.5, 0.75, 1., 1.];
+    let start = harness.frame() as usize;
+    harness.done(transition(first, LoopMode::Playing));
+    harness.run(5, 2);
+    assert_eq!(&harness.outputs[0][start..start + 5], &ramp);
+    harness.done(transition(first, LoopMode::Stopped));
+
+    // A loop created afterwards uses the current smoothing.
+    harness.done(Request::CreateLoop {
+        loop_id: second,
+        strip: track,
+    });
+    harness.done(transition(second, LoopMode::Recording));
+    harness.run(5, 5);
+    harness.done(transition(second, LoopMode::Stopped));
+    let start = harness.frame() as usize;
+    harness.done(transition(second, LoopMode::Playing));
+    harness.run(5, 2);
+    assert_eq!(&harness.outputs[0][start..start + 5], &ramp);
+}
+
+#[shoop_test]
+fn routes_connect_single_strip_outputs_to_single_master_channels() {
+    let mut harness = Harness::new(&description());
+    harness.input = Box::new(|port, _| if port == 0 { 1. } else { 0.5 });
+    let (stereo, mono) = (strip(0, 1), strip(1, 1));
+    harness.done(Request::CreateStrip {
+        strip: stereo,
+        shape: shape(2, 2, false),
+    });
+    harness.done(Request::CreateStrip {
+        strip: mono,
+        shape: shape(1, 1, false),
+    });
+    for (index, host) in [audio_in(0), audio_in(1)].into_iter().enumerate() {
+        harness.done(Request::Connect {
+            port: port(stereo, PortKind::AudioIn, index as u8),
+            host,
+            connected: true,
+        });
+    }
+    for track in [stereo, mono] {
+        harness.done(Request::StripControl {
+            strip: track,
+            control: StripControl::Monitoring(true),
+        });
+    }
+    harness.done(route(stereo, 0, 0, true));
+    harness.done(route(stereo, 1, 1, true));
+    harness.run(4, 2);
+    assert_eq!(harness.outputs[0].last(), Some(&1.));
+    assert_eq!(harness.outputs[1].last(), Some(&0.5));
+    // Removing one channel's route leaves the other.
+    let from = harness.outputs[0].len();
+    assert_eq!(
+        harness.apply_in(route(stereo, 0, 0, false), 3),
+        Outcome::Done
+    );
+    harness.run(6, 3);
+    ramped(
+        &harness.outputs[0],
+        from,
+        |_| 1.,
+        |_, step| 1. - (step + 1) as f32 / RAMP as f32,
+        |_| 0.,
+    );
+    assert!(harness.outputs[1][from..].iter().all(|s| *s == 0.5));
+    // A mono strip routed to the left channel only.
+    harness.done(connect(mono, PortKind::AudioIn, audio_in(0), true));
+    harness.done(route(mono, 0, 0, true));
+    harness.run(6, 3);
+    assert_eq!(harness.outputs[0].last(), Some(&1.));
+    assert_eq!(harness.outputs[1].last(), Some(&0.5));
+    assert_eq!(harness.apply(route(mono, 0, 0, true)), Outcome::Done);
+    for refused in [route(mono, 1, 0, true), route(mono, 0, 2, true)] {
+        assert_eq!(
+            harness.apply(refused),
+            Outcome::Refused(Refusal::InvalidValue)
+        );
+    }
+    assert_eq!(
+        harness.apply(Request::Route {
+            port: StripPort {
+                strip: mono,
+                kind: PortKind::MidiOut,
+                index: 0,
+            },
+            bus: BusPort {
+                bus: BusId::Master,
+                index: 0,
+            },
+            connected: true,
+        }),
+        Outcome::Refused(Refusal::InvalidValue)
+    );
+    harness.states.clear();
+    assert_no_heap(|| harness.host.client.resync()).unwrap();
+    harness.run(2, 1);
+    let mut routes: Vec<_> = harness
+        .states
+        .iter()
+        .filter_map(|record| match record {
+            StateRecord::Route { port, bus } => Some((port.strip, port.index, bus.index)),
+            _ => None,
+        })
+        .collect();
+    routes.sort();
+    assert_eq!(routes, [(stereo, 1, 1), (mono, 0, 0)]);
+    assert_eq!(harness.host.client.limits().unwrap().master_channels, 2);
 }

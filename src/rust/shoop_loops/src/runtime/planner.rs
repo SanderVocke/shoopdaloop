@@ -69,6 +69,7 @@ impl LoopPlanner {
                 latest: self.ledger.latest(target)?,
                 gain: row.binding.gain,
                 balance: row.balance,
+                smoothing: row.binding.smoothing,
                 capture_failure: row.failure,
                 midi_overflows: row.overflows,
             })
@@ -82,6 +83,7 @@ impl LoopPlanner {
                 latest: None,
                 gain: 1.,
                 balance: 0.,
+                smoothing: crate::audio::Smoothing::None,
                 capture_failure: None,
                 midi_overflows: 0,
             })
@@ -415,6 +417,7 @@ impl LoopPlanner {
                 capture: row.interval,
                 gain: row.binding.gain,
                 balance: row.balance,
+                smoothing: row.binding.smoothing,
                 playback_node: row.binding.playback,
                 capture_node: row.binding.capture,
                 reset_input: row.reset_input,
@@ -982,6 +985,15 @@ impl Planner for LoopPlanner {
                         .as_mut()
                         .expect("row")
                         .balance = value;
+                    Ok(Disposition::Complete(Reply::Done))
+                }
+                Operation::Smoothing { target, smoothing } => {
+                    self.row(target)?;
+                    self.rows[target.slot() as usize]
+                        .as_mut()
+                        .expect("row")
+                        .binding
+                        .smoothing = smoothing;
                     Ok(Disposition::Complete(Reply::Done))
                 }
                 Operation::Clear { target } => {

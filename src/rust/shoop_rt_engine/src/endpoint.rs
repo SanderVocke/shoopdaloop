@@ -29,9 +29,10 @@ use shoop_loops::runtime::{Failure, LoopClient, Operation, Reply};
 use shoop_loops::{LoopId, Mode, Timing, Transition};
 use shoop_rt_protocol::carrier::{Endpoint, Outbox};
 use shoop_rt_protocol::{
-    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, EngineMessage,
-    HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode, LoopSlotId,
-    Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry, PROTOCOL_VERSION,
+    BusControl, BusId, BusPort, Capabilities, ClientMessage, Direction, DisconnectReason,
+    EngineMessage, EnginePort, HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits,
+    LoopMode, LoopSlotId, Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry,
+    PROTOCOL_VERSION,
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -43,6 +44,7 @@ pub(crate) struct Settings {
     pub ramp: u32,
     pub lead: u32,
     pub smoothing: u32,
+    pub smoothing_limit: u32,
     pub telemetry_interval: u32,
     pub channels: usize,
     pub master_channels: usize,
@@ -778,17 +780,38 @@ impl ControlEndpoint {
                 connected,
             } => self.connect(correlation, port, host, connected),
             Request::Route {
-                strip,
-                bus: BusId::Master,
+                port,
+                bus:
+                    BusPort {
+                        bus: BusId::Master,
+                        index,
+                    },
                 connected,
-            } => match self.model.strip(strip) {
+            } => match self.model.strip(port.strip) {
                 None => Err(Refusal::InvalidId),
-                Some(entry) if entry.outputs.master[entry.outputs.active] == connected => {
-                    Ok(Some(Outcome::Done))
+                Some(entry)
+                    if port.kind != PortKind::AudioOut
+                        || port.index >= entry.shape.audio_outputs
+                        || index as usize >= self.settings.master_channels =>
+                {
+                    Err(Refusal::InvalidValue)
                 }
-                Some(_) => {
-                    return self
-                        .begin_job(correlation, Job::change(Change::Route { strip, connected }))
+                Some(entry) => {
+                    let (channel, target) = (port.index as usize, index as usize);
+                    let mask = entry.outputs.master[entry.outputs.active][channel];
+                    if (mask & (1 << target) != 0) == connected {
+                        Ok(Some(Outcome::Done))
+                    } else {
+                        return self.begin_job(
+                            correlation,
+                            Job::change(Change::Route {
+                                strip: port.strip,
+                                channel,
+                                target,
+                                connected,
+                            }),
+                        );
+                    }
                 }
             },
             Request::BusControl {
@@ -810,11 +833,15 @@ impl ControlEndpoint {
                     .map(|()| None)
                 }
             },
-            Request::SetSmoothing { frames } => Ok(Some(if frames == self.settings.smoothing {
-                Outcome::Done
-            } else {
-                Outcome::Refused(Refusal::Unsupported)
-            })),
+            Request::SetSmoothing { frames } => {
+                if frames > self.settings.smoothing_limit {
+                    Err(Refusal::InvalidValue)
+                } else if frames == self.settings.smoothing {
+                    Ok(Some(Outcome::Done))
+                } else {
+                    return self.begin_job(correlation, Job::smoothing(frames));
+                }
+            }
         };
         match result {
             Ok(Some(outcome)) => self.answer(correlation, outcome),
@@ -910,10 +937,38 @@ impl ControlEndpoint {
     fn connect(
         &mut self,
         correlation: u64,
-        port: shoop_rt_protocol::StripPort,
+        port: EnginePort,
         host: HostPortId,
         connected: bool,
     ) -> Result<Option<Outcome>, Refusal> {
+        let port = match port {
+            EnginePort::Strip(port) => port,
+            EnginePort::Bus(BusPort {
+                bus: BusId::Master,
+                index,
+            }) => {
+                let channel = index as usize;
+                if channel >= self.settings.master_channels {
+                    return Err(Refusal::InvalidValue);
+                }
+                let host = self
+                    .host_index(host, PortKind::AudioOut)
+                    .ok_or(Refusal::InvalidId)?;
+                let mask = self.model.master_outputs.current()[channel];
+                if (mask & (1 << host) != 0) == connected {
+                    return Ok(Some(Outcome::Done));
+                }
+                let _ = self.begin_job(
+                    correlation,
+                    Job::change(Change::ConnectMaster {
+                        channel,
+                        host,
+                        connected,
+                    }),
+                );
+                return Ok(None);
+            }
+        };
         let strip = *self.model.strip(port.strip).ok_or(Refusal::InvalidId)?;
         let index = port.index as usize;
         let valid = match port.kind {
@@ -1069,6 +1124,10 @@ impl Endpoint for ControlEndpoint {
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
         match message {
             ClientMessage::Hello { version } => {
+                if self.cells.faulted.load(Ordering::Relaxed) {
+                    let _ = out.push(EngineMessage::Disconnected(DisconnectReason::Fault));
+                    return;
+                }
                 if version != PROTOCOL_VERSION {
                     let _ = out.push(EngineMessage::Rejected {
                         version: PROTOCOL_VERSION,
@@ -1131,6 +1190,15 @@ impl Endpoint for ControlEndpoint {
     }
 
     fn poll(&mut self, out: &mut Outbox) {
+        if self.connected && self.cells.faulted.load(Ordering::Relaxed) {
+            if out
+                .push(EngineMessage::Disconnected(DisconnectReason::Fault))
+                .is_ok()
+            {
+                self.reset_connection();
+            }
+            return;
+        }
         self.drain_runtime();
         self.advance_job();
         self.process_queue();

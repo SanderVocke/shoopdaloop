@@ -17,11 +17,11 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 323)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_engine")), 10)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 327)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_engine")), 12)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_protocol")), 5)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 142)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loops")), 102)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loops")), 104)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
             cases = [c for c in runner.selected_cases("shoop_loops") if c[1] == target]
             self.assertEqual(len(cases), count)

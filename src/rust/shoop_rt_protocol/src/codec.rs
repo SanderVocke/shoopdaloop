@@ -337,6 +337,41 @@ impl Wire for StripPort {
     }
 }
 
+impl Wire for BusPort {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        self.bus.put(w)?;
+        w.u8(self.index)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            bus: BusId::get(r)?,
+            index: r.u8()?,
+        })
+    }
+}
+
+impl Wire for EnginePort {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self {
+            Self::Strip(port) => {
+                w.u8(0)?;
+                port.put(w)
+            }
+            Self::Bus(port) => {
+                w.u8(1)?;
+                port.put(w)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Strip(StripPort::get(r)?),
+            1 => Self::Bus(BusPort::get(r)?),
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
 impl Wire for StripShape {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u8(self.audio_inputs)?;
@@ -420,12 +455,12 @@ impl Wire for Request {
                 w.bool(connected)
             }
             Self::Route {
-                strip,
+                port,
                 bus,
                 connected,
             } => {
                 w.u8(11)?;
-                strip.put(w)?;
+                port.put(w)?;
                 bus.put(w)?;
                 w.bool(connected)
             }
@@ -486,13 +521,13 @@ impl Wire for Request {
                 balance: r.f32()?,
             },
             10 => Self::Connect {
-                port: StripPort::get(r)?,
+                port: EnginePort::get(r)?,
                 host: HostPortId::get(r)?,
                 connected: r.bool()?,
             },
             11 => Self::Route {
-                strip: StripId::get(r)?,
-                bus: BusId::get(r)?,
+                port: StripPort::get(r)?,
+                bus: BusPort::get(r)?,
                 connected: r.bool()?,
             },
             12 => Self::BusControl {
@@ -569,6 +604,7 @@ impl Wire for Limits {
         w.u32(self.strips)?;
         w.u32(self.loops)?;
         w.u8(self.strip_audio_channels)?;
+        w.u8(self.master_channels)?;
         w.u16(self.host_audio_inputs)?;
         w.u16(self.host_audio_outputs)?;
         w.u16(self.host_midi_inputs)?;
@@ -582,6 +618,7 @@ impl Wire for Limits {
             strips: r.u32()?,
             loops: r.u32()?,
             strip_audio_channels: r.u8()?,
+            master_channels: r.u8()?,
             host_audio_inputs: r.u16()?,
             host_audio_outputs: r.u16()?,
             host_midi_inputs: r.u16()?,
@@ -720,9 +757,9 @@ impl Wire for StateRecord {
                 port.put(w)?;
                 host.put(w)
             }
-            Self::Route { strip, bus } => {
+            Self::Route { port, bus } => {
                 w.u8(6)?;
-                strip.put(w)?;
+                port.put(w)?;
                 bus.put(w)
             }
             Self::Bus { bus, control } => {
@@ -756,12 +793,12 @@ impl Wire for StateRecord {
                 balance: r.f32()?,
             },
             5 => Self::Connection {
-                port: StripPort::get(r)?,
+                port: EnginePort::get(r)?,
                 host: HostPortId::get(r)?,
             },
             6 => Self::Route {
-                strip: StripId::get(r)?,
-                bus: BusId::get(r)?,
+                port: StripPort::get(r)?,
+                bus: BusPort::get(r)?,
             },
             7 => Self::Bus {
                 bus: BusId::get(r)?,

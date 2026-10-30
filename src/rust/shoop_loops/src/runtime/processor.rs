@@ -115,6 +115,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
             return Err(Error::InvalidId);
         }
         if let Some(audio) = &mut self.audio {
+            audio.set_smoothing(view.smoothing);
             audio.render_ports(
                 &mut block.resources.render(),
                 audio::Playback {

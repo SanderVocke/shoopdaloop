@@ -52,12 +52,13 @@ impl Controls {
     }
 }
 
-/// Audio connections of one strip direction in two banks. The active bank
-/// carries the signal; the other is silent and receives the next change.
+/// Audio connections of one direction in two banks. The active bank carries the
+/// signal; the other is silent and receives the next change. `masks` hold host
+/// ports per channel, `master` the Master channels each strip output feeds.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Banks {
     pub masks: [Masks; 2],
-    pub master: [bool; 2],
+    pub master: [Masks; 2],
     pub active: usize,
 }
 impl Banks {
@@ -147,8 +148,17 @@ pub(crate) enum Change {
         host: usize,
         connected: bool,
     },
+    /// Strip output `channel` to Master channel `target`.
     Route {
         strip: StripId,
+        channel: usize,
+        target: usize,
+        connected: bool,
+    },
+    /// A Master output channel to host audio output `host`.
+    ConnectMaster {
+        channel: usize,
+        host: usize,
         connected: bool,
     },
 }
@@ -159,17 +169,23 @@ pub(crate) struct Model {
     pub strip_generations: Box<[u32]>,
     pub loop_generations: Box<[u32]>,
     pub master: Bus,
+    pub master_outputs: Banks,
     pub revision: u64,
 }
 
 impl Model {
-    pub(crate) fn new(strips: usize, loops: usize) -> Self {
+    pub(crate) fn new(strips: usize, loops: usize, master_outputs: Masks) -> Self {
         Self {
             strips: vec![None; strips].into_boxed_slice(),
             loops: vec![None; loops].into_boxed_slice(),
             strip_generations: vec![0; strips].into_boxed_slice(),
             loop_generations: vec![0; loops].into_boxed_slice(),
             master: Bus::default(),
+            master_outputs: Banks {
+                masks: [master_outputs, Masks::default()],
+                master: [Masks::default(); 2],
+                active: 0,
+            },
             revision: 0,
         }
     }
@@ -181,6 +197,7 @@ impl Model {
         self.loop_generations
             .copy_from_slice(&other.loop_generations);
         self.master = other.master;
+        self.master_outputs = other.master_outputs;
         self.revision = other.revision;
     }
     pub(crate) fn strip(&self, id: StripId) -> Option<&Strip> {
@@ -278,11 +295,32 @@ impl Model {
                     PortKind::MidiOut => set(&mut strip.midi_outputs),
                 }
             }
-            Change::Route { strip, connected } => {
+            Change::ConnectMaster {
+                channel,
+                host,
+                connected,
+            } => {
+                let mask = &mut self.master_outputs.swap()[channel];
+                if connected {
+                    *mask |= 1 << host;
+                } else {
+                    *mask &= !(1 << host);
+                }
+            }
+            Change::Route {
+                strip,
+                channel,
+                target,
+                connected,
+            } => {
                 if let Some(strip) = self.strip_mut(strip) {
                     strip.outputs.swap();
-                    let active = strip.outputs.active;
-                    strip.outputs.master[active] = connected;
+                    let mask = &mut strip.outputs.master[strip.outputs.active][channel];
+                    if connected {
+                        *mask |= 1 << target;
+                    } else {
+                        *mask &= !(1 << target);
+                    }
                 }
             }
         }

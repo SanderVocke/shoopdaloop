@@ -49,10 +49,14 @@ pub struct EngineDescription {
     pub segments: Vec<Segment>,
     /// Audio channels per strip direction; also the channels of every loop.
     pub strip_channels: u8,
-    /// Master bus channels; channel `c` feeds host audio output `c`.
     pub master_channels: u8,
-    /// Loop boundary smoothing; zero is none.
+    /// Initial Master connections as (Master channel, host audio output index).
+    /// They are part of the engine state and can be changed like any connection.
+    pub master_connections: Vec<(u8, u16)>,
+    /// Initial loop boundary smoothing; zero is none.
     pub smoothing_frames: u32,
+    /// Largest loop boundary smoothing a client may set.
+    pub smoothing_limit_frames: u32,
     /// Ramp for control changes and for paths that are removed or rerouted.
     pub ramp_frames: u32,
     /// Distance between the render's next frame and a scheduled structural
@@ -85,7 +89,9 @@ impl Default for EngineDescription {
             }],
             strip_channels: 2,
             master_channels: 2,
+            master_connections: vec![(0, 0), (1, 1)],
             smoothing_frames: 0,
+            smoothing_limit_frames: 4800,
             ramp_frames: 240,
             control_lead_frames: 0,
             resource_pages: 4096,
@@ -124,6 +130,10 @@ impl EngineDescription {
             || self.pending_transitions == 0
             || self.reliable_credits == 0
             || self.bulk_credits == 0
+            || self.smoothing_frames > self.smoothing_limit_frames
+            || self.master_connections.iter().any(|&(channel, host)| {
+                channel >= self.master_channels || host as usize >= self.host.audio_outputs.len()
+            })
         {
             return Err(Error::InvalidConfig);
         }

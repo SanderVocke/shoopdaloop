@@ -24,7 +24,9 @@ pub fn description() -> EngineDescription {
         ],
         strip_channels: 2,
         master_channels: 2,
+        master_connections: vec![(0, 0), (1, 1)],
         smoothing_frames: 0,
+        smoothing_limit_frames: 8,
         ramp_frames: 4,
         control_lead_frames: 0,
         resource_pages: 512,
@@ -52,8 +54,29 @@ pub fn shape(inputs: u8, outputs: u8, midi: bool) -> StripShape {
         midi_output: midi,
     }
 }
-pub fn port(strip: StripId, kind: PortKind, index: u8) -> StripPort {
-    StripPort { strip, kind, index }
+pub fn port(strip: StripId, kind: PortKind, index: u8) -> EnginePort {
+    EnginePort::Strip(StripPort { strip, kind, index })
+}
+/// Route strip output `channel` to Master channel `target`.
+pub fn route(strip: StripId, channel: u8, target: u8, connected: bool) -> Request {
+    Request::Route {
+        port: StripPort {
+            strip,
+            kind: PortKind::AudioOut,
+            index: channel,
+        },
+        bus: BusPort {
+            bus: BusId::Master,
+            index: target,
+        },
+        connected,
+    }
+}
+pub fn master(index: u8) -> EnginePort {
+    EnginePort::Bus(BusPort {
+        bus: BusId::Master,
+        index,
+    })
 }
 /// Host port identities: audio inputs, audio outputs, MIDI inputs, MIDI outputs.
 pub fn audio_in(index: u32) -> HostPortId {

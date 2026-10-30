@@ -127,6 +127,21 @@ pub struct StripPort {
     pub index: u8,
 }
 
+/// An audio channel of a bus: an output channel when connected to host ports,
+/// an input channel when routed to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BusPort {
+    pub bus: BusId,
+    pub index: u8,
+}
+
+/// An engine port that can be connected to host ports.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EnginePort {
+    Strip(StripPort),
+    Bus(BusPort),
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StripShape {
     pub audio_inputs: u8,
@@ -180,13 +195,15 @@ pub enum Request {
         balance: f32,
     },
     Connect {
-        port: StripPort,
+        port: EnginePort,
         host: HostPortId,
         connected: bool,
     },
+    /// Route a strip audio output channel (`port.kind` is `AudioOut`) to a bus
+    /// channel.
     Route {
-        strip: StripId,
-        bus: BusId,
+        port: StripPort,
+        bus: BusPort,
         connected: bool,
     },
     BusControl {
@@ -290,6 +307,7 @@ pub struct Limits {
     pub strips: u32,
     pub loops: u32,
     pub strip_audio_channels: u8,
+    pub master_channels: u8,
     pub host_audio_inputs: u16,
     pub host_audio_outputs: u16,
     pub host_midi_inputs: u16,
@@ -355,12 +373,12 @@ pub enum StateRecord {
         balance: f32,
     },
     Connection {
-        port: StripPort,
+        port: EnginePort,
         host: HostPortId,
     },
     Route {
-        strip: StripId,
-        bus: BusId,
+        port: StripPort,
+        bus: BusPort,
     },
     Bus {
         bus: BusId,

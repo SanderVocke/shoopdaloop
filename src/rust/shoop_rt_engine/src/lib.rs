@@ -126,7 +126,10 @@ fn host_ports(description: &EngineDescription) -> Box<[HostPort]> {
                 name: *name,
                 preferred: kind == HostPortKind::Audio
                     && direction == Direction::Output
-                    && index < description.master_channels as usize,
+                    && description
+                        .master_connections
+                        .iter()
+                        .any(|&(_, host)| host as usize == index),
             });
         }
     }
@@ -157,13 +160,13 @@ pub fn prepare(
     let slots = pending + 2 * credits + loops * (PLANNED + 3) + 64;
     let ports = strips * (7 * channels + 5)
         + loops * (4 * channels + 2)
-        + 2 * master_channels
+        + 3 * master_channels
         + counts.iter().sum::<usize>();
     let edges = strips
         * (2 * channels * (audio_in + audio_out + master_channels) + midi_in + midi_out)
         + loops * (3 * channels + 2)
         + (channels + 1) * (strips + loops)
-        + master_channels;
+        + 2 * master_channels * audio_out;
     let page_bytes = description.page_bytes;
     let payload = RECORDS_PER_APPEND * RECORD_BYTES;
     let config = Config {
@@ -312,6 +315,10 @@ pub fn prepare(
         .catalog()
         .planner()
         .ok_or(rt_runtime::Error::InvalidState)?;
+    let mut master_outputs = [0u64; shoop_rt_protocol::MAX_STRIP_CHANNELS];
+    for &(channel, host) in &description.master_connections {
+        master_outputs[channel as usize] |= 1 << host;
+    }
     let encoder = Encoder::new(loop_limits);
     let image = vec![0; encoder.image_bytes()].into_boxed_slice();
     let work = Work {
@@ -330,6 +337,7 @@ pub fn prepare(
         strips: strips as u32,
         loops: loops as u32,
         strip_audio_channels: description.strip_channels,
+        master_channels: description.master_channels,
         host_audio_inputs: audio_in as u16,
         host_audio_outputs: audio_out as u16,
         host_midi_inputs: midi_in as u16,
@@ -344,7 +352,6 @@ pub fn prepare(
         shape: Shape {
             channels,
             master_channels,
-            host_audio_outputs: audio_out,
         },
         planner,
         cells: cells.clone(),
@@ -352,6 +359,7 @@ pub fn prepare(
             ramp: description.ramp_frames,
             lead: description.control_lead_frames,
             smoothing: description.smoothing_frames,
+            smoothing_limit: description.smoothing_limit_frames,
             telemetry_interval: description.telemetry_interval_frames,
             channels,
             master_channels,
@@ -362,8 +370,8 @@ pub fn prepare(
             max_bulk: description.bulk_credits,
         },
         host_ports: host_ports(description),
-        model: Model::new(strips, loops),
-        next: Model::new(strips, loops),
+        model: Model::new(strips, loops, master_outputs),
+        next: Model::new(strips, loops, master_outputs),
         limits,
         connected: false,
         queue: Ring::new(credits),

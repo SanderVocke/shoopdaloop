@@ -63,7 +63,7 @@ ENGINE_CASES = (
     ("shoop_rt_protocol", "protocol", [], 5),
     ("shoop_rt_engine", "lib", [], 2),
     ("shoop_rt_engine", "workflow", [], 1),
-    ("shoop_rt_engine", "control", [], 5),
+    ("shoop_rt_engine", "control", [], 7),
     ("shoop_rt_engine", "structure", ["reused_slots_start_fresh_and_clear_empties_a_loop", "--", "--exact"], 1),
     ("shoop_rt_engine", "structure", ["edits_keep_other_paths_continuous_and_ramp_removed_paths", "--", "--exact"], 1),
 )
@@ -297,7 +297,7 @@ def _run_case(command, env, stdout, log):
 def selected_cases(package=None):
     cases = [("rt_runtime", target, arguments, minimum, 0) for target, arguments, minimum in CASES]
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
-    cases.append(("shoop_loops", "audio", [], 6, 0))
+    cases.append(("shoop_loops", "audio", [], 8, 0))
     cases.append(("shoop_loops", "audio_ports", [], 2, 0))
     cases.append(("shoop_loops", "lib", [], 4, 0))
     cases.append(("shoop_loops", "program_boundaries", [], 3, 0))

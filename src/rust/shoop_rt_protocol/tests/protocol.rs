@@ -14,6 +14,7 @@ const LIMITS: Limits = Limits {
     strips: 4,
     loops: 16,
     strip_audio_channels: 2,
+    master_channels: 2,
     host_audio_inputs: 2,
     host_audio_outputs: 2,
     host_midi_inputs: 1,
@@ -457,17 +458,32 @@ fn client_samples() -> Vec<ClientMessage> {
             balance: 1.,
         },
         Request::Connect {
-            port: StripPort {
+            port: EnginePort::Strip(StripPort {
                 strip: strip(1),
                 kind: PortKind::MidiIn,
                 index: 0,
-            },
+            }),
             host: HostPortId(3),
             connected: true,
         },
+        Request::Connect {
+            port: EnginePort::Bus(BusPort {
+                bus: BusId::Master,
+                index: 1,
+            }),
+            host: HostPortId(2),
+            connected: false,
+        },
         Request::Route {
-            strip: strip(1),
-            bus: BusId::Master,
+            port: StripPort {
+                strip: strip(1),
+                kind: PortKind::AudioOut,
+                index: 1,
+            },
+            bus: BusPort {
+                bus: BusId::Master,
+                index: 0,
+            },
             connected: false,
         },
         Request::BusControl {
@@ -551,12 +567,30 @@ fn engine_samples() -> Vec<EngineMessage> {
             balance: -1.,
         }),
         EngineMessage::State(StateRecord::Connection {
-            port: StripPort {
+            port: EnginePort::Strip(StripPort {
                 strip: strip(1),
                 kind: PortKind::AudioOut,
                 index: 1,
-            },
+            }),
             host: HostPortId(2),
+        }),
+        EngineMessage::State(StateRecord::Connection {
+            port: EnginePort::Bus(BusPort {
+                bus: BusId::Master,
+                index: 0,
+            }),
+            host: HostPortId(3),
+        }),
+        EngineMessage::State(StateRecord::Route {
+            port: StripPort {
+                strip: strip(1),
+                kind: PortKind::AudioOut,
+                index: 0,
+            },
+            bus: BusPort {
+                bus: BusId::Master,
+                index: 1,
+            },
         }),
         EngineMessage::State(StateRecord::Bus {
             bus: BusId::Master,
@@ -639,7 +673,26 @@ fn malformed_records_are_refused_without_panicking() {
     assert!(MidiMessage::new(&[]).is_none());
     assert!(BulkPayload::audio(&[0.; BULK_CHUNK_SAMPLES + 1]).is_none());
     assert_eq!(
-        encode_engine(&engine_samples()[10], &mut [0; 64]),
+        encode_engine(&engine_samples()[12], &mut [0; 64]),
         Err(CodecError::Overflow)
     );
+    let connect = ClientMessage::Request {
+        correlation: 1,
+        request: Request::Connect {
+            port: EnginePort::Bus(BusPort {
+                bus: BusId::Master,
+                index: 7,
+            }),
+            host: HostPortId(2),
+            connected: true,
+        },
+    };
+    let len = encode_client(&connect, &mut buf).unwrap();
+    let tag = buf[..len]
+        .windows(3)
+        .position(|bytes| bytes == [1, 0, 7])
+        .unwrap();
+    let mut record = buf[..len].to_vec();
+    record[tag] = 2;
+    assert_eq!(decode_client(&record), Err(CodecError::Invalid));
 }

@@ -3,7 +3,8 @@
 use crate::endpoint::ControlEndpoint;
 use shoop_rt_protocol::carrier::Outbox;
 use shoop_rt_protocol::{
-    BusControl, BusId, EngineMessage, HostPortId, Lane, PortKind, StateRecord, StripPort,
+    BusControl, BusId, BusPort, EngineMessage, EnginePort, HostPortId, Lane, PortKind, StateRecord,
+    StripPort,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -59,11 +60,11 @@ impl ControlEndpoint {
                     cursor.bit += 1;
                     if mask & (1 << bit) != 0 {
                         return Some(StateRecord::Connection {
-                            port: StripPort {
+                            port: EnginePort::Strip(StripPort {
                                 strip: strip.id,
                                 kind,
                                 index: cursor.channel as u8,
-                            },
+                            }),
                             host: self.host_port_id(kind, bit),
                         });
                     }
@@ -128,13 +129,30 @@ impl ControlEndpoint {
                             });
                         }
                         part if part == controls.len() + 1 => {
-                            cursor.part += 1;
-                            if strip.outputs.master[strip.outputs.active] {
-                                return Some(StateRecord::Route {
-                                    strip: strip.id,
-                                    bus: BusId::Master,
-                                });
+                            let routes = &strip.outputs.master[strip.outputs.active];
+                            while cursor.channel < strip.shape.audio_outputs as usize {
+                                while cursor.bit < self.settings.master_channels {
+                                    let bit = cursor.bit;
+                                    cursor.bit += 1;
+                                    if routes[cursor.channel] & (1 << bit) != 0 {
+                                        return Some(StateRecord::Route {
+                                            port: StripPort {
+                                                strip: strip.id,
+                                                kind: PortKind::AudioOut,
+                                                index: cursor.channel as u8,
+                                            },
+                                            bus: BusPort {
+                                                bus: BusId::Master,
+                                                index: bit as u8,
+                                            },
+                                        });
+                                    }
+                                }
+                                cursor.bit = 0;
+                                cursor.channel += 1;
                             }
+                            cursor.channel = 0;
+                            cursor.part += 1;
                         }
                         _ => {
                             let mut connections = Resync {
@@ -189,6 +207,25 @@ impl ControlEndpoint {
                             bus: BusId::Master,
                             control: *control,
                         });
+                    }
+                    let outputs = self.model.master_outputs.current();
+                    while cursor.channel < self.settings.master_channels {
+                        let mask = outputs[cursor.channel];
+                        while cursor.bit < 64 {
+                            let bit = cursor.bit;
+                            cursor.bit += 1;
+                            if mask & (1 << bit) != 0 {
+                                return Some(StateRecord::Connection {
+                                    port: EnginePort::Bus(BusPort {
+                                        bus: BusId::Master,
+                                        index: cursor.channel as u8,
+                                    }),
+                                    host: self.host_port_id(PortKind::AudioOut, bit),
+                                });
+                            }
+                        }
+                        cursor.bit = 0;
+                        cursor.channel += 1;
                     }
                     cursor.stage = 5;
                 }

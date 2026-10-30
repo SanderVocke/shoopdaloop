@@ -33,6 +33,7 @@ pub struct AudioRenderer {
     anchor: Box<[f32]>,
     ramp_frames: u32,
     ramp_position: u32,
+    next_ramp_frames: u32,
 }
 
 fn samples(channels: usize, max_frames: usize) -> Result<usize, Error> {
@@ -134,7 +135,17 @@ impl AudioRenderer {
             anchor: buffer(channels),
             ramp_frames,
             ramp_position: ramp_frames,
+            next_ramp_frames: ramp_frames,
         })
+    }
+
+    /// Smoothing for the following restarts; a restart ramp in progress keeps
+    /// its length.
+    pub fn set_smoothing(&mut self, smoothing: Smoothing) {
+        self.next_ramp_frames = match smoothing {
+            Smoothing::None => 0,
+            Smoothing::LinearRestart { frames } => frames,
+        };
     }
 
     /// Render one non-wrapping region. A wrap is a resolver boundary, not a
@@ -184,6 +195,7 @@ impl AudioRenderer {
             }
             self.last.fill(0.0);
             self.anchor.fill(0.0);
+            self.ramp_frames = self.next_ramp_frames;
             self.ramp_position = self.ramp_frames;
             return Ok(());
         };
@@ -218,6 +230,7 @@ impl AudioRenderer {
         }
         if playback.discontinuity {
             self.anchor.copy_from_slice(&self.last);
+            self.ramp_frames = self.next_ramp_frames;
             self.ramp_position = 0;
         }
         for frame in 0..frames {

@@ -9,7 +9,6 @@ use rt_runtime::{Error, NodeId};
 pub(crate) struct Shape {
     pub channels: usize,
     pub master_channels: usize,
-    pub host_audio_outputs: usize,
 }
 
 /// Prepared scratch for sorting one node's input edges and the loop bindings.
@@ -227,26 +226,16 @@ impl Builder {
             let node = pool.strip_output(slot);
             let outputs = strip.shape.audio_outputs as usize;
             for bank in 0..2 {
-                if !strip.outputs.master[bank] {
-                    continue;
-                }
                 for channel in 0..outputs {
-                    for target in 0..shape.master_channels {
-                        let feeds = if outputs == 1 {
-                            true
-                        } else {
-                            channel % shape.master_channels == target
-                        };
-                        if feeds {
-                            push(
-                                &mut self.edges,
-                                &mut count,
-                                link(
-                                    audio(node, bank * channels + channel),
-                                    audio(master, target),
-                                ),
-                            )?;
-                        }
+                    for target in bits(strip.outputs.master[bank][channel]) {
+                        push(
+                            &mut self.edges,
+                            &mut count,
+                            link(
+                                audio(node, bank * channels + channel),
+                                audio(master, target),
+                            ),
+                        )?;
                     }
                 }
             }
@@ -280,15 +269,19 @@ impl Builder {
                 }
             }
         }
-        for channel in 0..shape.master_channels.min(shape.host_audio_outputs) {
-            push(
-                &mut self.edges,
-                &mut count,
-                link(
-                    audio(master, channel),
-                    Endpoint::host(PortType::Audio, channel as u32),
-                ),
-            )?;
+        for bank in 0..2 {
+            for channel in 0..shape.master_channels {
+                for host in bits(model.master_outputs.masks[bank][channel]) {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(
+                            audio(master, bank * shape.master_channels + channel),
+                            Endpoint::host(PortType::Audio, host as u32),
+                        ),
+                    )?;
+                }
+            }
         }
         let edges = &mut self.edges[..count];
         edges.sort_unstable();

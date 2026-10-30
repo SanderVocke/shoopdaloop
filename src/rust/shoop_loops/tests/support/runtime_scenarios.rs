@@ -1617,3 +1617,95 @@ fn clear_stops_playback_selects_empty_content_and_releases_references() {
         finish(control, engine, &imports, 512);
     }
 }
+
+#[shoop_test]
+fn smoothing_operations_apply_from_the_next_restart_and_are_reported() {
+    for partition in [vec![10], vec![1; 10], vec![2, 1, 4, 3]] {
+        let (mut control, mut engine, imports) = setup_with(
+            0,
+            false,
+            Options {
+                imports: true,
+                smoothing: Smoothing::LinearRestart { frames: 3 },
+                ..Options::default()
+            },
+        );
+        let mut host = Host::new();
+        host.early = false;
+        transition(
+            &mut control,
+            0,
+            Transition::Play {
+                position: 0,
+                retrigger: false,
+            },
+        );
+        submit(
+            &mut control,
+            2,
+            Operation::Smoothing {
+                target: id(),
+                smoothing: Smoothing::LinearRestart { frames: 2 },
+            },
+        );
+        let stale = submit(
+            &mut control,
+            2,
+            Operation::Smoothing {
+                target: LoopId::from_parts(0, 2).unwrap(),
+                smoothing: Smoothing::None,
+            },
+        );
+        transition(
+            &mut control,
+            5,
+            Transition::Seek {
+                position: 0,
+                retrigger: false,
+            },
+        );
+        let query = submit(&mut control, 5, Operation::State { target: id() });
+        transition(&mut control, 9, Transition::Stop);
+        let mut expected = [[0.; 10]; 2];
+        for channel in 0..2 {
+            let (mut position, mut anchor, mut last) = (0, 0., 0.);
+            let (mut elapsed, mut length) = (3, 3);
+            for frame in 0..9 {
+                if frame == 0 || frame == 5 || position == 4 {
+                    position = 0;
+                    anchor = last;
+                    elapsed = 0;
+                    length = if frame == 0 { 3 } else { 2 };
+                }
+                let raw = (position + 1) as f32 * 4. * if channel == 0 { 1. } else { 10. };
+                elapsed = (elapsed + 1).min(length);
+                let weight = elapsed as f32 / length as f32;
+                last = anchor * (1. - weight) + raw * weight;
+                expected[channel][frame] = last * 0.5;
+                position += 1;
+            }
+        }
+        for frames in partition {
+            let at = engine.next_frame().0 as usize;
+            host.step(&mut engine, frames);
+            for channel in 0..2 {
+                for frame in 0..frames {
+                    assert!(
+                        (host.output[channel][frame] - expected[channel][at + frame]).abs() < 1e-5
+                    );
+                }
+            }
+        }
+        let mut replies = Vec::new();
+        drain(&mut control, &mut replies);
+        assert_eq!(
+            state(&replies, query).smoothing,
+            Smoothing::LinearRestart { frames: 2 }
+        );
+        assert_eq!(
+            replies.iter().find(|(s, _)| *s == stale).unwrap().1,
+            Reply::Failed(Failure::Runtime(Error::InvalidId))
+        );
+        finish(control, engine, &imports, 512);
+    }
+}

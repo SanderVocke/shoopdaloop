@@ -154,7 +154,7 @@ Recovery is not an unlimited queue: its own reserved result must be recycled bef
 reuse. Stalled results prevent further admission, not admitted automatic wraps.
 Dropping the control endpoint alone does not invent a musical Stop.
 
-`Operation::Gain` changes the primitive's finite (including negative) gain. `Operation::Balance` sets a stereo balance in [-1, 1]: negative values attenuate the right channel and positive values the left, linearly; mono and multichannel loops are unaffected. The cut reports both.
+`Operation::Smoothing { target, smoothing }` changes the primitive's boundary smoothing from its next playback restart, at any length; a restart ramp in progress keeps its length. The setting belongs to the slot's prepared nodes and is kept when a later owner takes the slot. The cut reports it. `Operation::Gain` changes the primitive's finite (including negative) gain. `Operation::Balance` sets a stereo balance in [-1, 1]: negative values attenuate the right channel and positive values the left, linearly; mono and multichannel loops are unaffected. The cut reports both.
 Generic `Action::Parameter` commands change the application's own processors. Neither creates
 a new musical clock. Smoothing follows the resolver's discontinuity flag, not
 journal events, host cuts, or a gain change by itself.

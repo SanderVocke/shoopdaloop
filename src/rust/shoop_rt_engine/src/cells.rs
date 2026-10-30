@@ -73,6 +73,8 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 pub(crate) struct Cells {
     pub next_frame: AtomicU64,
     pub endpoint_alive: AtomicBool,
+    /// Rendering faulted; the engine no longer executes control work.
+    pub faulted: AtomicBool,
     pub strips: Box<[StripCells]>,
     pub loops: Box<[LoopCells]>,
     pub master: Peak,
@@ -86,6 +88,7 @@ impl Cells {
         let cells = Self {
             next_frame: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
+            faulted: AtomicBool::new(false),
             strips: (0..strips).map(|_| StripCells::default()).collect(),
             loops: (0..loops).map(|_| LoopCells::default()).collect(),
             master: Peak::default(),

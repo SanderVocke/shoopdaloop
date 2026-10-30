@@ -4,6 +4,7 @@
 use crate::cells::{Cells, Peak};
 use rt_runtime::buffer::MidiBuffer;
 use rt_runtime::graph::PortCounts;
+use rt_runtime::midi_state::MidiState;
 use rt_runtime::planner::ConsumerAccess;
 use rt_runtime::processor::{OperationContext, ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::Error;
@@ -142,6 +143,9 @@ pub struct StripInput {
     monitoring: Box<[f32]>,
     scratch: Box<[f32]>,
     injected: [Option<MidiMessage>; INJECTED],
+    /// Notes sounding through the monitoring feed, released when monitoring stops.
+    monitored: Box<MidiState>,
+    release: bool,
 }
 
 /// A strip's output stage: the sum of its loops and monitored input; output gain,
@@ -171,12 +175,17 @@ pub struct LoopFader {
     presence: Ramp,
 }
 
+/// The Master bus: the sum of routed strips; gain, balance, mute and meters,
+/// written to two connection banks.
 pub struct MasterBus {
     cells: Arc<Cells>,
     channels: usize,
     ramp: u32,
+    bank: Ramp,
     mute: Ramp,
     gains: Gains,
+    weights: Box<[f32]>,
+    scratch: Box<[f32]>,
 }
 
 pub enum EngineNode {
@@ -212,6 +221,8 @@ impl StripInput {
             monitoring: vec![0.; frames].into_boxed_slice(),
             scratch: vec![0.; frames].into_boxed_slice(),
             injected: [None; INJECTED],
+            monitored: Box::default(),
+            release: false,
         }
     }
 }
@@ -251,8 +262,11 @@ impl MasterBus {
             cells: settings.cells.clone(),
             channels: settings.master_channels,
             ramp: settings.ramp,
+            bank: Ramp::at(0.),
             mute: Ramp::at(1.),
             gains: Gains::new(settings.frames),
+            weights: vec![0.; settings.frames].into_boxed_slice(),
+            scratch: vec![0.; settings.frames].into_boxed_slice(),
         }
     }
 }
@@ -282,6 +296,8 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
                 self.monitor = Ramp::at(0.);
                 self.gains.reset();
                 self.injected = [None; INJECTED];
+                *self.monitored = MidiState::default();
+                self.release = false;
                 let cells = &self.cells.strips[self.slot];
                 cells.input.clear();
                 cells
@@ -290,7 +306,10 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
-            EngineOp::Monitor(on) => self.monitor.set(f32::from(u8::from(on)), self.ramp),
+            EngineOp::Monitor(on) => {
+                self.release |= !on && self.monitor.target() > 0.;
+                self.monitor.set(f32::from(u8::from(on)), self.ramp)
+            }
             EngineOp::Crossfade => {
                 let target = 1. - self.bank.target();
                 self.bank.set(target, self.ramp);
@@ -353,6 +372,16 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
         let [capture, monitor] = &mut *block.midi_outputs else {
             return Err(Error::InvalidShape);
         };
+        if self.release {
+            self.release = false;
+            for channel in 0..16u8 {
+                let state = self.monitored.channel(channel).ok_or(Error::InvalidState)?;
+                for (key, _) in state.projected_notes() {
+                    monitor.push(0, frames, &[0x80 | channel, key, 0])?;
+                }
+            }
+            *self.monitored = MidiState::default();
+        }
         let monitoring = self.monitor.target() > 0.;
         let mut active = false;
         for message in self.injected.iter_mut() {
@@ -360,13 +389,20 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
                 capture.push(0, frames, packet.as_bytes())?;
                 if monitoring {
                     monitor.push(0, frames, packet.as_bytes())?;
+                    let _ = self
+                        .monitored
+                        .apply_packet(packet.as_bytes(), packet.as_bytes().len());
                 }
                 active = true;
             }
         }
         active |= copy_midi(input, capture, frames)?;
         if monitoring {
-            copy_midi(input, monitor, frames)?;
+            for index in 0..input.len() {
+                let (offset, packet) = input.get(index).ok_or(Error::InvalidState)?;
+                monitor.push(offset, frames, packet)?;
+                let _ = self.monitored.apply_packet(packet, packet.len());
+            }
         }
         if active {
             cells
@@ -508,7 +544,7 @@ impl Processor<LoopPlanner, EngineOp> for MasterBus {
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: self.channels,
-            audio_outputs: self.channels,
+            audio_outputs: 2 * self.channels,
             ..PortCounts::default()
         }
     }
@@ -517,27 +553,45 @@ impl Processor<LoopPlanner, EngineOp> for MasterBus {
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
             EngineOp::Mute(muted) => self.mute.set(f32::from(u8::from(!muted)), self.ramp),
+            EngineOp::Crossfade => {
+                let target = 1. - self.bank.target();
+                self.bank.set(target, self.ramp);
+            }
             _ => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let frames = block.frames;
-        let stereo = self.channels == 2;
+        let channels = self.channels;
+        let stereo = channels == 2;
         self.gains.fill(frames, &mut self.mute);
-        for channel in 0..self.channels {
-            let gains = self.gains.channel(channel, stereo);
-            let (input, output) = block
-                .audio
-                .pair(channel, channel)
-                .ok_or(Error::InvalidShape)?;
-            let mut peak = 0f32;
-            for i in 0..frames {
-                let value = input[i] * gains[i];
-                output[i] = value;
-                peak = peak.max(value.abs());
+        for i in 0..frames {
+            self.weights[i] = self.bank.next();
+        }
+        for channel in 0..channels {
+            {
+                let input = block.audio.input(channel).ok_or(Error::InvalidShape)?;
+                let gains = self.gains.channel(channel, stereo);
+                let mut peak = 0f32;
+                for i in 0..frames {
+                    let value = input[i] * gains[i];
+                    self.scratch[i] = value;
+                    peak = peak.max(value.abs());
+                }
+                self.cells.master.raise(channel, peak);
             }
-            self.cells.master.raise(channel, peak);
+            let first = block.audio.output(channel).ok_or(Error::InvalidShape)?;
+            for i in 0..frames {
+                first[i] = self.scratch[i] * (1. - self.weights[i]);
+            }
+            let second = block
+                .audio
+                .output(channels + channel)
+                .ok_or(Error::InvalidShape)?;
+            for i in 0..frames {
+                second[i] = self.scratch[i] * self.weights[i];
+            }
         }
         Ok(())
     }

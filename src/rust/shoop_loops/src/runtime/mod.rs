@@ -214,6 +214,11 @@ pub enum Operation {
         target: LoopId,
         value: f32,
     },
+    /// Boundary smoothing of the primitive's audio playback from its next restart.
+    Smoothing {
+        target: LoopId,
+        smoothing: audio::Smoothing,
+    },
     /// At its frame, stop the primitive and select a fresh empty revision. The
     /// playback and latest-take references are released; exports keep theirs.
     /// Refused while recording, like `Select`.
@@ -257,6 +262,7 @@ pub struct Cut {
     pub latest: Option<media::MediaId>,
     pub gain: f32,
     pub balance: f32,
+    pub smoothing: audio::Smoothing,
     pub capture_failure: Option<Error>,
     pub midi_overflows: u64,
 }
@@ -354,6 +360,7 @@ pub struct View {
     pub capture: Option<CaptureIntervalId>,
     pub gain: f32,
     pub balance: f32,
+    pub smoothing: audio::Smoothing,
     pub playback_node: NodeId,
     pub capture_node: NodeId,
     pub reset_input: bool,
@@ -776,6 +783,7 @@ impl LoopPlanner {
             capture: None,
             gain: 1.,
             balance: 0.,
+            smoothing: audio::Smoothing::None,
             playback_node: NodeId::from_parts(0, 1)?,
             capture_node: NodeId::from_parts(0, 1)?,
             reset_input: false,

@@ -33,10 +33,10 @@ telemetry.
 
 `EngineDescription` gives the sample rate, the largest callback, named host port
 slots (at most 64 per kind and direction), pool segments, audio channels per strip
-direction (also the channels of every loop), Master channels, loop boundary
-smoothing, the ramp for control changes and removals, a control lead for hosts
-whose control side runs concurrently with rendering, storage sizes and the
-client's credits.
+direction (also the channels of every loop), Master channels and their initial
+host connections, the initial and largest loop boundary smoothing, the ramp for
+control changes and removals, a control lead for hosts whose control side runs
+concurrently with rendering, storage sizes and the client's credits.
 
 Pools are lists of `Segment { strips, loops }`. Slot indices count through the
 segments; each segment owns a contiguous range of runtime nodes. Every slot's
@@ -49,15 +49,16 @@ another segment can be appended without moving existing slots.
 
 | Node | Ports | Function |
 | --- | --- | --- |
-| Strip input | two banks of input channels; capture and monitoring feeds; MIDI in; MIDI capture and monitor feeds | Bank cross-fade, input gain and balance, monitoring ramp, input meters, injected MIDI |
+| Strip input | two banks of input channels; capture and monitoring feeds; MIDI in; MIDI capture and monitor feeds | Bank cross-fade, input gain and balance, monitoring ramp with release of monitored notes, input meters, injected MIDI |
 | Loop playback and capture | the loop library's nodes | Recording and playback decided by the loop resolver |
 | Loop fader | one audio channel set | Fade-out for removal, loop meters |
 | Strip output | the sum of its loop faders and the monitoring feed; two output banks | Output gain, balance, mute and presence ramps, output meters |
-| Master | Master channels | Sum of routed strips; gain, balance, mute, meters; channel `c` feeds host output `c` |
+| Master | Master channels; two output banks | Sum of routed strips; gain, balance, mute, meters |
 
 Stereo balance uses the legacy linear factors on two-channel stages. A strip
-output channel `c` takes input channel `c mod inputs`. A mono strip feeds every
-Master channel; wider strips feed Master channel `c mod channels`.
+output channel `c` takes input channel `c mod inputs`. Routes connect single strip
+output channels to single Master channels; `Limits::master_channels` reports the
+Master's width.
 
 ## Requests
 
@@ -70,7 +71,9 @@ their activation is confirmed. Every request is validated against the confirmed
 state: client-chosen slot IDs must be in the pool (`Capacity`), unoccupied and of
 a newer generation (`InvalidId`); values must be finite and balances within
 [-1, 1] (`InvalidValue`). Requests beyond the client's credits are refused
-`Overloaded`. `SetSmoothing` only accepts the prepared smoothing.
+`Overloaded`. `SetSmoothing` applies the loop library's smoothing operation to
+every loop and to loops created later; values above the prepared limit are
+refused `InvalidValue`.
 
 Loop transitions follow the legacy rules. `delay: Some(n)` waits for the
 (n+1)-th clock edge of the loop's sync source; a loop without a source counts its
@@ -91,9 +94,11 @@ activation at an exact frame:
 - Removing a strip or loop first fades its output or fader over the prepared
   ramp, stops its loops and then activates the configuration without them.
 - Connecting, disconnecting and routing write the new connection set to the
-  silent bank of the strip and cross-fade between the banks at the activation
-  frame. Unchanged destinations keep their signal; removed ones fade out and
-  added ones fade in. MIDI connections change at the activation frame.
+  silent bank of the strip or the Master bus and cross-fade between the banks at
+  the activation frame. Unchanged destinations keep their signal; removed ones
+  fade out and added ones fade in. MIDI connections change at the activation
+  frame. Master outputs are connections like strip ports (`EnginePort::Bus`);
+  the description's initial Master wiring is reported through resync.
 - Changing a sync source activates a new timing topology; pending delayed
   transitions of that loop fail, as the loop library revalidates them.
 
@@ -122,6 +127,11 @@ protocol.
 
 ## Connection lifecycle
 
+If rendering faults, output stays silent after a MIDI reset and the endpoint
+ends the connection with `Disconnected(Fault)`, answering later requests
+`NotConnected` and later `Hello`s with the same disconnect. Stop callbacks and
+clean up the stopped owners.
+
 `Hello` with another version is rejected. `Goodbye` ends the connection: queued
 requests are discarded, transactions in progress complete without results, and
 the engine keeps its state and keeps rendering. A new `Hello` starts a new
@@ -145,7 +155,7 @@ cargo test -p shoop_rt_engine --release
 
 ## Limits of this milestone
 
-Pools are fixed after preparation (`GROWABLE_LIMITS` is not announced). Loop
-boundary smoothing is fixed at preparation. MIDI connection changes do not send
-note cleanup. Telemetry fields are independent latest values, not one coherent
-snapshot.
+Pools are fixed after preparation (`GROWABLE_LIMITS` is not announced). As in
+the legacy engine, turning monitoring off releases the notes the monitoring feed
+passed through, while MIDI disconnects and output mute send no note cleanup.
+Telemetry fields are independent latest values, not one coherent snapshot.

@@ -72,11 +72,8 @@ fn configured() -> (Harness, StripId, LoopSlotId) {
             control,
         });
     }
-    harness.done(Request::Route {
-        strip: track,
-        bus: BusId::Master,
-        connected: true,
-    });
+    harness.done(route(track, 0, 0, true));
+    harness.done(route(track, 1, 1, true));
     harness.done(Request::BusControl {
         bus: BusId::Master,
         control: BusControl::Gain(0.5),
@@ -312,8 +309,26 @@ fn resync_streams_the_confirmed_state() {
             control: StripControl::OutputMute(false),
         },
         StateRecord::Route {
-            strip: track,
-            bus: BusId::Master,
+            port: StripPort {
+                strip: track,
+                kind: PortKind::AudioOut,
+                index: 0,
+            },
+            bus: BusPort {
+                bus: BusId::Master,
+                index: 0,
+            },
+        },
+        StateRecord::Route {
+            port: StripPort {
+                strip: track,
+                kind: PortKind::AudioOut,
+                index: 1,
+            },
+            bus: BusPort {
+                bus: BusId::Master,
+                index: 1,
+            },
         },
         StateRecord::Connection {
             port: port(track, PortKind::AudioIn, 1),
@@ -534,4 +549,103 @@ fn dropping_the_endpoint_silences_output_and_stopped_cleanup_recovers_pools() {
     let usage = stopped.resource_usage();
     assert_eq!(usage.free_pages, description.resource_pages);
     assert_eq!(usage.reserved_pages, 0);
+}
+
+#[shoop_test]
+fn stopping_monitoring_releases_the_notes_it_passed_through() {
+    let (mut harness, track, _) = configured();
+    let from = harness.frame();
+    harness.midi_input.extend([
+        (from + 1, vec![0x90, 60, 100]),
+        (from + 2, vec![0x91, 62, 90]),
+        (from + 3, vec![0x81, 62, 0]),
+        (from + 8, vec![0x90, 64, 100]),
+    ]);
+    harness.run(4, 2);
+    let released = harness.frame();
+    harness.done(Request::StripControl {
+        strip: track,
+        control: StripControl::Monitoring(false),
+    });
+    harness.run(8, 4);
+    assert_eq!(
+        harness.midi,
+        [
+            (from + 1, vec![0x90, 60, 100]),
+            (from + 2, vec![0x91, 62, 90]),
+            (from + 3, vec![0x81, 62, 0]),
+            (released, vec![0x80, 60, 0]),
+        ]
+    );
+}
+
+#[shoop_test]
+fn a_render_fault_silences_output_and_ends_the_connection() {
+    let description = description();
+    let (mut harness, track, looped) = configured();
+    harness.done(transition(looped, LoopMode::Recording));
+    harness.run(4, 4);
+    harness.done(transition(looped, LoopMode::Playing));
+    harness.run(4, 4);
+    // An event beyond the callback is a host error the runtime refuses.
+    harness
+        .host
+        .midi_input_mut(0)
+        .push(10, 16, &[0x90, 60, 100])
+        .unwrap();
+    assert_eq!(
+        assert_no_heap(|| harness.host.process(4)).map(|r| r.phase),
+        Err(rt_runtime::Error::InvalidEvent)
+    );
+    assert_eq!(
+        harness.host.render.phase(),
+        Phase::Faulted(rt_runtime::Error::InvalidEvent)
+    );
+    assert!(harness.host.output(0)[..4].iter().all(|s| *s == 0.));
+    assert_eq!(harness.host.render.midi_recovery(0).unwrap().len(), 32);
+    assert!(assert_no_heap(|| harness.host.process(4)).is_err());
+    assert!(harness.host.output(0)[..4].iter().all(|s| *s == 0.));
+    harness.pump();
+    assert_eq!(
+        harness.lifecycle.last(),
+        Some(&EngineMessage::Disconnected(DisconnectReason::Fault))
+    );
+    let correlation = 3000;
+    assert_no_heap(|| {
+        harness
+            .host
+            .client
+            .carrier_mut()
+            .send(ClientMessage::Request {
+                correlation,
+                request: Request::RemoveStrip { strip: track },
+            })
+    })
+    .unwrap();
+    assert_no_heap(|| {
+        harness
+            .host
+            .client
+            .carrier_mut()
+            .send(ClientMessage::Hello {
+                version: PROTOCOL_VERSION,
+            })
+    })
+    .unwrap();
+    harness.pump();
+    assert_eq!(
+        harness.results[&correlation],
+        Outcome::Refused(Refusal::NotConnected)
+    );
+    assert_eq!(
+        harness.lifecycle.last(),
+        Some(&EngineMessage::Disconnected(DisconnectReason::Fault))
+    );
+    let mut stopped = harness.host.into_render().into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.media_usage().references, 0);
+    assert_eq!(
+        stopped.resource_usage().free_pages,
+        description.resource_pages
+    );
 }
