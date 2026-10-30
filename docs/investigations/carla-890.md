@@ -330,3 +330,29 @@ release AudioWorklet build passed. A hosted Trunk build and Firefox AudioWorklet
 smoke passed with 32 genuine callbacks, 4,096 processed frames, 128-frame quanta,
 and no command overflows. Chromium and native Windows/macOS runtime tests were
 not run locally.
+
+## CI follow-up
+
+The first PR run found an unused Carla-only exclusion module in minimal-feature
+builds and Windows timing assumptions in the timeout fixtures. The module is now
+feature-gated. Timeout fixtures use a 50 ms budget against 500 ms fake work,
+retain silence/degradation/recovery assertions, and check that a bridge returns
+before the fake work finishes. This separates the tested behavior from coarse
+platform timer quanta; production callback budgets are not increased.
+
+Review also exposed a real completion bug: a finished slot could be accepted
+when the caller woke after its absolute deadline. Both completion-copy paths now
+reject expired results before copying, with a deterministic regression test.
+New tests use fresh nonces, and monitor coordination, rejected/expired tickets,
+sequence exhaustion, and reuse have additional coverage without requiring
+realtime privileges. The Linux coverage job grants its own process an inherited
+realtime-priority allowance and verifies it, so the existing real-scheduling
+regressions run there as well. The 80% patch-coverage threshold is unchanged.
+
+Follow-up local validation passed the warning-denying build, all four native
+feature-isolation configurations, and 1,827 native tests (4 skipped). A complete
+LLVM-instrumented run passed the same suite; the local changed-line coverage
+estimate is approximately 86.5%. Remote Windows checks must still confirm the
+portable fixtures. The initial Chromium failure was a renderer startup timeout
+before test discovery; an unchanged job rerun was requested rather than disabling
+or weakening that suite.

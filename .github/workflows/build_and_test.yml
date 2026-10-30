@@ -85,6 +85,9 @@ jobs:
           SHOOP_TEST_TRACE: failure
           SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-rust-coverage
         run: |
+          # Exercise the real scheduling paths rather than skipping them in coverage.
+          sudo prlimit --pid $$ --rtprio=99
+          chrt -f 3 true
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo llvm-cov nextest --locked --workspace \
             --features shoop_engine/app_backend --profile ci \

@@ -221,3 +221,77 @@ fn monitor(state: Arc<State>) {
         std::process::abort();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Ordinary monitor scheduling exercises coordination without realtime privileges.
+    fn ordinary_request() -> SchedulingRequest {
+        SchedulingRequest {
+            policy: libc::SCHED_OTHER,
+            priority: -1,
+            ceiling: 0,
+            parameters: [0; 4],
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn monitor_acknowledges_reused_tickets_and_counts_each_overrun_once() {
+        let monitor = BudgetMonitor::new().unwrap();
+        for expected in 1..=2 {
+            let ticket = monitor
+                .arm(
+                    ordinary_request(),
+                    Instant::now() + Duration::from_millis(20),
+                )
+                .unwrap();
+            let limit = Instant::now() + Duration::from_secs(2);
+            while monitor.overruns() < expected {
+                assert!(Instant::now() < limit);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            std::thread::sleep(Duration::from_millis(5));
+            assert_eq!(monitor.overruns(), expected);
+            drop(ticket);
+            assert_eq!(monitor.state.active.load(Ordering::Acquire), 0);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn rejected_and_expired_requests_disarm_and_allow_recovery() {
+        let monitor = BudgetMonitor::new().unwrap();
+        let mut request = ordinary_request();
+        request.policy = -1;
+        let error = monitor
+            .arm(request, Instant::now() + Duration::from_secs(1))
+            .err()
+            .unwrap();
+        assert_eq!(error.raw_os_error(), Some(libc::EINVAL));
+        assert_eq!(monitor.state.active.load(Ordering::Acquire), 0);
+        assert!(monitor
+            .arm(
+                ordinary_request(),
+                Instant::now() - Duration::from_millis(1)
+            )
+            .is_err());
+        assert_eq!(monitor.state.active.load(Ordering::Acquire), 0);
+        let ticket = monitor
+            .arm(ordinary_request(), Instant::now() + Duration::from_secs(1))
+            .unwrap();
+        drop(ticket);
+        assert_eq!(monitor.state.active.load(Ordering::Acquire), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn exhausted_sequence_does_not_publish_a_ticket() {
+        let monitor = BudgetMonitor::new().unwrap();
+        monitor.state.sequence.store(u64::MAX, Ordering::Relaxed);
+        let error = monitor
+            .arm(ordinary_request(), Instant::now() + Duration::from_secs(1))
+            .err()
+            .unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(monitor.state.active.load(Ordering::Acquire), 0);
+    }
+}

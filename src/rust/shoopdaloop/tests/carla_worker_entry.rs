@@ -295,8 +295,8 @@ fn application_worker_recovers_after_a_late_block() {
     let mut worker = SubprocessCarlaProcessor::spawn_test_worker(
         &executable,
         FXChainType::CarlaRack,
-        48_000,
-        32,
+        1000,
+        50,
         ChainId(44),
         ProcessGeneration(1),
         CarlaWorkerTestMode::DelayOnce,
@@ -312,7 +312,7 @@ fn application_worker_recovers_after_a_late_block() {
         worker.lifecycle(),
         shoop_engine::carla_processor::CarlaProcessorLifecycle::Degraded
     );
-    std::thread::sleep(std::time::Duration::from_millis(25));
+    std::thread::sleep(std::time::Duration::from_millis(550));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
     loop {
         worker.audio_input_mut(0).unwrap()[..32].fill(0.5);
@@ -342,15 +342,15 @@ fn application_supervisor_preserves_processing_health_across_restart() {
     let mut worker = SupervisedCarlaProcessor::launch_test_worker(
         &executable,
         FXChainType::CarlaRack,
-        48_000,
-        32,
+        1000,
+        50,
         ChainId(47),
         CarlaWorkerTestMode::DelayOnce,
     )
     .unwrap();
     worker.set_active(true);
     worker.process(32).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(25));
+    std::thread::sleep(std::time::Duration::from_millis(550));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
     while worker.lifecycle() == shoop_engine::carla_processor::CarlaProcessorLifecycle::Degraded {
         worker.process(32).unwrap();

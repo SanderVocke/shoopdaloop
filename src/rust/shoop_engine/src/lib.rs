@@ -21,7 +21,7 @@ mod carla_budget;
 mod carla_completion;
 #[cfg(not(target_arch = "wasm32"))]
 mod carla_deadline;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "carla", test)))]
 mod carla_execution;
 #[cfg(feature = "carla")]
 pub mod carla_native;

@@ -430,7 +430,7 @@ impl SharedBlockTransport {
     ) -> std::result::Result<(), SharedBlockError> {
         loop {
             let state = self.state(token.slot).load(Ordering::Acquire);
-            if state == STATE_DONE {
+            if state == STATE_DONE && Instant::now() < deadline {
                 if self.sequence(token.slot).load(Ordering::Relaxed) != token.sequence.0
                     || self.slot_generation(token.slot).load(Ordering::Relaxed)
                         != token.generation.0
@@ -509,7 +509,7 @@ impl SharedBlockTransport {
     ) -> std::result::Result<(), SharedBlockError> {
         loop {
             let state = self.state(token.slot).load(Ordering::Acquire);
-            if state == STATE_DONE {
+            if state == STATE_DONE && Instant::now() < deadline {
                 if self.sequence(token.slot).load(Ordering::Relaxed) != token.sequence.0
                     || self.slot_generation(token.slot).load(Ordering::Relaxed)
                         != token.generation.0
@@ -939,6 +939,13 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    fn test_nonce() -> [u8; 32] {
+        let mut nonce = [0; 32];
+        nonce[..16].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+        nonce[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+        nonce
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn shared_slots_round_trip_audio_midi_and_identity() {
         let nonce = [9; 32];
@@ -1074,9 +1081,46 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn completed_blocks_are_rejected_after_the_wait_deadline() {
+        let generation = ProcessGeneration(1);
+        let nonce = test_nonce();
+        let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
+        let mut worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
+        for reuse_midi in [false, true] {
+            let token = parent
+                .submit(
+                    BlockSequence(1 + u64::from(reuse_midi)),
+                    8,
+                    &[vec![1.0; 8]],
+                    1,
+                    &[],
+                    &[],
+                )
+                .unwrap();
+            let taken = worker.worker_take().unwrap();
+            worker.worker_complete(taken, &[&[0.5; 8]], &[]).unwrap();
+            let mut outputs = [vec![1.0; 8]];
+            let result = if reuse_midi {
+                parent.wait_and_copy_reusing_midi(
+                    token,
+                    Instant::now(),
+                    &mut outputs,
+                    &mut [],
+                    &mut 0,
+                )
+            } else {
+                parent.wait_and_copy(token, Instant::now(), &mut outputs, &mut Vec::new())
+            };
+            assert_eq!(result, Err(SharedBlockError::DeadlineMiss));
+            assert_eq!(outputs[0], [1.0; 8], "expired results must not be copied");
+            assert!(worker.worker_take().is_none());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn nested_transports_preserve_one_deadline_instead_of_renewing_the_budget() {
         let generation = ProcessGeneration(1);
-        let nonce = [21; 32];
+        let nonce = test_nonce();
         let mut outer = SharedBlockTransport::create(generation, &nonce).unwrap();
         let mut bridge = SharedBlockTransport::open(outer.path(), generation, &nonce).unwrap();
         let mut inner = SharedBlockTransport::create(generation, &nonce).unwrap();
@@ -1117,7 +1161,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn quiesced_worker_publishes_audio_and_midi_silence_without_allocation() {
         let generation = ProcessGeneration(1);
-        let nonce = [22; 32];
+        let nonce = test_nonce();
         let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
         let mut worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
         let token = parent
