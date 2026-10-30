@@ -216,3 +216,10 @@ src/rust/shoopdaloop/src/browser_worker.rs,application_ui_and_control,instrument
 src/rust/shoopdaloop/src/main.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoopdaloop/src/native_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/settings.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_rt_protocol/src/client.rs,engine_protocol,excluded,Plain-data client state and credit accounting; the application adapter owns tracing of requests and outcomes.
+src/rust/shoop_rt_protocol/src/codec.rs,engine_protocol,excluded,Bounded record encoding and decoding without I/O or allocation; carriers and adapters trace transport failures.
+src/rust/shoop_rt_protocol/src/ids.rs,engine_protocol,excluded,Plain identity values.
+src/rust/shoop_rt_protocol/src/lib.rs,engine_protocol,excluded,Module declarations and protocol constants.
+src/rust/shoop_rt_protocol/src/message.rs,engine_protocol,excluded,Plain message and lane values.
+src/rust/shoop_rt_protocol/src/schema.rs,engine_protocol,excluded,Plain request, outcome, telemetry, state and bulk values.
+src/rust/shoop_rt_protocol/src/carrier.rs,engine_protocol,excluded,Bounded queues and carriers without semantics; the engine host and adapter trace connection lifecycle.

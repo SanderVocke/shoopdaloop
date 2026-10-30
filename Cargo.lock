@@ -4460,6 +4460,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_protocol"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_script_resources"
 version = "0.3.0"
 dependencies = [

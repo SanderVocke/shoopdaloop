@@ -262,7 +262,9 @@ Render performance is not an acceptance criterion of this milestone.
     jobs running concurrently;
   - where the session's launcher can place it in a cgroup with a 20% memory limit,
     that kernel-enforced limit is preferred; the wrapper then remains as an early
-    warning.
+    warning;
+  - keep build output off the shared `/home` pool: the repository's `target`
+    directories are symlinks into `/tmp`, and caches and reports go there too.
 - **Project rules apply.** Follow `AGENTS.md` and `.agents/`. Build through
   `nix develop` with `RUSTFLAGS="-D warnings"`, run `cargo fmt --all` before
   committing, use `#[shoop_test]` and run `check_shoop_test_usage.py` when tests
@@ -347,12 +349,12 @@ tests; boundary script.
 
 ### Stage 4 — Protocol (`shoop_rt_protocol`)
 
-- [ ] Schema modules: strips and mixer, loops, telemetry, bulk; engine-owned driver
+- [x] Schema modules: strips and mixer, loops, telemetry, bulk; engine-owned driver
       configuration and discovery vocabulary.
-- [ ] Capability and limit descriptor, limits as changeable values, IDs with
+- [x] Capability and limit descriptor, limits as changeable values, IDs with
       generations.
-- [ ] Connection lifecycle: handshake, resynchronization, disconnect, limits-changed.
-- [ ] Lanes with credits; carrier traits; the in-process carrier; the binary record
+- [x] Connection lifecycle: handshake, resynchronization, disconnect, limits-changed.
+- [x] Lanes with credits; carrier traits; the in-process carrier; the binary record
       codec.
 
 **Verify:** codec round-trip and malformed-input tests; lane credit and lifecycle
