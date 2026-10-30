@@ -116,6 +116,16 @@ if (first.outputs.some(channel => channel.some(sample => sample !== 0))) {
   throw new Error('an engine without strips rendered non-silent output');
 }
 
+// An input without connected channels, as before the microphone is connected.
+{
+  const outputs = [[new Float32Array(128).fill(9), new Float32Array(128).fill(9)]];
+  if (!node.process([[]], outputs)) throw new Error('the processor stopped without input channels');
+  globalThis.currentFrame += 128;
+  if (outputs[0].some(channel => channel.some(sample => sample !== 0))) {
+    throw new Error('an engine without input channels rendered non-silent output');
+  }
+}
+
 // A MIDI event for a port that does not exist, then a late one on the only port.
 const event = (frame, port, message) => {
   const bytes = new Uint8Array(10 + message.length);

@@ -43,13 +43,14 @@ use shoop_egui::register_carla_settings;
 use shoop_egui::register_script_settings;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use shoop_egui::register_settings;
+use shoop_egui::AudioBackendKind;
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::AudioDriverConfig;
 use shoop_egui::{
     register_audio_settings_with_default_driver, register_settings_with_appearance_defaults,
     AppIntent, AppSnapshot, AppWidget, AudioDriverKind, ScriptKind, SettingsAction,
     SettingsRegistryBuilder, TrackDefaultSaveResult, UI_SCALE_FACTOR,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use shoop_egui::{AudioBackendKind, AudioDriverConfig};
 use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
@@ -61,6 +62,10 @@ mod browser_audio;
 mod browser_midi;
 #[cfg(target_arch = "wasm32")]
 mod browser_preview;
+#[cfg(any(target_arch = "wasm32", test))]
+mod browser_rt_audio;
+#[cfg(target_arch = "wasm32")]
+mod browser_rt_self_test;
 #[cfg(target_arch = "wasm32")]
 mod browser_trace;
 #[cfg(target_arch = "wasm32")]
@@ -429,6 +434,8 @@ struct UnifiedApp {
     #[cfg(target_arch = "wasm32")]
     browser_settings_test: BrowserSettingsSelfTest,
     #[cfg(target_arch = "wasm32")]
+    new_engine_self_test: browser_rt_self_test::NewEngineSelfTest,
+    #[cfg(target_arch = "wasm32")]
     args: AppArgs,
     #[cfg(target_arch = "wasm32")]
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
@@ -510,7 +517,6 @@ impl UnifiedApp {
             &mut settings_builder,
             default_audio_driver_kind(),
         )?;
-        #[cfg(not(target_arch = "wasm32"))]
         shoop_egui::register_audio_backend_settings(&mut settings_builder)?;
         #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
         register_carla_settings(&mut settings_builder)?;
@@ -558,6 +564,10 @@ impl UnifiedApp {
             browser_self_test: BrowserSelfTest::from_args(args),
             #[cfg(target_arch = "wasm32")]
             browser_settings_test: BrowserSettingsSelfTest::from_args(args),
+            #[cfg(target_arch = "wasm32")]
+            new_engine_self_test: browser_rt_self_test::NewEngineSelfTest::new(
+                args.new_engine_self_test,
+            ),
             #[cfg(target_arch = "wasm32")]
             args: args.clone(),
             #[cfg(target_arch = "wasm32")]
@@ -1294,6 +1304,9 @@ impl UnifiedApp {
         #[cfg(target_arch = "wasm32")]
         self.browser_settings_test
             .update(&mut self.settings, &mut self.widget, &self.runtime);
+        #[cfg(target_arch = "wasm32")]
+        self.new_engine_self_test
+            .update(&mut self.runtime, &snapshot);
         let settings_state = self.settings.view();
         #[cfg(not(target_arch = "wasm32"))]
         let script_paths = Some(self.runtime.script_paths());
@@ -2542,11 +2555,25 @@ async fn fetch_browser_catalog(
 enum BrowserRuntimeMode {
     WebAudio(browser_audio::BrowserAudioController),
     Worker(browser_worker::BrowserWorkerDriver),
+    NewEngine(browser_rt_audio::BrowserRtAudio),
+}
+
+/// What the application needs to start once the new engine is connected.
+#[cfg(target_arch = "wasm32")]
+struct PendingNewEngineStart {
+    midi_service: Box<dyn shoop_scripting::MidiControlService>,
+    master_auto_connect: bool,
+    loop_smoothing_ms: u32,
+    warnings: Vec<String>,
 }
 
 #[cfg(target_arch = "wasm32")]
 struct Runtime {
-    runtime: CooperativeApplicationRuntime,
+    /// Absent until the new engine backend is connected.
+    runtime: Option<CooperativeApplicationRuntime>,
+    pending_start: Option<PendingNewEngineStart>,
+    /// The snapshot shown while the application has not started.
+    waiting_snapshot: std::sync::Arc<AppSnapshot>,
     mode: BrowserRuntimeMode,
     midi: browser_midi::BrowserMidiController,
     preview_player: browser_preview::BrowserPreviewPlayer,
@@ -2578,6 +2605,20 @@ impl Runtime {
         let offline = args.offline;
         let worker = args.worker;
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
+        let audio_backend = match args
+            .audio_backend
+            .map(Ok)
+            .unwrap_or_else(|| shoop_egui::audio_backend_from_snapshot(settings))
+        {
+            Ok(kind) => kind,
+            Err(error) => {
+                tracing::warn!(error = %error, "frontend.audio.backend_setting_fallback");
+                AudioBackendKind::Legacy
+            }
+        };
+        if audio_backend == AudioBackendKind::NewEngine {
+            return Self::new_engine(settings, offline || worker, midi, midi_service);
+        }
         let (mut backend, transport) = shoop_worklet_client::RemoteWorkletBackend::new(midi.hub());
         let loop_smoothing_ms = match shoop_egui::loop_edge_smoothing_ms(settings) {
             Ok(milliseconds) => milliseconds,
@@ -2607,7 +2648,7 @@ impl Runtime {
             BrowserRuntimeMode::WebAudio(browser_audio::BrowserAudioController::new(transport)?)
         };
         let mut runtime = Self {
-            runtime: CooperativeApplicationRuntime::start_with_options_and_midi(
+            runtime: Some(CooperativeApplicationRuntime::start_with_options_and_midi(
                 Box::new(backend),
                 shoop_app::ApplicationStartOptions {
                     startup_scripts: Vec::new(),
@@ -2615,7 +2656,9 @@ impl Runtime {
                     ..Default::default()
                 },
                 midi_service,
-            )?,
+            )?),
+            pending_start: None,
+            waiting_snapshot: Default::default(),
             mode,
             midi,
             preview_player: browser_preview::BrowserPreviewPlayer::default(),
@@ -2631,12 +2674,152 @@ impl Runtime {
         Ok(runtime)
     }
 
+    /// The new engine backend: the application starts once browser audio is enabled and
+    /// the engine is connected.
+    fn new_engine(
+        settings: &shoop_settings::SettingsSnapshot,
+        offline: bool,
+        midi: browser_midi::BrowserMidiController,
+        midi_service: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> anyhow::Result<Self> {
+        let mut warnings = Vec::new();
+        let pools = shoop_egui::new_engine_pools_from_snapshot(settings).unwrap_or_else(|error| {
+            warnings.push(format!(
+                "Could not use the new engine's capacity settings: {error}; using the defaults"
+            ));
+            shoop_egui::NewEnginePools::default()
+        });
+        let loop_smoothing_ms =
+            shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or_else(|error| {
+                warnings.push(format!(
+                    "Could not use loop edge smoothing setting: {error}; using 3 ms"
+                ));
+                3
+            });
+        let master_auto_connect =
+            shoop_egui::master_auto_connect(settings).unwrap_or_else(|error| {
+                warnings.push(format!(
+                "Could not use Master auto-connect setting: {error}; using automatic connection"
+            ));
+                true
+            });
+        let controller = browser_rt_audio::BrowserRtAudio::new(midi.hub(), pools)?;
+        if offline {
+            set_offline_audio_permission_presentation();
+            controller.refuse(
+                "The new engine backend has no offline mode; reload without offline or worker, or start with audio-backend=legacy".to_owned(),
+            );
+        }
+        let mut runtime = Self {
+            runtime: None,
+            pending_start: Some(PendingNewEngineStart {
+                midi_service,
+                master_auto_connect,
+                loop_smoothing_ms,
+                warnings,
+            }),
+            waiting_snapshot: Default::default(),
+            mode: BrowserRuntimeMode::NewEngine(controller),
+            midi,
+            preview_player: browser_preview::BrowserPreviewPlayer::default(),
+            catalog_scan_generation: 0,
+            catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
+            applied_audio_settings_revision: settings.revision(),
+            applied_settings_revision: settings.revision(),
+            tracing_requested: false,
+            tracing_engine_detail: false,
+            tracing_realm_active: false,
+        };
+        runtime.update_waiting_snapshot();
+        runtime.request_builtin_rescan(settings);
+        Ok(runtime)
+    }
+
+    /// Starts the application on the new engine backend once it is connected.
+    fn start_new_engine(&mut self) {
+        let BrowserRuntimeMode::NewEngine(controller) = &self.mode else {
+            return;
+        };
+        if self.runtime.is_some() {
+            return;
+        }
+        let Some((mut backend, host_warnings)) = controller.take_backend() else {
+            return;
+        };
+        let Some(pending) = self.pending_start.take() else {
+            return;
+        };
+        let mut warnings = pending.warnings;
+        warnings.extend(host_warnings);
+        if let Err(error) = backend.set_loop_smoothing_ms(pending.loop_smoothing_ms) {
+            warnings.push(format!("Could not apply loop edge smoothing: {error:#}"));
+        }
+        for warning in &warnings {
+            tracing::warn!(warning = %warning, "frontend.startup.fallback");
+        }
+        match CooperativeApplicationRuntime::start_with_options_and_midi(
+            backend,
+            shoop_app::ApplicationStartOptions {
+                startup_scripts: Vec::new(),
+                master_auto_connect: pending.master_auto_connect,
+                startup_warnings: warnings,
+            },
+            pending.midi_service,
+        ) {
+            Ok(runtime) => self.runtime = Some(runtime),
+            Err(error) => controller.refuse(format!(
+                "The application could not start on the new engine backend: {error:#}"
+            )),
+        }
+    }
+
+    fn update_waiting_snapshot(&mut self) {
+        let BrowserRuntimeMode::NewEngine(controller) = &self.mode else {
+            return;
+        };
+        let audio_driver = controller.driver_state();
+        let (error, message) = controller.notice();
+        let current = &self.waiting_snapshot;
+        if current.status.audio_driver == audio_driver
+            && current
+                .notifications
+                .first()
+                .is_some_and(|notification| notification.message == message)
+        {
+            return;
+        }
+        self.waiting_snapshot = std::sync::Arc::new(AppSnapshot {
+            revision: current.revision + 1,
+            status: shoop_egui::StatusState {
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                audio_driver,
+                ..Default::default()
+            },
+            capabilities: shoop_egui::BackendCapabilities::NONE,
+            notifications: std::sync::Arc::from([shoop_egui::AppNotification {
+                id: current.revision + 1,
+                level: if error {
+                    shoop_egui::NotificationLevel::Error
+                } else {
+                    shoop_egui::NotificationLevel::Warning
+                },
+                message,
+            }]),
+            ..Default::default()
+        });
+    }
+
+    fn new_engine_microphone(&self) -> bool {
+        matches!(&self.mode, BrowserRuntimeMode::NewEngine(controller) if controller.microphone_connected())
+    }
+
     fn set_repaint_context(&self, context: egui::Context) {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => {
                 controller.set_repaint_context(context);
             }
             BrowserRuntimeMode::Worker(driver) => driver.set_repaint_context(context),
+            BrowserRuntimeMode::NewEngine(controller) => controller.set_repaint_context(context),
         }
     }
 
@@ -2651,6 +2834,7 @@ impl Runtime {
             self.tracing_realm_active = match &self.mode {
                 BrowserRuntimeMode::WebAudio(controller) => controller.has_active_trace(),
                 BrowserRuntimeMode::Worker(driver) => driver.has_active_trace(),
+                BrowserRuntimeMode::NewEngine(_) => false,
             };
         }
         if !self.tracing_requested || self.tracing_realm_active {
@@ -2663,6 +2847,8 @@ impl Runtime {
             BrowserRuntimeMode::Worker(driver) => {
                 driver.start_tracing(self.tracing_engine_detail)?
             }
+            // The new engine's worklet has no trace realm; the main thread is traced.
+            BrowserRuntimeMode::NewEngine(_) => false,
         };
         Ok(())
     }
@@ -2671,6 +2857,7 @@ impl Runtime {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => controller.poll_tracing(),
             BrowserRuntimeMode::Worker(driver) => driver.poll_tracing(),
+            BrowserRuntimeMode::NewEngine(_) => Ok(()),
         }
     }
 
@@ -2679,6 +2866,7 @@ impl Runtime {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => controller.discard_tracing(),
             BrowserRuntimeMode::Worker(driver) => driver.discard_tracing(),
+            BrowserRuntimeMode::NewEngine(_) => {}
         }
         self.tracing_realm_active = false;
     }
@@ -2691,6 +2879,7 @@ impl Runtime {
             BrowserRuntimeMode::Worker(driver) => {
                 driver.state() == shoop_backend::BackendDriverState::Dummy
             }
+            BrowserRuntimeMode::NewEngine(_) => false,
         }
     }
 
@@ -2699,6 +2888,7 @@ impl Runtime {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => controller.request_stop_tracing(),
             BrowserRuntimeMode::Worker(driver) => driver.request_stop_tracing(),
+            BrowserRuntimeMode::NewEngine(_) => Ok(()),
         }
     }
 
@@ -2706,6 +2896,7 @@ impl Runtime {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => controller.trace_stopped(),
             BrowserRuntimeMode::Worker(driver) => driver.trace_stopped(),
+            BrowserRuntimeMode::NewEngine(_) => true,
         }
     }
 
@@ -2723,6 +2914,7 @@ impl Runtime {
         let realms = match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => controller.take_traces()?,
             BrowserRuntimeMode::Worker(driver) => driver.take_trace()?.map(|realm| vec![realm]),
+            BrowserRuntimeMode::NewEngine(_) => Some(Vec::new()),
         };
         let Some(realms) = realms else {
             return Ok(None);
@@ -2732,6 +2924,21 @@ impl Runtime {
     }
 
     fn tick(&mut self, elapsed: Duration) {
+        self.start_new_engine();
+        if self.runtime.is_none() {
+            self.midi.update_presentation();
+            if let BrowserRuntimeMode::NewEngine(controller) = &self.mode {
+                controller.update_presentation();
+            }
+            self.update_waiting_snapshot();
+            let message = format!(
+                "Browser audio (new engine): {:?}",
+                self.waiting_snapshot.status.audio_driver
+            );
+            set_browser_status(&message, Some(&self.waiting_snapshot));
+            self.publish_midi_status();
+            return;
+        }
         let completions = self
             .catalog_completions
             .borrow_mut()
@@ -2746,7 +2953,7 @@ impl Runtime {
                     for warning in warnings {
                         tracing::warn!(warning = %warning, "frontend.scripting.catalog_scan_warning");
                     }
-                    let _ = self.runtime.dispatch(AppIntent::ReconcileCatalogScripts {
+                    let _ = self.dispatch(AppIntent::ReconcileCatalogScripts {
                         scripts: scripts.into(),
                         preserve_identities: preserve_identities.into(),
                     });
@@ -2756,9 +2963,11 @@ impl Runtime {
                 }
             }
         }
-        self.runtime.tick(elapsed);
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.tick(elapsed);
+        }
         self.midi.update_presentation();
-        let snapshot = self.runtime.snapshot();
+        let snapshot = self.snapshot();
         let message = match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => {
                 controller.update_presentation();
@@ -2768,8 +2977,19 @@ impl Runtime {
                 driver.update_presentation();
                 format!("Browser offline Worker engine: {:?}", driver.state())
             }
+            BrowserRuntimeMode::NewEngine(controller) => {
+                controller.update_presentation();
+                format!(
+                    "Browser audio (new engine): {:?}",
+                    snapshot.status.audio_driver
+                )
+            }
         };
         set_browser_status(&message, Some(&snapshot));
+        self.publish_midi_status();
+    }
+
+    fn publish_midi_status(&self) {
         if let Some(element) = browser_status_element() {
             let _ = element.set_attribute("data-web-midi", &format!("{:?}", self.midi.state()));
             let _ = element.set_attribute(
@@ -2791,7 +3011,9 @@ impl Runtime {
         &mut self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<()> {
-        let runtime = &mut self.runtime;
+        let Some(runtime) = self.runtime.as_mut() else {
+            return Ok(());
+        };
         reconcile_loop_smoothing_settings(
             settings,
             &mut self.applied_audio_settings_revision,
@@ -2832,15 +3054,21 @@ impl Runtime {
     }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
-        self.runtime.snapshot()
+        match &self.runtime {
+            Some(runtime) => runtime.snapshot(),
+            None => std::sync::Arc::clone(&self.waiting_snapshot),
+        }
     }
 
     fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
-        self.runtime.dispatch(intent)
+        match &mut self.runtime {
+            Some(runtime) => runtime.dispatch(intent),
+            None => Err(shoop_app::DispatchError::Disconnected),
+        }
     }
 
     fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
-        self.runtime.take_file_output()
+        self.runtime.as_ref()?.take_file_output()
     }
 
     fn audio_preview_available(&self) -> bool {
@@ -2848,17 +3076,21 @@ impl Runtime {
     }
 
     fn process_audio_previews(&mut self) {
+        let Some(runtime) = self.runtime.as_mut() else {
+            return;
+        };
         if let Some(intent) = self.preview_player.update() {
-            let _ = self.runtime.dispatch(intent);
+            let _ = runtime.dispatch(intent);
         }
-        while let Some(preview) = self.runtime.take_audio_preview() {
+        while let Some(preview) = runtime.take_audio_preview() {
             let request_id = preview.request_id;
             let context = match &self.mode {
                 BrowserRuntimeMode::WebAudio(controller) => controller.audio_context(),
                 BrowserRuntimeMode::Worker(_) => None,
+                BrowserRuntimeMode::NewEngine(controller) => controller.audio_context(),
             };
             if let Err(message) = self.preview_player.play(context, preview) {
-                let _ = self.runtime.dispatch(AppIntent::CompleteClickTrackPreview {
+                let _ = runtime.dispatch(AppIntent::CompleteClickTrackPreview {
                     request_id,
                     success: false,
                     message,
@@ -2878,6 +3110,9 @@ impl Runtime {
                     shoop_backend::BackendDriverState::Running
                         | shoop_backend::BackendDriverState::Dummy
                 )
+            }
+            BrowserRuntimeMode::NewEngine(controller) => {
+                controller.running() && self.runtime.is_some()
             }
         }
     }

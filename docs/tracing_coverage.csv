@@ -212,6 +212,8 @@ src/rust/shoopdaloop/src/app_args.rs,application_ui_and_control,excluded,Parses 
 src/rust/shoopdaloop/src/browser_audio.rs,application_ui_and_control,instrumented_direct,"Owns AudioWorklet trace ring attachment, producer stop, and realm publication."
 src/rust/shoopdaloop/src/browser_midi.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/browser_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoopdaloop/src/browser_rt_audio.rs,application_ui_and_control,instrumented_direct,"Traces the new engine's browser preparation, connection and failures and its microphone, MIDI and posting problems."
+src/rust/shoopdaloop/src/browser_rt_self_test.rs,application_ui_and_control,instrumented_direct,Traces the steps and failure of the browser self-test of the new engine backend.
 src/rust/shoopdaloop/src/browser_trace.rs,application_ui_and_control,instrumented_direct,"Owns browser realm ring setup, metadata, calibration, draining, and health conversion."
 src/rust/shoopdaloop/src/browser_worker.rs,application_ui_and_control,instrumented_direct,"Owns Engine Worker trace ring attachment, producer stop, and realm publication."
 src/rust/shoopdaloop/src/engine_backend.rs,application_ui_and_control,instrumented_direct,"Traces the new engine backend's start and the problems of its host's stop report; settings mapping runs within the traced start."
@@ -264,4 +266,5 @@ src/rust/shoop_rt_host_worklet/src/framing.rs,browser_engine_host,excluded,Alloc
 src/rust/shoop_rt_host_worklet/src/host.rs,browser_engine_host,excluded,"Pumps the record server and renders on the audio thread, which must not trace; xruns, load, MIDI drops and faults are reported through counters and engine telemetry."
 src/rust/shoop_rt_host_worklet/src/lane.rs,browser_engine_host,excluded,Plain MIDI lane event encoding; drops are counted by the host.
 src/rust/shoop_rt_host_worklet/src/lib.rs,browser_engine_host,excluded,Module declarations and re-exports.
+src/rust/shoop_rt_host_worklet/src/main_thread.rs,browser_engine_host,excluded,"Browser-independent record batches, MIDI lane batching, timestamp conversion and port naming; the application's browser glue traces preparation, connection and failures."
 src/rust/shoop_rt_host_worklet/src/stream.rs,browser_engine_host,excluded,Fixed-capacity byte buffers shared with the processor script; no execution boundary to instrument.

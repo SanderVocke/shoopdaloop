@@ -10,8 +10,8 @@
 //! `postMessage` in batches ([`framing`]); Web MIDI travels on its own lanes
 //! ([`lane`]). The host contains no engine or application semantics.
 //!
-//! Without the default `exports` feature the crate only provides the formats,
-//! for the main-thread half.
+//! Without the default `exports` feature the crate only provides the formats and
+//! the browser-independent parts of the main-thread half ([`main_thread`]).
 #![deny(unsafe_code)]
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -28,6 +28,7 @@ pub mod config;
 pub mod framing;
 mod host;
 pub mod lane;
+pub mod main_thread;
 mod stream;
 
 pub use config::{ConfigError, WorkletConfig};

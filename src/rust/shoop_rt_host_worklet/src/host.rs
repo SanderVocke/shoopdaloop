@@ -245,6 +245,7 @@ impl WorkletHost {
             Inbound::Midi => f(&mut self.midi_in),
         }
     }
+    #[cfg(feature = "exports")]
     pub(crate) fn outbound_ptr(&self, lane: Outbound) -> (*const u8, usize) {
         match lane {
             Outbound::Records => {
@@ -254,9 +255,11 @@ impl WorkletHost {
             Outbound::Midi => (self.midi_out.as_ptr(), self.midi_out.capacity()),
         }
     }
+    #[cfg(feature = "exports")]
     pub(crate) fn input_ptr(&mut self) -> *mut f32 {
         self.input.as_mut_ptr()
     }
+    #[cfg(feature = "exports")]
     pub(crate) fn output_ptr(&self) -> *const f32 {
         self.output.as_ptr()
     }

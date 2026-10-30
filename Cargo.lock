@@ -4679,6 +4679,8 @@ dependencies = [
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",
+ "shoop_rt_host_worklet",
+ "shoop_rt_protocol",
  "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",

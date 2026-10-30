@@ -480,9 +480,9 @@ chose. Startup warnings reach the user through `ApplicationStartOptions`.
 
 - [x] The raw-Wasm worklet module around the engine and the MessagePort carrier
       server, prepared before its first render quantum.
-- [ ] The main-thread half: carrier client wiring and Web MIDI forwarding on its own
+- [x] The main-thread half: carrier client wiring and Web MIDI forwarding on its own
       lane.
-- [ ] Build integration next to the existing worklet artifact; browser selection
+- [x] Build integration next to the existing worklet artifact; browser selection
       through the same setting and override.
 
 **Verify:** Node tests of the worklet logic over a simulated MessagePort carrier;
@@ -493,6 +493,16 @@ imports; one browser smoke of the core workflow.
 and driven by `rt_audio_worklet.js`; `rt_worklet_contract.mjs` checks in CI that it
 has no imports and runs it over a simulated MessagePort. The worklet also has a
 MIDI-out lane for the main-thread half to forward to Web MIDI outputs.
+
+*Browser notes:* the application stays on the main thread and starts once the engine
+is connected, because its startup creates the sync track. The same setting and the
+`?audio-backend=new_engine` override select the backend; loop memory is capped at
+256 MiB in the browser. Host ports are fixed when the engine is prepared: output-only
+mode reserves two capture channels so enabling the microphone later does not restart
+audio, and Web MIDI ports that appear after audio starts need a page reload. Offline
+and Worker modes are refused for the new engine, and its worklet has no trace realm.
+The Firefox smoke of the core workflow passed with the new backend (Firefox 136,
+headless), and the legacy Firefox smoke still passes.
 
 ### Stage 9 — Documents
 

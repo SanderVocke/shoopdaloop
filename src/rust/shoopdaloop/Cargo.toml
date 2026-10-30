@@ -44,6 +44,11 @@ rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
 js-sys = "0.3"
 log = { workspace = true }
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
+shoop_rt_backend = { path = "../shoop_rt_backend" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+# Without its exports, so the worklet module's entry points stay out of the application.
+shoop_rt_host_worklet = { path = "../shoop_rt_host_worklet", default-features = false }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_session = { path = "../shoop_session" }
 shoop_tracing = { workspace = true, features = ["ordinary-web"] }
 shoop_worklet_client = { path = "../shoop_worklet_client" }
@@ -114,6 +119,8 @@ tempfile = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+shoop_rt_host_worklet = { path = "../shoop_rt_host_worklet", default-features = false }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

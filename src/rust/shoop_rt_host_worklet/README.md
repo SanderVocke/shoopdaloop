@@ -10,9 +10,10 @@ the protocol and `rt_runtime`'s buffer types; `scripts/check_rt_engine_boundary.
 enforces that it reaches no application crate.
 
 The processor script is `src/rust/shoopdaloop/rt_audio_worklet.js`; it registers
-`shoop-rt-audio-processor`. The main-thread half (the protocol client over the
-node's `MessagePort`, Web MIDI forwarding and browser backend selection) is built
-against the interface below.
+`shoop-rt-audio-processor`. The main-thread half is in two parts: the
+browser-independent [`main_thread`](#main-thread) module here, and the browser
+glue in the application (`src/rust/shoopdaloop/src/browser_rt_audio.rs`), which
+opens the audio context, creates the node and bridges Web MIDI.
 
 ## Build and artifact
 
@@ -24,9 +25,12 @@ python3 src/rust/shoopdaloop/build_worklet.py --profile release --output-dir <di
 `build_worklet.py` (Trunk's pre-build hook) builds the legacy module and this one
 in separate Cargo runs and copies `shoop_rt_host_worklet.wasm` next to
 `shoop_audio_worklet.wasm` in `generated/`, so it is served as
-`./generated/shoop_rt_host_worklet.wasm`. Serving the processor script and
-packaging both files into the hosted and single-file applications belong to
-browser backend selection.
+`./generated/shoop_rt_host_worklet.wasm`; Trunk copies `rt_audio_worklet.js` next
+to `index.html`. The hosted web archive contains both files, and the single-file
+application embeds them as `shoopEmbeddedAudioWorklet.rtModuleUrl` and
+`rtWasmBytes`. The application depends on this crate without `exports`; build it
+with `-p shoopdaloop` (as Trunk does) so the exports are not feature-unified into
+the application module.
 
 `src/rust/shoopdaloop/rt_worklet_contract.mjs <wasm>` is the committed artifact
 check that CI runs on the built module: no imports, the expected exports, and the
@@ -179,11 +183,42 @@ The crate is `#![deny(unsafe_code)]`; the exports module allows it only for
 `no_mangle` and dereferences no pointers. The module holds one host per instance
 in a module-global cell.
 
+## Main thread
+
+The application starts the engine when the user enables browser audio:
+
+1. It creates the `AudioContext`, requests the microphone for microphone audio,
+   adds `rt_audio_worklet.js` and compiles `shoop_rt_host_worklet.wasm`. A Web
+   MIDI permission request that is still open is awaited for up to 15 s.
+2. `main_thread::web_host_ports` names the host ports: `webaudio:capture_N` for
+   the microphone's channels (two reserved channels without a microphone, so it
+   can be connected later), `webaudio:destination_N` for the destination's
+   channels and `webmidi:<port> in` or `out` for the Web MIDI ports known then.
+   The configuration record is built from these and the capacity settings with
+   `max_frames` 128.
+3. It creates the node, connects it to the destination (and the microphone to
+   its input) and starts `RtBackend::begin` over a `RecordClient` on
+   `main_thread::RecordBatches`, which collects posted records into one batch
+   posted at the end of the main-thread turn and splits received batches into
+   records. A `failed` message, a processor error or a closed context closes it:
+   the adapter then reads `Disconnected(Fault)`.
+4. The application starts once `RtBackend::is_ready()`.
+
+Web MIDI input bypasses the application: each message is converted to a frame
+with `main_thread::MidiClock` from `getOutputTimestamp()` and the context's
+latencies, two quanta ahead, and posted on the MIDI-in lane in the same turn
+(`MidiInBatch`, bounded by `midi_in_bytes`). MIDI-out lane events are sent to the
+Web MIDI output of their port index at the time their frame is heard.
+
+The host ports are fixed when the engine is prepared: Web MIDI ports allowed or
+connected later need a reload, which the permissions dialog says.
+
 ## Formats without the module
 
 The `exports` feature (default) compiles the exports. A main-thread crate can
 depend on this crate with `default-features = false` to use `WorkletConfig`,
-`framing` and `lane` without adding the exports to its own Wasm module.
+`framing`, `lane` and `main_thread` without adding the exports to its own Wasm
+module.
 
 ## Tests
 
@@ -192,6 +227,9 @@ cargo test -p shoop_rt_host_worklet
 python3 scripts/run_wasm_tests.py --runtime node --package shoop_rt_host_worklet
 node src/rust/shoopdaloop/rt_worklet_contract.mjs <shoop_rt_host_worklet.wasm>
 ```
+
+`main_thread`'s unit tests cover the record batches, the MIDI-in lane batch, the
+timestamp conversion and the host port names.
 
 The integration tests drive `WorkletHost` the way the processor script does: a
 `ProtocolClient` on the main thread exchanges `postMessage` batches with a

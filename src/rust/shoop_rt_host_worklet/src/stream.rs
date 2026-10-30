@@ -19,13 +19,16 @@ impl Stream {
             end: 0,
         }
     }
+    #[cfg(feature = "exports")]
     pub(crate) fn as_mut_ptr(&mut self) -> *mut u8 {
         self.bytes.as_mut_ptr()
     }
+    #[cfg(feature = "exports")]
     pub(crate) fn capacity(&self) -> usize {
         self.bytes.len()
     }
     /// Offset of the next appended byte.
+    #[cfg(feature = "exports")]
     pub(crate) fn len(&self) -> usize {
         self.end
     }
@@ -102,9 +105,11 @@ impl Batch {
             len: 0,
         }
     }
+    #[cfg(feature = "exports")]
     pub(crate) fn as_ptr(&self) -> *const u8 {
         self.bytes.as_ptr()
     }
+    #[cfg(feature = "exports")]
     pub(crate) fn capacity(&self) -> usize {
         self.bytes.len()
     }

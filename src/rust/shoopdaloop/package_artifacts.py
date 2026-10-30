@@ -47,6 +47,8 @@ WEB_REQUIRED_FILES = (
     "audio_worker.js",
     "worker_fixture_contract.js",
     "generated/shoop_audio_worklet.wasm",
+    "rt_audio_worklet.js",
+    "generated/shoop_rt_host_worklet.wasm",
     *(f"roboto/{name}" for name in ROBOTO_FILES),
 )
 
@@ -470,10 +472,12 @@ def verify_web(bundle: Path, html: Path | None) -> None:
         raise RuntimeError("hosted web archive contains the wrong application icon")
     hosted_application = archive_file(bundle, wasm[0])
     hosted_worklet = archive_file(bundle, f"{root}generated/shoop_audio_worklet.wasm")
+    hosted_rt_worklet = archive_file(bundle, f"{root}generated/shoop_rt_host_worklet.wasm")
     require_click_assets(hosted_application, "hosted application Wasm")
     reject_carla_native_payload(hosted_application, "hosted application Wasm")
     reject_application_script_payload(hosted_application, "hosted application Wasm")
     reject_carla_native_payload(hosted_worklet, "hosted AudioWorklet Wasm")
+    reject_carla_native_payload(hosted_rt_worklet, "hosted new engine AudioWorklet Wasm")
     if html is None:
         return
     text = html.read_text(encoding="utf-8")
@@ -510,7 +514,7 @@ def verify_web(bundle: Path, html: Path | None) -> None:
     ) != APPLICATION_ICON.read_bytes():
         raise RuntimeError("self-contained HTML does not contain the application icon")
     application_binary = None
-    for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary"):
+    for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary", "shoopRtWorkletBinary"):
         match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)
         if not match:
             raise RuntimeError(f"self-contained HTML is missing {variable}")
@@ -532,6 +536,11 @@ def verify_web(bundle: Path, html: Path | None) -> None:
         worklet.group(1), validate=True
     ):
         raise RuntimeError("self-contained HTML has an invalid AudioWorklet script")
+    rt_worklet = re.search(r'rtModuleUrl: "data:text/javascript;base64,([A-Za-z0-9+/=]+)"', text)
+    if not rt_worklet or b"shoop-rt-audio-processor" not in base64.b64decode(
+        rt_worklet.group(1), validate=True
+    ):
+        raise RuntimeError("self-contained HTML has an invalid new engine AudioWorklet script")
     if html.stat().st_size <= 0:
         raise RuntimeError("self-contained HTML is empty")
 

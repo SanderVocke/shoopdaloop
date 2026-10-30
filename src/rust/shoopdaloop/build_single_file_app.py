@@ -44,11 +44,15 @@ def build_single_file(dist: Path, output: Path) -> None:
     worklet_script_path = dist / "audio_worklet.js"
     worker_script_path = dist / "audio_worker.js"
     worklet_wasm_path = dist / "generated" / "shoop_audio_worklet.wasm"
+    rt_worklet_script_path = dist / "rt_audio_worklet.js"
+    rt_worklet_wasm_path = dist / "generated" / "shoop_rt_host_worklet.wasm"
     for path, description in [
         (raw_host_script_path, "raw Wasm host bridge"),
         (worklet_script_path, "AudioWorklet script"),
         (worker_script_path, "Worker engine script"),
         (worklet_wasm_path, "AudioWorklet WebAssembly file"),
+        (rt_worklet_script_path, "new engine AudioWorklet script"),
+        (rt_worklet_wasm_path, "new engine AudioWorklet WebAssembly file"),
     ]:
         if not path.is_file():
             raise RuntimeError(f"missing {description}: {path}")
@@ -117,6 +121,12 @@ def build_single_file(dist: Path, output: Path) -> None:
     encoded_worklet_wasm = base64.b64encode(worklet_wasm_path.read_bytes()).decode(
         "ascii"
     )
+    encoded_rt_worklet_source = base64.b64encode(
+        rt_worklet_script_path.read_bytes()
+    ).decode("ascii")
+    encoded_rt_worklet_wasm = base64.b64encode(
+        rt_worklet_wasm_path.read_bytes()
+    ).decode("ascii")
     encoded_wasm = base64.b64encode(wasm_path.read_bytes()).decode("ascii")
     builtins_root = dist / "builtins"
     builtin_files = sorted(path for path in builtins_root.rglob("*") if path.is_file())
@@ -143,10 +153,13 @@ const shoopAudioWorkletWasmBytes = Uint8Array.from(
     shoopAudioWorkletBinary,
     character => character.charCodeAt(0),
 );
+const shoopRtWorkletBinary = atob("{encoded_rt_worklet_wasm}");
 globalThis.shoopEmbeddedAudioWorklet = Object.freeze({{
     moduleUrl: shoopAudioWorkletModuleUrl,
     workerUrl: shoopAudioWorkerUrl,
     wasmBytes: shoopAudioWorkletWasmBytes,
+    rtModuleUrl: "data:text/javascript;base64,{encoded_rt_worklet_source}",
+    rtWasmBytes: Uint8Array.from(shoopRtWorkletBinary, character => character.charCodeAt(0)),
 }});
 {glue}
 const shoopWasmBinary = atob("{encoded_wasm}");

@@ -27,7 +27,6 @@ pub struct AppArgs {
     pub tracing_engine_detail: bool,
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
-    #[cfg(not(target_arch = "wasm32"))]
     /// Start with this audio backend instead of the saved setting: legacy or new_engine.
     #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::AudioBackendKind>())]
     pub audio_backend: Option<shoop_egui::AudioBackendKind>,
@@ -57,6 +56,9 @@ pub struct AppArgs {
     #[cfg(target_arch = "wasm32")]
     #[arg(long)]
     pub web_midi_test: bool,
+    #[cfg(target_arch = "wasm32")]
+    #[arg(long, hide = true)]
+    pub new_engine_self_test: bool,
     #[cfg(target_arch = "wasm32")]
     #[arg(long, value_enum)]
     pub settings_test: Option<SettingsTest>,
@@ -202,6 +204,22 @@ mod tests {
             Some("https://example.com/demo.shoop")
         );
         assert!(args.force_url_session);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn web_query_overrides_the_audio_backend() {
+        use shoop_egui::AudioBackendKind;
+        assert_eq!(parse_web_query("").unwrap().audio_backend, None);
+        let args = parse_web_query("?audio-backend=new_engine&new-engine-self-test=1").unwrap();
+        assert_eq!(args.audio_backend, Some(AudioBackendKind::NewEngine));
+        assert!(args.new_engine_self_test);
+        assert_eq!(
+            parse_web_query("?audio-backend=legacy")
+                .unwrap()
+                .audio_backend,
+            Some(AudioBackendKind::Legacy)
+        );
+        assert!(parse_web_query("?audio-backend=engine").is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

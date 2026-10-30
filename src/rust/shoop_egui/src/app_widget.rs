@@ -706,7 +706,7 @@ pub fn register_audio_backend_settings(
             AudioBackendKind::Legacy.id().to_owned(),
             "Audio",
             "Audio backend",
-            "The legacy engine supports every feature. The new engine backend supports the core looping workflow only: no saving or loading of loop content, FX, composite loops, grab, dry/wet tracks or buses besides Master. It uses the preferred audio driver's settings, with CPAL in place of JACK.",
+            "The legacy engine supports every feature. The new engine backend supports the core looping workflow only: no saving or loading of loop content, FX, composite loops, grab, dry/wet tracks or buses besides Master. Natively it uses the preferred audio driver's settings, with CPAL in place of JACK.",
         )
         .category_order(5)
         .setting_order(50)
