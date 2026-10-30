@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the new engine and its protocol for application and legacy dependencies."""
+"""Audit the new engine, protocol and hosts for application and legacy dependencies."""
 
 from __future__ import annotations
 
@@ -17,7 +17,9 @@ SPEC = importlib.util.spec_from_file_location(
 RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
-PACKAGES = ("shoop_rt_engine", "shoop_rt_protocol")
+PACKAGES = (
+    "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_host_native", "shoop_rt_host_worklet",
+)
 FORBIDDEN = {
     "shoop_app", "shoop_app_api", "shoop_backend", "shoop_engine", "shoop_egui",
     "shoopdaloop", "shoop_session", "shoop_worklet_client", "shoop_audio_worklet",

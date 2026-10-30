@@ -1,0 +1,26 @@
+[package]
+name = "shoop_rt_host_native"
+version.workspace = true
+edition = "2021"
+description = "Native host of the new engine backend: dummy and CPAL drivers with midir MIDI"
+
+[lints]
+workspace = true
+
+[features]
+default = ["cpal"]
+# Device drivers: CPAL audio with midir MIDI. Without it only the dummy driver exists.
+cpal = ["dep:cpal", "dep:midir"]
+
+[dependencies]
+rt_runtime = { path = "../rt_runtime" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+rtrb = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+cpal = { workspace = true, optional = true }
+midir = { workspace = true, optional = true }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

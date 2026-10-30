@@ -248,3 +248,10 @@ src/rust/shoop_rt_engine/src/resync.rs,realtime_engine,excluded,Bounded full-sta
 src/rust/shoop_rt_engine/src/ring.rs,realtime_engine,excluded,Fixed-capacity queue.
 src/rust/shoop_rt_engine/src/testing.rs,realtime_engine,excluded,Deterministic offline test host for tests and adapters; not a production path.
 src/rust/shoop_rt_engine/src/topology.rs,realtime_engine,excluded,Allocation-free timing image encoding; no execution boundary to instrument.
+src/rust/shoop_rt_host_native/src/cpal_driver.rs,native_engine_host,instrumented_indirect,"Opens devices and streams within the traced host start; stream and render callbacks must not trace, so failures and xruns are reported through host status and engine telemetry."
+src/rust/shoop_rt_host_native/src/cycle.rs,native_engine_host,excluded,The render owner with host buffers and MIDI bridges on the audio thread; rendering must not trace.
+src/rust/shoop_rt_host_native/src/dummy.rs,native_engine_host,instrumented_indirect,Starts its driver thread within the traced host start; the driver loop must not trace and reports late cycles as xruns.
+src/rust/shoop_rt_host_native/src/lib.rs,native_engine_host,instrumented_direct,"Traces host start and stop, warnings, start failures, missing MIDI resets and stopped cleanup failures."
+src/rust/shoop_rt_host_native/src/midi.rs,native_engine_host,excluded,Lock-free MIDI bridges used by device and audio threads and an output pump thread; drops and failures are counted in host status.
+src/rust/shoop_rt_host_native/src/midir_ports.rs,native_engine_host,instrumented_indirect,Opens midir ports within the traced host start; ports that are missing or fail to open become traced warnings.
+src/rust/shoop_rt_host_native/src/status.rs,native_engine_host,excluded,Atomic counters and driver state written from callbacks; no execution boundary to instrument.

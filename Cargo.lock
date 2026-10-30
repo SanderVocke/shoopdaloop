@@ -4488,6 +4488,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_host_native"
+version = "0.3.0"
+dependencies = [
+ "cpal",
+ "midir",
+ "rt_runtime",
+ "rtrb",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "shoop_rt_host_worklet"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [

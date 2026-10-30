@@ -837,6 +837,7 @@ jobs:
         run: |
           cargo check --locked ${{ matrix.cargo_args }} -p shoopdaloop --target wasm32-unknown-unknown
           cargo build --locked ${{ matrix.cargo_args }} -p shoop_audio_worklet --target wasm32-unknown-unknown
+          cargo build --locked ${{ matrix.cargo_args }} -p shoop_rt_host_worklet --target wasm32-unknown-unknown
 
       - name: Inspect browser dependency isolation
         if: matrix.target == 'web'
@@ -848,6 +849,7 @@ jobs:
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
           node src/rust/shoopdaloop/raw_wasm_host_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm
+          node src/rust/shoopdaloop/rt_worklet_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_rt_host_worklet.wasm
 
       - name: Audit Wasm harness policy and dependencies
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
@@ -858,7 +860,7 @@ jobs:
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
             --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
-            --package shoop_plugin_protocol --package shoop_scripting \
+            --package shoop_plugin_protocol --package shoop_rt_host_worklet --package shoop_scripting \
             --package shoop_session --package shoop_settings \
             --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
             --package shoop_worklet_client --package shoopdaloop
