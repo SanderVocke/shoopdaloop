@@ -444,7 +444,7 @@ other operation is refused with the capability's explanation.
 - [x] The dummy driver on a real-time thread; the CPAL and midir adapter with
       lock-free bridges, xrun counting and a clear refusal of buffers above the
       prepared maximum.
-- [ ] The composition root in `shoopdaloop`: a restart-required backend setting, an
+- [x] The composition root in `shoopdaloop`: a restart-required backend setting, an
       `AppArgs` override, pool size settings, fallback warnings.
 
 **Verify:** host tests through the CPAL mock with heap guards, in release; an
@@ -460,6 +460,13 @@ together with the first remote carrier. Separate input and output devices are
 bridged without resampling, so clock drift shows as xruns. MIDI output is sent when
 the pump sees it, not placed within the buffer. Callbacks larger than the prepared
 maximum are rendered in parts and counted.
+
+*Composition root:* the setting `audio.backend` (`legacy` or `new_engine`) and the
+override `--audio-backend` select the backend. Capacity settings for tracks, loops,
+channels and loop memory map onto one pool segment. Unsupported drivers such as JACK
+map to the nearest CPAL host with a warning. If the new engine cannot start on the
+configured driver it falls back to the dummy driver, keeping the backend the user
+chose. Startup warnings reach the user through `ApplicationStartOptions`.
 
 ### Stage 8 — Browser host (`shoop_rt_host_worklet`)
 

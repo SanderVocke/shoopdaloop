@@ -31,6 +31,9 @@ ehttp = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_common = { path = "../shoop_common" }
 shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
+shoop_rt_backend = { path = "../shoop_rt_backend" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+shoop_rt_host_native = { path = "../shoop_rt_host_native" }
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
 rodio = { workspace = true }

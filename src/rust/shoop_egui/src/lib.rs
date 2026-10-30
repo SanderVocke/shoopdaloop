@@ -31,22 +31,24 @@ mod waveform;
 mod waveform_widget;
 
 pub use app_widget::{
-    audio_driver_config_from_draft, audio_driver_config_from_snapshot,
+    audio_backend_from_snapshot, audio_driver_config_from_draft, audio_driver_config_from_snapshot,
     carla_hosting_mode_from_snapshot, default_builtins_location, format_output_bus_names,
-    loop_edge_smoothing_ms, master_auto_connect, parse_output_bus_names, register_audio_settings,
+    loop_edge_smoothing_ms, master_auto_connect, new_engine_pools_from_snapshot,
+    parse_output_bus_names, register_audio_backend_settings, register_audio_settings,
     register_audio_settings_with_default_driver, register_bundled_script_settings,
     register_carla_settings, register_script_settings, register_settings,
     register_settings_with_appearance_defaults, register_settings_with_ui_scale_default,
     selected_audio_driver, set_selected_audio_driver, show_new_track_configuration, AppWidget,
-    AppWidgetResponse, BusOption, NewTrackConfiguration, TrackDefaultSaveResult,
-    APC_MINI_SCRIPT_ENABLED, BUILTINS_LOCATION, BUILTIN_SCRIPTS, CARLA_HOSTING_MODE,
-    CPAL_BUFFER_SIZE, CPAL_CAPTURE_RING_FRAMES, CPAL_CLIENT_NAME, CPAL_HOST, CPAL_INPUT_CHANNELS,
-    CPAL_INPUT_DEVICE, CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS, CPAL_OUTPUT_CHANNELS,
-    CPAL_OUTPUT_DEVICE, CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
-    DEFAULT_NEW_TRACK_DRY_MIDI, DEFAULT_NEW_TRACK_MIDI, DEFAULT_NEW_TRACK_MODE,
-    DEFAULT_NEW_TRACK_PROCESSOR, DUMMY_BUFFER_SIZE, DUMMY_SAMPLE_RATE, JACK_CLIENT_NAME,
-    KEYBOARD_SCRIPT_ENABLED, LOOP_EDGE_SMOOTHING_MS, MASTER_AUTO_CONNECT, SELECTED_AUDIO_DRIVER,
-    TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
+    AppWidgetResponse, AudioBackendKind, BusOption, NewEnginePools, NewTrackConfiguration,
+    TrackDefaultSaveResult, APC_MINI_SCRIPT_ENABLED, AUDIO_BACKEND, BUILTINS_LOCATION,
+    BUILTIN_SCRIPTS, CARLA_HOSTING_MODE, CPAL_BUFFER_SIZE, CPAL_CAPTURE_RING_FRAMES,
+    CPAL_CLIENT_NAME, CPAL_HOST, CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE, CPAL_MIDI_INPUTS,
+    CPAL_MIDI_OUTPUTS, CPAL_OUTPUT_CHANNELS, CPAL_OUTPUT_DEVICE, CPAL_SAMPLE_RATE,
+    DEFAULT_NEW_TRACK_AUDIO_CHANNELS, DEFAULT_NEW_TRACK_DRY_MIDI, DEFAULT_NEW_TRACK_MIDI,
+    DEFAULT_NEW_TRACK_MODE, DEFAULT_NEW_TRACK_PROCESSOR, DUMMY_BUFFER_SIZE, DUMMY_SAMPLE_RATE,
+    JACK_CLIENT_NAME, KEYBOARD_SCRIPT_ENABLED, LOOP_EDGE_SMOOTHING_MS, MASTER_AUTO_CONNECT,
+    NEW_ENGINE_CHANNELS, NEW_ENGINE_LOOPS, NEW_ENGINE_LOOP_MEMORY_MB, NEW_ENGINE_TRACKS,
+    SELECTED_AUDIO_DRIVER, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 pub use bus_controls::BusControls;
 pub use composite_loop_widget::CompositeLoopWidget;

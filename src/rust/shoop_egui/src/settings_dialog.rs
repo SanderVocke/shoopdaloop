@@ -668,6 +668,7 @@ impl SettingsDialog {
     ) {
         #[cfg(test)]
         self.setting_card_rects.clear();
+        self.show_audio_backend(ui);
         ui.heading("Loop audio");
         let definitions = self
             .registry
@@ -700,7 +701,11 @@ impl SettingsDialog {
             #[cfg(not(target_arch = "wasm32"))]
             ui.colored_label(
                 colors::WARNING,
-                "Native runtime driver switching is unavailable in this build.",
+                if crate::supports(ui.ctx(), crate::BackendCapability::AudioDriverSwitching) {
+                    "Native runtime driver switching is unavailable in this build."
+                } else {
+                    crate::BackendCapability::AudioDriverSwitching.unavailable_reason()
+                },
             );
             return;
         }
@@ -823,6 +828,37 @@ impl SettingsDialog {
                 .push(SettingsAction::RetryAudioDriverPersistence {
                     request_id: audio.switch.request_id,
                 });
+        }
+    }
+
+    fn show_audio_backend(&mut self, ui: &mut egui::Ui) {
+        let Some(backend) = self.registry.definition(crate::AUDIO_BACKEND.id()).cloned() else {
+            return;
+        };
+        ui.heading("Audio backend");
+        ui.colored_label(
+            colors::WARNING,
+            "The audio backend and its capacities are chosen at startup: restart ShoopDaLoop to apply changes.",
+        );
+        self.show_definition_cards(ui, vec![backend], None);
+        let new_engine = self
+            .draft
+            .as_ref()
+            .and_then(|draft| draft.get(crate::AUDIO_BACKEND).ok())
+            .is_some_and(|id| id == crate::AudioBackendKind::NewEngine.id());
+        if new_engine {
+            let pools = self
+                .registry
+                .definitions()
+                .iter()
+                .filter(|definition| {
+                    definition
+                        .key()
+                        .starts_with(crate::app_widget::NEW_ENGINE_SETTINGS_PREFIX)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            self.show_definition_cards(ui, pools, None);
         }
     }
 
@@ -2020,6 +2056,41 @@ mod tests {
         output.textures_delta.clear();
         assert_eq!(dialog.setting_card_rects.len(), 2);
         assert!(response.app_actions.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn audio_backend_choice_shows_new_engine_pools_only_when_selected() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_audio_settings(&mut builder).unwrap();
+        crate::register_audio_backend_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        let context = egui::Context::default();
+        let mut cards = Vec::new();
+        for backend in [
+            crate::AudioBackendKind::Legacy,
+            crate::AudioBackendKind::NewEngine,
+        ] {
+            dialog
+                .draft_mut()
+                .unwrap()
+                .set(crate::AUDIO_BACKEND, backend.id().to_owned());
+            let mut response = SettingsDialogResponse::default();
+            let mut output = context.run_ui(Default::default(), |ui| {
+                dialog.show_audio(ui, &AudioDriverRuntimeState::default(), &mut response);
+            });
+            output.textures_delta.clear();
+            cards.push(dialog.setting_card_rects.len());
+        }
+        assert_eq!(cards, [3, 7]);
     }
 
     #[shoop_wasm_test_support::shoop_test(

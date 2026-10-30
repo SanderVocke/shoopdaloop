@@ -28,6 +28,10 @@ pub struct AppArgs {
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
     #[cfg(not(target_arch = "wasm32"))]
+    /// Start with this audio backend instead of the saved setting: legacy or new_engine.
+    #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::AudioBackendKind>())]
+    pub audio_backend: Option<shoop_egui::AudioBackendKind>,
+    #[cfg(not(target_arch = "wasm32"))]
     /// Validate packaged external built-in scripts and exit.
     #[arg(long)]
     pub probe_builtins: bool,
@@ -156,6 +160,26 @@ mod native_tests {
     #[shoop_wasm_test_support::shoop_test]
     fn cli_rejects_unknown_arguments() {
         assert!(AppArgs::try_parse_from(["shoopdaloop", "--unknown=1"]).is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn cli_overrides_the_audio_backend() {
+        use shoop_egui::AudioBackendKind;
+        assert_eq!(
+            AppArgs::try_parse_from(["shoopdaloop"])
+                .unwrap()
+                .audio_backend,
+            None
+        );
+        for (value, kind) in [
+            ("legacy", AudioBackendKind::Legacy),
+            ("new_engine", AudioBackendKind::NewEngine),
+        ] {
+            let args = AppArgs::try_parse_from(["shoopdaloop", "--audio-backend", value]).unwrap();
+            assert_eq!(args.audio_backend, Some(kind));
+        }
+        let error = AppArgs::try_parse_from(["shoopdaloop", "--audio-backend=engine"]).unwrap_err();
+        assert!(error.to_string().contains("expected legacy or new_engine"));
     }
 }
 

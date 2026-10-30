@@ -122,6 +122,8 @@ enum SaturatedConnection {
 pub struct ApplicationStartOptions {
     pub startup_scripts: Vec<StartupScript>,
     pub master_auto_connect: bool,
+    /// Shown to the user as warning notifications once the application has started.
+    pub startup_warnings: Vec<String>,
 }
 
 impl Default for ApplicationStartOptions {
@@ -129,6 +131,7 @@ impl Default for ApplicationStartOptions {
         Self {
             startup_scripts: Vec::new(),
             master_auto_connect: true,
+            startup_warnings: Vec::new(),
         }
     }
 }
@@ -297,6 +300,7 @@ impl ApplicationRuntime {
         let ApplicationStartOptions {
             startup_scripts,
             master_auto_connect,
+            startup_warnings,
         } = options;
         let _span = tracing::info_span!(
             "frontend.app.runtime_start",
@@ -330,6 +334,7 @@ impl ApplicationRuntime {
                     master_auto_connect,
                 ) {
                     Ok(mut model) => {
+                        model.show_startup_warnings(startup_warnings);
                         let startup_script_ids = model.install_startup_scripts(startup_scripts);
                         *actor_snapshot
                             .write()
@@ -452,6 +457,7 @@ impl CooperativeApplicationRuntime {
         let ApplicationStartOptions {
             startup_scripts,
             master_auto_connect,
+            startup_warnings,
         } = options;
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let preview_outputs = Arc::new(Mutex::new(VecDeque::new()));
@@ -463,6 +469,7 @@ impl CooperativeApplicationRuntime {
             master_auto_connect,
         )?;
         model.script_manager = ScriptManager::new_with_midi(midi);
+        model.show_startup_warnings(startup_warnings);
         model.install_startup_scripts(startup_scripts);
         model.script_last_snapshot = model.script_control_snapshot();
         Self::from_model(model, backend, file_outputs, preview_outputs)
@@ -2417,6 +2424,12 @@ impl ApplicationModel {
             self.notifications.pop_front();
         }
         self.notification_view = self.notifications.iter().cloned().collect();
+    }
+
+    fn show_startup_warnings(&mut self, warnings: Vec<String>) {
+        for warning in warnings {
+            self.notify(NotificationLevel::Warning, warning);
+        }
     }
 
     fn dismiss_notification(&mut self, id: u64) {
@@ -26232,6 +26245,36 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             model.handle_intent(&mut backend, AppIntent::DismissNotification { id });
             assert!(model.snapshot().notifications.is_empty());
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn startup_warnings_become_dismissible_notifications() {
+        let mut runtime = CooperativeApplicationRuntime::start_with_options(
+            Box::new(FakeBackend::default()),
+            ApplicationStartOptions {
+                startup_warnings: vec!["first".to_owned(), "second".to_owned()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let notifications = runtime.snapshot().notifications.clone();
+        assert_eq!(
+            notifications
+                .iter()
+                .map(|notification| (notification.level, notification.message.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (NotificationLevel::Warning, "first"),
+                (NotificationLevel::Warning, "second")
+            ]
+        );
+        runtime
+            .dispatch(AppIntent::DismissNotification {
+                id: notifications[0].id,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(runtime.snapshot().notifications.len(), 1);
     }
 
     #[shoop_wasm_test_support::shoop_test]

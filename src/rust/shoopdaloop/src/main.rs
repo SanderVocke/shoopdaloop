@@ -43,13 +43,13 @@ use shoop_egui::register_carla_settings;
 use shoop_egui::register_script_settings;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use shoop_egui::register_settings;
-#[cfg(not(target_arch = "wasm32"))]
-use shoop_egui::AudioDriverConfig;
 use shoop_egui::{
     register_audio_settings_with_default_driver, register_settings_with_appearance_defaults,
     AppIntent, AppSnapshot, AppWidget, AudioDriverKind, ScriptKind, SettingsAction,
     SettingsRegistryBuilder, TrackDefaultSaveResult, UI_SCALE_FACTOR,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::{AudioBackendKind, AudioDriverConfig};
 use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
@@ -65,6 +65,8 @@ mod browser_preview;
 mod browser_trace;
 #[cfg(target_arch = "wasm32")]
 mod browser_worker;
+#[cfg(not(target_arch = "wasm32"))]
+mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
 mod settings;
@@ -508,6 +510,8 @@ impl UnifiedApp {
             &mut settings_builder,
             default_audio_driver_kind(),
         )?;
+        #[cfg(not(target_arch = "wasm32"))]
+        shoop_egui::register_audio_backend_settings(&mut settings_builder)?;
         #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
         register_carla_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]
@@ -517,9 +521,6 @@ impl UnifiedApp {
         let settings_registry = settings_builder.finish();
         let settings = load_settings_manager(settings_registry.clone(), args);
         let mut widget = AppWidget::new(std::sync::Arc::new(settings_registry));
-        #[cfg(not(target_arch = "wasm32"))]
-        let runtime = Runtime::new(&settings.active())?;
-        #[cfg(target_arch = "wasm32")]
         let runtime = Runtime::new(&settings.active(), args)?;
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
@@ -1913,6 +1914,9 @@ struct Runtime {
     preview_player: native_preview::NativePreviewPlayer,
     applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
+    /// The new engine backend's host. It is declared after the application runtime so that
+    /// it stops after the backend is gone.
+    _engine_host: Option<engine_backend::EngineHost>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1933,7 +1937,7 @@ impl Drop for Runtime {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
-    fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
+    fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
         #[cfg(feature = "native-fx")]
         let (carla_ui_service, carla_ui_dispatcher) = CarlaMainThreadUiService::new();
         #[cfg(feature = "native-fx")]
@@ -1964,7 +1968,52 @@ impl Runtime {
                 )),
             ),
         };
-        let (mut backend, backend_warning) = NativeBackend::new_with_fallback(configured_driver)?;
+        let (audio_backend, audio_backend_warning) = match args
+            .audio_backend
+            .map(Ok)
+            .unwrap_or_else(|| shoop_egui::audio_backend_from_snapshot(settings))
+        {
+            Ok(kind) => (kind, None),
+            Err(error) => (
+                AudioBackendKind::Legacy,
+                Some(format!(
+                    "Could not use the audio backend setting: {error}; using the legacy backend"
+                )),
+            ),
+        };
+        let (engine_host, mut backend, backend_warnings) = match audio_backend {
+            AudioBackendKind::Legacy => {
+                let (backend, warning) = NativeBackend::new_with_fallback(configured_driver)?;
+                (
+                    None,
+                    Box::new(backend) as Box<dyn shoop_backend::Backend + Send>,
+                    Vec::from_iter(warning),
+                )
+            }
+            AudioBackendKind::NewEngine => {
+                let (pools, pools_warning) =
+                    match shoop_egui::new_engine_pools_from_snapshot(settings) {
+                        Ok(pools) => (pools, None),
+                        Err(error) => (
+                            shoop_egui::NewEnginePools::default(),
+                            Some(format!(
+                                "Could not use the new engine's capacity settings: {error}; using the defaults"
+                            )),
+                        ),
+                    };
+                let started = engine_backend::start(&configured_driver, &pools)?;
+                let warnings = pools_warning.into_iter().chain(started.warnings).collect();
+                (Some(started.host), started.backend, warnings)
+            }
+        };
+        let startup_warnings: Vec<String> = match engine_host {
+            Some(_) => configuration_warning
+                .iter()
+                .chain(&backend_warnings)
+                .cloned()
+                .collect(),
+            None => Vec::new(),
+        };
         let (loop_smoothing_ms, loop_smoothing_warning) =
             match shoop_egui::loop_edge_smoothing_ms(settings) {
                 Ok(milliseconds) => (milliseconds, None),
@@ -1975,13 +2024,14 @@ impl Runtime {
                     )),
                 ),
             };
-        shoop_backend::Backend::set_loop_smoothing_ms(&mut backend, loop_smoothing_ms)?;
+        shoop_backend::Backend::set_loop_smoothing_ms(&mut *backend, loop_smoothing_ms)?;
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
+        warnings.extend(audio_backend_warning);
         warnings.extend(configuration_warning);
         warnings.extend(loop_smoothing_warning);
         #[cfg(feature = "native-fx")]
         warnings.extend(carla_configuration_warning);
-        warnings.extend(backend_warning);
+        warnings.extend(backend_warnings);
         let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
             Ok(enabled) => enabled,
             Err(error) => {
@@ -1993,10 +2043,11 @@ impl Runtime {
             }
         };
         let runtime = ApplicationRuntime::start_with_options(
-            Box::new(backend),
+            backend,
             shoop_app::ApplicationStartOptions {
                 startup_scripts,
                 master_auto_connect,
+                startup_warnings,
             },
         )?;
         let handle = runtime.handle();
@@ -2020,6 +2071,7 @@ impl Runtime {
             preview_player,
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
+            _engine_host: engine_host,
         })
     }
 
@@ -2560,6 +2612,7 @@ impl Runtime {
                 shoop_app::ApplicationStartOptions {
                     startup_scripts: Vec::new(),
                     master_auto_connect,
+                    ..Default::default()
                 },
                 midi_service,
             )?,
@@ -6293,7 +6346,7 @@ mod tests {
                 .unwrap(),
             32_000
         );
-        let runtime = Runtime::new(&restarted.active()).unwrap();
+        let runtime = Runtime::new(&restarted.active(), &AppArgs::default()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
             let snapshot = runtime.snapshot();
@@ -6320,7 +6373,7 @@ mod tests {
         register_script_settings(&mut builder).unwrap();
         let settings = builder.finish().defaults(1);
         configure_carla_hosting_mode(shoop_settings::CarlaHostingMode::Subprocess);
-        let runtime = Runtime::new(&settings).unwrap();
+        let runtime = Runtime::new(&settings, &AppArgs::default()).unwrap();
         assert_eq!(
             shoop_backend::configured_carla_hosting_mode(),
             shoop_settings::CarlaHostingMode::InProcess
@@ -6357,6 +6410,491 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    fn new_engine_args() -> AppArgs {
+        AppArgs {
+            audio_backend: Some(AudioBackendKind::NewEngine),
+            ..AppArgs::default()
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Waits until `done`; prints how long each step took, to compare structural latency
+    /// across changes (`--no-capture`).
+    fn wait_for_snapshot(
+        runtime: &Runtime,
+        what: &str,
+        done: impl Fn(&AppSnapshot) -> bool,
+    ) -> std::sync::Arc<AppSnapshot> {
+        let start = Instant::now();
+        let deadline = start + Duration::from_secs(20);
+        loop {
+            let snapshot = runtime.snapshot();
+            if done(&snapshot) {
+                eprintln!("new engine smoke: {what} after {:?}", start.elapsed());
+                return snapshot;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "{what} timed out; notifications: {:?}",
+                snapshot.notifications
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn first_loop(snapshot: &AppSnapshot, track_id: shoop_egui::TrackId) -> &shoop_egui::LoopState {
+        &snapshot
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .expect("the track exists")
+            .loops[0]
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn track_ports(
+        snapshot: &AppSnapshot,
+        track_id: shoop_egui::TrackId,
+        role: PortRole,
+    ) -> Vec<shoop_egui::PortId> {
+        snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                matches!(port.owner, ApplicationPortOwner::Track { track_id: owner, .. } if owner == track_id)
+                    && port.role == role
+            })
+            .map(|port| port.id)
+            .collect()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn loop_action(runtime: &mut Runtime, track: &shoop_egui::TrackState, action: LoopAction) {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id: track.loops[0].id,
+                action,
+            })
+            .unwrap();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_backend_runs_the_core_workflow_in_the_application() {
+        use shoop_egui::{
+            BackendCapabilities, BackendCapability, BusAction, ConfirmedConnectionState,
+            GlobalControlAction, IoTaskStatus, MixerRouteState, NotificationLevel, StructuralState,
+        };
+
+        let start = Instant::now();
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        eprintln!(
+            "new engine smoke: application start after {:?}",
+            start.elapsed()
+        );
+        let runtime = &mut app.runtime;
+        let snapshot = wait_for_snapshot(runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
+        assert_eq!(
+            snapshot.capabilities,
+            BackendCapabilities::NONE.with(BackendCapability::MidiInjection, true)
+        );
+        assert_eq!(snapshot.status.sample_rate, 48_000);
+        assert!(
+            snapshot.notifications.is_empty(),
+            "{:?}",
+            snapshot.notifications
+        );
+
+        runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        let snapshot = wait_for_snapshot(runtime, "a new session", |snapshot| {
+            snapshot
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        });
+        let sync = snapshot.tracks[0].clone();
+        assert!(sync.is_sync);
+        let master = snapshot.buses[0].clone();
+        assert_eq!(master.name, "Master");
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+            .unwrap();
+        for (name, audio_channels, midi) in [("Audio", 2, false), ("Keys", 0, true)] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi,
+                }))
+                .unwrap();
+        }
+        let snapshot = wait_for_snapshot(runtime, "two new tracks", |snapshot| {
+            snapshot.tracks.len() == 3
+                && snapshot.tracks.iter().all(|track| {
+                    track.structural_state == StructuralState::Confirmed
+                        && track
+                            .loops
+                            .iter()
+                            .all(|state| state.structural_state == StructuralState::Confirmed)
+                })
+        });
+        let audio = snapshot.tracks[1].clone();
+        let keys = snapshot.tracks[2].clone();
+
+        let audio_inputs = track_ports(&snapshot, audio.id, PortRole::AudioInput);
+        let audio_outputs = track_ports(&snapshot, audio.id, PortRole::AudioOutput);
+        let keys_input = track_ports(&snapshot, keys.id, PortRole::MidiInput);
+        assert_eq!((audio_inputs.len(), audio_outputs.len()), (2, 2));
+        let mut links = Vec::new();
+        for (port, host) in audio_inputs
+            .iter()
+            .map(|port| (*port, "audio_in_1"))
+            .chain(keys_input.iter().map(|port| (*port, "midi_in_1")))
+        {
+            runtime
+                .dispatch(AppIntent::SetPortConnected {
+                    port_id: port,
+                    host_port_id: HostPortId::new(host),
+                    connected: true,
+                })
+                .unwrap();
+            links.push(ConfirmedConnectionState {
+                application_port_id: port,
+                host_port_id: HostPortId::new(host),
+            });
+        }
+        let routes = audio_outputs
+            .iter()
+            .zip(master.channels.iter())
+            .map(|(port, channel)| MixerRouteState {
+                source_port_id: *port,
+                destination_channel_id: channel.id,
+            })
+            .collect::<Vec<_>>();
+        for route in &routes {
+            runtime
+                .dispatch(AppIntent::SetMixerRouteConnected {
+                    source_port_id: route.source_port_id,
+                    destination_channel_id: route.destination_channel_id,
+                    connected: true,
+                })
+                .unwrap();
+        }
+        wait_for_snapshot(runtime, "connections and routes", |snapshot| {
+            let connections = &snapshot.connections;
+            links
+                .iter()
+                .all(|link| connections.confirmed_links.contains(link))
+                && routes
+                    .iter()
+                    .all(|route| connections.mixer_links.contains(route))
+                && connections
+                    .confirmed_links
+                    .iter()
+                    .any(|link| link.host_port_id == HostPortId::new("audio_out_1"))
+        });
+
+        loop_action(runtime, &sync, LoopAction::RecordClicked);
+        wait_for_snapshot(runtime, "sync recording", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Recording
+        });
+        thread::sleep(Duration::from_millis(150));
+        loop_action(runtime, &sync, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(runtime, "sync playback", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Playing
+        });
+        let sync_length = first_loop(&snapshot, sync.id).length_frames;
+        assert!(sync_length >= 4_800, "sync length {sync_length}");
+        let position = first_loop(&snapshot, sync.id).position;
+        wait_for_snapshot(runtime, "loop progress", |snapshot| {
+            first_loop(snapshot, sync.id).position != position
+        });
+
+        loop_action(runtime, &audio, LoopAction::RecordClicked);
+        wait_for_snapshot(runtime, "a planned synchronized recording", |snapshot| {
+            let state = first_loop(snapshot, audio.id);
+            state.mode == LoopMode::Stopped && state.next_mode == LoopMode::Recording
+        });
+        wait_for_snapshot(runtime, "synchronized recording", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Recording
+        });
+        loop_action(runtime, &audio, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(runtime, "synchronized playback", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Playing
+        });
+        let audio_length = first_loop(&snapshot, audio.id).length_frames;
+        assert!(
+            audio_length > 0 && audio_length % sync_length == 0,
+            "{audio_length} frames for a sync loop of {sync_length}"
+        );
+
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: keys.id,
+                action: TrackAction::InputMonitoringChanged {
+                    enabled: true,
+                    respect_auto_mute: false,
+                },
+            })
+            .unwrap();
+        loop_action(runtime, &keys, LoopAction::RecordClicked);
+        wait_for_snapshot(runtime, "immediate MIDI recording", |snapshot| {
+            first_loop(snapshot, keys.id).mode == LoopMode::Recording
+        });
+        let note = MidiNote::new(60).unwrap();
+        runtime
+            .dispatch(AppIntent::Piano(PianoAction::Press(note)))
+            .unwrap();
+        thread::sleep(Duration::from_millis(30));
+        runtime
+            .dispatch(AppIntent::Piano(PianoAction::Release(note)))
+            .unwrap();
+        thread::sleep(Duration::from_millis(30));
+        loop_action(runtime, &keys, LoopAction::PlayClicked);
+        wait_for_snapshot(runtime, "immediate MIDI playback", |snapshot| {
+            let state = first_loop(snapshot, keys.id);
+            state.mode == LoopMode::Playing && state.length_frames > 0
+        });
+
+        for action in [
+            TrackAction::OutputGainChanged(-6.0),
+            TrackAction::OutputBalanceChanged(0.5),
+            TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        ] {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: audio.id,
+                    action,
+                })
+                .unwrap();
+        }
+        for action in [
+            BusAction::GainChanged(-3.0),
+            BusAction::BalanceChanged(-0.25),
+        ] {
+            runtime
+                .dispatch(AppIntent::Bus {
+                    bus_id: master.id,
+                    action,
+                })
+                .unwrap();
+        }
+        wait_for_snapshot(runtime, "controls and meters", |snapshot| {
+            let track = snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == audio.id)
+                .unwrap();
+            let controls = &track.controls;
+            let master = &snapshot.buses[0];
+            controls.output_gain_db == -6.0
+                && controls.output_balance == 0.5
+                && controls.input_monitoring
+                && controls.input_peak_left_db > -20.0
+                && controls.output_peak_left_db > -100.0
+                && first_loop(snapshot, audio.id).peak_left_db > -100.0
+                && master.gain_db == -3.0
+                && master.balance == -0.25
+                && !master.control_pending
+                && master.output_peaks_db.iter().all(|peak| *peak > -100.0)
+        });
+
+        loop_action(
+            runtime,
+            &audio,
+            LoopAction::IconClicked(SelectionModifiers::default()),
+        );
+        let snapshot = wait_for_snapshot(runtime, "the waveform", |snapshot| {
+            snapshot.details.as_ref().is_some_and(|details| {
+                details.loop_id == audio.loops[0].id
+                    && details.channels.len() == 2
+                    && details
+                        .channels
+                        .iter()
+                        .all(|channel| channel.samples.len() as u64 == audio_length)
+            })
+        });
+        let details = snapshot.details.as_ref().unwrap();
+        assert!(details.channels[0]
+            .samples
+            .iter()
+            .all(|sample| { (*sample - engine_backend::tests::DUMMY_SIGNAL).abs() < 1e-6 }));
+        loop_action(
+            runtime,
+            &keys,
+            LoopAction::IconClicked(SelectionModifiers::default()),
+        );
+        wait_for_snapshot(runtime, "the MIDI detail", |snapshot| {
+            snapshot.details.as_ref().is_some_and(|details| {
+                details.loop_id == keys.loops[0].id
+                    && details
+                        .midi_channels
+                        .first()
+                        .is_some_and(|channel| channel.events.len() == 2)
+            })
+        });
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "a refused driver switch", |snapshot| {
+            snapshot.notifications.iter().any(|notification| {
+                notification.message == BackendCapability::AudioDriverSwitching.unavailable_reason()
+            })
+        });
+
+        loop_action(runtime, &audio, LoopAction::StopClicked);
+        wait_for_snapshot(runtime, "immediate stop", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Stopped
+        });
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::ClearRecordings {
+                include_sync: false,
+            }))
+            .unwrap();
+        let snapshot = wait_for_snapshot(runtime, "cleared loops", |snapshot| {
+            [audio.id, keys.id].iter().all(|id| {
+                let state = first_loop(snapshot, *id);
+                state.mode == LoopMode::Stopped && state.length_frames == 0
+            })
+        });
+        assert_eq!(first_loop(&snapshot, sync.id).mode, LoopMode::Playing);
+        assert_eq!(
+            snapshot
+                .notifications
+                .iter()
+                .map(|notification| notification.level)
+                .collect::<Vec<_>>(),
+            [NotificationLevel::Warning],
+            "{:?}",
+            snapshot.notifications
+        );
+
+        let host = app.runtime._engine_host.take().unwrap();
+        drop(app);
+        let problems = host.stop();
+        assert!(
+            !problems
+                .iter()
+                .any(|problem| problem.contains("MIDI") || problem.contains("fault")),
+            "{problems:?}"
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_capacity_settings_bound_the_application_visibly() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(shoop_egui::AUDIO_BACKEND, "new_engine".to_owned());
+        draft.set(shoop_egui::NEW_ENGINE_TRACKS, 2);
+        draft.set(shoop_egui::NEW_ENGINE_LOOPS, 9);
+        draft.set(shoop_egui::NEW_ENGINE_CHANNELS, 1);
+        draft.set(shoop_egui::NEW_ENGINE_LOOP_MEMORY_MB, 16);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let mut runtime = Runtime::new(&settings, &AppArgs::default()).unwrap();
+        wait_for_snapshot(&runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
+        for (name, audio_channels) in [("Wide", 2), ("One", 1), ("Two", 1)] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        let refused = |snapshot: &AppSnapshot, text: &str| {
+            snapshot.notifications.iter().any(|notification| {
+                notification.level == shoop_egui::NotificationLevel::Error
+                    && notification.message.contains(text)
+            })
+        };
+        let snapshot = wait_for_snapshot(&runtime, "capacity refusals", |snapshot| {
+            refused(snapshot, "at most 1 audio channels")
+                && refused(snapshot, "all 2 prepared track slots")
+        });
+        assert_eq!(snapshot.tracks.len(), 2);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_startup_fallbacks_are_shown_to_the_user() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        shoop_egui::set_selected_audio_driver(&mut draft, shoop_egui::AudioDriverKind::Cpal);
+        draft.set(shoop_egui::CPAL_OUTPUT_DEVICE, "none".to_owned());
+        draft.set(shoop_egui::CPAL_MIDI_INPUTS, "none".to_owned());
+        draft.set(shoop_egui::CPAL_MIDI_OUTPUTS, "none".to_owned());
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let runtime = Runtime::new(&settings, &new_engine_args()).unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
+        assert!(
+            snapshot.notifications.iter().any(|notification| {
+                notification.level == shoop_egui::NotificationLevel::Warning
+                    && notification.message.contains("using the dummy driver")
+            }),
+            "{:?}",
+            snapshot.notifications
+        );
+        assert_eq!(
+            snapshot
+                .audio_drivers
+                .active
+                .as_ref()
+                .unwrap()
+                .configured
+                .kind(),
+            shoop_egui::AudioDriverKind::Dummy
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn unavailable_saved_preference_falls_back_without_overwriting_settings() {
         let mut builder = SettingsRegistryBuilder::default();
@@ -6376,7 +6914,7 @@ mod tests {
             )
             .unwrap();
         let settings = registry.resolve(&document, 2).snapshot;
-        let runtime = Runtime::new(&settings).unwrap();
+        let runtime = Runtime::new(&settings, &AppArgs::default()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
             let snapshot = runtime.snapshot();
@@ -6570,7 +7108,7 @@ mod tests {
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut manager = SettingsManager::load_from_path(registry, "test", settings_path.clone());
-        let mut runtime = Runtime::new(&manager.active()).unwrap();
+        let mut runtime = Runtime::new(&manager.active(), &AppArgs::default()).unwrap();
 
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
         draft.set(
