@@ -2,6 +2,7 @@
 //! control side reads when it assembles telemetry. Fields are independent
 //! atomics: a record may combine values from neighbouring callbacks.
 
+use crate::stream::ByteRing;
 use rt_runtime::Frame;
 use shoop_loops::runtime::BoundaryObserver;
 use shoop_loops::{Decision, Event, Mode};
@@ -78,13 +79,22 @@ pub(crate) struct Cells {
     pub strips: Box<[StripCells]>,
     pub loops: Box<[LoopCells]>,
     pub master: Peak,
+    /// Callbacks rendered, and the peak of every host input (0) and output (1).
+    pub callbacks: AtomicU64,
+    pub host_peaks: Peak,
+    pub bulk: ByteRing,
     driver: [AtomicU32; 4],
     xruns: AtomicU32,
     load: AtomicU32,
 }
 
 impl Cells {
-    pub(crate) fn new(strips: usize, loops: usize, driver: DriverStatus) -> Arc<Self> {
+    pub(crate) fn new(
+        strips: usize,
+        loops: usize,
+        bulk_bytes: usize,
+        driver: DriverStatus,
+    ) -> Arc<Self> {
         let cells = Self {
             next_frame: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
@@ -92,6 +102,9 @@ impl Cells {
             strips: (0..strips).map(|_| StripCells::default()).collect(),
             loops: (0..loops).map(|_| LoopCells::default()).collect(),
             master: Peak::default(),
+            callbacks: AtomicU64::new(0),
+            host_peaks: Peak::default(),
+            bulk: ByteRing::new(bulk_bytes),
             driver: Default::default(),
             xruns: AtomicU32::new(0),
             load: AtomicU32::new(0),

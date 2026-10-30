@@ -99,8 +99,8 @@ impl Default for EngineDescription {
             midi_events: 256,
             midi_bytes: 2048,
             pending_transitions: 128,
-            reliable_credits: 32,
-            bulk_credits: 2,
+            reliable_credits: 256,
+            bulk_credits: 8,
             telemetry_interval_frames: 800,
         }
     }

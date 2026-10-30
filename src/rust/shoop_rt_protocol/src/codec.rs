@@ -610,6 +610,7 @@ impl Wire for Limits {
         w.u16(self.host_midi_inputs)?;
         w.u16(self.host_midi_outputs)?;
         w.u32(self.max_frames)?;
+        w.u32(self.smoothing_limit_frames)?;
         w.u16(self.reliable_credits)?;
         w.u16(self.bulk_credits)
     }
@@ -624,6 +625,7 @@ impl Wire for Limits {
             host_midi_inputs: r.u16()?,
             host_midi_outputs: r.u16()?,
             max_frames: r.u32()?,
+            smoothing_limit_frames: r.u32()?,
             reliable_credits: r.u16()?,
             bulk_credits: r.u16()?,
         })
@@ -635,14 +637,20 @@ impl Wire for Telemetry {
         match self {
             Self::Engine {
                 frame,
+                callbacks,
                 xruns,
                 load,
+                input_peak,
+                output_peak,
                 driver,
             } => {
                 w.u8(0)?;
                 w.u64(*frame)?;
+                w.u64(*callbacks)?;
                 w.u32(*xruns)?;
                 w.f32(*load)?;
+                w.f32(*input_peak)?;
+                w.f32(*output_peak)?;
                 driver.put(w)
             }
             Self::Strip {
@@ -688,8 +696,11 @@ impl Wire for Telemetry {
         Ok(match r.u8()? {
             0 => Self::Engine {
                 frame: r.u64()?,
+                callbacks: r.u64()?,
                 xruns: r.u32()?,
                 load: r.f32()?,
+                input_peak: r.f32()?,
+                output_peak: r.f32()?,
                 driver: DriverStatus::get(r)?,
             },
             1 => Self::Strip {
@@ -771,6 +782,11 @@ impl Wire for StateRecord {
                 w.u8(8)?;
                 w.u64(*epoch)
             }
+            Self::Generations { strips, loops } => {
+                w.u8(9)?;
+                w.u32(*strips)?;
+                w.u32(*loops)
+            }
         }
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
@@ -805,6 +821,10 @@ impl Wire for StateRecord {
                 control: BusControl::get(r)?,
             },
             8 => Self::End { epoch: r.u64()? },
+            9 => Self::Generations {
+                strips: r.u32()?,
+                loops: r.u32()?,
+            },
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -818,12 +838,14 @@ impl Wire for BulkSelector {
                 w.u8(*channel)
             }
             Self::Midi => w.u8(1),
+            Self::AudioFrames => w.u8(2),
         }
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
             0 => Self::Audio { channel: r.u8()? },
             1 => Self::Midi,
+            2 => Self::AudioFrames,
             _ => return Err(CodecError::Invalid),
         })
     }

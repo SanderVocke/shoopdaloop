@@ -20,6 +20,7 @@ const LIMITS: Limits = Limits {
     host_midi_inputs: 1,
     host_midi_outputs: 1,
     max_frames: 256,
+    smoothing_limit_frames: 4800,
     reliable_credits: 2,
     bulk_credits: 1,
 };
@@ -122,8 +123,11 @@ impl Endpoint for TestEndpoint {
         if self.telemetry {
             out.push(EngineMessage::Telemetry(Telemetry::Engine {
                 frame: 1,
+                callbacks: 1,
                 xruns: 0,
                 load: 0.1,
+                input_peak: 0.5,
+                output_peak: 0.25,
                 driver: DRIVER,
             }))
             .unwrap();
@@ -382,8 +386,11 @@ fn telemetry_keeps_the_latest_records_while_reliable_and_bulk_lanes_refuse() {
     for frame in 0..5 {
         out.push(EngineMessage::Telemetry(Telemetry::Engine {
             frame,
+            callbacks: frame,
             xruns: 0,
             load: 0.,
+            input_peak: 0.,
+            output_peak: 0.,
             driver: DRIVER,
         }))
         .unwrap();
@@ -506,6 +513,12 @@ fn client_samples() -> Vec<ClientMessage> {
             selector: BulkSelector::Midi,
             offset: 1024,
         }),
+        ClientMessage::Bulk(BulkRead {
+            id: 6,
+            loop_id: loop_id(2),
+            selector: BulkSelector::AudioFrames,
+            offset: 128,
+        }),
     ];
     messages.extend(requests.into_iter().enumerate().map(|(index, request)| {
         ClientMessage::Request {
@@ -616,6 +629,10 @@ fn engine_samples() -> Vec<EngineMessage> {
         }),
         EngineMessage::LimitsChanged(LIMITS),
         EngineMessage::Disconnected(DisconnectReason::Fault),
+        EngineMessage::State(StateRecord::Generations {
+            strips: u32::MAX,
+            loops: 7,
+        }),
     ]
 }
 

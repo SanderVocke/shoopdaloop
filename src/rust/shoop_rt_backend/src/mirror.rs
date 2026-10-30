@@ -203,6 +203,8 @@ impl Default for Master {
 pub(crate) struct Slots {
     generations: Vec<u32>,
     used: Vec<bool>,
+    /// Generations the engine may have used on any slot.
+    floor: u32,
 }
 
 impl Slots {
@@ -224,8 +226,13 @@ impl Slots {
     pub fn reserve(&mut self) -> Option<SlotId> {
         let index = self.used.iter().position(|used| !used)?;
         self.used[index] = true;
-        self.generations[index] += 1;
+        self.generations[index] = self.generations[index].max(self.floor) + 1;
         Some(SlotId::new(index as u32, self.generations[index]))
+    }
+
+    /// The engine used no generation above `floor` on any slot.
+    pub fn raise_floor(&mut self, floor: u32) {
+        self.floor = self.floor.max(floor);
     }
 
     pub fn release(&mut self, id: SlotId) {

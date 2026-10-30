@@ -27,9 +27,11 @@ mod jobs;
 mod model;
 mod node;
 mod pool;
+mod queue;
 mod render;
 mod resync;
 mod ring;
+mod stream;
 mod topology;
 
 #[cfg(feature = "testing")]
@@ -67,7 +69,7 @@ pub(crate) type EngineControl = Control<EngineNode, LoopPlanner, EngineOp>;
 pub(crate) type EngineExecution = Execution<Operation, Reply, EngineOp, ()>;
 
 /// Topology records per append operation.
-const RECORDS_PER_APPEND: usize = 16;
+const RECORDS_PER_APPEND: usize = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PrepareError {
@@ -185,14 +187,14 @@ pub fn prepare(
         resource_slots: 12 * loops + 16,
         resource_pages: description.resource_pages,
         page_bytes,
-        resource_io_bytes: 0,
+        resource_io_bytes: stream::READ_PAGES * page_bytes,
         resource_io_steps: 0,
         command_slots: slots,
         budgets: Budgets {
             commands: slots,
             events: slots,
             subranges: 0,
-            transfer_bytes: payload + 2 * page_bytes,
+            transfer_bytes: payload + (2 + stream::READ_PAGES) * page_bytes,
             validation_steps: 3 * pool.nodes() + edges + 2 * loops + 64,
             publications: slots,
         },
@@ -224,7 +226,12 @@ pub fn prepare(
         journal_events: 0,
     };
     let topology = compile(loop_limits, &TopologyDescription::default())?;
-    let cells = Cells::new(strips, loops, driver);
+    let cells = Cells::new(
+        strips,
+        loops,
+        stream::RING_PAGES * description.page_bytes,
+        driver,
+    );
     let smoothing = match description.smoothing_frames {
         0 => Smoothing::None,
         frames => Smoothing::LinearRestart { frames },
@@ -291,6 +298,10 @@ pub fn prepare(
         pool.master(),
         EngineNode::Master(MasterBus::new(&settings)),
     ));
+    nodes.push(PreparedNode::new(
+        pool.reader(),
+        EngineNode::Reader(stream::BulkReader::new(cells.clone(), page_bytes)),
+    ));
     for slot in 0..strips {
         nodes.push(PreparedNode::new(
             pool.strip_input(slot),
@@ -328,6 +339,14 @@ pub fn prepare(
         payloads: (1..=RECORDS_PER_APPEND)
             .map(|records| Some(vec![0; records * RECORD_BYTES].into_boxed_slice()))
             .collect(),
+        full: {
+            let count = (3 * loops).div_ceil(RECORDS_PER_APPEND);
+            let mut full = Vec::with_capacity(count);
+            full.extend(
+                (0..count).map(|_| vec![0; RECORDS_PER_APPEND * RECORD_BYTES].into_boxed_slice()),
+            );
+            full
+        },
         plans: [
             Some(PreparedPlan::with_capacity(config)?),
             Some(PreparedPlan::with_capacity(config)?),
@@ -343,6 +362,7 @@ pub fn prepare(
         host_midi_inputs: midi_in as u16,
         host_midi_outputs: midi_out as u16,
         max_frames: description.max_frames as u32,
+        smoothing_limit_frames: description.smoothing_limit_frames,
         reliable_credits: description.reliable_credits,
         bulk_credits: description.bulk_credits,
     };
@@ -365,6 +385,7 @@ pub fn prepare(
             master_channels,
             host: counts,
             records_per_append: RECORDS_PER_APPEND,
+            frames: description.max_frames as u32,
             command_slots: slots,
             max_reliable: description.reliable_credits,
             max_bulk: description.bulk_credits,
@@ -380,12 +401,32 @@ pub fn prepare(
         pending: vec![None; slots].into_boxed_slice(),
         planned: vec![[None; PLANNED]; loops].into_boxed_slice(),
         job: None,
+        batch: vec![
+            (
+                None,
+                model::Change::RemoveStrip {
+                    strip: shoop_rt_protocol::StripId(shoop_rt_protocol::SlotId::new(0, 0))
+                }
+            );
+            credits
+        ]
+        .into_boxed_slice(),
+        batch_len: 0,
+        touched_strips: vec![0; strips].into_boxed_slice(),
+        touched_loops: vec![0; loops].into_boxed_slice(),
+        touched_master: 0,
+        blocked_strips: vec![false; strips].into_boxed_slice(),
+        blocked_loops: vec![false; loops].into_boxed_slice(),
+        blocked_master: false,
+        blocked_all: false,
+        retired: Ring::new(loops.max(1)),
+        fades: vec![pool.master(); strips + loops].into_boxed_slice(),
         work,
         graph_epoch: runtime.epoch(),
         topology_epoch: Epoch(0),
         quiet_until: 0,
         resync: None,
-        bulk: bulk::Bulk::new(bulk_credits, page_bytes, channels),
+        bulk: bulk::Bulk::new(bulk_credits, channels),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,

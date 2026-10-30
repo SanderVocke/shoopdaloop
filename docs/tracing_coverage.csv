@@ -244,9 +244,11 @@ src/rust/shoop_rt_engine/src/lib.rs,realtime_engine,excluded,Engine preparation 
 src/rust/shoop_rt_engine/src/model.rs,realtime_engine,excluded,Plain confirmed engine state on the control side.
 src/rust/shoop_rt_engine/src/node.rs,realtime_engine,excluded,Real-time strip stage and fader and Master processors; rendering must not trace.
 src/rust/shoop_rt_engine/src/pool.rs,realtime_engine,excluded,Prepared slot and node identity layout.
+src/rust/shoop_rt_engine/src/queue.rs,realtime_engine,excluded,Bounded allocation-free request queue of the control endpoint that may run on the audio thread; the adapter traces requests and outcomes.
 src/rust/shoop_rt_engine/src/render.rs,realtime_engine,excluded,Render owner called once per audio callback; hosts trace faults and phase changes outside the callback.
 src/rust/shoop_rt_engine/src/resync.rs,realtime_engine,excluded,Bounded full-state record stream; the adapter traces resynchronization.
 src/rust/shoop_rt_engine/src/ring.rs,realtime_engine,excluded,Fixed-capacity queue.
+src/rust/shoop_rt_engine/src/stream.rs,realtime_engine,excluded,Bulk reader node and lock-free byte ring on the render path; rendering must not trace and the adapter traces reads and refusals.
 src/rust/shoop_rt_engine/src/testing.rs,realtime_engine,excluded,Deterministic offline test host for tests and adapters; not a production path.
 src/rust/shoop_rt_engine/src/topology.rs,realtime_engine,excluded,Allocation-free timing image encoding; no execution boundary to instrument.
 src/rust/shoop_rt_host_native/src/cpal_driver.rs,native_engine_host,instrumented_indirect,"Opens devices and streams within the traced host start; stream and render callbacks must not trace, so failures and xruns are reported through host status and engine telemetry."

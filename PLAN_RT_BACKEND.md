@@ -439,6 +439,14 @@ same contracts unchanged.
 while chunked bulk reads run. Capabilities are none except MIDI injection, and every
 other operation is refused with the capability's explanation.
 
+*Follow-up:* queued structural requests are coalesced into one transaction with one
+activation, additions need no fade, and requests for untouched strips and loops do
+not wait. In the application at a 16 ms poll, adding two tracks takes 137 ms (was
+3.85 s) and an immediate record after turning sync off 36 ms (was 2.1 s). A bulk
+reader node reads a 10 s stereo loop in about 1.3 s. Resync reports the generations
+in use, the smoothing limit is announced, and xruns are reported since the previous
+poll as the application expects. Clears are not yet coalesced.
+
 ### Stage 7 — Native host and application integration (`shoop_rt_host_native`)
 
 - [x] The dummy driver on a real-time thread; the CPAL and midir adapter with

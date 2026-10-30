@@ -121,15 +121,59 @@ fn exhausted_pools_are_refused_with_a_visible_message() {
 fn engine_refusals_arrive_as_mutation_failures() {
     let mut backend = stack(&description());
     backend.set_loop_smoothing_ms(4).unwrap();
+    let error = backend
+        .set_loop_smoothing_ms(60_000)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("limited to 4800 ms"), "{error}");
+    let created = backend.create_direct_track(track(1, false, 2)).unwrap();
+    let (first, second) = (created.loops[0], created.loops[1]);
+    backend.set_loop_sync_source(second, Some(first)).unwrap();
     backend.wait_idle();
     assert!(backend.poll().unwrap().mutation_failures.is_empty());
-    backend.set_loop_smoothing_ms(60_000).unwrap();
+    backend.set_loop_sync_source(first, Some(second)).unwrap();
     backend.wait_idle();
     let failures = backend.poll().unwrap().mutation_failures;
     assert_eq!(failures.len(), 1);
     assert_eq!(failures[0].kind, BackendMutationKind::LoopControl);
-    assert!(failures[0].message.contains("smoothing"), "{failures:?}");
+    assert!(failures[0].message.contains("sync source"), "{failures:?}");
     assert!(backend.poll().unwrap().mutation_failures.is_empty());
+}
+
+#[shoop_test]
+fn a_new_backend_uses_newer_generations_after_reconnecting() {
+    let mut description = description();
+    description.segments = vec![Segment {
+        strips: 2,
+        loops: 2,
+    }];
+    let mut backend = stack(&description);
+    for _ in 0..3 {
+        let created = backend.create_direct_track(track(1, false, 2)).unwrap();
+        backend.remove_track(created.track_id).unwrap();
+    }
+    backend.create_direct_track(track(1, false, 1)).unwrap();
+    backend.wait_idle();
+    assert!(backend.poll().unwrap().mutation_failures.is_empty());
+    backend.disconnect();
+
+    let (client, clock) = backend.into_parts();
+    let mut backend = RtBackend::connect(client, clock).unwrap();
+    let created = [
+        backend.create_direct_track(track(1, false, 1)).unwrap(),
+        backend.create_direct_track(track(1, false, 1)).unwrap(),
+    ];
+    backend.wait_idle();
+    let snapshot = backend.poll().unwrap();
+    assert!(
+        snapshot.mutation_failures.is_empty(),
+        "{:?}",
+        snapshot.mutation_failures
+    );
+    for created in &created {
+        assert!(snapshot.tracks.contains_key(&created.track_id));
+        assert!(snapshot.loops.contains_key(&created.loops[0]));
+    }
 }
 
 #[shoop_test]
@@ -259,4 +303,27 @@ fn the_native_stack_can_move_to_the_application_thread() {
             shoop_rt_backend::Sleep,
         >,
     >();
+}
+
+#[shoop_test]
+fn xruns_are_reported_since_the_previous_poll() {
+    let (mut clock, client) = parts(&description());
+    clock.offline.host.add_xruns(5);
+    clock.capture = |_| 0.5;
+    let mut backend = RtBackend::connect(client, clock).unwrap();
+    backend.wait_idle();
+    let first = backend.poll().unwrap().status;
+    assert_eq!(first.xruns, 0);
+    backend.clock_mut().offline.host.add_xruns(3);
+    backend.clock_mut().render(16);
+    let status = backend.poll().unwrap().status;
+    assert_eq!(status.xruns, 3);
+    assert!(status.callback_count > first.callback_count);
+    assert_eq!(status.input_peak, 0.5);
+    backend.clock_mut().render(16);
+    assert_eq!(backend.poll().unwrap().status.xruns, 0);
+    backend.clock_mut().offline.host.add_xruns(2);
+    backend.clock_mut().render(16);
+    assert_eq!(backend.poll().unwrap().status.xruns, 2);
+    assert_eq!(backend.poll().unwrap().status.xruns, 0);
 }

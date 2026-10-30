@@ -17,6 +17,9 @@ impl<T: Copy> Ring<T> {
     pub(crate) fn len(&self) -> usize {
         self.len
     }
+    pub(crate) fn capacity(&self) -> usize {
+        self.items.len()
+    }
     pub(crate) fn is_full(&self) -> bool {
         self.len == self.items.len()
     }

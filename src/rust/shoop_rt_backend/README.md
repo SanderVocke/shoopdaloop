@@ -24,7 +24,9 @@ let backend = RtBackend::connect(client, clock)?;
   waits. `Sleep` (native) sleeps while a host renders on its own thread; `NoWait`
   returns at once. Tests use an offline clock that renders
   `shoop_rt_engine::testing::OfflineRender` when asked.
-- `disconnect()` sends `Goodbye`; the engine keeps its state.
+- `disconnect()` sends `Goodbye`; the engine keeps its state. `into_parts()` returns
+  the client and the clock, for example to connect a new backend to the same
+  engine. A new handshake ignores the engine's answer to an earlier goodbye.
 
 The engine must have a two-channel Master.
 
@@ -32,13 +34,19 @@ The engine must have a two-channel Master.
 
 Every mutation returns at once. Application identities (tracks, loops, ports) are
 counters that are never reused. Engine slots are reserved on the control side: a
-track takes a strip slot and a loop takes a loop slot, each with a new generation.
+track takes a strip slot and a loop takes a loop slot, each with a generation newer
+than any the engine reported for that pool on connection.
 Removing a track queues `RemoveStrip` and releases its slots immediately; the engine
 handles requests in order, so a later reservation of the slot follows the removal.
 
-Requests wait in a queue until the engine's credits allow sending them. Each request
-carries its purpose; its outcome confirms the change in the mirror or becomes a
-failure:
+Requests wait in a queue and are sent together when the backend pumps (in `poll`,
+`advance`, which pumps before and after letting time pass, and `wait_idle`), as far
+as the engine's credits allow. The engine applies the structural requests that
+arrive together as one transaction; at 48 kHz with 256-frame callbacks and a poll
+every 16 ms, a track with eight loops shows within 4 polls, six connections and
+routes within 3, and an immediate record right after 120 sync-source changes
+within 2 (`tests/latency.rs`). Each request carries its purpose; its outcome
+confirms the change in the mirror or becomes a failure:
 
 | Outcome of | Done | Refused |
 | --- | --- | --- |
@@ -57,7 +65,10 @@ incompatible host ports, are returned as errors from the call.
 telemetry; it never waits. Loop modes, positions, lengths and planned transitions
 come from `Telemetry::Loop`; meters from strip, loop and bus telemetry, holding the
 maximum since the previous snapshot (in dBFS, -200 for silence); status from engine
-telemetry. The loop state describes the start of the last rendered callback, one
+telemetry: `xruns` counts the xruns since the previous snapshot (from the first engine
+record of the connection on, robust to a counter restart), `callback_count` the
+callbacks rendered, and `input_peak` and `output_peak` the linear peaks of all host
+inputs and outputs since the previous snapshot. The loop state describes the start of the last rendered callback, one
 callback behind the legacy backends, which report the next frame to render. Delays
 derived from a loop position and the sync loop's length can therefore come out one
 cycle later when a request falls within one callback of a wrap.
@@ -84,9 +95,12 @@ snapshot and every later operation is refused.
   once. Loop gain is clamped to [0, 1], balance to [-1, 1].
 - **Content reads** use chunked bulk reads. `loop_audio_data*` and `loop_midi_data`
   return `None` while a read is in progress and the content once every chunk arrived;
-  an empty loop is answered at once and a recording loop returns `None`. A read
-  belongs to one version of the content and restarts when the loop records or is
-  cleared.
+  an empty loop is answered at once and a recording loop returns `None`. Audio is read
+  with all loop channels interleaved, so one engine export serves every channel; once
+  the first chunk gives the length, further chunks are requested ahead as far as the
+  bulk credits allow. A read belongs to one version of the content and restarts when
+  the loop records or is cleared. Natively, polling every 16 ms with 256-frame
+  callbacks at 48 kHz, a 10 s stereo loop takes about 82 polls (1.3 s).
 - **Host ports** come from the resynchronization; their names are the application's
   host port identities. An engine input (capture) is an application output port.
 - **Master** has the fixed application identities of the legacy Master: bus, channel
@@ -95,7 +109,7 @@ snapshot and every later operation is refused.
 - **The global FX control port** exists as in the legacy backends; its connections are
   accepted and confirmed without reaching the engine.
 - **Smoothing** in milliseconds becomes `SetSmoothing` frames at the engine's sample
-  rate; values above the engine's limit come back as a failure.
+  rate; values above the limit the engine announces are refused by the call.
 - **New session** (`replace_session`, `replace_session_async`) accepts a structure-only
   document of the core set: direct tracks with regular playback and no FX, at most the
   Master bus, one global FX control port, routes to Master. The whole document is
@@ -126,7 +140,9 @@ cargo test -p shoop_rt_backend
   timing ramp on the capture input and declares an observation lag of one frame.
 - `tests/adapter.rs` covers refusal messages, exhausted pools, engine refusals as
   mutation failures, asynchronous reads, removal of unknown engine structure at
-  connection and disconnection.
+  connection, newer generations after reconnecting, and disconnection.
+- `tests/throughput.rs` bounds the polls a 10 s stereo loop read needs at 48 kHz.
+- `tests/latency.rs` bounds the polls structural changes need to show.
 
 `shoop_app`'s `tests/rt_backend.rs` runs the core workflow through the cooperative
 application runtime on the same stack.

@@ -241,6 +241,7 @@ impl Builder {
             }
         }
         self.step(plan, master, count, &mut end)?;
+        self.step(plan, pool.reader(), 0, &mut end)?;
         let mut count = 0;
         for (slot, strip) in model.strips.iter().enumerate() {
             let Some(strip) = strip else { continue };

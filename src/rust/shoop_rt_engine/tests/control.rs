@@ -119,14 +119,20 @@ fn telemetry_reports_levels_activity_and_driver_inputs() {
     };
     let Telemetry::Engine {
         frame: reported,
+        callbacks,
         xruns,
         load,
+        input_peak,
+        output_peak,
         driver,
     } = latest(&harness, &|r| matches!(r, Telemetry::Engine { .. }))
     else {
         unreachable!()
     };
     assert_eq!((reported, xruns, load), (frame, 3, 0.25));
+    assert!(callbacks > 0);
+    assert_eq!(input_peak, 0.5);
+    assert!(output_peak > 0.);
     assert_eq!(driver.buffer_frames, 4);
     assert_eq!(harness.host.client.driver(), Some(driver));
     let Telemetry::Strip {
@@ -193,6 +199,10 @@ fn bulk_reads_return_recorded_audio_channels_and_midi() {
     assert_eq!(left, expected);
     let (_, right, _) = harness.read(looped, BulkSelector::Audio { channel: 1 });
     assert_eq!(right, expected.iter().map(|s| -s).collect::<Vec<_>>());
+    let (total, interleaved, _) = harness.read(looped, BulkSelector::AudioFrames);
+    assert_eq!(total, frames);
+    let pairs: Vec<f32> = expected.iter().flat_map(|s| [*s, -*s]).collect();
+    assert_eq!(interleaved, pairs);
     let (total, _, bytes) = harness.read(looped, BulkSelector::Midi);
     assert_eq!(total as usize, bytes.len());
     assert_eq!(
@@ -377,6 +387,10 @@ fn resync_streams_the_confirmed_state() {
         .filter(|r| matches!(r, StateRecord::Strip { .. }))
         .count();
     assert_eq!(strips, 1);
+    assert!(states.contains(&StateRecord::Generations {
+        strips: 1,
+        loops: 4
+    }));
 }
 
 #[shoop_test]

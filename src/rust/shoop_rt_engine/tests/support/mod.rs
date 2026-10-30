@@ -273,7 +273,11 @@ impl Harness {
                 BulkPayload::Refused(refusal) => panic!("bulk read refused: {refusal:?}"),
             };
             assert_eq!(chunk.offset, offset);
-            offset += len;
+            offset += if selector == BulkSelector::AudioFrames {
+                len / 2
+            } else {
+                len
+            };
             if offset >= chunk.total {
                 return (chunk.total, samples, bytes);
             }

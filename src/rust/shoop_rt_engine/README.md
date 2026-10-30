@@ -62,18 +62,30 @@ Master's width.
 
 ## Requests
 
-Requests are handled in arrival order. Controls, loop transitions, loop gain and
-balance and MIDI injection are forwarded to the runtime as soon as they reach the
-head of the queue and answered with their execution's outcome. Structural
-requests (create and remove strips and loops, sync sources, connections, routes)
-and Clear run as one transaction at a time and hold back later requests until
-their activation is confirmed. Every request is validated against the confirmed
-state: client-chosen slot IDs must be in the pool (`Capacity`), unoccupied and of
-a newer generation (`InvalidId`); values must be finite and balances within
-[-1, 1] (`InvalidValue`). Requests beyond the client's credits are refused
-`Overloaded`. `SetSmoothing` applies the loop library's smoothing operation to
-every loop and to loops created later; values above the prepared limit are
-refused `InvalidValue`.
+Requests keep their order per target (a strip, a loop, the Master). Controls,
+loop transitions, loop gain and balance and MIDI injection are forwarded to the
+runtime as soon as nothing they depend on is pending, and answered with their
+execution's outcome. Structural requests (create and remove strips and loops,
+sync sources, connections, routes) run as transactions, one at a time: at each
+poll, the structural requests that are queued and can go together are validated
+against the model they build up and become one transaction with one activation,
+so a strip with its loops, a set of sync changes or a set of connections and
+routes activates at once. Their order is kept: once one has to wait, for example
+to reuse a slot that the same transaction frees, later ones wait too. Clear and
+`SetSmoothing` run as transactions of their own.
+
+While a transaction is pending, requests for untouched strips and loops do not
+wait. A loop transition waits while its loop is created or removed or its strip's
+structure or connections change; a delayed one also waits for its loop's sync
+source change, while an immediate one does not depend on it. Gains wait only for
+the creation or removal of their loop or strip.
+
+Every request is validated: client-chosen slot IDs must be in the pool
+(`Capacity`), unoccupied and of a newer generation (`InvalidId`); values must be
+finite and balances within [-1, 1] (`InvalidValue`). Requests beyond the client's
+credits are refused `Overloaded`; the default description allows 256. `SetSmoothing` applies the loop library's smoothing operation to
+every loop and to loops created later; values above the prepared limit, which
+`Limits` announces, are refused `InvalidValue`.
 
 Loop transitions follow the legacy rules. `delay: Some(n)` waits for the
 (n+1)-th clock edge of the loop's sync source; a loop without a source counts its
@@ -86,16 +98,19 @@ own. Delayed requests are answered when admitted; immediate ones when applied.
 
 A transaction first prepares everything without touching the music: node-pair
 edits for added or removed loops, a validated LTP1 timing image of the new loop
-topology, and a staged graph built in a prepared plan. It then schedules the
-activation at an exact frame:
+topology, and a staged graph built in a prepared plan. The three stages start
+together; the node-pair edits and timing records follow in the next poll, the
+records scheduled one callback apart (the loop library accepts one append per
+callback) with validation after the last. It then schedules the activation at an
+exact frame and answers every request of the transaction when it is confirmed:
 
 - Adding a strip or loop activates at the next frame with freshly reset
-  processors; a new loop generation starts empty.
+  processors; a new loop generation starts empty. Additions need no fade.
 - Removing a strip or loop first fades its output or fader over the prepared
   ramp, stops its loops and then activates the configuration without them.
 - Connecting, disconnecting and routing write the new connection set to the
-  silent bank of the strip or the Master bus and cross-fade between the banks at
-  the activation frame. Unchanged destinations keep their signal; removed ones
+  silent bank of the strip or the Master bus, once per transaction however many
+  changes it holds, and cross-fade between the banks at the activation frame. Unchanged destinations keep their signal; removed ones
   fade out and added ones fade in. MIDI connections change at the activation
   frame. Master outputs are connections like strip ports (`EnginePort::Bus`);
   the description's initial Master wiring is reported through resync.
@@ -116,14 +131,27 @@ processors. `poll` emits Engine, Strip, Loop and Bus records at most every
 `telemetry_interval_frames` (after every callback when zero), and a Loop record
 whenever its planned transitions change. A recording loop reports its captured
 length. Next mode and remaining delay come from the planned transitions and the
-source's clock edges. Peaks are the maximum since the previous record.
+source's clock edges. Peaks are the maximum since the previous record. The
+Engine record carries the frame, the callbacks rendered, the host's xrun count
+and load, and the peaks of all host audio inputs and outputs. Loop state is the
+state at the start of the last rendered callback.
 
 `Resync` streams the confirmed state between `Begin` and `End` records, as
-reliable outbox space allows. Bulk reads export the loop's playback content once
-per session and read it through a resource cursor into a prepared page buffer;
-in-order reads continue the session, which ends with its last chunk. Audio
-chunks carry one channel; MIDI chunks carry the stored records described in the
-protocol.
+reliable outbox space allows. Right after `Begin`, a `Generations` record gives
+the highest generation used on any strip and any loop slot, so a reconnecting
+client can name free slots with newer generations.
+
+Bulk reads export the loop's playback content once per session and hand a cursor
+over its audio or MIDI to the bulk reader, a node that is always in the graph
+and idle without a cursor. During rendering it copies up to four pages per
+callback, within the resource copy budget reserved for it, into a lock-free ring
+of sixteen pages. The endpoint cuts chunks from the ring, as many per poll as
+reads are queued and bytes have arrived. In-order reads continue the session,
+which ends, releasing its export, once its medium is taken; reading another loop,
+medium or channel, or seeking backwards, stops the reader and starts a new
+session. Audio chunks carry one channel or, with `AudioFrames`, whole frames of
+every channel interleaved, so one session serves all channels; MIDI chunks carry
+the stored records described in the protocol.
 
 ## Connection lifecycle
 

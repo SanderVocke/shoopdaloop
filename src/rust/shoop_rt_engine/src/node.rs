@@ -2,11 +2,13 @@
 //! to the engine's own strip stages, loop faders and the Master bus.
 
 use crate::cells::{Cells, Peak};
+use crate::stream::BulkReader;
 use rt_runtime::buffer::MidiBuffer;
 use rt_runtime::graph::PortCounts;
 use rt_runtime::midi_state::MidiState;
 use rt_runtime::planner::ConsumerAccess;
 use rt_runtime::processor::{OperationContext, ProcessBlock, Processor, ProcessorOperation};
+use rt_runtime::resource::Cursor;
 use rt_runtime::Error;
 use shoop_loops::runtime::{LoopNode, LoopPlanner};
 use shoop_rt_protocol::MidiMessage;
@@ -33,6 +35,12 @@ pub enum EngineOp {
     /// Move to the other connection bank over the prepared ramp.
     Crossfade,
     Inject(MidiMessage),
+    /// Stream `bytes` of an exported medium from `cursor` into the bulk ring.
+    ReadStart {
+        cursor: Cursor,
+        bytes: u64,
+    },
+    ReadStop,
 }
 impl ProcessorOperation for EngineOp {
     type Result = ();
@@ -194,6 +202,7 @@ pub enum EngineNode {
     StripOutput(StripOutput),
     Fader(LoopFader),
     Master(MasterBus),
+    Reader(BulkReader),
 }
 
 pub(crate) struct NodeSettings {
@@ -322,7 +331,10 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
                     .ok_or(Error::Full)?;
                 *slot = Some(message);
             }
-            EngineOp::Mute(_) | EngineOp::Presence(_) => return Err(Error::InvalidParameter),
+            EngineOp::Mute(_)
+            | EngineOp::Presence(_)
+            | EngineOp::ReadStart { .. }
+            | EngineOp::ReadStop => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -444,7 +456,10 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
                 let target = 1. - self.bank.target();
                 self.bank.set(target, self.ramp);
             }
-            EngineOp::Monitor(_) | EngineOp::Inject(_) => return Err(Error::InvalidParameter),
+            EngineOp::Monitor(_)
+            | EngineOp::Inject(_)
+            | EngineOp::ReadStart { .. }
+            | EngineOp::ReadStop => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -605,6 +620,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripOutput(node) => node.ports(),
             Self::Fader(node) => node.ports(),
             Self::Master(node) => node.ports(),
+            Self::Reader(node) => node.ports(),
         }
     }
     fn planning(&self) -> ConsumerAccess {
@@ -624,6 +640,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripOutput(node) => node.operation(operation, context),
             Self::Fader(node) => node.operation(operation, context),
             Self::Master(node) => node.operation(operation, context),
+            Self::Reader(node) => node.operation(operation, context),
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -633,6 +650,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripOutput(node) => node.process(block),
             Self::Fader(node) => node.process(block),
             Self::Master(node) => node.process(block),
+            Self::Reader(node) => node.process(block),
         }
     }
 }

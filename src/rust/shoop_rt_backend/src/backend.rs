@@ -228,20 +228,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             request.midi,
             request.initial_loops,
         )?;
-        self.pump();
         Ok(created)
     }
 
     fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
         self.ready()?;
         self.remove_strip(track_id);
-        self.pump();
         Ok(())
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
         let loop_id = self.add_loop(track_id)?;
-        self.pump();
         Ok(loop_id)
     }
 
@@ -252,7 +249,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     ) -> Result<()> {
         self.ready()?;
         self.queue_track_control(track_id, control)?;
-        self.pump();
         Ok(())
     }
 
@@ -334,7 +330,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 Purpose::InjectMidi(track_id),
             );
         }
-        self.pump();
         Ok(())
     }
 
@@ -360,7 +355,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             },
             Purpose::LoopGain(loop_id, gain),
         );
-        self.pump();
         Ok(())
     }
 
@@ -378,7 +372,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             },
             Purpose::LoopBalance(loop_id, balance),
         );
-        self.pump();
         Ok(())
     }
 
@@ -483,7 +476,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             },
             Purpose::LoopSync(loop_id, source),
         );
-        self.pump();
         Ok(())
     }
 
@@ -504,7 +496,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             },
             Purpose::Transition(loop_id),
         );
-        self.pump();
         Ok(())
     }
 
@@ -515,7 +506,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             Request::LoopClear { loop_id: slot },
             Purpose::Clear(loop_id),
         );
-        self.pump();
         Ok(())
     }
 
@@ -562,7 +552,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let mapping = self.start_replacement(session)?;
-        self.pump();
         Ok(mapping)
     }
 
@@ -614,13 +603,19 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.ready()?;
         let sample_rate = self.driver.map_or(0, |driver| driver.sample_rate);
         let frames = u64::from(milliseconds) * u64::from(sample_rate) / 1000;
+        let limit = self.limits().smoothing_limit_frames;
+        if frames > u64::from(limit) {
+            return Err(anyhow!(
+                "loop boundary smoothing is limited to {} ms on this engine",
+                u64::from(limit) * 1000 / u64::from(sample_rate.max(1))
+            ));
+        }
         self.requests.push(
             Request::SetSmoothing {
                 frames: u32::try_from(frames).unwrap_or(u32::MAX),
             },
             Purpose::Smoothing(milliseconds),
         );
-        self.pump();
         Ok(())
     }
 
@@ -631,7 +626,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         connected: bool,
     ) -> Result<()> {
         self.queue_connection(port_id, external_port, connected)?;
-        self.pump();
         Ok(())
     }
 
@@ -642,7 +636,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         connected: bool,
     ) -> Result<()> {
         self.queue_route(source_port_id, destination_channel_id, connected)?;
-        self.pump();
         Ok(())
     }
 
@@ -660,7 +653,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             return Err(anyhow!("unknown bus {bus_id:?}"));
         }
         self.queue_master_control(control)?;
-        self.pump();
         Ok(())
     }
 
@@ -673,6 +665,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn advance(&mut self, elapsed: Duration) {
+        self.pump();
         self.clock.advance(elapsed);
         self.pump();
     }
@@ -680,13 +673,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn poll(&mut self) -> Result<BackendSnapshot> {
         self.pump();
         let driver = self.driver;
+        self.status.peaks_fresh = false;
         let status = BackendStatus {
             dsp_load_percent: self.status.load * 100.0,
-            xruns: self.status.xruns,
+            xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),
             sample_rate: driver.map_or(0, |driver| driver.sample_rate),
             driver_state: self.driver_state(),
+            callback_count: self.status.callbacks,
             processed_frames: self.status.frame,
+            input_peak: self.status.input_peak,
+            output_peak: self.status.output_peak,
             ..Default::default()
         };
         let mirror = &mut self.mirror;

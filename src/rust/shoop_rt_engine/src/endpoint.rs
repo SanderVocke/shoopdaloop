@@ -29,10 +29,9 @@ use shoop_loops::runtime::{Failure, LoopClient, Operation, Reply};
 use shoop_loops::{LoopId, Mode, Timing, Transition};
 use shoop_rt_protocol::carrier::{Endpoint, Outbox};
 use shoop_rt_protocol::{
-    BusControl, BusId, BusPort, Capabilities, ClientMessage, Direction, DisconnectReason,
-    EngineMessage, EnginePort, HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits,
-    LoopMode, LoopSlotId, Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry,
-    PROTOCOL_VERSION,
+    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, EngineMessage,
+    HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode, LoopSlotId,
+    Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry, PROTOCOL_VERSION,
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -51,6 +50,8 @@ pub(crate) struct Settings {
     /// Audio inputs, audio outputs, MIDI inputs, MIDI outputs.
     pub host: [usize; 4],
     pub records_per_append: usize,
+    /// The largest callback, which separates scheduled topology appends.
+    pub frames: u32,
     pub command_slots: usize,
     pub max_reliable: u16,
     pub max_bulk: u16,
@@ -105,14 +106,30 @@ pub(crate) struct Work {
     pub image: Box<[u8]>,
     /// Topology payloads of one to `records_per_append` records, by length.
     pub payloads: Box<[Option<Box<[u8]>>]>,
+    /// Further payloads of `records_per_append` records, so that a whole image
+    /// can be appended at once.
+    pub full: Vec<Box<[u8]>>,
     pub plans: [Option<PreparedPlan>; 2],
 }
 
 impl Work {
+    pub(crate) fn take_payload(&mut self, records: usize) -> Option<Box<[u8]>> {
+        let slot = self.payloads.get_mut(records.checked_sub(1)?)?;
+        slot.take().or_else(|| {
+            (records == self.payloads.len())
+                .then(|| self.full.pop())
+                .flatten()
+        })
+    }
     pub(crate) fn return_payload(&mut self, payload: Box<[u8]>) {
         let index = payload.len() / crate::topology::RECORD_BYTES;
-        if let Some(slot) = index.checked_sub(1).and_then(|i| self.payloads.get_mut(i)) {
+        let Some(slot) = index.checked_sub(1).and_then(|i| self.payloads.get_mut(i)) else {
+            return;
+        };
+        if slot.is_none() {
             *slot = Some(payload);
+        } else if self.full.len() < self.full.capacity() {
+            self.full.push(payload);
         }
     }
     pub(crate) fn return_plan(&mut self, plan: PreparedPlan) {
@@ -141,6 +158,23 @@ pub struct ControlEndpoint {
     pub(crate) pending: Box<[Option<Pending>]>,
     pub(crate) planned: Box<[[Option<Planned>; PLANNED]]>,
     pub(crate) job: Option<Job>,
+    /// The staged transaction's requests and changes, in order.
+    pub(crate) batch: Box<[(Option<u64>, Change)]>,
+    pub(crate) batch_len: usize,
+    /// How far the pending transaction affects each strip, loop and the
+    /// Master (see `queue`).
+    pub(crate) touched_strips: Box<[u8]>,
+    pub(crate) touched_loops: Box<[u8]>,
+    pub(crate) touched_master: u8,
+    /// Targets of requests that wait in the current pass over the queue.
+    pub(crate) blocked_strips: Box<[bool]>,
+    pub(crate) blocked_loops: Box<[bool]>,
+    pub(crate) blocked_master: bool,
+    pub(crate) blocked_all: bool,
+    /// Initial media of new loops, to release.
+    pub(crate) retired: Ring<shoop_loops::media::MediaId>,
+    /// Nodes that fade out before an activation.
+    pub(crate) fades: Box<[NodeId]>,
     pub(crate) work: Work,
     pub(crate) graph_epoch: Epoch,
     pub(crate) topology_epoch: Epoch,
@@ -358,11 +392,6 @@ impl ControlEndpoint {
             | Command::Commit {
                 plan: Some(plan), ..
             } => self.work.return_plan(plan),
-            Command::Resource(command) => {
-                if let rt_runtime::resource::Request::Read { bytes, .. } = command.into_request() {
-                    self.bulk.buffer = Some(bytes);
-                }
-            }
             _ => {}
         }
     }
@@ -390,9 +419,7 @@ impl ControlEndpoint {
                 _ => {}
             }
         }
-        if let Some(job) = &mut self.job {
-            job.correlation = None;
-        }
+        self.forget_job_answers();
         self.bulk.disconnect();
     }
 
@@ -642,7 +669,7 @@ impl ControlEndpoint {
         Ok(())
     }
 
-    fn host_index(&self, host: HostPortId, kind: PortKind) -> Option<usize> {
+    pub(crate) fn host_index(&self, host: HostPortId, kind: PortKind) -> Option<usize> {
         let port = self.host_ports.get(host.0 as usize)?;
         let expected = match kind {
             PortKind::AudioIn => (HostPortKind::Audio, Direction::Input),
@@ -660,77 +687,12 @@ impl ControlEndpoint {
         Some(host.0 as usize - first)
     }
 
-    /// Handle the request at the head of the queue. `Err` keeps it queued.
-    fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
+    /// Handle a request that is not structural. `Err` keeps it queued.
+    pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
-            Request::CreateStrip { strip, shape } => {
-                let slot = strip.0.index as usize;
-                if slot >= self.model.strips.len() {
-                    Err(Refusal::Capacity)
-                } else if strip.0.generation == 0
-                    || strip.0.generation <= self.model.strip_generations[slot]
-                    || self.model.strips[slot].is_some()
-                {
-                    Err(Refusal::InvalidId)
-                } else if shape.audio_inputs as usize > self.settings.channels
-                    || shape.audio_outputs as usize > self.settings.channels
-                {
-                    Err(Refusal::Capacity)
-                } else {
-                    return self.begin_job(
-                        correlation,
-                        Job::change(Change::CreateStrip { strip, shape }),
-                    );
-                }
-            }
-            Request::RemoveStrip { strip } => match self.model.strip(strip) {
-                None => Err(Refusal::InvalidId),
-                Some(_) => {
-                    return self.begin_job(correlation, Job::change(Change::RemoveStrip { strip }))
-                }
-            },
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
             }
-            Request::CreateLoop { loop_id, strip } => {
-                let slot = loop_id.0.index as usize;
-                if slot >= self.model.loops.len() {
-                    Err(Refusal::Capacity)
-                } else if loop_id.0.generation == 0
-                    || loop_id.0.generation <= self.model.loop_generations[slot]
-                    || self.model.loops[slot].is_some()
-                    || self.model.strip(strip).is_none()
-                {
-                    Err(Refusal::InvalidId)
-                } else {
-                    return self.begin_job(
-                        correlation,
-                        Job::change(Change::CreateLoop { loop_id, strip }),
-                    );
-                }
-            }
-            Request::RemoveLoop { loop_id } => match self.model.find_loop(loop_id) {
-                None => Err(Refusal::InvalidId),
-                Some(_) => {
-                    return self.begin_job(correlation, Job::change(Change::RemoveLoop { loop_id }))
-                }
-            },
-            Request::LoopSync { loop_id, source } => match self.model.find_loop(loop_id) {
-                None => Err(Refusal::InvalidId),
-                Some(entry) if entry.sync == source => Ok(Some(Outcome::Done)),
-                Some(_) => match source {
-                    Some(source) if self.model.find_loop(source).is_none() => {
-                        Err(Refusal::InvalidId)
-                    }
-                    Some(source) if !self.model.sync_allowed(loop_id, source) => {
-                        Err(Refusal::InvalidValue)
-                    }
-                    _ => {
-                        return self
-                            .begin_job(correlation, Job::change(Change::Sync { loop_id, source }))
-                    }
-                },
-            },
             Request::LoopTransition {
                 loop_id,
                 mode,
@@ -774,46 +736,6 @@ impl ControlEndpoint {
                     )
                 }
             }
-            Request::Connect {
-                port,
-                host,
-                connected,
-            } => self.connect(correlation, port, host, connected),
-            Request::Route {
-                port,
-                bus:
-                    BusPort {
-                        bus: BusId::Master,
-                        index,
-                    },
-                connected,
-            } => match self.model.strip(port.strip) {
-                None => Err(Refusal::InvalidId),
-                Some(entry)
-                    if port.kind != PortKind::AudioOut
-                        || port.index >= entry.shape.audio_outputs
-                        || index as usize >= self.settings.master_channels =>
-                {
-                    Err(Refusal::InvalidValue)
-                }
-                Some(entry) => {
-                    let (channel, target) = (port.index as usize, index as usize);
-                    let mask = entry.outputs.master[entry.outputs.active][channel];
-                    if (mask & (1 << target) != 0) == connected {
-                        Ok(Some(Outcome::Done))
-                    } else {
-                        return self.begin_job(
-                            correlation,
-                            Job::change(Change::Route {
-                                strip: port.strip,
-                                channel,
-                                target,
-                                connected,
-                            }),
-                        );
-                    }
-                }
-            },
             Request::BusControl {
                 bus: BusId::Master,
                 control,
@@ -833,6 +755,13 @@ impl ControlEndpoint {
                     .map(|()| None)
                 }
             },
+            Request::CreateStrip { .. }
+            | Request::RemoveStrip { .. }
+            | Request::CreateLoop { .. }
+            | Request::RemoveLoop { .. }
+            | Request::LoopSync { .. }
+            | Request::Connect { .. }
+            | Request::Route { .. } => Err(Refusal::Internal),
             Request::SetSmoothing { frames } => {
                 if frames > self.settings.smoothing_limit {
                     Err(Refusal::InvalidValue)
@@ -867,11 +796,17 @@ impl ControlEndpoint {
     ) -> Result<Option<Outcome>, Refusal> {
         let at = self.at();
         self.submit_loop(at, operation, Purpose::Reply(Some(correlation)))?;
-        if let Some(Some(entry)) = self.model.loops.get_mut(id.0.index as usize) {
-            match operation {
-                Operation::Gain { value, .. } => entry.gain = value,
-                Operation::Balance { value, .. } => entry.balance = value,
-                _ => {}
+        let staged = self.job.is_some();
+        for model in [&mut self.model, &mut self.next] {
+            if let Some(Some(entry)) = model.loops.get_mut(id.0.index as usize) {
+                match operation {
+                    Operation::Gain { value, .. } => entry.gain = value,
+                    Operation::Balance { value, .. } => entry.balance = value,
+                    _ => {}
+                }
+            }
+            if !staged {
+                break;
             }
         }
         Ok(None)
@@ -912,6 +847,11 @@ impl ControlEndpoint {
             .controls
             .apply(control);
         self.model.revision += 1;
+        if self.job.is_some() {
+            if let Some(entry) = self.next.strip_mut(strip) {
+                entry.controls.apply(control);
+            }
+        }
         Ok(None)
     }
 
@@ -931,86 +871,10 @@ impl ControlEndpoint {
         self.submit_op(at, master, operation, Purpose::Reply(Some(correlation)))?;
         self.model.master.apply(control);
         self.model.revision += 1;
+        if self.job.is_some() {
+            self.next.master.apply(control);
+        }
         Ok(None)
-    }
-
-    fn connect(
-        &mut self,
-        correlation: u64,
-        port: EnginePort,
-        host: HostPortId,
-        connected: bool,
-    ) -> Result<Option<Outcome>, Refusal> {
-        let port = match port {
-            EnginePort::Strip(port) => port,
-            EnginePort::Bus(BusPort {
-                bus: BusId::Master,
-                index,
-            }) => {
-                let channel = index as usize;
-                if channel >= self.settings.master_channels {
-                    return Err(Refusal::InvalidValue);
-                }
-                let host = self
-                    .host_index(host, PortKind::AudioOut)
-                    .ok_or(Refusal::InvalidId)?;
-                let mask = self.model.master_outputs.current()[channel];
-                if (mask & (1 << host) != 0) == connected {
-                    return Ok(Some(Outcome::Done));
-                }
-                let _ = self.begin_job(
-                    correlation,
-                    Job::change(Change::ConnectMaster {
-                        channel,
-                        host,
-                        connected,
-                    }),
-                );
-                return Ok(None);
-            }
-        };
-        let strip = *self.model.strip(port.strip).ok_or(Refusal::InvalidId)?;
-        let index = port.index as usize;
-        let valid = match port.kind {
-            PortKind::AudioIn => index < strip.shape.audio_inputs as usize,
-            PortKind::AudioOut => index < strip.shape.audio_outputs as usize,
-            PortKind::MidiIn => index == 0 && strip.shape.midi_input,
-            PortKind::MidiOut => index == 0 && strip.shape.midi_output,
-        };
-        if !valid {
-            return Err(Refusal::InvalidValue);
-        }
-        let host = self.host_index(host, port.kind).ok_or(Refusal::InvalidId)?;
-        let mask = match port.kind {
-            PortKind::AudioIn => strip.inputs.current()[index],
-            PortKind::AudioOut => strip.outputs.current()[index],
-            PortKind::MidiIn => strip.midi_inputs,
-            PortKind::MidiOut => strip.midi_outputs,
-        };
-        if (mask & (1 << host) != 0) == connected {
-            return Ok(Some(Outcome::Done));
-        }
-        let _ = self.begin_job(
-            correlation,
-            Job::change(Change::Connect {
-                port,
-                host,
-                connected,
-            }),
-        );
-        Ok(None)
-    }
-
-    fn process_queue(&mut self) {
-        while self.job.is_none() {
-            let Some((correlation, request)) = self.queue.front() else {
-                break;
-            };
-            if self.start(correlation, request).is_err() {
-                break;
-            }
-            self.queue.pop();
-        }
     }
 
     fn flush(&mut self, out: &mut Outbox) {
@@ -1052,10 +916,14 @@ impl ControlEndpoint {
             .is_none_or(|last| frame >= last.saturating_add(interval));
         if periodic {
             self.telemetry_frame = Some(frame);
+            let peaks = self.cells.host_peaks.take(2);
             let _ = out.push(EngineMessage::Telemetry(Telemetry::Engine {
                 frame,
+                callbacks: self.cells.callbacks.load(Ordering::Relaxed),
                 xruns: self.cells.xruns(),
                 load: self.cells.load(),
+                input_peak: peaks.as_slice()[0],
+                output_peak: peaks.as_slice()[1],
                 driver: self.cells.driver(),
             }));
             for slot in 0..self.model.strips.len() {
@@ -1169,7 +1037,7 @@ impl Endpoint for ControlEndpoint {
                 } else {
                     self.unanswered += 1;
                     let _ = self.queue.push((correlation, request));
-                    self.process_queue();
+                    self.process_queue(false);
                 }
             }
             ClientMessage::Resync => {
@@ -1201,7 +1069,7 @@ impl Endpoint for ControlEndpoint {
         }
         self.drain_runtime();
         self.advance_job();
-        self.process_queue();
+        self.process_queue(true);
         self.advance_bulk();
         self.flush(out);
         self.telemetry(out);

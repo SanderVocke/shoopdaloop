@@ -9,13 +9,13 @@ use shoop_backend::{
 };
 use shoop_rt_protocol::carrier::Carrier;
 use shoop_rt_protocol::{
-    BusControl, BusId, BusPort, EngineMessage, EnginePort, Limits, LoopMode, Outcome, Refusal,
-    Request, StateRecord, StripControl, Telemetry,
+    BusControl, BusId, BusPort, DisconnectReason, EngineMessage, EnginePort, Limits, LoopMode,
+    Outcome, Refusal, Request, StateRecord, StripControl, Telemetry,
 };
 
 use crate::mirror::{amplitude_db, LoopView};
 use crate::requests::{Pending, Purpose};
-use crate::{EngineClock, Link, RtBackend, Status};
+use crate::{EngineClock, Link, RtBackend};
 
 fn refusal_text(refusal: Refusal) -> &'static str {
     match refusal {
@@ -99,6 +99,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 tracing::debug!(?limits, "backend.rt.limits_changed");
                 self.set_limits(limits);
             }
+            // The engine's answer to an earlier client's goodbye.
+            EngineMessage::Disconnected(DisconnectReason::Shutdown)
+                if self.link == Link::Connecting => {}
             EngineMessage::Disconnected(reason) => {
                 self.lose(format!("the engine ended the connection ({reason:?})"))
             }
@@ -108,6 +111,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn set_limits(&mut self, limits: Limits) {
         self.mirror.strip_slots.resize(limits.strips as usize);
         self.mirror.loop_slots.resize(limits.loops as usize);
+        self.reads.set_loop_channels(limits.strip_audio_channels);
         self.limits = Some(limits);
     }
 
@@ -115,11 +119,26 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         match record {
             Telemetry::Engine {
                 frame,
+                callbacks,
                 xruns,
                 load,
+                input_peak,
+                output_peak,
                 driver,
             } => {
-                self.status = Status { frame, xruns, load };
+                let status = &mut self.status;
+                status.frame = frame;
+                status.callbacks = callbacks;
+                status.load = load;
+                status.xruns_reported.get_or_insert(xruns);
+                status.xruns = xruns;
+                if !status.peaks_fresh {
+                    status.input_peak = 0.0;
+                    status.output_peak = 0.0;
+                    status.peaks_fresh = true;
+                }
+                status.input_peak = status.input_peak.max(input_peak.abs());
+                status.output_peak = status.output_peak.max(output_peak.abs());
                 self.driver = Some(driver);
                 self.telemetry_fresh = true;
             }
@@ -209,6 +228,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     strips.insert(strip);
                 }
                 StateRecord::Loop { loop_id, .. } => self.mirror.loop_slots.adopt(loop_id.0),
+                StateRecord::Generations { strips, loops } => {
+                    self.mirror.strip_slots.raise_floor(strips);
+                    self.mirror.loop_slots.raise_floor(loops);
+                }
                 _ => {}
             }
         }

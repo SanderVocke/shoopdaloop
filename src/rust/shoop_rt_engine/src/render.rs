@@ -135,6 +135,7 @@ impl Render {
         if frames == 0 {
             return Ok(self.report());
         }
+        self.cells.callbacks.fetch_add(1, Ordering::Relaxed);
         if self.phase == Phase::Running && !self.cells.endpoint_alive.load(Ordering::Relaxed) {
             self.phase = Phase::Disconnected;
             self.request_resets();
@@ -170,6 +171,19 @@ impl Render {
         self.cells
             .next_frame
             .store(self.runtime.next_frame().0, Ordering::Relaxed);
+        let peak = |buffers: &mut dyn Iterator<Item = &[f32]>| {
+            buffers.fold(0f32, |peak, buffer| {
+                buffer[..frames]
+                    .iter()
+                    .fold(peak, |peak, sample| peak.max(sample.abs()))
+            })
+        };
+        self.cells
+            .host_peaks
+            .raise(0, peak(&mut audio.inputs.iter().copied()));
+        self.cells
+            .host_peaks
+            .raise(1, peak(&mut audio.outputs.iter().map(|output| &**output)));
         if let Err(error) = result.and(recovery) {
             self.phase = Phase::Faulted(error);
             self.cells.faulted.store(true, Ordering::Relaxed);

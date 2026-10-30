@@ -60,13 +60,21 @@ pub(crate) struct Banks {
     pub masks: [Masks; 2],
     pub master: [Masks; 2],
     pub active: usize,
+    /// Swapped in the transaction being staged: later changes of the same
+    /// transaction edit the new active bank, so the node cross-fades once.
+    pub swapped: bool,
 }
 impl Banks {
     pub(crate) fn current(&self) -> &Masks {
         &self.masks[self.active]
     }
-    /// Prepare the silent bank as a copy of the active one and make it active.
+    /// Prepare the silent bank as a copy of the active one and make it active,
+    /// once per transaction.
     fn swap(&mut self) -> &mut Masks {
+        if self.swapped {
+            return &mut self.masks[self.active];
+        }
+        self.swapped = true;
         let next = 1 - self.active;
         self.masks[next] = self.masks[self.active];
         self.master[next] = self.master[self.active];
@@ -185,9 +193,18 @@ impl Model {
                 masks: [master_outputs, Masks::default()],
                 master: [Masks::default(); 2],
                 active: 0,
+                swapped: false,
             },
             revision: 0,
         }
+    }
+    /// End a transaction: its swapped banks become the banks to swap next time.
+    pub(crate) fn settle(&mut self) {
+        for strip in self.strips.iter_mut().flatten() {
+            strip.inputs.swapped = false;
+            strip.outputs.swapped = false;
+        }
+        self.master_outputs.swapped = false;
     }
     pub(crate) fn copy_from(&mut self, other: &Self) {
         self.strips.copy_from_slice(&other.strips);

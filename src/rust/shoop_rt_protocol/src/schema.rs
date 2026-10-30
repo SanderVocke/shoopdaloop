@@ -313,6 +313,8 @@ pub struct Limits {
     pub host_midi_inputs: u16,
     pub host_midi_outputs: u16,
     pub max_frames: u32,
+    /// Largest loop boundary smoothing a client may set.
+    pub smoothing_limit_frames: u32,
     /// Unanswered reliable requests a client may have.
     pub reliable_credits: u16,
     /// Unanswered bulk reads a client may have.
@@ -323,9 +325,15 @@ pub struct Limits {
 pub enum Telemetry {
     Engine {
         frame: u64,
+        /// Callbacks rendered since preparation.
+        callbacks: u64,
         xruns: u32,
         /// Callback time as a share of the callback period.
         load: f32,
+        /// Largest absolute sample on any host audio input and output since the
+        /// previous engine record.
+        input_peak: f32,
+        output_peak: f32,
         driver: DriverStatus,
     },
     Strip {
@@ -355,6 +363,12 @@ pub enum Telemetry {
 pub enum StateRecord {
     Begin {
         epoch: u64,
+    },
+    /// Every slot generation used so far is at most these floors; a client must
+    /// name a slot with a newer generation.
+    Generations {
+        strips: u32,
+        loops: u32,
     },
     HostPort(HostPort),
     Strip {
@@ -393,7 +407,12 @@ pub enum StateRecord {
 /// the start of the media, a little-endian `u32` length and the message bytes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BulkSelector {
-    Audio { channel: u8 },
+    Audio {
+        channel: u8,
+    },
+    /// Every audio channel of the loop, interleaved by frame. Offsets and totals
+    /// count frames; a chunk carries whole frames.
+    AudioFrames,
     Midi,
 }
 

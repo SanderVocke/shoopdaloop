@@ -17,6 +17,9 @@ pub(crate) struct Resync {
     epoch: u64,
 }
 
+/// The stage after `Begin` that reports generation floors.
+const GENERATIONS: u8 = 7;
+
 const PORT_KINDS: [PortKind; 4] = [
     PortKind::AudioIn,
     PortKind::AudioOut,
@@ -82,10 +85,18 @@ impl ControlEndpoint {
         loop {
             match cursor.stage {
                 0 => {
-                    cursor.stage = 1;
+                    cursor.stage = GENERATIONS;
                     cursor.epoch = self.model.revision;
                     return Some(StateRecord::Begin {
                         epoch: cursor.epoch,
+                    });
+                }
+                GENERATIONS => {
+                    cursor.stage = 1;
+                    let floor = |generations: &[u32]| generations.iter().copied().max();
+                    return Some(StateRecord::Generations {
+                        strips: floor(&self.model.strip_generations).unwrap_or(0),
+                        loops: floor(&self.model.loop_generations).unwrap_or(0),
                     });
                 }
                 1 => {

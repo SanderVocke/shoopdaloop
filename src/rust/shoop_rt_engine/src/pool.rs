@@ -1,9 +1,9 @@
 //! Prepared slot pools made of segments, and the runtime node identities of
 //! every slot.
 //!
-//! The master bus owns node slot zero. Each segment then owns a contiguous node
-//! range: two nodes per strip (input and output stage), followed by three per
-//! loop (playback, capture and fader). Appending a segment extends both the
+//! The master bus owns node slot zero and the bulk reader slot one. Each segment
+//! then owns a contiguous node range: two nodes per strip (input and output
+//! stage), followed by three per loop (playback, capture and fader). Appending a segment extends both the
 //! slot indices and the node range without moving existing slots.
 
 use crate::description::Segment;
@@ -33,7 +33,7 @@ fn node(slot: usize) -> NodeId {
 impl Pool {
     pub(crate) fn new(segments: &[Segment]) -> Self {
         let mut layouts = Vec::with_capacity(segments.len());
-        let (mut strips, mut loops, mut nodes) = (0, 0, 1);
+        let (mut strips, mut loops, mut nodes) = (0, 0, 2);
         for segment in segments {
             let layout = SegmentLayout {
                 first_strip: strips,
@@ -65,6 +65,9 @@ impl Pool {
     }
     pub(crate) fn master(&self) -> NodeId {
         node(0)
+    }
+    pub(crate) fn reader(&self) -> NodeId {
+        node(1)
     }
     fn strip_base(&self, strip: usize) -> usize {
         let segment = self

@@ -6,8 +6,10 @@
 //! host ports, routes) on the other.
 //!
 //! Every mutation is asynchronous. Identities are reserved on the control side and returned
-//! at once; the request is sent as credits allow, and its outcome confirms the change in the
-//! snapshot or reports a mutation failure. `poll` assembles the snapshot from outcomes and
+//! at once; requests are queued and sent together when the backend pumps (`poll`,
+//! `advance`, `wait_idle`), so the engine can apply the structural ones of one application
+//! tick as one transaction. The outcome confirms the change in the snapshot or reports a
+//! mutation failure. `poll` assembles the snapshot from outcomes and
 //! telemetry and never waits. `wait_idle` waits through the clock until every request has
 //! its outcome and newer telemetry has arrived.
 //!
@@ -61,8 +63,33 @@ enum Link {
 #[derive(Clone, Copy, Debug, Default)]
 struct Status {
     frame: u64,
-    xruns: u32,
+    callbacks: u64,
     load: f32,
+    /// The engine's xrun count when last reported, from the first engine record
+    /// of this connection on.
+    xruns_reported: Option<u32>,
+    xruns: u32,
+    /// Peaks since the previous snapshot, held while no record arrives.
+    input_peak: f32,
+    output_peak: f32,
+    peaks_fresh: bool,
+}
+
+impl Status {
+    /// Xruns since the previous call. A count below the last one means the
+    /// engine's counter restarted, and all of it is new.
+    fn take_xruns(&mut self) -> u32 {
+        let Some(reported) = self.xruns_reported else {
+            return 0;
+        };
+        let delta = if self.xruns >= reported {
+            self.xruns - reported
+        } else {
+            self.xruns
+        };
+        self.xruns_reported = Some(self.xruns);
+        delta
+    }
 }
 
 /// A session replacement whose requests are not all answered yet.
@@ -167,6 +194,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub fn disconnect(&mut self) {
         self.client.disconnect();
         self.lose("the application disconnected".to_owned());
+        while self.client.poll().is_some() {}
+    }
+
+    /// The client and the clock, for example to connect a new backend after
+    /// [`RtBackend::disconnect`].
+    pub fn into_parts(self) -> (ProtocolClient<C>, K) {
+        (self.client, self.clock)
     }
 
     /// Sends queued requests and reads as credits allow and handles every engine message that
