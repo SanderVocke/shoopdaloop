@@ -72,7 +72,7 @@ fn main() {
     )
     .unwrap();
 
-    let clock = LoopId::from_parts(0, 1).unwrap();
+    let bar = LoopId::from_parts(0, 1).unwrap();
     let arranger = LoopId::from_parts(1, 1).unwrap();
     let bass = LoopId::from_parts(2, 1).unwrap();
     let drums = LoopId::from_parts(3, 1).unwrap();
@@ -85,7 +85,7 @@ fn main() {
         &TopologyDescription {
             loops: vec![
                 LoopSpec {
-                    id: clock,
+                    id: bar,
                     kind: LoopKind::Primitive,
                     length: 0,
                     sync_source: None,
@@ -94,24 +94,24 @@ fn main() {
                     id: arranger,
                     kind: LoopKind::Composite,
                     length: 0,
-                    sync_source: Some(clock),
+                    sync_source: Some(bar),
                 },
                 LoopSpec {
                     id: bass,
                     kind: LoopKind::Primitive,
-                    length: 3,
-                    sync_source: Some(arranger),
+                    length: 4,
+                    sync_source: Some(bar),
                 },
                 LoopSpec {
                     id: drums,
                     kind: LoopKind::Primitive,
-                    length: 5,
-                    sync_source: Some(arranger),
+                    length: 8,
+                    sync_source: Some(bar),
                 },
             ],
             programs: vec![ProgramDescription {
                 source: arranger,
-                nominal_unit_frames: 2,
+                nominal_unit_frames: 4,
                 sections: vec![Section {
                     entries: vec![
                         Entry {
@@ -151,16 +151,16 @@ fn main() {
         midi_bytes: 0,
         packet_bytes: 0,
     };
-    let clock_playback = node(0);
-    let clock_capture = node(1);
+    let bar_playback = node(0);
+    let bar_capture = node(1);
     let bass_playback = node(2);
     let bass_capture = node(3);
     let drums_playback = node(4);
     let drums_capture = node(5);
     let mut graph = GraphDescription {
         nodes: vec![
-            clock_playback,
-            clock_capture,
+            bar_playback,
+            bar_capture,
             bass_playback,
             bass_capture,
             drums_playback,
@@ -169,7 +169,7 @@ fn main() {
         connections: Vec::new(),
     };
     for (host_base, playback, capture) in [
-        (0u32, clock_playback, clock_capture),
+        (0u32, bar_playback, bar_capture),
         (2, bass_playback, bass_capture),
         (4, drums_playback, drums_capture),
     ] {
@@ -189,20 +189,20 @@ fn main() {
 
     let bass_audio = load_stereo(
         &mut resources,
-        &[1.0, 2.0, 3.0],
-        &[10.0, 20.0, 30.0],
+        &[1.0, 2.0, 3.0, 4.0],
+        &[10.0, 20.0, 30.0, 40.0],
     );
     let drums_audio = load_stereo(
         &mut resources,
-        &[5.0, 6.0, 7.0, 8.0, 9.0],
-        &[50.0, 60.0, 70.0, 80.0, 90.0],
+        &[5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        &[50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0],
     );
     let imports = vec![
         media::Input {
             description: media::Description {
                 owner: bass,
                 revision: Revision(0),
-                frames: 3,
+                frames: 4,
                 channels: 2,
                 midi: false,
             },
@@ -213,7 +213,7 @@ fn main() {
             description: media::Description {
                 owner: drums,
                 revision: Revision(0),
-                frames: 5,
+                frames: 8,
                 channels: 2,
                 midi: false,
             },
@@ -232,7 +232,7 @@ fn main() {
             export_slots: 0,
         },
         vec![
-            binding(clock, clock_playback, clock_capture, 2),
+            binding(bar, bar_playback, bar_capture, 2),
             binding(bass, bass_playback, bass_capture, 2),
             binding(drums, drums_playback, drums_capture, 2),
         ],
@@ -288,7 +288,7 @@ fn main() {
     };
     submit(
         0,
-        clock,
+        bar,
         Transition::Record {
             monitor_previous: false,
         },
@@ -297,8 +297,8 @@ fn main() {
         &mut sequences,
     );
     submit(
-        1,
-        clock,
+        4,
+        bar,
         Transition::Play {
             position: 0,
             retrigger: false,
@@ -320,7 +320,7 @@ fn main() {
     );
     submit(
         12,
-        clock,
+        bar,
         Transition::Stop,
         &mut control,
         &client,
@@ -335,12 +335,12 @@ fn main() {
         &mut sequences,
     );
 
-    let clock_in = [1.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
+    let bar_in = [1.0, 1.0, 1.0, 1.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
     let silent2 = [0.0; 16];
     let bass_in = silent2;
     let drums_in = silent2;
-    let mut clock_left_out = [0.0; 16];
-    let mut clock_right_out = [0.0; 16];
+    let mut bar_left_out = [0.0; 16];
+    let mut bar_right_out = [0.0; 16];
     let mut bass_left_out = [0.0; 16];
     let mut bass_right_out = [0.0; 16];
     let mut drums_left_out = [0.0; 16];
@@ -350,10 +350,10 @@ fn main() {
             AudioBlock {
                 frame: runtime.next_frame(),
                 frames: 16,
-                inputs: &[&clock_in, &clock_in, &bass_in, &bass_in, &drums_in, &drums_in],
+                inputs: &[&bar_in, &bar_in, &bass_in, &bass_in, &drums_in, &drums_in],
                 outputs: &mut [
-                    &mut clock_left_out,
-                    &mut clock_right_out,
+                    &mut bar_left_out,
+                    &mut bar_right_out,
                     &mut bass_left_out,
                     &mut bass_right_out,
                     &mut drums_left_out,
@@ -366,26 +366,30 @@ fn main() {
             },
         )
         .unwrap();
-    assert_eq!(
-        clock_left_out,
-        [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0]
-    );
-    assert_eq!(clock_right_out, clock_left_out);
+    let expected_bar_left: [f32; 16] = {
+        let mut v = [0.0; 16];
+        for f in v.iter_mut().take(12).skip(4) {
+            *f = 1.0;
+        }
+        v
+    };
+    assert_eq!(bar_left_out, expected_bar_left);
+    assert_eq!(bar_right_out, expected_bar_left);
     assert_eq!(
         bass_left_out,
-        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        [1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     );
     assert_eq!(
         bass_right_out,
-        [10.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        [10.0, 20.0, 30.0, 40.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     );
     assert_eq!(
         drums_left_out,
-        [0.0, 5.0, 6.0, 0.0, 5.0, 6.0, 0.0, 5.0, 6.0, 0.0, 5.0, 6.0, 0.0, 0.0, 0.0, 0.0]
+        [0.0, 0.0, 0.0, 0.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 0.0, 0.0, 0.0, 0.0]
     );
     assert_eq!(
         drums_right_out,
-        [0.0, 50.0, 60.0, 0.0, 50.0, 60.0, 0.0, 50.0, 60.0, 0.0, 50.0, 60.0, 0.0, 0.0, 0.0, 0.0]
+        [0.0, 0.0, 0.0, 0.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 0.0, 0.0, 0.0, 0.0]
     );
     assert_eq!(runtime.next_frame(), Frame(16));
 
@@ -424,5 +428,5 @@ fn main() {
     assert_eq!(usage.reserved_pages, 0);
     assert_eq!(planner.media_usage().references, 0);
 
-    println!("Clock drove the arrangement: bass played on beats 0-1 of each bar, drums on beats 1-3; stop and cleanup verified.");
+    println!("Bar loop ticked each 4 frames; arranger program played the 1-bar bass at bar 1 and the 2-bar drums at bars 2-3; stop and cleanup verified.");
 }

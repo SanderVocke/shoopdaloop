@@ -11,7 +11,7 @@ The [program example](../examples/program_loop.rs) from chapter 10 uses this pro
 ```rust
     programs: vec![ProgramDescription {
         source: arranger,
-        nominal_unit_frames: 2,
+        nominal_unit_frames: 4,
         sections: vec![Section {
             entries: vec![
                 Entry {
@@ -43,7 +43,7 @@ The [program example](../examples/program_loop.rs) from chapter 10 uses this pro
 | `repetitions` | Repeat the entry this many times, back to back. |
 | `mode` | `None` means play; `Some(Mode::Recording)` records; `Some(Mode::Stopped)` stops. Mixing `None` and `Some(..)` in one program is rejected. |
 
-Units come from `nominal_unit_frames`: the number of sync-source ticks one unit lasts. With the one-frame clock and `nominal_unit_frames: 2`, one unit is two ticks (two frames). The program above therefore means: at iteration 0, play the bass for 1 unit, then after a 1-unit delay play the drums for 2 units.
+Units come from `nominal_unit_frames`: the number of frames one unit lasts. With the 4-frame bar loop and `nominal_unit_frames: 4`, one unit is exactly one bar (one sync tick). The program above therefore means: play the 1-bar bass for 1 bar, then after a 1-bar gap play the 2-bar drums for 2 bars.
 
 ## 2. Start and stop the composite
 
@@ -58,14 +58,12 @@ The composite itself is started like any loop; `retrigger: true` makes the start
 
 ## 3. What the output shows
 
-With the clock ticking every frame, the example's outputs are:
+With the bar loop ticking every 4 frames, the example's outputs are:
 
 ```text
-frame:      0    1    2    3    4    5    6    7    8    9   10   11
-bass out:   1    0    0    1    0    0    1    0    0    1    0    0
-             └ iteration 0: bass plays at ticks 0 and 3 (1 frame each)
-drums out:  0    5    6    0    5    6    0    5    6    0    5    6
-                  └ iteration 0: drums play at ticks 1-2, 4-5, 7-8, 10-11 (2 frames each)
+frame:      0 1 2 3   4 5 6 7   8 9 10 11
+bass out:   1 2 3 4   0 0 0 0   0 0 0  0     iteration 0, bars 1: bass (1 bar)
+drums out:  0 0 0 0   5 6 7 8   9 10 11 12  iteration 0, bars 2-3: drums (2 bars)
 ```
 
 (Full per-channel asserts are in the example.) The children play their imported content, starting at position 0 on each entry, because a regular program restarts each segment.
