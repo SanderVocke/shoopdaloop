@@ -13,6 +13,27 @@ Draft opening of the replacement book. The existing documentation remains unchan
 - [4. Seeking and iterations](part-2-steer-one-loop/04-seeking-and-iterations.md)
 - [5. Recording over existing content](part-2-steer-one-loop/05-recording-over-existing-content.md)
 
+## Part III — Several loops
+
+- [6. Composite loops and sync sources](part-3-several-loops/06-composite-loops-and-sync-sources.md)
+- [7. Sync-scheduled transitions](part-3-several-loops/07-sync-scheduled-transitions.md)
+- [8. Programs](part-3-several-loops/08-programs.md)
+
+## Part IV — MIDI
+
+- [9. A MIDI loop](part-4-midi/09-a-midi-loop.md)
+- [10. MIDI state and restoration](part-4-midi/10-midi-state-and-restoration.md)
+
+## Part V — Content and graph
+
+- [11. Exporting and importing media](part-5-content-and-graph/11-exporting-and-importing-media.md)
+- [12. Editing the graph around loops](part-5-content-and-graph/12-editing-the-graph-around-loops.md)
+
+## Part VI — Operating
+
+- [13. Capacities, refusals, and results](part-6-operating/13-capacities-refusals-and-results.md)
+- [14. Shutdown](part-6-operating/14-shutdown.md)
+
 ## Run the examples
 
 The [first loop example](examples/first_loop.rs) records three stereo frames, plays them immediately, wraps, and stops. It checks the samples, request outcomes, and resource recovery without an audio device.
@@ -23,7 +44,7 @@ Run it from the repository root:
 cargo run --locked --manifest-path src/rust/shoop_loops/docs-new/examples/Cargo.toml --bin first_loop
 ```
 
-The [seek example](examples/seek_loop.rs) and the [overdub example](examples/overdub_loop.rs) run the same way with `--bin seek_loop` and `--bin overdub_loop`.
+Every chapter's example runs the same way: `--bin seek_loop`, `--bin overdub_loop`, `--bin sync_loops`, `--bin program_loop`, or `--bin midi_loop`.
 
 Add `--release` for the optimized build. The examples have a separate Cargo manifest so this draft does not change the library's existing examples or workspace configuration.
 
@@ -45,3 +66,9 @@ Add `--release` for the optimized build. The examples have a separate Cargo mani
 | Seek | Move the play position inside the current content without restarting playback. |
 | Iteration | How many times a loop has wrapped; iteration 1 begins at the first wrap. |
 | Overdub / `monitor_previous` | Record a new take while the previous take keeps playing. |
+| Sync source / tick | A loop whose wraps tick its followers; a tick is delivered at the wrap frame. |
+| Composite loop | A loop with no content of its own that runs a program. |
+| Program | A composite loop's arrangement: entries that start/stop child loops per iteration. |
+| Iteration | One pass of a composite's program (or a loop's wrap count); addressed by `PlayIteration`/`SeekIteration`. |
+| Export | An immutable handle to a take, for saving, selecting, or querying. |
+| Cleanup (MIDI) | The note-off/pedal-release packets emitted when a MIDI loop stops. |

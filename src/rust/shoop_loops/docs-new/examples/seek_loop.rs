@@ -47,7 +47,7 @@ fn main() {
     let topology = compile(
         Limits {
             loop_slots: 1,
-            pending_requests: 5,
+            pending_requests: 6,
             ..Limits::default()
         },
         &TopologyDescription {
@@ -103,9 +103,9 @@ fn main() {
         &mut resources,
         Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
-            normal_requests: 4,
+            normal_requests: 5,
             media_slots: 4,
-            export_slots: 0,
+            export_slots: 1,
         },
         vec![binding],
         vec![],
@@ -166,6 +166,20 @@ fn main() {
         sequences.push((ticket.sequence(), Frame(at)));
     }
 
+    let export_ticket = control
+        .submit_prepared(
+            Lane::Normal,
+            client.command(
+                Frame(10),
+                Operation::Export {
+                    target,
+                    selection: shoop_loops::runtime::Selection::Latest,
+                },
+            ),
+        )
+        .unwrap_or_else(|refusal| panic!("export: {:?}", refusal.error));
+    let export_sequence = export_ticket.sequence();
+
     let left_in = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
     let right_in = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0];
     let mut left_out = [0.0; 16];
@@ -194,23 +208,43 @@ fn main() {
     );
     assert_eq!(runtime.next_frame(), Frame(16));
 
-    for &(sequence, _) in &sequences {
-        let completion = control.try_completion().unwrap();
-        assert_eq!(completion.sequence, sequence);
+    let mut admitted = Vec::new();
+    while let Some(completion) = control.try_completion() {
         assert!(matches!(completion.outcome, Admission::Scheduled { .. }));
+        admitted.push(completion.sequence);
     }
-    assert!(control.try_completion().is_none());
-    for &(sequence, frame) in &sequences {
-        let execution = control.try_execution().unwrap();
-        assert_eq!(execution.sequence, sequence);
-        assert_eq!(execution.actual_frame, frame);
+    for &(sequence, _) in &sequences {
+        assert!(admitted.contains(&sequence));
+    }
+    assert!(admitted.contains(&export_sequence));
+    let mut transitions = Vec::new();
+    let mut exported = None;
+    while let Some(execution) = control.try_execution() {
         assert_eq!(execution.result, Ok(()));
-        let Some(Reply::Transition(completion)) = execution.operation_result else {
-            panic!("expected a transition result");
-        };
-        assert_eq!(completion.outcome, Outcome::Applied { frame });
+        if execution.sequence == export_sequence {
+            let Some(Reply::Export { id, cut, media }) = execution.operation_result else {
+                panic!("expected export");
+            };
+            assert_eq!(cut.frame, Frame(10));
+            assert_eq!(media.view.description.frames, 6);
+            exported = Some((id, media.media));
+        } else {
+            let Some(Reply::Transition(completion)) = execution.operation_result else {
+                panic!("expected a transition result");
+            };
+            transitions.push((execution.sequence, execution.actual_frame, completion.outcome));
+        }
     }
-    assert!(control.try_execution().is_none());
+    for &(sequence, frame) in &sequences {
+        assert!(
+            transitions.contains(&(sequence, frame, Outcome::Applied { frame })),
+            "missing transition {:?} at {:?}",
+            sequence,
+            frame
+        );
+    }
+    let (export_id, media_id) = exported.expect("export reply");
+    println!("exported media {:?} as export {:?}", media_id, export_id);
 
     drop(control);
     let (mut planner, mut resources) = runtime.into_planner_and_resources();

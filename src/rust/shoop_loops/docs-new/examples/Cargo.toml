@@ -21,3 +21,15 @@ path = "seek_loop.rs"
 [[bin]]
 name = "overdub_loop"
 path = "overdub_loop.rs"
+
+[[bin]]
+name = "sync_loops"
+path = "sync_loops.rs"
+
+[[bin]]
+name = "program_loop"
+path = "program_loop.rs"
+
+[[bin]]
+name = "midi_loop"
+path = "midi_loop.rs"
