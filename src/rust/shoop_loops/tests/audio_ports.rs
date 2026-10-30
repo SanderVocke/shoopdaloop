@@ -87,6 +87,7 @@ fn runtime_output_ports_match_scalar_ramps_and_slices_without_touching_surroundi
                 source: Some(index),
                 position: 1 + 2 * cut,
                 gain: 0.5,
+                balance: 0.0,
                 discontinuity: cut == 0,
             };
             if cut == 1 {
@@ -116,6 +117,7 @@ fn runtime_output_ports_match_scalar_ramps_and_slices_without_touching_surroundi
                             source: None,
                             position: 0,
                             gain: f32::NAN,
+                            balance: 0.0,
                             discontinuity: true,
                         },
                         &mut empty,
@@ -155,6 +157,7 @@ fn runtime_output_ports_match_scalar_ramps_and_slices_without_touching_surroundi
                     source: None,
                     position: 0,
                     gain: 1.,
+                    balance: 0.0,
                     discontinuity: false,
                 },
                 &mut ports,

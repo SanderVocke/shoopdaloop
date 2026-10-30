@@ -173,6 +173,7 @@ impl Client {
             Operation::Transition { .. }
                 | Operation::Select { .. }
                 | Operation::Gain { .. }
+                | Operation::Balance { .. }
                 | Operation::State { .. }
                 | Operation::Export { .. }
                 | Operation::Release { .. }

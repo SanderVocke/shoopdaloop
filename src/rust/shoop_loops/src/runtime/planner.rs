@@ -68,6 +68,7 @@ impl LoopPlanner {
                 playback: self.ledger.playback(target)?,
                 latest: self.ledger.latest(target)?,
                 gain: row.binding.gain,
+                balance: row.balance,
                 capture_failure: row.failure,
                 midi_overflows: row.overflows,
             })
@@ -80,6 +81,7 @@ impl LoopPlanner {
                 playback: None,
                 latest: None,
                 gain: 1.,
+                balance: 0.,
                 capture_failure: None,
                 midi_overflows: 0,
             })
@@ -408,6 +410,7 @@ impl LoopPlanner {
                     .map(|s| s.index),
                 capture: row.interval,
                 gain: row.binding.gain,
+                balance: row.balance,
                 playback_node: row.binding.playback,
                 capture_node: row.binding.capture,
                 reset_input: row.reset_input,
@@ -964,6 +967,17 @@ impl Planner for LoopPlanner {
                         .expect("row")
                         .binding
                         .gain = value;
+                    Ok(Disposition::Complete(Reply::Done))
+                }
+                Operation::Balance { target, value } => {
+                    self.row(target)?;
+                    if !(-1.0..=1.0).contains(&value) {
+                        return Err(Error::InvalidParameter.into());
+                    }
+                    self.rows[target.slot() as usize]
+                        .as_mut()
+                        .expect("row")
+                        .balance = value;
                     Ok(Disposition::Complete(Reply::Done))
                 }
                 Operation::Release { export } => {

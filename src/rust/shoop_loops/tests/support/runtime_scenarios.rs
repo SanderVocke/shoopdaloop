@@ -343,6 +343,7 @@ fn prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_
         assert_eq!(cut.state.content_length, 3);
         assert_eq!(cut.state.mode, Mode::Playing);
         assert_eq!(cut.gain, 0.25);
+        assert_eq!(cut.balance, 0.);
         let (export, _, media) = exported(&replies, export);
         assert_eq!(media.view.description.revision, Revision(8));
         let late = transition(
@@ -1231,6 +1232,13 @@ fn facade_node_pair_validation_invalid_operations_and_imported_revision_exhausti
             Failure::Runtime(Error::InvalidParameter),
         ),
         (
+            Operation::Balance {
+                target: id(),
+                value: 1.5,
+            },
+            Failure::Runtime(Error::InvalidParameter),
+        ),
+        (
             Operation::State {
                 target: LoopId::from_parts(0, 2).unwrap(),
             },
@@ -1395,6 +1403,95 @@ fn integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts() {
                 }
             }
         }
+        finish(control, engine, &imports, 512);
+    }
+}
+
+#[shoop_test]
+fn stereo_balance_follows_decisions_and_is_reported_in_the_cut() {
+    for partition in [vec![10], vec![1; 10], vec![2, 1, 4, 3]] {
+        let (mut control, mut engine, imports) = setup_with(
+            0,
+            false,
+            Options {
+                imports: true,
+                smoothing: Smoothing::LinearRestart { frames: 3 },
+                ..Options::default()
+            },
+        );
+        let mut host = Host::new();
+        host.early = false;
+        transition(
+            &mut control,
+            0,
+            Transition::Play {
+                position: 0,
+                retrigger: false,
+            },
+        );
+        transition(
+            &mut control,
+            3,
+            Transition::Seek {
+                position: 0,
+                retrigger: false,
+            },
+        );
+        submit(
+            &mut control,
+            4,
+            Operation::Balance {
+                target: id(),
+                value: -0.5,
+            },
+        );
+        transition(&mut control, 9, Transition::Stop);
+        let mut expected = [[0.; 10]; 2];
+        for channel in 0..2 {
+            let mut position = 0;
+            let mut anchor = 0.;
+            let mut last = 0.;
+            let mut elapsed = 3;
+            for frame in 0..10 {
+                if frame == 9 {
+                    break;
+                }
+                if frame == 0 || frame == 3 || position == 4 {
+                    position = 0;
+                    anchor = last;
+                    elapsed = 0;
+                }
+                let raw = (position + 1) as f32
+                    * 4.
+                    * if channel == 0 { 1. } else { 10. }
+                    * if channel == 1 && frame >= 4 { 0.5 } else { 1. };
+                elapsed = (elapsed + 1).min(3);
+                let weight = elapsed as f32 / 3.;
+                last = anchor * (1. - weight) + raw * weight;
+                expected[channel][frame] = last * 0.5;
+                position += 1;
+            }
+        }
+        for frames in partition {
+            let at = engine.next_frame().0 as usize;
+            host.step(&mut engine, frames);
+            for channel in 0..2 {
+                for frame in 0..frames {
+                    assert!(
+                        (host.output[channel][frame] - expected[channel][at + frame]).abs() < 1e-5
+                    );
+                }
+            }
+        }
+        let query = submit(
+            &mut control,
+            engine.next_frame().0,
+            Operation::State { target: id() },
+        );
+        host.step(&mut engine, 1);
+        let mut replies = Vec::new();
+        drain(&mut control, &mut replies);
+        assert_eq!(state(&replies, query).balance, -0.5);
         finish(control, engine, &imports, 512);
     }
 }

@@ -339,7 +339,7 @@ workspace `nextest` at the end.
 
 ### Stage 3 — Loop gain and balance in `shoop_loops`
 
-- [ ] Add balance next to the per-loop gain, applied in the audio renderer with the
+- [x] Add balance next to the per-loop gain, applied in the audio renderer with the
       legacy stereo factors; update the loop guides.
 
 **Verify:** `shoop_loops` audio and runtime tests in debug and release; its Node Wasm

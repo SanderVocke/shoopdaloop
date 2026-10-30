@@ -210,6 +210,10 @@ pub enum Operation {
         target: LoopId,
         value: f32,
     },
+    Balance {
+        target: LoopId,
+        value: f32,
+    },
     State {
         target: LoopId,
     },
@@ -246,6 +250,7 @@ pub struct Cut {
     pub playback: Option<media::MediaId>,
     pub latest: Option<media::MediaId>,
     pub gain: f32,
+    pub balance: f32,
     pub capture_failure: Option<Error>,
     pub midi_overflows: u64,
 }
@@ -342,6 +347,7 @@ pub struct View {
     pub midi: Option<ReadIndex>,
     pub capture: Option<CaptureIntervalId>,
     pub gain: f32,
+    pub balance: f32,
     pub playback_node: NodeId,
     pub capture_node: NodeId,
     pub reset_input: bool,
@@ -381,6 +387,7 @@ struct Row {
     frozen: [Option<Snapshot>; 2],
     failure: Option<Error>,
     overflows: u64,
+    balance: f32,
     seen_playback: bool,
     seen_capture: bool,
 }
@@ -619,6 +626,7 @@ impl LoopPlanner {
                 frozen: [None; 2],
                 failure: None,
                 overflows: 0,
+                balance: 0.,
                 seen_playback: false,
                 seen_capture: false,
             };
@@ -760,6 +768,7 @@ impl LoopPlanner {
             midi: None,
             capture: None,
             gain: 1.,
+            balance: 0.,
             playback_node: NodeId::from_parts(0, 1)?,
             capture_node: NodeId::from_parts(0, 1)?,
             reset_input: false,

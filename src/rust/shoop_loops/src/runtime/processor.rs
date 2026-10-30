@@ -121,6 +121,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
                     source: view.audio,
                     position: view.decision.state.position,
                     gain: view.gain,
+                    balance: view.balance,
                     discontinuity: view.decision.playback_discontinuity,
                 },
                 &mut block.audio,

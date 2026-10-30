@@ -254,6 +254,7 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                                     ),
                                     position: state.position,
                                     gain: 2.,
+                                    balance: 0.0,
                                     discontinuity: restart,
                                 },
                                 &mut [&mut left[start..end], &mut right[start..end]],
@@ -298,6 +299,7 @@ fn configurable_channels_cross_pages_and_keep_removed_revision_playable() {
                         source: Some(index),
                         position: 3,
                         gain: -0.5,
+                        balance: 0.0,
                         discontinuity: true,
                     },
                     &mut outputs,
@@ -317,6 +319,64 @@ fn configurable_channels_cross_pages_and_keep_removed_revision_playable() {
         });
     }
 }
+#[shoop_test]
+fn stereo_balance_scales_one_side_and_leaves_other_layouts_unscaled() {
+    for (channels, balance, expected) in [
+        (2, -0.25, vec![0.5, 0.75 * 1.0]),
+        (2, 0.5, vec![0.5 * 0.5, 1.0]),
+        (2, 0.0, vec![0.5, 1.0]),
+        (1, -1.0, vec![0.5]),
+        (3, 1.0, vec![0.5, 1.0, 1.5]),
+    ] {
+        let mut store = store();
+        let source: Vec<f32> = (1..=channels).map(|channel| channel as f32 * 0.5).collect();
+        let snapshot = upload(&mut store, channels as u32, &source);
+        let index = store.read_index(snapshot.id).unwrap();
+        let mut renderer = AudioRenderer::prepare(channels, 4, Smoothing::None).unwrap();
+        let mut buffers = vec![vec![0.; 1]; channels];
+        let mut outputs: Vec<&mut [f32]> = buffers.iter_mut().map(Vec::as_mut_slice).collect();
+        assert_no_heap(|| {
+            renderer
+                .render(
+                    &mut store.render_io(),
+                    Playback {
+                        source: Some(index),
+                        position: 0,
+                        gain: 1.,
+                        balance,
+                        discontinuity: true,
+                    },
+                    &mut outputs,
+                )
+                .unwrap();
+        });
+        let rendered: Vec<f32> = buffers.iter().map(|buffer| buffer[0]).collect();
+        assert_eq!(rendered, expected, "channels {channels}, balance {balance}");
+    }
+    let mut store = store();
+    let snapshot = upload(&mut store, 2, &[1., 1.]);
+    let index = store.read_index(snapshot.id).unwrap();
+    let mut renderer = AudioRenderer::prepare(2, 4, Smoothing::None).unwrap();
+    let (mut left, mut right) = ([9.], [9.]);
+    for balance in [1.5, -1.01, f32::NAN] {
+        assert_eq!(
+            renderer.render(
+                &mut store.render_io(),
+                Playback {
+                    source: Some(index),
+                    position: 0,
+                    gain: 1.,
+                    balance,
+                    discontinuity: true,
+                },
+                &mut [&mut left, &mut right],
+            ),
+            Err(MediaError::InvalidParameter)
+        );
+        assert_eq!((left, right), ([9.], [9.]));
+    }
+}
+
 #[shoop_test]
 fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
     let mut store = store();
@@ -340,6 +400,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                     source: Some(index),
                     position: 0,
                     gain: 1.,
+                    balance: 0.0,
                     discontinuity: true,
                 },
                 &mut [&mut output],
@@ -361,6 +422,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                         source: Some(source),
                         position,
                         gain,
+                        balance: 0.0,
                         discontinuity: true
                     },
                     &mut [&mut output]
@@ -376,6 +438,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                     source: None,
                     position: u64::MAX,
                     gain: f32::NAN,
+                    balance: 0.0,
                     discontinuity: true,
                 },
                 &mut [&mut []],
@@ -388,6 +451,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                     source: Some(index),
                     position: 1,
                     gain: 1.,
+                    balance: 0.0,
                     discontinuity: false,
                 },
                 &mut [&mut output],
@@ -401,6 +465,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                     source: None,
                     position: 0,
                     gain: 1.,
+                    balance: 0.0,
                     discontinuity: false,
                 },
                 &mut [&mut output],
@@ -414,6 +479,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                     source: Some(index),
                     position: 0,
                     gain: 1.,
+                    balance: 0.0,
                     discontinuity: true,
                 },
                 &mut [&mut output],
@@ -428,6 +494,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                     source: Some(index),
                     position: 1,
                     gain: 1.,
+                    balance: 0.0,
                     discontinuity: false
                 },
                 &mut [&mut output]
@@ -516,6 +583,7 @@ fn planar_capture_freezes_immediately_and_separate_playback_fx_capture_keeps_old
                         source: Some(old_index),
                         position: 0,
                         gain: 1.,
+                        balance: 0.0,
                         discontinuity: true,
                     },
                     &mut [l, r],
@@ -537,6 +605,7 @@ fn planar_capture_freezes_immediately_and_separate_playback_fx_capture_keeps_old
                             source: Some(old_index),
                             position: offset as u64,
                             gain: 2.,
+                            balance: 0.0,
                             discontinuity: offset == 0,
                         },
                         &mut [
@@ -567,6 +636,7 @@ fn planar_capture_freezes_immediately_and_separate_playback_fx_capture_keeps_old
                         source: Some(index),
                         position: 0,
                         gain: 1.,
+                        balance: 0.0,
                         discontinuity: true,
                     },
                     &mut [l, r],
@@ -583,6 +653,7 @@ fn planar_capture_freezes_immediately_and_separate_playback_fx_capture_keeps_old
                         source: Some(old_index),
                         position: 0,
                         gain: 1.,
+                        balance: 0.0,
                         discontinuity: true,
                     },
                     &mut [l, r],
@@ -665,6 +736,7 @@ fn one_sample_content_executes_every_wrap_without_a_renderer_clock_or_quota() {
                                     source: Some(index),
                                     position: state.position,
                                     gain: 1.,
+                                    balance: 0.0,
                                     discontinuity: decision.playback_discontinuity,
                                 },
                                 &mut [

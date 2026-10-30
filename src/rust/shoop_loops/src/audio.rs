@@ -19,6 +19,8 @@ pub struct Playback {
     pub source: Option<ReadIndex>,
     pub position: u64,
     pub gain: f32,
+    /// Stereo balance in [-1, 1]; ignored unless there are exactly two channels.
+    pub balance: f32,
     /// Start, retrigger, seek, wrap, or content replacement at this boundary.
     pub discontinuity: bool,
 }
@@ -172,9 +174,10 @@ impl AudioRenderer {
         if frames == 0 {
             return Ok(());
         }
-        if !playback.gain.is_finite() {
+        if !playback.gain.is_finite() || !(-1.0..=1.0).contains(&playback.balance) {
             return Err(Error::InvalidParameter);
         }
+        let factors = balance_factors(channels, playback.balance);
         let Some(index) = playback.source else {
             for channel in 0..channels {
                 outputs.channel(channel).fill(0.0);
@@ -230,7 +233,8 @@ impl AudioRenderer {
                 let byte = (frame * self.channels + channel) * 4;
                 let raw =
                     f32::from_le_bytes(self.bytes[byte..byte + 4].try_into().expect("four bytes"))
-                        * playback.gain;
+                        * playback.gain
+                        * factors[channel.min(1)];
                 let value = if ramping {
                     self.anchor[channel] * (1.0 - weight) + raw * weight
                 } else {
@@ -306,5 +310,14 @@ impl AudioCapture {
             member,
             &self.interleaved[..frames * self.channels],
         )
+    }
+}
+
+/// Left/right factors of a stereo balance; mono and multichannel outputs are unscaled.
+fn balance_factors(channels: usize, balance: f32) -> [f32; 2] {
+    match channels {
+        2 if balance < 0.0 => [1.0, 1.0 + balance],
+        2 => [1.0 - balance, 1.0],
+        _ => [1.0, 1.0],
     }
 }
