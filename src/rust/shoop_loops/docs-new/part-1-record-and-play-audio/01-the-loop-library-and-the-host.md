@@ -32,7 +32,7 @@ The loop library prepares parts:
 - the loops' **graph nodes** (more than one node per loop)
 - a control-side **client**
 
-Here "recorded content" means a loop's **media**: a handle in the planner's ledger that references sample pages in the runtime's shared storage. The loop does not own a private buffer; the samples live in the render side's resource pages. Your application installs the planner and nodes in an `rt_runtime` graph runtime, which returns two objects to the calling thread. Neither is attached to a particular thread:
+Here "recorded content" means a loop's **media**: a handle in the planner's **ledger**—its fixed-size table of media slots, one row per recorded take—that references sample pages in the runtime's shared storage. The loop does not own a private buffer; the samples live in the render side's resource pages. Your application installs the planner and nodes in an `rt_runtime` graph runtime, which returns two objects to the calling thread. Neither is attached to a particular thread:
 
 - The **control endpoint** submits requests and collects their results. The loop client builds the loop's requests for it. Use both from your application's command-handling code.
 - The **runtime** owns the running loops, their media handles, and any other processors. Store it in your host's audio-processing state and call `GraphRuntime::process` for each block of borrowed input/output buffers.
