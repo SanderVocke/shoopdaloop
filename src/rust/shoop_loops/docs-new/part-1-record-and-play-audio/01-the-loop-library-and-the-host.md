@@ -2,7 +2,15 @@
 
 [Contents](../README.md) · [Next: Preparing an audio loop](02-preparing-an-audio-loop.md)
 
-`shoop_loops` records and plays audio/MIDI loops over buffers supplied by your application. It handles loop positions, wraps, scheduled transitions, synchronization, and prepared arrangements of other loops. It runs on `rt_runtime`; it does not open an audio device, create threads, or provide a user interface.
+`shoop_loops` records and plays audio/MIDI loops over buffers supplied by your application. It handles:
+
+- loop positions
+- wrapping
+- scheduled transitions
+- loop synchronization
+- prepared arrangements of other loops
+
+It runs on `rt_runtime`, the lower-level crate which offers a processing graph and boundary between control and real-time. In essence, `shoop_loops` provides the specific graph nodes and means of dealing with them consistently in order to get core loop behavior, while still allowing composition with other kinds of nodes in the processing graph.
 
 We will start with one stereo loop. It records three sample frames, plays the recording immediately, repeats it, and stops:
 
