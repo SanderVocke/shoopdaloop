@@ -337,14 +337,21 @@ snapshot. Workspace `nextest`: 2217 passed, 4 skipped.
 
 ### Stage 2 — Shared backend contract tests
 
-- [ ] Move the generic contract tests from `shoop_backend`'s private test module into
+- [x] Move the generic contract tests from `shoop_backend`'s private test module into
       a public test-support module.
-- [ ] Let backends supply their host port names, and skip capabilities a backend
+- [x] Let backends supply their host port names, and skip capabilities a backend
       does not report.
-- [ ] Add transition-timing contracts from Stage 0's legacy reference.
+- [x] Add transition-timing contracts from Stage 0's legacy reference.
+
+- [x] *Added:* contracts for the rest of the core set: track removal, track and
+      Master controls, mixer routes, clear, loop gain and balance, and New Session.
 
 **Verify:** the contracts pass against `FakeBackend` and `EngineBackend::new_dummy`
 (`shoop_backend` tests only).
+
+*Done:* `shoop_backend::contracts` (feature `contracts`) with `ContractProfile`,
+`backend_contracts`, the `TimingHarness` trait with its frame conventions, and
+`harness_contracts`; the legacy reference harness is `WebAudioTimingHarness`.
 
 ### Stage 3 — Loop gain and balance in `shoop_loops`
 

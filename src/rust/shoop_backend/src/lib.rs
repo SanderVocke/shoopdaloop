@@ -1,6 +1,8 @@
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+#[cfg(any(test, feature = "contracts"))]
+pub mod contracts;
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 mod native;
 #[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
@@ -11293,6 +11295,7 @@ impl Backend for FakeBackend {
                 .ok_or_else(|| anyhow!("session mixer route has a stale destination"))?;
             staged.set_mixer_route(source_port_id, destination_channel_id, true)?;
         }
+        staged.capabilities = self.capabilities;
         *self = staged;
         Ok(replacement)
     }
@@ -13074,99 +13077,6 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_refuses_operations_of_switched_off_capabilities() {
-        fn attempt(
-            backend: &mut FakeBackend,
-            capability: BackendCapability,
-            track_id: BackendTrackId,
-            loop_id: BackendLoopId,
-        ) -> Result<()> {
-            match capability {
-                BackendCapability::SessionCapture => backend.capture_session().map(drop),
-                BackendCapability::SessionContentLoad => {
-                    let mut session = backend.capture_session()?;
-                    let content = session
-                        .tracks
-                        .iter_mut()
-                        .flat_map(|track| &mut track.loops)
-                        .find(|content| content.source_id == loop_id.raw())
-                        .unwrap();
-                    content.length = 4;
-                    backend.replace_session(&session).map(drop)
-                }
-                BackendCapability::CompositeLoops => backend.create_composite_loop().map(drop),
-                BackendCapability::Grab => backend.grab_loops(&[BackendGrabRequest {
-                    loop_id,
-                    reverse_start_cycle: None,
-                    cycles_length: None,
-                    go_to_cycle: None,
-                    go_to_mode: BackendLoopMode::Playing,
-                }]),
-                BackendCapability::ReplacingMode => {
-                    backend.transition_loop(loop_id, BackendLoopMode::Replacing, None)
-                }
-                BackendCapability::DryWetModes => {
-                    backend.transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
-                }
-                BackendCapability::DryWetTracks => backend
-                    .create_track(TrackRequest {
-                        port_name_base: "dry_wet".to_owned(),
-                        topology: BackendTrackTopology::DryWetExternal {
-                            dry_audio_channels: 1,
-                            wet_audio_channels: 1,
-                            dry_midi: false,
-                        },
-                        initial_loops: 1,
-                    })
-                    .map(drop),
-                BackendCapability::TrackFx => {
-                    backend.set_track_fx_control(track_id, BackendTrackFxControl::SetActive(true))
-                }
-                BackendCapability::BusFx => backend.set_bus_fx_control(
-                    BackendBusId::from_raw(1),
-                    BackendBusFxControl::SetActive(true),
-                ),
-                BackendCapability::LatencyCompensation => backend.set_track_latency(
-                    track_id,
-                    BackendRecordingOffsetAdjustment::ManualOverride(0),
-                    BackendProcessorLatencyAdjustment::ManualOverride,
-                    0,
-                ),
-                BackendCapability::TakeAlignment => backend.set_take_alignment(loop_id, 0),
-                BackendCapability::LoopContentImport => backend.replace_loop_content(
-                    loop_id,
-                    &BackendLoopContentUpdate {
-                        audio: vec![BackendAudioChannelUpdate {
-                            channel: 0,
-                            samples: vec![0.0; 4],
-                            start_offset: None,
-                            capture_alignment_frames: None,
-                            preplay: None,
-                        }],
-                        midi: Vec::new(),
-                        length: Some(4),
-                    },
-                ),
-                BackendCapability::LoopTimingEdits => backend.set_loop_length(loop_id, 4),
-                BackendCapability::BusManagement => backend
-                    .create_bus(BackendBusRequest {
-                        name: "Cue".to_owned(),
-                        channel_count: 2,
-                        fx: None,
-                    })
-                    .map(drop),
-                BackendCapability::AudioDriverSwitching => backend
-                    .preflight_audio_driver(&AudioDriverConfig::default())
-                    .map(drop),
-                BackendCapability::MidiInjection => backend.inject_midi_input(
-                    track_id,
-                    &[BackendMidiEvent {
-                        time: 0,
-                        data: vec![0x90, 60, 100],
-                    }],
-                ),
-            }
-        }
-
         for capability in BackendCapability::ALL {
             let mut backend = FakeBackend::default();
             backend.enable_composite_loops();
@@ -13183,8 +13093,13 @@ mod tests {
                 backend.capabilities(),
                 BackendCapabilities::FULL.with(capability, false)
             );
-            let error = attempt(&mut backend, capability, created.track_id, created.loops[0])
-                .expect_err(&format!("{capability:?} must be refused"));
+            let error = contracts::attempt_capability(
+                &mut backend,
+                capability,
+                created.track_id,
+                created.loops[0],
+            )
+            .expect_err(&format!("{capability:?} must be refused"));
             assert_eq!(error.to_string(), capability.unavailable_reason());
         }
     }
@@ -13744,23 +13659,6 @@ mod tests {
         unsupported.tracks[0].state.topology = topology;
         assert!(backend.replace_session(&unsupported).is_err());
         assert_eq!(backend.capture_session().unwrap(), before);
-    }
-
-    fn backend_contract(backend: &mut dyn Backend) {
-        let sync = backend.create_loop().unwrap();
-        let follower = backend.create_loop().unwrap();
-        backend.wait_idle();
-        backend
-            .transition_loop(follower, BackendLoopMode::Recording, None)
-            .unwrap();
-        let snapshot = backend.poll().unwrap();
-        assert!(snapshot.loops.contains_key(&sync));
-        assert_eq!(
-            snapshot.loops.get(&follower).unwrap().mode,
-            BackendLoopMode::Recording
-        );
-        backend.set_loop_sync_source(follower, Some(sync)).unwrap();
-        backend.wait_idle();
     }
 
     fn loop_content_contract(backend: &mut dyn Backend) {
@@ -14424,116 +14322,6 @@ mod tests {
         invalid.tracks[0].loops[0].audio.pop();
         assert!(backend.replace_session(&invalid).is_err());
         assert_eq!(backend.capture_session().unwrap(), before_failure);
-    }
-
-    fn connection_contract(backend: &mut dyn Backend) {
-        let created = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "connections".to_owned(),
-                audio_channels: 1,
-                midi: true,
-                initial_loops: 1,
-            })
-            .unwrap();
-        assert_eq!(created.ports.len(), 4);
-        let audio_input = created
-            .ports
-            .iter()
-            .find(|port| port.role == BackendPortRole::AudioInput)
-            .unwrap();
-        assert_eq!(audio_input.direction, BackendPortDirection::Input);
-        assert_eq!(audio_input.data_type, BackendPortDataType::Audio);
-        let snapshot = backend.poll().unwrap().connections;
-        assert!(snapshot.available);
-        assert_eq!(
-            snapshot.application_ports.get(&audio_input.id),
-            Some(audio_input)
-        );
-        assert!(snapshot.host_ports.contains_key("system:capture_1"));
-        assert!(snapshot.host_ports.contains_key("system:playback_1"));
-        assert!(snapshot.host_ports.contains_key("controller:midi_out"));
-        assert!(!snapshot
-            .host_ports
-            .keys()
-            .any(|id| id.starts_with("shoop:")));
-
-        backend
-            .set_port_connected(audio_input.id, "system:capture_1", true)
-            .unwrap();
-        backend
-            .set_port_connected(audio_input.id, "system:capture_1", true)
-            .unwrap();
-        let snapshot = backend.poll().unwrap().connections;
-        assert!(snapshot.confirmed_links.contains(&BackendConfirmedLink {
-            application_port_id: audio_input.id,
-            host_port_id: "system:capture_1".to_owned(),
-        }));
-        backend
-            .set_port_connected(audio_input.id, "system:capture_1", false)
-            .unwrap();
-        assert!(backend
-            .set_port_connected(audio_input.id, "missing:endpoint", true)
-            .is_err());
-    }
-
-    fn direct_track_contract(backend: &mut dyn Backend) {
-        let created = backend
-            .create_direct_track(DirectTrackRequest {
-                port_name_base: "contract".to_owned(),
-                audio_channels: 2,
-                midi: true,
-                initial_loops: 2,
-            })
-            .unwrap();
-        backend
-            .set_track_control(created.track_id, BackendTrackControl::OutputGainDb(-6.0))
-            .unwrap();
-        backend.set_loop_gain(created.loops[0], 0.5).unwrap();
-        backend.set_loop_balance(created.loops[0], 0.25).unwrap();
-        backend
-            .inject_midi_input(
-                created.track_id,
-                &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 60, 100],
-                }],
-            )
-            .unwrap();
-        let third = backend.add_loop_to_track(created.track_id).unwrap();
-        backend.wait_idle();
-        let snapshot = backend.poll().unwrap();
-        let track = &snapshot.tracks[&created.track_id];
-        assert_eq!(track.audio_channels, 2);
-        assert!(track.midi);
-        assert_eq!(track.output_gain_db, -6.0);
-        assert!(snapshot.loops[&created.loops[0]].stereo);
-        assert_eq!(snapshot.loops[&created.loops[0]].gain, 0.5);
-        assert_eq!(snapshot.loops[&created.loops[0]].balance, 0.25);
-        assert!(snapshot.loops.contains_key(&third));
-        assert_eq!(
-            backend
-                .loop_audio_data(created.loops[0])
-                .unwrap()
-                .unwrap()
-                .len(),
-            2
-        );
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn fake_backend_satisfies_contracts() {
-        let mut backend = FakeBackend::default();
-        backend_contract(&mut backend);
-        direct_track_contract(&mut backend);
-        connection_contract(&mut backend);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn engine_dummy_backend_satisfies_contracts() {
-        let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
-        backend_contract(&mut backend);
-        direct_track_contract(&mut backend);
-        connection_contract(&mut backend);
     }
 
     #[shoop_wasm_test_support::shoop_test]
