@@ -1,10 +1,125 @@
-# Plan: first opt-in runtime backend
+# Design: first opt-in new engine backend
 
 [Main plan](PLAN.md) · [Architecture](ARCHITECTURE.md) · [Validation](VALIDATION.md) · [Loop features assessment](LOOP_FEATURES_ASSESSMENT.md)
 
 Scope agreed with the user on 2026-10-30: native and browser, the core looping
 feature set without session save/load, prepared capacity pools, and work continuing
 on `feat/loop-execution-layer` without a separate branch or pull request.
+
+> **Design in progress.** This is a design document; concrete steps, acceptance
+> criteria and verification will be written once the design is final. The design
+> below was agreed after the problem, goals, scope and design rules further down
+> were written. Before turning this into a plan, audit them, `ARCHITECTURE.md` and
+> `PLAN.md` for consistency with it. Known differences: the crate layout and names,
+> the protocol layer, native traffic going through the protocol, and render
+> performance benchmarking, which is deferred beyond this milestone.
+
+## Design
+
+### Layers
+
+Two transport layers separate the application from the render path. Only the outer
+one varies by environment.
+
+```text
+Application side                              Engine side (same process, worklet, other process or machine)
+shoop_egui / shoop_app
+  │ Backend trait (tracks, buses, sessions, UI snapshot)
+shoop_rt_backend (adapter: app vocabulary ⇄ engine protocol, state mirror)
+  │ protocol client
+  ═══ T2: carrier (in-process call │ MessagePort │ later IPC │ later network) ═══╗
+                                                                                 ║ carrier server
+                                  shoop_rt_engine control endpoint (protocol → runtime commands, telemetry, bulk reads)
+                                          │ T1: rt_runtime control/completion queues (same memory, lock-free, owning)
+                                  shoop_rt_engine render owner (one runtime process call per callback)
+                                          │
+                                  host: drivers (dummy, CPAL) │ AudioWorkletProcessor │ later a process main
+```
+
+| Layer | Crate | Responsibility |
+| --- | --- | --- |
+| Runtime | `rt_runtime` | Generic graph, scheduling, resources and the T1 queues |
+| Loop parts | `shoop_loops` | Musical timing, media and capture |
+| Engine | `shoop_rt_engine` | The application's real-time composition: node enum, prepared pools, the signal chain (gain, balance, mute, monitoring, meters, Master), structural transactions, the control endpoint and the render owner. All engine semantics, compiled once for every environment |
+| Protocol | `shoop_rt_protocol` | Versioned plain-data schema, capability and limit descriptor, connection lifecycle, three lanes (reliable requests and results, latest-value telemetry, chunked bulk), carrier traits and codecs. No semantics |
+| Hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` (later a process host) | Own the engine, pump audio and messages, open devices. No semantics |
+| Adapter | `shoop_rt_backend` | The `Backend` trait in terms of the protocol: ID mapping, snapshot mirror, capability gating, session documents |
+
+The composition root (the native `shoopdaloop` binary or the browser bootstrap)
+chooses a host and a carrier and hands the adapter a protocol client. The adapter
+does not know which environment it talks to.
+
+### Principles
+
+- **One implementation of the semantics.** The engine, the protocol and the adapter
+  exist once. Hosts and carriers differ per environment and contain no semantics.
+  Native traffic also goes through the protocol: its carrier passes typed protocol
+  values by direct call, without serialization, so there is no second control path.
+- **Bounded control endpoint.** The engine's control endpoint is bounded and
+  allocation-free in every environment, because in the worklet it runs on the audio
+  thread between render quanta. The same code runs on the application thread
+  natively, in the worklet, and on a carrier thread in a separate process.
+  Operations that move data, such as waveform reads, are chunked.
+- **Vocabulary boundaries.** Application concepts end at the adapter; the engine
+  speaks only engine terms (strips, loop slots, routes, operations, telemetry).
+  Engine-side crates do not depend on `shoop_app_api` or other application crates;
+  driver configuration and discovery are engine-owned protocol data that the adapter
+  maps. Musical authority stays in the `shoop_loops` resolver.
+- **Carrier-neutral protocol.** The protocol defines from the start:
+  - a connection handshake with version, capabilities and pool limits;
+  - correlation IDs and credit-based flow control per lane;
+  - full-state resynchronization for a (re)connecting adapter;
+  - defined disconnect behaviour.
+
+  IPC and network carriers are then additive. Devices are opened by the host where
+  the engine runs, so no audio streams over a carrier; synchronized commands are in
+  musical time, so carrier latency only delays immediate actions.
+- **Asynchronous everywhere.** The adapter mirrors engine state and confirms changes
+  through the snapshot, natively as in the browser, so native and remote behave
+  alike.
+- **Environment bridges belong to hosts.** Web MIDI exists only on the browser's
+  main thread; the browser host's main-thread half forwards timestamped MIDI into
+  the worklet on its own lane.
+- **Prepared pools cost nothing while inactive.** Inactive slots are not in the
+  active graph or in the resolver's per-callback work.
+- **Capacities are per epoch and growable where the host allows.** The render path
+  is bounded at every instant, not fixed for the engine's lifetime. Growth follows
+  the existing pattern: prepare larger structures off-render, hand them over through
+  T1 and activate them at a boundary, returning the displaced owners for release
+  off-render.
+  - Engine pools are made of segments; adding tracks or loops beyond the current
+    segments prepares another segment.
+  - The protocol treats limits as current values that can change, with a
+    limits-changed message, not as handshake constants.
+  - IDs are slots with generations, never indices bounded by an initial capacity.
+  - Hosts declare whether they can grow. Native hosts, including a separate process
+    or machine, can; the browser worklet is bounded by a preallocated maximum.
+  - The first milestone may ship with fixed segments; growth in the engine and
+    adapter is then additive. Growing `rt_runtime`'s executor tables and resource
+    store and `shoop_loops`' ledger and resolver state is later work inside those
+    crates.
+- **Structural changes never interrupt audio.** Graph, topology, node-pair and
+  capacity changes are staged off-render and activated at an exact frame within
+  normal callbacks. Removed or rerouted signal paths fade out over a short prepared
+  ramp first, so changes do not click. Changing the audio device, sample rate or
+  buffer size is the only operation that restarts audio, and it is an explicit
+  lifecycle operation, never a side effect of editing tracks or loops.
+- **Render performance is not gated in this milestone.** Benchmarking the render path
+  against the legacy backend is deferred to later work.
+
+This is the first concrete instance of the
+[proposed modular protocol](ARCHITECTURE.md#proposed-modular-protocol). Its domain
+schemas (loops, strips and mixer, telemetry, bulk) start as modules of one crate and
+are split only when a component needs its own schema without the engine.
+
+### Naming
+
+- **Runtime** means `rt_runtime` only.
+- **Engine** is the application's real-time composition.
+- **Host** is environment glue; the worklet is one host.
+- **Backend** is the application adapter.
+
+The feature is the "new engine backend".
 
 ## Problem
 
@@ -59,45 +174,6 @@ beyond what these two carriers need, the loop-library features in the
 [assessment](LOOP_FEATURES_ASSESSMENT.md) other than gain and balance, and changes
 to the legacy engine, legacy drivers or `EngineBackend`.
 
-## Acceptance criteria
-
-These must not change without explicit user approval.
-
-- **B1 — opt-in selection at a lifecycle boundary.** A restart-required setting and
-  an `AppArgs` override choose the legacy or the runtime backend; legacy is the
-  default. The runtime backend never routes an operation to the legacy engine.
-- **B2 — platforms.** The runtime backend runs natively with the dummy and the CPAL
-  and midir drivers on Linux, macOS and Windows, and in the browser's AudioWorklet,
-  with the same core feature set.
-- **B3 — core workflow.** On both platforms a user can start the application,
-  create a new session, add regular audio and MIDI tracks, connect them to host
-  ports and Master, record, play, stop and clear loops with immediate and
-  synchronized transitions, adjust gains, balance, mute and monitoring, watch meters
-  and loop progress, and inspect waveform and MIDI details.
-- **B4 — explicit capabilities.** The backend reports a capability descriptor; the
-  legacy backends report their full feature set. The UI disables or hides every
-  unsupported action with an explanation, refusals reach the user, and the
-  application rejects documents and scripts that need an unsupported capability
-  instead of applying them partially. Composite documents on a backend without
-  composites are rejected rather than loaded without their composites.
-- **B5 — prepared pools.** Capacities for tracks, loops per track, channels and
-  ports are fixed when the backend starts and are configurable. Adding or removing a
-  track or loop activates or retires prepared slots without interrupting audio.
-  Exceeding a capacity is refused with a visible message.
-- **B6 — timing equivalence.** For the core workflow the runtime backend produces
-  the same transition frames, loop lengths and recorded content as the legacy
-  backend, shown by shared contract tests that run against both.
-- **B7 — callback contract.** Driver callbacks, the engine's render path and the
-  worklet's render path do not allocate, free, lock or wait; tests guard them, and
-  xruns are reported.
-- **B8 — legacy unchanged.** The legacy backend's tests and behaviour are unchanged
-  apart from reporting its capabilities.
-- **B9 — boundaries.** `rt_runtime` and `shoop_loops` keep their dependency
-  boundaries; the new crates do not depend on `shoop_engine`.
-- **B10 — documentation.** User docs say how to enable the runtime backend and what
-  it supports; `ARCHITECTURE.md`, `PLAN.md` and `VALIDATION.md` describe the new
-  layer and its evidence; the new crates have READMEs.
-
 ## Design rules
 
 - **Respect the architecture.** Selection happens at a lifecycle boundary, no
@@ -151,172 +227,3 @@ These must not change without explicit user approval.
   `nix develop` with `RUSTFLAGS="-D warnings"`, run `cargo fmt --all` before
   committing, use `#[shoop_test]` and run `check_shoop_test_usage.py` when tests
   change, and add new source files to the tracing coverage inventory.
-
-## Stages
-
-Order: 0 → {1, 2, 3} → 4 → 5 → {6, 7} → 8 → 9 → 10. Stages 1, 2 and 3 are
-independent. Stage 8 needs Stage 5's control logic. Stages 6 and 7 need Stage 5.
-
-### Stage 0 — Baseline
-
-- [ ] Record the test counts and results of `shoop_backend`, `shoop_app`,
-      `shoop_egui` and `shoopdaloop` (native, and Node Wasm where opted in).
-- [ ] Record the legacy core workflow's transition frames and recorded lengths on
-      the dummy driver as reference data for B6.
-
-**Verify:** the counts and reference data are recorded, and every run passed.
-
-### Stage 1 — Capability descriptor and UI gating
-
-- [ ] Add a capability descriptor to `Backend`, with a default for the existing
-      backends that matches what each one supports.
-- [ ] Gate every unsupported action in the UI (disabled with an explanation, or
-      hidden): saving and loading, composites, grab, the modes, processor tracks, FX,
-      latency, imports, length and timing edits, buses other than Master, and driver
-      switching.
-- [ ] Reject documents, session loads and script operations that need an
-      unsupported capability, including composites on a backend without them.
-- [ ] Make refusals and capacity errors from user actions visible to the user, not
-      only in the log.
-
-**Verify:** app and UI tests against `FakeBackend` with each capability switched off;
-the legacy backends' tests are unchanged.
-
-### Stage 2 — Shared backend contract tests
-
-- [ ] Move the generic contract tests in `shoop_backend`'s private test module
-      (backend, loop content, connections, direct tracks, session IO, transitions)
-      into a public test-support module that other crates can run against their own
-      backend.
-- [ ] Let the backend supply its host port names instead of the hard-coded dummy
-      names, and let contracts skip capabilities the backend does not report.
-- [ ] Add transition-timing contracts (immediate, N-cycle, supersession, no sync
-      source) that capture the legacy reference data from Stage 0.
-
-**Verify:** the contracts still pass against `FakeBackend` and
-`EngineBackend::new_dummy`.
-
-### Stage 3 — Loop gain and balance in `shoop_loops`
-
-- [ ] Add balance next to the per-loop gain, applied in the audio renderer with the
-      legacy stereo factors.
-- [ ] Update the loop guides.
-
-**Verify:** loop tests in debug and release with heap guards, Node Wasm tests,
-boundary script.
-
-### Stage 4 — Engine composition (`shoop_rt_engine`)
-
-- [ ] Engine description: sample rate, maximum frames per callback (at least the
-      largest device buffer), host audio and MIDI slots, and pool capacities with
-      defaults.
-- [ ] Prepared pools for track slots, loop slots and the Master bus, with the node
-      enum wrapping the loop nodes and the application processors.
-- [ ] Structural transactions: activating and retiring track and loop slots,
-      routing tracks to Master and host slots, and assigning sync sources, through
-      the loop library's topology and graph staging.
-- [ ] The domain schema: reliable requests and results, latest-value telemetry
-      (loop state, peaks, MIDI activity), and chunked bulk reads of loop media
-      through exports.
-- [ ] The render owner: one runtime `process` call per callback, absolute frame
-      count, MIDI recovery output, fault and disconnect handling, stopped cleanup.
-
-**Verify:** native tests in debug and release with heap guards for every render
-path, structural edits while rendering, capacity refusals, Wasm build without
-imports, Node tests.
-
-### Stage 5 — Native backend core and dummy driver (`shoop_rt_backend`)
-
-- [ ] The typed in-memory carrier between control and render.
-- [ ] The `Backend` implementation for the core set:
-  - track, loop and port ID mapping onto slots;
-  - snapshot assembly from telemetry and results;
-  - transitions with the legacy timing semantics;
-  - connections and the mixer model;
-  - new-session structure replacement;
-  - the capability descriptor;
-  - explicit refusal of everything else.
-- [ ] The dummy driver adapter: a thread that drives the render owner in real
-      time without allocating.
-
-**Verify:** the shared contracts from Stage 2 pass against the runtime backend for
-every supported capability, including B6 timing equivalence; app-level tests with
-the cooperative and threaded runtimes on the dummy driver.
-
-### Stage 6 — CPAL and midir driver adapter
-
-- [ ] Device discovery and configuration through the `shoop_app_api` driver
-      vocabulary; host audio slots map onto device channels and host MIDI slots
-      onto midir ports.
-- [ ] A lock-free bridge from the input callback to the output callback, and
-      lock-free MIDI delivery from midir into the render owner; xrun and stream-error
-      counting.
-- [ ] Refuse device buffers larger than the prepared maximum frames, with a clear
-      message.
-
-**Verify:** allocation-guarded tests through the CPAL mock; a manual smoke on a real
-device on Linux, plus macOS or Windows where available.
-
-### Stage 7 — Native application integration
-
-- [ ] A restart-required backend setting next to the audio settings and an
-      `AppArgs` override; the runtime backend is constructed where `NativeBackend`
-      is today, with fallback warnings like the existing ones.
-- [ ] Settings for the pool capacities, with defaults.
-- [ ] An end-to-end application smoke of the core workflow on the dummy driver,
-      modelled on the existing native application smoke.
-
-**Verify:** the smoke passes; the legacy backend remains the default and its tests
-pass; the runtime backend selected by setting and by argument starts and reports
-its capabilities in the UI.
-
-### Stage 8 — Browser carrier, worklet module and integration (`shoop_rt_worklet`)
-
-- [ ] A bounded record codec for the domain schema's three lanes; prepared
-      materialization of requests into runtime owners inside the worklet; buffer
-      recycling.
-- [ ] The raw-Wasm worklet module wrapping the engine composition, prepared before
-      its first render quantum, with the existing stereo device boundary and Web MIDI
-      forwarded from the main thread.
-- [ ] The main-thread `Backend` implementation over this carrier, sharing Stage 5's
-      control logic.
-- [ ] Build integration next to the existing worklet artifact, and browser
-      selection through the same setting and override.
-
-**Verify:** Node tests of the codec and worklet logic; Wasm without imports; an
-AudioWorklet host test of the core workflow in Chrome (manual) and Firefox; the
-existing browser smokes still pass on the legacy backend.
-
-### Stage 9 — Documents
-
-- [ ] `ARCHITECTURE.md`: the new layer in the implementation map, the composition,
-      the two carriers and the capability model.
-- [ ] `PLAN.md`: the workstream row and the remaining parity gaps.
-- [ ] `VALIDATION.md`: the evidence.
-- [ ] User docs (`docs/source/`): enabling the runtime backend and its supported
-      features.
-- [ ] READMEs for the three new crates.
-
-**Verify:** links resolve; no document claims support for refused features.
-
-### Stage 10 — End-to-end validation
-
-- [ ] Run the CI workflow's Linux and web command set locally, including the new
-      crates.
-- [ ] Run the shared contracts against the legacy and the runtime backends.
-- [ ] Run the core workflow natively on the dummy driver and on a real CPAL device,
-      and in the browser (Chrome manually, Firefox).
-- [ ] Measure callback cost against the legacy backend for the same scenario on the
-      same machine.
-- [ ] Check every acceptance criterion and record the results in `VALIDATION.md` and
-      here.
-
-**Verify:** all of B1–B10 are met, with evidence linked.
-
-## Execution contract
-
-- Keep this plan updated as work progresses and check off completed items.
-- Commit each completed stage or meaningful milestone.
-- Implementation steps may be revised when new evidence warrants it.
-- Design rules may be revised for a documented, well-supported reason.
-- Goals and acceptance criteria must not be changed without explicit user approval.
