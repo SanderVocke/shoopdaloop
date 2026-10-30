@@ -769,6 +769,7 @@ fn canary(kind: &str) {
     }
     panic!("heap guard failed to detect deliberate violation");
 }
+// Synthetic workload smoke: heap-guarded callbacks with exact per-workload checks (not a benchmark).
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     if let Some(index) = args.iter().position(|arg| arg == "--fail-canary") {

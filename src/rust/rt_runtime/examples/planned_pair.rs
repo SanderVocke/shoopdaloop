@@ -303,6 +303,7 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
     Ok(())
 }
 
+// One planner alternates a gain decision every 8 frames; two consumers borrow it per interval.
 fn main() -> Result<(), Error> {
     for reverse in [false, true] {
         demonstrate(&[32], 8, reverse)?;

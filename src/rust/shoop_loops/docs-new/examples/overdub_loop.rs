@@ -1,3 +1,5 @@
+//! Book example, chapter 5: record a take, then overdub a second take on top with `monitor_previous`, and play the new take. Run with `cargo run --bin overdub_loop` from this directory.
+
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{GraphRuntime, PreparedNode},
@@ -126,8 +128,10 @@ fn main() {
     )
     .unwrap();
     control.prepare_submissions().unwrap();
+    // Frames 8-11 play the OLD take (monitor_previous) while the new one records.
     assert_eq!(runtime.next_frame(), Frame(0));
 
+    // Record 4 frames, play at 4, overdub with monitor_previous at 8, play the new take at 12, stop at 18.
     let mut sequences = Vec::new();
     for (at, transition) in [
         (
@@ -172,6 +176,7 @@ fn main() {
         sequences.push((ticket.sequence(), Frame(at)));
     }
 
+    // First take is frames 0-3; the overdub is frames 8-11.
     let left_in = [1.0, 2.0, 3.0, 4.0, 9.0, 9.0, 9.0, 9.0, 5.0, 6.0, 7.0, 8.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
     let right_in = [10.0, 20.0, 30.0, 40.0, 90.0, 90.0, 90.0, 90.0, 50.0, 60.0, 70.0, 80.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0];
     let mut left_out = [0.0; 20];

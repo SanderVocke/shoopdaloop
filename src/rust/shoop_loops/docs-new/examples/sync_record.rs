@@ -1,3 +1,5 @@
+//! Book example, chapter 7: record exactly four bars by starting Record on the bar loop's first tick and Stop on its fifth. Run with `cargo run --bin sync_record` from this directory.
+
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{GraphRuntime, PreparedNode},
@@ -146,6 +148,7 @@ fn main() {
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
 
+    // The take loop records between the bar loop's first and fifth ticks: exactly 4 bars.
     let mut sequences = Vec::new();
     let submit = |at: u64,
                   target: LoopId,
@@ -329,6 +332,7 @@ fn main() {
         .iter()
         .find(|(sequence, _, _)| *sequence == sequences[3].0)
         .copied();
+    // Assert the tick-scheduled Record and Stop landed at the actual tick frames.
     assert_eq!(
         record_start,
         Some((sequences[2].0, Frame(0), Outcome::Applied { frame: Frame(0) }))

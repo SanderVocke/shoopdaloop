@@ -345,6 +345,7 @@ fn checkpoint_states() -> Result<(), Error> {
     Ok(())
 }
 
+// Indexed MIDI: seek by checkpoint and read complete packets across page boundaries.
 fn main() -> Result<(), Error> {
     event_copies()?;
     checkpoint_states()?;

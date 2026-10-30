@@ -21,6 +21,7 @@ struct Delay {
     position: usize,
 }
 
+// PrepareProcessor allocates processor-owned memory (here a delay line) before rendering.
 impl PrepareProcessor for DelaySetup {
     type Prepared = Delay;
 

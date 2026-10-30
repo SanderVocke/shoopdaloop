@@ -383,6 +383,7 @@ fn run(graceful: bool) -> Result<(), Error> {
     drop((queued, ticket, control, ledger, store, drops));
     Ok(())
 }
+// Shutdown: settle owned work while callbacks run in the graceful branch; abandon it explicitly in the other.
 fn main() -> Result<(), Error> {
     run(true)?;
     run(false)?;

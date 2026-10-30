@@ -1,3 +1,5 @@
+//! Book example, chapter 3: prepare one stereo loop, record three frames, play them immediately, observe the wrap, stop, and reclaim storage. Run with `cargo run --bin first_loop` from this directory.
+
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{GraphRuntime, PreparedNode},
@@ -14,6 +16,7 @@ use shoop_loops::{
 };
 
 fn main() {
+    // 1. Reserve runtime storage: host port counts, graph capacity, resource pools.
     let config = Config {
         max_frames: 8,
         audio_inputs: 2,
@@ -32,6 +35,7 @@ fn main() {
     }
     .prepare()
     .unwrap();
+    // Capture storage for the loop's takes: two banks, one stereo member each.
     let mut resources = ResourceStore::with_capture_groups(
         config,
         None,
@@ -43,6 +47,7 @@ fn main() {
     )
     .unwrap();
 
+    // 2. Describe the musical loop: one empty primitive loop, no sync source.
     let target = LoopId::from_parts(0, 1).unwrap();
     let topology = compile(
         Limits {
@@ -64,6 +69,7 @@ fn main() {
 
     let playback = NodeId::from_parts(0, 1).unwrap();
     let capture = NodeId::from_parts(1, 1).unwrap();
+    // 3. Bind the loop to its two signal nodes (playback outputs, capture inputs).
     let binding = Binding {
         target,
         playback,
@@ -76,6 +82,7 @@ fn main() {
         midi_bytes: 0,
         packet_bytes: 0,
     };
+    // 4. Connect the signal graph: host in -> capture, playback -> host out.
     let mut graph = GraphDescription {
         nodes: vec![playback, capture],
         connections: Vec::new(),
@@ -93,6 +100,7 @@ fn main() {
         ]);
     }
 
+    // 5. Prepare the loop parts: planner, nodes, and control-side client.
     let Prepared {
         planner,
         nodes,
@@ -116,6 +124,7 @@ fn main() {
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
+    // 6. Install everything in a runtime; the control endpoint takes submissions.
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
         nodes,
@@ -128,6 +137,7 @@ fn main() {
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
 
+    // Submit Record at 0, Play at 3, Stop at 7 — all before the first callback.
     let mut sequences = Vec::new();
     for (at, transition) in [
         (
@@ -159,6 +169,7 @@ fn main() {
         sequences.push((ticket.sequence(), Frame(at)));
     }
 
+    // Process one 8-frame host block; the first three frames are the recording.
     let left_in = [1.0, 2.0, 3.0, 9.0, 9.0, 9.0, 9.0, 9.0];
     let right_in = [10.0, 20.0, 30.0, 90.0, 90.0, 90.0, 90.0, 90.0];
     let mut left_out = [0.0; 8];
@@ -177,16 +188,19 @@ fn main() {
             },
         )
         .unwrap();
+    // Frames 0-2 silent (no live route), 3-5 play the take, 6 wraps, 7 stops.
     assert_eq!(left_out, [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 1.0, 0.0]);
     assert_eq!(right_out, [0.0, 0.0, 0.0, 10.0, 20.0, 30.0, 10.0, 0.0]);
     assert_eq!(runtime.next_frame(), Frame(8));
 
+    // Admission results: the runtime accepted each request for delivery.
     for &(sequence, _) in &sequences {
         let completion = control.try_completion().unwrap();
         assert_eq!(completion.sequence, sequence);
         assert!(matches!(completion.outcome, Admission::Scheduled { .. }));
     }
     assert!(control.try_completion().is_none());
+    // Execution results: the musical outcome at each actual boundary.
     for &(sequence, frame) in &sequences {
         let execution = control.try_execution().unwrap();
         assert_eq!(execution.sequence, sequence);
@@ -199,6 +213,7 @@ fn main() {
     }
     assert!(control.try_execution().is_none());
 
+    // Shutdown: extract planner and store after callbacks stop, then reclaim.
     drop(control);
     let (mut planner, mut resources) = runtime.into_planner_and_resources();
     planner.cleanup(&mut resources).unwrap();

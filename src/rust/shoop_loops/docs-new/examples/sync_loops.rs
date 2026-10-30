@@ -1,3 +1,5 @@
+//! Book example, chapter 6: a 4-frame bar loop ticks a synced child loop, whose Play is scheduled on the bar's first tick instead of an absolute frame. Run with `cargo run --bin sync_loops` from this directory.
+
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{GraphRuntime, PreparedNode},
@@ -146,6 +148,7 @@ fn main() {
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
 
+    // The child's Play uses Timing::AfterTicks, so it fires on the bar loop's first tick, not at a named frame.
     let mut sequences = Vec::new();
     let submit = |at: u64,
                       target: LoopId,
@@ -265,6 +268,7 @@ fn main() {
             },
         )
         .unwrap();
+    // The child starts at frame 4 (the bar's first tick) and wraps with its 4-frame take.
     assert_eq!(
         parent_left_out,
         [0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 0.0, 0.0]
@@ -299,6 +303,7 @@ fn main() {
         applied.push((execution.sequence, execution.actual_frame, completion.outcome));
     }
     assert!(control.try_execution().is_none());
+    // The execution stream reports the real boundary (frame 4), not the requested frame.
     let child_play = applied
         .iter()
         .find(|(sequence, _, _)| *sequence == sequences[3].0)

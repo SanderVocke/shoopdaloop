@@ -1,3 +1,5 @@
+//! Book example, chapters 10-11: a 4-frame bar loop is the shared sync source; a composite arranger runs a program that plays a 1-bar bass loop and a 2-bar drums loop on bar boundaries. Run with `cargo run --bin program_loop` from this directory.
+
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{GraphRuntime, PreparedNode},
@@ -14,6 +16,7 @@ use shoop_loops::{
     TopologyDescription, Transition,
 };
 
+// Upload interleaved little-endian f32 samples as a new resource revision and return a source handle for importing it as a loop's initial content.
 fn load_stereo(
     resources: &mut ResourceStore,
     left: &[f32],
@@ -76,6 +79,7 @@ fn main() {
     let arranger = LoopId::from_parts(1, 1).unwrap();
     let bass = LoopId::from_parts(2, 1).unwrap();
     let drums = LoopId::from_parts(3, 1).unwrap();
+    // One bar loop (4 frames) is the sync source for the arranger AND both children; lengths are whole bars.
     let topology_result = compile(
         Limits {
             loop_slots: 4,
@@ -109,6 +113,7 @@ fn main() {
                     sync_source: Some(bar),
                 },
             ],
+    // The program: 1 unit = 1 bar (nominal_unit_frames: 4). Bass plays for bar 1, drums for bars 2-3.
             programs: vec![ProgramDescription {
                 source: arranger,
                 nominal_unit_frames: 4,
@@ -187,6 +192,7 @@ fn main() {
         }
     }
 
+    // Import content for the children instead of recording: bass is 1 bar, drums 2 bars.
     let bass_audio = load_stereo(
         &mut resources,
         &[1.0, 2.0, 3.0, 4.0],
@@ -263,6 +269,7 @@ fn main() {
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
 
+    // Record the bar loop, play it from frame 4, start the arranger, stop both at 12.
     let mut sequences = Vec::new();
     let submit = |at: u64,
                       target: LoopId,
@@ -335,6 +342,7 @@ fn main() {
         &mut sequences,
     );
 
+    // One 16-frame block; the bar loop records frames 0-3.
     let bar_in = [1.0, 1.0, 1.0, 1.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
     let silent2 = [0.0; 16];
     let bass_in = silent2;
@@ -366,6 +374,7 @@ fn main() {
             },
         )
         .unwrap();
+    // Bar repeats from frame 4; bass plays its bar, then drums play theirs — all on bar boundaries.
     let expected_bar_left: [f32; 16] = {
         let mut v = [0.0; 16];
         for f in v.iter_mut().take(12).skip(4) {

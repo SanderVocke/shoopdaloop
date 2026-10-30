@@ -678,6 +678,7 @@ fn recovered(store: &ResourceStore, pages: usize) {
     assert_eq!(store.midi_index_usage().free_versions, 4);
     assert_eq!(store.capture_group_usage().free_groups, 1);
 }
+// Coordinated capture: record audio and MIDI together in one capture group, across intervals.
 fn main() -> Result<(), Error> {
     run(4, &[])?;
     for pages in [24, 6] {

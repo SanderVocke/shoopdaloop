@@ -1,3 +1,5 @@
+//! Book example, chapters 8-9: record two MIDI events, play them back, and observe the cleanup packets emitted at Stop. Run with `cargo run --bin midi_loop` from this directory.
+
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{GraphRuntime, PreparedNode},
@@ -134,6 +136,7 @@ fn main() {
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
 
+    // Record at 0 (two events), play at 4, stop at 7 — the stop emits MIDI cleanup.
     let mut sequences = Vec::new();
     for (at, transition) in [
         (
@@ -165,6 +168,7 @@ fn main() {
         sequences.push((ticket.sequence(), Frame(at)));
     }
 
+    // Host MIDI input: note-on at frame 0, sustain pedal at frame 1.
     let mut input = [MidiBuffer::new(256, 1024).unwrap()];
     input[0].push(0, 8, &[0x90, 60, 100]).unwrap();
     input[0].push(1, 8, &[0xB0, 64, 127]).unwrap();
@@ -183,6 +187,7 @@ fn main() {
             },
         )
         .unwrap();
+    // Playback replays both events at frames 4-5 and wraps; the tail is the Stop cleanup.
     assert_eq!(output[0].len(), 68);
     let events = (0..output[0].len())
         .map(|i| output[0].get(i).unwrap())
@@ -193,6 +198,7 @@ fn main() {
     assert_eq!(events[events.len() - 1], (7, &[0x80, 60, 0][..]));
     assert_eq!(runtime.next_frame(), Frame(8));
 
+    // A second block after Stop is silent: cleanup already ran at the stop frame.
     input[0].clear();
     output[0].clear();
     runtime

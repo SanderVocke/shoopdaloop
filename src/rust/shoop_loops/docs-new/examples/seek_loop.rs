@@ -1,3 +1,5 @@
+//! Book example, chapter 4: record six frames, play, seek to position 4 mid-playback, and stop. Run with `cargo run --bin seek_loop` from this directory.
+
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{GraphRuntime, PreparedNode},
@@ -126,8 +128,10 @@ fn main() {
     )
     .unwrap();
     control.prepare_submissions().unwrap();
+    // Playback starts at 6; the seek at 9 skips position 3; stop at 12 silences the tail.
     assert_eq!(runtime.next_frame(), Frame(0));
 
+    // Record 6 frames, play at 6, seek to position 4 at 9, stop at 12.
     let mut sequences = Vec::new();
     for (at, transition) in [
         (
@@ -180,6 +184,7 @@ fn main() {
         .unwrap_or_else(|refusal| panic!("export: {:?}", refusal.error));
     let export_sequence = export_ticket.sequence();
 
+    // One 16-frame block; frames 0-5 are the recording, later values differ on purpose.
     let left_in = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
     let right_in = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0];
     let mut left_out = [0.0; 16];

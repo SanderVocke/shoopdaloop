@@ -33,6 +33,7 @@ impl Processor for Gain {
 }
 
 fn main() -> Result<(), Error> {
+// Size the runtime: one host in/out, one node, four ports, two edges, an 8-frame max block.
     let config = Config {
         max_frames: 8,
         audio_inputs: 1,
@@ -48,6 +49,7 @@ fn main() -> Result<(), Error> {
         ..Config::default()
     }
     .prepare()?;
+// The graph has one processor; NodeId slot 0, generation 1.
     let node = NodeId::from_parts(0, 1)?;
     let graph = GraphDescription {
         nodes: vec![node],
@@ -63,6 +65,7 @@ fn main() -> Result<(), Error> {
         ],
     };
     let resources = ResourceStore::new(config)?;
+// Install the graph at prepare time: epoch 1, frame 0, no warm-up callback.
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
         vec![PreparedNode::new(node, Gain(0.5))],
@@ -77,6 +80,7 @@ fn main() -> Result<(), Error> {
 
     let input = [1.0, 0.5, -1.0, 0.0, 0.25, -0.5, 2.0, -2.0];
     let mut output = [0.0; 8];
+// Render one borrowed 8-frame block; the runtime only borrows the buffers for the call.
     assert_no_heap(|| {
         runtime.process(
             AudioBlock {
@@ -91,6 +95,7 @@ fn main() -> Result<(), Error> {
             },
         )
     })?;
+// Each input sample halved.
     assert_eq!(output, [0.5, 0.25, -0.5, 0.0, 0.125, -0.25, 1.0, -1.0]);
     assert_eq!(runtime.next_frame(), Frame(8));
 

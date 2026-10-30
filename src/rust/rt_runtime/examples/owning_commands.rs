@@ -105,6 +105,7 @@ fn demonstrate(publications: usize, cancel_recovery: bool) -> Result<(), Error> 
         &[],
     )?;
     let first = control
+// Submit an owning request: the runtime returns it with its outcome and any retired object.
         .submit(
             Lane::Normal,
             Command::commit(runtime.epoch(), compile(runtime.catalog(), &description)?),
@@ -131,6 +132,7 @@ fn demonstrate(publications: usize, cancel_recovery: bool) -> Result<(), Error> 
     assert!(control.try_completion().is_none());
     first.cancel();
     let recovery = control
+// The recovery lane is admitted independently and can pass a held normal validator.
         .submit(Lane::Recovery, Command::ResetMidi)
         .map_err(|refusal| refusal.error)?;
     if cancel_recovery {
@@ -146,6 +148,7 @@ fn demonstrate(publications: usize, cancel_recovery: bool) -> Result<(), Error> 
         .unwrap();
     assert_eq!(refused.error, Error::Full);
     drop(refused);
+// Completions are owning returns: read them off-render; unread returns occupy admission credit.
     let completion = control.try_completion().unwrap();
     assert_eq!(completion.sequence, recovery.sequence());
     assert_eq!(completion.frame, Frame(8));

@@ -97,6 +97,7 @@ impl Processor<AlternatingGain, GainOperation> for Gain {
         block.observations.push(block.frames)
     }
 }
+// One-consumer planner variant: a gain follows a planned decision per interval.
 fn main() -> Result<(), Error> {
     let config = Config {
         max_frames: 32,

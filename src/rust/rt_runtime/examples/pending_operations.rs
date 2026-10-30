@@ -533,6 +533,7 @@ fn refusal_results() -> Result<(), Error> {
     Ok(())
 }
 
+// Typed planner operations can stay Pending after delivery and settle with a domain result later.
 fn main() -> Result<(), Error> {
     delayed_result()?;
     cancellation_and_capacity()?;
