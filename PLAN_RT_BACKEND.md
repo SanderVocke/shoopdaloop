@@ -249,6 +249,20 @@ Render performance is not an acceptance criterion of this milestone.
 - **Do not touch the legacy path** beyond reporting capabilities and exposing the
   shared contract tests.
 - **Test as described below**, not exhaustively at every step.
+- **Share the machine.** Other users work on the same host, so every build, test,
+  Miri and browser command runs at the lowest priority and within a hard memory
+  budget of 20% of system memory (about 25 GiB on the current 125 GiB host):
+  - run each command as `nice -n 19 ionice -c 3 …`;
+  - a wrapper starts the command in its own process group and checks once a second
+    the total resident memory of all processes in the session; above the budget it
+    stops the command's process group (SIGTERM, then SIGKILL) and reports the run as
+    failed, to be repeated with less parallelism;
+  - keep parallelism bounded so runs stay well below the budget: at most 8 Cargo
+    build jobs and 8 test threads, at most 4 Miri batches at a time, and no heavy
+    jobs running concurrently;
+  - where the session's launcher can place it in a cgroup with a 20% memory limit,
+    that kernel-enforced limit is preferred; the wrapper then remains as an early
+    warning.
 - **Project rules apply.** Follow `AGENTS.md` and `.agents/`. Build through
   `nix develop` with `RUSTFLAGS="-D warnings"`, run `cargo fmt --all` before
   committing, use `#[shoop_test]` and run `check_shoop_test_usage.py` when tests
