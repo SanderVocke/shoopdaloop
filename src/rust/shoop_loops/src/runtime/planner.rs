@@ -363,6 +363,7 @@ impl LoopPlanner {
                     if let PendingKind::Transition {
                         request,
                         pin: Some(pin),
+                        clear,
                     } = pending.kind
                     {
                         if request == origin {
@@ -370,6 +371,9 @@ impl LoopPlanner {
                             if self.ledger.view(media)?.description.owner == row.binding.target {
                                 self.ledger
                                     .set_playback(io, row.binding.target, Some(media))?;
+                                if clear {
+                                    self.ledger.set_latest(io, row.binding.target, None)?;
+                                }
                             }
                         }
                     }
@@ -980,6 +984,64 @@ impl Planner for LoopPlanner {
                         .balance = value;
                     Ok(Disposition::Complete(Reply::Done))
                 }
+                Operation::Clear { target } => {
+                    let row = self.row(target)?;
+                    let slot = self.pending_slot(context.recovery)?;
+                    let revision = self
+                        .resolver
+                        .state(target)?
+                        .revision_watermark
+                        .checked_next()
+                        .map_err(|_| crate::Error::Exhausted)?;
+                    let media = self
+                        .ledger
+                        .adopt(
+                            &mut context.resources,
+                            media::Input {
+                                description: media::Description {
+                                    owner: target,
+                                    revision,
+                                    frames: 0,
+                                    channels: row.binding.channels as u32,
+                                    midi: row.binding.midi,
+                                },
+                                audio: None,
+                                midi: None,
+                            },
+                        )
+                        .map_err(|e| e.error)?;
+                    let pin = self.ledger.pin(media);
+                    // The pending pin, then the playback reference, own the empty media.
+                    self.ledger.retire(&mut context.resources, media)?;
+                    let pin = pin?;
+                    let request = match self.resolver.submit(crate::Request {
+                        target,
+                        sequence: context.token.sequence(),
+                        at: context.requested_frame,
+                        timing: Timing::At,
+                        transition: Transition::Replace {
+                            length: 0,
+                            revision,
+                            preserve_position: false,
+                        },
+                    }) {
+                        Ok(request) => request,
+                        Err(error) => {
+                            self.ledger.release_pin(&mut context.resources, pin)?;
+                            return Err(error.into());
+                        }
+                    };
+                    self.pending[slot] = Some(Pending {
+                        token: context.token,
+                        kind: PendingKind::Transition {
+                            request,
+                            pin: Some(pin),
+                            clear: true,
+                        },
+                        forwarded: false,
+                    });
+                    Ok(Disposition::Pending)
+                }
                 Operation::Release { export } => {
                     self.ledger.release_export(&mut context.resources, export)?;
                     Ok(Disposition::Complete(Reply::Done))
@@ -1073,7 +1135,11 @@ impl Planner for LoopPlanner {
                     };
                     self.pending[slot] = Some(Pending {
                         token: context.token,
-                        kind: PendingKind::Transition { request, pin },
+                        kind: PendingKind::Transition {
+                            request,
+                            pin,
+                            clear: false,
+                        },
                         forwarded: false,
                     });
                     Ok(Disposition::Pending)
@@ -1271,7 +1337,7 @@ impl Planner for LoopPlanner {
             .map_err(runtime_error)?;
         for index in 0..self.pending.len() {
             if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
-                if let PendingKind::Transition { request, pin } = pending.kind {
+                if let PendingKind::Transition { request, pin, .. } = pending.kind {
                     self.resolver
                         .take_completion(request)
                         .map_err(runtime_error)?

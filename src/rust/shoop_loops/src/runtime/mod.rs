@@ -214,6 +214,12 @@ pub enum Operation {
         target: LoopId,
         value: f32,
     },
+    /// At its frame, stop the primitive and select a fresh empty revision. The
+    /// playback and latest-take references are released; exports keep theirs.
+    /// Refused while recording, like `Select`.
+    Clear {
+        target: LoopId,
+    },
     State {
         target: LoopId,
     },
@@ -402,6 +408,7 @@ enum PendingKind {
     Transition {
         request: RequestId,
         pin: Option<media::PinId>,
+        clear: bool,
     },
     Query(Operation),
 }

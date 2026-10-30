@@ -653,7 +653,8 @@ jobs:
           python3 scripts/run_loops_hosts.py --native-only --profile '${{ matrix.profile }}'
           python3 scripts/check_rt_runtime_boundary.py
           python3 scripts/check_loops_boundary.py
-          python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary
+          python3 scripts/check_rt_engine_boundary.py
+          python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary scripts.tests.test_rt_engine_boundary
 
       - name: Measure guarded rt_runtime release workloads
         if: matrix.target == 'linux' && matrix.profile == 'release'
@@ -936,6 +937,7 @@ jobs:
         run: |
           cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
           python3 scripts/check_loops_boundary.py
+          python3 scripts/check_rt_engine_boundary.py
 
       - name: Start virtual Firefox audio output
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'

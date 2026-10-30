@@ -224,3 +224,18 @@ src/rust/shoop_rt_protocol/src/lib.rs,engine_protocol,excluded,Module declaratio
 src/rust/shoop_rt_protocol/src/message.rs,engine_protocol,excluded,Plain message and lane values.
 src/rust/shoop_rt_protocol/src/schema.rs,engine_protocol,excluded,Plain request, outcome, telemetry, state and bulk values.
 src/rust/shoop_rt_protocol/src/carrier.rs,engine_protocol,excluded,Bounded queues and carriers without semantics; the engine host and adapter trace connection lifecycle.
+src/rust/shoop_rt_engine/src/bulk.rs,realtime_engine,excluded,Chunked media reads through bounded runtime commands; the adapter traces reads and refusals.
+src/rust/shoop_rt_engine/src/cells.rs,realtime_engine,excluded,Latest-value atomics written by rendering and read by the control endpoint; no tracing on the render path.
+src/rust/shoop_rt_engine/src/description.rs,realtime_engine,excluded,Plain preparation-time capacities and defaults.
+src/rust/shoop_rt_engine/src/endpoint.rs,realtime_engine,excluded,Bounded allocation-free control endpoint that may run on the audio thread; the host traces connection lifecycle and the adapter traces requests and outcomes.
+src/rust/shoop_rt_engine/src/graph.rs,realtime_engine,excluded,Allocation-free graph descriptor construction for staged activation; no execution boundary to instrument.
+src/rust/shoop_rt_engine/src/jobs.rs,realtime_engine,excluded,Structural transactions over prepared slots run by the control endpoint; the adapter traces their outcomes.
+src/rust/shoop_rt_engine/src/lib.rs,realtime_engine,excluded,Engine preparation and declarations; the host traces preparation failures.
+src/rust/shoop_rt_engine/src/model.rs,realtime_engine,excluded,Plain confirmed engine state on the control side.
+src/rust/shoop_rt_engine/src/node.rs,realtime_engine,excluded,Real-time strip stage and fader and Master processors; rendering must not trace.
+src/rust/shoop_rt_engine/src/pool.rs,realtime_engine,excluded,Prepared slot and node identity layout.
+src/rust/shoop_rt_engine/src/render.rs,realtime_engine,excluded,Render owner called once per audio callback; hosts trace faults and phase changes outside the callback.
+src/rust/shoop_rt_engine/src/resync.rs,realtime_engine,excluded,Bounded full-state record stream; the adapter traces resynchronization.
+src/rust/shoop_rt_engine/src/ring.rs,realtime_engine,excluded,Fixed-capacity queue.
+src/rust/shoop_rt_engine/src/testing.rs,realtime_engine,excluded,Deterministic offline test host for tests and adapters; not a production path.
+src/rust/shoop_rt_engine/src/topology.rs,realtime_engine,excluded,Allocation-free timing image encoding; no execution boundary to instrument.

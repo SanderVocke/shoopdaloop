@@ -371,6 +371,8 @@ pub enum StateRecord {
     },
 }
 
+/// MIDI chunks carry the recorded records, each a little-endian `u64` frame from
+/// the start of the media, a little-endian `u32` length and the message bytes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BulkSelector {
     Audio { channel: u8 },

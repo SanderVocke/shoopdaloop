@@ -134,6 +134,12 @@ failed or cancelled requests do not change playback. Pins are released after the
 terminal interval finishes. Selecting while recording follows the resolver's
 replacement refusal; it does not freeze the current take implicitly.
 
+`Operation::Clear { target }` returns a loop to empty content at its frame. It is a
+replacement by a fresh, empty revision: a playing loop stops, the playback and
+latest-take references are released, and exports and pins keep their own. Like
+Select it is refused while recording; stop first. Its terminal result is a
+`Reply::Transition`. It needs one free media metadata slot and one pin slot.
+
 Four frame identities remain distinct: requested (caller intent), effective (scheduler-admitted frame), delivered (actual operation delivery, optional on failure/cancellation) and terminal (`Execution::actual_frame`). Late delivery retains the original requested frame; `late_by()` measures delivery lateness, not Pending wait. For example requested/effective/delivered/terminal can be 1/10/10/20: delivery is nine frames late, not nineteen. Runtime sequence identities supply ordering.
 Resolver completions are forwarded after boundary commit, then recycled only
 after finish, when immutable decisions are no longer in use.

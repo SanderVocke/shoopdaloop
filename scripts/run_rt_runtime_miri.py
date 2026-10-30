@@ -57,6 +57,18 @@ STAGE8_MODELS = (
 )
 
 
+# New engine backend: the protocol codec and carriers, the control endpoint's
+# materialization of runtime commands and the engine's pool handover.
+ENGINE_CASES = (
+    ("shoop_rt_protocol", "protocol", [], 5),
+    ("shoop_rt_engine", "lib", [], 2),
+    ("shoop_rt_engine", "workflow", [], 1),
+    ("shoop_rt_engine", "control", [], 5),
+    ("shoop_rt_engine", "structure", ["reused_slots_start_fresh_and_clear_empties_a_loop", "--", "--exact"], 1),
+    ("shoop_rt_engine", "structure", ["edits_keep_other_paths_continuous_and_ramp_removed_paths", "--", "--exact"], 1),
+)
+
+
 HOST_PACKAGE = "loops_host_fixture"
 HOST_MANIFEST = "tests/loops_host/Cargo.toml"
 HOST_CASES = (
@@ -350,6 +362,8 @@ def selected_cases(package=None):
     host.extend((HOST_PACKAGE, "lib", [name, "--", "--exact"], 1, seed)
                 for name in HOST_CONCURRENCY for seed in (1, 2))
     cases = host + cases
+    cases.extend((owner, target, arguments, minimum, 0)
+                 for owner, target, arguments, minimum in ENGINE_CASES)
     cases.extend((owner, target, [name, "--", "--exact"], 1, 0)
                  for owner, target, name in STAGE8_MODELS)
     if package:
@@ -369,7 +383,7 @@ def interrupted(signum, _frame):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", choices=("rt_runtime", "shoop_loops", HOST_PACKAGE), help="Run one package's selected cases")
+    parser.add_argument("--package", choices=("rt_runtime", "shoop_loops", "shoop_rt_protocol", "shoop_rt_engine", HOST_PACKAGE), help="Run one package's selected cases")
     parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
     parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
     parser.add_argument("--shard", type=shard_spec, help="Disjoint CI batch INDEX/TOTAL; keeps whole commands and workloads")

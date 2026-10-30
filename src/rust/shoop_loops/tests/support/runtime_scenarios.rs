@@ -1495,3 +1495,125 @@ fn stereo_balance_follows_decisions_and_is_reported_in_the_cut() {
         finish(control, engine, &imports, 512);
     }
 }
+
+#[shoop_test]
+fn clear_stops_playback_selects_empty_content_and_releases_references() {
+    for partition in [vec![14], vec![1; 14], vec![3, 2, 6, 3]] {
+        let (mut control, mut engine, imports) = setup_with(
+            0,
+            false,
+            Options {
+                imports: true,
+                ..Options::default()
+            },
+        );
+        let mut host = Host::new();
+        host.early = false;
+        transition(
+            &mut control,
+            0,
+            Transition::Play {
+                position: 0,
+                retrigger: false,
+            },
+        );
+        let export = submit(
+            &mut control,
+            1,
+            Operation::Export {
+                target: id(),
+                selection: Selection::Playback,
+            },
+        );
+        let playing = submit(&mut control, 3, Operation::Clear { target: id() });
+        let cleared = submit(&mut control, 3, Operation::State { target: id() });
+        let empty = transition(
+            &mut control,
+            5,
+            Transition::Play {
+                position: 0,
+                retrigger: false,
+            },
+        );
+        transition(
+            &mut control,
+            6,
+            Transition::Record {
+                monitor_previous: false,
+            },
+        );
+        let recording = submit(&mut control, 8, Operation::Clear { target: id() });
+        transition(&mut control, 9, Transition::Stop);
+        let recorded = submit(&mut control, 9, Operation::State { target: id() });
+        let stopped = submit(&mut control, 10, Operation::Clear { target: id() });
+        let after = submit(&mut control, 10, Operation::State { target: id() });
+        let expected = [2., 4., 6., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.];
+        for frames in partition {
+            let at = engine.next_frame().0 as usize;
+            host.step(&mut engine, frames);
+            for frame in 0..frames {
+                assert_eq!(host.output[0][frame], expected[at + frame]);
+                assert_eq!(host.output[1][frame], expected[at + frame] * 10.);
+            }
+        }
+        let mut replies = Vec::new();
+        drain(&mut control, &mut replies);
+        let outcome = |sequence| match replies.iter().find(|(s, _)| *s == sequence).unwrap().1 {
+            Reply::Transition(completion) => completion.outcome,
+            other => panic!("transition {other:?}"),
+        };
+        assert_eq!(outcome(playing), Outcome::Applied { frame: Frame(3) });
+        assert_eq!(
+            outcome(empty),
+            Outcome::Failed {
+                frame: Frame(5),
+                reason: shoop_loops::Error::EmptyContent
+            }
+        );
+        assert_eq!(
+            outcome(recording),
+            Outcome::Failed {
+                frame: Frame(8),
+                reason: shoop_loops::Error::InvalidState
+            }
+        );
+        assert_eq!(outcome(stopped), Outcome::Applied { frame: Frame(10) });
+        let cut = state(&replies, cleared);
+        assert_eq!(cut.state.mode, Mode::Stopped);
+        assert_eq!(
+            (cut.state.content_length, cut.state.content_revision),
+            (0, Revision(8))
+        );
+        assert!(cut.playback.is_some());
+        assert_eq!(cut.latest, None);
+        let cut = state(&replies, recorded);
+        assert_eq!(
+            (cut.state.content_length, cut.state.content_revision),
+            (3, Revision(9))
+        );
+        assert!(cut.latest.is_some());
+        let cut = state(&replies, after);
+        assert_eq!(
+            (cut.state.mode, cut.state.content_length),
+            (Mode::Stopped, 0)
+        );
+        assert_eq!(cut.state.content_revision, Revision(10));
+        assert_eq!(cut.latest, None);
+        let (export, _, media) = exported(&replies, export);
+        assert_eq!(media.view.description.frames, 4);
+        let audio = read_export(&mut control, &mut engine, &mut host, export, false);
+        let samples: Vec<f32> = audio
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect();
+        assert_eq!(samples, [4., 40., 8., 80., 12., 120., 16., 160.]);
+        submit(
+            &mut control,
+            engine.next_frame().0,
+            Operation::Release { export },
+        );
+        host.step(&mut engine, 1);
+        drain(&mut control, &mut replies);
+        finish(control, engine, &imports, 512);
+    }
+}

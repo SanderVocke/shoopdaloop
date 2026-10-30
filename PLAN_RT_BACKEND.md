@@ -376,17 +376,17 @@ tests run against both carriers; wasm32 check.
 
 ### Stage 5 — Engine (`shoop_rt_engine`)
 
-- [ ] Composition: node enum over the loop nodes and the strip processors; segmented
+- [x] Composition: node enum over the loop nodes and the strip processors; segmented
       prepared pools (fixed segments in this milestone); inactive slots outside the
       active graph.
-- [ ] Structural transactions over prepared slots, activated at exact frames with
+- [x] Structural transactions over prepared slots, activated at exact frames with
       fade ramps on removal and rerouting.
-- [ ] The control endpoint: protocol messages to runtime commands, bounded and
+- [x] The control endpoint: protocol messages to runtime commands, bounded and
       allocation-free; telemetry publication; chunked bulk reads.
-- [ ] The render owner: one runtime `process` call per callback, absolute frames,
+- [x] The render owner: one runtime `process` call per callback, absolute frames,
       MIDI recovery, fault and disconnect handling, stopped cleanup.
-- [ ] *Added:* a minimal operation in `shoop_loops` that clears a loop's content.
-- [ ] The deterministic offline test host; a boundary check that engine-side crates
+- [x] *Added:* a minimal operation in `shoop_loops` that clears a loop's content.
+- [x] The deterministic offline test host; a boundary check that engine-side crates
       do not depend on application crates.
 
 **Verify:** engine tests through the offline host with heap guards, in debug and
