@@ -50,7 +50,7 @@ another segment can be appended without moving existing slots.
 | Node | Ports | Function |
 | --- | --- | --- |
 | Strip input | two banks of input channels; capture and monitoring feeds; MIDI in; MIDI capture and monitor feeds | Bank cross-fade, input gain and balance, monitoring ramp with release of monitored notes, input meters, injected MIDI |
-| Loop playback and capture | the loop library's nodes ([`shoop_loops`](../shoop_loops/README.md), whose book is at `../shoop_loops/docs-new/README.md`) | Recording and playback decided by the loop resolver |
+| Loop playback and capture | the loop library's nodes | Recording and playback decided by the loop resolver |
 | Loop fader | one audio channel set | Fade-out for removal, loop meters |
 | Strip output | the sum of its loop faders and the monitoring feed; two output banks | Output gain, balance, mute and presence ramps, output meters |
 | Master | Master channels; two output banks | Sum of routed strips; gain, balance, mute, meters |

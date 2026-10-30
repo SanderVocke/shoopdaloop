@@ -100,6 +100,6 @@ Prepare runtime, processor and host buffers outside callbacks, then transfer the
 
 Stop and join callbacks before dropping the runtime. If accepted commands or resources require graceful cleanup, settle them while callbacks still run; [Stopping, disconnecting, and reclaiming ownership](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md) covers that sequence.
 
-The crate supplies no device API. For browser hosts, the separate [`shoop_rt_host_worklet`](../../../shoop_rt_host_worklet/README.md) crate is an AudioWorklet adapter that runs a `GraphRuntime` inside the worklet; it is not part of `rt_runtime`. Either way, a browser host must also bound its messaging and JavaScript-side work; Rust's prepared buffers do not remove those host responsibilities.
+The crate supplies neither a device API nor an AudioWorklet adapter. A browser host must also bound its messaging and JavaScript-side work; Rust's prepared buffers do not remove those host responsibilities.
 
 [Next: Commands, completions, and ownership](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md)
