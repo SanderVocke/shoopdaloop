@@ -71,6 +71,7 @@ fn apply(
     }
     panic!("example command did not complete within its finite validation bound");
 }
+// Two gains fed from one input: fan-out copies, and both outputs sum their sources.
 fn main() {
     let config = Config {
         max_frames: 128,

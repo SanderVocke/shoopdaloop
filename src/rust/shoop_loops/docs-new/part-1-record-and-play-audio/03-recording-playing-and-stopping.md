@@ -59,7 +59,7 @@ The loop client builds the runtime command addressed to the planner; the control
 
 Record's `monitor_previous: false` does not play an old take during recording. Play's position is relative to the recorded content; `retrigger: false` is sufficient for this recording-to-playback transition. It does not require a separate Stop first.
 
-The request list and sequence bookkeeping are control-side work. A full submission returns the original owning command in the refusal; a running application should retain, retry deliberately, or dispose of it there. This finite example treats unexpected refusal as a failed assertion, not something to spin on inside rendering.
+The request list and sequence bookkeeping are control-side work. A full submission returns the original command in the refusal, so a running application should retain, retry deliberately, or dispose of it there; this finite example treats an unexpected refusal as a failed assertion.
 
 ## 2. Process one host block
 
@@ -167,7 +167,7 @@ Stop has already executed at frame 7, and the example has collected all three ou
 
 `into_planner_and_resources` hands back the planner and store needed for explicit cleanup; the runtime's processors are destroyed. `cleanup` releases the planner's media references, capture groups, and internally created resources. It is permanent teardown, not a pause from which the loop can resume.
 
-Reclamation recycles retired storage under a work allowance. One final maintenance pass suffices for this small recording; larger content may need more. Here it runs on the stopped store. During rendering the runtime owns callback accounting; do not reset it per operation or internal interval.
+`begin_callback` opens one maintenance pass on the stopped store; `reclaim` then recycles retired storage under a work allowance. One pass suffices for this small recording; larger content may need more. During rendering the runtime owns this accounting, so do not reset it per operation.
 
 A device-backed host must stop and join its callbacks before this extraction. Destroying storage does not itself perform a musical Stop or send device cleanup. Our audio-only example has already stopped playback and needs no MIDI reset delivery.
 

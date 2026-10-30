@@ -16,7 +16,7 @@ The checkpoint half of [MIDI seeking](../../examples/midi_seeking.rs) uses an in
 cargo run -p rt_runtime --example midi_seeking
 ```
 
-It compares each result with a linear pre-target reference plus explicit velocity/held/pedal expectations, verifies equal-time packet order, and checks malformed-chunk/capacity refusal and empty indexed media. State/event lookup is heap-guarded. The legacy event-access half is explained in chapter 11.
+It compares each result with a linear pre-target reference plus explicit velocity/held/pedal expectations, verifies equal-time packet order, and checks malformed-chunk/capacity refusal and empty indexed media. State/event lookup is heap-guarded. The legacy event-access half is explained in [Seeking and reading MIDI events](../part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md).
 
 ## 1. Reserve checkpoint rows before use
 
@@ -58,7 +58,7 @@ Pass that value to `begin_indexed_midi_upload`. It is source history, not a synt
 | 3 | Sustain CC64 = 0 |
 | 4 | Note-on 61, velocity 80 |
 
-The stream preserves both frame-one packets in that order. `begin_indexed_midi_capture` supplies the same initial-state concept for single-resource recording; coordinated groups belong in [chapter 16](../part-4-coordinate-processors-and-changes/16-recording-resources-together.md).
+The stream preserves both frame-one packets in that order. `begin_indexed_midi_capture` supplies the same initial-state concept for single-resource recording; coordinated groups belong in [Recording resources together](../part-4-coordinate-processors-and-changes/16-recording-resources-together.md).
 
 ## 3. Seek without consuming equal-time originals
 

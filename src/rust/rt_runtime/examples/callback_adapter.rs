@@ -12,6 +12,7 @@ use shoop_wasm_test_support::heap::{assert_no_heap, TrackingAllocator};
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
+// A processor that fails once after changing state: faults do not roll back.
 struct FailOnce(bool);
 
 impl Processor for FailOnce {
@@ -34,6 +35,7 @@ impl Processor for FailOnce {
     }
 }
 
+// The host callback: pass borrowed buffers, use next_frame() for the absolute frame.
 fn callback(
     runtime: &mut GraphRuntime<FailOnce>,
     input: &[f32],

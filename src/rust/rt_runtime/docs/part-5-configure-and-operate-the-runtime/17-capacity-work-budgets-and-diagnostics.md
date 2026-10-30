@@ -49,44 +49,15 @@ The [configuration/error reference](../reference/configuration-and-errors.md) li
 
 ## Separate admission, results and reusable flags
 
-Normal scheduled action/result capacity is:
-
-```text
-normal = min(scheduled_events, budgets.events)
-```
-
-A runtime with a declared planner adds one independent recovery execution receipt. Pending domain requests and unread terminal results occupy these slots. Reading a result sends recycle credit; the render side receives it at the next callback boundary, not the next internal interval.
-
-Scheduled payload storage uses:
-
-```text
-(normal + recovery) × min(max(midi_bytes_per_port, declared operation_bytes),
-                          budgets.transfer_bytes)
-```
-
-Here `recovery` is zero or one, and declared operation bytes are the maximum across prepared planner/consumers. This stride does not enlarge MIDI's separately enforced packet limit. Result records, queue indices and typed operation/result values have additional storage.
-
-Transport admission is another pool: `command_slots` normal owners plus one recovery owner. Unread owning completions retain admission credit. Prepared cancellation flags are yet another pool: after consuming a completion, a retained ticket/completion flag owner can cause Busy even though admission is free. [Chapter 18](18-submitting-without-allocation.md) demonstrates Full versus Busy and exact payload reuse. Independent recovery remains finite; it does not borrow normal flags or guarantee immediate application settlement.
+The runtime keeps several independent pools: scheduled action/result capacity, transport admission (`command_slots` plus one recovery owner), and prepared cancellation flags. Unread completions and results keep their credit occupied; reading a result recycles it at the next callback boundary. [Submitting without allocation](18-submitting-without-allocation.md) demonstrates Full versus Busy and exact payload reuse. The exact formulas for each pool are in [Configuration and errors](../reference/configuration-and-errors.md).
 
 ## Account for actual graph capacity
 
-A descriptor's populated rows do not describe all its retained memory. `PreparedPlan::storage_bytes()` includes the plan object and vector **capacities** for steps, connections, membership and decision bindings, excluding allocator overhead. Returned owners retain those capacities.
-
-For `k` staging slots, the runtime calculates a conservative per-owner allowance `B` from configured maximum nodes/edges and native row sizes, including the plan object. It checks `(k + 1) × B + k × sizeof(internal stage slot)` with checked arithmetic against `i32::MAX`. This deliberately overcounts some inline metadata; it is not an exact measured heap footprint or a portable byte constant.
-
-Stage admission compares the candidate's actual retained bytes with `B`. Activation also checks the displaced active owner: a legacy path may have installed excess spare capacity. Refusal preserves both owners/output. Compilation temporaries, validator scratch, pending command owners and all other preparation are outside this bank formula.
-
-Validation shares callback work. Activation preflight can scan prepared node/MIDI-input state; only the final owner swap is constant work, without deallocation. [Chapter 15](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md) shows this lifecycle.
+A descriptor's populated rows do not describe all its retained memory: `PreparedPlan::storage_bytes()` includes vector **capacities**, and returned owners retain them. Stage admission compares actual retained bytes against a conservative per-owner allowance derived from `max_nodes`/`max_edges`. The full accounting is in [Configuration and errors](../reference/configuration-and-errors.md); [Staging and coordinating graph activation](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md) shows the lifecycle.
 
 ## Bound callback work without inventing musical quotas
 
-One enclosing nonempty callback owns ingress snapshots, result recycling, command/recovery/publication allowances, optional copy/validation and maintenance. More planner intervals do not renew them. `Budgets::subranges` is retained for compatibility and ignored; zero does not prevent one-sample planning.
-
-For `N` active nodes, `E` connections and `R` intervals, expect `N × R` processor calls and `E × R` route visits, plus actual sample/MIDI work. The capture example deliberately chooses `R = frames`; this is simple to inspect, not an efficient universal planning policy. Dense stable MIDI insertion can require quadratic descriptor work. Finite prepared structures must establish same-frame termination; a fixed arbitrary subdivision cap is not the musical model.
-
-Eligible snapshotted recovery can park one held normal validator inline. Parking adds no admission credit or dynamic owner allocation and preserves progress/original cancellation observation. Operation and publication limits still apply; cancelled recovery also costs work. Indefinitely consuming recovery allowances can starve normal work, so do not infer unconditional FIFO fairness across lanes.
-
-Legacy quota-based resource I/O has separate optional processor headroom inside the callback totals. For a stereo 128-frame read plus write, 1024 + 1024 = 2048 bytes of headroom is needed before any optional snapshot copy. With 4096-byte pages, transfer 6144/headroom 2048 leaves a page for control work. Leave at least one unreserved validation step too. This is an illustrative **legacy** budget, not a required-render throughput ceiling. Upload MIDI validation charges bytes; arena-capture checks charge events, so their units differ.
+One enclosing nonempty callback owns ingress snapshots, result recycling, command/recovery/publication allowances, optional copy/validation and maintenance. More planner intervals do not renew them. For `N` active nodes, `E` connections and `R` intervals, expect `N × R` processor calls and `E × R` route visits, plus actual sample/MIDI work. The capture example deliberately chooses `R = frames`; that is simple to inspect, not an efficient universal planning policy. `Budgets::subranges` is retained for compatibility and ignored.
 
 ## Read diagnostics from the owner
 

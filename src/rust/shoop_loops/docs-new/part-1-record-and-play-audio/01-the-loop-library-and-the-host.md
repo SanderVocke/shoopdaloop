@@ -2,7 +2,15 @@
 
 [Contents](../README.md) · [Next: Preparing an audio loop](02-preparing-an-audio-loop.md)
 
-`shoop_loops` records and plays audio/MIDI loops over buffers supplied by your application. It handles loop positions, wraps, scheduled transitions, synchronization, and prepared arrangements of other loops. It runs on `rt_runtime`; it does not open an audio device, create threads, or provide a user interface.
+`shoop_loops` records and plays audio/MIDI loops over buffers supplied by your application. It handles:
+
+- loop positions
+- wrapping
+- scheduled transitions
+- loop synchronization
+- prepared arrangements of other loops
+
+It runs on `rt_runtime`, the lower-level crate which offers a processing graph and boundary between control and real-time. In essence, `shoop_loops` provides the specific graph nodes and means of dealing with them consistently in order to get core loop behavior, while still allowing composition with other kinds of nodes in the processing graph.
 
 We will start with one stereo loop. It records three sample frames, plays the recording immediately, repeats it, and stops:
 
@@ -18,41 +26,31 @@ All of this can happen inside one eight-frame host callback. The runtime divides
 
 ## Control and rendering
 
-The loop library prepares parts: a **planner** that owns the loops' timing and media, the loops' **nodes**, and a control-side **client**. Your application installs the planner and nodes in an `rt_runtime` graph runtime, which returns two objects to the calling thread. Neither is attached to a particular thread:
+The loop library prepares parts:
 
-- The **control endpoint** submits requests and collects their results. The loop client builds the loop's requests for it. Use both from your application's command-handling code.
-- The **runtime** owns the running loops, their media and any other processors. Store it in your host's audio-processing state and call `GraphRuntime::process` for each block of borrowed input/output buffers.
+- a **planner** that owns the loops' timing and recorded content
+- the loops' **graph nodes** (more than one node per loop)
+- a control-side **client**
 
-```text
-Control side                                  Render side
+Here "recorded content" means a loop's **media**: a handle to the recorded loop take. Media items live in the planner's **ledger**: its fixed-size table of media slots, one row per recorded take. These items reference the actual samples which live in the render side's resource pages.
 
-prepare loop parts, storage, and routes
-Control endpoint: submit Record/Play/Stop ───► Runtime: settle timing, process buffers
-Control endpoint: collect results        ◄─── Runtime: report admission and outcomes
+Your application installs `shoop_loops`' planner and nodes in an `rt_runtime` graph runtime, which returns two objects which are not attached to a particular thread:
 
-Host input buffers ───────────────────────────► Runtime ──────────────► host outputs
-```
+- The **control endpoint**: submits requests and collects their results. The loop client builds the loop's requests for it. Use both from your application.
+- The **runtime** which owns the running loops, their media handles, and any other processors. Store it in your host's audio-processing state and call `GraphRuntime::process` for each block of I/O buffers.
 
-“Control side” and “render side” describe responsibilities, not automatic thread placement. For a threaded audio host, your application moves the runtime into the audio callback's state—for example, into a Rust `move` closure—and keeps the control endpoint and loop client on the application thread. Each object has one owner; do not access the runtime concurrently. Our offline example keeps both on one thread and calls `process` directly.
-
-## One loop, two signal nodes
-
-A loop has one musical identity and timeline. For audio/MIDI, the library prepares two graph processors—its **signal nodes**. The **capture** processor receives the signal to record; the **playback** processor sends recorded content into the graph.
-
-Keeping these processors separate lets you choose what is recorded and what is heard. The first example connects host input to capture and playback to host output. There is no live-input monitoring route, so the output is silent while the empty loop records.
-
-The planner's resolver decides the loop's mode and position before processing each interval. Playback and capture follow those decisions; they do not maintain competing loop clocks. The runtime calls the planner for you; you do not drive a resolver yourself.
+For a multithreaded audio host, your application typically moves the runtime into the audio callback's thread context - for example, into a Rust `move` closure - and keeps the control endpoint and loop client on the application thread. Each object has one owner; do not access the runtime concurrently. Our offline example keeps both on one thread and calls `process` directly, which is also possible.
 
 ## Prepare, process, stop
 
 Prepare storage, loop definitions, and signal routes before rendering. The runtime starts at absolute frame zero with the loop stopped. Submit the desired transitions, then supply contiguous host blocks through `process`. Requests use absolute sample frames; loop positions are relative to recorded content.
 
-Collect both admission completions and musical execution results. Successfully submitting Play is not proof that the loop could play—for example, an empty loop has no content yet. The example checks the actual outcomes as well as the samples.
+### Callback rules
 
-Callback code uses prepared storage and must not allocate or free heap memory, lock, wait, or perform external I/O. Your own processors and host adapter must follow the same rules. Storage limits do not guarantee that every workload meets an audio deadline.
+Callback code uses prepared storage and must not allocate or free heap memory, lock, wait, or perform external I/O. Your own processors and host adapter must follow the same rules.
 
-For shutdown, settle any required musical work while callbacks still run, then stop and join the callback owner before reclaiming the runtime's storage. The example executes Stop and explicitly cleans up the planner after the runtime stops. Destruction alone does not send device output or turn pending requests into successful transitions.
+For shutdown, settle any required musical work while callbacks still run, then stop and join the callback owner before reclaiming the runtime's storage. Destruction alone does not send device output or turn pending requests into successful transitions.
 
-The next two chapters build and run this example. Familiarity with the [runtime's audio graph](../../../rt_runtime/docs/part-1-process-audio/02-your-first-audio-graph.md) is helpful, but no custom processor is needed.
+The next two chapters build and run this example: chapter 2 prepares a loop with two signal nodes (capture and playback), and chapter 3 submits the transitions and checks both the samples and their musical outcomes. Familiarity with the [runtime's audio graph](../../../rt_runtime/docs/part-1-process-audio/02-your-first-audio-graph.md) is helpful, but no custom processor is needed.
 
 [Next: Preparing an audio loop](02-preparing-an-audio-loop.md)

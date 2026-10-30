@@ -24,13 +24,9 @@ The control endpoint has one producer. An application with several command sourc
 
 ## Processors and graphs
 
-A **processor** declares audio/MIDI ports and implements the work done on each processing call. A **graph** connects these ports to one another and to host ports.
+A **processor** declares audio/MIDI ports and implements the work done on each processing call. A **graph** connects these ports to one another and to host ports. The next chapter builds and runs a one-processor graph; [Routing and live graph edits](../part-2-control-a-running-graph/06-routing-and-live-graph-edits.md) covers changing connections and replacing processors while running.
 
-Signal graphs are acyclic. Audio fan-in sums signals; routing adds no extra block of latency, clipping, or normalization. The runtime orders processor calls by signal dependencies. Feedback, automatic delay compensation, resampling, and codecs are outside its scope.
-
-The runtime owns absolute sample frames. An optional [planner](../part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md) settles domain decisions before each signal traversal; processors borrow those decisions for their interval. Planning dependencies are validated separately from signal routes. Ordinary processors use `NoPlanner`, as in the next chapter.
-
-Processor slots and port signatures are prepared up front. Connections can change while running, and processors can be replaced within those prepared signatures. [Live graph edits](../part-2-control-a-running-graph/06-routing-and-live-graph-edits.md) cover those operations.
+Signal graphs are acyclic. Audio fan-in sums signals; routing adds no extra block of latency, clipping, or normalization. The runtime owns absolute sample frames and orders processor calls by signal dependencies. Feedback, automatic delay compensation, resampling, and codecs are outside its scope. An optional [planner](../part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md) can settle domain decisions before each traversal; ordinary processors use `NoPlanner`, as in the next chapter.
 
 ## Prepare, run, stop
 
@@ -43,11 +39,9 @@ allocate and initialize pools   deliver audio/MIDI          stop/join callbacks
 install initial graph           repeat                      destroy owners
 ```
 
-Preparation reserves storage for the configured maximum block size, processors, routes, queues, MIDI data, and resources. Limits cannot be resized while running. More prepared storage and more work allowed per callback are separate choices. Internal intervals do not renew callback allowances; [Capacity, work budgets, and diagnostics](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) covers sizing.
+Preparation reserves storage for the configured maximum block size, processors, routes, queues, MIDI data, and resources. Limits cannot be resized while running; [Capacity, work budgets, and diagnostics](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) covers sizing.
 
-Changes submitted during operation produce completions. Those completions can also return replaced objects, so the control side can destroy or recycle them without freeing memory in the callback. They are not disposable notifications: unread results occupy capacity. [Commands, completions, and ownership](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md) explains this exchange.
-
-Before destroying the runtime, stop and join callbacks. Applications needing graceful completion must explicitly settle domain work and collect results while callbacks still run. Disconnect or destruction does not synthesize Stop, complete an interrupted interval, or deliver device cleanup. There is no blocking flush; see [Stopping, disconnecting, and reclaiming ownership](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md).
+Changes submitted during operation produce [completions](../part-2-control-a-running-graph/05-commands-completions-and-ownership.md), which can also return replaced objects so the control side can destroy them off-render. Unread results occupy capacity. Before destroying the runtime, stop and join callbacks and settle needed work while callbacks still run; destruction does not synthesize Stop or deliver device cleanup. See [Stopping, disconnecting, and reclaiming ownership](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md).
 
 ## The real-time contract
 

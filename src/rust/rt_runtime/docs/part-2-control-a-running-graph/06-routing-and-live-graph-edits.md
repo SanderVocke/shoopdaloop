@@ -46,13 +46,13 @@ The example defines `host(port)`/`node(id)` as Audio endpoints and `audio(source
     };
 ```
 
-`GraphRuntime::prepare_with_initial_graph` installs this graph at startup, as in chapter 2. With gains 0.5 and 0.25, its first callback verifies:
+`GraphRuntime::prepare_with_initial_graph` installs this graph at startup, as in [Your first audio graph](../part-1-process-audio/02-your-first-audio-graph.md). With gains 0.5 and 0.25, its first callback verifies:
 
 ```rust
     assert_eq!(output, [[0.75; 8], [0.25; 8]]);
 ```
 
-A graph need not include every installed processor. Unconnected audio inputs start at zero; host outputs without incoming routes stay silent. MIDI fan-in merges complete packets in stable timestamp/source order rather than adding bytes; [chapter 8](08-processing-and-scheduling-midi.md) shows that order.
+A graph need not include every installed processor. Unconnected audio inputs start at zero; host outputs without incoming routes stay silent. MIDI fan-in merges complete packets in stable timestamp/source order rather than adding bytes; [Processing and scheduling MIDI](../part-2-control-a-running-graph/08-processing-and-scheduling-midi.md) shows that order.
 
 ## 2. Compile off-render
 

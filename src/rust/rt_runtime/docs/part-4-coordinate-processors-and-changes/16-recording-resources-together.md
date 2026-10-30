@@ -6,7 +6,7 @@
 
 A capture group reserves all members before dependent samples render. Consumers stage complete contributions; the planner publishes one common prefix at the reserved end. Audio and MIDI cannot independently run out halfway through that publication.
 
-The group supplies storage coordination, not loop modes, musical timing, rendering, MIDI restoration or rollback of audio already emitted. Single-resource capture from chapter 10 remains a different contract.
+The group supplies storage coordination, not loop modes, musical timing, rendering, MIDI restoration or rollback of audio already emitted. Single-resource capture from [Recording and exporting](../part-3-work-with-stored-media/10-recording-and-exporting.md) remains a different contract.
 
 ## Run the example
 
@@ -30,7 +30,7 @@ The maximum callback length is four. The group declares stereo audio and at most
 | MIDI records | `2 × 12 + 6 = 30` bytes |
 | Total | 62 bytes inside a 64-byte group region |
 
-Bind those `CaptureMember`s in audio/MIDI order using `bind_capture_group`. Each has a fixed region and producer bound; MIDI cannot borrow unused audio bytes or vice versa. The example's producer emits at most one three-byte packet and no recovery traffic. A producer capable of emitting the 32-message recovery sequence from chapter 8 needs bounds that cover that traffic too; these small limits would not suffice.
+Bind those `CaptureMember`s in audio/MIDI order using `bind_capture_group`. Each has a fixed region and producer bound; MIDI cannot borrow unused audio bytes or vice versa. The example's producer emits at most one three-byte packet and no recovery traffic. A producer capable of emitting the 32-message recovery sequence from [Processing and scheduling MIDI](../part-2-control-a-running-graph/08-processing-and-scheduling-midi.md) needs bounds that cover that traffic too; these small limits would not suffice.
 
 Staging is not the whole store:
 

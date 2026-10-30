@@ -17,7 +17,7 @@ reuse or dispose off-render
 
 ## Run the example
 
-The [owning commands example](../../examples/owning_commands.rs) starts with the gain graph from [chapter 2](../part-1-process-audio/02-your-first-audio-graph.md):
+The [owning commands example](../../examples/owning_commands.rs) starts with the gain graph from [Your first audio graph](../part-1-process-audio/02-your-first-audio-graph.md):
 
 ```sh
 cargo run -p rt_runtime --example owning_commands
@@ -82,7 +82,7 @@ Receiving a completion releases its command admission credit, even if you retain
 
 ## Recovery can pass held normal work
 
-The example limits validation to one step per callback. The first Commit remains held after dequeue; a later normal Remove must wait behind it. A recovery-lane `ResetMidi` submitted afterward is observed at the next callback snapshot:
+The example limits validation to one step per callback. The first Commit remains held after dequeue; a later normal Remove must wait behind it. A recovery-lane `ResetMidi` submitted afterward is observed at the next callback snapshot and returns first, then the held Commit resumes before the Remove:
 
 ```text
 normal:   held Commit → later Remove
@@ -91,13 +91,7 @@ recovery: ResetMidi
 returns:  ResetMidi → original Commit → later Remove
 ```
 
-Recovery temporarily parks the held normal request inline. Once eligible recovery is serviced, the original normal head resumes before later normal requests, retaining its validation progress and owning-return reservation. This is not a global FIFO across lanes.
-
-The example also calls `first.cancel()` after the Commit's original dequeue. Parking is **not another dequeue**, so the resumed Commit still completes Applied. Cancelling a queued Remove before its first dequeue instead produces Cancelled; it never attempts removal. Only the completion settles a cancellation race.
-
-Recovery has independent admission, not unlimited processing or publication. The example checks publication allowances of one and two, both with live and pre-cancelled recovery. Cancelled recovery consumes dequeue/publication allowance too. If recovery spends the allowance, normal work resumes in a later callback; an endless recovery stream need not be fair to normal traffic.
-
-Use recovery only for the documented bounded operations. It does not make graph validation or ordinary admission immediate. A recovery release can overtake a normal resource read and legitimately make its handle stale. Queue arrivals and recycled execution credits observed after callback ingress wait for the next callback, not the next internal processing interval.
+Recovery temporarily parks the held normal request inline, retaining its validation progress and owning return. It is not a global FIFO across lanes, and it has independent admission — not unlimited processing. The full rules (cancellation observation, allowance costs, fairness limits) are in [Execution rules](../reference/execution-rules.md).
 
 ## Scheduling has another result stream
 
@@ -113,7 +107,7 @@ A Schedule command completes once admitted; its action may execute later. The ex
 
 `Outcome::Scheduled` is admission, not the processor's result. Read both streams. Unread/future execution reservations occupy scheduler capacity independently of command slots; consuming an execution result makes its credit reusable at a later callback boundary. `control.outstanding()` counts commands, not those execution reservations.
 
-A typed planner operation can remain pending after delivery and report a domain outcome later still; [chapter 14](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md) separates those frames and results. Telemetry is lossy Copy diagnostics, never a substitute for either acknowledgement.
+A typed planner operation can remain pending after delivery and report a domain outcome later still; [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md) separates those frames and results. Telemetry is lossy Copy diagnostics, never a substitute for either acknowledgement.
 
 ## Owning resource replies and shutdown
 
@@ -121,6 +115,6 @@ A `Command::Resource` returns its `ResourceCommand`, including a reply and the p
 
 Resource handles inside application state need explicit lease management: copying one acquires nothing, and dropping a plain handle releases nothing.
 
-This example has no future work left at teardown and drops both endpoints outside rendering. A live host must first stop/join callbacks. Disconnecting or extracting stopped state does not settle pending operations, invent terminal results, or send MIDI cleanup; see [chapter 19](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md).
+This example has no future work left at teardown and drops both endpoints outside rendering. A live host must first stop/join callbacks. Disconnecting or extracting stopped state does not settle pending operations, invent terminal results, or send MIDI cleanup; see [Stopping, disconnecting, and reclaiming ownership](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md).
 
 [Next: Routing and live graph edits](06-routing-and-live-graph-edits.md)

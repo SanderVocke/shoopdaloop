@@ -25,7 +25,7 @@ cargo run -p rt_runtime --example planned_pair
 
 It asserts every sample, both producers' observations, callback origins and five intervals in one 32-frame callback. It also runs split/irregular callbacks, a zero call at a cut, reversed consumer declarations, and a one-sample planner. Every callback is heap-guarded; setup/results/destruction are off-render.
 
-The older [planned gain example](../../examples/planned_gain.rs) remains a useful one-consumer variant, but has no heap guard of its own and no pending planner receipt demonstration. Those claims belong to the new examples here and in chapter 14.
+The older [planned gain example](../../examples/planned_gain.rs) remains a useful one-consumer variant, but has no heap guard of its own and no pending planner receipt demonstration. Those claims belong to the new examples here and in [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md).
 
 ## 1. Prepare one authority and fixed decision storage
 
@@ -96,7 +96,7 @@ There is no arbitrary internal-subdivision allowance: this example sets `budgets
 
 `graph_epoch` is the context-entry graph identity. `graphs` is scoped graph authority, not an owned runtime/control reference. Active/candidate views cannot survive mutation or escape the callback. If a permit publishes a new graph, use the epoch returned by its commit; later contexts observe that epoch. [Chapter 15](15-staging-and-coordinating-graph-activation.md) explains preflight/publication. Standalone prototype contexts may use `GraphAccess::disabled()`, which cannot manufacture runtime authority.
 
-Command snapshots, execution-credit recycling, graph validation, optional transfer, recovery and telemetry remain one enclosing callback envelope. Calling `plan` again does not renew them. Required `RenderIo` work is independently capacity/shape/time checked, not a discretionary quota that can drop mandatory samples. Decisions, observations and retained execution results also occupy distinct stores; [chapter 17](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) sizes them.
+Command snapshots, execution-credit recycling, graph validation, optional transfer, recovery and telemetry remain one enclosing callback envelope. Calling `plan` again does not renew them. Required `RenderIo` work is independently capacity/shape/time checked, not a discretionary quota that can drop mandatory samples. Decisions, observations and retained execution results also occupy distinct stores; [Capacity, work budgets, and diagnostics](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) sizes them.
 
 `finish` consumes the interval; it does **not** settle its end boundary. At callback end that work belongs to the next nonempty callback. NoPlanner remains the ordinary default when no domain planner is needed.
 

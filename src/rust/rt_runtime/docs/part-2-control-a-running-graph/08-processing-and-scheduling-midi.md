@@ -83,7 +83,7 @@ The Schedule payload owns the packet until command completion. Admission copies 
 
 The target must be installed **and active**, with that MIDI input port. Parameters can address inactive installed processors; MIDI injection cannot.
 
-One packet must fit both `midi_bytes_per_port` and `budgets.transfer_bytes - resource_io_bytes`. Callback copy allowance can delay admission. After acceptance, internal subdivision does not add an arbitrary delivery quota. Use finite lookahead and collect both owning completions and execution receipts, as in [chapter 7](07-changing-parameters-at-an-exact-sample.md).
+One packet must fit both `midi_bytes_per_port` and `budgets.transfer_bytes - resource_io_bytes`. Callback copy allowance can delay admission. After acceptance, internal subdivision does not add an arbitrary delivery quota. Use finite lookahead and collect both owning completions and execution receipts, as in [Changing parameters at an exact sample](../part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md).
 
 Here host input 0 sends a note at frame 0, another at frame 2, and a note-off at frame 3. Host input 1 also sends a note at frame 2. Canonical routed source order comes first, followed by local injection:
 
@@ -144,6 +144,6 @@ At one frame, planner operations precede processor-target actions. Within a proc
 
 If a planner operation removes an injection target first, that injection fails `InvalidId`. Planning occurs after due actions: if the packet has already been injected, removing its target is refused `Busy` before graph/domain publication. The old graph consumes the packet once; it must not disappear or replay on later reactivation. A retained target can consume pending input normally. [Chapter 15](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md) covers these publication preconditions.
 
-Arrange musical note/pedal cleanup explicitly before removing a MIDI-producing node. Graph metadata does not synthesize it. Stored MIDI event/state seeking is a separate task in [chapters 11](../part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md) and [12](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md).
+Arrange musical note/pedal cleanup explicitly before removing a MIDI-producing node. Graph metadata does not synthesize it. Stored MIDI event/state seeking is a separate task in [Seeking and reading MIDI events](../part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md) and [12](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md).
 
 [Next: Loading and reading resources](../part-3-work-with-stored-media/09-loading-and-reading-resources.md)

@@ -80,6 +80,14 @@ With `k` stage slots, `GraphStages` computes a conservative per-owner allowance 
 
 Candidates and displaced active owners must fit `B`. Returned plans retain their original capacities. Compiler temporaries, validator scratch and queued command owners have separate costs. Reusable inactive descriptor storage is still subject to validation before execution; [lower-level APIs](lower-level-apis.md) distinguishes materialization from certification.
 
+### Callback work allowances
+
+One enclosing nonempty callback owns ingress snapshots, result recycling, command/recovery/publication allowances, optional copy/validation and maintenance. Planner intervals do not renew them. For `N` active nodes, `E` connections and `R` intervals, expect `N × R` processor calls and `E × R` route visits plus actual sample/MIDI work; dense stable MIDI insertion can require quadratic descriptor work. Finite prepared structures must establish same-frame termination.
+
+Eligible snapshotted recovery can park one held normal validator inline; parking adds no admission credit and preserves progress and the original cancellation observation. Cancelled recovery also costs operation/publication allowance, and an endless recovery stream need not be fair to normal traffic.
+
+Legacy quota-based resource I/O reserves optional processor headroom (`resource_io_bytes`/`resource_io_steps`) **inside** the callback transfer/validation totals — not in addition to them. Example: for a stereo 128-frame read plus write, 1024 + 1024 = 2048 bytes of headroom is needed before any optional snapshot copy; with 4096-byte pages, transfer 6144 / headroom 2048 leaves a page for control work, and at least one unreserved validation step should remain. This is an illustrative legacy budget, not a required-render throughput ceiling. Upload MIDI validation charges bytes; arena-capture checks charge events, so their units differ.
+
 ### Resource, MIDI index and group storage
 
 Count concurrent active/uploaded/prepared versions, old pinned prefixes, copied mutable tails, per-interval reservations and retired content—not only current media. Releasing the last reference can enqueue retirement instead of immediately freeing pages/metadata. Reclamation shares remaining validation work.

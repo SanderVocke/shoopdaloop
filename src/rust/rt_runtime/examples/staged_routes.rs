@@ -261,6 +261,7 @@ fn prepare(initial: bool) -> Result<(Control<Fill, Domain>, GraphRuntime<Fill, D
     } else {
         GraphRuntime::prepare_with_planner_and_resources(config, nodes, domain, resources)?
     };
+// Opt in to one staging slot before the first callback; a staged plan becomes Ready, not active.
     runtime.prepare_graph_staging(1)?;
     Ok((control, runtime))
 }
@@ -342,6 +343,7 @@ fn stage(
     let completion = apply(
         control,
         runtime,
+// Stage the candidate; only a later planner permit publishes it at one boundary.
         Command::stage_graph(0, epoch, plan),
         output,
     );

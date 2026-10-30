@@ -62,6 +62,7 @@ fn render(runtime: &mut GraphRuntime<Unused>) -> Result<(), Error> {
     assert_eq!(output, [0.0]);
     Ok(())
 }
+// Write scheduled at an exact sample: admission and execution are separate result streams.
 fn main() -> Result<(), Error> {
     let config = Config {
         max_frames: 1,

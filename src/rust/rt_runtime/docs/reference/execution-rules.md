@@ -25,7 +25,7 @@ Normal and recovery lanes have separate admission credits. One admitted owner re
 
 At cycle start, eligible recovery can park an already held normal command inline. Recovery is examined first; afterward that same normal head resumes before later normal traffic. Parking retains sequence, owning credit, validator progress and the original cancellation observation. It is not another dequeue.
 
-Only original dequeue observes a ticket's cancellation flag. Cancelled dequeues spend operation/publication work too. Work arriving after the snapshot waits for another cycle. Indefinitely consumed recovery allowances can starve normal work; cross-lane fairness is not promised. Prepared flag reuse additionally waits for every external flag reference; see [chapter 18](../part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md).
+Only original dequeue observes a ticket's cancellation flag: a request cancelled before its first dequeue completes Cancelled without attempting its operation, while a request cancelled after dequeue (e.g. a held validator that was parked for recovery) still completes with its original outcome. Cancelled dequeues spend operation/publication work too. Work arriving after the snapshot waits for another cycle. Recovery has independent admission, not unlimited processing or publication; if recovery spends the allowance, normal work resumes in a later callback. Indefinitely consumed recovery allowances can starve normal work; cross-lane fairness is not promised. A recovery release can overtake a normal resource read and legitimately make its handle stale. Prepared flag reuse additionally waits for every external flag reference; see [Submitting without allocation](../part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md).
 
 ## Scheduled order is not submission order
 
@@ -68,4 +68,4 @@ Stage identities check runtime scope/slot/generation. Ready is neither active no
 
 Commit swaps the graph/epoch without freeing the displaced owner. The slot becomes Taken, retaining that owner—or legitimately none when no graph was active. Normal ReleaseGraph returns Ready/Taken ownership and retires the identity; reuse advances generation. Graph/catalog changes invalidate earlier candidate validation. Do not mutate borrowed metadata or merely rewrite an expected epoch to evade restaging.
 
-Faults after publication are not rollback. Stopped extraction neither settles work nor invents finish/device cleanup; [chapter 19](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md) gives both host policies.
+Faults after publication are not rollback. Stopped extraction neither settles work nor invents finish/device cleanup; [Stopping, disconnecting, and reclaiming ownership](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md) gives both host policies.

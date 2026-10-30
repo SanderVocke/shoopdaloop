@@ -61,7 +61,7 @@ This direct-store example models one new host callback per chunk. A real direct 
 
 Finish checks completeness; it does **not** publish. `commit(upload)` checks the expected revision again and makes the finished version active. The example commits revisions 1 and 2. An intervening replacement can cause `StaleRevision`; cancel an upload you will not publish with `cancel_upload`.
 
-For running-host uploads, use `Command::resource(Request::BeginUpload/Write/Finish/Commit)` and inspect their owning completions. Read/write buffers larger than `page_bytes` are refused before queue admission. MIDI upload chunks also need parser validation allowance, discussed in [chapter 11](11-seeking-and-reading-midi-events.md).
+For running-host uploads, use `Command::resource(Request::BeginUpload/Write/Finish/Commit)` and inspect their owning completions. Read/write buffers larger than `page_bytes` are refused before queue admission. MIDI upload chunks also need parser validation allowance, discussed in [Seeking and reading MIDI events](../part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md).
 
 ## 3. Pin and read the intended revision
 
