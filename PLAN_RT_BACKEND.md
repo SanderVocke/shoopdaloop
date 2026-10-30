@@ -506,16 +506,21 @@ headless), and the legacy Firefox smoke still passes.
 
 ### Stage 9 — Documents
 
-- [ ] `ARCHITECTURE.md`: the implementation map, the new layers, the protocol and its
+- [x] `ARCHITECTURE.md`: the implementation map, the new layers, the protocol and its
       carriers, the capability model, growable capacities and uninterrupted
       structural changes, consistent with the design here.
-- [ ] `PLAN.md`: the workstream row, the authority note and the remaining parity
+- [x] `PLAN.md`: the workstream row, the authority note and the remaining parity
       gaps, consistent with this plan.
-- [ ] User docs (`docs/source/`): enabling the new backend and its supported
+- [x] User docs (`docs/source/`): enabling the new backend and its supported
       features; READMEs for the new crates; tracing coverage entries.
 
 **Verify:** link check; no document claims support for refused features; the design
 here, `ARCHITECTURE.md` and `PLAN.md` read consistently.
+
+*Done:* the user guide's "New engine backend" section
+(`docs/source/usage.new_engine_backend.rst`) covers enabling, drivers, capacities,
+the supported and refused features and the known limitations; the Sphinx build passes
+with warnings as errors. Every new crate has a README.
 
 ### Stage 10 — End-to-end validation
 

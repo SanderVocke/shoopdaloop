@@ -11,3 +11,4 @@ contains session, connection, and application settings actions.
 .. include:: usage.carla_subprocess.rst
 .. include:: usage.midicontrol.rst
 .. include:: usage.keyboard.rst
+.. include:: usage.new_engine_backend.rst
