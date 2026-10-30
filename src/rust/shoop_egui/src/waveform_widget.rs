@@ -118,7 +118,9 @@ impl WaveformWidget {
     ) -> MediaWidgetResponse {
         let desired = egui::vec2(ui.available_width(), height.max(1.0));
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
-        let pan_frames = if response.dragged() && !editing {
+        let pan_frames = if response.dragged_by(egui::PointerButton::Middle)
+            || response.dragged_by(egui::PointerButton::Secondary)
+        {
             let mut panned_view = view;
             panned_view.pan(response.drag_delta().x, rect.width());
             panned_view.start_frame - view.start_frame

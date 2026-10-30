@@ -175,13 +175,13 @@ impl Default for MediaViewState {
     }
 }
 
-const MIN_ZOOM: f32 = 0.01;
+const MIN_ZOOM: f32 = 1.0 / 64.0;
 const MAX_ZOOM: f32 = 64.0;
 
 impl MediaViewState {
     fn view(&mut self, (timeline_start, timeline_end): (f64, f64)) -> MediaView {
         let total_frames = (timeline_end - timeline_start).max(1.0);
-        let visible_frames = (total_frames * f64::from(self.zoom)).max(1.0);
+        let visible_frames = (total_frames / f64::from(self.zoom)).max(1.0);
         let max_offset = (timeline_end - visible_frames).max(timeline_start);
         self.offset = self.offset.clamp(timeline_start, max_offset);
         MediaView {
@@ -357,7 +357,7 @@ impl DetailsPane {
                 let margin_factor = 1.2;
                 let total = (bounds.1 - bounds.0).max(1.0);
                 self.media_view.zoom =
-                    (1.0 / (total * margin_factor)).clamp(MIN_ZOOM as f64, MAX_ZOOM as f64) as f32;
+                    (margin_factor / total).clamp(MIN_ZOOM as f64, MAX_ZOOM as f64) as f32;
                 self.media_view.offset = bounds.0 - (total * (margin_factor - 1.0)) / 2.0;
             }
         });
@@ -577,7 +577,7 @@ mod tests {
         assert_eq!(bounds, (-30.0, 220.0));
 
         let mut state = MediaViewState {
-            zoom: 0.5,
+            zoom: 2.0,
             offset: -30.0,
         };
         let mut view = state.view(bounds);
@@ -742,10 +742,10 @@ mod tests {
         };
         let bounds: (f64, f64) = (0.0, 40.0);
         let total = (bounds.1 - bounds.0).max(1.0_f64);
-        state.zoom = 0.5;
+        state.zoom = 2.0;
         state.offset = bounds.0;
         let view = state.view(bounds);
         assert_eq!(view.start_frame, bounds.0);
-        assert_eq!(view.end_frame - view.start_frame, total * 0.5);
+        assert_eq!(view.end_frame - view.start_frame, total / 2.0);
     }
 }
