@@ -401,7 +401,7 @@ These are design directions, not authorized implementation checkboxes:
 1. Resolved by the [composable loop boundary](#composable-loop-boundary) work: see [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary). When a second planning domain is needed, compose planners explicitly rather than nesting runtimes.
 2. Define a bounded next service/protocol slice: one logical scenario through typed native calls, independent-memory AudioWorklet and native IPC. No three unrelated demos or premature universal protocol.
 3. After that foundation, scope an opt-in real application backend using existing UI/modules and the old backend as a selectable fallback/reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
-4. Close parity gaps driven by real workflows, then consider broader deployment. Full dry/wet, prerecord/preplay/latency windows, production plugins/devices, persistence/undo/scripting and network operation remain future work.
+4. Close parity gaps driven by real workflows, then consider broader deployment. Full dry/wet, prerecord/preplay/latency windows, production plugins/devices, persistence/undo/scripting and network operation remain future work. The [loop features assessment](LOOP_FEATURES_ASSESSMENT.md) estimates the loop-library gaps and the decisions they need.
 5. A plan-linked execution extension is only a reviewed tooling proposal. Do not implement/configure one or create a second task authority under this documentation migration.
 
 ## Native execution records
