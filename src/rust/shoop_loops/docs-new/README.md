@@ -19,3 +19,18 @@ cargo run --locked --manifest-path src/rust/shoop_loops/docs-new/examples/Cargo.
 ```
 
 Add `--release` for the optimized build. The example has a separate Cargo manifest so this draft does not change the library's existing examples or workspace configuration.
+
+## Terms used in this book
+
+| Term | Meaning |
+|---|---|
+| Loop | One musical timeline that can record, play, and stop. |
+| Frame | One sample position on the host's absolute clock. |
+| Loop position | A position inside recorded content, relative to the loop's start. |
+| Topology | The description of the loops and their musical relationships. |
+| Planner | The part that owns loop timing and media and decides each loop's mode and position. |
+| Capture / playback | A loop's two signal nodes: capture receives what is recorded, playback sends recorded content into the graph. |
+| Binding | The link between a loop and its two signal nodes. |
+| Control endpoint / runtime | The control side submits requests and collects results; the render side owns the running loops and processes buffers. |
+| Admission | The runtime's report that a request was accepted for delivery. |
+| Execution | The musical result of a request, reported at its actual boundary. |

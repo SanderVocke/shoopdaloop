@@ -48,7 +48,16 @@ This chapter prepares the loop and its runtime. The next chapter submits Record,
 
 There are two processor nodes: playback and capture. The eight audio ports are four host ports, two playback outputs, and two capture inputs. Four edges connect them. Host calls may contain up to eight frames; MIDI port counts are zero.
 
-The data pool has sixteen 64-byte pages. Resource identities, versions, and snapshot leases each have eight slots. Those are separate pools: enough sample bytes alone is not enough to start a recording. This example leaves room for its capture reservations and retained content rather than trying to find minimum capacities.
+The storage pools are separate, so enough sample bytes alone is not enough to start a recording:
+
+| Pool | Slots / size | Used for |
+|---|---|---|
+| Data pages | 16 pages × 64 bytes | Sample bytes and staging areas |
+| Resource identities | 8 slots | Naming resources |
+| Versions | 8 slots | Content versions |
+| Snapshot leases | 8 slots | Borrowed views of content |
+
+This example leaves room for its capture reservations and retained content rather than trying to find minimum capacities.
 
 Prepare capture storage alongside the data pool:
 
@@ -121,7 +130,17 @@ Give the two signal nodes distinct runtime node identities and bind them to the 
 
 `NodeId` addresses a physical signal node; `LoopId` addresses the musical loop. They are different types even when their slot numbers happen to match.
 
-Playback has two outputs and capture has two inputs. The library constructs both processors and connects them to its timing decisions. We need no custom DSP. Unity gain and no boundary smoothing keep the expected samples exact; abrupt starts and wraps may click with real audio. The three MIDI capacity fields are unused because `midi` is false.
+| Field | Value here | Meaning |
+|---|---|---|
+| `target` | the `LoopId` | Which loop the nodes belong to |
+| `playback` / `capture` | the two `NodeId`s | The loop's playback and capture signal nodes |
+| `channels` | `2` | Stereo: two outputs on playback, two inputs on capture |
+| `midi` | `false` | Audio-only loop |
+| `gain` | `1.0` | Unity gain keeps the expected samples exact |
+| `smoothing` | `Smoothing::None` | No boundary smoothing; abrupt starts and wraps may click with real audio |
+| `midi_events`, `midi_bytes`, `packet_bytes` | `0` | MIDI capacities, unused because `midi` is false |
+
+The library constructs both processors and connects them to its timing decisions. We need no custom DSP.
 
 ## 4. Connect the signal graph
 
