@@ -39,17 +39,7 @@ Your application installs `shoop_loops`' planner and nodes in an `rt_runtime` gr
 - The **control endpoint**: submits requests and collects their results. The loop client builds the loop's requests for it. Use both from your application.
 - The **runtime** which owns the running loops, their media handles, and any other processors. Store it in your host's audio-processing state and call `GraphRuntime::process` for each block of I/O buffers.
 
-```text
-Control side                                  Render side
-
-prepare loop parts, storage, and routes
-Control endpoint: submit Record/Play/Stop ───► Runtime: settle timing, process buffers
-Control endpoint: collect results        ◄─── Runtime: report admission and outcomes
-
-Host input buffers ───────────────────────────► Runtime ──────────────► host outputs
-```
-
-“Control side” and “render side” describe responsibilities, not automatic thread placement. For a threaded audio host, your application moves the runtime into the audio callback's state—for example, into a Rust `move` closure—and keeps the control endpoint and loop client on the application thread. Each object has one owner; do not access the runtime concurrently. Our offline example keeps both on one thread and calls `process` directly.
+For a multithreaded audio host, your application typically moves the runtime into the audio callback's thread context - for example, into a Rust `move` closure - and keeps the control endpoint and loop client on the application thread. Each object has one owner; do not access the runtime concurrently. Our offline example keeps both on one thread and calls `process` directly, which is also possible.
 
 ## Prepare, process, stop
 
@@ -57,7 +47,7 @@ Prepare storage, loop definitions, and signal routes before rendering. The runti
 
 ### Callback rules
 
-Callback code uses prepared storage and must not allocate or free heap memory, lock, wait, or perform external I/O. Your own processors and host adapter must follow the same rules. Storage limits do not guarantee that every workload meets an audio deadline.
+Callback code uses prepared storage and must not allocate or free heap memory, lock, wait, or perform external I/O. Your own processors and host adapter must follow the same rules.
 
 For shutdown, settle any required musical work while callbacks still run, then stop and join the callback owner before reclaiming the runtime's storage. Destruction alone does not send device output or turn pending requests into successful transitions.
 
