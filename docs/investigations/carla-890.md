@@ -232,127 +232,86 @@ HOME="$BENCH/tool-home" scripts/trace_processor \
 - The intermittent default-affinity failure does not have a reliable natural trigger yet; sync-track presence alone is insufficient. Normal scheduling/placement is a strong candidate, supported by the controlled experiment, but it is not an exact attribution of every unpinned xrun.
 - The investigation did not bisect the regression or establish that Carla's own DSP gauge measures this handoff delay. The report's main heavy-plugin regression remains workload/scheduler-dependent rather than a universal increase in DSP computation.
 
-## Implementation
+## Narrow implementation
 
-The fix replaces full-buffer spinning with bounded completion notifications and
-propagates one hardware callback deadline through the graph, bridge, and child
-worker. Linux uses process-shared futexes; other native platforms use preopened
-completion notification sockets. Existing slot identity and abandoned-generation
-checks remain in place.
+The production change replaces the two shared-memory completion spin loops with
+sleeping notifications. Linux uses process-shared futexes, without the private
+flag. macOS and Windows use preopened loopback UDP sockets. Notifications are
+only wakeup hints: slot state, sequence, and generation remain authoritative.
+The private protocol version is incremented for the completion endpoint stored
+in the reserved file header; the 64-byte slot header is unchanged.
 
-Scheduling is negotiated and verified before DSP execution, including a startup
-probe that traverses both hosting layers without calling the plugin. Backend
-priority information is used where available; the actual callback context is
-verified dynamically. PipeWire on this host does not implement JACK's maximum
-client-priority query, so workers are capped by the observed callback priority
-rather than by an invented higher maximum. Windows scopes Pro Audio MMCSS;
-macOS inherits and verifies the actual callback's Mach time-constraint policy.
-These platform classes are not equivalent to Linux numeric priority ranks.
+The observed failure involves both priorities and synchronization: a FIFO audio
+callback monopolizes a CPU while waiting for an ordinary-priority worker. The
+higher-priority-worker benchmark demonstrated that dependency, but promoting
+workers is not required to break it. Sleeping the caller lets the lower-priority
+worker execute. The fix therefore leaves worker priorities alone and introduces
+no Linux FIFO assignments, Windows MMCSS registration, or Mach policy changes.
+This avoids a Linux-specific priority assumption and does not create elevated
+plugin threads requiring new overrun enforcement.
 
-The temporary benchmark's higher-worker-priority experiment is deliberately
-**not** the production policy. Once callers sleep, consumers can run below them.
-That lets a callback preempt a CPU-busy plugin on timeout. Linux additionally
-uses a preallocated per-worker budget monitor at the caller's priority to demote
-an overrun worker to ordinary scheduling, allowing healthy workers on the same
-CPU to progress. The monitor executes only bounded scheduling/timer machinery;
-it does not service UI, state, logging, or arbitrary control operations. Its
-lifetime pins the monitored native thread ID against reuse.
+Existing per-bridge/per-subprocess timeouts, completed-result acceptance,
+failure output, and recovery semantics are preserved. There is no new graph-wide
+deadline, plugin budget, watchdog thread, startup scheduling probe, or control/DSP
+exclusion framework. Ordinary workers can still encounter CPU contention;
+platform-specific realtime QoS is a separate concern. OS timer granularity and
+scheduling still affect timeout precision. This is not plugin sandboxing or a
+universal DSP-computation speedup.
 
-Realtime scheduling covers DSP scopes only. Native UI/state mutation excludes
-DSP with atomic admission; DSP produces defined wet silence instead of waiting
-on control. The child worker never blocks on the ordinary host mutex. Worker
-control and health publication happen after ordinary scheduling is restored.
+## Narrow-version validation
 
-This is not a native-plugin sandbox or a guarantee against every possible xrun.
-In-process hosting cannot safely terminate a plugin that never returns; child
-processes retain supervised termination/recovery. The replacement plugin,
-minimized software-rendered desktop, and lack of Windows/macOS runtime testing
-remain explicit validation limits.
+- A same-CPU regression uses a real FIFO caller and an ordinary bridge worker.
+  It fails with silent output under the original spin loop and passes with the
+  sleeping wait, without opting out of missing realtime facilities. The test
+  restores the caller's original scheduling and affinity.
+- Delayed audio/MIDI completions exercise both copy paths, including allocation-
+  free MIDI reuse. Portable UDP tests also run on Linux and exercise stale
+  wakeups and invalid endpoints. A futex race test covers completion before wait.
+- Existing worker-entry tests pass separately without the optional-backend flag.
+  Timeout fixtures use 500 ms fake work against a 50 ms timeout to avoid assuming
+  sub-millisecond timer precision on Windows. These are test settings, not new
+  production limits.
+- The warning-denying workspace build, four native feature-isolation checks,
+  formatting/test policy, and closed tracing inventory pass. The full native
+  suite passes **1,814 tests (4 skipped)** with the documented optional-backend
+  policy. The LLVM-instrumented suite passes the same tests; local changed-line
+  coverage is approximately 88.8%, without changing the 80% CI threshold or
+  granting new CI privileges.
+- The actual completion helper cross-compiles with warnings denied for macOS
+  ARM64 and Windows x64. This is not a full application cross-build or native
+  runtime validation. Remote checks must validate the latest narrow version.
 
-## Fixed-worktree validation
+The matched live workload was repeated with ordinary-priority workers and no
+external priority override. Thread snapshots verify every bridge/child DSP
+worker remains `SCHED_OTHER`, priority 0. Carla, Dragonfly, 48 kHz/1,024 frames,
+and minimized Xvfb/Openbox controls match the original investigation.
 
-The matched Carla/Dragonfly workload was repeated with the implemented policy,
-**without external worker-priority overrides**. These are single follow-up runs,
-not a new multi-run performance baseline. Windows were minimized under the same
-Xvfb/Openbox rendering control. Each pinned capture contains 200 cycles; each
-unpinned capture contains 1,200. Xrun deltas below include all profiler states,
-not only finished callbacks.
+| Placement | Hosting | Reverbs | Mean callback period used | Client/device xruns |
+|---|---|---:|---:|---:|
+| CPU 8 | In-process | 0 | 1.02% | 0/0 |
+| CPU 8 | In-process | 8 | 10.45% | 0/0 |
+| CPU 8 | Subprocess | 0 | 1.13% | 0/0 |
+| CPU 8 | Subprocess | 8 | 10.53% | 0/0 |
+| Default affinity | In-process | 0 | 1.09% | 0/0 |
+| Default affinity | In-process | 8 | 11.15% | 0/0 |
+| Default affinity | Subprocess | 0 | 1.27% | 0/0 |
+| Default affinity | Subprocess | 8 | 11.60% | 0/0 |
 
-| Placement | Hosting | Reverbs | Mean callback budget | Client xruns | Device xruns |
-|---|---|---:|---:|---:|---:|
-| CPU 8 | In-process | 0 | 1.35% | 0 | 0 |
-| CPU 8 | In-process | 8 | 10.57% | 0 | 0 |
-| CPU 8 | Subprocess | 0 | 0.89% | 0 | 0 |
-| CPU 8 | Subprocess | 8 | 7.66% | 0 | 0 |
-| Default affinity | In-process | 0 | 1.40% | 0 | 0 |
-| Default affinity | In-process | 8 | 12.19% | 0 | 0 |
-| Default affinity | Subprocess | 0 | 1.24% | 0 | 0 |
-| Default affinity | Subprocess | 8 | 10.92% | 0 | 0 |
+Pinned captures contain 200 cycles each; default-affinity captures contain 1,200.
+Every capture has normal output (RMS 0.043–0.046) and zero all-state client,
+device, source, and sink xrun deltas. These single follow-ups establish removal
+of the deterministic starvation failure, not a universal DSP speedup or a new
+statistical baseline. Results are in `carla-890-narrow-results.csv`; raw captures
+are retained under `runs-minimized-narrow-{pinned,unpinned}/` in the artifact
+directory. The original pinned runs had near-silence and 49/50 client xruns.
 
-All eight captures produced normal nonzero output (RMS 0.043–0.048). Source and
-sink xrun deltas were also zero. The original pinned in-process and subprocess
-runs produced near-silence and 49/50 client xruns respectively; the fixed runs
-eliminate that deterministic failure. Differences among healthy DSP means are
-not evidence of a universal computation-speed improvement. Empty-rack overhead
-is still measurable. Raw follow-up summaries live in
-`runs-minimized-fix-v3-{pinned,unpinned}/` below the retained artifact directory;
-`carla-890-fix-results.csv` records the eight results separately from the original
-investigation CSV.
+## Superseded prototype evidence
 
-Additional regression evidence:
-
-- The original same-CPU FIFO callback/ordinary-worker test fails before the fix
-  with `DeadlineMiss`; bounded sleeping completion makes it pass.
-- Actual Linux FIFO promotion/readback, backend-ceiling clamping/exhaustion,
-  worker-local seccomp `EPERM`, ordinary control scheduling, and startup
-  negotiation through the child DSP thread are exercised without opting out of
-  missing realtime facilities.
-- Finite 500 ms CPU-busy fixtures cover both hosting modes. With all participating
-  threads confined to one CPU, a failed chain returns silent wet output on a
-  100 ms budget while a healthy chain still processes its block. Teardown waits
-  for the finite fixture rather than abandoning a live thread.
-- Nested-deadline and multi-chain tests retain allocation-free defined silence
-  and unrelated dry-route progress. Control/DSP admission and panic recovery have
-  dedicated tests.
-- The real Carla Native UI probe opens, idles, hides, and reopens all six bundled
-  UI variants under Xvfb while processing continues. This is not a GPU-backed
-  reproduction of the reporter's editor workload.
-- The native scheduling/completion/deadline/exclusion helpers cross-compile with
-  warnings denied for macOS ARM64 and Windows x64. That is not a complete
-  cross-platform application build or native runtime validation.
-
-Final project gates passed in the repository Nix shell: warning-denying workspace
-build, formatting/test-attribute policy, closed tracing inventory, and **1,823
-native tests passed (4 skipped)** under the documented optional-backend policy.
-The six scheduling tests and eight worker-entry tests also passed separately
-without allowing missing host facilities. Wasm application checking and the
-release AudioWorklet build passed. A hosted Trunk build and Firefox AudioWorklet
-smoke passed with 32 genuine callbacks, 4,096 processed frames, 128-frame quanta,
-and no command overflows. Chromium and native Windows/macOS runtime tests were
-not run locally.
-
-## CI follow-up
-
-The first PR run found an unused Carla-only exclusion module in minimal-feature
-builds and Windows timing assumptions in the timeout fixtures. The module is now
-feature-gated. Timeout fixtures use a 50 ms budget against 500 ms fake work,
-retain silence/degradation/recovery assertions, and check that a bridge returns
-before the fake work finishes. This separates the tested behavior from coarse
-platform timer quanta; production callback budgets are not increased.
-
-Review also exposed a real completion bug: a finished slot could be accepted
-when the caller woke after its absolute deadline. Both completion-copy paths now
-reject expired results before copying, with a deterministic regression test.
-New tests use fresh nonces, and monitor coordination, rejected/expired tickets,
-sequence exhaustion, and reuse have additional coverage without requiring
-realtime privileges. The Linux coverage job grants its own process an inherited
-realtime-priority allowance and verifies it, so the existing real-scheduling
-regressions run there as well. The 80% patch-coverage threshold is unchanged.
-
-Follow-up local validation passed the warning-denying build, all four native
-feature-isolation configurations, and 1,827 native tests (4 skipped). A complete
-LLVM-instrumented run passed the same suite; the local changed-line coverage
-estimate is approximately 86.5%. Remote Windows checks must still confirm the
-portable fixtures. The initial Chromium failure was a renderer startup timeout
-before test discovery; an unchanged job rerun was requested rather than disabling
-or weakening that suite.
+An earlier, broader prototype added scheduling promotion, overrun monitors,
+callback-wide deadlines, and control/DSP exclusion. Those changes were removed
+on review to keep this a targeted performance fix. Its eight live captures
+remain in `carla-890-fix-results.csv` and
+`runs-minimized-fix-v3-{pinned,unpinned}/` as historical evidence, not measurements
+of the narrowed implementation. Its scheduling/overrun tests and 1,827-test
+validation counts do not describe the current patch. The original investigation
+CSV and traces are likewise retained unchanged.

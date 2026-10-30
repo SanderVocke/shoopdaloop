@@ -130,19 +130,6 @@ pub trait CarlaProcessor: Send + Debug {
         Vec::new()
     }
     fn clear_logs(&mut self) {}
-    #[cfg(not(target_arch = "wasm32"))]
-    fn set_scheduling_ceiling(&mut self, _ceiling: i32) {}
-    #[cfg(not(target_arch = "wasm32"))]
-    fn prepare_scheduling(
-        &mut self,
-        _policy: i32,
-        _priority: i32,
-        _ceiling: i32,
-        _parameters: [u32; 4],
-        _deadline: std::time::Instant,
-    ) -> Result<()> {
-        Ok(())
-    }
     fn idle(&mut self) {}
     fn toggle_or_recover(&mut self) -> Result<()> {
         let visible = self.is_visible();
@@ -170,14 +157,6 @@ pub trait CarlaProcessor: Send + Debug {
         Ok(())
     }
     fn process(&mut self, frames: usize) -> Result<()>;
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn process_until(&mut self, frames: usize, deadline: std::time::Instant) -> Result<()> {
-        if std::time::Instant::now() >= deadline {
-            return Err(crate::carla_shared_memory::SharedBlockError::DeadlineMiss.into());
-        }
-        self.process(frames)
-    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -215,7 +194,6 @@ mod bridge {
         inner_stale_completions: AtomicU64,
         inner_recoveries: AtomicU64,
         degraded: Arc<AtomicBool>,
-        control_busy: Arc<AtomicBool>,
         crash_summary: ArcSwapOption<String>,
     }
 
@@ -237,7 +215,6 @@ mod bridge {
                 inner_stale_completions: AtomicU64::new(host.stale_completions()),
                 inner_recoveries: AtomicU64::new(host.recoveries()),
                 degraded: Arc::new(AtomicBool::new(false)),
-                control_busy: Arc::new(AtomicBool::new(false)),
                 crash_summary: ArcSwapOption::from(host.crash_summary().map(Arc::new)),
             }
         }
@@ -587,7 +564,6 @@ mod bridge {
         stale_completions: Arc<AtomicU64>,
         recoveries: Arc<AtomicU64>,
         degraded: Arc<AtomicBool>,
-        control_busy: Arc<AtomicBool>,
     }
 
     impl CarlaRealtimeProcessor {
@@ -675,27 +651,14 @@ mod bridge {
             Ok(output[..self.midi_output_counts[index]].to_vec())
         }
         fn process(&mut self, frames: usize) -> Result<()> {
-            self.process_until(frames, Instant::now() + self.timeout)
-        }
-
-        fn process_until(&mut self, frames: usize, deadline: Instant) -> Result<()> {
             let _process_span =
                 shoop_tracing::realtime_span_detail!("engine.rt.fx.bridge_process", value = frames);
             let frames = frames.min(MAX_BLOCK_FRAMES);
-            if !self.is_active() || self.control_busy.load(Ordering::Acquire) {
+            if !self.is_active() {
                 for output in &mut self.audio_outputs {
                     output[..frames].fill(0.0);
                 }
                 self.midi_output_counts.fill(0);
-                return Ok(());
-            }
-            if Instant::now() >= deadline {
-                self.mark_degraded();
-                for output in &mut self.audio_outputs {
-                    output[..frames].fill(0.0);
-                }
-                self.midi_output_counts.fill(0);
-                self.deadline_misses.fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             }
             self.sequence = self.sequence.wrapping_add(1).max(1);
@@ -704,14 +667,13 @@ mod bridge {
                     "engine.rt.fx.bridge_submit",
                     value = self.sequence
                 );
-                self.transport.submit_until(
+                self.transport.submit(
                     BlockSequence(self.sequence),
                     frames,
                     &self.audio_inputs,
                     self.audio_outputs.len(),
                     &self.midi_inputs,
                     &self.midi_input_counts,
-                    Some(deadline),
                 )
             } {
                 Ok(token) => {
@@ -755,7 +717,7 @@ mod bridge {
                 );
                 self.transport.wait_and_copy_reusing_midi(
                     token,
-                    deadline,
+                    Instant::now() + self.timeout,
                     &mut self.audio_outputs,
                     &mut self.shared_midi_outputs,
                     &mut self.shared_midi_output_count,
@@ -810,83 +772,55 @@ mod bridge {
         host: &mut dyn CarlaProcessor,
         midi_inputs: &mut CarlaMidiBuffer,
         midi_outputs: &mut CarlaMidiBuffer,
-        scheduling: &mut crate::carla_scheduling::WorkerScheduling,
     ) -> Result<bool> {
         let Some(token) = transport.worker_take() else {
             return Ok(false);
         };
-        let request = transport.worker_scheduling(token);
-        let deadline = transport.worker_deadline(token)?;
-        let (priority, report) = scheduling.enter(request, deadline);
-        if transport.worker_is_scheduling_probe(token) {
-            let child = crate::carla_scheduling::SchedulingRequest::for_consumer(request.ceiling);
-            drop(priority);
-            scheduling.report(request, report);
-            host.prepare_scheduling(
-                child.policy,
-                child.priority,
-                child.ceiling,
-                child.parameters,
-                deadline.ok_or_else(|| anyhow!("scheduling probe has no deadline"))?,
-            )?;
-            transport.worker_complete_scheduling_probe(token, report)?;
-            return Ok(true);
+        let _worker_span = shoop_tracing::realtime_span_detail!(
+            "engine.rt.fx.bridge_worker",
+            value = token.sequence.0
+        );
+        if transport.worker_audio_input_channels(token) != host.info().audio_inputs
+            || transport.worker_audio_output_channels(token) != host.info().audio_outputs
+        {
+            return Err(anyhow!("bridge block channel layout mismatch"));
         }
-        let result = (|| {
-            host.set_scheduling_ceiling(request.ceiling);
-            let _worker_span = shoop_tracing::realtime_span_detail!(
-                "engine.rt.fx.bridge_worker",
-                value = token.sequence.0
-            );
-            if transport.worker_audio_input_channels(token) != host.info().audio_inputs
-                || transport.worker_audio_output_channels(token) != host.info().audio_outputs
-            {
-                return Err(anyhow!("bridge block channel layout mismatch"));
+        for channel in 0..host.info().audio_inputs {
+            let destination = host
+                .audio_input_mut(channel)
+                .ok_or_else(|| anyhow!("bridge audio input disappeared"))?;
+            transport.worker_copy_audio_input(token, channel, destination)?;
+        }
+        let (midi_pool, midi_count) = midi_inputs.storage_mut();
+        transport.worker_read_midi_reusing(token, midi_pool, midi_count)?;
+        if host.info().midi_inputs > 0 {
+            let mut refs = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
+            for (destination, event) in refs.iter_mut().zip(midi_inputs.as_slice()) {
+                *destination = (event.frame_offset, event.data.as_slice());
             }
-            for channel in 0..host.info().audio_inputs {
-                let destination = host
-                    .audio_input_mut(channel)
-                    .ok_or_else(|| anyhow!("bridge audio input disappeared"))?;
-                transport.worker_copy_audio_input(token, channel, destination)?;
-            }
-            let (midi_pool, midi_count) = midi_inputs.storage_mut();
-            transport.worker_read_midi_reusing(token, midi_pool, midi_count)?;
-            if host.info().midi_inputs > 0 {
-                let mut refs = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
-                for (destination, event) in refs.iter_mut().zip(midi_inputs.as_slice()) {
-                    *destination = (event.frame_offset, event.data.as_slice());
-                }
-                host.set_midi_input_events(0, &refs[..midi_inputs.as_slice().len()])?;
-            }
-            if let Some(deadline) = transport.worker_deadline(token)? {
-                host.process_until(token.frames, deadline)?;
-            } else {
-                host.process(token.frames)?;
-            }
-            midi_outputs.clear();
-            if host.info().midi_outputs > 0 {
-                host.fill_midi_output_events(0, midi_outputs)?;
-            }
-            let mut audio_outputs = [&[][..]; MAX_AUDIO_CHANNELS];
-            for (channel, output) in audio_outputs
-                .iter_mut()
-                .enumerate()
-                .take(host.info().audio_outputs)
-            {
-                *output = host
-                    .audio_output(channel)
-                    .ok_or_else(|| anyhow!("bridge audio output disappeared"))?;
-            }
-            transport.worker_complete(
-                token,
-                &audio_outputs[..host.info().audio_outputs],
-                midi_outputs.as_slice(),
-            )?;
-            Ok(true)
-        })();
-        drop(priority);
-        scheduling.report(request, report);
-        result
+            host.set_midi_input_events(0, &refs[..midi_inputs.as_slice().len()])?;
+        }
+        host.process(token.frames)?;
+        midi_outputs.clear();
+        if host.info().midi_outputs > 0 {
+            host.fill_midi_output_events(0, midi_outputs)?;
+        }
+        let mut audio_outputs = [&[][..]; MAX_AUDIO_CHANNELS];
+        for (channel, output) in audio_outputs
+            .iter_mut()
+            .enumerate()
+            .take(host.info().audio_outputs)
+        {
+            *output = host
+                .audio_output(channel)
+                .ok_or_else(|| anyhow!("bridge audio output disappeared"))?;
+        }
+        transport.worker_complete(
+            token,
+            &audio_outputs[..host.info().audio_outputs],
+            midi_outputs.as_slice(),
+        )?;
+        Ok(true)
     }
 
     fn bridge_thread(
@@ -895,7 +829,6 @@ mod bridge {
         commands: Receiver<BridgeCommand>,
         snapshot: Arc<BridgeSnapshot>,
         external_ui: Option<Arc<dyn CarlaExternalUi>>,
-        mut scheduling: crate::carla_scheduling::WorkerScheduling,
     ) {
         let mut midi_inputs = CarlaMidiBuffer::new(
             MAX_MIDI_EVENTS_PER_BLOCK,
@@ -909,7 +842,6 @@ mod bridge {
         let mut processing_faulted = false;
         while !stopped {
             while let Ok(command) = commands.try_recv() {
-                snapshot.control_busy.store(true, Ordering::Release);
                 match command {
                     BridgeCommand::SetActive(active) => host.set_active(active),
                     BridgeCommand::SetVisible(visible, reply) => {
@@ -917,7 +849,6 @@ mod bridge {
                         if result.is_ok() {
                             snapshot.visible.store(visible, Ordering::Release);
                         }
-                        snapshot.control_busy.store(false, Ordering::Release);
                         let _ = reply.send(result);
                     }
                     BridgeCommand::ToggleOrRecover(reply) => {
@@ -927,23 +858,16 @@ mod bridge {
                             processing_faulted = false;
                             snapshot.publish_health(host.as_mut(), external_ui.as_deref());
                         }
-                        snapshot.control_busy.store(false, Ordering::Release);
                         let _ = reply.send(result);
                     }
                     BridgeCommand::SaveState(reply) => {
-                        let result = host.save_state().map_err(|e| e.to_string());
-                        snapshot.control_busy.store(false, Ordering::Release);
-                        let _ = reply.send(result);
+                        let _ = reply.send(host.save_state().map_err(|e| e.to_string()));
                     }
                     BridgeCommand::RestoreState(state, reply) => {
-                        let result = host.restore_state(&state).map_err(|e| e.to_string());
-                        snapshot.control_busy.store(false, Ordering::Release);
-                        let _ = reply.send(result);
+                        let _ = reply.send(host.restore_state(&state).map_err(|e| e.to_string()));
                     }
                     BridgeCommand::GenerationLogs(reply) => {
-                        let result = host.generation_logs();
-                        snapshot.control_busy.store(false, Ordering::Release);
-                        let _ = reply.send(result);
+                        let _ = reply.send(host.generation_logs());
                     }
                     BridgeCommand::ClearLogs => host.clear_logs(),
                     BridgeCommand::Shutdown => {
@@ -956,10 +880,8 @@ mod bridge {
                 break;
             }
             if external_ui.is_none() && host.is_visible() {
-                snapshot.control_busy.store(true, Ordering::Release);
                 host.idle();
             }
-            snapshot.control_busy.store(false, Ordering::Release);
             if processing_faulted {
                 std::thread::park_timeout(Duration::from_millis(10));
                 continue;
@@ -970,7 +892,6 @@ mod bridge {
                     host.as_mut(),
                     &mut midi_inputs,
                     &mut midi_outputs,
-                    &mut scheduling,
                 )
             }));
             match processing {
@@ -1029,30 +950,10 @@ mod bridge {
     }
 
     pub fn spawn_processor_bridge(
-        host: Box<dyn CarlaProcessor>,
-        sample_rate: u32,
-        nominal_buffer_size: u32,
-    ) -> Result<(CarlaControlHandle, Box<dyn CarlaProcessor>)> {
-        spawn_processor_bridge_with_scheduling(host, sample_rate, nominal_buffer_size, i32::MAX)
-    }
-
-    pub fn spawn_processor_bridge_with_scheduling(
-        host: Box<dyn CarlaProcessor>,
-        sample_rate: u32,
-        nominal_buffer_size: u32,
-        scheduling_ceiling: i32,
-    ) -> Result<(CarlaControlHandle, Box<dyn CarlaProcessor>)> {
-        let request = crate::carla_scheduling::SchedulingRequest::for_consumer(scheduling_ceiling);
-        spawn_processor_bridge_for_backend(host, sample_rate, nominal_buffer_size, request)
-    }
-
-    pub(crate) fn spawn_processor_bridge_for_backend(
         mut host: Box<dyn CarlaProcessor>,
         sample_rate: u32,
         nominal_buffer_size: u32,
-        request: crate::carla_scheduling::SchedulingRequest,
     ) -> Result<(CarlaControlHandle, Box<dyn CarlaProcessor>)> {
-        let scheduling_ceiling = request.ceiling;
         let info = host.info();
         let external_ui = host.external_ui();
         let generation = ProcessGeneration(1);
@@ -1060,8 +961,7 @@ mod bridge {
         let mut full_nonce = [0_u8; 32];
         full_nonce[..16].copy_from_slice(&nonce);
         full_nonce[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
-        let mut parent_transport = SharedBlockTransport::create(generation, &full_nonce)?;
-        parent_transport.set_scheduling_ceiling(scheduling_ceiling);
+        let parent_transport = SharedBlockTransport::create(generation, &full_nonce)?;
         let worker_transport =
             SharedBlockTransport::open(parent_transport.path(), generation, &full_nonce)?;
         let snapshot = Arc::new(BridgeSnapshot::new(host.as_mut()));
@@ -1072,76 +972,21 @@ mod bridge {
         let stale_completions = Arc::clone(&snapshot.stale_completions);
         let recoveries = Arc::clone(&snapshot.recoveries);
         let degraded = Arc::clone(&snapshot.degraded);
-        let control_busy = Arc::clone(&snapshot.control_busy);
         let (sender, receiver) = sync_channel(BRIDGE_COMMAND_CAPACITY);
         let thread_snapshot = Arc::clone(&snapshot);
         let thread_external_ui = external_ui.clone();
-        let (startup_sender, startup_receiver) = sync_channel(1);
         let thread = std::thread::Builder::new()
             .name("carla-processor-bridge".to_owned())
             .spawn(move || {
-                let scheduling = match crate::carla_scheduling::WorkerScheduling::new() {
-                    Ok(scheduling) => {
-                        let _ = startup_sender.send(Ok(()));
-                        scheduling
-                    }
-                    Err(error) => {
-                        let _ = startup_sender.send(Err(error));
-                        return;
-                    }
-                };
-                let failed = Arc::clone(&thread_snapshot);
-                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    bridge_thread(
-                        host,
-                        worker_transport,
-                        receiver,
-                        thread_snapshot,
-                        thread_external_ui,
-                        scheduling,
-                    )
-                }))
-                .is_err()
-                {
-                    failed.control_busy.store(false, Ordering::Release);
-                    failed.ready.store(false, Ordering::Release);
-                    failed
-                        .lifecycle
-                        .store(CarlaProcessorLifecycle::Crashed as u8, Ordering::Release);
-                    failed.exit_kind.store(
-                        shoop_plugin_protocol::WorkerExitKind::UnexpectedExit as u8,
-                        Ordering::Release,
-                    );
-                    failed
-                        .crash_summary
-                        .store(Some(Arc::new("Carla bridge control panicked".to_owned())));
-                    tracing::error!("engine.fx.bridge.control_panic");
-                }
+                bridge_thread(
+                    host,
+                    worker_transport,
+                    receiver,
+                    thread_snapshot,
+                    thread_external_ui,
+                )
             })?;
-        startup_receiver
-            .recv_timeout(Duration::from_secs(5))
-            .map_err(|error| anyhow!("Carla bridge startup failed: {error}"))??;
         let wake = thread.thread().clone();
-        let preflight = (|| -> Result<()> {
-            let deadline = Instant::now() + Duration::from_millis(500);
-            let token =
-                parent_transport.submit_scheduling_probe(BlockSequence(1), request, deadline)?;
-            wake.unpark();
-            parent_transport.wait_and_copy(token, deadline, &mut [], &mut Vec::new())?;
-            let report = parent_transport.scheduling_probe_report(token)?;
-            tracing::info!(
-                ?request,
-                ?report,
-                "Carla bridge startup scheduling verified"
-            );
-            Ok(())
-        })();
-        if let Err(error) = preflight {
-            let _ = sender.send(BridgeCommand::Shutdown);
-            wake.unpark();
-            let _ = thread.join();
-            return Err(error);
-        }
         let control = Arc::new(BridgeControl {
             sender,
             snapshot,
@@ -1158,7 +1003,7 @@ mod bridge {
             transport: parent_transport,
             active,
             wake,
-            sequence: 1,
+            sequence: 0,
             timeout: Duration::from_secs_f64(
                 (nominal_buffer_size.max(1) as f64 / sample_rate.max(1) as f64).max(0.000_5),
             ),
@@ -1193,28 +1038,17 @@ mod bridge {
             stale_completions,
             recoveries,
             degraded,
-            control_busy,
         };
         Ok((handle, Box::new(endpoint)))
     }
 }
 
-#[cfg(all(
-    not(target_arch = "wasm32"),
-    feature = "app_backend",
-    feature = "carla"
-))]
-pub(crate) use bridge::spawn_processor_bridge_for_backend;
 #[cfg(not(target_arch = "wasm32"))]
-pub use bridge::{
-    spawn_processor_bridge, spawn_processor_bridge_with_scheduling, CarlaControlHandle,
-    CarlaRealtimeProcessor,
-};
+pub use bridge::{spawn_processor_bridge, CarlaControlHandle, CarlaRealtimeProcessor};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FakeProcessorBehavior {
     pub process_delay: Duration,
-    pub process_busy_delay: Duration,
     pub process_delay_calls: Option<usize>,
     pub fail_processing: bool,
     pub panic_processing: bool,
@@ -1234,7 +1068,6 @@ pub struct FakeCarlaProcessor {
     visible: bool,
     state: String,
     behavior: FakeProcessorBehavior,
-    process_counter: Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl FakeCarlaProcessor {
@@ -1255,12 +1088,7 @@ impl FakeCarlaProcessor {
             visible: false,
             state: "{}".to_owned(),
             behavior: FakeProcessorBehavior::default(),
-            process_counter: None,
         }
-    }
-
-    pub fn set_process_counter(&mut self, counter: Arc<std::sync::atomic::AtomicU64>) {
-        self.process_counter = Some(counter);
     }
 
     pub fn set_behavior(&mut self, behavior: FakeProcessorBehavior) {
@@ -1350,18 +1178,8 @@ impl CarlaProcessor for FakeCarlaProcessor {
     }
 
     fn process(&mut self, frames: usize) -> Result<()> {
-        if let Some(counter) = &self.process_counter {
-            counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
         if self.behavior.panic_processing {
             panic!("fake processor panic");
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        if !self.behavior.process_busy_delay.is_zero() {
-            let deadline = std::time::Instant::now() + self.behavior.process_busy_delay;
-            while std::time::Instant::now() < deadline {
-                std::hint::spin_loop();
-            }
         }
         let should_delay =
             !self.behavior.process_delay.is_zero() && self.behavior.process_delay_calls != Some(0);

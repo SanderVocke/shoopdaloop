@@ -8,8 +8,7 @@ use std::cell::Cell;
 use std::fmt;
 use std::panic::Location;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-pub use std::sync::MutexGuard;
-use std::sync::{LockResult, Mutex as StdMutex, TryLockResult};
+use std::sync::{LockResult, Mutex as StdMutex, MutexGuard, TryLockResult};
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static FIRST_VIOLATION: AtomicPtr<Location<'static>> = AtomicPtr::new(std::ptr::null_mut());

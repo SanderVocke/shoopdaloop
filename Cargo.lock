@@ -4523,7 +4523,6 @@ dependencies = [
  "eframe",
  "ehttp",
  "js-sys",
- "libc",
  "log",
  "rfd",
  "rodio",

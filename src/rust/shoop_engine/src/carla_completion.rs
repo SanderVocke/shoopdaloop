@@ -62,14 +62,17 @@ impl Completion {
 }
 
 #[cfg(not(target_os = "linux"))]
+pub(crate) use UdpCompletion as Completion;
+
+#[cfg(any(not(target_os = "linux"), test))]
 #[derive(Debug)]
-pub(crate) struct Completion {
+pub(crate) struct UdpCompletion {
     socket: std::net::UdpSocket,
     port: u32,
 }
 
-#[cfg(not(target_os = "linux"))]
-impl Completion {
+#[cfg(any(not(target_os = "linux"), test))]
+impl UdpCompletion {
     pub fn create() -> io::Result<Self> {
         let socket = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
         let port = u32::from(socket.local_addr()?.port());
@@ -124,5 +127,52 @@ impl Completion {
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(()),
             Err(error) => Err(error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn udp_notifications_wake_waiters_and_do_not_replace_state_checks() {
+        let receiver = UdpCompletion::create().unwrap();
+        let sender = UdpCompletion::open(receiver.port()).unwrap();
+        let state = AtomicU32::new(0);
+        sender.notify(&state).unwrap();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(Duration::from_millis(20));
+                state.store(1, Ordering::Release);
+                sender.notify(&state).unwrap();
+            });
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while state.load(Ordering::Acquire) != 1 {
+                assert!(Instant::now() < deadline);
+                receiver.wait(&state, 0, deadline).unwrap();
+            }
+        });
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn udp_rejects_invalid_notification_ports() {
+        for port in [0, u32::from(u16::MAX) + 1] {
+            assert_eq!(
+                UdpCompletion::open(port).unwrap_err().kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn futex_does_not_sleep_when_completion_precedes_the_wait() {
+        let completion = Completion::create().unwrap();
+        let state = AtomicU32::new(1);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        completion.wait(&state, 0, deadline).unwrap();
+        assert!(Instant::now() < deadline);
     }
 }

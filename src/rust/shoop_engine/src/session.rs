@@ -2429,23 +2429,6 @@ impl Session {
     /// nothing reported anywhere. There is now no error to drop: a stale cycle runs and is
     /// counted in [`Self::n_stale_cycles`].
     pub fn process(&mut self, n_frames: usize) {
-        self.process_inner(
-            n_frames,
-            #[cfg(not(target_arch = "wasm32"))]
-            None,
-        );
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn process_until(&mut self, n_frames: usize, deadline: std::time::Instant) {
-        self.process_inner(n_frames, Some(deadline));
-    }
-
-    fn process_inner(
-        &mut self,
-        n_frames: usize,
-        #[cfg(not(target_arch = "wasm32"))] deadline: Option<std::time::Instant>,
-    ) {
         self.profiler
             .set_enabled(shoop_tracing::is_realtime_cpu_timing_enabled());
         let _session_span = shoop_tracing::realtime_span!("engine.rt.session", value = n_frames);
@@ -2504,12 +2487,7 @@ impl Session {
                     NodeAction::PreviewProcess => self.process_audio_preview(n_frames),
                     NodeAction::ProcessorProcess(i) => {
                         let began = self.profiler.begin();
-                        self.process_processor(
-                            i,
-                            n_frames,
-                            #[cfg(not(target_arch = "wasm32"))]
-                            deadline,
-                        );
+                        self.process_processor(i, n_frames);
                         self.profiler.finish(Stage::ProcessorProcess, began);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
@@ -2574,12 +2552,7 @@ impl Session {
     }
 
     /// Runs one processor after its routed inputs and before its output ports.
-    fn process_processor(
-        &mut self,
-        processor_index: usize,
-        n_frames: usize,
-        #[cfg(not(target_arch = "wasm32"))] _deadline: Option<std::time::Instant>,
-    ) {
+    fn process_processor(&mut self, processor_index: usize, n_frames: usize) {
         let _span =
             shoop_tracing::realtime_span!("engine.rt.fx.processor", value = processor_index);
         let mut processors = std::mem::take(&mut self.processors);
@@ -2821,17 +2794,9 @@ impl Session {
                         &events[..route.combined_midi.len().min(MAX_MIDI_EVENTS_PER_BLOCK)],
                     );
                 }
-                #[cfg(not(target_arch = "wasm32"))]
-                let completed = match _deadline {
-                    Some(deadline) => host.process_until(n_frames, deadline),
-                    None => host.process(n_frames),
-                };
-                #[cfg(target_arch = "wasm32")]
-                let completed = host.process(n_frames);
+                let _ = host.process(n_frames);
                 for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
-                    if completed.is_err() {
-                        self.ports[port_index].buffer(n_frames).fill(0.0);
-                    } else if let Some(source) = host.audio_output(output_index) {
+                    if let Some(source) = host.audio_output(output_index) {
                         self.ports[port_index]
                             .buffer(n_frames)
                             .copy_from_slice(&source[..n_frames]);
@@ -5546,74 +5511,6 @@ mod tests {
                 .unwrap()
                 .data(),
             vec![1.0, 2.0, 3.0, 4.0]
-        );
-    }
-
-    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    #[shoop_wasm_test_support::shoop_test]
-    fn carla_chains_share_the_callback_deadline_without_silencing_other_routes() {
-        use crate::carla_processor::{
-            spawn_processor_bridge, FakeCarlaProcessor, FakeProcessorBehavior,
-        };
-        use std::sync::atomic::{AtomicU64, Ordering};
-        use std::sync::Arc;
-        use std::time::{Duration, Instant};
-
-        let mut session = Session::default();
-        let source = session.add_port(dummy(780, "deadline-source", PortDirection::Input));
-        let dry = session.add_port(internal("deadline-dry", 4));
-        session.connect_ports_internal(source, dry).unwrap();
-        let mut controls = Vec::new();
-        let mut wet_ports = Vec::new();
-        let mut counters = Vec::new();
-        for index in 0..2 {
-            let title = format!("deadline-{index}");
-            let counter = Arc::new(AtomicU64::new(0));
-            let mut fake = FakeCarlaProcessor::new(
-                crate::FXChainType::CarlaRack,
-                1,
-                shoop_plugin_protocol::MAX_BLOCK_FRAMES,
-            );
-            fake.set_process_counter(Arc::clone(&counter));
-            fake.set_behavior(FakeProcessorBehavior {
-                process_delay: Duration::from_millis(250),
-                ..Default::default()
-            });
-            let (control, endpoint) = spawn_processor_bridge(Box::new(fake), 1000, 2000).unwrap();
-            control.set_active(true);
-            control.set_visible(false).unwrap();
-            session.set_carla_fx_host(&title, endpoint);
-            let input = session.add_port(internal(&format!("{title}:audio_in_0"), 4));
-            let output = session.add_port(internal(&format!("{title}:audio_out_0"), 4));
-            session.connect_ports_internal(source, input).unwrap();
-            session
-                .set_processor_ports(&title, vec![input], vec![output], vec![])
-                .unwrap();
-            controls.push(control);
-            wet_ports.push(output);
-            counters.push(counter);
-        }
-        session
-            .port_mut(source)
-            .unwrap()
-            .as_dummy_mut()
-            .unwrap()
-            .queue_data(&[0.75; 4]);
-        session.apply_graph_changes().unwrap();
-        let deadline = Instant::now() + Duration::from_millis(20);
-        assert_no_alloc::assert_no_alloc(|| session.process_until(4, deadline));
-        assert_eq!(session.port_mut(dry).unwrap().buffer(4), &[0.75; 4]);
-        for port in wet_ports {
-            assert_eq!(session.port_mut(port).unwrap().buffer(4), &[0.0; 4]);
-        }
-        drop(controls);
-        assert!(
-            counters
-                .iter()
-                .map(|counter| counter.load(Ordering::Relaxed))
-                .sum::<u64>()
-                <= 1,
-            "a later chain must not receive a renewed processing period"
         );
     }
 
