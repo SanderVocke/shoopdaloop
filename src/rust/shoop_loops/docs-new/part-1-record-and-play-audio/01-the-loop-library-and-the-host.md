@@ -26,10 +26,10 @@ All of this can happen inside one eight-frame host callback. The runtime divides
 
 ## Control and rendering
 
-The loop library prepares parts: a **planner** that owns the loops' timing and media, the loops' **nodes**, and a control-side **client**. Your application installs the planner and nodes in an `rt_runtime` graph runtime, which returns two objects to the calling thread. Neither is attached to a particular thread:
+The loop library prepares parts: a **planner** that owns the loops' timing and recorded content, the loops' **nodes**, and a control-side **client**. Here "recorded content" means a loop's **media**: a handle in the planner's ledger that references sample pages in the runtime's shared storage. The loop does not own a private buffer; the samples live in the render side's resource pages. Your application installs the planner and nodes in an `rt_runtime` graph runtime, which returns two objects to the calling thread. Neither is attached to a particular thread:
 
 - The **control endpoint** submits requests and collects their results. The loop client builds the loop's requests for it. Use both from your application's command-handling code.
-- The **runtime** owns the running loops, their media and any other processors. Store it in your host's audio-processing state and call `GraphRuntime::process` for each block of borrowed input/output buffers.
+- The **runtime** owns the running loops, their media handles, and any other processors. Store it in your host's audio-processing state and call `GraphRuntime::process` for each block of borrowed input/output buffers.
 
 ```text
 Control side                                  Render side

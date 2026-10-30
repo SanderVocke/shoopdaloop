@@ -28,7 +28,8 @@ Add `--release` for the optimized build. The example has a separate Cargo manife
 | Frame | One sample position on the host's absolute clock. |
 | Loop position | A position inside recorded content, relative to the loop's start. |
 | Topology | The description of the loops and their musical relationships. |
-| Planner | The part that owns loop timing and media and decides each loop's mode and position. |
+| Planner | The part that owns loop timing and recorded content, and decides each loop's mode and position. |
+| Media | A loop's recorded content: a ledger handle referencing sample pages in the runtime's shared storage, not a private buffer. |
 | Capture / playback | A loop's two signal nodes: capture receives what is recorded, playback sends recorded content into the graph. |
 | Binding | The link between a loop and its two signal nodes. |
 | Control endpoint / runtime | The control side submits requests and collects results; the render side owns the running loops and processes buffers. |
