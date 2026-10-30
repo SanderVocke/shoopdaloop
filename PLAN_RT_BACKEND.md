@@ -302,9 +302,9 @@ Stage 6 needs 2, 3 and 5. Stages 7 and 8 need 6; Stage 7 also needs 1.
 
 ### Stage 0 — Baseline
 
-- [ ] Run the complete workspace `nextest` once and record the counts of the crates
+- [x] Run the complete workspace `nextest` once and record the counts of the crates
       later stages touch.
-- [ ] Record the legacy reference for the core workflow on the dummy driver:
+- [x] Record the legacy reference for the core workflow on the dummy driver:
       transition frames, loop lengths and recorded content for immediate, N-cycle,
       superseded and unsynchronized transitions.
 
@@ -438,6 +438,33 @@ here, `ARCHITECTURE.md` and `PLAN.md` read consistently.
       here.
 
 **Verify:** B1–B12 are met, with evidence linked.
+
+## Baseline
+
+Recorded at `137cc837` on 2026-10-30, under the resource rules above (peak session
+memory 6.8 GiB).
+
+Complete workspace `nextest` (`shoop_engine/app_backend`,
+`SHOOP_ALLOW_MISSING_BACKENDS=1`): 2191 passed, 4 skipped. Per crate: `shoop_backend`
+123, `shoop_app` 126, `shoop_egui` 212, `shoopdaloop` 50, `shoop_app_api` 23,
+`shoop_worklet_client` 48, `shoop_loops` 159, `rt_runtime` 197.
+
+Legacy timing reference: `EngineBackend` with the physical port model at 1 kHz and
+one-frame quanta. The capture input is a ramp of `frame / 1000`, and both tracks'
+inputs are connected to it.
+
+| Step | Observed |
+| --- | --- |
+| Sync loop: immediate Record at frame 3, immediate Play 16 frames later | Length 16, content frames 3–18, plays from frame 19; wraps at 35, 51, 67, … |
+| Loop A, synced: Record with delay 1, requested at frame 20 | Snapshot shows next Recording, delay 1; recording starts at 51 (the second wrap) |
+| Loop A: Play with delay 2, requested at 51 | Plays from 99 (the third wrap); length 48; logical content frames 51–98 |
+| Loop A: Stop with delay 3, then Stop with delay 1, at 99 | The nearer request supersedes: next Stopped, delay 1; stops at 131; still stopped three cycles later |
+| Loop B, no sync source, not playing: Record with delay 2 | Applies immediately |
+
+So a delay of `n` applies at the (n+1)-th sync wrap after the request. Legacy stores
+one cycle of pre-recorded material before the logical start of a synced recording
+(stored content began at frame 35); equivalence compares the logical window from the
+start offset over the loop length.
 
 ## Execution contract
 
