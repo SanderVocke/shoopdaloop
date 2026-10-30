@@ -15,7 +15,7 @@ use shoop_app_api::AudioDriverConfig;
 use crate::BackendPortDataType::{Audio, Midi};
 use crate::BackendPortDirection::{Input, Output};
 use crate::{
-    Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendBusChannelId,
+    Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData, BackendBusChannelId,
     BackendBusControl, BackendBusFxControl, BackendBusId, BackendBusRequest, BackendCapability,
     BackendChannelMode, BackendConfirmedLink, BackendGrabRequest, BackendHostPortDescriptor,
     BackendLoopContent, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
@@ -974,26 +974,36 @@ pub fn timing_ramp(frame: u64) -> f32 {
 ///   discards the output.
 /// - Requests made between steps reach the backend before the next rendered frame. An
 ///   immediate request made while `frame() == f` takes effect at frame `f`, which is the
-///   first frame rendered in the new mode. The contract checks it after the next step.
-/// - After a step, `poll()` reflects every rendered frame and every boundary up to
-///   `frame()`: it reports the mode, `position` and planned transition of the next frame
-///   to render. A sync-source wrap between the last rendered frame and the next one is
-///   already counted, and a transition due there is already visible.
+///   first frame rendered in the new mode. The contract checks it once frame `f` is
+///   observed (see below), and at the earliest after the next step.
+/// - After a step, `poll()` reflects every rendered frame and every boundary up to the
+///   observed frame `frame() - observation_lag()`: it reports the loop modes, lengths,
+///   `position`s and planned transitions as they are at the start of that frame. With no
+///   lag that is the next frame to render: a sync-source wrap between the last rendered
+///   frame and the next one is already counted, and a transition due there is already
+///   visible. With a lag of one it is the last rendered frame: a wrap or transition at the
+///   next frame becomes visible after the next step. The contracts compare observed frames,
+///   so a backend with a lag reports every transition at the same frame, later.
 /// - A `cycles_delay` of `n` takes effect at the `(n + 1)`-th wrap of the sync source after
-///   the request; a wrap already reported at the time of the request does not count. Until
+///   the request; a wrap already reported at the time of the request does not count. The
+///   contracts request delayed transitions only away from a wrap at the next frame. Until
 ///   then `poll()` reports it as `next_mode`, with a `next_transition_delay` that starts at
 ///   `n` and drops by one at every wrap. A request nearer than the planned one replaces it.
 /// - A loop without a sync source that is not playing applies every request immediately,
 ///   whatever its delay.
-/// - Recorded content is read with `Backend::loop_audio_data_with_metadata`. The logical
-///   content of a loop of length `L` is `samples[start_offset..start_offset + L]`; a backend
-///   may keep material before the logical start.
-/// - A loop playing from position `p`, as reported by `poll()`, renders sample `p` of its
-///   logical content in the next frame.
+/// - Recorded content is read with `Backend::loop_audio_data_with_metadata`. A backend that
+///   reads it asynchronously returns `None` until it is available, and the contracts step
+///   the harness until it is; they read content only where extra frames do not matter. The
+///   logical content of a loop of length `L` is `samples[start_offset..start_offset + L]`; a
+///   backend may keep material before the logical start.
+/// - A loop playing from position `p`, as reported by `poll()`, renders sample
+///   `p + observation_lag()` (modulo its length) of its logical content in the next frame.
 /// - The track `output_peaks` and the bus `output_peaks_db` meters report, in dBFS, the peak
 ///   of the frames rendered since the previous `poll()`. A track input with monitoring
 ///   reaches the track output within the same frame. Control changes take effect within
 ///   16 frames.
+/// - A cleared loop is silent from the next rendered frame; `poll()` reports it stopped and
+///   empty within 16 frames.
 /// - The contracts count frames from `frame()` after their setup, which may call
 ///   `Backend::wait_idle`. They do not call `wait_idle` while counting.
 pub trait TimingHarness {
@@ -1001,6 +1011,10 @@ pub trait TimingHarness {
     fn profile(&self) -> &ContractProfile;
     fn frame(&self) -> u64;
     fn step(&mut self) -> Result<()>;
+    /// Frames by which the loop state in `poll()` trails the next frame to render.
+    fn observation_lag(&self) -> u64 {
+        0
+    }
 }
 
 /// The legacy Web Audio backend at 1 kHz with one-frame quanta.
@@ -1047,6 +1061,22 @@ impl TimingHarness for WebAudioTimingHarness {
 
 const SYNC_CYCLE: u64 = 16;
 const STEP_LIMIT: u64 = 256;
+const READ_STEP_LIMIT: u64 = 4096;
+
+/// Reads a loop's audio content, stepping the harness while it is not yet available.
+fn read_audio(harness: &mut dyn TimingHarness, loop_id: BackendLoopId) -> BackendAudioData {
+    for _ in 0..READ_STEP_LIMIT {
+        if let Some(data) = harness
+            .backend()
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+        {
+            return data;
+        }
+        harness.step().expect("timing harness step failed");
+    }
+    panic!("the content of {loop_id:?} was unavailable for {READ_STEP_LIMIT} frames");
+}
 
 /// Frames in this scene are relative to the frame at which counting starts.
 struct TimingScene {
@@ -1055,6 +1085,8 @@ struct TimingScene {
     follower: BackendLoopId,
     unsynced: BackendLoopId,
     sync_playing_from: Option<u64>,
+    unsynced_recorded_from: Option<u64>,
+    lag: u64,
 }
 
 impl TimingScene {
@@ -1088,11 +1120,18 @@ impl TimingScene {
             follower: other.loops[0],
             unsynced: other.loops[1],
             sync_playing_from: None,
+            unsynced_recorded_from: None,
+            lag: harness.observation_lag(),
         }
     }
 
     fn now(&self, harness: &dyn TimingHarness) -> u64 {
         harness.frame() - self.origin
+    }
+
+    /// The frame whose loop state `poll()` reports.
+    fn observed(&self, harness: &dyn TimingHarness) -> Option<u64> {
+        self.now(harness).checked_sub(self.lag)
     }
 
     fn state(&self, harness: &mut dyn TimingHarness, loop_id: BackendLoopId) -> BackendLoopState {
@@ -1115,15 +1154,29 @@ impl TimingScene {
     /// Steps one frame and checks that the playing sync loop keeps wrapping on its grid.
     fn step(&self, harness: &mut dyn TimingHarness) {
         harness.step().expect("timing harness step failed");
-        if let Some(start) = self.sync_playing_from {
-            let now = self.now(harness);
-            let sync = self.state(harness, self.sync);
-            assert_eq!(sync.mode, BackendLoopMode::Playing, "sync loop at {now}");
-            assert_eq!(
-                u64::from(sync.position),
-                (now - start) % SYNC_CYCLE,
-                "sync loop position at {now}"
-            );
+        let (Some(start), Some(observed)) = (self.sync_playing_from, self.observed(harness)) else {
+            return;
+        };
+        if observed < start {
+            return;
+        }
+        let sync = self.state(harness, self.sync);
+        assert_eq!(
+            sync.mode,
+            BackendLoopMode::Playing,
+            "sync loop at {observed}"
+        );
+        assert_eq!(
+            u64::from(sync.position),
+            (observed - start) % SYNC_CYCLE,
+            "sync loop position at {observed}"
+        );
+    }
+
+    /// Steps until a request made at the current frame is observed.
+    fn step_to_observe(&self, harness: &mut dyn TimingHarness) {
+        for _ in 0..self.lag.max(1) {
+            self.step(harness);
         }
     }
 
@@ -1134,9 +1187,9 @@ impl TimingScene {
         }
     }
 
-    /// Steps until `poll()` reports the mode `to`, checking at every frame before that the
-    /// countdown of a transition requested at the current frame with `cycles_delay` of
-    /// `delay`, and returns the first frame reporting `to`.
+    /// Steps until `poll()` reports the mode `to`, checking at every observed frame before
+    /// that the countdown of a transition requested at the current frame with `cycles_delay`
+    /// of `delay`, and returns the first observed frame in mode `to`.
     fn step_through_plan(
         &self,
         harness: &mut dyn TimingHarness,
@@ -1152,14 +1205,16 @@ impl TimingScene {
         let requested = self.now(harness);
         for _ in 0..STEP_LIMIT {
             self.step(harness);
-            let now = self.now(harness);
+            let Some(observed) = self.observed(harness).filter(|frame| *frame >= requested) else {
+                continue;
+            };
             let state = self.state(harness, loop_id);
             if state.mode == to {
-                return now;
+                return observed;
             }
             let remaining = delay
-                .checked_sub(wraps(now) - wraps(requested))
-                .unwrap_or_else(|| panic!("{to:?} was due before {now}"));
+                .checked_sub(wraps(observed) - wraps(requested))
+                .unwrap_or_else(|| panic!("{to:?} was due before {observed}"));
             assert_eq!(
                 (
                     state.mode,
@@ -1167,7 +1222,7 @@ impl TimingScene {
                     state.next_transition_delay.map(u64::from)
                 ),
                 (from, Some(to), Some(remaining)),
-                "planned transition at {now}"
+                "planned transition at {observed}"
             );
         }
         panic!("{loop_id:?} never reached {to:?}");
@@ -1175,11 +1230,7 @@ impl TimingScene {
 
     fn logical_content(&self, harness: &mut dyn TimingHarness, loop_id: BackendLoopId) -> Vec<f32> {
         let length = self.state(harness, loop_id).length as usize;
-        let data = harness
-            .backend()
-            .loop_audio_data_with_metadata(loop_id)
-            .unwrap()
-            .expect("loop content is unavailable");
+        let data = read_audio(harness, loop_id);
         let channel = &data.channels[0];
         let start = usize::try_from(channel.start_offset).expect("negative start offset");
         channel.samples[start..start + length].to_vec()
@@ -1194,7 +1245,7 @@ impl TimingScene {
     fn immediate_sync_loop(&mut self, harness: &mut dyn TimingHarness) {
         self.step_to(harness, 3);
         self.request(harness, self.sync, BackendLoopMode::Recording, None);
-        self.step(harness);
+        self.step_to_observe(harness);
         assert_eq!(
             self.state(harness, self.sync).mode,
             BackendLoopMode::Recording
@@ -1202,12 +1253,8 @@ impl TimingScene {
         self.step_to(harness, 19);
         self.request(harness, self.sync, BackendLoopMode::Playing, None);
         self.sync_playing_from = Some(19);
-        self.step(harness);
+        self.step_to_observe(harness);
         assert_eq!(self.state(harness, self.sync).length, SYNC_CYCLE as u32);
-        assert_eq!(
-            self.logical_content(harness, self.sync),
-            self.ramp(3, SYNC_CYCLE)
-        );
     }
 
     fn synced_record_after_one_cycle(&self, harness: &mut dyn TimingHarness) {
@@ -1224,10 +1271,6 @@ impl TimingScene {
         let playing = self.step_through_plan(harness, self.follower, Recording, Playing, 2);
         assert_eq!(playing, 99, "synced playback start");
         assert_eq!(self.state(harness, self.follower).length, 48);
-        assert_eq!(
-            self.logical_content(harness, self.follower),
-            self.ramp(51, 48)
-        );
     }
 
     fn nearer_stop_supersedes(&self, harness: &mut dyn TimingHarness) {
@@ -1243,21 +1286,37 @@ impl TimingScene {
         }
     }
 
-    fn unsynced_delay_is_immediate(&self, harness: &mut dyn TimingHarness) {
+    fn unsynced_delay_is_immediate(&mut self, harness: &mut dyn TimingHarness) {
         let requested = self.now(harness);
         self.request(harness, self.unsynced, BackendLoopMode::Recording, Some(2));
-        self.step(harness);
+        self.step_to_observe(harness);
         assert_eq!(
             self.state(harness, self.unsynced).mode,
             BackendLoopMode::Recording
         );
         self.step_to(harness, requested + 8);
         self.request(harness, self.unsynced, BackendLoopMode::Playing, None);
-        self.step(harness);
+        self.step_to_observe(harness);
         assert_eq!(self.state(harness, self.unsynced).length, 8);
+        self.unsynced_recorded_from = Some(requested);
+    }
+
+    /// Every loop recorded once, so its content is still what it recorded.
+    fn recorded_content(&self, harness: &mut dyn TimingHarness) {
+        assert_eq!(
+            self.logical_content(harness, self.sync),
+            self.ramp(3, SYNC_CYCLE)
+        );
+        assert_eq!(
+            self.logical_content(harness, self.follower),
+            self.ramp(51, 48)
+        );
+        let unsynced = self
+            .unsynced_recorded_from
+            .expect("the unsynchronized loop did not record");
         assert_eq!(
             self.logical_content(harness, self.unsynced),
-            self.ramp(requested, 8)
+            self.ramp(unsynced, 8)
         );
     }
 }
@@ -1276,6 +1335,8 @@ impl TimingScene {
 ///   other: it stops at 131 and stays stopped;
 /// - the loop without a sync source, asked to record after 2 cycles while stopped, records
 ///   immediately.
+///
+/// The recorded content of all three loops is checked after the counted sequence.
 pub fn transition_timing_contract(harness: &mut dyn TimingHarness) {
     let mut scene = TimingScene::set_up(harness);
     scene.immediate_sync_loop(harness);
@@ -1283,6 +1344,7 @@ pub fn transition_timing_contract(harness: &mut dyn TimingHarness) {
     scene.synced_play_after_two_cycles(harness);
     scene.nearer_stop_supersedes(harness);
     scene.unsynced_delay_is_immediate(harness);
+    scene.recorded_content(harness);
 }
 
 /// Settling frames after a control change before levels are compared.
@@ -1323,6 +1385,14 @@ fn assert_levels(measured: &[f32], reference: f32, expected: [Level; 2], what: &
 fn step_and_poll(harness: &mut dyn TimingHarness) -> BackendSnapshot {
     harness.step().expect("timing harness step failed");
     harness.backend().poll().unwrap()
+}
+
+/// Steps until a request made at the current frame is observed.
+fn step_to_observe(harness: &mut dyn TimingHarness) -> BackendSnapshot {
+    for _ in 1..harness.observation_lag().max(1) {
+        step_and_poll(harness);
+    }
+    step_and_poll(harness)
 }
 
 /// Lets changes settle, then renders one frame and returns the snapshot with that frame's
@@ -1494,13 +1564,9 @@ fn record_loop(harness: &mut dyn TimingHarness, loop_id: BackendLoopId, frames: 
         .backend()
         .transition_loop(loop_id, BackendLoopMode::Playing, None)
         .unwrap();
-    let snapshot = step_and_poll(harness);
+    let snapshot = step_to_observe(harness);
     assert_eq!(snapshot.loops[&loop_id].length, frames as u32);
-    let data = harness
-        .backend()
-        .loop_audio_data_with_metadata(loop_id)
-        .unwrap()
-        .expect("loop content is unavailable");
+    let data = read_audio(harness, loop_id);
     let expected = (start..start + frames).map(timing_ramp).collect::<Vec<_>>();
     for channel in &data.channels {
         let offset = usize::try_from(channel.start_offset).expect("negative start offset");
@@ -1546,7 +1612,8 @@ pub fn loop_playback_contract(harness: &mut dyn TimingHarness) {
             step_and_poll(harness);
         }
         for _ in 0..LENGTH {
-            let position = harness.backend().poll().unwrap().loops[&loop_id].position as usize;
+            let reported = harness.backend().poll().unwrap().loops[&loop_id].position as usize;
+            let position = (reported + harness.observation_lag() as usize) % LENGTH as usize;
             let snapshot = step_and_poll(harness);
             let state = &snapshot.loops[&loop_id];
             assert_eq!((state.gain, state.balance), (gain, balance));
@@ -1568,9 +1635,25 @@ pub fn loop_playback_contract(harness: &mut dyn TimingHarness) {
     }
 
     harness.backend().clear_loop(loop_id).unwrap();
-    let snapshot = step_and_poll(harness);
-    let state = &snapshot.loops[&loop_id];
-    assert_eq!((state.mode, state.length), (BackendLoopMode::Stopped, 0));
+    let mut cleared = false;
+    for _ in 0..SETTLE_FRAMES {
+        let snapshot = step_and_poll(harness);
+        assert_levels(
+            &snapshot.tracks[&track].output_peaks,
+            1.0,
+            [Level::Silent; 2],
+            "clearing loop",
+        );
+        let state = &snapshot.loops[&loop_id];
+        if (state.mode, state.length) == (BackendLoopMode::Stopped, 0) {
+            cleared = true;
+            break;
+        }
+    }
+    assert!(
+        cleared,
+        "the loop was not cleared within {SETTLE_FRAMES} frames"
+    );
     let audio = harness
         .backend()
         .loop_audio_data(loop_id)

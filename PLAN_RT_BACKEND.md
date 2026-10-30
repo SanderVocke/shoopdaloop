@@ -411,14 +411,33 @@ from the engine and protocol had no Wasm imports; Stage 8 commits that check.
 
 ### Stage 6 — Adapter (`shoop_rt_backend`)
 
-- [ ] `Backend` over a protocol client: ID mapping, snapshot mirror, asynchronous
+- [x] `Backend` over a protocol client: ID mapping, snapshot mirror, asynchronous
       confirmation, capability descriptor from the handshake.
-- [ ] Transitions with the legacy timing semantics; connections and the mixer model;
+- [x] Transitions with the legacy timing semantics; connections and the mixer model;
       new-session structure replacement; explicit refusal of everything else.
 
 **Verify:** the shared contracts from Stage 2, including timing equivalence, against
 adapter, in-process carrier, engine and offline host; `shoop_app` cooperative-runtime
 tests of the core workflow on the same stack.
+
+*Known difference:* the new backend's snapshot describes the state at the start of
+the last rendered callback, one callback behind legacy, which describes the next frame
+to render. Transition frames, lengths and content are equal. The timing harness
+declares this as an observation lag. Because the application derives delays from
+`position / sync_length`, a request within one callback of a wrap can be scheduled one
+cycle later than on legacy. Reporting the state at the end frame would need the
+resolver to decide that boundary early; it is left for later work.
+
+*Revised during Stage 6:* the shared contracts accept an asynchronous backend. They
+read content by stepping until it arrives, check content after the counted sequence,
+declare the observation lag above, and let a cleared loop settle within the harness's
+settle bound while its output must be silent from the first frame. Legacy runs the
+same contracts unchanged.
+
+*Done:* `RtBackend::connect` (native, waits through an `EngineClock`) and
+`RtBackend::begin` with `is_ready` (browser, never blocks). Reads answer `None`
+while chunked bulk reads run. Capabilities are none except MIDI injection, and every
+other operation is refused with the capability's explanation.
 
 ### Stage 7 — Native host and application integration (`shoop_rt_host_native`)
 

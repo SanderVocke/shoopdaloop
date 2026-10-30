@@ -4258,6 +4258,8 @@ dependencies = [
  "shoop_app_api",
  "shoop_backend",
  "shoop_latency",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
  "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",
@@ -4456,6 +4458,20 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_backend"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "shoop_app_api",
+ "shoop_backend",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "tracing",
  "wasm-bindgen-test",
 ]
 

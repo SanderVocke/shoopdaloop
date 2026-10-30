@@ -217,6 +217,15 @@ src/rust/shoopdaloop/src/browser_worker.rs,application_ui_and_control,instrument
 src/rust/shoopdaloop/src/main.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoopdaloop/src/native_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/settings.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_rt_backend/src/backend.rs,application_ui_and_control,instrumented_direct,Traces failed loop content reads; other operations run within traced application intents and polling.
+src/rust/shoop_rt_backend/src/clock.rs,application_ui_and_control,instrumented_indirect,"Waiting and time passing for the adapter; runs within traced application polling and waits."
+src/rust/shoop_rt_backend/src/incoming.rs,application_ui_and_control,instrumented_direct,"Traces the handshake, resynchronization, limit changes and refused requests, connections and routes."
+src/rust/shoop_rt_backend/src/lib.rs,application_ui_and_control,instrumented_direct,"Traces connection start, sent requests, disconnection and wait timeouts."
+src/rust/shoop_rt_backend/src/mirror.rs,application_ui_and_control,instrumented_indirect,Plain mirror state and snapshot assembly within traced application polling.
+src/rust/shoop_rt_backend/src/outgoing.rs,application_ui_and_control,instrumented_indirect,Builds and queues requests within traced application intents; outcomes are traced when they arrive.
+src/rust/shoop_rt_backend/src/reads.rs,application_ui_and_control,instrumented_indirect,Assembles chunked content reads within traced application polling; failures are traced where they are reported.
+src/rust/shoop_rt_backend/src/requests.rs,application_ui_and_control,instrumented_indirect,Plain request queues within traced application intents and polling.
+src/rust/shoop_rt_backend/src/session.rs,application_ui_and_control,instrumented_direct,Traces session replacements; checks run within the traced session load.
 src/rust/shoop_rt_protocol/src/client.rs,engine_protocol,excluded,Plain-data client state and credit accounting; the application adapter owns tracing of requests and outcomes.
 src/rust/shoop_rt_protocol/src/codec.rs,engine_protocol,excluded,Bounded record encoding and decoding without I/O or allocation; carriers and adapters trace transport failures.
 src/rust/shoop_rt_protocol/src/ids.rs,engine_protocol,excluded,Plain identity values.
