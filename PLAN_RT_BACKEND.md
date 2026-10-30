@@ -85,8 +85,9 @@ does not know which environment it talks to.
   - The protocol treats limits as current values that can change, with a
     limits-changed message, not as handshake constants.
   - IDs are slots with generations, never indices bounded by an initial capacity.
-  - Hosts declare whether they can grow. Native hosts, including a separate process
-    or machine, can; the browser worklet is bounded by a preallocated maximum.
+  - Whether limits can grow depends on the host and is announced by the engine as a
+    capability. Native hosts, including a separate process or machine, can grow; the
+    browser worklet is bounded by a preallocated maximum.
   - The first milestone may ship with fixed segments; growth in the engine and
     adapter is then additive. Growing `rt_runtime`'s executor tables and resource
     store and `shoop_loops`' ledger and resolver state is later work inside those
@@ -144,7 +145,7 @@ describe or present a backend that supports only part of the feature set.
 
 | Area | Supported behaviour |
 | --- | --- |
-| Tracks | Create and remove regular (direct) tracks with 1 to the pool's maximum audio channels per direction and optional MIDI in/out; the sync track; input gain, balance and monitoring; output gain, balance and mute; regular default playback mode; on-screen-piano MIDI injection |
+| Tracks | Create and remove regular (direct) tracks with 0 to the pool's maximum audio channels per direction and optional MIDI in/out, so MIDI-only tracks are included; the sync track; input gain, balance and monitoring; output gain, balance and mute; regular default playback mode; on-screen-piano MIDI injection |
 | Loops | Add loops to tracks from prepared slots; sync source; stopped/playing/recording transitions, immediate or after N sync cycles with the legacy supersession rules; clear; loop gain and balance; boundary smoothing |
 | Views | Loop mode, next mode, transition delay, length and position; track and loop peaks; MIDI activity; waveform and MIDI detail reads |
 | I/O | Audio and MIDI connections between track ports and host ports on each driver; the Master bus with its gain, balance and mute; mixer routes from tracks to Master; the global FX control port, accepted and ignored |
@@ -244,13 +245,12 @@ Render performance is not an acceptance criterion of this milestone.
   `plan_transition` does.
 - **Worklet discipline.** The worklet module has no Wasm imports, as the existing
   worklet does; its engine is prepared before the first render quantum.
-- **Minimal loop-library change.** The planned `shoop_loops` changes are gain and
-  balance, clearing a loop, and changing boundary smoothing at runtime. Anything else
-  the backend needs there is a documented plan revision. *Revised during Stage 5:*
-  clearing was added because the core set needs it and the loop library had no way
-  to return a loop to empty content; runtime smoothing was added because the
-  application changes it as a live global setting, while the loop library fixed it
-  when preparing a loop.
+- **Minimal loop-library change.** The planned `shoop_loops` change is gain and
+  balance. Anything else the backend needs there is a documented plan revision.
+  *Revised during Stage 5:* clearing a loop was added because the core set needs it
+  and the loop library had no way to return a loop to empty content; changing
+  boundary smoothing at runtime was added because the application changes it as a
+  live global setting, while the loop library fixed it when preparing a loop.
 - **Do not touch the legacy path** beyond reporting capabilities and exposing the
   shared contract tests.
 - **Test as described below**, not exhaustively at every step.
@@ -452,7 +452,11 @@ application smoke of the core workflow on the dummy driver; a manual smoke on a 
 device on Linux, plus macOS or Windows where available; one workspace `nextest`.
 
 *Host notes:* device discovery is local to the native host, not protocol data; a
-remote engine needs it added to the protocol. Separate input and output devices are
+remote engine needs it added to the protocol. *Revised during Stage 7:* driver
+configuration and discovery are engine-side host types that the composition root
+maps from the application's settings; the protocol carries the driver status and the
+host port inventory. Carrying configuration and discovery over the protocol is added
+together with the first remote carrier. Separate input and output devices are
 bridged without resampling, so clock drift shows as xruns. MIDI output is sent when
 the pump sees it, not placed within the buffer. Callbacks larger than the prepared
 maximum are rendered in parts and counted.

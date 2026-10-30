@@ -5,7 +5,7 @@
 ## Authority and execution
 
 This is the single maintained planning/status document for the workstreams below.
-The one exception is the [opt-in runtime backend plan](PLAN_RT_BACKEND.md), which the
+The one exception is the [new engine backend plan](PLAN_RT_BACKEND.md), which the
 user commissioned as its own plan; this document links its status.
 It consolidates the plans present at `fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a`.
 Superseded plans and their redirect pages have been retired from the root.
@@ -41,8 +41,8 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | Runtime book and existing loop guides | Documentation completion recorded; accepted guides remain authoritative | Maintain only affected material with future changes; no retrospective book audit or handoff queue |
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
 | [Composable loop boundary](#composable-loop-boundary) | **Delivered**: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations; A1–A12 met and verified locally, including a CI replay | Remote CI/review need a PR; composing several planners in one runtime remains future work |
-| [Opt-in runtime backend](PLAN_RT_BACKEND.md) | Planned, not started | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend; save/load and the other parity gaps stay with the legacy backend |
-| [Common transport / application integration](#proposed-next-work) | Proposed, not delivered | Scope a next milestone before implementation; no IPC/network or production parity claim |
+| [New engine backend](#new-engine-backend) | **In progress** under [its own plan](PLAN_RT_BACKEND.md): Stages 0–6 done; Stage 7 native host done, composition root in progress; Stage 8 worklet module done, main-thread half and browser selection open; Stage 9 in progress, Stage 10 open | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend, which stays the default; finish the composition roots and documents, then validate B1–B12. Save/load and the other [parity gaps](#remaining-parity-gaps) stay with the legacy backend |
+| [Common transport / application integration](#proposed-next-work) | Proposed; the new engine backend's protocol is its first concrete instance, with in-process and MessagePort carriers | Scope IPC/network carriers and any common framework beyond that protocol before implementation; no production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
 
@@ -397,13 +397,81 @@ None of these is part of the plan as approved; each needs its own decision.
 - The draft loop book's chapters were updated to the new API; continuing the book is
   a separate decision.
 
+## New engine backend
+
+Commissioned by the user on 2026-10-30 and executed on this branch under its own
+[plan](PLAN_RT_BACKEND.md), which holds the goals, acceptance criteria B1–B12, stages,
+baseline and the revisions made during execution. The design is in
+[ARCHITECTURE.md](ARCHITECTURE.md#new-engine-backend); evidence goes to
+[VALIDATION.md](VALIDATION.md) in the final stage.
+
+### Status
+
+| Stage | State |
+| --- | --- |
+| 0 — Baseline | Done |
+| 1 — Capability descriptor and UI gating | Done |
+| 2 — Shared backend contract tests | Done |
+| 3 — Loop gain and balance in `shoop_loops` | Done |
+| 4 — Protocol (`shoop_rt_protocol`) | Done |
+| 5 — Engine (`shoop_rt_engine`) | Done; clearing a loop and changing its boundary smoothing at runtime were added to `shoop_loops` |
+| 6 — Adapter (`shoop_rt_backend`) | Done; the shared contracts, including the legacy timing reference, pass on the new stack |
+| 7 — Native host and application integration | Host (`shoop_rt_host_native`) done; the composition root is in progress |
+| 8 — Browser host | Worklet module (`shoop_rt_host_worklet`) and its build artifact done; the main-thread half, Web MIDI forwarding and browser selection are open |
+| 9 — Documents | In progress; user docs follow the composition roots |
+| 10 — End-to-end validation | Open; B1–B12 are not yet claimed |
+
+### Authority
+
+- The legacy backends (`NativeBackend` natively, `EngineBackend` in the browser)
+  remain the default, the only backend for features outside the core set and the
+  reference for timing equivalence. They report the full capability set; their
+  behaviour is unchanged apart from reporting capabilities and running the shared
+  contracts.
+- The new engine backend is opt-in: a restart-required setting and an
+  application-argument override choose it at startup. In a running application it
+  is authoritative for what it supports and refuses the rest; it never routes an
+  operation to the legacy engine, and changing backends needs a restart.
+- Within it, the `shoop_loops` resolver keeps musical authority, the engine owns the
+  signal chain and the adapter only maps and mirrors.
+- It is not delivered until Stage 10 has checked B1–B12. Render performance is not
+  gated in this milestone.
+
+### Remaining parity gaps
+
+The supported core set is in the plan's [scope](PLAN_RT_BACKEND.md#scope).
+Everything else is a gap:
+
+- **Refused and presented as unavailable:** saving sessions and loading sessions with
+  loop content (only structure-only documents of the core set, such as a new
+  session, are accepted), composite loops, grab, the replacing and both dry/wet
+  modes, dry/wet and processor tracks, track and bus FX, latency compensation and
+  take alignment, loop content import, loop length and timing edits, buses other
+  than Master, loops outside a track, and switching drivers while running (restart
+  with other settings instead).
+- **Out of scope:** JACK; IPC and network carriers (the protocol is designed for
+  them); capacity growth (pools are fixed segments sized at startup); render-path
+  benchmarking; the loop-library features in the
+  [loop features assessment](LOOP_FEATURES_ASSESSMENT.md) other than gain and
+  balance.
+- **Known differences:** the snapshot lags legacy by one callback, so a delayed
+  request within one callback of a wrap can be scheduled one cycle later
+  ([details](ARCHITECTURE.md#new-engine-backend)); telemetry fields are independent
+  latest values; waveform and MIDI detail reads arrive asynchronously in chunks.
+- **Host limits:** device discovery and driver configuration are local to the
+  native host, not protocol data, so an engine in another process needs them added;
+  separate input and output devices are bridged without resampling, so clock drift
+  shows as xruns; MIDI output is sent when the host's pump sees it, not placed
+  within the buffer; callbacks larger than the prepared maximum are rendered in
+  parts and counted.
+
 ## Proposed next work
 
 These are design directions, not authorized implementation checkboxes:
 
 1. Resolved by the [composable loop boundary](#composable-loop-boundary) work: see [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary). When a second planning domain is needed, compose planners explicitly rather than nesting runtimes.
-2. Define a bounded next service/protocol slice: one logical scenario through typed native calls, independent-memory AudioWorklet and native IPC. No three unrelated demos or premature universal protocol.
-3. After that foundation, scope an opt-in real application backend using existing UI/modules and the old backend as a selectable fallback/reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
+2. Define a bounded next service/protocol slice: one logical scenario through typed native calls, independent-memory AudioWorklet and native IPC. No three unrelated demos or premature universal protocol. The new engine backend's protocol already has the first two carriers; native IPC remains.
+3. In progress as the [new engine backend](#new-engine-backend), ahead of item 2's IPC carrier: an opt-in real application backend using existing UI/modules and the old backend as a selectable fallback/reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
 4. Close parity gaps driven by real workflows, then consider broader deployment. Full dry/wet, prerecord/preplay/latency windows, production plugins/devices, persistence/undo/scripting and network operation remain future work. The [loop features assessment](LOOP_FEATURES_ASSESSMENT.md) estimates the loop-library gaps and the decisions they need.
 5. A plan-linked execution extension is only a reviewed tooling proposal. Do not implement/configure one or create a second task authority under this documentation migration.
 

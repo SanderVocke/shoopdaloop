@@ -26,8 +26,12 @@ snapshot-status paragraphs there do not describe the current tree.
 | `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
 | `shoop_engine_service` | Native composition owning one runtime with the loop parts and independent DSP; typed loop/DSP controls through one ordered path, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
 | Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
-| Existing application | Existing backends, devices, sessions, UI, scripting, files and production browser hosting | Not migrated to this stack by these milestones |
-| Common modular protocol, service browser/IPC/network deployment | Proposed | Not implemented merely because test-host codecs or Wasm libraries exist |
+| `shoop_rt_engine` | The [new engine backend](#new-engine-backend)'s real-time composition: node enum over the loop parts and its strip/Master processors, segmented prepared pools, structural transactions, the bounded control endpoint and the render owner | Engine terms only; no application, legacy-engine or host dependency (boundary script); compiled once for every environment |
+| `shoop_rt_protocol` | Versioned plain-data schema, capability/limit descriptor, connection lifecycle, credited lanes, the in-process carrier and the binary record carrier | No semantics; no application or engine dependency |
+| `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices and pump audio/MIDI/messages: dummy and CPAL/midir natively; an import-free AudioWorklet module serving the record carrier | No engine or application semantics; no application dependency |
+| `shoop_rt_backend` | The application's `Backend` trait over a protocol client: ID mapping, state mirror, capability descriptor, structure-only session documents | Depends on the application API and the protocol, not on the engine or a host |
+| Existing application | Existing backends, devices, sessions, UI, scripting, files and production browser hosting | Legacy backends remain the default; only the opt-in new engine backend runs its core looping set on this stack |
+| Common modular protocol, service browser/IPC/network deployment | Proposed; the new engine backend's protocol is its first concrete instance | Not implemented merely because test-host codecs, Wasm libraries or that one protocol exist |
 
 The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop
 [task guides](src/rust/shoop_loops/README.md), DSP
@@ -35,6 +39,11 @@ The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop
 [README](src/rust/shoop_engine_service/README.md), and host
 [READMEs](tests/loops_host/README.md) are the public usage paths. They remain
 separate from planning and evidence, and are not rewritten by consolidation.
+The new engine backend's [engine](src/rust/shoop_rt_engine/README.md),
+[adapter](src/rust/shoop_rt_backend/README.md),
+[native host](src/rust/shoop_rt_host_native/README.md) and
+[worklet host](src/rust/shoop_rt_host_worklet/README.md) READMEs and the protocol's
+[crate documentation](src/rust/shoop_rt_protocol/src/lib.rs) are its usage paths.
 
 <a id="generic-rt-runtime"></a>
 
@@ -533,6 +542,7 @@ Select an eventual old/new backend at a clear lifecycle boundary; do not silentl
 route individual unsupported operations into another live engine. Start with a
 restricted real UI workflow after a credible composition/protocol slice, keep the
 old backend as fallback/reference, and let the parity map determine the next gaps.
+The [new engine backend](#new-engine-backend) is that restricted workflow.
 The complete session/device/plugin/persistence/undo/scripting/migration architecture
 remains undescribed at implementation depth.
 
@@ -552,6 +562,10 @@ UI / component clients
   -> local component control APIs
   -> one runtime / graph / render owner
 ```
+
+The [new engine backend](#new-engine-backend) is the first concrete instance: one
+protocol crate whose domain schemas (strips and mixer, loops, telemetry, bulk) are
+modules, to be split only when a component needs its own schema without the engine.
 
 The in-memory runtime transport moves compatible typed Rust owners; it is not
 serialization between independent heaps. The LTP1 payload and test-host codecs
@@ -589,6 +603,209 @@ samples/MIDI/outcomes, throughput/freshness, stalled clients and full ownership
 recovery compared. Start with one client/process and defined disconnect; general
 resumption, cross-machine deployment, production plugins and full session parity
 are separate work requiring approval. No such new deployment is claimed here.
+
+## New engine backend
+
+The new engine backend is an application `Backend` on this stack for the core
+looping set, natively and in the browser's AudioWorklet. It is opt-in: a
+restart-required setting and an application-argument override choose it at startup
+instead of the legacy backend, which stays the default. Its goals, criteria and
+stages are in its [plan](PLAN_RT_BACKEND.md); its status and parity gaps are in
+[PLAN.md](PLAN.md#new-engine-backend). The engine, protocol, adapter, native host and
+worklet module are implemented; the composition roots that select it and the
+browser's main-thread half are not complete.
+
+Here **Runtime** means `rt_runtime` only, **Engine** the application's real-time
+composition, **Host** environment glue (the worklet is one host) and **Backend** the
+application adapter.
+
+### Layers and transports
+
+```text
+Application side                            Engine side (same process or worklet; later another process or machine)
+shoop_egui / shoop_app
+  │ Backend trait
+shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
+  │ protocol client
+  ═══ T2: carrier (in-process call │ MessagePort records │ later IPC │ later network) ═══╗
+                                                                                       ║ carrier server
+                        shoop_rt_engine control endpoint (protocol → runtime commands, telemetry, bulk reads)
+                                │ T1: rt_runtime control/completion queues
+                        shoop_rt_engine render owner (one runtime process call per callback)
+                                │
+                        host: dummy, CPAL/midir │ AudioWorkletProcessor │ later a process main
+```
+
+| Layer | Crate | Responsibility |
+| --- | --- | --- |
+| Runtime | `rt_runtime` | Generic graph, scheduling, resources and the T1 queues |
+| Loop parts | `shoop_loops` | Musical timing, media and capture; the resolver keeps musical authority |
+| Engine | `shoop_rt_engine` | Node enum over the loop nodes and its own processors (gain, balance, mute, monitoring, meters, summing into Master), prepared pools, structural transactions, the control endpoint and the render owner |
+| Protocol | `shoop_rt_protocol` | Schema, capabilities and limits, connection lifecycle, lanes, carriers and the record codec. No semantics |
+| Hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` (later a process host) | Own the engine, open devices, pump audio, MIDI and messages. No semantics |
+| Adapter | `shoop_rt_backend` | `Backend` in protocol terms: ID mapping, state mirror, capability descriptor, session documents |
+
+The composition root (the native binary or the browser bootstrap) chooses a host and
+a carrier and hands the adapter a protocol client; the adapter does not know which
+environment it talks to. The engine, the protocol and the adapter exist once; hosts
+and carriers differ per environment and contain no semantics. Application concepts
+end at the adapter: the engine speaks strips, loop slots, host ports, routes,
+operations and telemetry, and the engine-side crates depend on no application or
+legacy crate, which `scripts/check_rt_engine_boundary.py` enforces.
+
+**T1** lies inside the engine, between the control endpoint and the render owner:
+`rt_runtime`'s lock-free, owning control and completion queues in one memory. The
+render owner makes one runtime `process` call per callback with absolute frames. It,
+the control endpoint, the driver callbacks and the worklet's render path do not
+allocate, free, lock or wait; hosts count xruns into telemetry.
+
+**T2** is the carrier between the adapter and the control endpoint:
+
+- The **in-process** carrier passes typed protocol values by direct call, without
+  serialization, so native traffic uses the same protocol and there is no second
+  control path. The control endpoint then runs on the adapter's thread, concurrently
+  with rendering, so the native host prepares the engine with a control lead of at
+  least one buffer: structural changes are scheduled far enough ahead for their ramps
+  to start on time.
+- The **record** carrier exchanges bounded, length-prefixed binary records over a
+  record port. The worklet host serves it over its `MessagePort` and runs the control
+  endpoint on the audio thread between render quanta; this is why the endpoint is
+  bounded and allocation-free in every environment.
+- IPC and network carriers are additive later work. The host opens devices where the
+  engine runs, so no audio crosses a carrier, and synchronized commands are in
+  musical time, so carrier latency only delays immediate actions.
+
+Environment bridges belong to hosts: midir ports natively; Web MIDI exists only on
+the browser's main thread, whose half of the browser host forwards timestamped MIDI
+to the worklet on its own lane beside the protocol records.
+
+### Protocol
+
+- **Handshake.** `Hello` carries the protocol version; the engine answers `Welcome`
+  with its capabilities, current limits and driver status, or `Rejected`. Versions
+  must match exactly.
+- **Capabilities and limits as values.** Capabilities are engine flags such as MIDI
+  injection, bulk MIDI reads and growable limits. Limits (pool sizes, channel and
+  host port counts, the largest callback, the client's credits) are current values,
+  not handshake constants; `LimitsChanged` replaces them during a connection.
+- **Lanes with credits.** The reliable lane carries requests with correlation IDs,
+  results, lifecycle and state, and never drops. The telemetry lane carries latest
+  values; a newer record supersedes an undelivered older one. The bulk lane carries
+  chunked content reads. Unanswered reliable requests and bulk reads each have
+  credits, which the client enforces and the engine checks, refusing excess requests
+  as overloaded. Admission is not success: a request's result is its execution's
+  outcome.
+- **Resynchronization.** On request the engine streams its confirmed state as
+  reliable records between begin and end markers, including which generations are in
+  use. A connecting adapter rebuilds its mirror from it: the host port inventory,
+  Master's controls and connections, and removal of engine strips the application
+  does not know.
+- **Disconnect.** The client's `Goodbye` ends the connection: queued requests are
+  discarded, transactions in progress complete without results, and the engine keeps
+  its state and keeps rendering. A new `Hello` reconnects and resynchronizes. The
+  engine ends a connection with a reason: shutdown, a render fault (output silenced
+  after a MIDI reset) or a protocol error (malformed framing). The adapter then
+  reports the driver as failed and refuses later operations. A dropped control
+  endpoint silences rendering after a MIDI reset, so a host can stop cleanly.
+- **IDs with generations.** Strips and loops are named by slot and generation.
+  Reusing a slot raises its generation, so a stale ID never addresses the new
+  occupant, and IDs are not indices bounded by an initial capacity. Host ports are
+  numbered from the inventory; Master is a named bus. The adapter reserves IDs on its
+  side; the engine validates them against its confirmed state.
+
+Driver status and the host port inventory are protocol data. Device discovery and
+driver configuration are local to the native host and its composition root; an
+engine in another process needs them added to the protocol.
+
+### Capabilities
+
+Two descriptors meet at the adapter. The engine's protocol capabilities describe the
+engine to the adapter. The application's capability descriptor
+(`BackendCapabilities` in `shoop_app_api`, re-exported by `shoop_backend`) names every
+optional feature outside the core looping workflow; the legacy backends report the
+full set, and the new engine backend reports none except MIDI injection when the
+engine announces it.
+
+The application presents unsupported features as unavailable: the UI disables or
+hides each action with the capability's explanation, and refusals and capacity errors
+reach the user as notifications. Documents, session loads and script operations that
+need an unsupported capability are rejected whole before anything is applied,
+including composite documents on a backend without composites. The backend refuses
+any remaining unsupported call with the same explanation; nothing is routed to
+another engine. The supported and refused sets are in
+[PLAN.md](PLAN.md#new-engine-backend).
+
+### Capacities
+
+Capacities are per epoch and can grow where the host allows: the render path is
+bounded at every instant, not for the engine's lifetime.
+
+- Engine pools are lists of segments of strip and loop slots. Each segment owns a
+  contiguous range of runtime nodes, and slot indices count through the segments.
+  Every slot's processors are prepared up front, but only occupied slots are in the
+  active graph and only existing loops in the loop topology, so inactive slots cost
+  no rendering or resolver work. An exhausted pool is refused with a visible message.
+- Growth follows the existing handover pattern: prepare another segment off-render,
+  hand it over through T1, activate it at a boundary, return the displaced owners for
+  release off-render and announce the new limits. A new segment moves no existing
+  slot, and limits and IDs already allow it, so growth in the engine and the adapter
+  is additive.
+- Whether limits can grow is an engine capability that depends on the host. Native
+  hosts, including a later separate process, can grow; the browser worklet stays
+  bounded by its preallocated maximum.
+- This milestone prepares all segments at startup, from settings natively and from
+  the worklet's preparation record, and announces no growth. Growing `rt_runtime`'s
+  executor tables and resource store and `shoop_loops`' ledger and resolver state is
+  later work inside those crates.
+
+### Structural changes without interruption
+
+Graph, topology, node-pair and capacity changes never interrupt audio. The engine
+runs one structural transaction at a time and holds back later requests until its
+activation is confirmed:
+
+1. Prepare off-render without touching the music: node-pair edits, a validated LTP1
+   timing image of the new loop topology and a staged graph in a prepared plan.
+2. Activate at an exact frame within normal callbacks. An added strip or loop starts
+   there with reset processors; a removed one first fades its output or loop fader
+   over a prepared ramp and stops its loops.
+3. Switch connections and routes between two prepared banks per strip and for
+   Master: the new set goes to the silent bank and the banks cross-fade at the
+   activation frame, so unchanged destinations keep their signal, removed ones fade
+   out and added ones fade in. MIDI connections change at the activation frame.
+4. Return the displaced timing image, node-pair bank and graph plan to their prepared
+   slots, so slots are handed over indefinitely.
+
+A sync-source change activates a new timing topology; pending delayed transitions of
+that loop fail, as the loop planner revalidates them. Changing the audio device,
+sample rate or buffer size is the only operation that restarts audio: an explicit
+lifecycle operation that stops the host and prepares the engine again, never a side
+effect of editing tracks or loops. Switching drivers while running is refused;
+restart with other settings instead.
+
+### Asynchronous observation
+
+Natively as in the browser, every mutation returns at once. The adapter reserves IDs,
+queues requests within its credits and confirms changes in its mirror from results,
+telemetry and resynchronization; engine refusals become `mutation_failures`. `poll`
+assembles the snapshot from confirmed values and the latest telemetry and never waits
+on rendering. Telemetry fields are independent latest values, not one coherent cut.
+Waveform and MIDI detail reads are chunked bulk reads that return nothing until their
+content has arrived.
+
+Transitions keep the legacy semantics: `cycles_delay` maps onto sync-source pulses (a
+delay of `n` applies at the `(n+1)`-th pulse), a nearer planned transition supersedes
+later ones, a loop without a sync source counts its own wraps, and one that is not
+playing transitions at once. Shared backend contract tests with the legacy timing
+reference show equal transition frames, loop lengths and recorded content.
+
+**Known difference: one-callback observation lag.** The snapshot describes the state
+at the start of the last rendered callback, one callback behind legacy, which
+describes the next frame to render. The timing harness declares this lag. Because the
+application derives delays from `position / sync_length`, a request within one
+callback of a wrap can be scheduled one cycle later than on legacy. Reporting the
+state at the end frame would need the resolver to decide that boundary early; this is
+left for later work.
 
 ## Planning and execution tools
 
