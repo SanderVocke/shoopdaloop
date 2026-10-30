@@ -8,7 +8,12 @@ Draft opening of the replacement book. The existing documentation remains unchan
 - [2. Preparing an audio loop](part-1-record-and-play-audio/02-preparing-an-audio-loop.md)
 - [3. Recording, playing, and stopping](part-1-record-and-play-audio/03-recording-playing-and-stopping.md)
 
-## Run the example
+## Part II — Steer one loop
+
+- [4. Seeking and iterations](part-2-steer-one-loop/04-seeking-and-iterations.md)
+- [5. Recording over existing content](part-2-steer-one-loop/05-recording-over-existing-content.md)
+
+## Run the examples
 
 The [first loop example](examples/first_loop.rs) records three stereo frames, plays them immediately, wraps, and stops. It checks the samples, request outcomes, and resource recovery without an audio device.
 
@@ -18,7 +23,9 @@ Run it from the repository root:
 cargo run --locked --manifest-path src/rust/shoop_loops/docs-new/examples/Cargo.toml --bin first_loop
 ```
 
-Add `--release` for the optimized build. The example has a separate Cargo manifest so this draft does not change the library's existing examples or workspace configuration.
+The [seek example](examples/seek_loop.rs) and the [overdub example](examples/overdub_loop.rs) run the same way with `--bin seek_loop` and `--bin overdub_loop`.
+
+Add `--release` for the optimized build. The examples have a separate Cargo manifest so this draft does not change the library's existing examples or workspace configuration.
 
 ## Terms used in this book
 
@@ -35,3 +42,6 @@ Add `--release` for the optimized build. The example has a separate Cargo manife
 | Control endpoint / runtime | The control side submits requests and collects results; the render side owns the running loops and processes buffers. |
 | Admission | The runtime's report that a request was accepted for delivery. |
 | Execution | The musical result of a request, reported at its actual boundary. |
+| Seek | Move the play position inside the current content without restarting playback. |
+| Iteration | How many times a loop has wrapped; iteration 1 begins at the first wrap. |
+| Overdub / `monitor_previous` | Record a new take while the previous take keeps playing. |

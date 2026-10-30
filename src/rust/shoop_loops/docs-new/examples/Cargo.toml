@@ -13,3 +13,11 @@ shoop_loops = { path = "../.." }
 [[bin]]
 name = "first_loop"
 path = "first_loop.rs"
+
+[[bin]]
+name = "seek_loop"
+path = "seek_loop.rs"
+
+[[bin]]
+name = "overdub_loop"
+path = "overdub_loop.rs"
