@@ -31,6 +31,7 @@ Compile plans and prepare processors or resource buffers off-render. This reques
 
 ```rust
     let first = control
+        // Submit an owning request: the runtime returns it with its outcome and any retired object.
         .submit(
             Lane::Normal,
             Command::commit(runtime.epoch(), compile(runtime.catalog(), &description)?),

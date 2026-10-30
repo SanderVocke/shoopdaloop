@@ -53,7 +53,7 @@ fn immutable_prefixes() -> Result<(), Error> {
     let mut store = prepare(8)?;
     store.begin_callback();
     let audio = store.create()?;
-// Capture appends contiguous intervals at absolute frames; a snapshot pins the actual prefix.
+    // Capture appends contiguous intervals at absolute frames; a snapshot pins the actual prefix.
     let capture = store.begin_capture(
         audio,
         Revision(0),

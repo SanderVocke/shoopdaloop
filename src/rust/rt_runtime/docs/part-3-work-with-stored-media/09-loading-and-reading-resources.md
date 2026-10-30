@@ -35,6 +35,7 @@ Create a resource, then describe the upload:
         frames: 5,
         bytes: bytes.len(),
     };
+    // Begin an upload: describe format and byte length; this reserves pages but does not publish.
     let upload = store.begin_upload(resource, expected, description)?;
 ```
 

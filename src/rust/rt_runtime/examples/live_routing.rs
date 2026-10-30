@@ -169,7 +169,7 @@ fn main() -> Result<(), Error> {
             audio(node(b), host(1)),
         ],
     };
-// Compile a candidate off-render; committing it validates incrementally over callbacks.
+    // Compile a candidate off-render; committing it validates incrementally over callbacks.
     let plan = compile(runtime.catalog(), &only_b)?;
     let ticket = control
         .submit(Lane::Normal, Command::commit(runtime.epoch(), plan))

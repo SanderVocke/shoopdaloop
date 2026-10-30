@@ -35,7 +35,7 @@ fn upload(
         frames: 5,
         bytes: bytes.len(),
     };
-// Begin an upload: describe format and byte length; this reserves pages but does not publish.
+    // Begin an upload: describe format and byte length; this reserves pages but does not publish.
     let upload = store.begin_upload(resource, expected, description)?;
     for (index, chunk) in bytes.chunks(16).enumerate() {
         assert_no_heap(|| {
@@ -102,15 +102,15 @@ fn main() -> Result<(), Error> {
         .flat_map(|sample| (-sample).to_le_bytes())
         .collect();
     let first = upload(&mut store, resource, Revision(0), &original)?;
-// commit makes the finished revision active; finish alone only checks completeness.
+    // commit makes the finished revision active; finish alone only checks completeness.
     assert_eq!(store.commit(first)?, Revision(1));
-// Pin the current revision: the snapshot stays readable even after replacement.
+    // Pin the current revision: the snapshot stays readable even after replacement.
     let old = store.snapshot(resource, Frame(0))?;
     let index = store.read_index(old.id)?;
     let second = upload(&mut store, resource, Revision(1), &replacement)?;
     assert_eq!(store.commit(second)?, Revision(2));
     let newest = store.snapshot(resource, Frame(1))?;
-// After publishing revision 2, the pinned revision 1 is stale but still readable.
+    // After publishing revision 2, the pinned revision 1 is stale but still readable.
     assert_eq!(store.currentness(old.id)?, Currentness::Stale);
     assert_eq!(read_all(&mut store, old)?, original);
     assert_eq!(read_all(&mut store, newest)?, replacement);
@@ -122,7 +122,7 @@ fn main() -> Result<(), Error> {
         let mut spent = store.cursor(old.id)?;
         assert_eq!(store.read(&mut spent, &mut scratch)?, 16);
         assert_eq!(store.copy_remaining(), 0);
-// Required render-side reads use a separate counter and are not throttled by optional copy budget.
+        // Required render-side reads use a separate counter and are not throttled by optional copy budget.
         let mut required = store.cursor(old.id)?;
         assert_eq!(store.read(&mut required, &mut scratch), Err(Error::Budget));
         assert_eq!(required.position(), 0);

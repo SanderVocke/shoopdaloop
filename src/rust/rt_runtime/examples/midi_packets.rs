@@ -282,7 +282,7 @@ fn main() -> Result<(), Error> {
     overflow_recovery()?;
     let mut packets = MidiBuffer::new(2, 8)?;
     assert_no_heap(|| {
-// Packets are complete and carry an offset within the current interval.
+        // Packets are complete and carry an offset within the current interval.
         packets.push(0, 4, &[0x90, 60, 100])?;
         assert_eq!(packets.push(1, 4, &[0x80, 60]), Err(Error::InvalidEvent));
         assert_eq!(packets.len(), 1);

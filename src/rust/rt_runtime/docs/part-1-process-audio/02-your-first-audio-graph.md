@@ -71,6 +71,7 @@ Compile and activate the initial graph during preparation:
 
 ```rust
     let resources = ResourceStore::new(config)?;
+    // Install the graph at prepare time: epoch 1, frame 0, no warm-up callback.
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
         vec![PreparedNode::new(node, Gain(0.5))],
@@ -93,6 +94,7 @@ This constructor returns an active graph at epoch 1 and frame 0. It does not run
 ```rust
     let input = [1.0, 0.5, -1.0, 0.0, 0.25, -0.5, 2.0, -2.0];
     let mut output = [0.0; 8];
+    // Render one borrowed 8-frame block; the runtime only borrows the buffers for the call.
     assert_no_heap(|| {
         runtime.process(
             AudioBlock {
@@ -107,6 +109,7 @@ This constructor returns an active graph at epoch 1 and frame 0. It does not run
             },
         )
     })?;
+    // Each input sample halved.
     assert_eq!(output, [0.5, 0.25, -0.5, 0.0, 0.125, -0.25, 1.0, -1.0]);
     assert_eq!(runtime.next_frame(), Frame(8));
 ```
