@@ -22,6 +22,7 @@ exports = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_rt_transport_message_port = { path = "../shoop_rt_transport_message_port" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 # For the audio and MIDI buffer types of the render owner's callback.
 rt_runtime = { path = "../rt_runtime" }

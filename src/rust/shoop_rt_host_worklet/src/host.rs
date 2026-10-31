@@ -5,13 +5,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::config::{ConfigError, WorkletConfig};
-use crate::framing;
 use crate::lane::{self, MidiEvent};
-use crate::stream::{Batch, Stream};
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_rt_engine::{ControlEndpoint, HostStatus, PrepareError, Render, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
-use shoop_rt_transport::carrier::{CarrierError, RecordPort, RecordServer};
+use shoop_rt_transport::buffer::{Batch, Stream};
+use shoop_rt_transport::carrier::RecordServer;
+use shoop_rt_transport_message_port::server::{RecordLanes, Records};
 
 /// Lanes the main thread posts into.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,48 +74,6 @@ pub struct Counters {
 
 fn bump(counter: &mut u32) {
     *counter = counter.saturating_add(1);
-}
-
-struct Records {
-    inbox: Stream,
-    outbox: Batch,
-    framing_errors: u32,
-}
-
-/// The record lanes, shared by the record server, which owns a handle as its
-/// port, and the host, which exposes their buffers to the script.
-#[derive(Clone)]
-struct RecordLanes(Rc<RefCell<Records>>);
-
-impl RecordPort for RecordLanes {
-    fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
-        if self.0.borrow_mut().outbox.push(record) {
-            Ok(())
-        } else {
-            Err(CarrierError::Full)
-        }
-    }
-
-    fn take(&mut self, buf: &mut [u8]) -> Option<usize> {
-        let mut records = self.0.borrow_mut();
-        let pending = records.inbox.pending();
-        match framing::record_len(pending) {
-            Ok(None) => None,
-            Ok(Some(len)) if len <= buf.len() => {
-                buf[..len].copy_from_slice(&pending[..len]);
-                records.inbox.consume(len);
-                Some(len)
-            }
-            _ => {
-                // The stream cannot be split any further. The invalid header makes
-                // the server end the connection with a protocol error.
-                buf[..2].copy_from_slice(&pending[..2]);
-                records.inbox.clear();
-                bump(&mut records.framing_errors);
-                Some(2)
-            }
-        }
-    }
 }
 
 /// The browser host: the engine, its record server and the buffers the

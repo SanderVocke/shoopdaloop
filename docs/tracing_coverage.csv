@@ -256,12 +256,12 @@ src/rust/shoop_rt_host_native/src/midir_ports.rs,native_engine_host,instrumented
 src/rust/shoop_rt_host_native/src/status.rs,native_engine_host,excluded,Atomic counters and driver state written from callbacks; no execution boundary to instrument.
 src/rust/shoop_rt_host_worklet/src/abi.rs,browser_engine_host,excluded,"Import-free module exports called on the audio thread; preparation and render failures are returned as status codes, which the processor script posts to the traced main-thread half."
 src/rust/shoop_rt_host_worklet/src/config.rs,browser_engine_host,excluded,Plain configuration record encoding and validation; the main-thread half traces preparation failures.
-src/rust/shoop_rt_host_worklet/src/framing.rs,browser_engine_host,excluded,Allocation-free record framing over postMessage; framing errors are counted and end the connection with a protocol error.
+src/rust/shoop_rt_transport/src/framing.rs,browser_engine_host,excluded,Allocation-free record framing over postMessage; framing errors are counted and end the connection with a protocol error.
 src/rust/shoop_rt_host_worklet/src/host.rs,browser_engine_host,excluded,"Pumps the record server and renders on the audio thread, which must not trace; xruns, load, MIDI drops and faults are reported through counters and engine telemetry."
 src/rust/shoop_rt_host_worklet/src/lane.rs,browser_engine_host,excluded,Plain MIDI lane event encoding; drops are counted by the host.
 src/rust/shoop_rt_host_worklet/src/lib.rs,browser_engine_host,excluded,Module declarations and re-exports.
 src/rust/shoop_rt_host_worklet/src/main_thread.rs,browser_engine_host,excluded,"Browser-independent record batches, MIDI lane batching, timestamp conversion and port naming; the application's browser glue traces preparation, connection and failures."
-src/rust/shoop_rt_host_worklet/src/stream.rs,browser_engine_host,excluded,Fixed-capacity byte buffers shared with the processor script; no execution boundary to instrument.
+src/rust/shoop_rt_transport/src/buffer.rs,browser_engine_host,excluded,Fixed-capacity byte buffers shared with the processor script; no execution boundary to instrument.
 src/rust/shoop_rt_transport/src/carrier.rs,engine_protocol,excluded,Bounded queues and carriers without semantics; the engine host and adapter trace connection lifecycle.
 src/rust/shoop_rt_transport/src/client.rs,engine_protocol,excluded,Plain-data client state and credit accounting; the application adapter owns tracing of requests and outcomes.
 src/rust/shoop_rt_protocol/src/codec.rs,engine_protocol,excluded,Bounded record encoding and decoding without I/O or allocation; carriers and adapters trace transport failures.
@@ -271,3 +271,7 @@ src/rust/shoop_rt_protocol/src/message.rs,engine_protocol,excluded,Plain message
 src/rust/shoop_rt_protocol/src/schema.rs,engine_protocol,excluded,Plain request, outcome, telemetry, state and bulk values.
 src/rust/shoop_rt_transport/src/lib.rs,engine_transport,excluded,Portable transport module declarations.
 src/rust/shoop_rt_transport/src/contracts.rs,test_infrastructure,excluded,Feature-gated carrier fixtures and assertions for test hosts.
+src/rust/shoop_rt_transport_message_port/src/lib.rs,engine_transport,excluded,MessagePort carrier adapter; lifecycle is traced by its host and application.
+src/rust/shoop_rt_transport_message_port/src/client.rs,engine_transport,excluded,MessagePort carrier adapter; lifecycle is traced by its host and application.
+src/rust/shoop_rt_transport_message_port/src/server.rs,engine_transport,excluded,MessagePort carrier adapter; lifecycle is traced by its host and application.
+src/rust/shoop_rt_transport_message_port/src/browser.rs,engine_transport,excluded,MessagePort carrier adapter; lifecycle is traced by its host and application.

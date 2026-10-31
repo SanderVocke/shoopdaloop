@@ -19,7 +19,7 @@ SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
-    "shoop_rt_host_native", "shoop_rt_host_worklet",
+    "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
 )
 FORBIDDEN = {
     "shoop_app", "shoop_app_api", "shoop_backend", "shoop_engine", "shoop_egui",
@@ -37,6 +37,8 @@ def violations(tree: str, package: str | None = None) -> list[str]:
             ("shoop_rt_host_", "shoop_rt_transport_")
         ))
         forbidden.update({"cpal", "midir", "iceoryx2", "web-sys", "js-sys", "wasm-bindgen"})
+    if package and package.startswith("shoop_rt_transport_"):
+        forbidden.update({"shoop_rt_engine", "shoop_loops", "rt_runtime"})
     if package == "shoop_rt_protocol":
         forbidden.add("shoop_rt_transport")
     return sorted(names & forbidden)

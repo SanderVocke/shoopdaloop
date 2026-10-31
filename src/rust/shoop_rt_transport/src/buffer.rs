@@ -5,55 +5,52 @@ use crate::framing::FramingError;
 /// An inbound byte stream. The script appends at [`Stream::len`] and commits; the
 /// host consumes from the front and compacts once per quantum, so appended bytes
 /// may split records or events anywhere.
-pub(crate) struct Stream {
+pub struct Stream {
     bytes: Box<[u8]>,
     start: usize,
     end: usize,
 }
 
 impl Stream {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             bytes: vec![0; capacity].into_boxed_slice(),
             start: 0,
             end: 0,
         }
     }
-    #[cfg(feature = "exports")]
-    pub(crate) fn as_mut_ptr(&mut self) -> *mut u8 {
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
         self.bytes.as_mut_ptr()
     }
-    #[cfg(feature = "exports")]
-    pub(crate) fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> usize {
         self.bytes.len()
     }
     /// Offset of the next appended byte.
-    #[cfg(any(test, feature = "exports"))]
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.end
     }
-    pub(crate) fn free_mut(&mut self) -> &mut [u8] {
+    pub fn free_mut(&mut self) -> &mut [u8] {
         &mut self.bytes[self.end..]
     }
     /// Accept `count` bytes written at [`Stream::len`].
-    pub(crate) fn commit(&mut self, count: usize) -> bool {
+    pub fn commit(&mut self, count: usize) -> bool {
         if count > self.bytes.len() - self.end {
             return false;
         }
         self.end += count;
         true
     }
-    pub(crate) fn pending(&self) -> &[u8] {
+    pub fn pending(&self) -> &[u8] {
         &self.bytes[self.start..self.end]
     }
-    pub(crate) fn consume(&mut self, count: usize) {
+    pub fn consume(&mut self, count: usize) {
         self.start = (self.start + count).min(self.end);
     }
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.start = 0;
         self.end = 0;
     }
-    pub(crate) fn compact(&mut self) {
+    pub fn compact(&mut self) {
         self.bytes.copy_within(self.start..self.end, 0);
         self.end -= self.start;
         self.start = 0;
@@ -63,7 +60,7 @@ impl Stream {
     /// keep, and compact. `visit` sees the bytes from an item's start and returns
     /// its length and whether to keep it, or `None` when it is incomplete. A
     /// framing error drops everything from the failing item on.
-    pub(crate) fn retain(
+    pub fn retain(
         &mut self,
         mut visit: impl FnMut(&[u8]) -> Result<Option<(usize, bool)>, FramingError>,
     ) -> Result<(), FramingError> {
@@ -93,33 +90,31 @@ impl Stream {
 
 /// An outbound batch that the host fills during one quantum and the script posts
 /// after it.
-pub(crate) struct Batch {
+pub struct Batch {
     bytes: Box<[u8]>,
     len: usize,
 }
 
 impl Batch {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             bytes: vec![0; capacity].into_boxed_slice(),
             len: 0,
         }
     }
-    #[cfg(feature = "exports")]
-    pub(crate) fn as_ptr(&self) -> *const u8 {
+    pub fn as_ptr(&self) -> *const u8 {
         self.bytes.as_ptr()
     }
-    #[cfg(feature = "exports")]
-    pub(crate) fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> usize {
         self.bytes.len()
     }
-    pub(crate) fn as_slice(&self) -> &[u8] {
+    pub fn as_slice(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.len = 0;
     }
-    pub(crate) fn push(&mut self, data: &[u8]) -> bool {
+    pub fn push(&mut self, data: &[u8]) -> bool {
         self.write(|free| {
             let target = free.get_mut(..data.len())?;
             target.copy_from_slice(data);
@@ -127,7 +122,7 @@ impl Batch {
         })
     }
     /// Append what `encode` writes to the start of the free space, if it fits.
-    pub(crate) fn write(&mut self, encode: impl FnOnce(&mut [u8]) -> Option<usize>) -> bool {
+    pub fn write(&mut self, encode: impl FnOnce(&mut [u8]) -> Option<usize>) -> bool {
         match encode(&mut self.bytes[self.len..]) {
             Some(count) => {
                 self.len += count;

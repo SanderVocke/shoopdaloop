@@ -108,7 +108,7 @@ mod platform {
     use shoop_egui::{AudioDriverState, NewEnginePools};
     use shoop_rt_backend::{NoWait, RtBackend};
     use shoop_rt_host_worklet::lane::{self, MidiEvent};
-    use shoop_rt_host_worklet::main_thread::{MidiClock, MidiInBatch, RecordBatches};
+    use shoop_rt_host_worklet::main_thread::{MidiClock, MidiInBatch};
     use shoop_rt_protocol::DisconnectReason;
     use shoop_rt_transport::carrier::{CarrierError, RecordClient, RecordPort};
     use shoop_rt_transport::client::ProtocolClient;
@@ -141,100 +141,44 @@ mod platform {
 
     pub type NewEngineBackend = RtBackend<RecordClient<SharedPort>, NoWait>;
 
-    /// What the main thread posts to the processor, collected during one turn.
-    struct Outgoing {
-        records: RecordBatches,
-        midi: MidiInBatch,
-        target: MessagePort,
-        flush_scheduled: bool,
-    }
-
-    /// The protocol client's record port over the processor's `MessagePort`. Records and
-    /// MIDI posted during a main-thread turn leave together at its end.
     #[derive(Clone)]
-    pub struct SharedPort(Rc<RefCell<Outgoing>>);
-
+    pub struct SharedPort {
+        records: shoop_rt_transport_message_port::browser::Port,
+        midi: Rc<RefCell<MidiInBatch>>,
+    }
     impl SharedPort {
         fn new(target: MessagePort, midi_capacity: usize) -> Self {
-            Self(Rc::new(RefCell::new(Outgoing {
-                records: RecordBatches::new(),
-                midi: MidiInBatch::new(midi_capacity),
+            let midi = Rc::new(RefCell::new(MidiInBatch::new(midi_capacity)));
+            let outgoing = midi.clone();
+            let records = shoop_rt_transport_message_port::browser::Port::with_sideband(
                 target,
-                flush_scheduled: false,
-            })))
+                "midi",
+                Box::new(move || outgoing.borrow_mut().take()),
+            );
+            Self { records, midi }
         }
-
         fn receive(&self, batch: &[u8]) {
-            self.0.borrow_mut().records.receive(batch);
+            self.records.receive(batch);
         }
-
         fn close(&self, reason: DisconnectReason) {
-            self.0.borrow_mut().records.close(reason);
+            self.records.close(reason);
         }
-
         fn push_midi(&self, event: MidiEvent<'_>) {
-            if self.0.borrow_mut().midi.push(event) {
-                self.schedule_flush();
+            if self.midi.borrow_mut().push(event) {
+                self.records.request_flush();
             }
         }
-
         fn midi_dropped(&self) -> u64 {
-            self.0.borrow().midi.dropped()
-        }
-
-        fn schedule_flush(&self) {
-            {
-                let mut outgoing = self.0.borrow_mut();
-                if outgoing.flush_scheduled {
-                    return;
-                }
-                outgoing.flush_scheduled = true;
-            }
-            let port = self.clone();
-            spawn_local(async move { port.flush() });
-        }
-
-        fn flush(&self) {
-            let (target, records, midi) = {
-                let mut outgoing = self.0.borrow_mut();
-                outgoing.flush_scheduled = false;
-                (
-                    outgoing.target.clone(),
-                    outgoing.records.take_outgoing(),
-                    outgoing.midi.take(),
-                )
-            };
-            for (kind, bytes) in [("records", records), ("midi", midi)] {
-                let Some(bytes) = bytes else {
-                    continue;
-                };
-                if let Err(error) = post_bytes(&target, kind, &bytes) {
-                    tracing::error!(error = ?error, kind, "frontend.new_engine.post_failed");
-                    self.close(DisconnectReason::Fault);
-                    return;
-                }
-            }
+            self.midi.borrow().dropped()
         }
     }
-
     impl RecordPort for SharedPort {
         fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
-            self.0.borrow_mut().records.post(record)?;
-            self.schedule_flush();
-            Ok(())
+            self.records.post(record)
         }
-
         fn take(&mut self, buf: &mut [u8]) -> Option<usize> {
-            self.0.borrow_mut().records.take(buf)
+            self.records.take(buf)
         }
-    }
-
-    fn post_bytes(target: &MessagePort, kind: &str, bytes: &[u8]) -> Result<(), JsValue> {
-        let buffer = Uint8Array::from(bytes).buffer();
-        let message = Object::new();
-        Reflect::set(&message, &"kind".into(), &kind.into())?;
-        Reflect::set(&message, &"bytes".into(), &buffer)?;
-        target.post_message_with_transferable(&message, &Array::of1(&buffer))
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]

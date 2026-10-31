@@ -727,3 +727,27 @@ transport's `contracts` feature. No message or execution semantics changed.
   inventory: passed. Miri registration retains the five original protocol cases
   as two codec cases and three carrier cases in their respective packages; Miri
   execution remains a final-stage gate.
+
+
+### Stage 2: MessagePort transport extraction
+
+`shoop_rt_transport_message_port` contains both record-port halves and optional
+main-thread browser bindings. Common record framing and prepared byte buffers
+moved into `shoop_rt_transport`. Worklet configuration/ABI, device MIDI lanes and
+rendering remain in the host. The app's MIDI wrapper delegates record delivery
+and scheduled batch posting to the extracted carrier.
+
+- `cargo test -p shoop_rt_transport -p shoop_rt_transport_message_port -p shoop_rt_host_worklet`:
+  30 passed, including a MessagePort adapter running the shared lifecycle,
+  credit/backpressure and bulk contract.
+- Warnings-denied worklet Wasm build and Node artifact/import contract: passed.
+  The MessagePort crate's `browser` feature and full `shoopdaloop` application
+  also pass warnings-denied `wasm32-unknown-unknown` checks.
+- `NO_COLOR=true trunk build` with Trunk 0.21.14: passed (peak RSS 2278.3 MiB).
+  Independent hook invocations preserve the worklet's feature/import isolation.
+- `CHROME_BIN=/usr/bin/chromium NEW_ENGINE=1 node browser_smoke.mjs`, from the
+  application directory: actual hosted Chromium core workflow passed at 900x600,
+  including synchronized audio, immediate MIDI, waveform/detail reads, stop and
+  clear, with zero reported xruns; peak session RSS 1974.8 MiB. Fake microphone
+  input was used; this does not certify real audio/MIDI hardware.
+- Updated boundary audit, test-attribute policy and closed tracing inventory pass.

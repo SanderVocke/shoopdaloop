@@ -4513,6 +4513,7 @@ dependencies = [
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",
+ "shoop_rt_transport_message_port",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4533,6 +4534,20 @@ dependencies = [
  "shoop_rt_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_transport_message_port"
+version = "0.3.0"
+dependencies = [
+ "js-sys",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
 ]
 
 [[package]]
@@ -4696,6 +4711,7 @@ dependencies = [
  "shoop_rt_host_worklet",
  "shoop_rt_protocol",
  "shoop_rt_transport",
+ "shoop_rt_transport_message_port",
  "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",

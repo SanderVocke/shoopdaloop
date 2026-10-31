@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0 and 1 are verified locally;
-Stage 2 is next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0–2 are verified locally;
+Stage 3 is next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -356,13 +356,13 @@ dependencies in protocol/transport, and no duplicate client/server implementatio
 
 ### Stage 2 — Extract the MessagePort transport
 
-- [ ] Create `shoop_rt_transport_message_port` with both record-port halves and
+- [x] Create `shoop_rt_transport_message_port` with both record-port halves and
       reusable MessagePort batching, delivery and error glue. Reuse the common
       record adapters and framing; preserve existing browser delivery behaviour.
-- [ ] Remove the extracted implementations from `shoop_rt_host_worklet` and
+- [x] Remove the extracted implementations from `shoop_rt_host_worklet` and
       `browser_rt_audio.rs`; keep worklet ABI/preparation, audio/MIDI device lanes
       and rendering in the host, and app settings/orchestration in the app.
-- [ ] Isolate browser-binding dependencies behind the main-thread feature and
+- [x] Isolate browser-binding dependencies behind the main-thread feature and
       expose a worklet-side build without them. Extend the carrier contracts and
       dependency audits to the new package and both feature configurations.
 

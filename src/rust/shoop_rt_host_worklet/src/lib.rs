@@ -25,11 +25,10 @@ static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
 #[cfg(feature = "exports")]
 pub mod abi;
 pub mod config;
-pub mod framing;
+pub use shoop_rt_transport::framing;
 mod host;
 pub mod lane;
 pub mod main_thread;
-mod stream;
 
 pub use config::{ConfigError, WorkletConfig};
 pub use host::{Counters, Inbound, Outbound, PrepareFailure, Quantum, QuantumError, WorkletHost};
