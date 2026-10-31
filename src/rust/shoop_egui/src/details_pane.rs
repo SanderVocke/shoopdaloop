@@ -13,6 +13,7 @@ pub(crate) struct MediaView {
 pub(crate) struct MediaWidgetResponse {
     pub rect: egui::Rect,
     pub pan_frames: f64,
+    pub zoom_delta: f32,
     pub clicked_frame: Option<i64>,
 }
 
@@ -413,6 +414,7 @@ impl DetailsPane {
 
         let media_view = self.media_view.view(bounds);
         let mut pan_frames = 0.0;
+        let mut zoom_delta = 1.0_f32;
         let mut clicked_frame = None;
         self.waveforms
             .resize_with(details.channels.len(), WaveformWidget::default);
@@ -443,6 +445,9 @@ impl DetailsPane {
                             height,
                         );
                         pan_frames += response.pan_frames;
+                        if response.zoom_delta != 1.0 {
+                            zoom_delta = response.zoom_delta;
+                        }
                         clicked_frame = clicked_frame.or(response.clicked_frame);
                         self.lane_heights[lane_index] = resize_lane(ui, response.rect, height);
                         lane_index += 1;
@@ -461,12 +466,21 @@ impl DetailsPane {
                             height,
                         );
                         pan_frames += response.pan_frames;
+                        if response.zoom_delta != 1.0 {
+                            zoom_delta = response.zoom_delta;
+                        }
                         clicked_frame = clicked_frame.or(response.clicked_frame);
                         self.lane_heights[lane_index] = resize_lane(ui, response.rect, height);
                         lane_index += 1;
                     }
                 });
             });
+        if zoom_delta != 1.0 {
+            self.media_view.set_zoom(
+                (self.media_view.zoom * zoom_delta).clamp(MIN_ZOOM, MAX_ZOOM),
+                bounds,
+            );
+        }
         self.media_view.offset = media_view.start_frame + pan_frames;
         let Some((tool, frame)) = self.edit_tool.zip(clicked_frame) else {
             return Vec::new();

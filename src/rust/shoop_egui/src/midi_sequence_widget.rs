@@ -106,6 +106,16 @@ impl MidiSequenceWidget {
         } else {
             0.0
         };
+        let (scroll_pan, zoom_delta) = if response.hovered() {
+            let input = ui
+                .ctx()
+                .input(|input| (input.smooth_scroll_delta().x, input.zoom_delta()));
+            (input.0, input.1)
+        } else {
+            (0.0, 1.0)
+        };
+        let pan_frames = pan_frames
+            - f64::from(scroll_pan) * view.visible_frames() / f64::from(rect.width().max(1.0));
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
@@ -184,6 +194,7 @@ impl MidiSequenceWidget {
         MediaWidgetResponse {
             rect,
             pan_frames,
+            zoom_delta,
             clicked_frame: editing
                 .then(|| response.interact_pointer_pos())
                 .flatten()
