@@ -2206,17 +2206,13 @@ impl ApplicationModel {
                 self.status.xruns = 0;
                 Ok(())
             }
-<<<<<<< HEAD
             AppIntent::DismissNotification { id } => {
                 self.dismiss_notification(id);
                 Ok(())
             }
-            AppIntent::RequestNewSession => self.begin_new_session(),
-=======
             AppIntent::RequestNewSession => self
                 .stop_click_track_preview(backend)
                 .and_then(|()| self.begin_new_session()),
->>>>>>> origin/master
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoadSessionUrl

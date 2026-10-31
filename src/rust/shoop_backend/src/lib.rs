@@ -1163,10 +1163,6 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
-<<<<<<< HEAD
-    /// Whether the backend schedules composite loops itself; otherwise the application does.
-    /// Implies `BackendCapability::CompositeLoops`.
-=======
     fn supports_audio_preview(&self) -> bool {
         false
     }
@@ -1185,7 +1181,8 @@ pub trait Backend {
         None
     }
 
->>>>>>> origin/master
+    /// Whether the backend schedules composite loops itself; otherwise the application does.
+    /// Implies `BackendCapability::CompositeLoops`.
     fn supports_composite_loops(&self) -> bool {
         false
     }
