@@ -1,6 +1,6 @@
 #![cfg(target_os = "linux")]
 
-use shoop_engine::carla_processor::{spawn_processor_bridge, CarlaProcessor, FakeCarlaProcessor};
+use shoop_engine::carla_processor::{spawn_processor_bridge, FakeCarlaProcessor};
 use shoop_engine::FXChainType;
 
 struct CallerState {
