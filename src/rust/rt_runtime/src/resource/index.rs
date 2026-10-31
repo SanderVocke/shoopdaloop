@@ -9,7 +9,7 @@ pub(super) fn new_scope() -> Result<u32, Error> {
 }
 fn allocate_scope(counter: &AtomicU32) -> Result<u32, Error> {
     counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
         .map_err(|_| Error::Exhausted)
 }
 type Link = Option<NonZeroU32>;

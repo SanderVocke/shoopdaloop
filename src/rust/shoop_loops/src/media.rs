@@ -175,7 +175,7 @@ impl Ledger {
             return Err(Error::Capacity);
         }
         let scope = NEXT_SCOPE
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| Error::Exhausted)?;
         let mut ledger = Self {
             scope,

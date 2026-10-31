@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 fn reserve_scope(counter: &AtomicU32) -> Result<u32, Error> {
     counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
         .map_err(|_| Error::Exhausted)
 }
 

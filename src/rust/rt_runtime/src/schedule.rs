@@ -437,7 +437,7 @@ pub fn typed_scheduler<O: Copy, R: Copy, Q: Copy, S: Copy>(
         }
     }
     let scope = NEXT_SCOPE
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
             value.checked_add(1)
         })
         .map_err(|_| Error::Exhausted)?;

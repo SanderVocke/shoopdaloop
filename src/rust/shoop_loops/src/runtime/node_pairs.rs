@@ -131,7 +131,7 @@ impl NodePairs {
             0
         } else {
             NEXT_SCOPE
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
                 .map_err(|_| Error::Exhausted)?
         };
         let mut banks = Vec::with_capacity(settings.candidates);

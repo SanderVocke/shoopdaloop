@@ -58,7 +58,7 @@ pub struct Stager {
 }
 fn next_scope(counter: &AtomicU32) -> Result<u32, Error> {
     counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |scope| {
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |scope| {
             scope.checked_add(1)
         })
         .map_err(|_| Error::Exhausted)
