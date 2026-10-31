@@ -675,6 +675,29 @@ allocate, free, lock or wait; hosts count xruns into telemetry.
   engine runs, so no audio crosses a carrier, and synchronized commands are in
   musical time, so carrier latency only delays immediate actions.
 
+The next native deployment milestone is scoped in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md):
+one supervised engine process with socket and shared-memory carrier choices,
+engine-side setup, no reconnect and no new latency mitigation. It is planning
+only; these carriers and the process host are not implemented yet. Commands that
+arrive after a musical scheduling boundary can miss that boundary; the IPC plan
+does not change scheduling or compensate for that delivery delay.
+The planned disconnect policy keeps the app open with a fatal error and leaves
+a healthy engine running without control, even after an app crash. Explicit
+normal app shutdown still stops its engine gracefully; a crash survivor requires
+external termination. Disconnect must retain the control endpoint, whose drop
+would otherwise silence rendering.
+
+The plan also defines a crate refactor, not yet implemented: logical schemas and
+codec remain in `shoop_rt_protocol`; shared connection/client/record machinery
+moves to `shoop_rt_transport`. Concrete implementations use
+`shoop_rt_transport_message_port`, `shoop_rt_transport_socket` and
+`shoop_rt_transport_shared_memory`, each containing both ends of its carrier.
+`shoop_rt_host_<environment>` crates own engine hosting rather than communication.
+All paths share logical engine messages and the engine handler; in-process
+delivery may skip encoding, while independent-memory carriers reuse the codec.
+Common host setup vocabulary belongs to the protocol, carrier-private bootstrap
+to the carrier, and engine lifetime to the host independently of connection loss.
+
 Environment bridges belong to hosts: midir ports natively; Web MIDI exists only on
 the browser's main thread, whose half of the browser host forwards timestamped MIDI
 to the worklet on its own lane beside the protocol records.

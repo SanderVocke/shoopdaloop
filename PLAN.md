@@ -4,9 +4,9 @@
 
 ## Authority and execution
 
-This is the single maintained planning/status document for the workstreams below.
-The one exception is the [new engine backend plan](PLAN_RT_BACKEND.md), which the
-user commissioned as its own plan; this document links its status.
+This is the maintained planning/status entry point for the workstreams below.
+The user separately commissioned the [new engine backend plan](PLAN_RT_BACKEND.md)
+and the [native engine IPC plan](PLAN_ENGINE_IPC.md); this document links their status.
 It consolidates the plans present at `fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a`.
 Superseded plans and their redirect pages have been retired from the root.
 [Readable historical views](docs/history/README.md) preserve the original text with
@@ -42,7 +42,8 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
 | [Composable loop boundary](#composable-loop-boundary) | **Delivered**: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations; A1–A12 met and verified locally, including a CI replay | Remote CI/review need a PR; composing several planners in one runtime remains future work |
 | [New engine backend](#new-engine-backend) | **Validated locally** under [its own plan](PLAN_RT_BACKEND.md): Stages 0–10 done; B1 and B3–B12 met, B2 verified on Linux and in the browser ([evidence](VALIDATION.md#new-engine-backend-evidence)) | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend, which stays the default. Open: macOS and Windows runs (CI on push), real MIDI hardware, a manual Chrome check, remote CI and review. Save/load and the other [parity gaps](#remaining-parity-gaps) stay with the legacy backend |
-| [Common transport / application integration](#proposed-next-work) | Proposed; the new engine backend's protocol is its first concrete instance, with in-process and MessagePort carriers | Scope IPC/network carriers and any common framework beyond that protocol before implementation; no production parity claim |
+| [Native engine IPC](#native-engine-ipc) | **Planning only**, under [its own plan](PLAN_ENGINE_IPC.md); scope agreed on 2026-10-31 | One supervised engine child, socket and shared-memory options, engine-side device setup; no reconnect or new latency mitigation. Implementation has not started |
+| [Common transport / application integration](#proposed-next-work) | The new engine backend's protocol is its first concrete instance, with in-process and MessagePort carriers; native IPC now has a bounded milestone plan | Cross-machine deployment and any common framework beyond that protocol remain proposals; no production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
 
@@ -465,13 +466,38 @@ Everything else is a gap:
   within the buffer; callbacks larger than the prepared maximum are rendered in
   parts and counted.
 
+## Native engine IPC
+
+The next milestone is scoped in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md), written
+using [.agents/prompts/write_plan.md](.agents/prompts/write_plan.md). The native
+application will supervise one engine child on the same system, using either
+loopback TCP sockets or shared-memory records. It retains the existing core
+feature set and capability refusals, with engine-side discovery/configuration,
+startup, terminal failure and shutdown handling. There is no reconnect capability,
+automatic restart, attachment to an existing engine or new latency mitigation.
+On disconnect the app shows a fatal error and stays open without recovery; a
+healthy engine keeps running without control, including after an app crash.
+Explicit normal app shutdown still stops its engine gracefully; an engine left
+by an app crash requires external termination.
+
+The plan first extracts portable connection machinery into `shoop_rt_transport`
+and the existing browser carrier into `shoop_rt_transport_message_port`. Concrete
+carriers use the `shoop_rt_transport_<mechanism>` family, with new `socket` and
+`shared_memory` crates; engine hosts use `shoop_rt_host_<environment>`. Logical
+schemas and the common codec stay in `shoop_rt_protocol`. The in-process path
+passes typed messages without requiring serialization. Shared host setup messages
+and carrier-private bootstrap have separate ownership.
+
+Status: plan written; implementation and validation have not started. This does
+not close the previous backend milestone's platform/hardware or historical gaps.
+
 ## Proposed next work
 
 These are design directions, not authorized implementation checkboxes:
 
 1. Resolved by the [composable loop boundary](#composable-loop-boundary) work: see [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary). When a second planning domain is needed, compose planners explicitly rather than nesting runtimes.
-2. Define a bounded next service/protocol slice: one logical scenario through typed native calls, independent-memory AudioWorklet and native IPC. No three unrelated demos or premature universal protocol. The new engine backend's protocol already has the first two carriers; native IPC remains.
-3. In progress as the [new engine backend](#new-engine-backend), ahead of item 2's IPC carrier: an opt-in real application backend using existing UI/modules and the old backend as a selectable fallback/reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
+2. Native IPC is now scoped by [its own milestone plan](PLAN_ENGINE_IPC.md): the existing application/engine protocol over sockets and shared memory. Implementation is not started. A general service/protocol framework and cross-machine deployment remain proposals.
+3. The opt-in [new engine backend](#new-engine-backend) is validated locally, ahead of IPC, using the existing UI/modules and the old backend as a selectable reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
 4. Close parity gaps driven by real workflows, then consider broader deployment. Full dry/wet, prerecord/preplay/latency windows, production plugins/devices, persistence/undo/scripting and network operation remain future work. The [loop features assessment](LOOP_FEATURES_ASSESSMENT.md) estimates the loop-library gaps and the decisions they need.
 5. A plan-linked execution extension is only a reviewed tooling proposal. Do not implement/configure one or create a second task authority under this documentation migration.
 
