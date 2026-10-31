@@ -66,6 +66,7 @@ pub(crate) fn paint_timeline_regions(
     loop_start: i64,
     preplay_samples: u64,
     loop_length: u64,
+    data_length: u64,
     sync_loop_length: u64,
     grid_divider: Option<u32>,
 ) {
@@ -96,7 +97,8 @@ pub(crate) fn paint_timeline_regions(
         colors::WAVEFORM_PREPLAY_REGION,
     );
     paint_range(loop_start, loop_end, colors::WAVEFORM_LOOP_REGION);
-    paint_range(loop_end, i64::MAX / 4, colors::WAVEFORM_UNPLAYED_REGION);
+    let data_end = loop_start.saturating_add_unsigned(data_length);
+    paint_range(loop_end, data_end, colors::WAVEFORM_UNPLAYED_REGION);
 
     let Some(interval) = grid_interval(sync_loop_length, grid_divider) else {
         return;

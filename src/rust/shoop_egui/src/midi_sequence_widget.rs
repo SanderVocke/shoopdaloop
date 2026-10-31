@@ -122,6 +122,13 @@ impl MidiSequenceWidget {
             channel.start_offset,
             channel.preplay_samples,
             channel.loop_length,
+            channel
+                .events
+                .iter()
+                .map(|event| u64::from(event.frame))
+                .max()
+                .map(|end| end.saturating_sub(channel.start_offset.max(0) as u64))
+                .unwrap_or(0),
             sync_loop_length,
             grid_divider,
         );

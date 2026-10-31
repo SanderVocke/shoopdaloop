@@ -147,6 +147,7 @@ impl WaveformWidget {
             channel.start_offset,
             channel.preplay_samples,
             channel.loop_length,
+            channel.samples.len() as u64,
             sync_loop_length,
             grid_divider,
         );
