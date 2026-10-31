@@ -1,9 +1,9 @@
 //! A client connection over any carrier, enforcing the engine's credits.
 
 use crate::carrier::{Carrier, CarrierError};
-use crate::message::{ClientMessage, EngineMessage};
-use crate::schema::{BulkRead, Capabilities, DriverStatus, Limits, Request};
-use crate::PROTOCOL_VERSION;
+use shoop_rt_protocol::message::{ClientMessage, EngineMessage};
+use shoop_rt_protocol::schema::{BulkRead, Capabilities, DriverStatus, Limits, Request};
+use shoop_rt_protocol::PROTOCOL_VERSION;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientState {
@@ -135,7 +135,10 @@ impl<C: Carrier> ProtocolClient<C> {
                 self.bulk_in_flight = self.bulk_in_flight.saturating_sub(1);
             }
             EngineMessage::LimitsChanged(limits) => self.limits = Some(limits),
-            EngineMessage::Telemetry(crate::schema::Telemetry::Engine { driver, .. }) => {
+            EngineMessage::Telemetry(shoop_rt_protocol::schema::Telemetry::Engine {
+                driver,
+                ..
+            }) => {
                 self.driver = Some(driver);
             }
             EngineMessage::Disconnected(_) => {

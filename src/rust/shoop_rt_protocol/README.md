@@ -3,7 +3,7 @@
 `shoop_rt_protocol` is the transport-neutral protocol between an application
 adapter ([`shoop_rt_backend`](../shoop_rt_backend)) and the engine
 ([`shoop_rt_engine`](../shoop_rt_engine)). It defines plain data, the connection
-lifecycle, credits, a binary codec and carriers. It has no semantics and no
+lifecycle, credit limits and a binary codec. It has no semantics and no
 dependencies: what a request does is the engine's business, what it means to the
 application is the adapter's.
 
@@ -19,7 +19,7 @@ application is the adapter's.
 - **Bulk**: chunked reads of loop media, one `BulkChunk` per `BulkRead`.
 
 `Limits` announces the client's credits: at most `reliable_credits` unanswered
-requests and `bulk_credits` unanswered reads. `client::ProtocolClient` enforces them
+requests and `bulk_credits` unanswered reads. `shoop_rt_transport::client::ProtocolClient` enforces them
 (`ClientError::Busy`) and correlates results; the engine refuses requests beyond
 them as `Overloaded`.
 
@@ -60,24 +60,12 @@ Encoding writes into a caller's buffer and decoding reads a borrowed slice; neit
 allocates. Decoding checks every tag, length and name and rejects trailing bytes
 (`CodecError`).
 
-## Carriers
+## Connections and carriers
 
-`carrier::Carrier` is the client side (`send`, `receive`); `carrier::Endpoint` is
-the engine side (`deliver` a client message, `poll` for messages the engine
-produced), writing into an `Outbox` with one bounded queue per lane.
-
-- `InProcess` owns an endpoint and passes typed messages by direct call, without
-  serialization. Native hosts use it.
-- `RecordClient` and `RecordServer` exchange encoded records over a `RecordPort`
-  (`post` a record, `take` the next one), such as a `MessagePort` bridge. The
-  server's `pump` delivers a bounded number of records, polls the endpoint and
-  posts its output until the port is full, without allocating.
-
-A new carrier implements `Carrier` on the client side and drives an `Endpoint` with
-an `Outbox` on the engine side, or implements `RecordPort` for any byte transport
-and reuses `RecordClient` and `RecordServer`. It must keep each lane's order, never
-drop reliable messages, and add no semantics. The protocol tests run against every
-carrier.
+Shared connection state, credits, queues and typed/record delivery live in
+[`shoop_rt_transport`](../shoop_rt_transport). This schema crate has no transport,
+engine or host dependency. Every encoded carrier reuses this codec; typed local
+connections can skip encoding entirely.
 
 ```sh
 cargo test -p shoop_rt_protocol

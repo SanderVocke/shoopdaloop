@@ -22,8 +22,8 @@ use shoop_backend::{
     BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackTopology,
     DirectTrackRequest, TrackRequest, MASTER_BUS_ID,
 };
-use shoop_rt_protocol::carrier::Carrier;
 use shoop_rt_protocol::{Capabilities, DriverKind, DriverRunState, LoopMode, MidiMessage, Request};
+use shoop_rt_transport::carrier::Carrier;
 
 use crate::mirror::Mirror;
 use crate::reads::{empty_audio, empty_midi, Outcome};

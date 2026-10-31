@@ -8,7 +8,7 @@
 //! only occupied slots are in the active graph and loop topology.
 //!
 //! [`prepare`] returns three owners: the [`ControlEndpoint`], which implements
-//! the protocol's [`Endpoint`](shoop_rt_protocol::carrier::Endpoint) and runs
+//! the protocol's [`Endpoint`](shoop_rt_transport::carrier::Endpoint) and runs
 //! wherever the host pumps its carrier; the [`Render`] owner, called once per
 //! audio callback; and the [`HostStatus`] handle for driver status, xruns and
 //! load. Both the endpoint and the render path are bounded and allocation-free
@@ -101,9 +101,9 @@ pub struct Engine {
 
 impl Engine {
     /// An outbox with room for one full telemetry round and the client's credits.
-    pub fn outbox(&self) -> shoop_rt_protocol::carrier::Outbox {
+    pub fn outbox(&self) -> shoop_rt_transport::carrier::Outbox {
         let limits = self.endpoint.limits();
-        shoop_rt_protocol::carrier::Outbox::new(
+        shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
             limits.strips as usize + limits.loops as usize + 2,
             usize::from(self.endpoint.settings.max_bulk),

@@ -109,9 +109,9 @@ mod platform {
     use shoop_rt_backend::{NoWait, RtBackend};
     use shoop_rt_host_worklet::lane::{self, MidiEvent};
     use shoop_rt_host_worklet::main_thread::{MidiClock, MidiInBatch, RecordBatches};
-    use shoop_rt_protocol::carrier::{CarrierError, RecordClient, RecordPort};
-    use shoop_rt_protocol::client::ProtocolClient;
     use shoop_rt_protocol::DisconnectReason;
+    use shoop_rt_transport::carrier::{CarrierError, RecordClient, RecordPort};
+    use shoop_rt_transport::client::ProtocolClient;
     use shoop_scripting::MidiEndpointDirection;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::{JsCast, JsValue};

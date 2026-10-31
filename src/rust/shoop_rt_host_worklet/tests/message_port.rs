@@ -11,9 +11,9 @@ use shoop_rt_host_worklet::lane::{self, MidiEvent, MAX_EVENT_BYTES};
 use shoop_rt_host_worklet::{
     framing, Counters, Inbound, Outbound, Quantum, QuantumError, WorkletConfig, WorkletHost,
 };
-use shoop_rt_protocol::carrier::{CarrierError, RecordClient, RecordPort};
-use shoop_rt_protocol::client::{ClientState, ProtocolClient};
 use shoop_rt_protocol::*;
+use shoop_rt_transport::carrier::{CarrierError, RecordClient, RecordPort};
+use shoop_rt_transport::client::{ClientState, ProtocolClient};
 use shoop_wasm_test_support::heap::{assert_no_heap, TrackingAllocator};
 use shoop_wasm_test_support::shoop_test;
 

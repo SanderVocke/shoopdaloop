@@ -18,11 +18,11 @@ use crate::{
 };
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use rt_runtime::Error;
-use shoop_rt_protocol::carrier::InProcess;
-use shoop_rt_protocol::client::{ClientError, ProtocolClient};
 use shoop_rt_protocol::{
     BulkRead, DriverKind, DriverRunState, DriverStatus, EngineMessage, Request,
 };
+use shoop_rt_transport::carrier::InProcess;
+use shoop_rt_transport::client::{ClientError, ProtocolClient};
 
 /// A client of the engine through the in-process carrier.
 pub type OfflineClient = ProtocolClient<InProcess<ControlEndpoint>>;

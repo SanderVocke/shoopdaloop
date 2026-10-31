@@ -662,3 +662,68 @@ Evidence must retain command, source, relevant input equivalence, flags/toolchai
 actual listed/executed/passed/skipped counts and reasons, complete content/owner
 recovery, specific failure witnesses and artifact identity. Never publish credentials
 or signed artifact URLs. A run ending successfully is not by itself sufficient.
+
+
+<a id="native-engine-ipc-evidence"></a>
+
+## Native engine IPC evidence
+
+Execution follows [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md). No IPC delivery or
+cross-platform acceptance is claimed by the baseline below.
+
+### Stage 0: baseline and shared-memory feasibility
+
+Source: `f22dbd1c8ea72ae1bc5497b40cd7daf6066f3b39`; execution branch
+`feat/engine-ipc`, approved plan committed as `b603cd11`. Environment: Debian 13
+x86_64, rustc 1.99.1 (`58cf8f9c3`), cargo 1.99.1, Node 24.19.0, Chromium installed.
+The environment initially lacked Rust and development headers; Rust and Wasm/rustfmt
+components were installed locally, ALSA/JACK headers and protobuf 3.21.12 unpacked
+under `/workspace/.native-deps`. Initial linker failures from missing development
+symlink targets were corrected in that local prefix without repository changes.
+
+Commands ran with `RUSTFLAGS="-D warnings"`, two Cargo/test workers, debug info and
+incremental compilation disabled, `nice -n 19 ionice -c 3`, and a process-group RSS
+watchdog enforcing 3276.8 MiB (20% of the 16 GiB cgroup limit).
+
+- `cargo test --locked -p shoop_rt_protocol -p shoop_rt_host_native --no-default-features`:
+  14 passed (protocol 5, dummy/native unit 9), peak build RSS 2742.1 MiB.
+- `cargo test --locked -p shoop_rt_backend -p shoop_rt_host_worklet -p shoop_rt_host_native`:
+  62 passed (adapter 15, native host 21, worklet 26), peak RSS 1540.6 MiB.
+- `cargo build --locked -p shoop_rt_host_worklet --target wasm32-unknown-unknown`
+  followed by `node src/rust/shoopdaloop/rt_worklet_contract.mjs target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm`:
+  built artifact has no imports and the simulated MessagePort contract passes;
+  peak build RSS 565.7 MiB. This is not a fresh real-browser smoke.
+- Standalone `iceoryx2 = 0.10.0` probe (safe API; std feature; fixed `[u8;1280]`
+  samples; one publisher/subscriber; queue capacity two; safe overflow disabled;
+  discard-on-backpressure): parent/child exchanged the first two records; the
+  third send reported zero deliveries and did not overwrite either unread record.
+  Both processes exited successfully; peak build RSS 762.7 MiB. Probe source:
+  [shared_memory_probe.rs](docs/engine_ipc/shared_memory_probe.rs).
+
+The selected dependency supplies mapping, process-shared queue publication and
+sample lifetime/reclamation; the application copies encoded records using its
+safe API. Pin 0.10.0 rather than following upstream main. Its MIT OR Apache-2.0
+license and Rust 1.89 minimum fit this workspace's stable toolchain. Actual IPC
+mock/device, crash cleanup and macOS/Windows runtime acceptance remain later gates.
+
+
+### Stage 1: common transport extraction
+
+The existing typed and record carriers, endpoint interface, lane queues and
+credit/correlation client moved to `shoop_rt_transport`; the protocol keeps its
+schema and codec. Existing carrier fixtures/assertions are available through the
+transport's `contracts` feature. No message or execution semantics changed.
+
+- `cargo test -p shoop_rt_transport -p shoop_rt_protocol -p shoop_rt_backend -p shoop_rt_host_native -p shoop_rt_host_worklet`:
+  67 passed, preserving the prior 62 plus the five split schema/carrier tests;
+  peak build RSS 1123.0 MiB.
+- Warnings-denied native build of protocol/transport/engine/backend/both hosts:
+  passed. Wasm worklet build and Node artifact/import contract: passed.
+- `python3 scripts/check_rt_engine_boundary.py`: all five audited packages pass
+  on Linux, Windows, macOS and Wasm dependency trees. This is a dependency audit,
+  not native execution on those platforms. The audit now rejects engine/host/OS
+  dependencies in protocol/transport and transport dependencies in protocol.
+- Boundary policy unit tests: six passed; test-attribute policy and closed tracing
+  inventory: passed. Miri registration retains the five original protocol cases
+  as two codec cases and three carrier cases in their respective packages; Miri
+  execution remains a final-stage gate.

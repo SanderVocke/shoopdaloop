@@ -39,9 +39,9 @@ use shoop_backend::{
     BackendConnectionFailure, BackendMixerFailure, BackendMutationFailure,
     BackendSessionReplacement,
 };
-use shoop_rt_protocol::carrier::{Carrier, CarrierError};
-use shoop_rt_protocol::client::{ClientError, ProtocolClient};
 use shoop_rt_protocol::{Capabilities, DriverStatus, Limits, StateRecord};
+use shoop_rt_transport::carrier::{Carrier, CarrierError};
+use shoop_rt_transport::client::{ClientError, ProtocolClient};
 
 use crate::mirror::Mirror;
 use crate::reads::Reads;

@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 use crate::framing::{self, FramingError};
 use crate::lane::MidiEvent;
 use shoop_rt_engine::{HostPorts, MAX_HOST_PORTS};
-use shoop_rt_protocol::carrier::{CarrierError, RecordPort};
 use shoop_rt_protocol::{codec, DisconnectReason, EngineMessage, Name, MAX_NAME_BYTES};
+use shoop_rt_transport::carrier::{CarrierError, RecordPort};
 
 /// The client's record port over the processor's `MessagePort`. Posted records
 /// collect into one outgoing batch; received batches are split into records.
@@ -254,8 +254,8 @@ fn fitted(prefix: &str, base: &str, tail: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shoop_rt_protocol::carrier::{Carrier, RecordClient};
     use shoop_rt_protocol::{ClientMessage, MAX_RECORD_BYTES};
+    use shoop_rt_transport::carrier::{Carrier, RecordClient};
     use shoop_wasm_test_support::shoop_test;
 
     fn engine_record(message: EngineMessage) -> Vec<u8> {

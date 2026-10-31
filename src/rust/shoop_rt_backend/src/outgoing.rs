@@ -8,11 +8,11 @@ use shoop_backend::{
     BackendPortOwner, BackendPortRole, BackendTrackControl, BackendTrackCreation, BackendTrackId,
     MASTER_BUS_CHANNEL_IDS,
 };
-use shoop_rt_protocol::carrier::Carrier;
 use shoop_rt_protocol::{
     BusControl, BusId, BusPort, EnginePort, LoopSlotId, PortKind, Request, StripControl, StripId,
     StripPort, StripShape,
 };
+use shoop_rt_transport::carrier::Carrier;
 
 use crate::mirror::{
     db_amplitude, host_data_type, host_direction, Controls, Loop, LoopView, Port, PortTarget, Track,

@@ -4470,6 +4470,7 @@ dependencies = [
  "shoop_backend",
  "shoop_rt_engine",
  "shoop_rt_protocol",
+ "shoop_rt_transport",
  "shoop_wasm_test_support",
  "tracing",
  "wasm-bindgen-test",
@@ -4483,6 +4484,7 @@ dependencies = [
  "shoop_loops",
  "shoop_rt_engine",
  "shoop_rt_protocol",
+ "shoop_rt_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4497,6 +4499,7 @@ dependencies = [
  "rtrb",
  "shoop_rt_engine",
  "shoop_rt_protocol",
+ "shoop_rt_transport",
  "shoop_wasm_test_support",
  "thiserror 2.0.20",
  "tracing",
@@ -4509,6 +4512,7 @@ dependencies = [
  "rt_runtime",
  "shoop_rt_engine",
  "shoop_rt_protocol",
+ "shoop_rt_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4517,6 +4521,16 @@ dependencies = [
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_transport"
+version = "0.3.0"
+dependencies = [
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4681,6 +4695,7 @@ dependencies = [
  "shoop_rt_host_native",
  "shoop_rt_host_worklet",
  "shoop_rt_protocol",
+ "shoop_rt_transport",
  "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",

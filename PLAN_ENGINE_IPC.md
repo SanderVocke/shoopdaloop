@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-Execution started on `feat/engine-ipc`; Stage 0 baselines and shared-memory
-feasibility are in progress. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0 and 1 are verified locally;
+Stage 2 is next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -319,26 +319,34 @@ the existing native/browser paths before adding IPC.
 
 - [x] Create `feat/engine-ipc` from the current `feat/loop-execution-layer` head;
       record the base SHA, clean/dirty state and platform/toolchain versions.
-- [ ] Record focused protocol, adapter-contract and native-host baselines; preserve
+- [x] Record focused protocol, adapter-contract and native-host baselines; preserve
       prior validation's limitations rather than claiming they are newly resolved.
-- [ ] Record the current MessagePort/worklet contract and import/dependency audit
+- [x] Record the current MessagePort/worklet contract and import/dependency audit
       baselines so crate extraction is checked against the existing deployment.
-- [ ] Select the shared-memory dependency and record its mapping, synchronization,
+- [x] Select the shared-memory dependency and record its mapping, synchronization,
       cleanup and platform guarantees with a small two-process feasibility probe;
       settle record capacities and bootstrap envelopes.
 
 **Verify:** baseline suites pass; the selected dependency supports both processes
 on all three native OSes. Document design revisions here before relying on them.
 
+*Recorded:* base `f22dbd1c`, with the approved plan documents uncommitted at branch
+creation and committed as `b603cd11`. Protocol/dummy baseline: 14 tests. Adapter,
+CPAL/mock native host and worklet baseline: 62 tests. The built worklet's Node
+artifact/import contract passes. `iceoryx2 = 0.10.0` (MIT OR Apache-2.0; Rust 1.89
+minimum) passed a Linux two-process bounded, non-overwriting record probe; its
+supported platform implementation covers Linux/macOS/Windows, whose runtime
+integration is verified later. See [evidence](VALIDATION.md#native-engine-ipc-evidence).
+
 ### Stage 1 — Extract common transport machinery
 
-- [ ] Create `shoop_rt_transport`; move the existing client state/credits,
+- [x] Create `shoop_rt_transport`; move the existing client state/credits,
       interfaces, queues and in-process/record adapters out of `shoop_rt_protocol`.
       Leave logical schemas and the canonical codec in the protocol crate.
-- [ ] Update engine, backend, native/worklet hosts and their fixtures to use the
+- [x] Update engine, backend, native/worklet hosts and their fixtures to use the
       shared interfaces. Extract a reusable carrier-contract harness from the
       existing in-process/record tests for use by all implementation crates.
-- [ ] Enforce the crate dependency rules and update affected READMEs/tracing
+- [x] Enforce the crate dependency rules and update affected READMEs/tracing
       inventory. Keep this step a structural refactor with unchanged semantics.
 
 **Verify:** protocol codec and shared transport suites; in-process backend/timing

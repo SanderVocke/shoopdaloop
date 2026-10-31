@@ -27,12 +27,12 @@ use rt_runtime::transport::{Lane, Outcome as RuntimeOutcome};
 use rt_runtime::{Epoch, Frame, NodeId, Sequence};
 use shoop_loops::runtime::{Failure, LoopClient, Operation, Reply};
 use shoop_loops::{LoopId, Mode, Timing, Transition};
-use shoop_rt_protocol::carrier::{Endpoint, Outbox};
 use shoop_rt_protocol::{
     BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, EngineMessage,
     HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode, LoopSlotId,
     Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry, PROTOCOL_VERSION,
 };
+use shoop_rt_transport::carrier::{Endpoint, Outbox};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 

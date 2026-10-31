@@ -1,11 +1,11 @@
 //! The full-state record stream, emitted as reliable outbox space allows.
 
 use crate::endpoint::ControlEndpoint;
-use shoop_rt_protocol::carrier::Outbox;
 use shoop_rt_protocol::{
     BusControl, BusId, BusPort, EngineMessage, EnginePort, HostPortId, Lane, PortKind, StateRecord,
     StripPort,
 };
+use shoop_rt_transport::carrier::Outbox;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Resync {

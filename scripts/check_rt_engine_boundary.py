@@ -18,7 +18,8 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
-    "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_host_native", "shoop_rt_host_worklet",
+    "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
+    "shoop_rt_host_native", "shoop_rt_host_worklet",
 )
 FORBIDDEN = {
     "shoop_app", "shoop_app_api", "shoop_backend", "shoop_engine", "shoop_egui",
@@ -27,9 +28,18 @@ FORBIDDEN = {
 }
 
 
-def violations(tree: str) -> list[str]:
+def violations(tree: str, package: str | None = None) -> list[str]:
     names = set(re.findall(r"^([A-Za-z0-9_-]+) v\d", tree, re.MULTILINE))
-    return sorted(name for name in names if name in FORBIDDEN)
+    forbidden = set(FORBIDDEN)
+    if package in {"shoop_rt_protocol", "shoop_rt_transport"}:
+        forbidden.update({"shoop_rt_engine", "shoop_loops", "rt_runtime"})
+        forbidden.update(name for name in names if name.startswith(
+            ("shoop_rt_host_", "shoop_rt_transport_")
+        ))
+        forbidden.update({"cpal", "midir", "iceoryx2", "web-sys", "js-sys", "wasm-bindgen"})
+    if package == "shoop_rt_protocol":
+        forbidden.add("shoop_rt_transport")
+    return sorted(names & forbidden)
 
 
 def main() -> int:
@@ -50,7 +60,7 @@ def main() -> int:
             if not re.search(rf"^{package} v\d", result.stdout, re.MULTILINE):
                 print(f"{target}: missing {package} root", file=sys.stderr)
                 return 1
-            forbidden = violations(result.stdout)
+            forbidden = violations(result.stdout, package)
             if forbidden:
                 print(f"{target}: forbidden {package} dependencies: {', '.join(forbidden)}",
                       file=sys.stderr)

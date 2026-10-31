@@ -1,20 +1,7 @@
-//! Protocol between an application adapter and the new real-time engine.
-//!
-//! The protocol is plain data and independent of where the engine runs. An adapter
-//! talks to an engine [`carrier::Endpoint`] through a [`carrier::Carrier`]: the
-//! [`carrier::InProcess`] carrier passes typed messages by direct call, while
-//! [`carrier::RecordClient`] and [`carrier::RecordServer`] exchange bounded binary
-//! records (see [`codec`]) over any record port, such as a `MessagePort`.
-//!
-//! Messages travel in three lanes with separate capacity semantics: reliable
-//! requests, results and state; latest-value telemetry, which may be dropped; and
-//! chunked bulk reads. A connection starts with a version handshake that announces
-//! capabilities and [`schema::Limits`]; limits are current values that can change.
-//! [`client::ProtocolClient`] enforces the announced credits on the client side.
+//! Logical engine messages, identifiers, limits and their canonical binary codec.
+//! Connections and carriers are provided by `shoop_rt_transport`.
 #![forbid(unsafe_code)]
 
-pub mod carrier;
-pub mod client;
 pub mod codec;
 pub mod ids;
 pub mod message;

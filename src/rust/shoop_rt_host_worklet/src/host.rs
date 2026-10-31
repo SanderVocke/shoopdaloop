@@ -10,8 +10,8 @@ use crate::lane::{self, MidiEvent};
 use crate::stream::{Batch, Stream};
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_rt_engine::{ControlEndpoint, HostStatus, PrepareError, Render, MAX_HOST_PORTS};
-use shoop_rt_protocol::carrier::{CarrierError, RecordPort, RecordServer};
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
+use shoop_rt_transport::carrier::{CarrierError, RecordPort, RecordServer};
 
 /// Lanes the main thread posts into.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

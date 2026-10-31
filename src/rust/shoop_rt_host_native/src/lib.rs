@@ -36,9 +36,9 @@ use std::time::{Duration, Instant};
 use shoop_rt_engine::{
     prepare, ControlEndpoint, EngineDescription, HostPorts, PrepareError, Render, Stopped,
 };
-use shoop_rt_protocol::carrier::{InProcess, Outbox};
-use shoop_rt_protocol::client::ProtocolClient;
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, Name, MAX_NAME_BYTES};
+use shoop_rt_transport::carrier::{InProcess, Outbox};
+use shoop_rt_transport::client::ProtocolClient;
 
 #[cfg(feature = "cpal")]
 pub use cpal_driver::{

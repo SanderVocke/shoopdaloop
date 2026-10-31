@@ -6,9 +6,9 @@
 
 use std::collections::VecDeque;
 
-use crate::codec::{self, CodecError};
-use crate::message::{ClientMessage, DisconnectReason, EngineMessage, Lane};
-use crate::MAX_RECORD_BYTES;
+use shoop_rt_protocol::codec::{self, CodecError};
+use shoop_rt_protocol::message::{ClientMessage, DisconnectReason, EngineMessage, Lane};
+use shoop_rt_protocol::MAX_RECORD_BYTES;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CarrierError {

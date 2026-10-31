@@ -6,8 +6,8 @@ mod support;
 
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_rt_engine::Phase;
-use shoop_rt_protocol::carrier::Carrier;
 use shoop_rt_protocol::*;
+use shoop_rt_transport::carrier::Carrier;
 use shoop_wasm_test_support::shoop_test;
 use support::*;
 

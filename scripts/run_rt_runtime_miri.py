@@ -60,7 +60,8 @@ STAGE8_MODELS = (
 # New engine backend: the protocol codec and carriers, the control endpoint's
 # materialization of runtime commands and the engine's pool handover.
 ENGINE_CASES = (
-    ("shoop_rt_protocol", "protocol", [], 5),
+    ("shoop_rt_protocol", "protocol", [], 2),
+    ("shoop_rt_transport", "carriers", [], 3),
     ("shoop_rt_engine", "lib", [], 2),
     ("shoop_rt_engine", "workflow", [], 1),
     *(("shoop_rt_engine", "control", [name, "--", "--exact"], 1) for name in (
@@ -391,7 +392,7 @@ def interrupted(signum, _frame):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", choices=("rt_runtime", "shoop_loops", "shoop_rt_protocol", "shoop_rt_engine", HOST_PACKAGE), help="Run one package's selected cases")
+    parser.add_argument("--package", choices=("rt_runtime", "shoop_loops", "shoop_rt_protocol", "shoop_rt_transport", "shoop_rt_engine", HOST_PACKAGE), help="Run one package's selected cases")
     parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
     parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
     parser.add_argument("--shard", type=shard_spec, help="Disjoint CI batch INDEX/TOTAL; keeps whole commands and workloads")

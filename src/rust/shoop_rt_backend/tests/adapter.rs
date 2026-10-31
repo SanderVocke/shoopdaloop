@@ -299,7 +299,7 @@ fn the_native_stack_can_move_to_the_application_thread() {
     fn send<T: Send>() {}
     send::<
         RtBackend<
-            shoop_rt_protocol::carrier::InProcess<shoop_rt_engine::ControlEndpoint>,
+            shoop_rt_transport::carrier::InProcess<shoop_rt_engine::ControlEndpoint>,
             shoop_rt_backend::Sleep,
         >,
     >();

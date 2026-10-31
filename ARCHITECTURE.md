@@ -27,7 +27,8 @@ snapshot-status paragraphs there do not describe the current tree.
 | `shoop_engine_service` | Native composition owning one runtime with the loop parts and independent DSP; typed loop/DSP controls through one ordered path, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
 | Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
 | `shoop_rt_engine` | The [new engine backend](#new-engine-backend)'s real-time composition: node enum over the loop parts and its strip/Master processors, segmented prepared pools, structural transactions, the bounded control endpoint and the render owner | Engine terms only; no application, legacy-engine or host dependency (boundary script); compiled once for every environment |
-| `shoop_rt_protocol` | Versioned plain-data schema, capability/limit descriptor, connection lifecycle, credited lanes, the in-process carrier and the binary record carrier | No semantics; no application or engine dependency |
+| `shoop_rt_protocol` | Versioned plain-data schema, capability/limit descriptor and binary codec | No semantics; no application, engine or transport dependency |
+| `shoop_rt_transport` | Connection lifecycle, credited lanes, in-process and binary-record carriers | Portable; depends only on the protocol |
 | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices and pump audio/MIDI/messages: dummy and CPAL/midir natively; an import-free AudioWorklet module serving the record carrier | No engine or application semantics; no application dependency |
 | `shoop_rt_backend` | The application's `Backend` trait over a protocol client: ID mapping, state mirror, capability descriptor, structure-only session documents | Depends on the application API and the protocol, not on the engine or a host |
 | Existing application | Existing backends, devices, sessions, UI, scripting, files and production browser hosting | Legacy backends remain the default; only the opt-in new engine backend runs its core looping set on this stack |
@@ -687,9 +688,9 @@ normal app shutdown still stops its engine gracefully; a crash survivor requires
 external termination. Disconnect must retain the control endpoint, whose drop
 would otherwise silence rendering.
 
-The plan also defines a crate refactor, not yet implemented: logical schemas and
-codec remain in `shoop_rt_protocol`; shared connection/client/record machinery
-moves to `shoop_rt_transport`. Concrete implementations use
+The crate refactor is in progress: logical schemas and codec remain in
+`shoop_rt_protocol`; shared connection/client/record machinery has moved to
+`shoop_rt_transport`. Concrete implementations use
 `shoop_rt_transport_message_port`, `shoop_rt_transport_socket` and
 `shoop_rt_transport_shared_memory`, each containing both ends of its carrier.
 `shoop_rt_host_<environment>` crates own engine hosting rather than communication.

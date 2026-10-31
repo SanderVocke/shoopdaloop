@@ -14,7 +14,7 @@ use shoop_backend::{
     MASTER_BUS_CHANNEL_IDS, MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID, MASTER_BUS_NAME,
     MASTER_BUS_OUTPUT_PORT_IDS,
 };
-use shoop_rt_protocol::carrier::Carrier;
+use shoop_rt_transport::carrier::Carrier;
 
 use crate::{unavailable, EngineClock, RtBackend};
 

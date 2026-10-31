@@ -19,7 +19,8 @@ class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
         self.assertEqual(sum(c[3] for c in runner.selected_cases()), 327)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_engine")), 12)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_protocol")), 5)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_protocol")), 2)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_transport")), 3)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 142)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loops")), 104)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
@@ -41,7 +42,7 @@ class MiriRunnerTests(unittest.TestCase):
         )
         cases = runner.selected_cases()
         self.assertEqual(runner.STAGE8_MODELS, expected)
-        self.assertEqual(len(cases), 164)
+        self.assertEqual(len(cases), 165)
         self.assertEqual(cases[-4:], [(owner, target, [name, "--", "--exact"], 1, 0)
                                     for owner, target, name in expected])
         self.assertEqual([case for case in cases if case[1].startswith("adversarial_")], cases[-4:])

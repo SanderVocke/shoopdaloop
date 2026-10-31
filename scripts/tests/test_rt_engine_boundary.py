@@ -32,6 +32,15 @@ class EngineBoundaryTests(unittest.TestCase):
         names = sorted(MODULE.FORBIDDEN)
         self.assertEqual(MODULE.violations("\n".join(f"{name} v1.0.0" for name in names)), names)
 
+    def test_portable_connections_cannot_depend_on_the_engine_or_a_carrier(self):
+        tree = "shoop_rt_transport v0.3.0\nshoop_rt_engine v0.3.0\nshoop_rt_transport_socket v0.3.0\n"
+        self.assertEqual(MODULE.violations(tree, "shoop_rt_transport"),
+                         ["shoop_rt_engine", "shoop_rt_transport_socket"])
+
+    def test_schema_cannot_depend_on_connection_machinery(self):
+        self.assertEqual(MODULE.violations("shoop_rt_transport v0.3.0\n", "shoop_rt_protocol"),
+                         ["shoop_rt_transport"])
+
 
 if __name__ == "__main__":
     unittest.main()

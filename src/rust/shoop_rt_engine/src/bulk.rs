@@ -15,11 +15,11 @@ use crate::ring::Ring;
 use rt_runtime::resource::Cursor;
 use shoop_loops::media::ExportId;
 use shoop_loops::runtime::{Operation, Reply, Selection};
-use shoop_rt_protocol::carrier::Outbox;
 use shoop_rt_protocol::{
     BulkChunk, BulkPayload, BulkRead, BulkSelector, EngineMessage, Lane, LoopSlotId, Outcome,
     Refusal, BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES,
 };
+use shoop_rt_transport::carrier::Outbox;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Waiting {

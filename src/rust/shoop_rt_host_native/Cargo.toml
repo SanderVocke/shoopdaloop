@@ -13,6 +13,7 @@ default = ["cpal"]
 cpal = ["dep:cpal", "dep:midir"]
 
 [dependencies]
+shoop_rt_transport = { path = "../shoop_rt_transport" }
 rt_runtime = { path = "../rt_runtime" }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }

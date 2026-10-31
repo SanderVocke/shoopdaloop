@@ -8,7 +8,7 @@ use shoop_backend::Backend;
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::testing::{OfflineClient, OfflineRender};
 use shoop_rt_engine::{ControlEndpoint, EngineDescription, HostPorts, Segment};
-use shoop_rt_protocol::carrier::InProcess;
+use shoop_rt_transport::carrier::InProcess;
 
 /// The adapter over the in-process carrier, the engine and the offline host.
 pub type Stack = RtBackend<InProcess<ControlEndpoint>, OfflineClock>;
