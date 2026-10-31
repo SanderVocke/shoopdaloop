@@ -28,7 +28,7 @@ impl Stream {
         self.bytes.len()
     }
     /// Offset of the next appended byte.
-    #[cfg(feature = "exports")]
+    #[cfg(any(test, feature = "exports"))]
     pub(crate) fn len(&self) -> usize {
         self.end
     }

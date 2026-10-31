@@ -7101,7 +7101,7 @@ mod tests {
     }
 
     /// Opt-in, because it opens the default audio devices: set `SHOOP_TEST_CPAL_DEVICE=1`.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "cpal"))]
     #[shoop_wasm_test_support::shoop_test]
     fn new_engine_backend_runs_the_core_workflow_on_a_cpal_device() {
         use shoop_egui::{

@@ -4,18 +4,27 @@
 
 use anyhow::{anyhow, Result};
 use shoop_backend::Backend;
-use shoop_egui::{
-    AudioDriverConfig, CpalAudioDriverConfig, DummyAudioDriverConfig, NewEnginePools,
-};
+#[cfg(feature = "cpal")]
+use shoop_egui::CpalAudioDriverConfig;
+use shoop_egui::{AudioDriverConfig, DummyAudioDriverConfig, NewEnginePools};
 use shoop_rt_backend::{RtBackend, Sleep};
-use shoop_rt_engine::{EngineDescription, Segment, MAX_HOST_PORTS};
+#[cfg(feature = "cpal")]
+use shoop_rt_engine::MAX_HOST_PORTS;
+use shoop_rt_engine::{EngineDescription, Segment};
+#[cfg(feature = "cpal")]
+use shoop_rt_host_native::{AudioDevice, CpalConfig, DeviceSelection, Discovery};
 use shoop_rt_host_native::{
-    AudioDevice, CpalConfig, DeviceSelection, Discovery, DriverConfig, DummyConfig, NativeConfig,
-    NativeHost, RenderPhase, StartError, Stats,
+    DriverConfig, DummyConfig, NativeConfig, NativeHost, RenderPhase, StartError, Stats,
 };
+
+/// Without CPAL there is nothing to discover.
+#[cfg(not(feature = "cpal"))]
+#[derive(Default)]
+struct Discovery;
 
 /// The largest callback when the device chooses its buffer size. Larger callbacks are
 /// rendered in parts.
+#[cfg(feature = "cpal")]
 const DEVICE_MAX_FRAMES: u32 = 1024;
 /// The loop edge smoothing setting's largest value, 100 ms, at 384 kHz.
 const SMOOTHING_LIMIT_FRAMES: u32 = 38_400;
@@ -125,6 +134,7 @@ fn start_failure(error: StartError) -> anyhow::Error {
 }
 
 /// What the mapping needs to know about the platform's CPAL hosts, devices and MIDI ports.
+#[cfg(feature = "cpal")]
 fn inventory(driver: &AudioDriverConfig) -> Discovery {
     let named = |selector: &str| !matches!(selector.trim(), "" | "default" | "none");
     let listed = || {
@@ -148,6 +158,11 @@ fn inventory(driver: &AudioDriverConfig) -> Discovery {
     }
 }
 
+#[cfg(not(feature = "cpal"))]
+fn inventory(_driver: &AudioDriverConfig) -> Discovery {
+    Discovery
+}
+
 /// The host configuration for the application's driver settings and the new engine's
 /// capacities, with a warning for every setting that cannot be used as given.
 fn native_config(
@@ -160,11 +175,13 @@ fn native_config(
         AudioDriverConfig::Dummy(dummy) => {
             (DriverConfig::Dummy(dummy_config(dummy)), dummy.buffer_size)
         }
+        #[cfg(feature = "cpal")]
         AudioDriverConfig::Cpal(cpal) => {
             let config = cpal_config(cpal, inventory, &mut warnings);
             let max_frames = config.buffer_frames.unwrap_or(DEVICE_MAX_FRAMES);
             (DriverConfig::Cpal(config), max_frames)
         }
+        #[cfg(feature = "cpal")]
         AudioDriverConfig::Jack(jack) => {
             let jack_host = inventory.hosts.iter().any(|host| host == "jack");
             warnings.push(
@@ -183,6 +200,16 @@ fn native_config(
                 ..CpalConfig::default()
             };
             (DriverConfig::Cpal(config), DEVICE_MAX_FRAMES)
+        }
+        #[cfg(not(feature = "cpal"))]
+        AudioDriverConfig::Cpal(_) | AudioDriverConfig::Jack(_) => {
+            let _ = inventory;
+            warnings.push(
+                "The new engine backend has no CPAL or JACK driver in this build; using the dummy driver"
+                    .to_owned(),
+            );
+            let dummy = DummyAudioDriverConfig::default();
+            (DriverConfig::Dummy(dummy_config(&dummy)), dummy.buffer_size)
         }
         AudioDriverConfig::WebAudio => {
             warnings.push(
@@ -229,6 +256,7 @@ fn dummy_config(config: &DummyAudioDriverConfig) -> DummyConfig {
 /// CPAL settings, with the legacy driver's selectors: `default`, `none`, an index, an exact
 /// name or part of one for devices; `all`, `none`, indices, names or parts of names for MIDI
 /// ports.
+#[cfg(feature = "cpal")]
 fn cpal_config(
     config: &CpalAudioDriverConfig,
     inventory: &Discovery,
@@ -279,6 +307,7 @@ fn cpal_config(
     }
 }
 
+#[cfg(feature = "cpal")]
 fn device(
     selector: &str,
     devices: &[AudioDevice],
@@ -309,6 +338,7 @@ fn device(
     }
 }
 
+#[cfg(feature = "cpal")]
 fn channels(selector: &str, direction: &str, warnings: &mut Vec<String>) -> Option<u16> {
     match selector.trim() {
         "" | "all" => None,
@@ -324,6 +354,7 @@ fn channels(selector: &str, direction: &str, warnings: &mut Vec<String>) -> Opti
     }
 }
 
+#[cfg(feature = "cpal")]
 fn midi_ports(
     selectors: &[String],
     ports: &[String],
@@ -421,6 +452,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(feature = "cpal")]
     fn device(name: &str) -> AudioDevice {
         AudioDevice {
             name: name.to_owned(),
@@ -431,6 +463,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(feature = "cpal")]
     fn inventory() -> Discovery {
         Discovery {
             host: "alsa".to_owned(),
@@ -442,6 +475,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(feature = "cpal")]
     fn cpal(config: CpalAudioDriverConfig) -> (CpalConfig, u32, Vec<String>) {
         let (native, warnings) =
             native_config(&AudioDriverConfig::Cpal(config), &pools(), &inventory());
@@ -482,13 +516,16 @@ pub(crate) mod tests {
             &Discovery::default(),
         );
         assert!(warnings.is_empty());
-        let DriverConfig::Dummy(dummy) = native.driver else {
-            panic!("expected the dummy driver");
+        let dummy = match native.driver {
+            DriverConfig::Dummy(dummy) => dummy,
+            #[cfg(feature = "cpal")]
+            DriverConfig::Cpal(_) => panic!("expected the dummy driver"),
         };
         assert_eq!((dummy.sample_rate, dummy.buffer_frames), (32_000, 64));
         assert_eq!(native.engine.max_frames, 64);
     }
 
+    #[cfg(feature = "cpal")]
     #[shoop_wasm_test_support::shoop_test]
     fn cpal_defaults_open_default_devices_and_every_midi_port() {
         let (config, max_frames, warnings) = cpal(CpalAudioDriverConfig::default());
@@ -504,6 +541,7 @@ pub(crate) mod tests {
         assert_eq!(max_frames, DEVICE_MAX_FRAMES);
     }
 
+    #[cfg(feature = "cpal")]
     #[shoop_wasm_test_support::shoop_test]
     fn cpal_selectors_resolve_like_the_legacy_driver() {
         let (config, max_frames, warnings) = cpal(CpalAudioDriverConfig {
@@ -546,6 +584,7 @@ pub(crate) mod tests {
         assert_eq!(config.midi_inputs, ["Keystation:0"]);
     }
 
+    #[cfg(feature = "cpal")]
     #[shoop_wasm_test_support::shoop_test]
     fn unusable_cpal_settings_fall_back_with_warnings() {
         let (config, _, warnings) = cpal(CpalAudioDriverConfig {
@@ -568,6 +607,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(feature = "cpal")]
     #[shoop_wasm_test_support::shoop_test]
     fn jack_uses_the_nearest_cpal_host_with_a_warning() {
         let jack = AudioDriverConfig::Jack(shoop_egui::JackAudioDriverConfig {
@@ -616,6 +656,7 @@ pub(crate) mod tests {
         assert!(problems.iter().any(|problem| problem == "2 xruns"));
     }
 
+    #[cfg(feature = "cpal")]
     #[shoop_wasm_test_support::shoop_test]
     fn a_failing_device_driver_falls_back_to_the_dummy_driver() {
         let driver = AudioDriverConfig::Cpal(CpalAudioDriverConfig {
@@ -647,6 +688,24 @@ pub(crate) mod tests {
                 .any(|problem| problem.contains("MIDI") || problem.contains("fault")),
             "{problems:?}"
         );
+    }
+
+    #[cfg(not(feature = "cpal"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn device_drivers_use_the_dummy_driver_without_cpal() {
+        for driver in [
+            AudioDriverConfig::Cpal(Default::default()),
+            AudioDriverConfig::Jack(Default::default()),
+        ] {
+            let (native, warnings) = native_config(&driver, &pools(), &Discovery);
+            assert!(matches!(native.driver, DriverConfig::Dummy(_)));
+            assert!(
+                warnings
+                    .iter()
+                    .any(|warning| warning.contains("using the dummy driver")),
+                "{warnings:?}"
+            );
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
