@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod codec;
+pub mod host;
 pub mod ids;
 pub mod message;
 pub mod schema;

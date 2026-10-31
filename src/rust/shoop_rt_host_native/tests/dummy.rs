@@ -211,3 +211,30 @@ fn the_driver_loop_does_not_touch_the_heap_through_structural_edits() {
     assert!(GUARDED_CYCLES.load(Ordering::Relaxed) > 10);
     assert_eq!(HEAP_OPERATIONS.load(Ordering::Relaxed), 0);
 }
+
+#[shoop_test(no_wasm = "native driver and threads")]
+fn retiring_a_connection_preserves_the_endpoint_and_running_host() {
+    use shoop_rt_transport::carrier::Endpoint;
+    let shoop_rt_host_native::StartedEndpoint {
+        host,
+        mut endpoint,
+        mut outbox,
+    } = shoop_rt_host_native::start_endpoint(&config(controlled())).unwrap();
+    endpoint.deliver(
+        ClientMessage::Hello {
+            version: PROTOCOL_VERSION,
+        },
+        &mut outbox,
+    );
+    assert_no_heap(|| endpoint.disconnect());
+    let dummy = host.dummy().unwrap().clone();
+    dummy.request_frames(640);
+    assert!(dummy.wait_rendered(Duration::from_secs(5)));
+    assert_eq!(host.status().next_frame, 640);
+    assert_eq!(host.status().phase, RenderPhase::Running);
+    assert_no_heap(|| endpoint.poll(&mut outbox));
+    drop(endpoint);
+    let report = host.stop();
+    assert!(report.midi_reset);
+    assert!(report.stopped.is_ok());
+}

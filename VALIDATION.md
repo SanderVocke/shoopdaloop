@@ -751,3 +751,26 @@ and scheduled batch posting to the extracted carrier.
   clear, with zero reported xruns; peak session RSS 1974.8 MiB. Fake microphone
   input was used; this does not certify real audio/MIDI hardware.
 - Updated boundary audit, test-attribute policy and closed tracing inventory pass.
+
+
+### Stage 3: setup schema and endpoint ownership
+
+Portable `host` request/reply types cover paginated discovery, scalar engine
+settings, bounded segment/MIDI-port additions, driver settings, readiness,
+warnings/errors, status and explicit stop. Their codec uses the same bounded
+record format with distinct host-family tags; OS/runtime types stay out of schema.
+`start_endpoint` returns native host, endpoint and outbox independently. Common
+record adapters expose transport failure separately from idle and can relinquish
+an endpoint without destroying it. The engine exposes connection retirement that
+preserves admitted music.
+
+- Selected protocol/transport/adapter/native/worklet regression suites: 67 passed.
+- Guarded native lifetime test: passed; connection retirement performs no heap
+  work, 640 controlled frames render with the endpoint retained, then explicit
+  endpoint drop/host stop sends MIDI reset and recovers the engine.
+- New host-schema tests cover every request/reply family, UTF-8/text/record bounds,
+  truncated records and separation from engine messages. New transport tests
+  cover receive-only EOF notification, one terminal delivery and endpoint recovery.
+- Warnings-denied native build and worklet Wasm build/Node artifact contract:
+  passed. New portable ownership/buffer/schema cases are registered additively
+  for final Miri execution; the retained inventory is 168 commands/336 executions.

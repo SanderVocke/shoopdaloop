@@ -403,6 +403,11 @@ impl ControlEndpoint {
         }
     }
 
+    /// Retire a client connection while retaining the engine and admitted music.
+    pub fn disconnect(&mut self) {
+        self.reset_connection();
+    }
+
     fn reset_connection(&mut self) {
         self.connected = false;
         self.queue.clear();

@@ -117,6 +117,9 @@ impl<E: Endpoint> InProcess<E> {
     pub fn new(endpoint: E, outbox: Outbox) -> Self {
         Self { endpoint, outbox }
     }
+    pub fn into_parts(self) -> (E, Outbox) {
+        (self.endpoint, self.outbox)
+    }
     pub fn endpoint(&self) -> &E {
         &self.endpoint
     }
@@ -141,6 +144,14 @@ impl<E: Endpoint> Carrier for InProcess<E> {
 /// A bidirectional transport of encoded records.
 pub trait RecordPort {
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError>;
+    fn post_on_lane(&mut self, record: &[u8], _lane: Lane) -> Result<(), CarrierError> {
+        self.post(record)
+    }
+    /// Terminal carrier failure, distinct from an idle receive.
+    fn failure(&mut self) -> Option<CarrierError> {
+        None
+    }
+
     /// Copy the next received record into `buf` and return its length.
     fn take(&mut self, buf: &mut [u8]) -> Option<usize>;
 }
@@ -149,14 +160,19 @@ pub trait RecordPort {
 pub struct RecordClient<P> {
     port: P,
     buf: Box<[u8]>,
+    failed: bool,
 }
 
 impl<P: RecordPort> RecordClient<P> {
     pub fn new(port: P) -> Self {
         Self {
             port,
+            failed: false,
             buf: vec![0; MAX_RECORD_BYTES].into_boxed_slice(),
         }
+    }
+    pub fn into_port(self) -> P {
+        self.port
     }
     pub fn port_mut(&mut self) -> &mut P {
         &mut self.port
@@ -166,10 +182,27 @@ impl<P: RecordPort> RecordClient<P> {
 impl<P: RecordPort> Carrier for RecordClient<P> {
     fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError> {
         let len = codec::encode_client(&message, &mut self.buf).map_err(CarrierError::Codec)?;
-        self.port.post(&self.buf[..len])
+        if self.failed {
+            return Err(CarrierError::Disconnected);
+        }
+        self.port.post_on_lane(&self.buf[..len], message.lane())
     }
     fn receive(&mut self) -> Option<EngineMessage> {
-        let len = self.port.take(&mut self.buf)?;
+        if self.failed {
+            return None;
+        }
+        let len = match self.port.take(&mut self.buf) {
+            Some(len) => len,
+            None => {
+                let failure = self.port.failure()?;
+                self.failed = true;
+                let reason = match failure {
+                    CarrierError::Codec(_) => DisconnectReason::ProtocolError,
+                    _ => DisconnectReason::Shutdown,
+                };
+                return Some(EngineMessage::Disconnected(reason));
+            }
+        };
         Some(
             codec::decode_engine(&self.buf[..len])
                 .unwrap_or(EngineMessage::Disconnected(DisconnectReason::ProtocolError)),
@@ -181,6 +214,7 @@ impl<P: RecordPort> Carrier for RecordClient<P> {
 /// encodes its output. Pumping does no allocation.
 pub struct RecordServer<E, P> {
     endpoint: E,
+    failure: Option<CarrierError>,
     port: P,
     outbox: Outbox,
     buf: Box<[u8]>,
@@ -190,10 +224,17 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
     pub fn new(endpoint: E, port: P, outbox: Outbox) -> Self {
         Self {
             endpoint,
+            failure: None,
             port,
             outbox,
             buf: vec![0; MAX_RECORD_BYTES].into_boxed_slice(),
         }
+    }
+    pub fn into_parts(self) -> (E, P, Outbox) {
+        (self.endpoint, self.port, self.outbox)
+    }
+    pub fn failure(&self) -> Option<CarrierError> {
+        self.failure
     }
     pub fn endpoint(&self) -> &E {
         &self.endpoint
@@ -207,11 +248,13 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
     pub fn pump(&mut self, max_records: usize) {
         for _ in 0..max_records {
             let Some(len) = self.port.take(&mut self.buf) else {
+                self.failure = self.failure.or_else(|| self.port.failure());
                 break;
             };
             match codec::decode_client(&self.buf[..len]) {
                 Ok(message) => self.endpoint.deliver(message, &mut self.outbox),
-                Err(_) => {
+                Err(error) => {
+                    self.failure = Some(CarrierError::Codec(error));
                     let _ = self
                         .outbox
                         .push(EngineMessage::Disconnected(DisconnectReason::ProtocolError));
@@ -224,7 +267,10 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
                 Ok(len) => len,
                 Err(_) => continue,
             };
-            if self.port.post(&self.buf[..len]).is_err() {
+            if let Err(error) = self.port.post_on_lane(&self.buf[..len], message.lane()) {
+                if error != CarrierError::Full {
+                    self.failure = Some(error);
+                }
                 self.outbox.unpop(message);
                 break;
             }

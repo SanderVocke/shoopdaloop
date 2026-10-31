@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0–2 are verified locally;
-Stage 3 is next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0–3 are verified locally;
+Socket and shared-memory transports are next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -373,13 +373,13 @@ intended features; the transport depends on no engine or application crate.
 
 ### Stage 3 — Host boundary, setup schema and terminal errors
 
-- [ ] Expose the native endpoint independently of `InProcess`, preserving existing
+- [x] Expose the native endpoint independently of `InProcess`, preserving existing
       startup, host ownership, control lead and teardown behaviour.
-- [ ] Define host discovery/config/start/stop records and codecs, including bounded
+- [x] Define host discovery/config/start/stop records and codecs, including bounded
       discovery pages, warnings, version rejection and startup errors in
       `shoop_rt_protocol::host`. Hosts dispatch these separately from engine
       messages; keep carrier-private bootstrap out of that schema.
-- [ ] Add transport-error reporting through the record/client/backend boundary and
+- [x] Add transport-error reporting through the record/client/backend boundary and
       terminal failure of pending mutations and bulk reads. Preserve idle polling
       and reuse the same error path across all concrete transports.
 

@@ -70,3 +70,14 @@ connections can skip encoding entirely.
 ```sh
 cargo test -p shoop_rt_protocol
 ```
+
+
+## Host setup
+
+`host::{HostRequest, HostReply}` is a separate, versioned host-control family.
+Discovery is paginated; settings, segments and selected MIDI ports are bounded
+records. Device names/errors use UTF-8 `host::Text` (256 bytes). The host converts
+these values to its own configuration and implements them before preparing an
+engine. `codec::{encode_host_request, decode_host_request, encode_host_reply,
+decode_host_reply}` reuse the canonical record framing; carrier bootstrap remains
+outside this schema.

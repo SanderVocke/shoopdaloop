@@ -1102,3 +1102,6 @@ pub fn decode_client(record: &[u8]) -> Result<ClientMessage, CodecError> {
 pub fn decode_engine(record: &[u8]) -> Result<EngineMessage, CodecError> {
     decode(record)
 }
+
+mod host;
+pub use host::{decode_host_reply, decode_host_request, encode_host_reply, encode_host_request};

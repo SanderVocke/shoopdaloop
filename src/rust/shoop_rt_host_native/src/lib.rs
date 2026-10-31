@@ -122,6 +122,22 @@ pub struct Started {
     pub client: NativeClient,
 }
 
+/// Native host with independently owned control endpoint and prepared queues.
+pub struct StartedEndpoint {
+    pub host: NativeHost,
+    pub endpoint: ControlEndpoint,
+    pub outbox: Outbox,
+}
+pub fn start_endpoint(config: &NativeConfig) -> Result<StartedEndpoint, StartError> {
+    let Started { host, client } = start(config)?;
+    let (endpoint, outbox) = client.into_carrier().into_parts();
+    Ok(StartedEndpoint {
+        host,
+        endpoint,
+        outbox,
+    })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NativeStatus {
     pub driver: DriverStatus,

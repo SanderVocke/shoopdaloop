@@ -62,6 +62,9 @@ STAGE8_MODELS = (
 ENGINE_CASES = (
     ("shoop_rt_protocol", "protocol", [], 2),
     ("shoop_rt_transport", "carriers", [], 3),
+    ("shoop_rt_protocol", "host", [], 2),
+    ("shoop_rt_transport", "failure", [], 2),
+    ("shoop_rt_transport", "lib", [], 5),
     ("shoop_rt_engine", "lib", [], 2),
     ("shoop_rt_engine", "workflow", [], 1),
     *(("shoop_rt_engine", "control", [name, "--", "--exact"], 1) for name in (

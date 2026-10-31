@@ -47,6 +47,9 @@ impl<C: Carrier> ProtocolClient<C> {
         }
     }
 
+    pub fn into_carrier(self) -> C {
+        self.carrier
+    }
     pub fn carrier_mut(&mut self) -> &mut C {
         &mut self.carrier
     }
