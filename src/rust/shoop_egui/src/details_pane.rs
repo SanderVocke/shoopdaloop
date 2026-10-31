@@ -86,7 +86,7 @@ pub(crate) fn paint_timeline_regions(
         }
     };
     paint_range(
-        view.start_frame.floor() as i64 - 1,
+        i64::MIN / 4,
         loop_start.saturating_sub_unsigned(preplay_samples),
         colors::WAVEFORM_UNPLAYED_REGION,
     );
@@ -194,7 +194,7 @@ impl MediaViewState {
     fn fit(&mut self, bounds: (f64, f64)) {
         let margin_factor = 1.2;
         let total = (bounds.1 - bounds.0).max(1.0);
-        self.zoom = (margin_factor / total).clamp(MIN_ZOOM as f64, MAX_ZOOM as f64) as f32;
+        self.zoom = (1.0_f64 / margin_factor).clamp(MIN_ZOOM as f64, MAX_ZOOM as f64) as f32;
         self.offset = bounds.0 - (total * (margin_factor - 1.0)) / 2.0;
     }
 }
@@ -759,6 +759,8 @@ mod tests {
         let view = state.view(bounds);
         assert!(view.start_frame <= bounds.0);
         assert!(view.end_frame >= bounds.1);
+        let visible = view.end_frame - view.start_frame;
+        assert!((visible - 48.0).abs() < 1.0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
