@@ -326,7 +326,7 @@ fn instantiate_worker_host(
                 ..Default::default()
             },
             CarlaWorkerTestMode::DelayOnce => FakeProcessorBehavior {
-                process_delay: Duration::from_millis(20),
+                process_delay: Duration::from_millis(500),
                 process_delay_calls: Some(1),
                 ..Default::default()
             },

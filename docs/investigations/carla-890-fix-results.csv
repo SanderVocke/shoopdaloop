@@ -1,0 +1,9 @@
+placement,mode,instances,cycles,mean_budget_percent,client_xruns_all_states,device_xruns_all_states,output_rms
+pinned,master-inprocess,0,200,1.3543188515625,0,0,0.04343607
+pinned,master-inprocess,8,200,10.574485265625002,0,0,0.04320719
+pinned,master-subprocess,0,200,0.8934416953125002,0,0,0.04304226
+pinned,master-subprocess,8,200,7.6643819296875,0,0,0.04371604
+unpinned,master-inprocess,0,1200,1.3980506171874998,0,0,0.04592656
+unpinned,master-inprocess,8,1200,12.188947957031251,0,0,0.04634976
+unpinned,master-subprocess,0,1200,1.2444985117187501,0,0,0.04592247
+unpinned,master-subprocess,8,1200,10.921970000000002,0,0,0.04844595

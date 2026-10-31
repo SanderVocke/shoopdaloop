@@ -1417,15 +1417,17 @@ mod tests {
     fn bridge_deadline_miss_returns_wet_silence() {
         let mut fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         fake.set_behavior(FakeProcessorBehavior {
-            process_delay: Duration::from_millis(20),
+            process_delay: Duration::from_millis(500),
             ..Default::default()
         });
-        let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 48_000, 32).unwrap();
+        let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 1000, 50).unwrap();
         control.set_active(true);
+        control.save_state().unwrap();
         endpoint.audio_input_mut(0).unwrap()[..32].fill(1.0);
         let started = std::time::Instant::now();
         endpoint.process(32).unwrap();
-        assert!(started.elapsed() < Duration::from_millis(15));
+        assert!(started.elapsed() < Duration::from_millis(300));
+        assert_eq!(control.deadline_misses(), 1);
         assert!(endpoint.audio_output(0).unwrap()[..32]
             .iter()
             .all(|sample| *sample == 0.0));
@@ -1436,19 +1438,20 @@ mod tests {
     fn bridge_recovers_after_a_late_completion_without_manual_action() {
         let mut fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         fake.set_behavior(FakeProcessorBehavior {
-            process_delay: Duration::from_millis(20),
+            process_delay: Duration::from_millis(500),
             process_delay_calls: Some(1),
             ..Default::default()
         });
-        let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 48_000, 32).unwrap();
+        let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 1000, 50).unwrap();
         control.set_active(true);
+        control.save_state().unwrap();
         endpoint.audio_input_mut(0).unwrap()[..32].fill(0.75);
         endpoint.process(32).unwrap();
         assert!(endpoint.audio_output(0).unwrap()[..32]
             .iter()
             .all(|sample| *sample == 0.0));
         assert_eq!(control.lifecycle(), CarlaProcessorLifecycle::Degraded);
-        std::thread::sleep(Duration::from_millis(25));
+        std::thread::sleep(Duration::from_millis(550));
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
         loop {
             endpoint.audio_input_mut(0).unwrap()[..32].fill(0.75);
